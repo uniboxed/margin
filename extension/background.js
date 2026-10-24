@@ -65,7 +65,7 @@ if (!api.storage.session) {
   api.runtime.onStartup.addListener(() => resync({ fresh: true }));
 }
 
-resync();
+resync().then(() => archiveStale());
 
 // ---- tab events -----------------------------------------------------------
 
@@ -78,7 +78,10 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   }
 });
 api.tabs.onRemoved.addListener((tabId) => mutate((s) => M.removeTab(s, tabId)));
-api.tabs.onActivated.addListener(({ tabId, windowId }) => mutate((s) => M.activateTab(s, tabId, windowId, now())));
+api.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  mutate((s) => M.activateTab(s, tabId, windowId, now()));
+  if (!api.alarms) archiveStaleThrottled();
+});
 api.tabs.onMoved.addListener(() => resync({ fresh: false }));
 api.tabs.onAttached.addListener(() => resync({ fresh: false }));
 api.tabs.onDetached?.addListener(() => resync({ fresh: false }));
@@ -111,8 +114,26 @@ const handlers = {
   async activateTab({ tabId }) {
     await focusTab(tabId);
   },
+  // Closing from Margin archives the tab, like Arc.
   async closeTab({ tabId }) {
+    await mutate((s) => {
+      const tab = s.tabs[tabId];
+      return tab && /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
+    });
     await api.tabs.remove(tabId);
+  },
+  async restoreArchive({ archiveId, windowId, replaceTabId }) {
+    const s = await load();
+    const entry = s.archive.find((a) => a.id === archiveId);
+    if (!entry) return;
+    const spaceId = s.spaces.some((sp) => sp.id === entry.spaceId) ? entry.spaceId : s.spaces[0].id;
+    if (replaceTabId != null) {
+      const tab = await api.tabs.update(replaceTabId, { url: entry.url });
+      await mutate((st) => M.setActiveSpace(M.moveTab(M.removeArchived(st, archiveId), replaceTabId, spaceId), tab.windowId, spaceId));
+    } else {
+      const tab = await openTab({ windowId, url: entry.url, spaceId });
+      await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
+    }
   },
   async newTab({ windowId, url, spaceId }) {
     const tab = await openTab({ windowId, url, spaceId });
@@ -172,6 +193,42 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .catch((err) => sendResponse({ ok: false, error: String(err?.message ?? err) }));
   return true;
 });
+
+// ---- auto-archive -----------------------------------------------------------
+
+// Close stale tabs and add them to the archive. Runs on wake, on a
+// browser.alarms schedule when available, else (throttled) on tab activation.
+async function archiveStale() {
+  let stale = [];
+  await mutate((s) => {
+    stale = M.staleTabs(s, now());
+    return stale.reduce((st, tab) => M.archiveTab(st, M.archiveEntryForTab(st, tab, { id: newId(), closedAt: now() })), s);
+  });
+  if (stale.length) {
+    console.log('[margin] archived', stale.length, 'tab(s)');
+    await api.tabs.remove(stale.map((t) => t.id)).catch((err) => console.warn('[margin] archive', err));
+  }
+  return stale.length;
+}
+
+let lastCheck = 0;
+function archiveStaleThrottled() {
+  if (now() - lastCheck < 5 * 60_000) return;
+  lastCheck = now();
+  archiveStale();
+}
+
+const ARCHIVE_ALARM = 'margin-archive';
+if (api.alarms) {
+  api.alarms.onAlarm.addListener((alarm) => alarm.name === ARCHIVE_ALARM && archiveStale());
+  api.alarms.get(ARCHIVE_ALARM).then((alarm) => alarm || api.alarms.create(ARCHIVE_ALARM, { periodInMinutes: 15 }));
+  console.log('[margin] auto-archive via browser.alarms');
+} else {
+  console.log('[margin] auto-archive via tab events (no browser.alarms)');
+}
+
+// Debug hook for Web Inspector and tests: `margin.archiveNow()`.
+globalThis.margin = { archiveNow: archiveStale };
 
 // ---- commands -------------------------------------------------------------
 

@@ -27,11 +27,15 @@
     <section id="archive-section" hidden>
       <h2>Recently archived</h2>
       <ul id="archive-list"></ul>
+      <button id="archive-more" type="button" hidden></button>
     </section>
     <details id="settings">
       <summary>Settings</summary>
       <label>Search engine
         <select id="engine"></select>
+      </label>
+      <label>Archive tabs not used for (hours, 0 = never)
+        <input id="archive-hours" type="number" min="0" max="720" step="1">
       </label>
       <label>Command palette shortcut
         <input id="shortcut" type="text" readonly placeholder="Press keys…" aria-describedby="shortcut-help">

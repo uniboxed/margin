@@ -218,3 +218,19 @@ export function archiveTab(state, { id, url, title, spaceId, favIconUrl, closedA
 export function removeArchived(state, archiveId) {
   return { ...state, archive: state.archive.filter((a) => a.id !== archiveId) };
 }
+
+// Tabs due for auto-archive: web pages that aren't pinned in their space,
+// aren't the active tab of their window, and haven't been active for
+// `settings.archiveAfterHours` (0 or less disables it).
+export function staleTabs(state, now) {
+  const hours = Number(state.settings.archiveAfterHours);
+  if (!(hours > 0)) return [];
+  const cutoff = now - hours * 3600_000;
+  return Object.values(state.tabs).filter(
+    (t) => !t.active && /^https?:/i.test(t.url) && (t.lastActive ?? now) < cutoff && !pinForUrl(state, t.url, state.tabSpace[t.id]),
+  );
+}
+
+export function archiveEntryForTab(state, tab, { id, closedAt }) {
+  return { id, url: tab.url, title: tab.title, favIconUrl: tab.favIconUrl, spaceId: state.tabSpace[tab.id] ?? state.spaces[0].id, closedAt };
+}

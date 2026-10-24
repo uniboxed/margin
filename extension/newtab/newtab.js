@@ -48,6 +48,18 @@ $('archive-list').addEventListener('click', (event) => {
   if (row) send('restoreArchive', { archiveId: row.dataset.archiveId, replaceTabId: self.id });
 });
 
+let showAllArchived = false;
+$('archive-more').addEventListener('click', () => {
+  showAllArchived = !showAllArchived;
+  renderLauncher();
+});
+
+const hours = $('archive-hours');
+hours.addEventListener('change', () => {
+  const value = Number(hours.value);
+  if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { archiveAfterHours: value } });
+});
+
 const engine = $('engine');
 for (const { name, url } of Margin.search.SEARCH_ENGINES) engine.append(el(document, 'option', { value: url, text: name }));
 engine.addEventListener('change', () => send('updateSettings', { patch: { searchEngine: engine.value } }));
@@ -105,8 +117,11 @@ function renderLauncher() {
     ),
   );
 
-  const archive = (state.archive ?? []).slice(0, 12);
-  $('archive-section').hidden = archive.length === 0;
+  const all = state.archive ?? [];
+  const archive = showAllArchived ? all : all.slice(0, 12);
+  $('archive-section').hidden = all.length === 0;
+  $('archive-more').hidden = all.length <= 12;
+  $('archive-more').textContent = showAllArchived ? 'Show fewer' : `Show all ${all.length}`;
   $('archive-list').replaceChildren(
     ...archive.map((a) =>
       el(document, 'li', { 'data-archive-id': a.id, title: a.url },
@@ -121,6 +136,7 @@ function renderLauncher() {
     engine.append(el(document, 'option', { value: state.settings.searchEngine, text: 'Custom' }));
   }
   engine.value = state.settings.searchEngine;
+  if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
   if (!recording) shortcut.value = Margin.shortcuts.format(state.settings.paletteShortcut);
 }
 

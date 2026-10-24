@@ -57,3 +57,13 @@ Ambiguous calls made while building Margin, newest milestone last. "Verified" me
 - **Actions:** New tab, Pin current tab (only on unpinned web pages), Toggle sidebar (not on the new-tab page, where it's always open), and one "Switch to space …" per other space.
 - **`content/palette.css`** was added next to `sidebar.css` (not in SPEC's layout) so each shadow root only loads its own styles.
 - **Keys:** ↑/↓ (or Ctrl+N/Ctrl+P) wrap around, Enter runs, Esc or a click on the backdrop closes, and focus returns to where it was.
+
+## M6 — Auto-archive
+
+- **Both schedulers are implemented; which one runs depends on the browser.** If `browser.alarms` exists, a 15-minute alarm (`margin-archive`) runs the check (verified in Chromium). Otherwise the check runs on tab activation, throttled to once every 5 minutes. Either way, it also runs every time the background wakes. The background logs which path it took (`[margin] auto-archive via …`). Which one Safari uses is a manual check. `alarms` was added to `permissions`.
+- **Staleness clock:** `tabs[id].lastActive`, stamped when a tab gains or loses focus. Safari's `tab.lastAccessed` is used only as a seed when present. When a tab is first seen with no history, the clock starts then, so a restart never archives everything at once. On a fresh browser session all clocks restart.
+- **Never auto-archived:** the active tab of each window, tabs pinned in their own space (a pin in another space doesn't protect it), and non-web pages (our new tab, `about:`, Safari internal pages).
+- **`archiveAfterHours: 0` disables auto-archive.** It's editable on the new tab under Settings.
+- **Closing a tab from Margin's × archives it**, like Arc. Tabs closed with ⌘W can't be archived: Safari doesn't tell extensions which tab is about to close.
+- **Restore** removes the entry, reopens the URL in its original space, and switches the window to that space so the tab is visible. That space falls back to the first space if it was deleted. From the new tab it navigates in place; from the palette it opens a new tab.
+- **Debug hook:** `margin.archiveNow()` in the background's console (Web Inspector) runs the check immediately. E2E uses it with a 1-second threshold.

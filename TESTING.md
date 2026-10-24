@@ -16,6 +16,7 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 | 1 | `chrome_url_overrides.newtab` works | After step 7 below, ⌘T shows Margin's launcher (search field, sidebar on the left) | Without it there's no launcher. The overlay sidebar still works on websites |
 | 0 | The background service worker loads as an ES module (`"type": "module"`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` | See DECISIONS.md M1 |
 | 3 | `commands` shortcuts work, and which combos are free | Option+K opens the palette and Option+S toggles the sidebar on a normal site, including while a text field has focus. Also check Safari → Settings → Extensions → Margin for shortcut settings | If Option+K does nothing, set another shortcut in new tab → Settings and record the working combo in DECISIONS.md M5 |
+| 4 | `browser.alarms` is available to the background | The background console logs `[margin] auto-archive via browser.alarms` | It logs `via tab events` instead. Auto-archive still runs on wake and on tab switches (every 5 min max). Record which one in DECISIONS.md M6 |
 | 2 | `tab.favIconUrl` is populated | Sidebar rows show site favicons, not only colored letters | Letter avatars are the built-in fallback; nothing to do |
 | 5 | Background unload and wake | Leave Safari idle for 5+ minutes, then hover the left edge on an already-open page and click a tab | If clicks do nothing, the worker didn't wake on `sendMessage`. Note it in DECISIONS.md |
 | 6 | Sidebar CSS loads inside the shadow root on a strict-CSP site (e.g. github.com) | The sidebar is styled, not raw HTML | See DECISIONS.md M2 (constructable stylesheet, `<style>` fallback) |
@@ -77,3 +78,12 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 - [ ] Typing `example.com` → first row "Open https://example.com" → Enter opens it in a new tab. Typing words → last row "Search for …".
 - [ ] On the new tab page, Option+K opens the palette too (click the page first, because the address bar has focus). Entering a URL navigates that tab.
 - [ ] New tab → Settings → Command palette shortcut: click, press e.g. ⌃⇧P. It updates there and on already-open websites.
+
+## M6 auto-archive
+
+- [ ] New tab → Settings → "Archive tabs not used for" shows 12. Set it to 1.
+- [ ] Open a few sites, leave one in the background for over an hour (or, for a fast check: Web Inspector on the background → `margin.archiveNow()` after setting the value to something tiny like `0.001` via `browser.storage.local`). The idle tab closes and shows under "Recently archived" on the new tab.
+- [ ] Pinned tabs and the active tab are never archived.
+- [ ] × in the sidebar also archives the tab.
+- [ ] Clicking an archived entry on the new tab reopens it in that tab, in its original space. In the palette, typing its title shows an "Archived" row, and Enter reopens it in a new tab.
+- [ ] More than 12 archived entries shows "Show all N".

@@ -183,3 +183,28 @@ test('archive: newest first, one entry per URL, capped at 200', () => {
   assert.equal(M.archiveTab(s, { id: 'x', url: '' }), s);
   assert.equal(M.removeArchived(s, 'again').archive.length, M.ARCHIVE_CAP - 1);
 });
+
+test('auto-archive: only inactive, unpinned web tabs past the threshold', () => {
+  const H = 3600_000;
+  let s = M.defaultState(); // archiveAfterHours: 12
+  const add = (id, url, lastActive, extra = {}) => {
+    s = M.upsertTab(s, { id, windowId: 1, index: id, url, title: `t${id}`, ...extra }, lastActive);
+  };
+  add(1, 'https://old.com', 0);
+  add(2, 'https://recent.com', 11 * H);
+  add(3, 'https://pinned.com', 0);
+  add(4, 'chrome://settings', 0);
+  add(5, 'https://active.com', 0, { active: true });
+  s = { ...s, tabs: { ...s.tabs, 5: { ...s.tabs[5], lastActive: 0 } } }; // active wins even if old
+  s = M.addPin(s, { id: 'p', spaceId: 'personal', url: 'https://pinned.com/', title: 'P' });
+  const now = 13 * H;
+  assert.deepEqual(M.staleTabs(s, now).map((t) => t.id), [1]);
+  // Pinned in another space doesn't protect it.
+  s = M.createSpace(s, { id: 'work', name: 'Work' });
+  s = M.moveTab(s, 3, 'work');
+  assert.deepEqual(M.staleTabs(s, now).map((t) => t.id).sort(), [1, 3]);
+  // Disabled with 0.
+  assert.deepEqual(M.staleTabs({ ...s, settings: { ...s.settings, archiveAfterHours: 0 } }, now), []);
+  const entry = M.archiveEntryForTab(s, s.tabs[3], { id: 'x', closedAt: now });
+  assert.deepEqual(entry, { id: 'x', url: 'https://pinned.com', title: 't3', favIconUrl: '', spaceId: 'work', closedAt: now });
+});
