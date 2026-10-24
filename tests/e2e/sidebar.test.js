@@ -126,3 +126,28 @@ test('new-tab page renders the sidebar itself and gets no injected overlay', asy
   await nt.locator('#sidebar .new-tab').click();
   await waitFor(async () => (await tabsInBrowser(ctx.worker)).filter((t) => t.url.startsWith('chrome://newtab')).length >= 2);
 });
+
+test('toggle shortcut: opens and closes; with "Keep open" on it switches back to auto-hide', async () => {
+  const page = await openPage('toggle');
+  const tabId = await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'toggle')?.id);
+  const toggle = () => ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
+  const pinned = () => ctx.worker.evaluate(() => chrome.storage.local.get('settings').then((s) => s.settings.sidebarPinnedOpen));
+
+  await toggle();
+  await waitFor(async () => (await sidebarSnapshot(page)).open);
+  await toggle();
+  await waitFor(async () => !(await sidebarSnapshot(page)).open);
+
+  await page.mouse.move(3, 200);
+  await clickInShadow(page, '.keep-open');
+  await waitFor(pinned);
+  await page.mouse.move(600, 200);
+  await page.waitForTimeout(400);
+  assert.equal((await sidebarSnapshot(page)).open, true, 'kept open');
+
+  await toggle();
+  await waitFor(async () => !(await pinned()));
+  await page.waitForTimeout(100);
+  assert.equal((await sidebarSnapshot(page)).open, false);
+  await page.close();
+});

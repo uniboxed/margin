@@ -94,7 +94,17 @@
     if (reason !== 'hover' || hideTimer || sidebar.isBusy()) return;
     hideTimer = setTimeout(hide, HIDE_DELAY_MS);
   }
-  Margin.content.sidebar = { show, hide, toggle: () => (reason || pinnedOpen() ? hide() : show('toggle')) };
+  // With "Keep open" on, the shortcut switches back to auto-hide (hide()
+  // alone would leave it pinned open).
+  function toggle() {
+    if (pinnedOpen()) {
+      state = { ...state, settings: { ...state.settings, sidebarPinnedOpen: false } };
+      send('updateSettings', { patch: { sidebarPinnedOpen: false } });
+      return hide();
+    }
+    return reason ? hide() : show('toggle');
+  }
+  Margin.content.sidebar = { show, hide, toggle };
 
   document.addEventListener(
     'mousemove',
