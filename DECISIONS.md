@@ -29,3 +29,11 @@ Ambiguous calls made while building Margin, newest milestone last. "Verified" me
 - **Theme:** the page's computed `color-scheme` (if `dark`), else the luminance of the body/html background, else the OS `prefers-color-scheme`.
 - **"+ New tab"** calls `tabs.create` without a URL, so the browser's new-tab setting (Margin) decides the page.
 - **Host debug attribute:** the host carries `data-open="true|false"` so state is visible in Web Inspector. It reveals nothing beyond the sidebar being open.
+
+## M3 — New-tab page
+
+- **Launcher navigates the new-tab tab itself** (`tabs.update`) instead of opening another tab.
+- **URL vs. search** (`shared/search.js`, unit tested): explicit schemes pass through, `localhost`/IPs get `http://`, `name.tld[/…]` without spaces gets `https://`, and everything else is searched. `node.js` alone counts as a URL, like most browsers.
+- **Search engine setting** is a URL template with `%s` (`settings.searchEngine`). The new-tab "Settings" disclosure offers DuckDuckGo (default), Google, Bing, Ecosia, and Startpage. A stored template that's not in the list shows as "Custom."
+- **Pin tiles** focus an open tab with that URL, otherwise navigate the new-tab tab to it.
+- **No palette auto-open on the new tab.** SPEC's layout comment mentions it, but the launcher field already does that job. The palette is available on the new tab through its shortcut (M5).

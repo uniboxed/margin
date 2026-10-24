@@ -8,11 +8,30 @@
   <link rel="stylesheet" href="../content/sidebar.css">
   <link rel="stylesheet" href="newtab.css">
   <script src="../shared/view.js"></script>
+  <script src="../shared/search.js"></script>
   <script src="../shared/ui.js"></script>
   <script src="newtab.js" type="module"></script>
 </head>
 <body>
   <div id="sidebar"></div>
-  <main id="launcher"></main>
+  <main id="launcher">
+    <form id="search" role="search" autocomplete="off">
+      <input id="query" name="q" type="text" placeholder="Search or enter address" aria-label="Search or enter address" autofocus spellcheck="false">
+    </form>
+    <section id="pins-section" hidden>
+      <h2>Pinned</h2>
+      <ul id="pin-tiles"></ul>
+    </section>
+    <section id="archive-section" hidden>
+      <h2>Recently archived</h2>
+      <ul id="archive-list"></ul>
+    </section>
+    <details id="settings">
+      <summary>Settings</summary>
+      <label>Search engine
+        <select id="engine"></select>
+      </label>
+    </details>
+  </main>
 </body>
 </html>

@@ -13,6 +13,7 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 
 | # | Check | How to tell | If false |
 |---|-------|-------------|----------|
+| 1 | `chrome_url_overrides.newtab` works | After step 7 below, ⌘T shows Margin's launcher (search field, sidebar on the left) | Without it there's no launcher. The overlay sidebar still works on websites |
 | 0 | The background service worker loads as an ES module (`"type": "module"`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` | See DECISIONS.md M1 |
 | 2 | `tab.favIconUrl` is populated | Sidebar rows show site favicons, not only colored letters | Letter avatars are the built-in fallback; nothing to do |
 | 5 | Background unload and wake | Leave Safari idle for 5+ minutes, then hover the left edge on an already-open page and click a tab | If clicks do nothing, the worker didn't wake on `sendMessage`. Note it in DECISIONS.md |
@@ -46,3 +47,11 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 - [ ] Option+S (toggle command) opens the sidebar; Esc or a click on the page closes it. If the shortcut does nothing, check Safari → Settings → Extensions → Margin for shortcut settings and note what works.
 - [ ] "Keep open" in the sidebar footer keeps it visible on every page until clicked again ("Auto-hide").
 - [ ] No sidebar appears on Margin's own new tab page except the built-in one.
+
+## M3 new-tab page
+
+- [ ] ⌘T shows the sidebar on the left (always open) and a centered search field. Safari puts focus in the address bar first: **this is expected**. Click the field to type.
+- [ ] Typing `example.com` + Return opens https://example.com in the same tab.
+- [ ] Typing `hello world` + Return searches DuckDuckGo.
+- [ ] Settings → Search engine → Google, then search again: Google is used.
+- [ ] Pin a page (📌 in the sidebar). New tab shows it as a tile. Clicking the tile focuses the open tab, or opens the page in this tab if it's closed.
