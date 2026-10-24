@@ -34,15 +34,21 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 The Xcode project is generated locally and not committed (`xcode/` is git-ignored). From the repo root:
 
 ```sh
+scripts/make-xcode.sh
+open xcode/Margin/Margin.xcodeproj
+```
+
+The script runs Apple's converter:
+
+```sh
 xcrun safari-web-extension-converter extension --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
 ```
 
-Then open `xcode/Margin/Margin.xcodeproj`, choose the **Margin (macOS)** scheme, and Run (⌘R). Safari picks up the extension from the app.
+It then fixes the bundle IDs. The converter names the app `io.tirth.Margin` (capitalized from the app name) but the extension `io.tirth.margin.Extension`, and Xcode refuses to build with "Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier." The script sets the app to `io.tirth.margin`, the extension to `io.tirth.margin.Extension`, and `extensionBundleIdentifier` in the app's Swift code to match, then prints all three.
 
-**After pulling new changes:**
+In Xcode, choose the **Margin (macOS)** scheme and Run (⌘R). Safari picks up the extension from the app. If signing complains, set the same Team (your Personal Team, or "Sign to Run Locally") on both targets under Signing & Capabilities.
 
-- **Edits to existing files under `extension/`:** Run again in Xcode, then reload open pages in Safari. If Safari still shows old behavior, the project copied the files instead of referencing them, so regenerate it (next point).
-- **Files added or removed under `extension/`** (check `git diff --stat ORIG_HEAD -- extension`): regenerate the project with `rm -rf xcode`, re-run the converter command above, then Run. Then enable Margin again in Safari → Settings → Extensions if Safari asks.
+**After pulling new changes,** re-run `scripts/make-xcode.sh` and Run again. That's always safe, and needed whenever files under `extension/` are added or removed. For edits to existing files, just Run again in Xcode and reload pages in Safari. If Safari still shows old behavior, regenerate.
 
 ## Architecture
 
