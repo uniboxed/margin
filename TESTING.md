@@ -55,3 +55,13 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 - [ ] Typing `hello world` + Return searches DuckDuckGo.
 - [ ] Settings → Search engine → Google, then search again: Google is used.
 - [ ] Pin a page (📌 in the sidebar). New tab shows it as a tile. Clicking the tile focuses the open tab, or opens the page in this tab if it's closed.
+
+## M4 spaces and pins
+
+- [ ] "+" in the chip row creates a space and opens its editor with the name selected. Type a name, set an emoji (Ctrl+⌘+Space), pick a color, Save. The chip updates.
+- [ ] Right-click a chip: the editor opens. Rename and recolor work. (If Safari shows its own context menu instead, double-click the chip.)
+- [ ] Delete: the first click shows "Really delete?", the second deletes. That space's tabs and pins now show under the first space.
+- [ ] With only one space, Delete is disabled.
+- [ ] Drag a tab row onto another space's chip: it disappears from the list and appears when that space is selected.
+- [ ] Two windows can show different spaces at the same time.
+- [ ] Typing in the space editor on github.com doesn't trigger GitHub's keyboard shortcuts.

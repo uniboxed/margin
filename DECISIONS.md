@@ -37,3 +37,12 @@ Ambiguous calls made while building Margin, newest milestone last. "Verified" me
 - **Search engine setting** is a URL template with `%s` (`settings.searchEngine`). The new-tab "Settings" disclosure offers DuckDuckGo (default), Google, Bing, Ecosia, and Startpage. A stored template that's not in the list shows as "Custom."
 - **Pin tiles** focus an open tab with that URL, otherwise navigate the new-tab tab to it.
 - **No palette auto-open on the new tab.** SPEC's layout comment mentions it, but the launcher field already does that job. The palette is available on the new tab through its shortcut (M5).
+
+## M4 — Spaces and pins
+
+- **Editing spaces:** right-click (or double-click) a space chip opens an inline editor in the sidebar with name, emoji, an 8-color palette, Save/Cancel, and Delete. "+" creates a space, switches this window to it, and opens the editor. The emoji is free text (paste or use the macOS emoji picker, Ctrl+⌘+Space).
+- **Delete** takes two clicks ("Delete" → "Really delete?") instead of a `confirm()` dialog, which would block the page. The last space can't be deleted. Its tabs, pins, archive entries, and windows move to the first remaining space, and pins whose URL is already pinned there collapse into one.
+- **Drag and drop** uses HTML5 DnD from a tab row onto a chip. The tab id is tracked in memory as well as in `dataTransfer`, because some browsers hide custom types during `dragover`.
+- **Auto-hide is suspended** while the editor is open or a drag is in progress.
+- **Our keystrokes stay in the sidebar:** key events stop propagating at the sidebar root, so typing a space name doesn't trigger the site's own shortcuts (e.g. GitHub's `/` or `s`). Page listeners in the capture phase still see them; that can't be prevented from a content script.
+- **Archive helpers** (`archiveTab`, cap 200, one entry per URL, newest first) landed here so the cap is unit tested with the rest of the model. M6 uses them.

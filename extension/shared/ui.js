@@ -46,8 +46,24 @@
     return img;
   }
 
+  const SPACE_COLORS = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72'];
+  const TAB_MIME = 'application/x-margin-tab';
+
   function createSidebar({ document: doc, send, mode }) {
     const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
+    const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
+    const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
+    const swatches = el(doc, 'div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Space color' },
+      SPACE_COLORS.map((c) => el(doc, 'button', { type: 'button', class: 'swatch', 'data-color': c, title: c, style: `--chip-color: ${c}`, role: 'radio' })));
+    const deleteButton = el(doc, 'button', { type: 'button', class: 'delete', 'data-editor': 'delete', text: 'Delete' });
+    const editor = el(doc, 'form', { class: 'editor', hidden: true, 'aria-label': 'Edit space' },
+      el(doc, 'div', { class: 'row' }, emojiInput, nameInput),
+      swatches,
+      el(doc, 'div', { class: 'row actions' },
+        deleteButton,
+        el(doc, 'span', { class: 'spacer' }),
+        el(doc, 'button', { type: 'button', 'data-editor': 'cancel', text: 'Cancel' }),
+        el(doc, 'button', { type: 'submit', class: 'primary', text: 'Save' })));
     const pins = el(doc, 'ul', { class: 'pins', 'aria-label': 'Pinned' });
     const tabs = el(doc, 'ul', { class: 'tabs', 'aria-label': 'Tabs' });
     const keepOpen = el(doc, 'button', { class: 'keep-open', 'data-action': 'keep-open', title: 'Keep the sidebar open' });
@@ -57,6 +73,7 @@
     );
     const root = el(doc, 'aside', { class: `margin-sidebar ${mode}`, 'aria-label': 'Margin' },
       chips,
+      editor,
       el(doc, 'section', { class: 'pins-section' }, pins),
       el(doc, 'div', { class: 'divider' }),
       el(doc, 'section', { class: 'tabs-section' }, tabs),
@@ -65,6 +82,7 @@
 
     let state = null;
     let windowId = null;
+    let pendingEdit = null; // a just-created space opens in the editor once it arrives
 
     function render() {
       if (!state || windowId == null) return;
@@ -83,6 +101,7 @@
             text: s.emoji,
           }),
         ),
+        el(doc, 'button', { class: 'chip add', 'data-action': 'add-space', title: 'New space', text: '+' }),
       );
 
       pins.replaceChildren(
@@ -106,6 +125,7 @@
             'data-action': 'activate',
             'data-tab-id': String(t.id),
             title: t.title || t.url,
+            draggable: 'true',
           },
           avatar(doc, t),
           el(doc, 'span', { class: 'title', text: t.title || t.url || 'New Tab' }),
@@ -133,17 +153,126 @@
         case 'unpin': return send('unpin', { pinId });
         case 'set-space': return send('setSpace', { windowId, spaceId });
         case 'new-tab': return send('newTab', { windowId });
+        case 'add-space':
+          return send('createSpace', { windowId }).then((res) => res?.spaceId && (pendingEdit = res.spaceId));
         case 'keep-open':
           return send('updateSettings', { patch: { sidebarPinnedOpen: !state?.settings?.sidebarPinnedOpen } });
       }
     });
 
+    // ---- space editor ------------------------------------------------------
+
+    let editing = null; // { spaceId, color, confirmDelete }
+    function openEditor(spaceId) {
+      const space = state?.spaces.find((s) => s.id === spaceId);
+      if (!space) return;
+      editing = { spaceId, color: space.color, confirmDelete: false };
+      nameInput.value = space.name;
+      emojiInput.value = space.emoji;
+      editor.hidden = false;
+      renderEditor();
+      nameInput.focus();
+      nameInput.select();
+    }
+    function closeEditor() {
+      editing = null;
+      editor.hidden = true;
+    }
+    function renderEditor() {
+      if (!editing) return;
+      for (const sw of swatches.children) sw.setAttribute('aria-checked', String(sw.dataset.color === editing.color));
+      const only = (state?.spaces.length ?? 0) < 2;
+      deleteButton.disabled = only;
+      deleteButton.title = only ? 'The last space can’t be deleted' : 'Tabs and pins move to the first space';
+      deleteButton.textContent = editing.confirmDelete ? 'Really delete?' : 'Delete';
+    }
+    editor.addEventListener('submit', (event) => {
+      event.preventDefault();
+      if (!editing) return;
+      send('renameSpace', { spaceId: editing.spaceId, name: nameInput.value, emoji: emojiInput.value, color: editing.color });
+      closeEditor();
+    });
+    editor.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const swatch = event.target.closest('.swatch');
+      if (swatch && editing) {
+        editing.color = swatch.dataset.color;
+        return renderEditor();
+      }
+      const action = event.target.closest('[data-editor]')?.dataset.editor;
+      if (action === 'cancel') closeEditor();
+      if (action === 'delete' && editing) {
+        if (!editing.confirmDelete) {
+          editing.confirmDelete = true;
+          return renderEditor();
+        }
+        send('deleteSpace', { spaceId: editing.spaceId });
+        closeEditor();
+      }
+    });
+    editor.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeEditor();
+    });
+    chips.addEventListener('contextmenu', (event) => {
+      const chip = event.target.closest('.chip[data-space-id]');
+      if (!chip) return;
+      event.preventDefault();
+      openEditor(chip.dataset.spaceId);
+    });
+    chips.addEventListener('dblclick', (event) => {
+      const chip = event.target.closest('.chip[data-space-id]');
+      if (chip) openEditor(chip.dataset.spaceId);
+    });
+
+    // Keep our keystrokes away from the page's own shortcuts.
+    for (const type of ['keydown', 'keyup', 'keypress']) root.addEventListener(type, (e) => e.stopPropagation());
+
+    // ---- drag a tab onto a space chip ---------------------------------------
+
+    let draggingTabId = null;
+    tabs.addEventListener('dragstart', (event) => {
+      const row = event.target.closest('.tab');
+      if (!row) return;
+      draggingTabId = Number(row.dataset.tabId);
+      event.dataTransfer.setData(TAB_MIME, row.dataset.tabId);
+      event.dataTransfer.effectAllowed = 'move';
+    });
+    tabs.addEventListener('dragend', () => {
+      draggingTabId = null;
+      for (const c of chips.querySelectorAll('.drop-target')) c.classList.remove('drop-target');
+    });
+    const chipFor = (event) => (draggingTabId == null ? null : event.target.closest?.('.chip[data-space-id]'));
+    chips.addEventListener('dragover', (event) => {
+      const chip = chipFor(event);
+      if (!chip) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      chip.classList.add('drop-target');
+    });
+    chips.addEventListener('dragleave', (event) => chipFor(event)?.classList.remove('drop-target'));
+    chips.addEventListener('drop', (event) => {
+      const chip = chipFor(event);
+      if (!chip) return;
+      event.preventDefault();
+      chip.classList.remove('drop-target');
+      send('moveTabToSpace', { tabId: draggingTabId, spaceId: chip.dataset.spaceId });
+      draggingTabId = null;
+    });
+
     return {
       el: root,
+      // While editing or dragging, the overlay shouldn't auto-hide.
+      isBusy: () => editing != null || draggingTabId != null,
       update(nextState, context) {
         state = nextState;
         if (context?.windowId != null) windowId = context.windowId;
         render();
+        if (pendingEdit && state.spaces.some((s) => s.id === pendingEdit)) {
+          openEditor(pendingEdit);
+          pendingEdit = null;
+        }
+        if (editing && !state.spaces.some((s) => s.id === editing.spaceId)) closeEditor();
+        renderEditor();
       },
       setTheme(theme) {
         root.dataset.theme = theme;

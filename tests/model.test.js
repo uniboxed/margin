@@ -140,3 +140,46 @@ test('view.sidebar: shows the window\'s active space, pins separately, ordered b
   assert.equal(v.pins[0].active, true);
   assert.deepEqual(view.sidebar(M.setActiveSpace(s, 1, 'work'), 1).tabs.map((t) => t.id), [2]);
 });
+
+test('delete space: tabs, pins, archive and windows move to the first remaining space', () => {
+  let s = twoSpaces();
+  s = M.createSpace(s, { id: 'fun', name: 'Fun' });
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com'), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://b.com'), 0);
+  s = M.moveTab(s, 1, 'work');
+  s = M.setActiveSpace(s, 1, 'work');
+  s = M.addPin(s, { id: 'p1', spaceId: 'work', url: 'https://x.com', title: 'X' });
+  s = M.addPin(s, { id: 'p2', spaceId: 'work', url: 'https://dup.com', title: 'Dup' });
+  s = M.addPin(s, { id: 'p3', spaceId: 'personal', url: 'https://dup.com/', title: 'Dup' });
+  s = M.archiveTab(s, { id: 'a1', url: 'https://old.com', spaceId: 'work', closedAt: 1 });
+  const next = M.deleteSpace(s, 'work');
+  assert.deepEqual(next.spaces.map((x) => x.id), ['personal', 'fun']);
+  assert.deepEqual(next.tabSpace, { 1: 'personal', 2: 'personal' });
+  assert.deepEqual(next.activeSpaceByWindow, { 1: 'personal' });
+  assert.deepEqual(next.pins.map((p) => [p.id, p.spaceId]).sort(), [['p1', 'personal'], ['p3', 'personal']], 'duplicate pin collapses');
+  assert.equal(next.archive[0].spaceId, 'personal');
+});
+
+test('delete space: deleting the first space moves things to the next; the last space stays', () => {
+  let s = twoSpaces();
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com'), 0);
+  const next = M.deleteSpace(s, 'personal');
+  assert.deepEqual(next.spaces.map((x) => x.id), ['work']);
+  assert.equal(next.tabSpace[1], 'work');
+  assert.equal(M.deleteSpace(next, 'work'), next);
+  assert.equal(M.deleteSpace(next, 'missing'), next);
+});
+
+test('archive: newest first, one entry per URL, capped at 200', () => {
+  let s = M.defaultState();
+  for (let i = 0; i < 250; i++) s = M.archiveTab(s, { id: `a${i}`, url: `https://x.com/${i}`, spaceId: 'personal', closedAt: i });
+  assert.equal(s.archive.length, M.ARCHIVE_CAP);
+  assert.equal(s.archive[0].id, 'a249');
+  assert.equal(s.archive.at(-1).id, 'a50');
+  s = M.archiveTab(s, { id: 'again', url: 'https://x.com/100#frag', closedAt: 999 });
+  assert.equal(s.archive.length, M.ARCHIVE_CAP);
+  assert.equal(s.archive.filter((a) => a.url.startsWith('https://x.com/100')).length, 1);
+  assert.equal(s.archive[0].id, 'again');
+  assert.equal(M.archiveTab(s, { id: 'x', url: '' }), s);
+  assert.equal(M.removeArchived(s, 'again').archive.length, M.ARCHIVE_CAP - 1);
+});

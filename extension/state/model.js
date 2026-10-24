@@ -187,3 +187,34 @@ export function addPin(state, { id, spaceId, url, title }) {
 export function removePin(state, pinId) {
   return { ...state, pins: state.pins.filter((p) => p.id !== pinId) };
 }
+
+// Delete a space; its tabs, pins and archive entries move to the first
+// remaining space. The last space can't be deleted.
+export function deleteSpace(state, spaceId) {
+  if (state.spaces.length < 2 || !hasSpace(state, spaceId)) return state;
+  const spaces = state.spaces.filter((s) => s.id !== spaceId);
+  const target = spaces[0].id;
+  const tabSpace = {};
+  for (const [tabId, sid] of Object.entries(state.tabSpace)) tabSpace[tabId] = sid === spaceId ? target : sid;
+  const activeSpaceByWindow = {};
+  for (const [w, sid] of Object.entries(state.activeSpaceByWindow)) activeSpaceByWindow[w] = sid === spaceId ? target : sid;
+  let next = { ...state, spaces, tabSpace, activeSpaceByWindow, pins: state.pins.filter((p) => p.spaceId !== spaceId) };
+  for (const pin of state.pins.filter((p) => p.spaceId === spaceId)) next = addPin(next, { ...pin, spaceId: target });
+  next.archive = state.archive.map((a) => (a.spaceId === spaceId ? { ...a, spaceId: target } : a));
+  return next;
+}
+
+// ---- archive --------------------------------------------------------------
+
+// Newest first, one entry per URL, capped.
+export function archiveTab(state, { id, url, title, spaceId, favIconUrl, closedAt }, cap = ARCHIVE_CAP) {
+  if (!url) return state;
+  const key = normalizeUrl(url);
+  const entry = { id, url, title: title || url, spaceId, favIconUrl: favIconUrl || '', closedAt };
+  const rest = state.archive.filter((a) => normalizeUrl(a.url) !== key);
+  return { ...state, archive: [entry, ...rest].slice(0, cap) };
+}
+
+export function removeArchived(state, archiveId) {
+  return { ...state, archive: state.archive.filter((a) => a.id !== archiveId) };
+}

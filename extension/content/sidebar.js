@@ -103,7 +103,7 @@
     setOpen(pinnedOpen());
   }
   function scheduleHide() {
-    if (reason !== 'hover' || hideTimer || Margin.content.holdOpen?.()) return;
+    if (reason !== 'hover' || hideTimer || sidebar.isBusy()) return;
     hideTimer = setTimeout(hide, HIDE_DELAY_MS);
   }
   Margin.content.sidebar = { show, hide, toggle: () => (reason || pinnedOpen() ? hide() : show('toggle')) };

@@ -151,6 +151,9 @@ const handlers = {
   async renameSpace({ spaceId, name, emoji, color }) {
     await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color }));
   },
+  async deleteSpace({ spaceId }) {
+    await mutate((s) => M.deleteSpace(s, spaceId));
+  },
   async moveTabToSpace({ tabId, spaceId }) {
     await mutate((s) => M.moveTab(s, tabId, spaceId));
   },
