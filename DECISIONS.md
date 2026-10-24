@@ -92,3 +92,10 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 - **Confirmed on Tirth's Mac:** `safari-web-extension-converter` warned that the manifest key `type` (`"background": {"type": "module"}`) isn't supported by his Safari. Safari would then load `background.js` as a classic worker, and its `import` line would be a syntax error, so the background would never start.
 - **Fix:** `state/model.js` is now a classic script like the `shared/` files, attaching `globalThis.Margin.model`. `background.js` loads it with `importScripts('state/model.js')`, and `"type"` is gone from the manifest. Unit tests import it for the side effect and read `globalThis.Margin.model`. `tests/manifest.test.js` asserts `background.type` stays unset.
 - **Bundle IDs:** the converter gave the app `io.tirth.Margin` and the extension `io.tirth.margin.Extension`, and Xcode rejected the extension ID as not prefixed by the app's. `scripts/make-xcode.sh` regenerates `xcode/` and patches the app to `io.tirth.margin`, the extension to `io.tirth.margin.Extension`, and the Swift `extensionBundleIdentifier` to match.
+
+## Safari results (Tirth's Mac, 2026-10-24)
+
+- Checks 1, 3, 4, 5, A and B pass. Details are in TESTING.md. Option+K stays the default palette shortcut. `browser.alarms` drives auto-archive.
+- **Favicons:** Safari shows letter avatars. It's still open whether `tab.favIconUrl` is empty. If it is, letters stay: SPEC rules out favicon services, and fetching `https://<host>/favicon.ico` from inside other sites' pages would be a cross-site request.
+- **Toggle with "Keep open":** the toggle shortcut used to do nothing while `sidebarPinnedOpen` was on. It now turns "Keep open" off and hides the sidebar.
+- **Overlay hides content while kept open:** confirmed as designed (SPEC hard constraint). Pushing the page wouldn't move `position: fixed` headers and breaks sticky/fixed layouts.
