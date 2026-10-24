@@ -181,6 +181,8 @@ api.commands?.onCommand.addListener(async (command) => {
   try {
     await api.tabs.sendMessage(tab.id, { type: 'command', command });
   } catch {
-    // No content script here (Safari internal page, extension page, PDF).
+    // No content script: maybe our own new-tab page, which listens on
+    // runtime messages. Otherwise a Safari internal page, PDF, etc.
+    api.runtime.sendMessage({ type: 'command', command, tabId: tab.id }).catch(() => {});
   }
 });

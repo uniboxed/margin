@@ -46,3 +46,14 @@ Ambiguous calls made while building Margin, newest milestone last. "Verified" me
 - **Auto-hide is suspended** while the editor is open or a drag is in progress.
 - **Our keystrokes stay in the sidebar:** key events stop propagating at the sidebar root, so typing a space name doesn't trigger the site's own shortcuts (e.g. GitHub's `/` or `s`). Page listeners in the capture phase still see them; that can't be prevented from a content script.
 - **Archive helpers** (`archiveTab`, cap 200, one entry per URL, newest first) landed here so the cap is unit tested with the rest of the model. M6 uses them.
+
+## M5 — Command palette
+
+- **Default shortcut stays Option+K (`Alt+KeyK`), unverified.** I can't check whether Safari or macOS swallows it. Matching uses `KeyboardEvent.code`, so Option+K is recognized even though macOS types `˚`, and the physical key works on any keyboard layout. If it's swallowed in Safari, change it in new tab → Settings (any modifier + letter/digit/punctuation), then update the default in `state/model.js` and record it here. Manual check in TESTING.md.
+- **Two triggers, de-duplicated:** a capture-phase `keydown` listener in the content script (and on the new-tab page), plus a `commands` entry `open-palette` (suggested Alt+K). The background forwards the command to the tab's content script, or as a runtime message to our new-tab page. Toggles within 200ms collapse, so both firing for one press doesn't open and immediately close it.
+- **The shortcut works inside text fields too.** It's intercepted everywhere, which means a user can't type `˚` with the default key on websites. Changing the shortcut avoids that.
+- **Ranking** (`shared/search.js`, unit tested): every space-separated token must fuzzy-match the title or URL. Substrings beat subsequences, prefixes and word starts get bonuses, and current-space tabs get the biggest boost, then current-space pins, actions, other-space tabs and pins, then archive. With an empty query: current-space tabs by recency, then actions; the archive is hidden until you type. The current tab isn't suggested.
+- **"Open URL / Search for …"** comes first when the text is a URL and last when it's a search, so Enter on a fuzzy match isn't hijacked. From a web page it opens a new tab (Arc's ⌘T behavior); on the new-tab page it navigates in place.
+- **Actions:** New tab, Pin current tab (only on unpinned web pages), Toggle sidebar (not on the new-tab page, where it's always open), and one "Switch to space …" per other space.
+- **`content/palette.css`** was added next to `sidebar.css` (not in SPEC's layout) so each shadow root only loads its own styles.
+- **Keys:** ↑/↓ (or Ctrl+N/Ctrl+P) wrap around, Enter runs, Esc or a click on the backdrop closes, and focus returns to where it was.

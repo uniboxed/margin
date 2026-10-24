@@ -52,6 +52,42 @@ const engine = $('engine');
 for (const { name, url } of Margin.search.SEARCH_ENGINES) engine.append(el(document, 'option', { value: url, text: name }));
 engine.addEventListener('change', () => send('updateSettings', { patch: { searchEngine: engine.value } }));
 
+// ---- palette ----------------------------------------------------------------
+
+const palette = Margin.createPalette({
+  send,
+  getState: () => state,
+  getContext: () => ({ windowId: windowId(), tabId: self?.id, inNewTab: true, canToggleSidebar: false }),
+  onLocal: (action) => action.local === 'navigate' && go(action.url),
+  theme: () => (dark.matches ? 'dark' : 'light'),
+});
+Margin.installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
+api.runtime.onMessage.addListener((message) => {
+  if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
+});
+
+const shortcut = $('shortcut');
+let recording = false;
+shortcut.addEventListener('focus', () => {
+  recording = true;
+  shortcut.value = '';
+});
+shortcut.addEventListener('blur', () => {
+  recording = false;
+  renderLauncher();
+});
+// Capture phase, so recording wins over the palette shortcut itself.
+addEventListener('keydown', (event) => {
+  if (!recording || event.target !== shortcut) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (event.key === 'Escape') return shortcut.blur();
+  const combo = Margin.shortcuts.fromEvent(event);
+  if (!combo || !Margin.shortcuts.parse(combo)) return;
+  send('updateSettings', { patch: { paletteShortcut: combo } });
+  shortcut.blur();
+}, true);
+
 function ago(ts) {
   const minutes = Math.round((Date.now() - ts) / 60000);
   if (minutes < 1) return 'just now';
@@ -85,6 +121,7 @@ function renderLauncher() {
     engine.append(el(document, 'option', { value: state.settings.searchEngine, text: 'Custom' }));
   }
   engine.value = state.settings.searchEngine;
+  if (!recording) shortcut.value = Margin.shortcuts.format(state.settings.paletteShortcut);
 }
 
 // ---- data -------------------------------------------------------------------
@@ -97,6 +134,7 @@ async function refresh() {
   state = next;
   sidebar.update(state, { windowId: windowId() });
   renderLauncher();
+  palette.refresh();
 }
 
 api.storage.onChanged.addListener((_, area) => area === 'local' && refresh());

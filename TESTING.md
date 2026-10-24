@@ -15,6 +15,7 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 |---|-------|-------------|----------|
 | 1 | `chrome_url_overrides.newtab` works | After step 7 below, ⌘T shows Margin's launcher (search field, sidebar on the left) | Without it there's no launcher. The overlay sidebar still works on websites |
 | 0 | The background service worker loads as an ES module (`"type": "module"`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` | See DECISIONS.md M1 |
+| 3 | `commands` shortcuts work, and which combos are free | Option+K opens the palette and Option+S toggles the sidebar on a normal site, including while a text field has focus. Also check Safari → Settings → Extensions → Margin for shortcut settings | If Option+K does nothing, set another shortcut in new tab → Settings and record the working combo in DECISIONS.md M5 |
 | 2 | `tab.favIconUrl` is populated | Sidebar rows show site favicons, not only colored letters | Letter avatars are the built-in fallback; nothing to do |
 | 5 | Background unload and wake | Leave Safari idle for 5+ minutes, then hover the left edge on an already-open page and click a tab | If clicks do nothing, the worker didn't wake on `sendMessage`. Note it in DECISIONS.md |
 | 6 | Sidebar CSS loads inside the shadow root on a strict-CSP site (e.g. github.com) | The sidebar is styled, not raw HTML | See DECISIONS.md M2 (constructable stylesheet, `<style>` fallback) |
@@ -65,3 +66,14 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 - [ ] Drag a tab row onto another space's chip: it disappears from the list and appears when that space is selected.
 - [ ] Two windows can show different spaces at the same time.
 - [ ] Typing in the space editor on github.com doesn't trigger GitHub's keyboard shortcuts.
+
+## M5 command palette
+
+- [ ] Option+K on a website opens the palette, centered, with the cursor in the field. Esc closes it and focus returns to the page.
+- [ ] Typing part of a tab title (letters can be scattered, e.g. `gthb` for GitHub) lists it. Tabs from the current space rank above other spaces, and other-space tabs show the space name.
+- [ ] ↑/↓ move the highlight, and Enter switches to the tab.
+- [ ] Pins and archived tabs show up in results (archive only after typing).
+- [ ] "New tab," "Pin current tab," "Toggle sidebar," and "Switch to space …" all work.
+- [ ] Typing `example.com` → first row "Open https://example.com" → Enter opens it in a new tab. Typing words → last row "Search for …".
+- [ ] On the new tab page, Option+K opens the palette too (click the page first, because the address bar has focus). Entering a URL navigates that tab.
+- [ ] New tab → Settings → Command palette shortcut: click, press e.g. ⌃⇧P. It updates there and on already-open websites.

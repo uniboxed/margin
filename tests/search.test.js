@@ -26,3 +26,74 @@ test('everything else is a search on the configured engine', () => {
   assert.equal(resolveInput('x', 'garbage').url, 'https://duckduckgo.com/?q=x');
   assert.equal(resolveInput('   '), null);
 });
+
+// ---- fuzzy + palette --------------------------------------------------------
+
+import '../extension/shared/view.js';
+import * as M from '../extension/state/model.js';
+
+const { fuzzyScore, rankPalette } = globalThis.Margin.search;
+
+test('fuzzyScore: substring > word-start subsequence > scattered; misses are -Infinity', () => {
+  const sub = fuzzyScore('hub', 'GitHub');
+  const prefix = fuzzyScore('git', 'GitHub');
+  const scattered = fuzzyScore('gthb', 'GitHub');
+  assert.ok(prefix > sub, 'prefix beats inner substring');
+  assert.ok(sub > scattered, 'substring beats subsequence');
+  assert.ok(scattered > -Infinity);
+  assert.equal(fuzzyScore('xyz', 'GitHub'), -Infinity);
+  assert.equal(fuzzyScore('', 'anything'), 0);
+});
+
+function paletteState() {
+  let s = M.defaultState();
+  s = M.createSpace(s, { id: 'work', name: 'Work', emoji: '💼' });
+  const add = (id, title, url, spaceId, extra = {}) => {
+    s = M.upsertTab(s, { id, windowId: 1, index: id, url, title, ...extra }, extra.lastActive ?? id);
+    s = M.moveTab(s, id, spaceId);
+  };
+  add(1, 'GitHub Pull Requests', 'https://github.com/pulls', 'work');
+  add(2, 'Gmail Inbox', 'https://mail.google.com', 'personal');
+  add(3, 'Current page', 'https://current.example', 'personal', { active: true });
+  s = M.addPin(s, { id: 'p1', spaceId: 'personal', url: 'https://calendar.example', title: 'Calendar' });
+  s = M.archiveTab(s, { id: 'a1', url: 'https://old.example', title: 'Old GitHub issue', spaceId: 'personal', closedAt: 5 });
+  return s;
+}
+const ctx = { windowId: 1, tabId: 3, canToggleSidebar: true };
+
+test('palette: searches tabs in all spaces, pins, archive; current space ranks first', () => {
+  const s = paletteState();
+  const ids = rankPalette(s, 'g', ctx).map((i) => i.id);
+  assert.ok(ids.indexOf('tab:2') < ids.indexOf('tab:1'), 'Gmail (current space) above GitHub (other space)');
+  const gh = rankPalette(s, 'github', ctx).map((i) => i.id);
+  assert.deepEqual(gh.slice(0, 2), ['tab:1', 'archive:a1']);
+  assert.equal(gh.at(-1), 'go', 'search entry comes last');
+  assert.equal(rankPalette(s, 'calendar', ctx)[0].id, 'pin:p1');
+});
+
+test('palette: multi-token queries need every token', () => {
+  const ids = rankPalette(paletteState(), 'git pull', ctx).map((i) => i.id);
+  assert.equal(ids[0], 'tab:1');
+  assert.ok(!ids.includes('archive:a1'));
+});
+
+test('palette: actions are offered and searchable', () => {
+  const s = paletteState();
+  const empty = rankPalette(s, '', ctx).map((i) => i.id);
+  for (const id of ['action:new-tab', 'action:pin-current', 'action:toggle-sidebar', 'action:space:work']) assert.ok(empty.includes(id), id);
+  assert.ok(!empty.includes('tab:3'), 'the current tab is not suggested');
+  assert.ok(!empty.includes('action:space:personal'), 'no switch to the current space');
+  assert.equal(rankPalette(s, 'switch work', ctx)[0].id, 'action:space:work');
+  assert.equal(rankPalette(s, 'new tab', ctx)[0].id, 'action:new-tab');
+  const pinned = M.addPin(s, { id: 'p2', spaceId: 'personal', url: 'https://current.example/', title: 'C' });
+  assert.ok(!rankPalette(pinned, '', ctx).some((i) => i.id === 'action:pin-current'));
+  assert.ok(!rankPalette(s, '', { ...ctx, canToggleSidebar: false }).some((i) => i.id === 'action:toggle-sidebar'));
+});
+
+test('palette: URLs open first; in the new tab they navigate in place', () => {
+  const s = paletteState();
+  const [first] = rankPalette(s, 'example.com', ctx);
+  assert.deepEqual(first.action, { type: 'newTab', windowId: 1, url: 'https://example.com' });
+  const [inNewTab] = rankPalette(s, 'example.com', { ...ctx, inNewTab: true });
+  assert.deepEqual(inNewTab.action, { local: 'navigate', url: 'https://example.com' });
+});

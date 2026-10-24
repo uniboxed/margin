@@ -106,3 +106,17 @@ export function clickInShadow(page, selector, text) {
 
 export const tabsInBrowser = (worker) =>
   worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, title: t.title, url: t.url, active: t.active }))));
+
+export function paletteSnapshot(page) {
+  return evalInShadow(page, 'margin-palette-host', function () {
+    const open = this.host.dataset.open === 'true';
+    const rows = [...this.querySelectorAll('.results li[data-id]')];
+    return {
+      open,
+      focused: this.activeElement?.classList.contains('query') ?? false,
+      ids: rows.map((r) => r.dataset.id),
+      titles: rows.map((r) => r.querySelector('.title').textContent),
+      selected: rows.find((r) => r.getAttribute('aria-selected') === 'true')?.dataset.id ?? null,
+    };
+  });
+}

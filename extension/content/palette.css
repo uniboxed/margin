@@ -1,0 +1,71 @@
+.backdrop, .palette { display: none; }
+:host([data-open="true"]) .backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.18);
+}
+:host([data-open="true"]) .palette { display: flex; }
+
+.palette {
+  --bg: rgba(250, 249, 253, 0.98);
+  --fg: #1d1b26;
+  --muted: #6e6a7c;
+  --sel: rgba(108, 92, 231, 0.12);
+  --border: rgba(0, 0, 0, 0.08);
+
+  position: fixed;
+  top: 14vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
+  max-height: 62vh;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.palette[data-theme="dark"] {
+  --bg: rgba(36, 35, 43, 0.98);
+  --fg: #ecebf2;
+  --muted: #9a97a8;
+  --sel: rgba(162, 155, 254, 0.18);
+  --border: rgba(255, 255, 255, 0.1);
+}
+.query {
+  flex: none;
+  height: 54px;
+  padding: 0 20px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 17px;
+  outline: none;
+}
+.results { list-style: none; margin: 0; padding: 6px; overflow-y: auto; }
+.results li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 10px;
+  border-radius: 9px;
+  cursor: default;
+}
+.results li[aria-selected="true"] { background: var(--sel); }
+.results .empty { color: var(--muted); justify-content: center; }
+.avatar { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
+.avatar.letter { display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; }
+.avatar.emoji { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.title, .subtitle { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.subtitle { color: var(--muted); font-size: 12px; }
+.badge { flex: none; color: var(--muted); font-size: 12px; }

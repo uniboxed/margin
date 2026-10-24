@@ -77,3 +77,5 @@ ul { list-style: none; margin: 0; padding: 0; }
 #settings summary { cursor: pointer; }
 #settings label { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
 #settings select, #settings input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+#settings .help { margin: 6px 0 0; font-size: 12px; }
+#shortcut { width: 120px; text-align: center; cursor: pointer; }

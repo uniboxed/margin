@@ -4,20 +4,14 @@
   if (location.href.startsWith(api.runtime.getURL(''))) return;
   if (document.querySelector('margin-sidebar-host')) return;
 
+  const Margin = globalThis.Margin;
+  Margin.content = { api };
+
   const EDGE_PX = 6;
   const HIDE_DELAY_MS = 300;
   const WIDTH_PX = 260;
 
-  const host = document.createElement('margin-sidebar-host');
-  for (const [prop, value] of Object.entries({
-    all: 'initial',
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    width: '0',
-    height: '0',
-    'z-index': '2147483647',
-  })) host.style.setProperty(prop, value, 'important');
+  const host = Margin.ui.createHost(document, 'margin-sidebar-host');
   const shadow = host.attachShadow({ mode: 'closed' });
 
   // Some pages replace <html>'s children; put the host back if it's removed.
@@ -25,11 +19,10 @@
     if (!host.isConnected && document.documentElement) document.documentElement.appendChild(host);
   };
   attach();
-  new MutationObserver(attach).observe(document, { childList: true, subtree: false });
+  const observer = new MutationObserver(attach);
+  observer.observe(document, { childList: true });
+  if (document.documentElement) observer.observe(document.documentElement, { childList: true });
   document.addEventListener('DOMContentLoaded', attach);
-
-  const Margin = globalThis.Margin;
-  Margin.content = { api, shadowHostTag: 'margin-sidebar-host' };
 
   async function send(type, payload = {}) {
     try {
@@ -41,20 +34,7 @@
   }
   Margin.content.send = send;
 
-  // Styles live in sidebar.css (web-accessible). Constructable stylesheets
-  // aren't subject to the page's CSP; fall back to a <style> element.
-  (async () => {
-    const css = await (await fetch(api.runtime.getURL('content/sidebar.css'))).text();
-    if ('adoptedStyleSheets' in shadow && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync(css);
-      shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, sheet];
-    } else {
-      const style = document.createElement('style');
-      style.textContent = css;
-      shadow.prepend(style);
-    }
-  })().catch((err) => console.warn('[margin] css', err));
+  Margin.ui.adoptStyles(shadow, api.runtime.getURL('content/sidebar.css')).catch((err) => console.warn('[margin] css', err));
 
   const sidebar = Margin.ui.createSidebar({ document, send, mode: 'overlay' });
   shadow.append(sidebar.el);
@@ -73,6 +53,7 @@
     }
     return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
+  Margin.content.theme = pageTheme;
   const applyTheme = () => sidebar.setTheme(pageTheme());
   applyTheme();
   document.addEventListener('DOMContentLoaded', applyTheme);

@@ -31,8 +31,11 @@
       ],
       "js": [
         "shared/view.js",
+        "shared/search.js",
+        "shared/shortcuts.js",
         "shared/ui.js",
-        "content/sidebar.js"
+        "content/sidebar.js",
+        "content/palette.js"
       ],
       "run_at": "document_start",
       "all_frames": false
@@ -48,12 +51,20 @@
         "mac": "Alt+S"
       },
       "description": "Toggle the Margin sidebar"
+    },
+    "open-palette": {
+      "suggested_key": {
+        "default": "Alt+K",
+        "mac": "Alt+K"
+      },
+      "description": "Open the Margin command palette"
     }
   },
   "web_accessible_resources": [
     {
       "resources": [
-        "content/sidebar.css"
+        "content/sidebar.css",
+        "content/palette.css"
       ],
       "matches": [
         "<all_urls>"

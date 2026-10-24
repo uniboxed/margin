@@ -9,7 +9,9 @@
   <link rel="stylesheet" href="newtab.css">
   <script src="../shared/view.js"></script>
   <script src="../shared/search.js"></script>
+  <script src="../shared/shortcuts.js"></script>
   <script src="../shared/ui.js"></script>
+  <script src="../content/palette.js"></script>
   <script src="newtab.js" type="module"></script>
 </head>
 <body>
@@ -31,6 +33,10 @@
       <label>Search engine
         <select id="engine"></select>
       </label>
+      <label>Command palette shortcut
+        <input id="shortcut" type="text" readonly placeholder="Press keys…" aria-describedby="shortcut-help">
+      </label>
+      <p id="shortcut-help" class="help">Click the field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels.</p>
     </details>
   </main>
 </body>

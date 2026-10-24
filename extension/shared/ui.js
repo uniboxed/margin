@@ -46,6 +46,36 @@
     return img;
   }
 
+  // Apply a stylesheet from the extension inside a shadow root. Constructable
+  // stylesheets aren't subject to the page's CSP; fall back to <style>.
+  async function adoptStyles(shadow, url) {
+    const css = await (await fetch(url)).text();
+    if ('adoptedStyleSheets' in shadow && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css);
+      shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, sheet];
+    } else {
+      const style = shadow.ownerDocument.createElement('style');
+      style.textContent = css;
+      shadow.prepend(style);
+    }
+  }
+
+  // Zero-size, top-most host for a closed shadow root that site CSS can't touch.
+  function createHost(doc, tag) {
+    const host = doc.createElement(tag);
+    for (const [prop, value] of Object.entries({
+      all: 'initial',
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '0',
+      height: '0',
+      'z-index': '2147483647',
+    })) host.style.setProperty(prop, value, 'important');
+    return host;
+  }
+
   const SPACE_COLORS = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72'];
   const TAB_MIME = 'application/x-margin-tab';
 
@@ -280,5 +310,5 @@
     };
   }
 
-  Margin.ui = { el, avatar, createSidebar };
+  Margin.ui = { el, avatar, adoptStyles, createHost, createSidebar };
 })();
