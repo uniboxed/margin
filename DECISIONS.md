@@ -64,6 +64,25 @@ Ambiguous calls made while building Margin, newest milestone last. "Verified" me
 - **Staleness clock:** `tabs[id].lastActive`, stamped when a tab gains or loses focus. Safari's `tab.lastAccessed` is used only as a seed when present. When a tab is first seen with no history, the clock starts then, so a restart never archives everything at once. On a fresh browser session all clocks restart.
 - **Never auto-archived:** the active tab of each window, tabs pinned in their own space (a pin in another space doesn't protect it), and non-web pages (our new tab, `about:`, Safari internal pages).
 - **`archiveAfterHours: 0` disables auto-archive.** It's editable on the new tab under Settings.
-- **Closing a tab from Margin's × archives it**, like Arc. Tabs closed with ⌘W can't be archived: Safari doesn't tell extensions which tab is about to close.
+- **Closing a tab from Margin's × archives it**, like Arc. Tabs closed with ⌘W or by closing a window are **not** archived, deliberately: `tabs.onRemoved` can't tell a deliberate close from a window close or quit, and archiving every one of those would flood the archive.
 - **Restore** removes the entry, reopens the URL in its original space, and switches the window to that space so the tab is visible. That space falls back to the first space if it was deleted. From the new tab it navigates in place; from the palette it opens a new tab.
 - **Debug hook:** `margin.archiveNow()` in the background's console (Web Inspector) runs the check immediately. E2E uses it with a 1-second threshold.
+
+## Safari behavior fallbacks (SPEC "design defensively")
+
+| # | Assumption | Fallback in code |
+|---|------------|------------------|
+| 1 | `chrome_url_overrides.newtab` works | Nothing depends on the new-tab page. The overlay sidebar, palette ("Open URL / Search"), and archive restore all work from any website |
+| 2 | `tab.favIconUrl` is populated | `<img>` only for `http(s)`/`data:` icons, swapped for a colored letter avatar on error or when missing. No favicon services |
+| 3 | `commands` shortcuts work | Content-script `keydown` listener as the primary path, `commands` as a backup, de-duplicated. The shortcut is user-configurable |
+| 4 | `browser.alarms` exists | Feature-detected. Without it, the check runs on wake and on (throttled) tab activation |
+| 5 | The background wakes on `sendMessage` and may unload anytime | All state is in `storage.local` and re-read on wake. Content scripts render from storage without the background, and retry a message once after 250ms if it fails or returns nothing |
+
+## M7 — Polish and docs
+
+- **"Clean build" = `tests/manifest.test.js`:** there's no bundler, so the build check confirms the manifest still meets SPEC's constraints, that every file referenced by the manifest and `newtab.html` exists, that every script parses, and that the extension code contains no third-party URLs (search-engine templates are allowed).
+- **Message retry:** content-script messages retry once after 250ms (Safari check #5).
+
+## Status
+
+M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:e2e`) pass. Nothing has been run in Safari: TESTING.md lists the manual checks, starting with the five Safari behaviors.

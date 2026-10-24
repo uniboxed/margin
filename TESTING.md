@@ -11,15 +11,23 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 
 ## Safari behaviors to confirm first
 
-| # | Check | How to tell | If false |
-|---|-------|-------------|----------|
-| 1 | `chrome_url_overrides.newtab` works | After step 7 below, ⌘T shows Margin's launcher (search field, sidebar on the left) | Without it there's no launcher. The overlay sidebar still works on websites |
-| 0 | The background service worker loads as an ES module (`"type": "module"`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` | See DECISIONS.md M1 |
-| 3 | `commands` shortcuts work, and which combos are free | Option+K opens the palette and Option+S toggles the sidebar on a normal site, including while a text field has focus. Also check Safari → Settings → Extensions → Margin for shortcut settings | If Option+K does nothing, set another shortcut in new tab → Settings and record the working combo in DECISIONS.md M5 |
-| 4 | `browser.alarms` is available to the background | The background console logs `[margin] auto-archive via browser.alarms` | It logs `via tab events` instead. Auto-archive still runs on wake and on tab switches (every 5 min max). Record which one in DECISIONS.md M6 |
-| 2 | `tab.favIconUrl` is populated | Sidebar rows show site favicons, not only colored letters | Letter avatars are the built-in fallback; nothing to do |
-| 5 | Background unload and wake | Leave Safari idle for 5+ minutes, then hover the left edge on an already-open page and click a tab | If clicks do nothing, the worker didn't wake on `sendMessage`. Note it in DECISIONS.md |
-| 6 | Sidebar CSS loads inside the shadow root on a strict-CSP site (e.g. github.com) | The sidebar is styled, not raw HTML | See DECISIONS.md M2 (constructable stylesheet, `<style>` fallback) |
+None of these can be tested in the cloud. The code feature-detects each one and degrades as described, and DECISIONS.md records each fallback. Do these right after setup, and write the results into DECISIONS.md.
+
+| # | Check | How to tell | If it fails |
+|---|-------|-------------|-------------|
+| 1 | `chrome_url_overrides.newtab` works in this Safari | After setup step 7, ⌘T shows Margin's launcher (search field, sidebar on the left) | No launcher. The overlay sidebar, palette, and archive still work on websites, and the palette replaces the launcher |
+| 2 | `tab.favIconUrl` is populated | Sidebar rows show site favicons, not just colored letters | Letter avatars are the built-in fallback. Nothing to do |
+| 3 | `commands` shortcuts work, and which combos are free | On a normal site, Option+K opens the palette and Option+S toggles the sidebar, including while a text field has focus. Also look for shortcut settings under Safari → Settings → Extensions → Margin | If Option+K does nothing, choose another combo in new tab → Settings → Command palette shortcut, then record the one that works in DECISIONS.md (M5) so the default can change |
+| 4 | `browser.alarms` is available to the background | The background console (Develop → Web Extension Background Content → Margin) logs `[margin] auto-archive via browser.alarms` | It logs `via tab events` instead, and auto-archive runs on wake and on tab switches (at most every 5 min). Record which one (M6) |
+| 5 | How fast the background unloads, and whether a content script's `sendMessage` wakes it | Note when the background console disconnects while idle. After that, hover the left edge on an already-open page and click a tab row | If clicks do nothing until you open a new tab, `sendMessage` isn't waking it. Record it (M2) |
+
+Additional Safari-only checks:
+
+| # | Check | How to tell | If it fails |
+|---|-------|-------------|-------------|
+| A | The background loads as a **module** service worker (`"type": "module"`) | No errors in the background console, which shows `[margin] installed` | Inline `state/model.js` into `background.js` and drop `"type"` (DECISIONS.md M1) |
+| B | Sidebar CSS loads inside the shadow root on a strict-CSP site (github.com) | The sidebar is styled, not raw HTML | A constructable stylesheet with `<style>` fallback is already in place. If both fail, record it |
+| C | Restart rebuild | Pin a site into a non-default space, quit Safari with windows restored, relaunch | The pinned site's tab appears under that space, and other tabs under the first space |
 
 ## One-time setup
 
@@ -81,8 +89,8 @@ Everything below this line is **manual, in Safari on macOS**. The automated test
 
 ## M6 auto-archive
 
-- [ ] New tab → Settings → "Archive tabs not used for" shows 12. Set it to 1.
-- [ ] Open a few sites, leave one in the background for over an hour (or, for a fast check: Web Inspector on the background → `margin.archiveNow()` after setting the value to something tiny like `0.001` via `browser.storage.local`). The idle tab closes and shows under "Recently archived" on the new tab.
+- [ ] New tab → Settings → "Archive tabs not used for" shows 12.
+- [ ] Fast check: set the value to `0.001` (about 4 seconds), open two sites, switch to one, wait 5 seconds, then in the background console run `margin.archiveNow()`. The other tab closes and appears under "Recently archived" on the new tab. Set the value back to 12 afterward.
 - [ ] Pinned tabs and the active tab are never archived.
 - [ ] × in the sidebar also archives the tab.
 - [ ] Clicking an archived entry on the new tab reopens it in that tab, in its original space. In the palette, typing its title shows an "Archived" row, and Enter reopens it in a new tab.
