@@ -24,12 +24,19 @@
   if (document.documentElement) observer.observe(document.documentElement, { childList: true });
   document.addEventListener('DOMContentLoaded', attach);
 
-  async function send(type, payload = {}) {
+  // If the background was unloaded and the first message doesn't wake it in
+  // time, retry once.
+  async function send(type, payload = {}, retry = true) {
     try {
       const res = await api.runtime.sendMessage({ type, ...payload });
-      return res?.result;
+      if (res?.ok) return res.result;
+      if (res) return console.warn('[margin]', type, res.error);
     } catch (err) {
-      console.warn('[margin]', type, err);
+      if (!retry) return console.warn('[margin]', type, err);
+    }
+    if (retry) {
+      await new Promise((r) => setTimeout(r, 250));
+      return send(type, payload, false);
     }
   }
   Margin.content.send = send;
