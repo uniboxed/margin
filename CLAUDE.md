@@ -1,0 +1,6 @@
+# CLAUDE.md
+
+- `SPEC.md` is the source of truth. Follow it, including its Working rules (Conventional Commits, subject line only, no attribution of any kind).
+- Before starting, check progress: read `DECISIONS.md` and run `git log --oneline`. Commits are scoped per milestone (e.g. `feat(m3): ...`).
+- Continue from the next unfinished milestone. Run `npm test` (unit) and `npm run test:e2e` (Playwright, headless Chromium) before each commit, then push.
+- Playwright: use the preinstalled Chromium (`/opt/pw-browsers`) if present; do not run `playwright install`. If no Chromium is available, keep unit tests, skip E2E, and record it in `DECISIONS.md`.
