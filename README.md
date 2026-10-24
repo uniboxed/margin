@@ -49,9 +49,9 @@ Then open `xcode/Margin/Margin.xcodeproj`, choose the **Margin (macOS)** scheme,
 ```
 extension/
   manifest.json         MV3: tabs, storage, alarms; <all_urls>; newtab override; commands
-  background.js         State owner (module service worker). Tab events → pure model → storage.local.
+  background.js         State owner (classic service worker; loads state/model.js via importScripts). Tab events → pure model → storage.local.
                         Message router for the UI. Auto-archive scheduler.
-  state/model.js        Pure state functions (no browser APIs), unit tested.
+  state/model.js        Pure state functions (no browser APIs), unit tested. Classic script.
   shared/view.js        Pure "what does the sidebar show for window W" derivation.
   shared/search.js      URL-vs-search, fuzzy scoring, palette ranking.
   shared/shortcuts.js   Shortcut strings ("Alt+KeyK") ↔ key events.

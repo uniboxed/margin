@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as M from '../extension/state/model.js';
+import '../extension/state/model.js';
 import '../extension/shared/view.js';
 
-const { view } = globalThis.Margin;
+const { view, model: M } = globalThis.Margin;
 const tab = (id, windowId, url, extra = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
 
 test('default state has one Personal space and default settings', () => {

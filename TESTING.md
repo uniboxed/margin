@@ -25,7 +25,7 @@ Additional Safari-only checks:
 
 | # | Check | How to tell | If it fails |
 |---|-------|-------------|-------------|
-| A | The background loads as a **module** service worker (`"type": "module"`) | No errors in the background console, which shows `[margin] installed` | Inline `state/model.js` into `background.js` and drop `"type"` (DECISIONS.md M1) |
+| A | The background service worker starts (classic worker, `importScripts('state/model.js')`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` and `[margin] auto-archive via …` | Record the error in DECISIONS.md. The likely fallback is concatenating `state/model.js` into `background.js` |
 | B | Sidebar CSS loads inside the shadow root on a strict-CSP site (github.com) | The sidebar is styled, not raw HTML | A constructable stylesheet with `<style>` fallback is already in place. If both fail, record it |
 | C | Restart rebuild | Pin a site into a non-default space, quit Safari with windows restored, relaunch | The pinned site's tab appears under that space, and other tabs under the first space |
 

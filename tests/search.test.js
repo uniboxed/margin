@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import '../extension/shared/search.js';
-import { DEFAULT_SETTINGS } from '../extension/state/model.js';
+import '../extension/state/model.js';
+
+const { DEFAULT_SETTINGS } = globalThis.Margin.model;
 
 const { resolveInput, DEFAULT_ENGINE } = globalThis.Margin.search;
 
@@ -30,9 +32,9 @@ test('everything else is a search on the configured engine', () => {
 // ---- fuzzy + palette --------------------------------------------------------
 
 import '../extension/shared/view.js';
-import * as M from '../extension/state/model.js';
 
 const { fuzzyScore, rankPalette } = globalThis.Margin.search;
+const M = globalThis.Margin.model;
 
 test('fuzzyScore: substring > word-start subsequence > scattered; misses are -Infinity', () => {
   const sub = fuzzyScore('hub', 'GitHub');

@@ -9,6 +9,7 @@ const exists = (path) => existsSync(new URL(path, root));
 
 test('manifest follows the SPEC constraints', () => {
   assert.equal(manifest.manifest_version, 3);
+  assert.equal(manifest.background.type, undefined, 'Safari does not support module background workers');
   assert.deepEqual(manifest.host_permissions, ['<all_urls>']);
   for (const p of ['tabs', 'storage']) assert.ok(manifest.permissions.includes(p), p);
   for (const p of ['sidePanel', 'bookmarks', 'history', 'tabGroups']) assert.ok(!manifest.permissions.includes(p), p);

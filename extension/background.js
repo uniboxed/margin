@@ -1,6 +1,8 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
-import * as M from './state/model.js';
+// Classic service worker: Safari ignores "type": "module" for backgrounds.
+importScripts('state/model.js');
+const M = globalThis.Margin.model;
 
 const api = globalThis.browser ?? globalThis.chrome;
 
