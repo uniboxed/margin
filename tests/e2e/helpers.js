@@ -28,7 +28,8 @@ export async function startServer() {
   const server = createServer((req, res) => {
     const name = decodeURIComponent(req.url.slice(1).split('?')[0]) || 'home';
     res.setHeader('content-type', 'text/html; charset=utf-8');
-    res.end(`<!doctype html><title>${name}</title><body style="margin:0"><h1>${name}</h1></body>`);
+    const bg = req.url.includes('dark') ? '#111' : '#fff';
+    res.end(`<!doctype html><title>${name}</title><body style="margin:0;background:${bg}"><h1>${name}</h1></body>`);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -77,3 +78,31 @@ export async function waitFor(check, { timeout = 5000, interval = 50 } = {}) {
   }
   throw new Error(`waitFor timed out (last value: ${JSON.stringify(last)})`);
 }
+
+// Sidebar state from inside the closed shadow root.
+export function sidebarSnapshot(page) {
+  return evalInShadow(page, 'margin-sidebar-host', function () {
+    const q = (sel) => [...this.querySelectorAll(sel)];
+    const aside = this.querySelector('.margin-sidebar');
+    return {
+      open: aside.classList.contains('open'),
+      theme: aside.dataset.theme,
+      chips: q('.chip').map((c) => ({ id: c.dataset.spaceId, active: c.classList.contains('active') })),
+      pins: q('.pin .title').map((n) => n.textContent),
+      tabs: q('.tab .title').map((n) => n.textContent),
+    };
+  });
+}
+
+// Click the first element matching `selector` (optionally containing `text`) in the shadow root.
+export function clickInShadow(page, selector, text) {
+  return evalInShadow(page, 'margin-sidebar-host', function (sel, txt) {
+    const node = [...this.querySelectorAll(sel)].find((n) => txt == null || (n.closest('li') ?? n).textContent.includes(txt));
+    if (!node) throw new Error(`no ${sel} ${txt ?? ''}`);
+    node.click();
+    return true;
+  }, selector, text ?? null);
+}
+
+export const tabsInBrowser = (worker) =>
+  worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, title: t.title, url: t.url, active: t.active }))));

@@ -13,16 +13,27 @@
     "256": "icons/icon-256.png",
     "512": "icons/icon-512.png"
   },
-  "permissions": ["tabs", "storage"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "tabs",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content/sidebar.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/view.js",
+        "shared/ui.js",
+        "content/sidebar.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     }
@@ -32,8 +43,21 @@
   },
   "commands": {
     "toggle-sidebar": {
-      "suggested_key": { "default": "Alt+S", "mac": "Alt+S" },
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
       "description": "Toggle the Margin sidebar"
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/sidebar.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }
