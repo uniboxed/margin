@@ -124,6 +124,8 @@ You can't test these in the cloud. Write the code so each one degrades gracefull
 
 ## Working rules
 - Small commits with clear messages; one milestone per PR-sized chunk.
+- Commit messages follow Conventional Commits (conventionalcommits.org): `type(scope): summary`, lowercase imperative, no trailing period, max ~72 chars. Subject line only — no body, unless a breaking change needs a `BREAKING CHANGE:` footer.
+- Never add `Co-Authored-By: Claude`, "Generated with Claude Code," or any other attribution to commits or PRs. Attribution is disabled in `.claude/settings.json`.
 - After each milestone, run the unit tests and the Playwright tests, fix failures, then commit and push.
 - Never claim something works in Safari: you can't run Safari. Clearly separate "verified in Chromium tests" from "needs manual check in Safari."
 - When done, give me one short summary: what works, what needs my manual verification, and the top three limitations.
