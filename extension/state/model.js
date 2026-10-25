@@ -15,12 +15,13 @@
     paletteShortcut: 'Alt+KeyK',
     searchEngine: 'https://duckduckgo.com/?q=%s',
     sidebarWidth: 260, // px, resizable 160–500 in 10px steps (shared/view.js)
-    // Editable in Settings. Spaces aren't on ⌘⌥←/→: Safari keeps those for its
-    // own tab switching, so pages never see them. Keep in sync with
-    // shared/shortcuts.js NAVIGATION.
+    // ⌃⌘ + arrows, also declared as manifest `commands` (Safari matches those
+    // in the app, independent of page focus). Editable in Settings (custom keys
+    // work through the page listener only). Keep in sync with
+    // shared/shortcuts.js NAVIGATION and manifest.json commands.
     shortcuts: Object.freeze({
-      nextTab: 'Alt+Meta+ArrowDown',
-      prevTab: 'Alt+Meta+ArrowUp',
+      nextTab: 'Ctrl+Meta+ArrowDown',
+      prevTab: 'Ctrl+Meta+ArrowUp',
       nextSpace: 'Ctrl+Meta+ArrowRight',
       prevSpace: 'Ctrl+Meta+ArrowLeft',
     }),

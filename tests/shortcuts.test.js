@@ -33,13 +33,14 @@ test('format for display', () => {
   assert.equal(format('nope+'), '');
 });
 
-test('navigation defaults: ⌘⌥↓/↑ tabs, ⌃⌘→/← spaces (Safari keeps ⌘⌥←/→); stored ones override', () => {
+test('navigation defaults: ⌃⌘ + arrows (also manifest commands); stored ones override', () => {
   const { NAVIGATION, navigationFor } = globalThis.Margin.shortcuts;
-  assert.equal(format(NAVIGATION.nextTab), '⌥⌘↓');
-  assert.equal(format(NAVIGATION.prevTab), '⌥⌘↑');
+  assert.equal(format(NAVIGATION.nextTab), '⌃⌘↓');
+  assert.equal(format(NAVIGATION.prevTab), '⌃⌘↑');
   assert.equal(format(NAVIGATION.nextSpace), '⌃⌘→');
   assert.equal(format(NAVIGATION.prevSpace), '⌃⌘←');
-  assert.equal(matches(ev('ArrowDown', { altKey: true, metaKey: true }), NAVIGATION.nextTab), true);
+  assert.equal(matches(ev('ArrowDown', { ctrlKey: true, metaKey: true }), NAVIGATION.nextTab), true);
+  assert.equal(matches(ev('ArrowDown', { altKey: true, metaKey: true }), NAVIGATION.nextTab), false);
   assert.equal(matches(ev('ArrowRight', { ctrlKey: true, metaKey: true }), NAVIGATION.nextSpace), true);
   assert.equal(matches(ev('ArrowRight', { altKey: true, metaKey: true }), NAVIGATION.nextSpace), false);
   for (const s of Object.values(NAVIGATION)) assert.ok(parse(s), s);

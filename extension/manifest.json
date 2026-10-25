@@ -47,19 +47,39 @@
     "newtab": "newtab/newtab.html"
   },
   "commands": {
-    "toggle-sidebar": {
+    "next-tab": {
       "suggested_key": {
-        "default": "Alt+S",
-        "mac": "Alt+S"
+        "default": "Alt+Shift+Down",
+        "mac": "MacCtrl+Command+Down"
       },
-      "description": "Toggle the Margin sidebar"
+      "description": "Next tab in the sidebar"
+    },
+    "prev-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+Up",
+        "mac": "MacCtrl+Command+Up"
+      },
+      "description": "Previous tab in the sidebar"
+    },
+    "next-space": {
+      "suggested_key": {
+        "default": "Alt+Shift+Right",
+        "mac": "MacCtrl+Command+Right"
+      },
+      "description": "Next space"
+    },
+    "prev-space": {
+      "suggested_key": {
+        "default": "Alt+Shift+Left",
+        "mac": "MacCtrl+Command+Left"
+      },
+      "description": "Previous space"
+    },
+    "toggle-sidebar": {
+      "description": "Toggle the Margin sidebar (Option+S on web pages)"
     },
     "open-palette": {
-      "suggested_key": {
-        "default": "Alt+K",
-        "mac": "Alt+K"
-      },
-      "description": "Open the Margin command palette"
+      "description": "Open the Margin command palette (Option+K on web pages)"
     }
   }
 }

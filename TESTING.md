@@ -179,3 +179,10 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 ## Command bar look
 
 - [ ] ⌥K or ⌘T: a dark, slightly see-through panel about half the window wide, a third of the way down, with "Search or Enter URL…". Rows show favicon, title, the space name and an arrow button. The selected row is filled with the current space's color.
+
+## Navigation shortcuts (⌃⌘ + arrows)
+
+- [ ] ⌃⌘↓ / ⌃⌘↑ switch to the next/previous tab in the sidebar's order, also when pressed quickly several times in a row, and right after a page starts loading.
+- [ ] ⌃⌘→ / ⌃⌘← switch spaces (the sidebar peeks open).
+- [ ] They also work while the address bar has focus and on pages where Margin has no sidebar (e.g. a PDF). That's the extension-command path: if they don't work there but do on normal pages, Safari isn't delivering the commands, so note it.
+- [ ] Holding ⌃⌘↓ repeats (page path) on normal pages.

@@ -40,13 +40,15 @@
     return MODIFIERS.filter((m) => s[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
   }
 
-  // Default navigation shortcuts; users can change them in Settings
-  // (settings.shortcuts). Spaces aren't on ⌘⌥←/→: Safari keeps those for its
-  // own tab switching, so pages never see them. Keep in sync with
-  // state/model.js DEFAULT_SETTINGS.shortcuts.
+  // Default navigation shortcuts: ⌃⌘ + arrows. They're also manifest
+  // `commands`, which Safari matches in the app (works whatever has focus and
+  // before the page's script loads); this page listener adds key repeat and
+  // custom shortcuts from Settings. Not ⌘⌥: Safari keeps ⌘⌥←/→ for its own tab
+  // switching, and Chrome refuses ⌘⌥ in manifest commands. Keep in sync with
+  // state/model.js DEFAULT_SETTINGS.shortcuts and manifest.json commands.
   const NAVIGATION = {
-    nextTab: 'Alt+Meta+ArrowDown',
-    prevTab: 'Alt+Meta+ArrowUp',
+    nextTab: 'Ctrl+Meta+ArrowDown',
+    prevTab: 'Ctrl+Meta+ArrowUp',
     nextSpace: 'Ctrl+Meta+ArrowRight',
     prevSpace: 'Ctrl+Meta+ArrowLeft',
   };

@@ -22,6 +22,14 @@ test('manifest follows the SPEC constraints', () => {
   assert.equal(manifest.chrome_url_overrides.newtab, 'newtab/newtab.html');
   assert.ok(manifest.commands['toggle-sidebar']);
   assert.ok(manifest.commands['open-palette']);
+  // Max 4 commands with shortcuts (Chrome and Safari/WebKit): the ⌃⌘ arrows.
+  // Never ⌘⌥ ("Command+Alt"/"Ctrl+Alt"): Chrome then refuses the whole extension.
+  const withKeys = Object.entries(manifest.commands).filter(([, c]) => c.suggested_key);
+  assert.deepEqual(withKeys.map(([k]) => k).sort(), ['next-space', 'next-tab', 'prev-space', 'prev-tab']);
+  for (const [, c] of withKeys) {
+    assert.match(c.suggested_key.mac, /^MacCtrl\+Command\+(Up|Down|Left|Right)$/);
+    assert.doesNotMatch(JSON.stringify(c.suggested_key), /(Command|Ctrl)\+Alt/);
+  }
 });
 
 test('every file the manifest and new tab reference exists', () => {
@@ -79,5 +87,14 @@ test('first-paint placeholders: one up-to-date file per sidebar width, nothing e
     assert.equal(css, buildDocked(w), `w-${w}.css is stale: run npm run styles`);
     assert.equal(css.split('*/')[1].match(new RegExp(`${w}px`, 'g')).length, 2, 'margin-left and the frame edge');
     assert.ok(!css.includes('{{WIDTH}}'));
+  }
+});
+
+test('manifest command keys are the default navigation shortcuts', async () => {
+  await import('../extension/shared/shortcuts.js');
+  const { NAVIGATION, ACTIONS } = globalThis.Margin.shortcuts;
+  const toManifest = (s) => s.replace('Ctrl+Meta+', 'MacCtrl+Command+').replace('Arrow', '');
+  for (const [name, action] of Object.entries(ACTIONS)) {
+    assert.equal(manifest.commands[action].suggested_key.mac, toManifest(NAVIGATION[name]), name);
   }
 });

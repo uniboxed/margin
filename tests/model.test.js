@@ -375,8 +375,8 @@ test('navigation shortcut defaults match shared/shortcuts.js; stored values merg
   assert.deepEqual(M.DEFAULT_SETTINGS.shortcuts, globalThis.Margin.shortcuts.NAVIGATION);
   const s = M.normalizeState({ settings: { shortcuts: { nextSpace: 'Alt+Shift+KeyL' } } });
   assert.equal(s.settings.shortcuts.nextSpace, 'Alt+Shift+KeyL');
-  assert.equal(s.settings.shortcuts.nextTab, 'Alt+Meta+ArrowDown');
+  assert.equal(s.settings.shortcuts.nextTab, 'Ctrl+Meta+ArrowDown');
   const d = M.defaultState();
   d.settings.shortcuts.nextTab = 'x';
-  assert.equal(M.DEFAULT_SETTINGS.shortcuts.nextTab, 'Alt+Meta+ArrowDown', 'defaults are not shared/mutated');
+  assert.equal(M.DEFAULT_SETTINGS.shortcuts.nextTab, 'Ctrl+Meta+ArrowDown', 'defaults are not shared/mutated');
 });

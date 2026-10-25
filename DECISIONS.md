@@ -214,3 +214,18 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
   - **Rows:** each shows the item's space name, plus an arrow button for rows that go somewhere (tabs, pins, archive, open/search). The URL moved to the row tooltip.
   - **Selection:** the selected row is the current space's color (darkened 18%) with a near-white arrow button.
   - **Theme:** always dark now, like Arc's.
+
+## Reliable navigation shortcuts (2026-10-25)
+
+- **Reported:** the shortcuts were laggy and only sometimes worked (mostly not in Safari). Causes found in the code:
+  1. **Overlapping presses:** each press was handled independently, so two quick presses could read the same "current tab" and move once. Reproduced: three back-to-back presses failed with the old handling.
+  2. **Focus stealing:** every switch also called `windows.update({ focused: true })` on the already-focused window, which can pull keyboard focus out of the page in Safari, so the next press never reached Margin.
+  3. **Lost presses:** the page-key path only works once the new page has focus and Margin's script has loaded (~180–270ms after navigation in Safari, longer for tabs Safari reloads). Presses in that gap go nowhere. That's inherent to listening in the page.
+- **Fix 1, manifest `commands` (the main one).** WebKit's source (`WebExtension.cpp`, `WebExtensionCommandCocoa.mm`) shows Safari parses `suggested_key` (`Command`/`Ctrl` = ⌘, `Alt` = ⌥, `MacCtrl` = ⌃; up to 4 shortcut commands), skips only the invalid command rather than the whole extension, and matches the key press in the app (`matchesEvent`), independent of page focus and content scripts. It ignores key repeats. ⌘⌥ can't be used because Chrome refuses `Command+Alt`/`Ctrl+Alt` in any platform entry (including `ios`) and then fails to load the whole extension, verified by bisecting. `MacCtrl+Command` loads in both. So the four commands are **⌃⌘ + arrows** (`Alt+Shift+arrows` as the non-Mac default), and the Settings defaults match: next/previous tab ⌃⌘↓/↑, next/previous space ⌃⌘→/←.
+- **Fix 2, background `navigate`.** Commands and the page listener (still there for key repeat and custom shortcuts) both land in one function:
+  - **Duplicates:** a press arriving through both paths within 150ms counts once.
+  - **Serialized:** presses run one at a time.
+  - **Chained:** each tab step continues from the tab the previous step chose (for 1.5s), else the window's real active tab. A manual tab switch clears the chain.
+  - **Instant highlight:** activation is recorded immediately.
+  - **No re-focusing:** `focusTab` only focuses a window that isn't already focused.
+- **Custom shortcuts** recorded in Settings work through the page listener only. Manifest keys are fixed, and Safari has no UI to change them.

@@ -82,6 +82,8 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
 });
 api.tabs.onRemoved.addListener((tabId) => mutate((s) => M.removeTab(s, tabId)));
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  // The user switched tabs themselves: shortcut chaining restarts from here.
+  if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
   mutate((s) => M.activateTab(s, tabId, windowId, now()));
   if (!api.alarms) archiveStaleThrottled();
 });
@@ -99,9 +101,13 @@ api.windows?.onRemoved.addListener((windowId) =>
 
 // ---- actions --------------------------------------------------------------
 
+// Activate a tab, and focus its window only if it isn't already: re-focusing
+// the current window can move keyboard focus out of the page in Safari.
 async function focusTab(tabId) {
   const tab = await api.tabs.update(tabId, { active: true });
-  if (tab && api.windows) await api.windows.update(tab.windowId, { focused: true });
+  if (!tab || !api.windows) return;
+  const win = await api.windows.get(tab.windowId).catch(() => null);
+  if (!win?.focused) await api.windows.update(tab.windowId, { focused: true });
 }
 
 async function openTab({ windowId, url, spaceId }) {
@@ -230,8 +236,8 @@ const handlers = {
   },
   async navigate({ action }, sender) {
     if (!NAV_ACTIONS.has(action)) return;
-    const tab = sender.tab ?? (await api.tabs.query({ active: true, currentWindow: true }))[0];
-    await navigate(action, tab);
+    const windowId = sender.tab?.windowId ?? (await api.windows?.getLastFocused())?.id;
+    await navigate(action, 'page', windowId);
   },
   async updateSettings({ patch }) {
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
@@ -387,34 +393,64 @@ if (api.alarms) {
 }
 
 // Debug hook for Web Inspector and tests: `margin.archiveNow()`.
-globalThis.margin = { archiveNow: archiveStale, syncDockedCss: queueDockedSync };
+globalThis.margin = { archiveNow: archiveStale, syncDockedCss: queueDockedSync, navigate };
 
 // ---- commands -------------------------------------------------------------
 
-// Next/previous tab and space (shortcuts are settings; see
-// shared/shortcuts.js). Pages report the action; the work happens here, with
-// the sender's real tab and window, so a page that hasn't learned its tab id
-// yet can't pick the wrong "current" tab. Not manifest `commands`: Chrome
-// rejects ⌘⌥ in suggested keys (the whole extension fails to load), and the
-// same manifest can't be tested in Safari.
-async function navigate(action, tab) {
-  if (!tab) return;
+// Next/previous tab and space. Two delivery paths land here: the manifest
+// `commands` (⌃⌘ + arrows; Safari matches them in the app, so they work
+// whatever has focus and before a page's script has loaded) and the page's
+// keydown listener (key repeat and custom shortcuts from Settings).
+//  - One key press arriving through both paths counts once.
+//  - Presses run one at a time, and each continues from the tab the previous
+//    one chose (for a moment), so fast presses all count even before Safari
+//    has finished switching.
+//  - The window isn't re-focused when it already is (that could move keyboard
+//    focus out of the page), and the sidebar highlight updates immediately.
+const NAV_DEDUPE_MS = 150;
+const NAV_CHAIN_MS = 1500;
+const lastNav = { action: null, source: null, at: 0 };
+const navTarget = new Map(); // windowId → { tabId, at }
+let navQueue = Promise.resolve();
+
+function navigate(action, source, windowId) {
+  const t = now();
+  if (action === lastNav.action && source !== lastNav.source && t - lastNav.at < NAV_DEDUPE_MS) return navQueue;
+  Object.assign(lastNav, { action, source, at: t });
+  navQueue = navQueue.then(() => runNavigation(action, windowId)).catch((err) => console.warn('[margin] navigate', err));
+  return navQueue;
+}
+
+async function runNavigation(action, windowId) {
+  if (windowId == null) return;
   const s = await load();
   const V = globalThis.Margin.view;
   if (action === 'next-tab' || action === 'prev-tab') {
-    const next = V.cycleTab(s, tab.windowId, tab.id, action === 'next-tab' ? 1 : -1);
-    if (next != null) await focusTab(next);
+    const chained = navTarget.get(windowId);
+    const current = chained && now() - chained.at < NAV_CHAIN_MS && s.tabs[chained.tabId]
+      ? chained.tabId
+      : (await api.tabs.query({ active: true, windowId }))[0]?.id;
+    const next = V.cycleTab(s, windowId, current, action === 'next-tab' ? 1 : -1);
+    if (next == null) return;
+    navTarget.set(windowId, { tabId: next, at: now() });
+    await api.tabs.update(next, { active: true });
+    await mutate((st) => M.activateTab(st, next, windowId, now()));
   } else if (action === 'next-space' || action === 'prev-space') {
-    const spaceId = V.cycleSpace(s, tab.windowId, action === 'next-space' ? 1 : -1);
+    const spaceId = V.cycleSpace(s, windowId, action === 'next-space' ? 1 : -1);
     if (spaceId == null) return;
-    await mutate((st) => M.setActiveSpace(st, tab.windowId, spaceId));
+    await mutate((st) => M.setActiveSpace(st, windowId, spaceId));
     // Show where you landed (auto-hide mode); Margin's own pages ignore it.
-    api.tabs.sendMessage(tab.id, { type: 'command', command: 'peek' }).catch(() => {});
+    const [tab] = await api.tabs.query({ active: true, windowId });
+    if (tab) api.tabs.sendMessage(tab.id, { type: 'command', command: 'peek' }).catch(() => {});
   }
 }
 
 const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-space']);
-api.commands?.onCommand.addListener(async (command) => {
+api.commands?.onCommand.addListener(async (command, tabArg) => {
+  if (NAV_ACTIONS.has(command)) {
+    const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
+    return navigate(command, 'command', windowId);
+  }
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
   try {

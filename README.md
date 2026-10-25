@@ -7,7 +7,7 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 - **Pinned items** per space. A pin focuses its open tab, or reopens the page.
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
 - **Resizable:** drag the sidebar's right edge (160–500 px); double-click it to reset.
-- **Keyboard navigation (editable in Settings):** ⌘⌥↓ / ⌘⌥↑ next/previous tab (sidebar order, wrapping), ⌃⌘→ / ⌃⌘← next/previous space (the sidebar peeks open so you can see where you landed). Not ⌘⌥←/→: Safari keeps those for its own tab switching.
+- **Keyboard navigation:** ⌃⌘↓ / ⌃⌘↑ next/previous tab (sidebar order, wrapping), ⌃⌘→ / ⌃⌘← next/previous space (the sidebar peeks open so you can see where you landed). They're extension shortcuts, so Safari handles them even when the page doesn't have focus. Extra or different keys can be set in Settings (those only work while a page has focus). Not ⌘⌥: Safari keeps ⌘⌥←/→ for its own tab switching, and Chrome refuses ⌘⌥ for extension shortcuts.
 - **Custom new-tab page:** search/URL field, the space's pins as tiles, recently archived tabs, and settings.
 - **Auto-archive:** tabs left idle for 12 hours (configurable) close into a restorable archive.
 
