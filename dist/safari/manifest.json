@@ -37,6 +37,7 @@
         "shared/shortcuts.js",
         "shared/gestures.js",
         "shared/pull.js",
+        "shared/probe.js",
         "content/styles.js",
         "shared/ui.js",
         "content/sidebar.js",

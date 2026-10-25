@@ -240,3 +240,39 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] It never blocks clicks, and very fast pages don't leave it behind.
 - [ ] Press ⌘R on a slow page (e.g. YouTube): the pill appears right away, on the current page, and stays until the page has reloaded, without blinking off in between (Keep open). In auto-hide mode, a short gap right as the new page appears is expected.
 - [ ] Click a download link: the pill may appear; it goes away on your next click or key press (or after 10s).
+
+## Injection probe: go/no-go for the transplant shell (Safari 27, about 25 min)
+
+The rule for reading the result is in DECISIONS.md ("Injection probe"). After each block: palette → **Injection probe results** → **Copy report**, paste it into a note under the block's name, then **Clear**. Each step lists the rows to expect; a missing row is not a pass (wait for the page to finish loading and redo the step).
+
+**Setup**
+1. Use one Margin copy: Develop → Add Temporary Extension… → `dist/safari/` from branch `feat/injection-probe`. Turn off any other Margin copy.
+2. Safari → Settings → Extensions → Margin: allow it on every website (not per site, not "for one day").
+3. Turn "Keep open" on.
+4. Close or reload every tab that was open, open the results page, press **Clear**.
+5. During blocks A–C: don't change site access, don't toggle or reload Margin, and don't open PDFs, images, videos or .txt links. If any of that happens, press Clear and redo the block.
+
+**Block A: Margin alone** (turn other extensions off in Settings → Extensions first; then reload tabs and Clear)
+- [ ] A1. Type each in the address bar of the same tab, pressing Return: google.com, github.com, youtube.com, en.wikipedia.org, example.com. Expect 5 manifest rows: pass, ready=loading, nav=navigate.
+- [ ] A2. On Wikipedia, click 2 article links. Expect 2 pass. (GitHub and YouTube links are same-page navigations: no row, by design.)
+- [ ] A3. ⌘R twice on Wikipedia, once on github.com and youtube.com; then ⌥⌘R once (Reload Page From Origin, Develop menu). Expect 5 pass, nav=reload.
+- [ ] A4. Cached HTML: type example.com again in a new tab. Expect pass.
+- [ ] A5. Back/Forward without the back-forward cache: youtube.com → example.com → Back → Forward. YouTube sends `no-store`, so Back to it is a real load: expect a pass row with nav=back_forward. Then open Web Inspector on a Wikipedia tab, Network tab → tick **Disable Caches**, click a link, Back, Forward: expect pass rows with nav=back_forward, no bfcache rows. Untick it and close the Inspector.
+- [ ] A6. Back/Forward with the cache: on Wikipedia click a link, Back, Forward. Expect bfcache rows (no injection) or pass rows.
+- [ ] A7. New tabs: ⌘-click a Wikipedia link, then open the new tab. Close a tab and reopen it with ⇧⌘T. Expect pass for each.
+- [ ] A8. A slow page: a long Wikipedia article or a heavy news site. Expect pass.
+- [ ] A9. Registered rows for the same loads: pass or foreign (kids usually `MARGIN-SIDEBAR-HOST`), ready=loading.
+
+**Block B: typed with Top Hit preloading** (only if Safari → Settings → Search → "Preload Top Hit in the background" is on)
+- [ ] Type the start of a site you visit often (e.g. "githu"), wait a second, press Return. Do it for 3 sites. Expect pass. Late here would be a product question, not an automatic NO-GO (DECISIONS.md).
+
+**Block C: your normal extensions on** (turn them back on, reload tabs, Clear)
+- [ ] Repeat A1 and A3. Expect pass or foreign. Note any extension whose nodes appear in kids.
+
+**Block D (optional): check the existing verdict**
+- [ ] With some tabs loaded, turn Margin off and on in Settings → Extensions. Expect existing rows for the open tabs (ready=interactive or complete), not late.
+
+**Block E (optional): relaunch with tabs restored.** Needs the Xcode app (a temporary extension is removed when Safari quits): `npm run build`, then `scripts/make-xcode.sh`, build, enable it, and turn the temporary copy off.
+- [ ] Have 2 windows with a site in front of each, quit, relaunch with windows restored, open the results page. Expect pass, or late/existing for the restored front tabs (that means a skip condition, not NO-GO). Click a background tab: expect pass. Do it twice; it's a race.
+
+**Send back:** the copied report of each block. If any block A step shows late with ready=loading, re-run that step 5 times before reporting it.

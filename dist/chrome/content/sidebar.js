@@ -3,6 +3,9 @@
   const api = globalThis.browser ?? globalThis.chrome;
   // Load timing, in ms since navigation start (see logTiming below).
   const timing = { injected: Math.round(performance.now()) };
+  // Injection probe (shared/probe.js): what <html> held when this ran. All
+  // content scripts run back to back, so nothing has parsed since the first.
+  const probe = globalThis.Margin.probe.snapshot('manifest');
   if (location.href.startsWith(api.runtime.getURL(''))) return;
   if (document.querySelector('margin-sidebar-host')) return;
 
@@ -593,11 +596,18 @@
     const fmt = (n) => (n == null ? '–' : `${Math.round(n)}`);
     console.debug(
       `[margin] timing (ms) injected=${fmt(timing.injected)} storage=${fmt(timing.storage)} rendered=${fmt(timing.rendered)}` +
-        ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${pinnedOpen()}`,
+        ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${pinnedOpen()}` +
+        ` | probe ${Margin.probe.verdict(probe)} htmlKids=[${probe.kids}]`,
     );
   }
   if (document.readyState === 'complete') setTimeout(logTiming);
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
+
+  // The probe record goes to the background now, so loads the user leaves
+  // early still count. A page restored from the back-forward cache runs no
+  // content script; it's logged too, so Back/Forward tests add up.
+  send('probe', { record: probe });
+  addEventListener('pageshow', (e) => e.persisted && send('probe', { record: { source: 'manifest', restored: true, url: probe.url, nav: 'back_forward' } }));
   refresh();
   send('hello').then((ctx) => {
     if (!ctx) return;

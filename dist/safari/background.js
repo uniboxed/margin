@@ -1,10 +1,11 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
 // Classic service worker: Safari ignores "type": "module" for backgrounds.
-importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js', 'shared/search.js');
+importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js', 'shared/search.js', 'shared/probe.js');
 const M = globalThis.Margin.model;
 const S = globalThis.Margin.search;
 const I = globalThis.Margin.icons;
+const P = globalThis.Margin.probe;
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -320,7 +321,23 @@ const handlers = {
   async updateSettings({ patch }) {
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
+  // Injection probe (shared/probe.js). Kept in storage.session, not
+  // storage.local: every sidebar re-renders on storage.local changes.
+  async probe({ record }, sender) {
+    const entry = P.entry(record, { tabId: sender.tab?.id ?? null, at: now() });
+    console.info(`[margin] probe ${P.line(entry)}`);
+    if (!api.storage.session) return;
+    probeQueue = probeQueue.then(async () => {
+      const { probe = [] } = await api.storage.session.get('probe');
+      await api.storage.session.set({ probe: [...probe, entry].slice(-P.MAX) });
+    }).catch((err) => console.warn('[margin] probe', err));
+    await probeQueue;
+  },
+  async openProbe({ windowId }) {
+    await openTab({ windowId, url: api.runtime.getURL('diag/probe.html') });
+  },
 };
+let probeQueue = Promise.resolve();
 
 // sendResponse + `return true` works in both Safari and Chrome (Chrome
 // ignores promises returned from onMessage listeners).
@@ -436,6 +453,20 @@ api.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.settings) queueDockedSync();
 });
 queueDockedSync();
+
+// The injection probe's registered copy (content/probe-registered.js), kept
+// registered for as long as the probe exists. Queued with the docked CSS so
+// the two registrations never overlap.
+const PROBE_ID = 'margin-probe';
+async function registerProbe() {
+  if (!api.scripting?.registerContentScripts) return;
+  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [PROBE_ID] });
+  if (current) return;
+  await api.scripting.registerContentScripts([
+    { id: PROBE_ID, js: ['shared/probe.js', 'content/probe-registered.js'], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
+  ]);
+}
+dockedSync = dockedSync.then(registerProbe).catch((err) => console.warn('[margin] probe registration', err));
 
 // ---- auto-archive -----------------------------------------------------------
 

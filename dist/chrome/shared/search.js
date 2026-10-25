@@ -210,6 +210,8 @@
     action('new-window', 'New window', { type: 'newWindow' }, { emoji: '⧉' });
     if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
     if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
+    // Temporary: results of the injection probe (shared/probe.js).
+    action('probe', 'Injection probe results', { type: 'openProbe', windowId: ctx.windowId }, { emoji: '🧪' });
     for (const s of state.spaces) {
       if (s.id === spaceId) continue;
       action(`space:${s.id}`, `Switch to space ${s.name}`, { type: 'setSpace', windowId: ctx.windowId, spaceId: s.id }, { emoji: s.emoji });

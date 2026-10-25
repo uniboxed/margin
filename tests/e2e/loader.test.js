@@ -145,7 +145,7 @@ test('if the page stays after all (no navigation happens), the pill goes away on
 
 test('Keep open: a fast page still shows the pill briefly (taking over from the first-paint one), then it goes', async () => {
   await setSettings({ sidebarPinnedOpen: true, sidebarWidth: 260 });
-  await waitFor(() => ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts().then((r) => r.length > 0)));
+  await waitFor(() => ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r.length > 0)));
   const page = await load('fast-docked');
   await waitFor(async () => (await loaderState(page))?.on === true, { timeout: 2000 });
   assert.equal(await page.evaluate(() => document.documentElement.dataset.marginDocked), 'off', 'placeholder (and its pill) handed over');
