@@ -14,9 +14,8 @@
   const edgePx = () =>
     Margin.view.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
   const HIDE_DELAY_MS = 300;
-  const WIDTH_PX = 260; // keep in sync with sidebar.css (--width, .frame .hole left)
   const FRAME_PX = 8; // keep in sync with sidebar.css (.frame .hole inset, floating inset)
-  const HOVER_PX = WIDTH_PX + FRAME_PX; // right edge of the floating sidebar
+  // The sidebar width is a setting (resizable 160–500px): see sidebar.width().
 
   const host = Margin.ui.createHost(document, 'margin-sidebar-host');
   const shadow = host.attachShadow({ mode: 'closed' });
@@ -54,7 +53,21 @@
     mode: 'overlay',
     // "+ New tab" opens the command palette here (palette.js sets openPalette).
     onNewTab: () => (Margin.content.openPalette ? Margin.content.openPalette() : send('newTab', { windowId })),
+    // While resizing: move the frame edge and, with "Keep open", the pushed
+    // page along with it (at most once per animation frame).
+    onWidth: (width, { done }) => {
+      liveWidth = width;
+      if (done) return applyLiveWidth();
+      widthFrame ??= requestAnimationFrame(applyLiveWidth);
+    },
   });
+  let liveWidth = null;
+  let widthFrame = null;
+  function applyLiveWidth() {
+    widthFrame = null;
+    frame.style.setProperty('--width', `${liveWidth}px`);
+    if (pushed) setPushed(true, liveWidth);
+  }
   // Arc-style frame: sidebar-colored strips around the page with rounded
   // corners, shown while the sidebar is open. Never takes clicks.
   const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
@@ -100,7 +113,8 @@
     frame.classList.toggle('open', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
-    if (state) syncPlaceholder(docked);
+    if (state) syncPlaceholder();
+    frame.style.setProperty('--width', `${sidebar.width()}px`);
   }
 
   // ---- push (only while "Keep open" is on) ---------------------------------
@@ -109,9 +123,9 @@
   // media only, removed as soon as "Keep open" is off. Known trade-offs are in
   // DECISIONS.md: position:fixed elements don't move, 100vw elements are
   // clipped on the right.
-  const PUSH_CSS = `@media screen {
+  const pushCss = (width) => `@media screen {
     html {
-      margin-left: ${WIDTH_PX}px !important;
+      margin-left: ${width}px !important;
       margin-right: ${FRAME_PX}px !important;
       width: auto !important;
       overflow-x: hidden !important;
@@ -119,38 +133,40 @@
   }`;
   const canPush = document.documentElement instanceof HTMLHtmlElement;
   let pushed = false;
+  let pushedWidth = null;
   let pushSheet = null;
   let pushStyle = null;
-  function setPushed(on) {
-    if (!canPush || on === pushed) return;
+  function setPushed(on, width = sidebar.width()) {
+    if (!canPush || (on === pushed && (!on || width === pushedWidth))) return;
     pushed = on;
+    pushedWidth = on ? width : null;
     if ('adoptedStyleSheets' in document && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
       pushSheet ??= new CSSStyleSheet();
-      pushSheet.replaceSync(PUSH_CSS);
+      pushSheet.replaceSync(pushCss(width));
       const others = document.adoptedStyleSheets.filter((s) => s !== pushSheet);
       document.adoptedStyleSheets = on ? [...others, pushSheet] : others;
     } else if (on) {
-      pushStyle ??= Object.assign(document.createElement('style'), { textContent: PUSH_CSS });
-      document.documentElement.appendChild(pushStyle);
+      pushStyle ??= document.createElement('style');
+      pushStyle.textContent = pushCss(width);
+      if (!pushStyle.isConnected) document.documentElement.appendChild(pushStyle);
     } else {
       pushStyle?.remove();
     }
     host.dataset.pushed = String(on);
   }
 
-  // content/docked.css (registered while "Keep open" is on) pushes and paints
-  // from the first frame. Switch it off on this page whenever the page isn't
-  // docked: after leaving "Keep open", or if the setting changed while the
-  // page was loading. Only touches <html> when the placeholder is present.
-  function syncPlaceholder(docked) {
+  // The first-paint placeholder (content/docked/w-<width>.css, registered
+  // while "Keep open" is on) pushes and paints until Margin runs. Once it does,
+  // the live push above takes over (same frame, same width, so nothing moves)
+  // and the placeholder is switched off on this page, so it can't fight a
+  // resize or linger after "Keep open" is turned off. Only touches <html>
+  // when the placeholder is present.
+  function syncPlaceholder() {
     const html = document.documentElement;
-    if (!canPush) return;
-    if (docked) {
-      if (html.dataset.marginDocked === 'off') delete html.dataset.marginDocked;
-    } else if (html.dataset.marginDocked !== 'off' && getComputedStyle(html, '::after').content !== 'none') {
-      html.dataset.marginDocked = 'off';
-    }
+    if (!canPush || html.dataset.marginDocked === 'off') return;
+    if (getComputedStyle(html, '::after').content !== 'none') html.dataset.marginDocked = 'off';
   }
+
   function show(why) {
     clearTimeout(hideTimer);
     hideTimer = null;
@@ -200,7 +216,7 @@
     'mousemove',
     (e) => {
       if (e.clientX <= edgePx()) show('hover');
-      else if (e.clientX > HOVER_PX) scheduleHide();
+      else if (e.clientX > sidebar.width() + FRAME_PX) scheduleHide();
       else if (hideTimer && sidebar.el.classList.contains('open')) {
         clearTimeout(hideTimer);
         hideTimer = null;

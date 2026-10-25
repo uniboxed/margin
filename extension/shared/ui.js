@@ -80,7 +80,9 @@
 
   // `onNewTab`: what "+ New tab" does (the command palette, Arc-style);
   // without it, a new tab is opened.
-  function createSidebar({ document: doc, send, mode, onNewTab }) {
+  // `onWidth(px, { done })`: called while the sidebar is resized (live) and
+  // once more with done: true when the drag ends.
+  function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
     const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
     const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
     const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
@@ -111,6 +113,46 @@
       footer,
     );
 
+    // ---- resize: drag the right edge (160–500px), double-click to reset ----
+    const resizer = el(doc, 'div', { class: 'resizer', title: 'Drag to resize · double-click to reset', 'aria-hidden': 'true' });
+    root.append(resizer);
+    let resizing = null; // { startX, startWidth, width }
+    const setWidth = (px) => root.style.setProperty('--width', `${px}px`);
+    resizer.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      resizer.setPointerCapture?.(event.pointerId);
+      const startWidth = root.getBoundingClientRect().width;
+      resizing = { startX: event.clientX, startWidth, width: startWidth };
+      root.classList.add('resizing');
+    });
+    resizer.addEventListener('pointermove', (event) => {
+      if (!resizing) return;
+      resizing.width = Margin.view.clampWidth(resizing.startWidth + event.clientX - resizing.startX);
+      setWidth(resizing.width);
+      onWidth?.(resizing.width, { done: false });
+    });
+    const endResize = () => {
+      if (!resizing) return;
+      const width = Margin.view.snapWidth(resizing.width);
+      resizing = null;
+      root.classList.remove('resizing');
+      setWidth(width);
+      onWidth?.(width, { done: true });
+      send('updateSettings', { patch: { sidebarWidth: width } });
+    };
+    resizer.addEventListener('pointerup', endResize);
+    resizer.addEventListener('pointercancel', endResize);
+    resizer.addEventListener('lostpointercapture', endResize);
+    resizer.addEventListener('dblclick', (event) => {
+      event.stopPropagation();
+      const width = Margin.view.WIDTH.default;
+      setWidth(width);
+      onWidth?.(width, { done: true });
+      send('updateSettings', { patch: { sidebarWidth: width } });
+    });
+
     let state = null;
     let windowId = null;
     let currentTabId = null;
@@ -120,6 +162,7 @@
       if (!state || windowId == null) return;
       const view = Margin.view.sidebar(state, windowId, currentTabId);
       root.style.setProperty('--space-color', view.spaces.find((s) => s.id === view.spaceId)?.color ?? '');
+      if (!resizing) setWidth(Margin.view.sidebarWidth(state));
 
       chips.replaceChildren(
         ...view.spaces.map((s) =>
@@ -167,7 +210,12 @@
       );
 
       const pinned = !!state.settings?.sidebarPinnedOpen;
-      keepOpen.textContent = pinned ? '⇤ Auto-hide' : '⇥ Keep open';
+      // Icon + label; narrow sidebars show only the icon (see sidebar.css).
+      keepOpen.replaceChildren(
+        el(doc, 'span', { class: 'icon-only', text: pinned ? '⇤' : '⇥' }),
+        el(doc, 'span', { class: 'label', text: pinned ? ' Auto-hide' : ' Keep open' }),
+      );
+      keepOpen.title = pinned ? 'Auto-hide the sidebar' : 'Keep the sidebar open';
       keepOpen.setAttribute('aria-pressed', String(pinned));
     }
 
@@ -300,7 +348,8 @@
     return {
       el: root,
       // While editing or dragging, the overlay shouldn't auto-hide.
-      isBusy: () => editing != null || draggingTabId != null,
+      isBusy: () => editing != null || draggingTabId != null || resizing != null,
+      width: () => (resizing ? resizing.width : Margin.view.sidebarWidth(state)),
       update(nextState, context) {
         state = nextState;
         if (context?.windowId != null) windowId = context.windowId;

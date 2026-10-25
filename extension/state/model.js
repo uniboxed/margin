@@ -14,6 +14,7 @@
     archiveAfterHours: 12,
     paletteShortcut: 'Alt+KeyK',
     searchEngine: 'https://duckduckgo.com/?q=%s',
+    sidebarWidth: 260, // px, resizable 160–500 in 10px steps (shared/view.js)
   });
 
   const DEFAULT_SPACE = Object.freeze({

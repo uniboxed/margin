@@ -6,6 +6,7 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 - **Spaces** (emoji chips) that filter the sidebar to that space's tabs, separately in each window. Create, rename, recolor, and delete them inline, and drag tabs onto a chip to move them.
 - **Pinned items** per space. A pin focuses its open tab, or reopens the page.
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
+- **Resizable:** drag the sidebar's right edge (160–500 px); double-click it to reset.
 - **Keyboard navigation:** ⌘⌥↓ / ⌘⌥↑ next/previous tab (sidebar order, wrapping), ⌘⌥→ / ⌘⌥← next/previous space (the sidebar peeks open for a second so you can see where you landed).
 - **Custom new-tab page:** search/URL field, the space's pins as tiles, recently archived tabs, and settings.
 - **Auto-archive:** tabs left idle for 12 hours (configurable) close into a restorable archive.
@@ -76,7 +77,8 @@ extension/
   shared/ui.js          Sidebar renderer used by both the overlay and the new tab.
   content/sidebar.js    Content script: closed-shadow-DOM overlay, hover reveal, theme.
   content/palette.js    Command palette (own closed shadow root), used by content + new tab.
-  content/docked.css    Registered only while "Keep open" is on; applied before first paint.
+  content/docked/       Generated per sidebar width from docked.template.css; registered only
+                        while "Keep open" is on; applied before first paint.
   content/*.css         Styles (source of truth). Bundled into content/styles.js by `npm run styles`
                         so content scripts apply them synchronously, with no fetch.
   newtab/               Launcher page with the sidebar permanently open.

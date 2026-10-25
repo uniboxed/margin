@@ -191,3 +191,13 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 ## Gray sidebar (2026-10-25)
 
 - **Per Tirth (from an Arc screenshot):** the sidebar and frame use one neutral gray, `#9c9da1`, sampled from Arc. It's the same in Light and Dark Mode, which replaces the earlier light/dark pair. Text: `#1c1c1e` (6.3:1 contrast) and secondary `#2f3033` (4.9:1, above the 4.5:1 guideline for small text). Hover is white at 20%, the active tab white at 55%. The same color is in `sidebar.css`, `newtab.css` and the first-paint `docked.css`. The palette still follows Light/Dark Mode. A color setting may come later.
+
+## Resizable sidebar (2026-10-25)
+
+- **Range from Arc (Tirth's screenshots):** the sidebar measured 215px and 660px wide in 2000px-wide screenshots of a 1512pt display, which is about 160 and 500 CSS px. So `settings.sidebarWidth` is 160–500, default 260. Stored widths snap to 10px (`view.snapWidth`); live dragging is continuous.
+- **Interaction:** an 8px invisible handle on the sidebar's right edge (`col-resize` cursor, a thin line on hover). It uses pointer capture, so fast drags over the page keep tracking. Double-click resets to 260. It works in hover mode (the sidebar stays open during the drag via `isBusy`), in Keep open mode, and on the new-tab page. `createSidebar({ onWidth })` reports live widths. The content script moves the frame edge and, when pushed, the page's `margin-left` at most once per animation frame. One `updateSettings` is saved on release, and every other tab picks it up from storage.
+- **Width everywhere:** the CSS uses `--width` (sidebar, frame hole). The content script reads `sidebar.width()` for the push and the hover-hide threshold. The new-tab column follows the sidebar's width.
+- **First-paint placeholder per width:** registered CSS can't read settings, so `content/docked.template.css` generates 35 files (`content/docked/w-160.css` … `w-500.css`) via `npm run styles`. The background registers the one matching the width and re-registers when it changes. A unit test checks every file is present, current, and matches the width range.
+- **Placeholder hand-off:** once Margin runs on a page, it switches the placeholder off there (`data-margin-docked="off"`) and its own push holds the same width in the same frame. Otherwise the placeholder's fixed width would fight a live resize.
+- **Narrow widths:** footer buttons never wrap. Below 230px the Keep open / Auto-hide button shows only its icon (container query), keeping "+ New tab" readable.
+- **Tests:** E2E pushes settings changes through the background. Writing `storage.local` directly leaves the background's cached settings stale, and its next write would undo the change. Real users always go through the background.

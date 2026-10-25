@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { buildStyles } from '../scripts/build-styles.js';
+import { buildStyles, buildDocked, DOCKED_WIDTHS } from '../scripts/build-styles.js';
+import { readdirSync } from 'node:fs';
+import '../extension/shared/view.js';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
@@ -29,7 +31,7 @@ test('every file the manifest and new tab reference exists', () => {
     ...manifest.content_scripts.flatMap((c) => c.js),
     ...(manifest.web_accessible_resources ?? []).flatMap((w) => w.resources),
     manifest.chrome_url_overrides.newtab,
-    'content/docked.css', // registered at runtime by background.js
+    ...DOCKED_WIDTHS.map((w) => `content/docked/w-${w}.css`), // registered at runtime by background.js
   ];
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
   for (const [, ref] of html.matchAll(/(?:src|href)="([^"]+)"/g)) files.push(new URL(ref, new URL('newtab/', root)).pathname.split('/extension/')[1]);
@@ -47,7 +49,7 @@ test('all extension scripts parse', () => {
 test('no third-party URLs in extension code (search engine templates excepted)', () => {
   const allowed = /duckduckgo\.com|google\.com|bing\.com|ecosia\.org|startpage\.com|www\.w3\.org/;
   for (const f of ['background.js', 'state/model.js', 'shared/view.js', 'shared/ui.js', 'shared/search.js', 'shared/shortcuts.js', 'shared/icons.js',
-    'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'content/docked.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
+    'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'content/docked.template.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
     const text = readFileSync(new URL(f, root), 'utf8');
     for (const [url] of text.matchAll(/https?:\/\/[^\s'"`)$]+/g)) if (!url.endsWith("://")) assert.match(url, allowed, `${f}: ${url}`);
   }
@@ -63,5 +65,19 @@ test('content scripts load styles before the UI, without fetching anything', () 
   assert.equal(manifest.web_accessible_resources, undefined, 'nothing exposed to web pages');
   for (const f of ['content/sidebar.js', 'content/palette.js', 'shared/ui.js']) {
     assert.ok(!readFileSync(new URL(f, root), 'utf8').includes('fetch('), `${f} must not fetch`);
+  }
+});
+
+test('first-paint placeholders: one up-to-date file per sidebar width, nothing else', () => {
+  const { WIDTH } = globalThis.Margin.view;
+  const expected = [];
+  for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
+  assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match shared/view.js');
+  assert.deepEqual(readdirSync(new URL('content/docked/', root)).sort(), expected.map((w) => `w-${w}.css`).sort());
+  for (const w of expected) {
+    const css = readFileSync(new URL(`content/docked/w-${w}.css`, root), 'utf8');
+    assert.equal(css, buildDocked(w), `w-${w}.css is stale: run npm run styles`);
+    assert.equal(css.split('*/')[1].match(new RegExp(`${w}px`, 'g')).length, 2, 'margin-left and the frame edge');
+    assert.ok(!css.includes('{{WIDTH}}'));
   }
 });

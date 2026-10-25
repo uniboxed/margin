@@ -159,3 +159,11 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] On a normal website, open Web Inspector → Console and paste:
   `addEventListener('keydown', e => e.key.startsWith('Arrow') && console.log('[key]', e.key, 'cmd', e.metaKey, 'opt', e.altKey), true)`
   Then click the page and press ⌘⌥↑, ⌘⌥↓, ⌘⌥←, ⌘⌥→. Every combo that prints a `[key]` line reaches Margin; one that prints nothing is taken by Safari or another app first. Also look in Safari's **Window** menu for shortcuts shown next to "Show Previous/Next Tab", and check apps like Rectangle, Magnet, Raycast or BetterTouchTool for ⌘⌥ arrow bindings.
+
+## Resizing the sidebar
+
+- [ ] Hover the sidebar's right edge: the cursor becomes ↔ and a thin line appears. Drag: the sidebar resizes live between about the widths in Tirth's two Arc screenshots (160–500), and stops at both ends.
+- [ ] With "Keep open" on, the page and the frame move with the edge while dragging. Release: other tabs use the new width, and newly opened pages appear at the new width from their first frame (no jump from the old width).
+- [ ] In hover mode the sidebar stays open while you drag, and the page doesn't move.
+- [ ] Double-click the edge: back to the default width.
+- [ ] At the narrowest width the footer shows "+ New tab" and just the ⇤/⇥ icon, all on one line.

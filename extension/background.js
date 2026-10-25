@@ -1,7 +1,7 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
 // Classic service worker: Safari ignores "type": "module" for backgrounds.
-importScripts('state/model.js', 'shared/icons.js');
+importScripts('state/model.js', 'shared/icons.js', 'shared/view.js');
 const M = globalThis.Margin.model;
 const I = globalThis.Margin.icons;
 
@@ -311,17 +311,22 @@ async function learnIcon(origin, href) {
 // before first paint, ahead of content scripts. Feature-detected; without the
 // scripting API the sidebar simply appears when the content script runs.
 const DOCKED_ID = 'margin-docked';
+// One placeholder file per sidebar width (content/docked/w-<width>.css), so
+// the first paint already matches the user's width.
 async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
-  const want = !!settings?.sidebarPinnedOpen;
-  const have = (await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] })).length > 0;
-  if (want && !have) {
+  const want = settings?.sidebarPinnedOpen
+    ? `content/docked/w-${globalThis.Margin.view.sidebarWidth({ settings })}.css`
+    : null;
+  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
+  const have = current?.css?.[0] ?? null;
+  if (want === have) return;
+  if (current) await api.scripting.unregisterContentScripts({ ids: [DOCKED_ID] });
+  if (want) {
     await api.scripting.registerContentScripts([
-      { id: DOCKED_ID, css: ['content/docked.css'], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
+      { id: DOCKED_ID, css: [want], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
     ]);
-  } else if (!want && have) {
-    await api.scripting.unregisterContentScripts({ ids: [DOCKED_ID] });
   }
 }
 let dockedSync = Promise.resolve();

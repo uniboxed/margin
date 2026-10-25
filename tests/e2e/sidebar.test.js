@@ -276,9 +276,9 @@ test('Keep open: sidebar and push are in place while the page is still loading',
   }
 });
 
-test('Keep open registers a first-paint placeholder; leaving Keep open on a page switches it off there', async () => {
+test('Keep open registers the first-paint placeholder for the current width; Margin takes over on the page', async () => {
   const registered = () =>
-    ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r.length));
+    ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r[0]?.css?.[0] ?? null));
   const placeholder = (page) =>
     page.evaluate(() => ({
       content: getComputedStyle(document.documentElement, '::after').content,
@@ -287,22 +287,23 @@ test('Keep open registers a first-paint placeholder; leaving Keep open on a page
     }));
 
   await setKeepOpen(true);
-  await waitFor(async () => (await registered()) === 1);
+  await waitFor(async () => (await registered())?.endsWith('content/docked/w-260.css'));
   const page = await openPage('placeholder');
-  assert.deepEqual(await placeholder(page), { content: '""', left: '260px', attr: null });
+  // The placeholder pushed the first paint; Margin's live push now holds the
+  // same width and the placeholder is switched off on this page.
+  await waitFor(async () => (await placeholder(page)).attr === 'off');
+  assert.deepEqual(await placeholder(page), { content: 'none', left: '260px', attr: 'off' });
 
   const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'placeholder').id;
   await ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
-  await waitFor(async () => (await registered()) === 0);
-  assert.deepEqual(await placeholder(page), { content: 'none', left: '0px', attr: 'off' });
+  await waitFor(async () => (await registered()) === null);
+  await waitFor(async () => (await placeholder(page)).left === '0px');
 
-  // Back on: this page re-docks, and the placeholder is registered again.
   await setKeepOpen(true);
   await waitFor(async () => (await placeholder(page)).left === '260px');
-  assert.equal((await placeholder(page)).attr, null);
-  await waitFor(async () => (await registered()) === 1);
+  await waitFor(async () => (await registered()) !== null);
   await setKeepOpen(false);
-  await waitFor(async () => (await registered()) === 0);
+  await waitFor(async () => (await registered()) === null);
   await page.close();
 });
 

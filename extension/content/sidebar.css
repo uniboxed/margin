@@ -84,7 +84,7 @@
   top: 8px;
   right: 8px;
   bottom: 8px;
-  left: 260px;
+  left: var(--width, 260px); /* set from settings.sidebarWidth by sidebar.js */
   border-radius: 10px;
   box-shadow: 0 0 0 1px var(--border-hole, rgba(0, 0, 0, 0.06)), 0 0 0 100vmax var(--frame);
 }
@@ -161,6 +161,14 @@ ul { list-style: none; margin: 0; padding: 0; }
 footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
 .new-tab, .keep-open { height: 30px; padding: 0 8px; border-radius: 8px; color: var(--muted); text-align: left; }
 .new-tab { flex: 1; }
+/* Narrow sidebars (down to 160px): one line, never wrap; below 230px the
+   Keep open / Auto-hide button shows only its icon (full label on hover). */
+.margin-sidebar { container-type: inline-size; }
+.new-tab, .keep-open { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keep-open { flex: none; }
+@container (max-width: 229px) {
+  .keep-open .label { display: none; }
+}
 .new-tab:hover, .keep-open:hover { background: var(--hover); color: var(--fg); }
 
 .chip.add { font-size: 16px; color: var(--muted); }
@@ -199,3 +207,30 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
 .editor .delete { color: #d63031 !important; }
 .editor .delete:disabled { opacity: 0.4; cursor: default; }
 .spacer { flex: 1; }
+
+/* Resize handle: the right edge of the sidebar (160–500px). */
+.margin-sidebar.newtab { position: relative; }
+.resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.resizer::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.resizer:hover::after, .resizing .resizer::after { background: rgba(0, 0, 0, 0.25); }
+.margin-sidebar.resizing { user-select: none; cursor: col-resize; }
+.margin-sidebar.resizing, .margin-sidebar.resizing * { transition: none !important; }
