@@ -94,3 +94,21 @@ test('active space is per window', async () => {
   await ctx.worker.evaluate((id) => chrome.windows.remove(id), other);
   await waitFor(async () => !((other) in (await storage('activeSpaceByWindow'))));
 });
+
+test('"+" opens the editor even when the new space arrives before the reply', async () => {
+  // Force the race: hold the createSpace reply until storage has already
+  // delivered the new space to the page.
+  await nt.evaluate(() => {
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime);
+    chrome.runtime.sendMessage = async (msg) => {
+      const res = await original(msg);
+      if (msg?.type === 'createSpace') await new Promise((r) => setTimeout(r, 400));
+      return res;
+    };
+  });
+  const before = (await storage('spaces')).length;
+  await nt.click('#sidebar .chip.add');
+  await waitFor(async () => (await storage('spaces')).length === before + 1);
+  await nt.waitForSelector('#sidebar .editor:not([hidden])', { timeout: 3000 });
+  await nt.click('#sidebar .editor [data-editor="cancel"]');
+});

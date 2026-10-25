@@ -184,7 +184,13 @@
         case 'set-space': return send('setSpace', { windowId, spaceId });
         case 'new-tab': return send('newTab', { windowId });
         case 'add-space':
-          return send('createSpace', { windowId }).then((res) => res?.spaceId && (pendingEdit = res.spaceId));
+          // The new space can reach us (via storage) before the reply does,
+          // so open it now if it's already here, else when it arrives.
+          return send('createSpace', { windowId }).then((res) => {
+            if (!res?.spaceId) return;
+            if (state?.spaces.some((s) => s.id === res.spaceId)) openEditor(res.spaceId);
+            else pendingEdit = res.spaceId;
+          });
         case 'keep-open':
           return send('updateSettings', { patch: { sidebarPinnedOpen: !state?.settings?.sidebarPinnedOpen } });
       }
