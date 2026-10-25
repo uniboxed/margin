@@ -5,15 +5,10 @@
   --card: #ffffff;
   --border: rgba(0, 0, 0, 0.08);
   --accent: #6c5ce7;
-  --space-color: #6c5ce7;
-  --frame-base: #e7e6ed;
-  --frame: color-mix(in srgb, var(--space-color) 14%, var(--frame-base));
+  --frame: #e7e6ed; /* same fixed sidebar color as content/sidebar.css */
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #18171d; --fg: #ecebf2; --muted: #9a97a8; --card: #24232b; --border: rgba(255, 255, 255, 0.08); --frame-base: #1d1c22; }
-}
-@supports not (color: color-mix(in srgb, red 50%, blue)) {
-  :root { --frame: var(--frame-base); }
+  :root { --bg: #18171d; --fg: #ecebf2; --muted: #9a97a8; --card: #24232b; --border: rgba(255, 255, 255, 0.08); --frame: #1d1c22; }
 }
 html, body { height: 100%; margin: 0; }
 /* Same Arc-style layout as the overlay: sidebar and frame are one surface,

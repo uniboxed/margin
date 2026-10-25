@@ -75,7 +75,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] 📌 on a row pins it; the pin appears above the divider. Clicking the pin focuses its tab; after closing the tab, clicking the pin reopens it.
 - [ ] Space chips at the top switch which tabs are listed (this window only).
 - [ ] "+ New tab" opens Margin's new tab page.
-- [ ] On a dark site and a light site, the sidebar matches.
+- [ ] The sidebar has the same background on every site and in every space; only switching the Mac between Light and Dark changes it.
 - [ ] Option+S (toggle command) opens the sidebar; Esc or a click on the page closes it. If the shortcut does nothing, check Safari → Settings → Extensions → Margin for shortcut settings and note what works.
 - [ ] "Keep open" in the sidebar footer keeps it visible on every page until clicked again ("Auto-hide").
 - [ ] No sidebar appears on Margin's own new tab page except the built-in one.

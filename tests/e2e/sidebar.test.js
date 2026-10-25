@@ -108,13 +108,39 @@ test('switching space filters tabs; new tabs join the active space', async () =>
   for (const p of [page, nt, fresh]) await p.close();
 });
 
-test('theme follows the page background', async () => {
-  const page = await openPage('dark');
-  await waitFor(async () => (await sidebarSnapshot(page)).theme === 'dark');
-  const light = await openPage('light');
-  await waitFor(async () => (await sidebarSnapshot(light)).theme === 'light');
-  await page.close();
-  await light.close();
+test('one sidebar color: follows the Mac appearance, not the page or the space', async () => {
+  const bg = (page) => evalInShadow(page, 'margin-sidebar-host', function () {
+    const aside = this.querySelector('.margin-sidebar');
+    return { theme: aside.dataset.theme, bg: getComputedStyle(aside).backgroundColor };
+  });
+  const darkSite = await openPage('dark');
+  const lightSite = await openPage('light');
+  await darkSite.emulateMedia({ colorScheme: 'light' });
+  await lightSite.emulateMedia({ colorScheme: 'light' });
+  const a = await bg(darkSite);
+  const b = await bg(lightSite);
+  assert.deepEqual(a, b, 'same color on a dark site and a light site');
+  assert.equal(a.theme, 'light');
+  assert.equal(a.bg, 'rgb(231, 230, 237)');
+
+  // A space with a different color doesn't tint it.
+  const nt = await ctx.context.newPage();
+  await nt.goto('chrome://newtab');
+  const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
+  await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Red', color: '#d63031' }), windowId);
+  await waitFor(async () => (await sidebarSnapshot(lightSite)).chips.length >= 2);
+  assert.equal((await bg(lightSite)).bg, 'rgb(231, 230, 237)');
+  await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: 'personal' }), windowId);
+  await nt.close();
+
+  // Dark Mode switches it, on every site alike.
+  await darkSite.emulateMedia({ colorScheme: 'dark' });
+  await lightSite.emulateMedia({ colorScheme: 'dark' });
+  await waitFor(async () => (await bg(lightSite)).theme === 'dark');
+  assert.deepEqual(await bg(darkSite), await bg(lightSite));
+  assert.equal((await bg(lightSite)).bg, 'rgb(29, 28, 34)');
+  await darkSite.close();
+  await lightSite.close();
 });
 
 test('new-tab page renders the sidebar itself and gets no injected overlay', async () => {

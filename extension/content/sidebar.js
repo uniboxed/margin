@@ -65,18 +65,10 @@
 
   // ---- theme: follow the page, then the OS -------------------------------
 
-  function pageTheme() {
-    const scheme = getComputedStyle(document.documentElement).colorScheme;
-    if (scheme === 'dark') return 'dark';
-    for (const node of [document.body, document.documentElement]) {
-      if (!node) continue;
-      const m = getComputedStyle(node).backgroundColor.match(/[\d.]+/g);
-      if (!m || (m.length === 4 && Number(m[3]) === 0)) continue;
-      const [r, g, b] = m.map(Number);
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? 'dark' : 'light';
-    }
-    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
+  // One fixed sidebar color: follows only the Mac's Light/Dark appearance,
+  // never the page (so it doesn't change from tab to tab).
+  const systemDark = matchMedia('(prefers-color-scheme: dark)');
+  const pageTheme = () => (systemDark.matches ? 'dark' : 'light');
   Margin.content.theme = pageTheme;
   const applyTheme = () => {
     const theme = pageTheme();
@@ -84,9 +76,7 @@
     frame.dataset.theme = theme;
   };
   applyTheme();
-  document.addEventListener('DOMContentLoaded', applyTheme);
-  addEventListener('load', applyTheme);
-  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+  systemDark.addEventListener?.('change', applyTheme);
 
   // ---- visibility ---------------------------------------------------------
 
@@ -240,7 +230,6 @@
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? Margin.view.guessWindow(state, location.href);
     sidebar.update(state, { windowId, tabId });
-    frame.style.setProperty('--space-color', sidebar.el.style.getPropertyValue('--space-color'));
     Margin.content.onState?.(state, { tabId, windowId });
     if (!reason) setOpen(pinnedOpen());
     if (firstRender) {
