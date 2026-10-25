@@ -1,0 +1,5 @@
+--- after action enter (998024839 chrome://newtab/)
+  tabs: 998024838 about:blank | 998024839* https://www.google.com/search?q=ab&oq=ab&gs_lcrp=E
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  chrome-error://chromewebdata/ hasFocus=true vis=visible keys="" active=BODY
+--- after typing "cd" (action enter)

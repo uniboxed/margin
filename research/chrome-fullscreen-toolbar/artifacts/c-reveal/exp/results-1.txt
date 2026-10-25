@@ -1,0 +1,14 @@
+--- handoff: 2.5s after Ctrl+T
+  tabs: 487559211* http://127.0.0.1:44679/page1
+  http://127.0.0.1:44679/page1 hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after typing "ab"
+  tabs: 487559211* http://127.0.0.1:44679/page1
+  http://127.0.0.1:44679/page1 hasFocus=true vis=visible keys="ab" active=MARGIN-PALETTE-HOST
+--- ntp: 2.5s after Ctrl+T
+  tabs: 172495676 about:blank | 172495677* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after typing "ab"
+  tabs: 172495676 about:blank | 172495677* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST

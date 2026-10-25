@@ -1,0 +1,51 @@
+{
+ "scenario": "fix2-ctrl-t",
+ "ext": "margin-fix2",
+ "trigger": "ctrl+t",
+ "lastStateBeforeTyping": {
+  "page:A": "state hasFocus=true active=margin-palette-host vis=visible",
+  "margin-ntp": "load hasFocus=false active=INPUT vis=visible"
+ },
+ "keydownsWhileTyping": [
+  "page:A:q->margin-palette-host",
+  "page:A:z->margin-palette-host",
+  "page:A:x->margin-palette-host"
+ ],
+ "toolbarDiff": "toolbar(y<88)=0 below-toolbar(y>=88)=201777",
+ "errors": []
+}
+{
+ "scenario": "fix2-ctrl-t-omnibox-first",
+ "ext": "margin-fix2",
+ "trigger": "ctrl+t",
+ "pre": "omnibox",
+ "lastStateBeforeTyping": {
+  "margin-ntp": "load hasFocus=false active=INPUT vis=visible",
+  "page:A": "state hasFocus=false active=body vis=hidden",
+  "margin-ntp?palette": "palette +300ms hasFocus=true active=MARGIN-PALETTE-HOST vis=visible"
+ },
+ "keydownsWhileTyping": [
+  "margin-ntp?palette:q->MARGIN-PALETTE-HOST",
+  "margin-ntp?palette:z->MARGIN-PALETTE-HOST",
+  "margin-ntp?palette:x->MARGIN-PALETTE-HOST"
+ ],
+ "toolbarDiff": "toolbar(y<88)=0 below-toolbar(y>=88)=90171",
+ "errors": []
+}
+{
+ "scenario": "fix2-ctrl-n",
+ "ext": "margin-fix2",
+ "trigger": "ctrl+n",
+ "lastStateBeforeTyping": {
+  "page:A": "state hasFocus=false active=body vis=hidden",
+  "margin-ntp": "load hasFocus=false active=INPUT vis=visible",
+  "margin-ntp?palette": "palette +300ms hasFocus=true active=MARGIN-PALETTE-HOST vis=visible"
+ },
+ "keydownsWhileTyping": [
+  "margin-ntp?palette:q->MARGIN-PALETTE-HOST",
+  "margin-ntp?palette:z->MARGIN-PALETTE-HOST",
+  "margin-ntp?palette:x->MARGIN-PALETTE-HOST"
+ ],
+ "toolbarDiff": "toolbar(y<88)=0 below-toolbar(y>=88)=90171",
+ "errors": []
+}

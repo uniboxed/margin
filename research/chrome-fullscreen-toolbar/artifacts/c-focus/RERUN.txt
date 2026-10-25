@@ -1,0 +1,22 @@
+Re-run (no Playwright/CDP: Playwright turns on Emulation.setFocusEmulationEnabled for every page,
+playwright-core/lib/coreBundle.js:37638, which makes document.hasFocus() always true).
+
+  # private X display so other agents' browsers/keys on :99 don't interfere
+  Xvfb :93 -screen 0 1280x900x24 -nolisten tcp &
+  cd /tmp/claude-0/-home-user-margin/0b6cb4e1-de7e-571b-8d96-9abc72d8e3bb/scratchpad/c-focus
+  node run.mjs all                      # or: node run.mjs margin-ctrl-t mini-create-ext-tab ...
+  VERBOSE=1 node run.mjs margin-ctrl-n  # prints every probe event
+  FOCUS_DISPLAY=:99 node run.mjs ...    # use another display
+
+Layout
+  run.mjs        harness: local server :8793 (probe pages /page/<name>, /log, /variant), spawns Chrome for
+                 Testing 153 headed with a fresh profile, xdotool clicks the page (or Ctrl+L for *-omnibox-first),
+                 presses the trigger (Ctrl+T / Ctrl+N), waits 3.5 s, types "qzx", screenshots, diffs the toolbar band.
+  diff.py        pixel diff of toolbar band (y<88) vs below it between "after" and "typed" screenshots.
+  margin-ext/    Margin Chrome build (scripts/build.js buildTo, identical to dist/chrome at 10:02 UTC).
+  margin-ext-fix/ same + newtab.js "focus hop" (diff -u margin-ext/newtab/newtab.js margin-ext-fix/newtab/newtab.js).
+  mini-ext/      minimal replica of Margin's hand-off with variants (ntp.js / sw.js switch on /variant).
+  src/           Chromium sources fetched from raw.githubusercontent.com/chromium/chromium/main (Chrome 158.0.8124.0)
+                 plus src/v153_focus_tab_after_navigation_helper.cc from tag 153.0.8010.12.
+  out/           <scenario>.jsonl (all probe events), <scenario>-{0-before,1-after,2-typed}.png, summary.jsonl.
+Reading results: keydownsWhileTyping lists which document got q/z/x; empty + toolbar(y<88)>0 = typed into omnibox.

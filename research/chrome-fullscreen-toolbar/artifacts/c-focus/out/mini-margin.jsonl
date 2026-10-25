@@ -1,0 +1,22 @@
+{"t":477,"scenario":"mini-margin","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":500,"scenario":"mini-margin","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":3930,"scenario":"mini-margin","src":"runner","ev":"pre-trigger"}
+{"t":4049,"scenario":"mini-margin","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4051,"scenario":"mini-margin","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":4053,"scenario":"mini-margin","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4089,"scenario":"mini-margin","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible"}
+{"t":4102,"scenario":"mini-margin","src":"ntp","ev":"loaded","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible","v":"margin","tabId":372150556}
+{"t":4111,"scenario":"mini-margin","src":"sw","ev":"handoff","order":"margin","prev":372150555,"ntp":372150556}
+{"t":4124,"scenario":"mini-margin","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4127,"scenario":"mini-margin","src":"page:A","ev":"window-focus","hasFocus":true,"active":"body","vis":"visible"}
+{"t":4133,"scenario":"mini-margin","src":"sw","ev":"after activate","winFocused":true}
+{"t":4148,"scenario":"mini-margin","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":4150,"scenario":"mini-margin","src":"cs","ev":"palette focus() called","hasFocus":true,"active":"INPUT#mp-input","vis":"visible"}
+{"t":4195,"scenario":"mini-margin","src":"page:A","ev":"state","hasFocus":true,"active":"input#mp-input","vis":"visible"}
+{"t":4651,"scenario":"mini-margin","src":"cs","ev":"palette +500ms","hasFocus":true,"active":"INPUT#mp-input","vis":"visible"}
+{"t":7551,"scenario":"mini-margin","src":"runner","ev":"settled"}
+{"t":7776,"scenario":"mini-margin","src":"page:A","ev":"keydown","hasFocus":true,"active":"input#mp-input","vis":"visible","key":"q","target":"input#mp-input"}
+{"t":7776,"scenario":"mini-margin","src":"page:A","ev":"keydown","hasFocus":true,"active":"input#mp-input","vis":"visible","key":"z","target":"input#mp-input"}
+{"t":7777,"scenario":"mini-margin","src":"page:A","ev":"keydown","hasFocus":true,"active":"input#mp-input","vis":"visible","key":"x","target":"input#mp-input"}
+{"t":8775,"scenario":"mini-margin","src":"runner","ev":"typed qzx"}
+{"t":9050,"scenario":"mini-margin","src":"runner","ev":"toolbar-diff","result":"toolbar(y<120)=0 page(y>=120)=958"}

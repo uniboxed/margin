@@ -1,0 +1,23 @@
+{"t":464,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":478,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":3562,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":3563,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"l","target":"body"}
+{"t":3563,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":3569,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4363,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"runner","ev":"pre-trigger"}
+{"t":4528,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4570,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible"}
+{"t":4577,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"ntp","ev":"loaded","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible","v":"location-replace-other-stay","tabId":1406718351}
+{"t":4598,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"ntp","ev":"window-focus","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":true,"active":"BODY","vis":"visible"}
+{"t":4600,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"ntp","ev":"window-focus","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":true,"active":"BODY","vis":"visible"}
+{"t":4628,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"pal","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html?fromntp","hl":1,"hasFocus":true,"active":"BODY","vis":"visible"}
+{"t":4631,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"pal","ev":"q.focus() called","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html?fromntp","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible"}
+{"t":4678,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"pal","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html?fromntp","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible"}
+{"t":5131,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"pal","ev":"q +500ms","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html?fromntp","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible"}
+{"t":5219,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"hidden"}
+{"t":8031,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"runner","ev":"settled"}
+{"t":8281,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"pal","ev":"keydown","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html?fromntp","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible","key":"q","target":"INPUT#q"}
+{"t":8281,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"pal","ev":"keydown","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html?fromntp","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible","key":"z","target":"INPUT#q"}
+{"t":8282,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"pal","ev":"keydown","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html?fromntp","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible","key":"x","target":"INPUT#q"}
+{"t":9281,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"runner","ev":"typed qzx"}
+{"t":9478,"scenario":"mini-location-replace-other-stay-omnibox-first","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=0 below-toolbar(y>=88)=1771"}

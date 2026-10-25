@@ -1,0 +1,14 @@
+{"t":521,"scenario":"control-http-omnibox-then-replace","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":542,"scenario":"control-http-omnibox-then-replace","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":3664,"scenario":"control-http-omnibox-then-replace","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":3666,"scenario":"control-http-omnibox-then-replace","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"l","target":"body"}
+{"t":3666,"scenario":"control-http-omnibox-then-replace","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":3682,"scenario":"control-http-omnibox-then-replace","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4465,"scenario":"control-http-omnibox-then-replace","src":"runner","ev":"pre-trigger"}
+{"t":4549,"scenario":"control-http-omnibox-then-replace","src":"runner","ev":"triggered","key":null}
+{"t":4549,"scenario":"control-http-omnibox-then-replace","src":"page:A","ev":"location.replace now","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4571,"scenario":"control-http-omnibox-then-replace","src":"page:B","ev":"load","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4615,"scenario":"control-http-omnibox-then-replace","src":"page:B","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":8051,"scenario":"control-http-omnibox-then-replace","src":"runner","ev":"settled"}
+{"t":9283,"scenario":"control-http-omnibox-then-replace","src":"runner","ev":"typed qzx"}
+{"t":9499,"scenario":"control-http-omnibox-then-replace","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=4928 below-toolbar(y>=88)=2315"}

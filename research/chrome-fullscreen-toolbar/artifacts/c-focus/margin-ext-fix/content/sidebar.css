@@ -1,0 +1,435 @@
+.margin-sidebar, .frame {
+  /* One sidebar background for now (Arc-like neutral gray), the same in
+     Light and Dark Mode; not tinted by the space or taken from the page.
+     Keep in sync with newtab.css and docked.css. */
+  --frame: #9c9da1;
+}
+
+.margin-sidebar {
+  --width: 260px;
+  --space-color: #6c5ce7; /* accents only (editor buttons), set per space */
+  /* Dark text on the mid-gray; secondary text dark enough to stay readable. */
+  --fg: #1c1c1e;
+  --muted: #2f3033;
+  --hover: rgba(255, 255, 255, 0.2);
+  --active: rgba(255, 255, 255, 0.55);
+  --border: rgba(0, 0, 0, 0.1);
+
+  box-sizing: border-box;
+  width: var(--width);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  background: var(--frame);
+  color: var(--fg);
+  font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+.margin-sidebar *, .margin-sidebar *::before, .margin-sidebar *::after { box-sizing: border-box; }
+
+/* Hover (auto-hide): a floating card over the page, inset from the edges.
+   Never moves the page. */
+.margin-sidebar.overlay {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  height: calc(100vh - 16px);
+  border-radius: 12px;
+  background: var(--frame);
+  box-shadow: 0 0 0 1px var(--border), 0 12px 40px rgba(0, 0, 0, 0.22);
+  transform: translateX(calc(-100% - 16px));
+  visibility: hidden;
+  transition: transform 160ms ease, visibility 0s linear 160ms;
+}
+.margin-sidebar.overlay.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 160ms ease;
+}
+/* Keep open: docked flush to the window and opaque, so sidebar and frame
+   read as one surface around the (pushed) page. */
+.margin-sidebar.overlay.docked {
+  top: 0;
+  left: 0;
+  height: 100vh;
+  border-radius: 0;
+  background: var(--frame);
+  box-shadow: none;
+}
+
+/* First render after page load: appear without animating. */
+.instant, .instant * { transition: none !important; }
+
+/* Frame: covers the page edges around the page "card" whose left edge is
+   the sidebar's right edge. Two layers, both pointer-events: none so the
+   page stays usable:
+   - .frame (below the sidebar): the solid color around the rounded card.
+   - .card-edge (above the sidebar): the card's soft shadow, which also falls
+     on the sidebar's edge.
+   Corner radius and shadow measured from Arc (DECISIONS.md); keep them the
+   same in docked.template.css and newtab.css (a unit test checks). */
+.frame, .card-edge {
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 160ms ease, visibility 0s linear 160ms;
+}
+.frame.open, .card-edge.open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 160ms ease;
+}
+.frame {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+.frame .hole, .card-edge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  left: var(--width, 260px); /* set from settings.sidebarWidth by sidebar.js */
+}
+.frame .hole, .card-edge { border-radius: 6.25px; }
+.frame .hole { box-shadow: 0 0 0 100vmax var(--frame); }
+.card-edge {
+  position: fixed;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.spaces { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 2px 6px; }
+.chip {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 15px;
+  opacity: 0.6;
+}
+.chip:hover { background: var(--hover); opacity: 1; }
+.chip.active { opacity: 1; background: color-mix(in srgb, var(--chip-color) 22%, transparent); box-shadow: inset 0 0 0 1.5px var(--chip-color); }
+.chip.drop-target { outline: 2px dashed var(--chip-color); }
+
+ul { list-style: none; margin: 0; padding: 0; }
+.pins-section:empty, .pins:empty { display: none; }
+.pins { display: flex; flex-direction: column; gap: 1px; }
+.tabs-section { flex: 1; overflow-y: auto; min-height: 0; overscroll-behavior: none; } /* never scrolls the page; no bounce */
+.divider { height: 1px; background: var(--border); margin: 2px 6px; }
+
+.tab, .pin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 8px;
+  border-radius: 8px;
+  cursor: default;
+}
+.tab:hover, .pin:hover { background: var(--hover); }
+.tab.active, .pin.active { background: var(--active); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.pin:not(.open) .title { color: var(--muted); }
+.title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.avatar {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+.avatar.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+.icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--muted);
+  visibility: hidden;
+}
+.tab:hover .icon, .pin:hover .icon { visibility: visible; }
+.icon:hover { background: var(--hover); color: var(--fg); }
+
+/* Right-click menu on tabs and pins (macOS-style). */
+.tab-menu {
+  position: absolute;
+  z-index: 5;
+  min-width: 180px;
+  max-width: calc(100% - 8px);
+  padding: 5px;
+  border-radius: 8px;
+  background: rgba(246, 246, 246, 0.97);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.22);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  color: #1c1c1e;
+}
+.tab-menu[hidden] { display: none; }
+/* In the top layer (popover): fixed to the viewport, none of the browser's
+   popover defaults (margin: auto, border, inset: 0, overflow). */
+.tab-menu[popover] { margin: 0; border: 0; inset: auto; overflow: visible; color: #1c1c1e; }
+.tab-menu.top-layer { position: fixed; }
+.tab-menu[popover]:not(:popover-open):not(.top-layer):not([hidden]) { display: block; } /* no top layer: as before */
+.menu-item {
+  display: block;
+  width: 100%;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  font-size: 13px;
+  outline: none;
+  cursor: default;
+}
+.tab-menu:focus { outline: none; }
+.menu-item:focus { background: #0a84ff; color: #fff; }
+.menu-separator { height: 1px; margin: 5px 10px; background: rgba(0, 0, 0, 0.12); }
+
+footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.new-tab, .keep-open { height: 30px; padding: 0 8px; border-radius: 8px; color: var(--muted); text-align: left; }
+.new-tab { flex: 1; }
+/* Narrow sidebars (down to 160px): one line, never wrap; below 230px the
+   Keep open / Auto-hide button shows only its icon (full label on hover). */
+.margin-sidebar { container-type: inline-size; }
+.new-tab, .keep-open { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keep-open { flex: none; }
+@container (max-width: 229px) {
+  .keep-open .label { display: none; }
+}
+.new-tab:hover, .keep-open:hover { background: var(--hover); color: var(--fg); }
+
+.chip.add { font-size: 16px; color: var(--muted); }
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 2px 4px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--hover);
+}
+.editor[hidden] { display: none; }
+.editor .row { display: flex; gap: 6px; align-items: center; }
+.editor input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--active);
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+.editor input:focus { border-color: var(--space-color); }
+.editor .emoji { width: 40px; flex: none; text-align: center; font-size: 15px; }
+.editor .name { flex: 1; }
+.swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.swatch { width: 20px; height: 20px; border-radius: 50%; background: var(--chip-color); }
+.swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--chip-color); }
+.editor .actions button { height: 26px; padding: 0 10px; border-radius: 7px; color: var(--muted); }
+.editor .actions button:hover { background: var(--hover); color: var(--fg); }
+.editor .actions .primary { background: var(--space-color); color: #fff; }
+.editor .delete { color: #d63031 !important; }
+.editor .delete:disabled { opacity: 0.4; cursor: default; }
+.spacer { flex: 1; }
+
+/* Resize handle: the right edge of the sidebar (160–500px). */
+.margin-sidebar.newtab { position: relative; }
+/* Resize handle (Arc): on hover or while dragging, a soft light pill runs the
+   height of the page card, just inside the sidebar's edge, 2px from the page.
+   The hit area (12px) straddles the edge; the pill is 4px wide, at
+   width-6 … width-2, inset 8px top and bottom like the page card. */
+.resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.resizer::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: 6px;
+  width: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.resizer:hover::after, .resizing .resizer::after { opacity: 1; }
+.margin-sidebar.resizing { user-select: none; cursor: col-resize; }
+.margin-sidebar.resizing, .margin-sidebar.resizing * { transition: none !important; }
+
+/* Pull-to-refresh (Safari builds; content/sidebar.js, shared/pull.js): a
+   dark round badge, centered over the page like the loading pill, that
+   slides down with the pull (--pull: 0 … 1.2), its ring filling to the
+   threshold; the arrow flips to point up once letting go will reload
+   ("armed"), then it spins while the page reloads. Follows the fingers
+   without easing while tracking, eases back when let go. */
+.pull {
+  --pull: 0;
+  position: fixed;
+  top: 0;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(28, 28, 30, 0.9);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  opacity: clamp(0, calc((var(--pull) - 0.12) * 3), 1);
+  transform: translateY(calc(-44px + min(var(--pull), 1.2) * 60px)) scale(calc(0.75 + min(var(--pull), 1) * 0.25));
+  transition: opacity 200ms ease, transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.pull.in-frame { left: calc(var(--width, 260px) + (100vw - var(--width, 260px) - 8px) / 2); }
+.pull.tracking { transition: none; }
+.pull.armed:not(.refreshing) { transform: translateY(calc(-44px + min(var(--pull), 1.2) * 60px)) scale(1.06); transition: transform 120ms ease; }
+.pull svg { display: block; overflow: visible; }
+.pull .track, .pull .ring { fill: none; stroke-width: 2.5; }
+.pull .track { stroke: rgba(255, 255, 255, 0.22); }
+.pull .ring {
+  stroke: #fff;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - min(var(--pull), 1) * 100);
+  transform: rotate(-90deg);
+  transform-origin: 14px 14px;
+}
+.pull .arrow {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-origin: 14px 14px;
+  transition: transform 160ms ease;
+}
+.pull.armed .arrow { transform: rotate(180deg); } /* points up: let go to reload */
+.pull.refreshing .arrow { opacity: 0; }
+.pull.refreshing .ring { stroke-dasharray: 28 72; stroke-dashoffset: 0; }
+.pull.refreshing svg { animation: margin-pull-spin 0.8s linear infinite; }
+@keyframes margin-pull-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pull, .pull.armed:not(.refreshing) { transition: opacity 150ms linear; }
+  .pull.refreshing svg { animation: none; }
+  .pull.refreshing .ring { stroke-dasharray: 100; }
+}
+
+/* Swipe back/forward badge (Safari builds; measured from Tirth's Arc
+   recording): a 148px dark circle centered on the page's left edge (back) or
+   right edge (forward), vertically centered, half of it over the frame or
+   sidebar; a bold white arrow in its visible half. It fades in and darkens
+   with the swipe (--swipe: 0 … 1), fully dark once letting go will navigate.
+   Drawn over everything Margin draws, never taking clicks. */
+.swipe {
+  --swipe: 0;
+  position: fixed;
+  top: 50%;
+  left: 0;
+  width: 148px;
+  height: 148px;
+  margin: -74px 0 0 -74px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(38, 38, 38, calc(0.45 + var(--swipe) * 0.4));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease, background-color 120ms linear;
+}
+.swipe.in-frame { left: var(--width, 260px); } /* the page card's left edge */
+.swipe.forward { left: auto; right: 0; margin: -74px -74px 0 0; }
+.swipe.forward.in-frame { right: 8px; } /* the page card's right edge */
+.swipe.active { opacity: clamp(0, calc(var(--swipe) * 5), 1); }
+.swipe.tracking { transition: none; }
+.swipe.armed { background: rgba(38, 38, 38, 0.88); }
+.swipe svg { display: block; overflow: visible; transform: translateX(36px); }
+.swipe.forward svg { transform: translateX(-36px) rotate(180deg); }
+.swipe path { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Pinch-to-zoom readout (Safari builds): "125%" in a small dark pill
+   centered at the top of the page while pinching. */
+.zoom-hud {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(28, 28, 30, 0.9);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.zoom-hud.in-frame { left: calc(var(--width, 260px) + (100vw - var(--width, 260px) - 8px) / 2); }
+.zoom-hud.show { opacity: 1; transition-duration: 80ms; }
+@media (prefers-reduced-motion: reduce) {
+  .swipe, .zoom-hud { transition: opacity 120ms linear; }
+}
+
+/* Page-load indicator (Arc): a small dark pill centered over the page. With
+   "Keep open" it sits in the frame's 8px top strip; otherwise at the top of
+   the page. Fades and widens in, pulses gently while loading, fades out. */
+.loader {
+  position: fixed;
+  top: 2px;
+  left: 50%;
+  width: 48px;
+  height: 4px;
+  transform: translateX(-50%) scaleX(0.85);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+.loader.in-frame { left: calc(var(--width, 260px) + (100vw - var(--width, 260px) - 8px) / 2); }
+.loader.on { opacity: 1; transform: translateX(-50%) scaleX(1); }
+.loader.instant { transition: none; }
+.loader .bar {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: rgba(28, 28, 30, 0.88);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3);
+}
+.loader.on .bar { animation: margin-loader-pulse 1.2s ease-in-out 250ms infinite; }
+@keyframes margin-loader-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .loader { transition: opacity 150ms linear; }
+  .loader.on .bar { animation: none; }
+}

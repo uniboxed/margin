@@ -1,0 +1,10 @@
+{"t":559,"scenario":"margin-ctrl-n","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":592,"scenario":"margin-ctrl-n","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":4034,"scenario":"margin-ctrl-n","src":"runner","ev":"pre-trigger"}
+{"t":4153,"scenario":"margin-ctrl-n","src":"runner","ev":"triggered","key":"ctrl+n"}
+{"t":4153,"scenario":"margin-ctrl-n","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":4217,"scenario":"margin-ctrl-n","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"hidden"}
+{"t":5127,"scenario":"margin-ctrl-n","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"hidden"}
+{"t":7655,"scenario":"margin-ctrl-n","src":"runner","ev":"settled"}
+{"t":8936,"scenario":"margin-ctrl-n","src":"runner","ev":"typed qzx"}
+{"t":9166,"scenario":"margin-ctrl-n","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=4116 below-toolbar(y>=88)=13002"}

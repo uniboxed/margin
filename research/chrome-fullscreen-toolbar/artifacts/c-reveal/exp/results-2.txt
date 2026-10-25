@@ -1,0 +1,56 @@
+--- after action windows-update (2025971698 chrome://newtab/)
+  tabs: 2025971697 about:blank | 2025971698* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after typing "cd" (action windows-update)
+  tabs: 2025971697 about:blank | 2025971698* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after action reactivate (520470121 chrome://newtab/)
+  tabs: 520470120 about:blank | 520470121* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after typing "cd" (action reactivate)
+  tabs: 520470120 about:blank | 520470121* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after action bounce (25806558 chrome://newtab/)
+  tabs: 25806557 about:blank | 25806558* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after typing "cd" (action bounce)
+  tabs: 25806557 about:blank | 25806558* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after action recreate (930654836)
+  tabs: 930654834 about:blank | 930654836* ext:/newtab/newtab.html#launcher
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html#launcher hasFocus=true vis=visible keys="" active=INPUT
+--- after typing "cd" (action recreate)
+  tabs: 930654834 about:blank | 930654836* ext:/newtab/newtab.html#launcher
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html#launcher hasFocus=true vis=visible keys="cd" active=INPUT
+--- after action navigate (1435893885 chrome://newtab/)
+  tabs: 1435893884 about:blank | 1435893885* ext:/newtab/newtab.html?again#launcher
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html?again#launcher hasFocus=true vis=visible keys="" active=INPUT
+--- after typing "cd" (action navigate)
+  tabs: 1435893884 about:blank | 1435893885* ext:/newtab/newtab.html?again#launcher
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html?again#launcher hasFocus=true vis=visible keys="" active=INPUT
+--- after action reload (1854231314 chrome://newtab/)
+  tabs: 1854231313 about:blank | 1854231314* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=INPUT
+--- after typing "cd" (action reload)
+  tabs: 1854231313 about:blank | 1854231314* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=INPUT
+--- after action focus-js (1197251987 chrome://newtab/)
+  tabs: 1197251986 about:blank | 1197251987* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST
+--- after typing "cd" (action focus-js)
+  tabs: 1197251986 about:blank | 1197251987* chrome://newtab/
+  about:blank hasFocus=true vis=visible keys="" active=BODY
+  ext:/newtab/newtab.html hasFocus=true vis=visible keys="" active=MARGIN-PALETTE-HOST

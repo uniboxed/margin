@@ -1,0 +1,18 @@
+{"t":552,"scenario":"mini-margin-omnibox-first","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":565,"scenario":"mini-margin-omnibox-first","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":3656,"scenario":"mini-margin-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":3657,"scenario":"mini-margin-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"l","target":"body"}
+{"t":3657,"scenario":"mini-margin-omnibox-first","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":3657,"scenario":"mini-margin-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4456,"scenario":"mini-margin-omnibox-first","src":"runner","ev":"pre-trigger"}
+{"t":4587,"scenario":"mini-margin-omnibox-first","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4633,"scenario":"mini-margin-omnibox-first","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible"}
+{"t":4642,"scenario":"mini-margin-omnibox-first","src":"ntp","ev":"loaded","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible","v":"margin","tabId":386857813}
+{"t":4646,"scenario":"mini-margin-omnibox-first","src":"sw","ev":"handoff","order":"margin","prev":386857812,"ntp":386857813}
+{"t":4661,"scenario":"mini-margin-omnibox-first","src":"sw","ev":"after activate","winFocused":true}
+{"t":4674,"scenario":"mini-margin-omnibox-first","src":"cs","ev":"palette focus() called","hasFocus":false,"active":"INPUT#mp-input","vis":"visible"}
+{"t":4704,"scenario":"mini-margin-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"input#mp-input","vis":"visible"}
+{"t":5176,"scenario":"mini-margin-omnibox-first","src":"cs","ev":"palette +500ms","hasFocus":false,"active":"INPUT#mp-input","vis":"visible"}
+{"t":8090,"scenario":"mini-margin-omnibox-first","src":"runner","ev":"settled"}
+{"t":9334,"scenario":"mini-margin-omnibox-first","src":"runner","ev":"typed qzx"}
+{"t":9553,"scenario":"mini-margin-omnibox-first","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=6702 below-toolbar(y>=88)=16376"}

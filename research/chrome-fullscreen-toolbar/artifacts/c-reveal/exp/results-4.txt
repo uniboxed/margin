@@ -1,0 +1,18 @@
+extension reloaded; new worker chrome-extension://dmdjknebljaonpeffaopffachjeebbjg/background.js
+--- handoff-reloaded: 2.5s after Ctrl+T
+  tabs: (service worker handle gone)
+  http://127.0.0.1:35655/page1 hasFocus=true vis=visible keys="" active=BODY
+  chrome://new-tab-page/ hasFocus=true vis=visible keys="" active=BODY
+--- after typing "ab"
+  tabs: (service worker handle gone)
+  http://127.0.0.1:35655/page1 hasFocus=true vis=visible keys="" active=BODY
+  chrome://new-tab-page/ hasFocus=true vis=visible keys="" active=BODY
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+worker.evaluate: Target page, context or browser has been closed
+  log: []
+}
+
+Node.js v22.22.0

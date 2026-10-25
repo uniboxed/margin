@@ -1,0 +1,18 @@
+{"t":579,"scenario":"mini-cs-window-focus-omnibox-first","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":588,"scenario":"mini-cs-window-focus-omnibox-first","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":3660,"scenario":"mini-cs-window-focus-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":3660,"scenario":"mini-cs-window-focus-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"l","target":"body"}
+{"t":3661,"scenario":"mini-cs-window-focus-omnibox-first","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":3676,"scenario":"mini-cs-window-focus-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4460,"scenario":"mini-cs-window-focus-omnibox-first","src":"runner","ev":"pre-trigger"}
+{"t":4580,"scenario":"mini-cs-window-focus-omnibox-first","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4622,"scenario":"mini-cs-window-focus-omnibox-first","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible"}
+{"t":4635,"scenario":"mini-cs-window-focus-omnibox-first","src":"ntp","ev":"loaded","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible","v":"cs-window-focus","tabId":763965511}
+{"t":4639,"scenario":"mini-cs-window-focus-omnibox-first","src":"sw","ev":"handoff","order":"cs-window-focus","prev":763965510,"ntp":763965511}
+{"t":4653,"scenario":"mini-cs-window-focus-omnibox-first","src":"sw","ev":"after activate","winFocused":true}
+{"t":4670,"scenario":"mini-cs-window-focus-omnibox-first","src":"cs","ev":"palette focus() called","hasFocus":false,"active":"INPUT#mp-input","vis":"visible"}
+{"t":4677,"scenario":"mini-cs-window-focus-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"input#mp-input","vis":"visible"}
+{"t":5171,"scenario":"mini-cs-window-focus-omnibox-first","src":"cs","ev":"palette +500ms","hasFocus":false,"active":"INPUT#mp-input","vis":"visible"}
+{"t":8081,"scenario":"mini-cs-window-focus-omnibox-first","src":"runner","ev":"settled"}
+{"t":9316,"scenario":"mini-cs-window-focus-omnibox-first","src":"runner","ev":"typed qzx"}
+{"t":9502,"scenario":"mini-cs-window-focus-omnibox-first","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=6702 below-toolbar(y>=88)=16376"}

@@ -1,0 +1,21 @@
+{"t":730,"scenario":"mini-create-ext-tab","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":800,"scenario":"mini-create-ext-tab","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":4154,"scenario":"mini-create-ext-tab","src":"runner","ev":"pre-trigger"}
+{"t":4325,"scenario":"mini-create-ext-tab","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4325,"scenario":"mini-create-ext-tab","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":4337,"scenario":"mini-create-ext-tab","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4348,"scenario":"mini-create-ext-tab","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4409,"scenario":"mini-create-ext-tab","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible"}
+{"t":4441,"scenario":"mini-create-ext-tab","src":"ntp","ev":"loaded","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible","v":"create-ext-tab","tabId":1712522848}
+{"t":4452,"scenario":"mini-create-ext-tab","src":"sw","ev":"handoff","order":"create-ext-tab","prev":1712522847,"ntp":1712522848}
+{"t":4528,"scenario":"mini-create-ext-tab","src":"pal","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html","hl":1,"hasFocus":true,"active":"BODY","vis":"visible"}
+{"t":4529,"scenario":"mini-create-ext-tab","src":"pal","ev":"q.focus() called","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible"}
+{"t":4575,"scenario":"mini-create-ext-tab","src":"pal","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible"}
+{"t":5013,"scenario":"mini-create-ext-tab","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"hidden"}
+{"t":5027,"scenario":"mini-create-ext-tab","src":"pal","ev":"q +500ms","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible"}
+{"t":7826,"scenario":"mini-create-ext-tab","src":"runner","ev":"settled"}
+{"t":8090,"scenario":"mini-create-ext-tab","src":"pal","ev":"keydown","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible","key":"q","target":"INPUT#q"}
+{"t":8090,"scenario":"mini-create-ext-tab","src":"pal","ev":"keydown","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible","key":"z","target":"INPUT#q"}
+{"t":8091,"scenario":"mini-create-ext-tab","src":"pal","ev":"keydown","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/pal.html","hl":1,"hasFocus":true,"active":"INPUT#q","vis":"visible","key":"x","target":"INPUT#q"}
+{"t":9089,"scenario":"mini-create-ext-tab","src":"runner","ev":"typed qzx"}
+{"t":9303,"scenario":"mini-create-ext-tab","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=0 below-toolbar(y>=88)=1771"}

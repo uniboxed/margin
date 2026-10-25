@@ -1,0 +1,18 @@
+{"t":509,"scenario":"mini-winfocus-omnibox-first","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":536,"scenario":"mini-winfocus-omnibox-first","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":3658,"scenario":"mini-winfocus-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":3659,"scenario":"mini-winfocus-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"l","target":"body"}
+{"t":3659,"scenario":"mini-winfocus-omnibox-first","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":3681,"scenario":"mini-winfocus-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4458,"scenario":"mini-winfocus-omnibox-first","src":"runner","ev":"pre-trigger"}
+{"t":4584,"scenario":"mini-winfocus-omnibox-first","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4627,"scenario":"mini-winfocus-omnibox-first","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible"}
+{"t":4636,"scenario":"mini-winfocus-omnibox-first","src":"ntp","ev":"loaded","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible","v":"winfocus","tabId":1663835399}
+{"t":4646,"scenario":"mini-winfocus-omnibox-first","src":"sw","ev":"handoff","order":"winfocus","prev":1663835398,"ntp":1663835399}
+{"t":4657,"scenario":"mini-winfocus-omnibox-first","src":"sw","ev":"after activate","winFocused":true}
+{"t":4677,"scenario":"mini-winfocus-omnibox-first","src":"cs","ev":"palette focus() called","hasFocus":false,"active":"INPUT#mp-input","vis":"visible"}
+{"t":4682,"scenario":"mini-winfocus-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"input#mp-input","vis":"visible"}
+{"t":5181,"scenario":"mini-winfocus-omnibox-first","src":"cs","ev":"palette +500ms","hasFocus":false,"active":"INPUT#mp-input","vis":"visible"}
+{"t":8086,"scenario":"mini-winfocus-omnibox-first","src":"runner","ev":"settled"}
+{"t":9324,"scenario":"mini-winfocus-omnibox-first","src":"runner","ev":"typed qzx"}
+{"t":9530,"scenario":"mini-winfocus-omnibox-first","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=6702 below-toolbar(y>=88)=16376"}

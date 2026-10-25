@@ -1,0 +1,15 @@
+{"t":675,"scenario":"mini-ntp-focus-input","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":720,"scenario":"mini-ntp-focus-input","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":4140,"scenario":"mini-ntp-focus-input","src":"runner","ev":"pre-trigger"}
+{"t":4334,"scenario":"mini-ntp-focus-input","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4334,"scenario":"mini-ntp-focus-input","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":4344,"scenario":"mini-ntp-focus-input","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4392,"scenario":"mini-ntp-focus-input","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible"}
+{"t":4411,"scenario":"mini-ntp-focus-input","src":"ntp","ev":"loaded","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"BODY","vis":"visible","v":"ntp-focus-input","tabId":612450654}
+{"t":4416,"scenario":"mini-ntp-focus-input","src":"ntp","ev":"q.focus() called","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"INPUT#q","vis":"visible"}
+{"t":4441,"scenario":"mini-ntp-focus-input","src":"ntp","ev":"state","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"INPUT#q","vis":"visible"}
+{"t":4717,"scenario":"mini-ntp-focus-input","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"hidden"}
+{"t":4916,"scenario":"mini-ntp-focus-input","src":"ntp","ev":"q +500ms","href":"chrome-extension://hebfnkgpmcchhldjmcappdpgncjdmbce/ntp.html","hl":1,"hasFocus":false,"active":"INPUT#q","vis":"visible"}
+{"t":7834,"scenario":"mini-ntp-focus-input","src":"runner","ev":"settled"}
+{"t":9114,"scenario":"mini-ntp-focus-input","src":"runner","ev":"typed qzx"}
+{"t":9458,"scenario":"mini-ntp-focus-input","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=4116 below-toolbar(y>=88)=13002"}

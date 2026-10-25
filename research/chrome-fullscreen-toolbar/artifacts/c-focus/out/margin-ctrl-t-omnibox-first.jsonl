@@ -1,0 +1,12 @@
+{"t":576,"scenario":"margin-ctrl-t-omnibox-first","src":"page:A","ev":"load","hasFocus":true,"active":"body","vis":"visible"}
+{"t":610,"scenario":"margin-ctrl-t-omnibox-first","src":"page:A","ev":"state","hasFocus":true,"active":"body","vis":"visible"}
+{"t":3661,"scenario":"margin-ctrl-t-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"Control","target":"body"}
+{"t":3662,"scenario":"margin-ctrl-t-omnibox-first","src":"page:A","ev":"keydown","hasFocus":true,"active":"body","vis":"visible","key":"l","target":"body"}
+{"t":3663,"scenario":"margin-ctrl-t-omnibox-first","src":"page:A","ev":"window-blur","hasFocus":false,"active":"body","vis":"visible"}
+{"t":3664,"scenario":"margin-ctrl-t-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"body","vis":"visible"}
+{"t":4461,"scenario":"margin-ctrl-t-omnibox-first","src":"runner","ev":"pre-trigger"}
+{"t":4614,"scenario":"margin-ctrl-t-omnibox-first","src":"runner","ev":"triggered","key":"ctrl+t"}
+{"t":4756,"scenario":"margin-ctrl-t-omnibox-first","src":"page:A","ev":"state","hasFocus":false,"active":"margin-palette-host","vis":"visible"}
+{"t":8116,"scenario":"margin-ctrl-t-omnibox-first","src":"runner","ev":"settled"}
+{"t":9399,"scenario":"margin-ctrl-t-omnibox-first","src":"runner","ev":"typed qzx"}
+{"t":9669,"scenario":"margin-ctrl-t-omnibox-first","src":"runner","ev":"toolbar-diff","result":"toolbar(y<88)=6702 below-toolbar(y>=88)=21316"}

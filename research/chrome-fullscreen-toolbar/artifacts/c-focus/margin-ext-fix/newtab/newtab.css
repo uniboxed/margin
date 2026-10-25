@@ -1,0 +1,111 @@
+:root {
+  --bg: #f6f5fa;
+  --fg: #1d1b26;
+  --muted: #6e6a7c;
+  --card: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --accent: #6c5ce7;
+  --frame: #9c9da1; /* same fixed sidebar color as content/sidebar.css */
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #18171d; --fg: #ecebf2; --muted: #9a97a8; --card: #24232b; --border: rgba(255, 255, 255, 0.08); }
+}
+html, body { height: 100%; margin: 0; }
+/* Same Arc-style layout as the overlay: sidebar and frame are one surface,
+   the launcher is the page card inside it. #page-card lies over the
+   launcher (same grid cell, above the sidebar) and draws the card's shadow,
+   so it also falls on the sidebar's edge. Radius and shadow as in
+   content/sidebar.css. */
+body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 100vh;
+  background: var(--frame);
+  color: var(--fg);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+#sidebar { grid-area: 1 / 1; height: 100vh; }
+#launcher, #page-card { grid-area: 1 / 2; margin: 8px 8px 8px 0; }
+#launcher, #page-card { border-radius: 6.25px; }
+#launcher {
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--bg);
+}
+#page-card {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+#launcher {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: 18vh 32px 48px;
+  box-sizing: border-box;
+}
+#launcher > * { width: min(640px, 100%); }
+#query {
+  box-sizing: border-box;
+  width: 100%;
+  height: 52px;
+  padding: 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 17px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  outline: none;
+}
+#query:focus { border-color: var(--accent); }
+h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+ul { list-style: none; margin: 0; padding: 0; }
+#pin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px 12px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.tile:hover { border-color: var(--accent); }
+.tile .avatar { width: 32px; height: 32px; border-radius: 8px; object-fit: contain; }
+.tile .avatar.letter { display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; font-size: 16px; }
+.tile .title { width: 100%; text-align: center; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#archive-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+#archive-list li:hover { background: var(--card); }
+#archive-list .avatar { width: 16px; height: 16px; border-radius: 4px; }
+#archive-list .avatar.letter { display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 600; }
+#archive-list .title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#archive-list .when { color: var(--muted); font-size: 12px; }
+#settings { color: var(--muted); font-size: 13px; }
+#settings summary { cursor: pointer; }
+#settings label { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
+#settings select, #settings input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+#settings input[type="checkbox"] { flex: none; width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
+#settings .help { margin: 6px 0 0; font-size: 12px; }
+.shortcut-input { width: 120px; text-align: center; cursor: pointer; }
+.shortcut-input.recording { border-color: var(--accent); }
+#shortcuts { border: 0; margin: 10px 0 0; padding: 0; min-width: 0; }
+#shortcuts legend { padding: 0; margin-bottom: 2px; }
+#shortcuts-reset { margin-top: 8px; font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+#shortcut-help.error { color: #d63031; }
+#archive-hours { width: 72px; }
+#archive-more { margin-top: 6px; padding: 4px 10px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+#archive-more:hover { background: var(--card); color: var(--fg); }
