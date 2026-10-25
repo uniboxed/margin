@@ -359,6 +359,20 @@
 
   // ---- the page goes into the card ---------------------------------------------
 
+  const api = globalThis.browser ?? globalThis.chrome;
+  const closedRoot = (el) => {
+    try {
+      return api?.dom?.openOrClosedShadowRoot?.(el) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  function reportViolation(event, where = 'the page') {
+    log(`the page's CSP blocked ${event.blockedURI || 'an inline script'} (${event.effectiveDirective}) in ${where},`,
+      `from ${event.sourceFile || 'the page'}:${event.lineNumber}`, event.sample ? `"${event.sample}"` : '');
+  }
+  document.addEventListener('securitypolicyviolation', (event) => reportViolation(event, "Margin's shell"), true);
+
   const frameLoaded = new Promise((resolve) => frame.addEventListener('load', resolve, { once: true }));
   let transplanted = false;
 
@@ -414,17 +428,20 @@
     const doc = frame.contentDocument;
     if (!win || !doc) return fail('no card document');
     let html;
+    const roots = [];
     try {
       for (const [el, src] of parked) el.setAttribute('src', src);
       tieTableForms(old);
-      // Open shadow roots too (server-rendered components), not just
-      // serializable ones; closed ones can't be reached.
-      const roots = [];
+      // Every declarative shadow root (server-rendered components), not just
+      // serializable ones: open ones directly, closed ones through the
+      // extension API (Safari 26+). A root left out would leave its host's
+      // content unstyled in the card.
       const walk = (node) => {
         for (const el of node.querySelectorAll('*')) {
-          if (el.shadowRoot) {
-            roots.push(el.shadowRoot);
-            walk(el.shadowRoot);
+          const root = el.shadowRoot ?? closedRoot(el);
+          if (root) {
+            roots.push(root);
+            walk(root);
           }
         }
       };
@@ -444,6 +461,9 @@
       // write() (whose inline scripts may already navigate or listen).
       card = win;
       routeCard(win);
+      // What the page's CSP blocks in the card, with where it came from, so a
+      // console error can be told apart from Margin's own doing.
+      doc.addEventListener('securitypolicyviolation', (event) => reportViolation(event), true);
       watchPrintKey(win);
       Margin.content?.cardReady?.(win, frame);
       doc.write(html);
@@ -492,7 +512,8 @@
       if (doc.readyState === 'complete') restore();
       else win.addEventListener('load', () => setTimeout(restore), { once: true });
     }
-    log(`page in the card after ${Math.round(performance.now())}ms (${html.length} characters)`);
+    const closed = roots.filter((r) => r.mode === 'closed').length;
+    log(`page in the card after ${Math.round(performance.now())}ms (${html.length} characters, ${roots.length} shadow roots, ${closed} closed)`);
   }
 
   document.addEventListener('DOMContentLoaded', transplant, { once: true });
