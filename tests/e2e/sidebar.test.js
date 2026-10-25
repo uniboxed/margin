@@ -63,11 +63,24 @@ test('lists tabs; clicking a row activates it; the close button closes it', asyn
   await b.close();
 });
 
+// Right-click a row (in the closed shadow root) and return the menu's items.
+async function openMenu(page, selector, text) {
+  return evalInShadow(page, 'margin-sidebar-host', function (sel, txt) {
+    const row = [...this.querySelectorAll(sel)].find((n) => n.textContent.includes(txt));
+    const r = row.getBoundingClientRect();
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: r.left + 20, clientY: r.top + 10 }));
+    const menu = this.querySelector('.tab-menu');
+    return menu.hidden ? null : [...menu.querySelectorAll('.menu-item')].map((b) => b.textContent);
+  }, selector, text);
+}
+const menuOpen = (page) => evalInShadow(page, 'margin-sidebar-host', function () { return !this.querySelector('.tab-menu').hidden; });
+
 test('pin a tab; clicking the pin focuses the existing tab, or opens it if closed', async () => {
   const p = await openPage('pinme');
   const other = await openPage('other');
   await waitFor(async () => (await sidebarSnapshot(other)).tabs.includes('pinme'));
-  await clickInShadow(other, '.tab .pin-tab', 'pinme');
+  await openMenu(other, '.tab', 'pinme');
+  await clickInShadow(other, '.tab-menu .menu-item', 'Pin Tab');
   await waitFor(async () => (await sidebarSnapshot(other)).pins.includes('pinme'));
   assert.ok(!(await sidebarSnapshot(other)).tabs.includes('pinme'), 'pinned tab shows under pins, not tabs');
 
@@ -321,4 +334,45 @@ test('exactly one highlighted tab, the current one, after opening and switching 
     await waitFor(async () => JSON.stringify(await highlighted(page)) === JSON.stringify([`hl-${['one', 'two', 'three'][i]}`]));
   }
   for (const p of pages) await p.close();
+});
+
+test('right-click menu on tabs: pin, move to another space, close; no hover pin button', async () => {
+  const nt = await ctx.context.newPage();
+  await nt.goto(launcherUrl(ctx));
+  const send = (message) => nt.evaluate((m) => chrome.runtime.sendMessage(m).then((r) => r?.result), message);
+  const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
+  const { spaceId: work } = await send({ type: 'createSpace', name: 'Menu test', emoji: '🧪', color: '#e17055' }); // windowId omitted: stays on the current space
+  const a = await openPage('menu-a');
+  const b = await openPage('menu-b');
+  await b.bringToFront();
+  await waitFor(async () => { const { tabs } = await sidebarSnapshot(b); return tabs.includes('menu-a') && tabs.includes('menu-b'); });
+  assert.equal(await evalInShadow(b, 'margin-sidebar-host', function () { return this.querySelectorAll('.pin-tab').length; }), 0, 'no hover pin button');
+
+  const items = await openMenu(b, '.tab', 'menu-a');
+  assert.equal(items[0], 'Pin Tab');
+  assert.ok(items.includes('Move to 🧪 Menu test'), JSON.stringify(items));
+  assert.equal(items.at(-1), 'Close Tab');
+  await evalInShadow(b, 'margin-sidebar-host', function () {
+    this.querySelector('.tab-menu .menu-item').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
+  });
+  assert.equal(await menuOpen(b), false, 'Escape closes it');
+  await openMenu(b, '.tab', 'menu-a');
+  await b.mouse.click(700, 300);
+  assert.equal(await menuOpen(b), false, 'a click on the page closes it');
+
+  await openMenu(b, '.tab', 'menu-a');
+  await clickInShadow(b, '.tab-menu .menu-item', 'Move to 🧪 Menu test');
+  await waitFor(async () => !(await sidebarSnapshot(b)).tabs.includes('menu-a'));
+  const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'menu-a').id;
+  assert.equal(await ctx.worker.evaluate((id) => chrome.storage.local.get('tabSpace').then((s) => s.tabSpace[id]), tabId), work);
+
+  await openMenu(b, '.tab', 'menu-b');
+  const closed = b.waitForEvent('close');
+  await clickInShadow(b, '.tab-menu .menu-item', 'Close Tab').catch(() => {}); // the tab may close before the helper detaches
+  await closed;
+
+  await a.close();
+  await send({ type: 'deleteSpace', spaceId: work });
+  assert.ok(windowId != null);
+  await nt.close();
 });

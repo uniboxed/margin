@@ -204,7 +204,6 @@
           },
           avatar(doc, { ...t, favIconUrl: Margin.view.iconFor(state, t) }),
           el(doc, 'span', { class: 'title', text: t.title || t.url || 'New Tab' }),
-          el(doc, 'button', { class: 'icon pin-tab', 'data-action': 'pin-tab', 'data-tab-id': String(t.id), title: 'Pin', text: '📌' }),
           el(doc, 'button', { class: 'icon close', 'data-action': 'close', 'data-tab-id': String(t.id), title: 'Close tab', text: '×' })),
         ),
       );
@@ -223,12 +222,12 @@
       const target = event.target.closest('[data-action]');
       if (!target || !root.contains(target)) return;
       event.stopPropagation();
+      if (event.ctrlKey && target.closest('.tab, .pin')) return; // ⌃-click is the Mac's right-click: the menu
       const tabId = Number(target.dataset.tabId);
       const { pinId, spaceId } = target.dataset;
       switch (target.dataset.action) {
         case 'activate': return send('activateTab', { tabId });
         case 'close': return send('closeTab', { tabId });
-        case 'pin-tab': return send('pinTab', { tabId });
         case 'open-pin': return send('openPin', { pinId, windowId });
         case 'unpin': return send('unpin', { pinId });
         case 'set-space': return send('setSpace', { windowId, spaceId });
@@ -310,6 +309,88 @@
       if (chip) openEditor(chip.dataset.spaceId);
     });
 
+    // ---- right-click menu on tabs and pins -----------------------------------
+    // Replaces the hover pin button: Pin/Unpin, move to another space, close.
+
+    const menu = el(doc, 'div', { class: 'tab-menu', role: 'menu', tabindex: '-1', hidden: true });
+    root.append(menu);
+    let menuFor = null; // { tabId } | { pinId }
+    const menuItem = (label, action, data = {}) =>
+      el(doc, 'button', { class: 'menu-item', role: 'menuitem', 'data-menu': action, ...data, text: label });
+    function openMenu(row, x, y) {
+      const tabId = row.dataset.tabId ? Number(row.dataset.tabId) : null;
+      const pin = row.dataset.pinId ? state?.pins.find((p) => p.id === row.dataset.pinId) : null;
+      if (tabId == null && !pin) return;
+      const items = [];
+      if (pin) {
+        menuFor = { pinId: pin.id };
+        items.push(menuItem('Unpin', 'unpin'));
+        const openTab = Margin.view.sidebar(state, windowId, currentTabId).pins.find((p) => p.id === pin.id)?.tabId;
+        if (openTab != null) items.push(el(doc, 'div', { class: 'menu-separator', role: 'separator' }), menuItem('Close Tab', 'close', { 'data-tab-id': String(openTab) }));
+      } else {
+        menuFor = { tabId };
+        items.push(menuItem('Pin Tab', 'pin'));
+        const spaceId = state?.tabSpace?.[tabId];
+        const others = (state?.spaces ?? []).filter((sp) => sp.id !== spaceId);
+        if (others.length) {
+          items.push(el(doc, 'div', { class: 'menu-separator', role: 'separator' }));
+          for (const sp of others) items.push(menuItem(`Move to ${sp.emoji} ${sp.name}`, 'move', { 'data-space-id': sp.id }));
+        }
+        items.push(el(doc, 'div', { class: 'menu-separator', role: 'separator' }), menuItem('Close Tab', 'close', { 'data-tab-id': String(tabId) }));
+      }
+      menu.replaceChildren(...items);
+      menu.hidden = false;
+      // Place at the pointer, kept inside the sidebar.
+      const box = root.getBoundingClientRect();
+      const left = Math.max(4, Math.min(x - box.left, box.width - menu.offsetWidth - 4));
+      const top = Math.max(4, Math.min(y - box.top, box.height - menu.offsetHeight - 4));
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      menu.focus({ preventScroll: true }); // keys work; nothing highlighted until hover or ↓/↑
+    }
+    function closeMenu() {
+      if (menu.hidden) return;
+      menu.hidden = true;
+      menuFor = null;
+    }
+    root.addEventListener('contextmenu', (event) => {
+      const row = event.target.closest('.tab, .pin');
+      if (!row || !root.contains(row)) return closeMenu();
+      event.preventDefault();
+      event.stopPropagation();
+      openMenu(row, event.clientX, event.clientY);
+    });
+    menu.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const item = event.target.closest('.menu-item');
+      if (!item || !menuFor) return;
+      const target = menuFor;
+      closeMenu();
+      switch (item.dataset.menu) {
+        case 'pin': return send('pinTab', { tabId: target.tabId });
+        case 'unpin': return send('unpin', { pinId: target.pinId });
+        case 'move': return send('moveTabToSpace', { tabId: target.tabId, spaceId: item.dataset.spaceId });
+        case 'close': return send('closeTab', { tabId: Number(item.dataset.tabId) });
+      }
+    });
+    // Hover and ↓/↑ move one highlight (the focused item), like macOS menus.
+    menu.addEventListener('pointerover', (event) => event.target.closest('.menu-item')?.focus({ preventScroll: true }));
+    menu.addEventListener('pointerleave', () => menu.focus({ preventScroll: true }));
+    menu.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') return closeMenu();
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      event.preventDefault();
+      const items = [...menu.querySelectorAll('.menu-item')];
+      const at = items.indexOf(menu.getRootNode().activeElement); // shadow root or document
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      items[(at + step + items.length) % items.length]?.focus();
+    });
+    // Any press outside the menu (in the sidebar or on the page) closes it.
+    doc.addEventListener('pointerdown', (event) => {
+      if (!menu.hidden && !event.composedPath().includes(menu)) closeMenu();
+    }, true);
+    doc.defaultView?.addEventListener('blur', closeMenu);
+
     // Keep our keystrokes away from the page's own shortcuts.
     for (const type of ['keydown', 'keyup', 'keypress']) root.addEventListener(type, (e) => e.stopPropagation());
 
@@ -348,10 +429,12 @@
     return {
       el: root,
       // While editing or dragging, the overlay shouldn't auto-hide.
-      isBusy: () => editing != null || draggingTabId != null || resizing != null,
+      isBusy: () => editing != null || draggingTabId != null || resizing != null || !menu.hidden,
       width: () => (resizing ? resizing.width : Margin.view.sidebarWidth(state)),
       update(nextState, context) {
         state = nextState;
+        if (menuFor?.tabId != null && !state.tabs?.[menuFor.tabId]) closeMenu(); // its tab is gone
+        if (menuFor?.pinId && !state.pins?.some((p) => p.id === menuFor.pinId)) closeMenu();
         if (context?.windowId != null) windowId = context.windowId;
         if (context?.tabId != null) currentTabId = context.tabId;
         render();

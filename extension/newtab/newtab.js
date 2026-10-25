@@ -64,8 +64,16 @@ const engine = $('engine');
 for (const { name, url } of Margin.search.SEARCH_ENGINES) engine.append(el(document, 'option', { value: url, text: name }));
 engine.addEventListener('change', () => send('updateSettings', { patch: { searchEngine: engine.value } }));
 
-// ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space (the sidebar is
-// always visible here, so no peek).
+// Safari's trackpad swipe/pinch (Safari builds only).
+const blockGestures = $('block-gestures');
+if (Margin.platform?.blockGestures) {
+  $('gestures-setting').hidden = false;
+  Margin.gestures.installGestureGuard({ getSettings: () => state?.settings });
+  blockGestures.addEventListener('change', () => send('updateSettings', { patch: { blockGestures: blockGestures.checked } }));
+}
+
+// Navigation shortcuts from Settings (next/previous tab and space; the
+// sidebar is always visible here, so no peek).
 Margin.shortcuts.installNavigation({ send, getSettings: () => (recording ? null : state?.settings) });
 
 // ---- palette ----------------------------------------------------------------
@@ -173,6 +181,7 @@ function renderLauncher() {
     engine.append(el(document, 'option', { value: state.settings.searchEngine, text: 'Custom' }));
   }
   engine.value = state.settings.searchEngine;
+  blockGestures.checked = state.settings.blockGestures !== false;
   if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
   if (!recording) {
     const values = currentShortcuts();

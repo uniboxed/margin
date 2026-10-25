@@ -109,6 +109,8 @@
   // ---- visibility ---------------------------------------------------------
 
   let state = null;
+  // Safari: keep trackpad swipes and pinches from leaving the page (setting).
+  if (Margin.platform?.blockGestures) Margin.gestures.installGestureGuard({ getSettings: () => state?.settings });
   let reason = null; // 'hover' | 'toggle' | null
   let hideTimer = null;
 

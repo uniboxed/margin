@@ -11,6 +11,7 @@
   <script src="../shared/view.js"></script>
   <script src="../shared/search.js"></script>
   <script src="../shared/shortcuts.js"></script>
+  <script src="../shared/gestures.js"></script>
   <script src="../content/styles.js"></script>
   <script src="../shared/ui.js"></script>
   <script src="../content/palette.js"></script>
@@ -38,6 +39,9 @@
       </label>
       <label>Archive tabs not used for (hours, 0 = never)
         <input id="archive-hours" type="number" min="0" max="720" step="1">
+      </label>
+      <label id="gestures-setting" hidden>Block Safari's swipe back/forward and pinch for all tabs
+        <input id="block-gestures" type="checkbox">
       </label>
       <fieldset id="shortcuts" aria-describedby="shortcut-help">
         <legend>Keyboard shortcuts</legend>

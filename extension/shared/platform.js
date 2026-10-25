@@ -12,6 +12,9 @@
       name: 'safari',
       // Safari gives extensions no tab.favIconUrl: fetch each site's own icon.
       fetchFavicons: true,
+      // Trackpad swipe back/forward and pinch-for-all-tabs can be blocked
+      // (shared/gestures.js; setting `blockGestures`).
+      blockGestures: true,
       // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
       // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
       // both builds: verified working in Safari, while ⌥⌘↓/↑ as a manifest
@@ -28,6 +31,9 @@
       name: 'chrome',
       // Chrome provides tab.favIconUrl: no extra requests.
       fetchFavicons: false,
+      // Not needed (and a page-wide non-passive wheel listener costs scroll
+      // performance in Chrome).
+      blockGestures: false,
       // Same as the manifest commands (⌃⌘ + arrows; Chrome refuses ⌘⌥ there
       // and then won't load the extension at all).
       navigation: {

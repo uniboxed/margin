@@ -35,6 +35,7 @@
         "shared/view.js",
         "shared/search.js",
         "shared/shortcuts.js",
+        "shared/gestures.js",
         "content/styles.js",
         "shared/ui.js",
         "content/sidebar.js",

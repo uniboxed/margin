@@ -72,7 +72,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Move the cursor right, past the sidebar: it hides after about 300ms. Moving back in before that keeps it open.
 - [ ] Sites with fixed headers or sticky elements (e.g. github.com, nytimes.com) look unchanged while the sidebar is open.
 - [ ] Tab rows show favicon (or letter), title, and close button on hover. Clicking a row switches to that tab, clicking × closes it.
-- [ ] 📌 on a row pins it; the pin appears above the divider. Clicking the pin focuses its tab; after closing the tab, clicking the pin reopens it.
+- [ ] Right-click (or ⌃-click) a tab: a menu with Pin Tab, Move to <each other space>, Close Tab. No 📌 on hover. Pin Tab pins it; the pin appears above the divider. Right-click a pin: Unpin (and Close Tab if it's open). Esc, or a click anywhere else, closes the menu; ↓/↑ and Return work in it. Clicking the pin focuses its tab; after closing the tab, clicking the pin reopens it.
 - [ ] Space chips at the top switch which tabs are listed (this window only).
 - [ ] "+ New tab" opens Margin's new tab page.
 - [ ] The sidebar is the same neutral gray (like Arc's) on every site, in every space, and in both Light and Dark Mode. Text is easy to read.
@@ -86,7 +86,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Typing `example.com` + Return opens https://example.com in the same tab.
 - [ ] Typing `hello world` + Return searches DuckDuckGo.
 - [ ] Settings → Search engine → Google, then search again: Google is used.
-- [ ] Pin a page (📌 in the sidebar). New tab shows it as a tile. Clicking the tile focuses the open tab, or opens the page in this tab if it's closed.
+- [ ] Pin a page (right-click its tab in the sidebar → Pin Tab). New tab shows it as a tile. Clicking the tile focuses the open tab, or opens the page in this tab if it's closed.
 
 ## M4 spaces and pins
 
@@ -188,6 +188,14 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] ⌃⌘→ / ⌃⌘← switch spaces (the sidebar peeks open).
 - [ ] They also work while the address bar has focus and on pages where Margin has no sidebar (e.g. a PDF). That's the extension-command path: if they don't work there but do on normal pages, Safari isn't delivering the commands, so note it.
 - [ ] Holding ⌥⌘↓ repeats (page path) on normal pages.
+
+## Trackpad gestures (Safari)
+
+- [ ] On a normal page, two-finger swipe left/right does **not** go back/forward. Vertical scrolling is unaffected, and so are things that scroll sideways (a carousel, a wide table, a horizontally scrolling page): they scroll.
+- [ ] Pinching in (two fingers together) at normal zoom does **not** open the all-tabs overview. Pinching out still zooms the page in, and pinching back in zooms it back out.
+- [ ] Same on the new-tab page.
+- [ ] New tab → Settings → "Block Safari's swipe back/forward and pinch for all tabs" off: both gestures work again on pages you then use.
+- [ ] Known gaps: over an embedded frame (e.g. a YouTube video inside another page) the gestures still work; a swipe that starts mostly up/down and turns sideways can still go back.
 
 ## Page card (Keep open)
 
