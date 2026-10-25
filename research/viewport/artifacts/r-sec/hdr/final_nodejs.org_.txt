@@ -1,0 +1,33 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/2 307 
+date: Sun, 25 Oct 2026 08:36:46 GMT
+content-type: text/plain
+location: /en
+cf-ray: a4ffe53ddf5e208d-IAD
+cf-cache-status: DYNAMIC
+cache-control: public, max-age=0, must-revalidate
+server: cloudflare
+set-cookie: NEXT_LOCALE=en; Path=/; SameSite=lax
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-content-type-options: nosniff
+x-vercel-id: iad1::9dpkd-1792917406402-05826175f9fe
+
+HTTP/2 200 
+date: Sun, 25 Oct 2026 08:36:46 GMT
+content-type: text/html; charset=utf-8
+cf-ray: a4ffe53e6fb3208d-IAD
+cf-cache-status: DYNAMIC
+age: 148
+cache-control: public, max-age=0, must-revalidate
+server: cloudflare
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, accept-encoding
+x-content-type-options: nosniff
+x-matched-path: /[locale]
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+x-powered-by: Next.js
+x-vercel-cache: HIT
+x-vercel-id: iad1::kix1::r7jtk-1792917406492-0d74c69222fb
+

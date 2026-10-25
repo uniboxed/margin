@@ -1,0 +1,4 @@
+S1_shell_sameOrigin filter= None {'plain': 'LOADED(inline-script-ran)', 'same': 'LOADED(inline-script-ran)', 'deny': 'BLOCKED', 'fanone': 'BLOCKED', 'faself': 'LOADED(inline-script-blocked)'}
+S2_crossSiteAttacker filter= None {'plain': 'LOADED(inline-script-ran)', 'same': 'BLOCKED', 'deny': 'BLOCKED', 'fanone': 'BLOCKED', 'faself': 'BLOCKED'}
+S3_sameSiteOtherOrigin filter= None {'plain': 'LOADED(inline-script-ran)', 'same': 'BLOCKED', 'deny': 'BLOCKED', 'fanone': 'BLOCKED', 'faself': 'BLOCKED'}
+S4_3pFrameInsideVictimTop filter= None {'plain': 'LOADED(inline-script-ran)', 'same': 'BLOCKED', 'deny': 'BLOCKED', 'fanone': 'BLOCKED', 'faself': 'BLOCKED'}

@@ -1,0 +1,129 @@
+<!doctype html><html><head><meta charset="utf-8"><title>adapter2</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #36c; }
+  #logo { position: fixed; top: 50px; left: 12px; width: 80px; height: 20px; background: #c36; }
+  #modal { position: fixed; top: 100px; left: 50%; width: 300px; transform: translateX(-50%); height: 50px; background: #6c3; }
+  #backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.1); pointer-events: none; }
+  #pct { position: fixed; top: 200px; left: 10%; width: 50%; height: 20px; background: #cc3; }
+  #widget { position: fixed; right: 10px; bottom: 10px; width: 60px; height: 30px; background: #3a3; }
+  #fixedvw { position: fixed; top: 300px; left: 0; width: 100vw; height: 20px; background: #3cc; }
+  #late { top: 400px; left: 0; right: 0; height: 20px; background: #c93; }
+  .fixed { position: fixed; }
+  .container { max-width: 500px; margin: 450px auto 0; }
+  #wide { width: 100vw; height: 30px; background: #c63; }
+  #bleed { width: 100vw; margin-left: calc(50% - 50vw); height: 30px; background: #6c3; }
+  #bleedchild { width: 100%; height: 10px; background: #000; }
+  #bleed2 { width: 100vw; position: relative; left: 50%; transform: translateX(-50%); height: 30px; background: #63c; }
+  #normal { height: 30px; background: #999; }
+  .spacer { height: 3000px; }
+</style></head><body>
+<div id="header"></div><div id="logo"></div><div id="modal"></div><div id="backdrop"></div><div id="pct"></div>
+<div id="widget"></div><div id="fixedvw"></div><div id="late"></div>
+<div class="container"><div id="wide"></div><div id="bleed"><div id="bleedchild"></div></div><div id="bleed2"></div><div id="normal"></div></div>
+<div class="spacer"></div>
+<script>
+  const W = 260, R = 8;
+  const push = new CSSStyleSheet();
+  push.replaceSync(`html { margin-left: ${W}px; margin-right: ${R}px; width: auto; overflow-x: hidden; }`);
+  const fix = new CSSStyleSheet();
+  document.adoptedStyleSheets = [push, fix];
+  const hasTypedOM = typeof Element.prototype.computedStyleMap === 'function';
+
+  const card = () => ({ left: W, width: innerWidth - W - R });
+  const rules = new Map();
+  const ids = new WeakMap();
+  let next = 0;
+  function mark(el, decl) {
+    let id = ids.get(el);
+    if (id == null) { id = ++next; ids.set(el, id); }
+    rules.set(id, `[data-mfx="${id}"] { ${decl.map((d) => d + ' !important').join('; ')} }`);
+    el.setAttribute('data-mfx', id);
+  }
+  function unmark(el) {
+    const id = ids.get(el);
+    if (id != null && rules.delete(id)) el.removeAttribute('data-mfx');
+  }
+
+  // Fixed elements: re-resolve insets/width against the card.
+  const keyword = (v) => (v && v.constructor.name === 'CSSKeywordValue' ? v.value : null);
+  function fixedDecl(el, cs) {
+    const vw = innerWidth, c = card();
+    let left, right, width;
+    if (hasTypedOM) {
+      const m = el.computedStyleMap();
+      left = m.get('left'); right = m.get('right'); width = m.get('width');
+    }
+    const auto = (v) => keyword(v) === 'auto';
+    const scaled = (v, used) => (v?.unit === 'percent' ? (v.value / 100) * c.width : used);
+    const decl = [];
+    if (auto(left) && auto(right)) return decl;
+    if (!auto(left)) decl.push(`left: ${c.left + scaled(left, parseFloat(cs.left))}px`);
+    if (!auto(right)) decl.push(`right: ${R + scaled(right, parseFloat(cs.right))}px`);
+    if (width?.unit === 'percent') decl.push(`width: ${(width.value / 100) * c.width}px`);
+    else if (Math.abs(parseFloat(cs.width) + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) - vw) < 1 && !auto(width)) decl.push(`width: ${c.width}px`, 'box-sizing: border-box');
+    return decl;
+  }
+
+  // In-flow full-bleed (100vw) elements: fit them to the card.
+  // Sized first; its left edge is aligned in a second pass (alignBleeds),
+  // since centring tricks (left: 50% + translate(-50%)) depend on the width.
+  const bleeds = new Set();
+  function bleedDecl(el) {
+    const r = el.getBoundingClientRect();
+    if (Math.abs(r.width - innerWidth) >= 1) return [];
+    bleeds.add(el);
+    return [`width: ${card().width}px`, 'box-sizing: border-box'];
+  }
+  function alignBleeds() {
+    for (const el of bleeds) {
+      const shift = card().left - el.getBoundingClientRect().left;
+      if (Math.abs(shift) < 0.5) continue;
+      const margin = parseFloat(getComputedStyle(el).marginLeft) + shift;
+      mark(el, [`width: ${card().width}px`, 'box-sizing: border-box', `margin-left: ${margin}px`]);
+    }
+  }
+
+  // Returns true when the element was fitted as full-bleed: its descendants
+  // then follow it and must not be shifted again.
+  function adapt(el) {
+    unmark(el);
+    bleeds.delete(el);
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none') return false;
+    const fixed = cs.position === 'fixed';
+    const decl = fixed ? fixedDecl(el, cs) : bleedDecl(el);
+    if (decl.length) mark(el, decl);
+    return !fixed && decl.length > 0;
+  }
+  function adaptAll(root = document.body) {
+    const t = performance.now();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    let el = walker.nextNode();
+    while (el) {
+      if (adapt(el)) {
+        // skip the subtree
+        while (!walker.nextSibling()) { if (!walker.parentNode() || walker.currentNode === root) { el = null; break; } }
+        if (el) el = walker.currentNode;
+      } else el = walker.nextNode();
+    }
+    fix.replaceSync([...rules.values()].join('\n'));
+    alignBleeds();
+    fix.replaceSync([...rules.values()].join('\n'));
+    return performance.now() - t;
+  }
+  const ms = adaptAll();
+
+  const measure = () => Object.fromEntries([...document.querySelectorAll('div[id]')].map((e) => {
+    const r = e.getBoundingClientRect(); return [e.id, [Math.round(r.left), Math.round(r.right)]];
+  }));
+  window.measure = measure;
+  window.late = () => { document.getElementById('late').className = 'fixed'; adaptAll(); };
+  setTimeout(() => {
+    const before = measure();
+    scrollTo(0, 500); late();
+    setTimeout(() => {
+      document.title = JSON.stringify({ hasTypedOM, ms: +ms.toFixed(1), before, after: measure(), scrollY });
+    }, 100);
+  }, 50);
+</script></body></html>

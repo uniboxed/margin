@@ -1,0 +1,84 @@
+=== http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0
+final: http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "transitionType": "typed", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 5, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 5, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "transitionType": "auto_subframe", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": true}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 5, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "cs-top-navigate", "type": "replace", "cancelable": true, "dest": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "prevented": true, "userInitiated": false, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": true
+=== http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0
+final: http://localhost:8702/site?id=cr-cs2-redir&role=xo
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "transitionType": "typed", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 7, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 7, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "transitionType": "auto_subframe", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 7, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 7, "parentFrameId": 0, "url": "http://localhost:8701/redir?id=cr-cs2-redir&to=http%3A%2F%2Flocalhost%3A8702%2Fsite%3Fid%3Dcr-cs2-redir%26role%3Dxo", "documentLifecycle": "active"}
+   {"ev": "server-redirect", "to": "http://localhost:8702/site?id=cr-cs2-redir&role=xo"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redir&role=xo", "dest": "iframe", "host": "localhost:8702"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 7, "parentFrameId": 0, "url": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "transitionType": "manual_subframe", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8702", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "isTop": false}
+   {"ev": "cs-xo-frame-escape", "url": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "world": "cs", "at": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "isTop": false}
+   {"ev": "cs-top-message", "url": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "origin": "http://localhost:8702", "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "wn-onErrorOccurred", "world": "bg", "frameId": 7, "parentFrameId": 0, "url": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "error": "net::ERR_ABORTED", "documentLifecycle": "active"}
+   {"ev": "cs-top-navigate", "type": "push", "cancelable": true, "dest": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "prevented": false, "userInitiated": false, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "documentLifecycle": "active"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redir&role=xo", "dest": "document", "host": "localhost:8702"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "transitionType": "link", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8702", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "isTop": true}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8702/site?id=cr-cs2-redir&role=xo", "documentLifecycle": "active"}
+=== http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0
+final: http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "transitionType": "typed", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 9, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 9, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "transitionType": "auto_subframe", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": true}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 9, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 9, "parentFrameId": 0, "url": "http://localhost:8701/redir?id=cr-cs2-redirxfo&to=http%3A%2F%2Flocalhost%3A8702%2Fsite%3Fid%3Dcr-cs2-redirxfo%26role%3Dxo%26xfo%3DDENY", "documentLifecycle": "active"}
+   {"ev": "server-redirect", "to": "http://localhost:8702/site?id=cr-cs2-redirxfo&role=xo&xfo=DENY"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redirxfo&role=xo&xfo=DENY", "dest": "iframe", "host": "localhost:8702"}
+   {"ev": "wn-onErrorOccurred", "world": "bg", "frameId": 9, "parentFrameId": 0, "url": "http://localhost:8702/site?id=cr-cs2-redirxfo&role=xo&xfo=DENY", "error": "net::ERR_BLOCKED_BY_RESPONSE", "documentLifecycle": "active"}
+=== http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0
+final: http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "transitionType": "typed", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 11, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 11, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "transitionType": "auto_subframe", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 11, "parentFrameId": 0, "url": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "documentLifecycle": "active"}
+   {"ev": "server-redirect", "to": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 11, "parentFrameId": 0, "url": "http://localhost:8701/redir?id=cr-cs2-redirxs&to=http%3A%2F%2F127.0.0.1%3A8702%2Fsite%3Fid%3Dcr-cs2-redirxs%26role%3Dxs", "documentLifecycle": "active"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redirxs&role=xs", "dest": "iframe", "host": "127.0.0.1:8702"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 11, "parentFrameId": 0, "url": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "transitionType": "manual_subframe", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://127.0.0.1:8702", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "isTop": false}
+   {"ev": "cs-xo-frame-escape", "url": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "world": "cs", "at": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "isTop": false}
+   {"ev": "cs-top-message", "url": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "origin": "http://127.0.0.1:8702", "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "cs-top-navigate", "type": "push", "cancelable": true, "dest": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "prevented": false, "userInitiated": false, "world": "cs", "at": "http://localhost:8701/site?id=cr-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "wn-onErrorOccurred", "world": "bg", "frameId": 11, "parentFrameId": 0, "url": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "error": "net::ERR_ABORTED", "documentLifecycle": "active"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=cr-cs2-redirxs&role=xs", "dest": "document", "host": "127.0.0.1:8702"}
+   {"ev": "wn-onBeforeNavigate", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "documentLifecycle": "active"}
+   {"ev": "wn-onCommitted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "transitionType": "link", "documentLifecycle": "active"}
+   {"ev": "cs-start", "origin": "http://127.0.0.1:8702", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": true, "world": "cs", "at": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "isTop": true}
+   {"ev": "wn-onCompleted", "world": "bg", "frameId": 0, "parentFrameId": -1, "url": "http://127.0.0.1:8702/site?id=cr-cs2-redirxs&role=xs", "documentLifecycle": "active"}

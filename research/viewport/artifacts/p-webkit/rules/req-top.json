@@ -1,0 +1,4 @@
+[
+  {"trigger": {"url-filter": ".*", "resource-type": ["top-document"]},
+   "action": {"type": "modify-headers", "priority": 1, "request-headers": [{"operation": "set", "header": "X-Margin-Test", "value": "top"}]}}
+]

@@ -1,0 +1,12 @@
+=== WebKitGTK sandboxed iframe (no allow-top-navigation), no navigate listener, bust mode=assign
+  shell loads in ~3-8 s: 1 | frame error: ['SecurityError: The operation is insecure.']
+=== WebKitGTK sandboxed iframe (no allow-top-navigation), no navigate listener, bust mode=href
+  shell loads in ~3-8 s: 1 | frame error: ['SecurityError: The operation is insecure.']
+=== WebKitGTK sandboxed iframe (no allow-top-navigation), no navigate listener, bust mode=replace
+  shell loads in ~3-8 s: 18 | frame error: []
+=== WebKitGTK sandboxed iframe (no allow-top-navigation), no navigate listener, bust mode=open
+  shell loads in ~3-8 s: 1 | frame error: [None]
+=== WebKitGTK sandboxed iframe (no allow-top-navigation), no navigate listener, bust mode=a
+  shell loads in ~3-8 s: 1 | frame error: [None]
+=== WebKitGTK sandboxed iframe (no allow-top-navigation), no navigate listener, bust mode=formpost
+  shell loads in ~3-8 s: 1 | frame error: [None]

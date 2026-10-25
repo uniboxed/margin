@@ -1,0 +1,7 @@
+[
+  {"trigger": {"url-filter": ".*", "resource-type": ["child-document"]},
+   "action": {"type": "modify-headers", "priority": 1,
+              "request-headers": [{"operation": "set", "header": "X-Margin-Test", "value": "child-any"}],
+              "response-headers": [{"operation": "set", "header": "X-Frame-Options", "value": "SAMEORIGIN"},
+                                   {"operation": "set", "header": "Content-Security-Policy", "value": "frame-ancestors *"}]}}
+]

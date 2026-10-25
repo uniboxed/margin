@@ -1,0 +1,121 @@
+{
+  "a_click_cross_origin_link": {
+    "ok": true,
+    "settled": true,
+    "ms": 182,
+    "top": "http://localhost:8922/p/xo",
+    "frame": "http://localhost:8922/p/xo",
+    "title": "page xo",
+    "marker": null,
+    "shelled": true,
+    "requests": [
+      "7298 GET localhost:8922/p/xo dest=document site=same-site",
+      "7333.2 GET localhost:8922/p/xo dest=iframe site=same-origin"
+    ],
+    "skip": null
+  },
+  "b_script_location_cross_origin": {
+    "ok": true,
+    "settled": true,
+    "ms": 71,
+    "top": "http://localhost:8922/p/xo2",
+    "frame": "http://localhost:8922/p/xo2",
+    "title": "page xo2",
+    "marker": null,
+    "shelled": true,
+    "requests": [
+      "7484 GET localhost:8922/p/xo2 dest=document site=same-site",
+      "7508.3 GET localhost:8922/p/xo2 dest=iframe site=same-origin"
+    ],
+    "skip": null
+  },
+  "c_same_origin_302_to_cross_origin": {
+    "ok": true,
+    "settled": true,
+    "ms": 213,
+    "top": "http://localhost:8922/p/xo-redir",
+    "frame": "http://localhost:8922/p/xo-redir",
+    "title": "page xo-redir",
+    "marker": null,
+    "shelled": true,
+    "requests": [
+      "7789.7 GET localhost:8921/r?to=http%3A%2F%2Flocalhost%3A8922%2Fp%2Fxo-redir dest=iframe site=same-origin",
+      "7792.1 GET localhost:8922/p/xo-redir dest=iframe site=same-site",
+      "7814.7 GET localhost:8922/p/xo-redir dest=document site=same-site",
+      "7844 GET localhost:8922/p/xo-redir dest=iframe site=same-origin"
+    ],
+    "skip": null,
+    "after": {
+      "afterBack": {
+        "top": "http://localhost:8921/p/start",
+        "frame": "http://localhost:8921/p/start",
+        "title": "page start",
+        "marker": null,
+        "shelled": true
+      },
+      "requestsAfterBack": [
+        "7814.7 GET localhost:8922/p/xo-redir dest=document site=same-site",
+        "7844 GET localhost:8922/p/xo-redir dest=iframe site=same-origin",
+        "7907.4 GET localhost:8921/p/start dest=document site=none",
+        "7934.4 GET localhost:8921/p/start dest=iframe site=same-origin"
+      ]
+    }
+  },
+  "d_cross_site_link": {
+    "ok": true,
+    "settled": true,
+    "ms": 234,
+    "top": "http://127.0.0.1:8921/p/xs",
+    "frame": "http://127.0.0.1:8921/p/xs",
+    "title": "page xs",
+    "marker": null,
+    "shelled": true,
+    "requests": [
+      "9664 GET 127.0.0.1:8921/p/xs dest=document site=cross-site",
+      "9708.4 GET 127.0.0.1:8921/p/xs dest=iframe site=same-origin"
+    ],
+    "skip": null
+  },
+  "e_cross_origin_POST_form": {
+    "ok": true,
+    "settled": true,
+    "ms": 146,
+    "top": "http://localhost:8922/post",
+    "frame": null,
+    "title": "posted POST",
+    "marker": null,
+    "shelled": false,
+    "requests": [
+      "10011.7 POST localhost:8922/post dest=document site=same-site body=who=tirth&n=42"
+    ],
+    "skip": {
+      "t": 26.3,
+      "ev": "skip",
+      "why": "post"
+    },
+    "after": {
+      "body": "POST who=tirth&n=42"
+    }
+  },
+  "f_same_origin_POST_target_top": {
+    "ok": true,
+    "settled": true,
+    "ms": 142,
+    "top": "http://localhost:8921/post",
+    "frame": null,
+    "title": "posted POST",
+    "marker": null,
+    "shelled": false,
+    "requests": [
+      "10306.2 POST localhost:8921/post dest=document site=same-origin body=who=same"
+    ],
+    "skip": {
+      "t": 26.1,
+      "ev": "skip",
+      "why": "flagged"
+    },
+    "after": {
+      "body": "POST who=same"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><title>facts</title>
+<style>
+  body { margin: 0; }
+  .ct { container-type: inline-size; margin-left: 100px; margin-top: 100px; }
+  .fx { position: fixed; left: 0; top: 0; width: 10px; height: 10px; }
+  #calc { position: fixed; left: calc(50% - 100px); width: calc(100vw - 20px); top: 0; height: 1px; }
+  #vw { position: fixed; left: 0; width: 100vw; top: 0; height: 1px; }
+</style></head><body>
+<div class="ct"><div class="fx" id="inct"></div></div><div id="calc"></div><div id="vw"></div>
+<script>
+  const desc = (v) => v == null ? null : (v.unit ? `${v.value}${v.unit}` : v.operator ? `${v.operator}(${[...(v.values ?? [v.value])].map(desc).join(',')})` : `${v.constructor.name}:${v}`);
+  const m = (id) => document.getElementById(id).computedStyleMap();
+  document.title = JSON.stringify({
+    inContainerLeft: document.getElementById('inct').getBoundingClientRect().left,
+    calcLeft: desc(m('calc').get('left')), calcWidth: desc(m('calc').get('width')),
+    vwWidth: desc(m('vw').get('width')), autoRight: desc(m('vw').get('right')),
+    keywordValue: typeof m('vw').get('right').value,
+  });
+</script></body></html>

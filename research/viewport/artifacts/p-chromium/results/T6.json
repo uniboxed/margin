@@ -1,0 +1,159 @@
+{
+  "assign_guarded": {
+    "topDocumentRequests2s": 1,
+    "iframeRequests2s": 1,
+    "top": "http://localhost:8921/p/bust-assign?bust=assign",
+    "frame": "http://localhost:8921/p/bust-assign?bust=assign",
+    "title": "page bust-assign",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "page bust-assign",
+    "cardHtmlDisplay": "block",
+    "events": [
+      "bust-blocked replace cancelable=true"
+    ]
+  },
+  "assign_unguarded": {
+    "topDocumentRequests2s": 35,
+    "iframeRequests2s": 34,
+    "top": "http://localhost:8921/p/bust-assign?bust=assign&margin-nonav",
+    "frame": "",
+    "title": "",
+    "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+    "shelled": true,
+    "cardTitle": null,
+    "cardHtmlDisplay": null,
+    "events": []
+  },
+  "replace_guarded": {
+    "topDocumentRequests2s": 1,
+    "iframeRequests2s": 1,
+    "top": "http://localhost:8921/p/bust-replace?bust=replace",
+    "frame": "http://localhost:8921/p/bust-replace?bust=replace",
+    "title": "page bust-replace",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "page bust-replace",
+    "cardHtmlDisplay": "block",
+    "events": [
+      "bust-blocked replace cancelable=true"
+    ]
+  },
+  "replace_unguarded": {
+    "topDocumentRequests2s": 36,
+    "iframeRequests2s": 36,
+    "top": "http://localhost:8921/p/bust-replace?bust=replace&margin-nonav",
+    "frame": "http://localhost:8921/p/bust-replace?bust=replace&margin-nonav",
+    "title": "Loading http://localhost:8921/p/bust-replace?bust=replace&margin-nonav",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+    "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+    "events": null
+  },
+  "href_guarded": {
+    "topDocumentRequests2s": 1,
+    "iframeRequests2s": 1,
+    "top": "http://localhost:8921/p/bust-href?bust=href",
+    "frame": "http://localhost:8921/p/bust-href?bust=href",
+    "title": "page bust-href",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "page bust-href",
+    "cardHtmlDisplay": "block",
+    "events": [
+      "bust-blocked replace cancelable=true"
+    ]
+  },
+  "href_unguarded": {
+    "topDocumentRequests2s": 32,
+    "iframeRequests2s": 32,
+    "top": "http://localhost:8921/p/bust-href?bust=href&margin-nonav",
+    "frame": "http://localhost:8921/p/bust-href?bust=href&margin-nonav",
+    "title": "",
+    "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+    "shelled": true,
+    "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+    "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+    "events": []
+  },
+  "reload_guarded": {
+    "topDocumentRequests2s": 1,
+    "iframeRequests2s": 1,
+    "top": "http://localhost:8921/p/bust-reload?bust=reload",
+    "frame": "http://localhost:8921/p/bust-reload?bust=reload",
+    "title": "page bust-reload",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "page bust-reload",
+    "cardHtmlDisplay": "block",
+    "events": [
+      "bust-blocked(reload-while-loading) reload cancelable=true"
+    ]
+  },
+  "reload_unguarded": {
+    "topDocumentRequests2s": 29,
+    "iframeRequests2s": 28,
+    "top": "http://localhost:8921/p/bust-reload?bust=reload&margin-nonav",
+    "frame": "http://localhost:8921/p/bust-reload?bust=reload&margin-nonav",
+    "title": "",
+    "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+    "shelled": true,
+    "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+    "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+    "events": []
+  },
+  "other_guarded": {
+    "topDocumentRequests2s": 1,
+    "iframeRequests2s": 2,
+    "top": "http://localhost:8921/p/framed-warning",
+    "frame": "http://localhost:8921/p/framed-warning",
+    "title": "page framed-warning",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "page framed-warning",
+    "cardHtmlDisplay": "block",
+    "events": [
+      "top-nav->frame push cancelable=true"
+    ]
+  },
+  "other_unguarded": {
+    "topDocumentRequests2s": 2,
+    "iframeRequests2s": 2,
+    "top": "http://localhost:8921/p/framed-warning",
+    "frame": "http://localhost:8921/p/framed-warning",
+    "title": "page framed-warning",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "page framed-warning",
+    "cardHtmlDisplay": "block",
+    "events": []
+  },
+  "owasp_guarded": {
+    "topDocumentRequests2s": 1,
+    "iframeRequests2s": 1,
+    "top": "http://localhost:8921/p/bust-owasp?owasp=1",
+    "frame": "http://localhost:8921/p/bust-owasp?owasp=1",
+    "title": "page bust-owasp",
+    "marker": null,
+    "shelled": true,
+    "cardTitle": "page bust-owasp",
+    "cardHtmlDisplay": "block",
+    "events": [
+      "bust-blocked replace cancelable=true",
+      "unhide  cancelable="
+    ]
+  },
+  "owasp_unguarded": {
+    "topDocumentRequests2s": 38,
+    "iframeRequests2s": 38,
+    "top": "http://localhost:8921/p/bust-owasp?owasp=1&margin-nonav",
+    "frame": "http://localhost:8921/p/bust-owasp?owasp=1&margin-nonav",
+    "title": "",
+    "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+    "shelled": true,
+    "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+    "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+    "events": []
+  }
+}

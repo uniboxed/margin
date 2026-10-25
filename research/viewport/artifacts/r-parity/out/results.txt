@@ -1,0 +1,146 @@
+# WebKitGTK 2 52 6  Sun Oct 25 08:30:13 UTC 2026
+## t_focus.py top
+after load     {"hasFocus":true,"scrollY":0,"ev":[]}
+after Space    {"hasFocus":true,"scrollY":480,"ev":["keydown   trusted=true"]}
+after Down     {"hasFocus":true,"scrollY":551,"ev":["keydown   trusted=true","keydown ArrowDown trusted=true"]}
+events ['uri=http://127.0.0.1:8811/shell', 'title=SHELL', 'uri=http://127.0.0.1:8811/page', 'title=', 'title=PAGE TITLE']
+## t_focus.py nofocus
+after load     {"shellHasFocus":true,"active":"BODY","frameHasFocus":false,"frameScrollY":0,"shellScrollY":0,"clicked":0,"ev":[],"log":["shell DCL","iframe load /page","shell load"]}
+after Space    {"shellHasFocus":true,"active":"BODY","frameHasFocus":false,"frameScrollY":0,"shellScrollY":0,"clicked":0,"ev":[],"log":["shell DCL","iframe load /page","shell load"]}
+after Down     {"shellHasFocus":true,"active":"BODY","frameHasFocus":false,"frameScrollY":0,"shellScrollY":0,"clicked":0,"ev":[],"log":["shell DCL","iframe load /page","shell load"]}
+after click in iframe {"shellHasFocus":true,"active":"IFRAME","frameHasFocus":true,"frameScrollY":0,"shellScrollY":0,"clicked":1,"ev":["window focus"],"log":["shell DCL","iframe load /page","shell load"]}
+after Space    {"shellHasFocus":true,"active":"IFRAME","frameHasFocus":true,"frameScrollY":0,"shellScrollY":0,"clicked":2,"ev":["window focus","keydown   trusted=true"],"log":["shell DCL","iframe load /page","shell load"]}
+after click in sidebar {"shellHasFocus":true,"active":"BODY","frameHasFocus":false,"frameScrollY":0,"shellScrollY":0,"clicked":2,"ev":["window focus","keydown   trusted=true","window blur"],"log":["shell DCL","iframe load /page","shell load"]}
+after Space    {"shellHasFocus":true,"active":"BODY","frameHasFocus":false,"frameScrollY":0,"shellScrollY":0,"clicked":2,"ev":["window focus","keydown   trusted=true","window blur"],"log":["shell DCL","iframe load /page","shell load"]}
+events ['uri=http://127.0.0.1:8811/shell', 'title=SHELL']
+## t_focus.py focus
+after load     {"shellHasFocus":true,"active":"IFRAME","frameHasFocus":true,"frameScrollY":0,"shellScrollY":0,"clicked":0,"ev":["window focus"],"log":["shell DCL","iframe load /page","shell load"]}
+after Space    {"shellHasFocus":true,"active":"IFRAME","frameHasFocus":true,"frameScrollY":480,"shellScrollY":0,"clicked":0,"ev":["window focus","keydown   trusted=true"],"log":["shell DCL","iframe load /page","shell load"]}
+after Down     {"shellHasFocus":true,"active":"IFRAME","frameHasFocus":true,"frameScrollY":551,"shellScrollY":0,"clicked":0,"ev":["window focus","keydown   trusted=true","keydown ArrowDown trusted=true"],"log":["shell DCL","iframe load /page","shell load"]}
+after click in iframe {"shellHasFocus":true,"active":"IFRAME","frameHasFocus":true,"frameScrollY":551,"shellScrollY":0,"clicked":1,"ev":["window focus","keydown   trusted=true","keydown ArrowDown trusted=true"],"log":["shell DCL","iframe load /page","shell load"]}
+after Space    {"shellHasFocus":true,"active":"IFRAME","frameHasFocus":true,"frameScrollY":551,"shellScrollY":0,"clicked":2,"ev":["window focus","keydown   trusted=true","keydown ArrowDown trusted=true","keydown   trusted=true"],"log":["shell DCL","iframe load /page","shell load"]}
+after click in sidebar {"shellHasFocus":true,"active":"BODY","frameHasFocus":false,"frameScrollY":551,"shellScrollY":0,"clicked":2,"ev":["window focus","keydown   trusted=true","keydown ArrowDown trusted=true","keydown   trusted=true","window blur"],"log":["shell DCL","iframe load /page","shell load"]}
+after Space    {"shellHasFocus":true,"active":"BODY","frameHasFocus":false,"frameScrollY":551,"shellScrollY":0,"clicked":2,"ev":["window focus","keydown   trusted=true","keydown ArrowDown trusted=true","keydown   trusted=true","window blur"],"log":["shell DCL","iframe load /page","shell load"]}
+events ['uri=http://127.0.0.1:8811/shell', 'title=SHELL']
+## t_perms.py top
+static           {"fullscreenEnabled":true,"PublicKeyCredential":"undefined","ApplePaySession":"undefined","PaymentRequest":"undefined","notifPerm":"default","isSecureContext":true,"hasFocus":true,"topIsSelf":true,"innerWidth":1000,"vw100":1000}
+notification     ['granted', ['permission-request:NotificationPermissionRequest']]
+geolocation      ['err 2 Failed to connect to geolocation service', ['permission-request:GeolocationPermissionRequest']]
+getUserMedia     ['stream tracks=2', ['permission-request:UserMediaPermissionRequest']]
+getDisplayMedia  ['stream tracks=1', ['permission-request:UserMediaPermissionRequest']]
+clipboardWrite   ['written', []]
+clipboardRead    ['hello-clip', []]
+fullscreen       ['fs ok; own fsEl=HTML top fsEl=HTML innerWidth=1000', ['enter-fullscreen']]
+exitFullscreen   ['exited', ['leave-fullscreen']]
+wakeLock         ['lock screen', []]
+share            ['pending', []]
+storageAccess    ['true', []]
+webauthnGet      ["EXC TypeError: undefined is not an object (evaluating 'navigator.credentials.get')", []]
+windowOpen       ['called', ['create-window:http://127.0.0.1:8811/popup-from-click']]
+paymentRequest   ['undefined', []]
+## t_perms.py shell
+static           {"fullscreenEnabled":true,"PublicKeyCredential":"undefined","ApplePaySession":"undefined","PaymentRequest":"undefined","notifPerm":"default","isSecureContext":true,"hasFocus":true,"topIsSelf":false,"innerWidth":800,"vw100":800}
+notification     ['granted', ['permission-request:NotificationPermissionRequest']]
+geolocation      ['err 2 Failed to connect to geolocation service', ['permission-request:GeolocationPermissionRequest']]
+getUserMedia     ['stream tracks=2', ['permission-request:UserMediaPermissionRequest']]
+getDisplayMedia  ['stream tracks=1', ['permission-request:UserMediaPermissionRequest']]
+clipboardWrite   ['written', []]
+clipboardRead    ['hello-clip', []]
+fullscreen       ['fs ok; own fsEl=HTML top fsEl=IFRAME innerWidth=1000', ['enter-fullscreen']]
+exitFullscreen   ['exited', ['leave-fullscreen']]
+wakeLock         ['lock screen', []]
+share            ['pending', []]
+storageAccess    ['true', []]
+webauthnGet      ["EXC TypeError: undefined is not an object (evaluating 'navigator.credentials.get')", []]
+windowOpen       ['called', ['create-window:http://127.0.0.1:8811/popup-from-click']]
+paymentRequest   ['undefined', []]
+## t_perms.py shell (no allowfullscreen attr)
+static           {"fullscreenEnabled":true,"PublicKeyCredential":"undefined","ApplePaySession":"undefined","PaymentRequest":"undefined","notifPerm":"default","isSecureContext":true,"hasFocus":true,"topIsSelf":false,"innerWidth":800,"vw100":800}
+fullscreen       ['fs ok; own fsEl=HTML top fsEl=IFRAME innerWidth=1000', ['enter-fullscreen']]
+exitFullscreen   ['exited', ['leave-fullscreen']]
+## t_perms.py shell (allow=... 'none')
+static           {"fullscreenEnabled":false,"PublicKeyCredential":"undefined","ApplePaySession":"undefined","PaymentRequest":"undefined","notifPerm":"default","isSecureContext":true,"hasFocus":true,"topIsSelf":false,"innerWidth":800,"vw100":800}
+notification     ['granted', ['permission-request:NotificationPermissionRequest']]
+geolocation      ['err 1 Origin does not have permission to use Geolocation service', []]
+getUserMedia     ['EXC NotAllowedError: The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.', []]
+getDisplayMedia  ['stream tracks=1', ['permission-request:UserMediaPermissionRequest']]
+clipboardWrite   ['written', []]
+clipboardRead    ['hello-clip', []]
+fullscreen       ['EXC TypeError: Fullscreen API is disabled by permissions policy.', []]
+## t_storage.py (default policy)
+setup (top-level) ok
+top-level reload       {"cookie":"cs=1; cl=1; cd=1","ls":"from-top","ss":"from-top-session","hasSA":true,"swController":true,"swProbe":"from-sw","idb":"idb-from-top","caches":0}
+  req localhost:8812 /xs-start?to=http://127.0.0.1: cookie= None referer= None sec-fetch-site= none
+  req 127.0.0.1:8812 /shell cookie= cl=1; cd=1 referer= http://localhost:8812/ sec-fetch-site= cross-site
+  req 127.0.0.1:8812 /page? cookie= cs=1; cl=1; cd=1 referer= http://127.0.0.1:8812/shell sec-fetch-site= same-origin
+iframe after xs arrive {"cookie":"cs=1; cl=1; cd=1","ls":"from-top","ss":"from-top-session","hasSA":true,"swController":true,"swProbe":"from-sw","idb":"idb-from-top","caches":0}
+  req localhost:8812 /xs-start?to=http://127.0.0.1: cookie= None sec-fetch-site= none
+  req 127.0.0.1:8812 /page cookie= cl=1; cd=1 sec-fetch-site= cross-site
+  3p req 127.0.0.1:8812 /page cookie= None
+## t_storage.py itp + NO_THIRD_PARTY
+setup (top-level) ok
+top-level reload       {"cookie":"cs=1; cl=1; cd=1","ls":"from-top","ss":"from-top-session","hasSA":true,"swController":true,"swProbe":"from-sw","idb":"idb-from-top","caches":0}
+  req localhost:8812 /xs-start?to=http://127.0.0.1: cookie= None referer= None sec-fetch-site= none
+  req 127.0.0.1:8812 /shell cookie= cl=1; cd=1 referer= http://localhost:8812/ sec-fetch-site= cross-site
+  req 127.0.0.1:8812 /page? cookie= cs=1; cl=1; cd=1 referer= http://127.0.0.1:8812/shell sec-fetch-site= same-origin
+iframe after xs arrive {"cookie":"cs=1; cl=1; cd=1","ls":"from-top","ss":"from-top-session","hasSA":true,"swController":true,"swProbe":"from-sw","idb":"idb-from-top","caches":0}
+  req localhost:8812 /xs-start?to=http://127.0.0.1: cookie= None sec-fetch-site= none
+  req 127.0.0.1:8812 /page cookie= cl=1; cd=1 sec-fetch-site= cross-site
+  3p req 127.0.0.1:8812 /page cookie= None
+## t_ui.py find
+top-level  find: {'count': 1, 'found': 1} scroll after find: {"top":6860,"frame":null,"frameSel":null,"sel":"UNIQUEFINDTOKEN"}
+shell      find: {'count': 1, 'found': 1} scroll after find: {"top":0,"frame":6860,"frameSel":"UNIQUEFINDTOKEN","sel":""}
+## t_ui.py zoom
+top-level  zoom=1.0 {"shellInnerW":1000,"pageInnerW":1000,"pageDPR":1,"h1px":39}
+top-level  zoom=1.5 {"shellInnerW":666,"pageInnerW":666,"pageDPR":1.5,"h1px":39.333335876464844}
+shell      zoom=1.0 {"shellInnerW":1000,"pageInnerW":800,"pageDPR":1,"h1px":39}
+shell      zoom=1.5 {"shellInnerW":666,"pageInnerW":466,"pageDPR":1.5,"h1px":39.333335876464844}
+## t_ui.py selectall
+shell, nothing focused   {"shellSelLen":22,"frameSelLen":0}
+   copied text starts: 'SIDEBAR sidebar button' len 22
+shell, iframe focused    {"shellSelLen":0,"frameSelLen":7402}
+   copied text starts: 'click me\nInner page\n\ndownload link downl' len 7402
+## t_ui.py beforeunload
+top-level  top-level navigation -> ["script-dialog:before-unload-confirm:'x'", 'uri=http://127.0.0.1:8813/elsewhere']
+shell      top-level navigation -> ["script-dialog:before-unload-confirm:'x'", 'uri=http://127.0.0.1:8813/elsewhere']
+## t_ui.py download
+top-level  dl   ['uri=http://127.0.0.1:8813/page', 'download-started:http://127.0.0.1:8813/download', 'download-name:d.bin']
+top-level  dla  ['download-started:http://127.0.0.1:8813/dlattr.txt', 'download-name:dlattr.txt']
+shell      dl   ['download-started:http://127.0.0.1:8813/download', 'download-name:d.bin']
+shell      dla  ['download-started:http://127.0.0.1:8813/dlattr.txt', 'download-name:dlattr.txt']
+## t_ui.py post
+top-level  after reload: requests [('POST', '/post-result')] dialogs [] uri http://127.0.0.1:8813/post-result
+shell      after reload: requests [('GET', '/shell'), ('GET', '/page?')] dialogs [] uri http://127.0.0.1:8813/shell
+## t_ui.py fetchmeta
+/shell sec-fetch-site none sec-fetch-dest document referer None
+/page? sec-fetch-site same-origin sec-fetch-dest iframe referer http://127.0.0.1:8813/shell
+{"ref":"http://127.0.0.1:8813/shell","histLen":1,"frameHistLen":1,"navType":"navigate"}
+## t_chrome1.py (title/theme-color/favicon, fresh profile each)
+/page                        title='PAGE TITLE'  theme=rgb(255,0,0)     favicon=set iconRequests=['/icon-page.png']
+/shell                       title='SHELL'       theme=None             favicon=set iconRequests=['/favicon.ico']
+/shell?copy=1                title='PAGE TITLE'  theme=rgb(255,0,0)     favicon=set iconRequests=['/icon-page.png']
+/shell?p_copyearly=1         title='PAGE TITLE'  theme=rgb(255,0,0)     favicon=set iconRequests=['/icon-page.png']
+## t_print.py (main-frame print to PDF)
+PRINTMEDIA in pdf: False SCREENMEDIA in pdf: False
+top                    {'ok': True} ['Pages:           6'] sidebarPrinted=False lastParaPrinted=True tokenPrinted=True paras=200
+PRINTMEDIA in pdf: False SCREENMEDIA in pdf: False
+shell                  {'ok': True} ['Pages:           1'] sidebarPrinted=True lastParaPrinted=False tokenPrinted=False paras=21
+PRINTMEDIA in pdf: False SCREENMEDIA in pdf: False
+shell-printcss         {'ok': True} ['Pages:           1'] sidebarPrinted=False lastParaPrinted=False tokenPrinted=False paras=21
+PRINTMEDIA in pdf: False SCREENMEDIA in pdf: False
+shell-tall-iframe      {'ok': True} ['Pages:           8'] sidebarPrinted=False lastParaPrinted=True tokenPrinted=True paras=201
+## t_loading.py
+top-level  (isLoading, estimatedProgress) every 250ms: [(1, 0.1), (1, 0.1), (1, 0.1), (1, 0.1), (1, 0.1), (1, 0.1), (1, 0.1), (1, 0.1), (0, 1.0), (0, 1.0), (0, 1.0)]
+shell      (isLoading, estimatedProgress) every 250ms: [(0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0), (0, 1.0)]
+## t_popup.py
+/page in popup: {"pageSeesOpener":true,"topOpener":true,"pageIsTop":true}
+/page   page called window.close() -> popup closed: True
+/shell in popup: {"pageSeesOpener":false,"topOpener":true,"pageIsTop":false}
+/shell   page called window.close() -> popup closed: False
+## t_swclients.py
+top-level page  : [{"url":"/page","frameType":"top-level","focused":true,"visibility":"visible","isSender":true}]
+shell (asked from iframe): [{"url":"/shell","frameType":"top-level","focused":true,"visibility":"visible","isSender":false},{"url":"/page","frameType":"nested","focused":true,"visibility":"visible","isSender":true}]
+shell top controlled by SW: True
+## t_print.py: does the child frame get @media print when the parent is printed?
+PRINTMEDIA in pdf: True SCREENMEDIA in pdf: False
+shell-media            {'ok': True} ['Pages:           8'] sidebarPrinted=False lastParaPrinted=True tokenPrinted=True paras=201

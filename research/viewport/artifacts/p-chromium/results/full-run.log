@@ -1,0 +1,1225 @@
+== T1 (2679 ms)
+{
+ "iframeWidth": 732,
+ "headerSpansIframe": true,
+ "vwEqualsIframe": true,
+ "innerWidthEqualsIframe": true,
+ "mqReflectsIframe": true,
+ "wheelScrolls": true,
+ "headerStaysPut": true
+}
+== T2 (1505 ms)
+{
+ "firstVisit": [
+  "3241.4 GET localhost:8921/p/cookies?cookie=1 dest=document site=none",
+  "3318.6 GET localhost:8921/p/cookies?cookie=1 dest=iframe site=same-origin cookie=[lax=L8921; strict=S8921; honly=H8921]"
+ ],
+ "frameDocumentCookie": "lax=L8921; strict=S8921",
+ "crossSiteArrival": [
+  "3744.1 GET localhost:8922/p/xo dest=document site=cross-site cookie=[lax=L8921; honly=H8921]",
+  "3801.9 GET localhost:8922/p/xo dest=iframe site=same-origin cookie=[lax=L8921; strict=S8921; honly=H8921]"
+ ],
+ "crossSiteArrivalFrameCookie": "lax=L8921; strict=S8921",
+ "crossSiteArrivalReferer": [
+  "document: Referer=http://127.0.0.1:8921/ Sec-Fetch-User=?1",
+  "iframe: Referer=http://localhost:8922/p/xo Sec-Fetch-User=(none)"
+ ],
+ "crossSiteArrivalDocumentReferrerInCard": "http://localhost:8922/p/xo",
+ "storage": {
+  "cardSeesPlainTopLocalStorage": "yes",
+  "shellTopSeesCardLocalStorage": "yes",
+  "shellTopSeesCardSessionStorage": "card",
+  "plainTopSeesCardLocalStorage": "yes"
+ }
+}
+== T3 (1018 ms)
+{
+ "linkClick": {
+  "frameUrl": "http://localhost:8921/p/B",
+  "topUrl": "http://localhost:8921/p/B",
+  "topTitle": "page B",
+  "syncedMs": 161,
+  "synced": true,
+  "topMarker": "top-alive",
+  "topNavEntries": 1,
+  "requests": [
+   "4892.2 GET localhost:8921/p/B dest=iframe site=same-origin"
+  ],
+  "favicon": "http://localhost:8921/icon.png?n=B",
+  "themeColor": "#3366ff"
+ },
+ "pushState": {
+  "topUrl": "http://localhost:8921/spa/one?x=1"
+ },
+ "titleChange": {
+  "topTitle": "SPA title"
+ },
+ "hashLink": {
+  "topUrl": "http://localhost:8921/p/B#section2",
+  "frameUrl": "http://localhost:8921/p/B#section2"
+ },
+ "topMarkerAtEnd": "top-alive",
+ "shellLog": [
+  {
+   "t": 33.6,
+   "ev": "shell",
+   "mode": "openstop",
+   "target": "http://localhost:8921/p/A"
+  },
+  {
+   "t": 37.3,
+   "ev": "first-raf"
+  },
+  {
+   "t": 76.6,
+   "ev": "frame-load",
+   "ok": true,
+   "href": "http://localhost:8921/p/A"
+  },
+  {
+   "t": 76.7,
+   "ev": "sync",
+   "why": "load",
+   "href": "http://localhost:8921/p/A",
+   "title": "page A",
+   "changed": false
+  },
+  {
+   "t": 249.2,
+   "ev": "sync",
+   "why": "start",
+   "href": "http://localhost:8921/p/B",
+   "title": "page A",
+   "changed": true
+  },
+  {
+   "t": 263.6,
+   "ev": "frame-load",
+   "ok": true,
+   "href": "http://localhost:8921/p/B"
+  },
+  {
+   "t": 263.6,
+   "ev": "sync",
+   "why": "load",
+   "href": "http://localhost:8921/p/B",
+   "title": "page B",
+   "changed": false
+  },
+  {
+   "t": 285.1,
+   "ev": "sync",
+   "why": "currententrychange",
+   "href": "http://localhost:8921/spa/one?x=1",
+   "title": "page B",
+   "changed": true
+  },
+  {
+   "t": 299.6,
+   "ev": "sync",
+   "why": "currententrychange",
+   "href": "http://localhost:8921/p/B",
+   "title": "SPA title",
+   "changed": true
+  },
+  {
+   "t": 363.7,
+   "ev": "sync",
+   "why": "currententrychange",
+   "href": "http://localhost:8921/p/B#section2",
+   "title": "SPA title",
+   "changed": true
+  }
+ ]
+}
+== T4 (1408 ms)
+{
+ "steps": [
+  {
+   "label": "card: history.back()",
+   "ms": 36,
+   "top": "http://localhost:8921/p/B",
+   "frame": "http://localhost:8921/p/B",
+   "title": "page B",
+   "marker": "alive",
+   "shelled": true,
+   "browserHistory": {
+    "currentIndex": 2,
+    "entries": [
+     "about:blank | ",
+     "http://localhost:8921/p/B | page A",
+     "http://localhost:8921/p/B | page B",
+     "http://localhost:8921/p/B | page C"
+    ]
+   }
+  },
+  {
+   "label": "top (shell): history.back()",
+   "ms": 33,
+   "top": "http://localhost:8921/p/A",
+   "frame": "http://localhost:8921/p/A",
+   "title": "page A",
+   "marker": "alive",
+   "shelled": true,
+   "browserHistory": {
+    "currentIndex": 1,
+    "entries": [
+     "about:blank | ",
+     "http://localhost:8921/p/A | page A",
+     "http://localhost:8921/p/A | page B",
+     "http://localhost:8921/p/A | page C"
+    ]
+   }
+  },
+  {
+   "label": "browser forward (CDP navigateToHistoryEntry)",
+   "ms": 30,
+   "top": "http://localhost:8921/p/B",
+   "frame": "http://localhost:8921/p/B",
+   "title": "page B",
+   "marker": "alive",
+   "shelled": true,
+   "browserHistory": {
+    "currentIndex": 2,
+    "entries": [
+     "about:blank | ",
+     "http://localhost:8921/p/B | page A",
+     "http://localhost:8921/p/B | page B",
+     "http://localhost:8921/p/B | page C"
+    ]
+   }
+  },
+  {
+   "label": "browser forward again",
+   "ms": 29,
+   "top": "http://localhost:8921/p/C",
+   "frame": "http://localhost:8921/p/C",
+   "title": "page C",
+   "marker": "alive",
+   "shelled": true,
+   "browserHistory": {
+    "currentIndex": 3,
+    "entries": [
+     "about:blank | ",
+     "http://localhost:8921/p/C | page A",
+     "http://localhost:8921/p/C | page B",
+     "http://localhost:8921/p/C | page C"
+    ]
+   }
+  },
+  {
+   "label": "browser back",
+   "ms": 32,
+   "top": "http://localhost:8921/p/B",
+   "frame": "http://localhost:8921/p/B",
+   "title": "page B",
+   "marker": "alive",
+   "shelled": true,
+   "browserHistory": {
+    "currentIndex": 2,
+    "entries": [
+     "about:blank | ",
+     "http://localhost:8921/p/B | page A",
+     "http://localhost:8921/p/B | page B",
+     "http://localhost:8921/p/B | page C"
+    ]
+   }
+  }
+ ],
+ "afterABC": {
+  "top": "http://localhost:8921/p/C",
+  "frame": "http://localhost:8921/p/C",
+  "title": "page C",
+  "marker": "alive",
+  "shelled": true,
+  "historyLength": 4,
+  "browserHistory": {
+   "currentIndex": 3,
+   "entries": [
+    "about:blank | ",
+    "http://localhost:8921/p/C | page A",
+    "http://localhost:8921/p/C | page B",
+    "http://localhost:8921/p/C | page C"
+   ]
+  }
+ },
+ "requestsDuringHistory": [
+  "6104.4 GET localhost:8921/p/B dest=iframe site=same-origin",
+  "6238.8 GET localhost:8921/p/C dest=iframe site=same-origin",
+  "6316 GET localhost:8921/p/B dest=iframe site=same-origin",
+  "6357.9 GET localhost:8921/p/A dest=iframe site=same-origin",
+  "6395.3 GET localhost:8921/p/B dest=iframe site=same-origin",
+  "6430.7 GET localhost:8921/p/C dest=iframe site=same-origin",
+  "6464.9 GET localhost:8921/p/B dest=iframe site=same-origin"
+ ],
+ "markerAtEnd": "alive"
+}
+== T5 (3876 ms)
+{
+ "a_click_cross_origin_link": {
+  "ok": true,
+  "settled": true,
+  "ms": 182,
+  "top": "http://localhost:8922/p/xo",
+  "frame": "http://localhost:8922/p/xo",
+  "title": "page xo",
+  "marker": null,
+  "shelled": true,
+  "requests": [
+   "7298 GET localhost:8922/p/xo dest=document site=same-site",
+   "7333.2 GET localhost:8922/p/xo dest=iframe site=same-origin"
+  ],
+  "skip": null
+ },
+ "b_script_location_cross_origin": {
+  "ok": true,
+  "settled": true,
+  "ms": 71,
+  "top": "http://localhost:8922/p/xo2",
+  "frame": "http://localhost:8922/p/xo2",
+  "title": "page xo2",
+  "marker": null,
+  "shelled": true,
+  "requests": [
+   "7484 GET localhost:8922/p/xo2 dest=document site=same-site",
+   "7508.3 GET localhost:8922/p/xo2 dest=iframe site=same-origin"
+  ],
+  "skip": null
+ },
+ "c_same_origin_302_to_cross_origin": {
+  "ok": true,
+  "settled": true,
+  "ms": 213,
+  "top": "http://localhost:8922/p/xo-redir",
+  "frame": "http://localhost:8922/p/xo-redir",
+  "title": "page xo-redir",
+  "marker": null,
+  "shelled": true,
+  "requests": [
+   "7789.7 GET localhost:8921/r?to=http%3A%2F%2Flocalhost%3A8922%2Fp%2Fxo-redir dest=iframe site=same-origin",
+   "7792.1 GET localhost:8922/p/xo-redir dest=iframe site=same-site",
+   "7814.7 GET localhost:8922/p/xo-redir dest=document site=same-site",
+   "7844 GET localhost:8922/p/xo-redir dest=iframe site=same-origin"
+  ],
+  "skip": null,
+  "after": {
+   "afterBack": {
+    "top": "http://localhost:8921/p/start",
+    "frame": "http://localhost:8921/p/start",
+    "title": "page start",
+    "marker": null,
+    "shelled": true
+   },
+   "requestsAfterBack": [
+    "7814.7 GET localhost:8922/p/xo-redir dest=document site=same-site",
+    "7844 GET localhost:8922/p/xo-redir dest=iframe site=same-origin",
+    "7907.4 GET localhost:8921/p/start dest=document site=none",
+    "7934.4 GET localhost:8921/p/start dest=iframe site=same-origin"
+   ]
+  }
+ },
+ "d_cross_site_link": {
+  "ok": true,
+  "settled": true,
+  "ms": 234,
+  "top": "http://127.0.0.1:8921/p/xs",
+  "frame": "http://127.0.0.1:8921/p/xs",
+  "title": "page xs",
+  "marker": null,
+  "shelled": true,
+  "requests": [
+   "9664 GET 127.0.0.1:8921/p/xs dest=document site=cross-site",
+   "9708.4 GET 127.0.0.1:8921/p/xs dest=iframe site=same-origin"
+  ],
+  "skip": null
+ },
+ "e_cross_origin_POST_form": {
+  "ok": true,
+  "settled": true,
+  "ms": 146,
+  "top": "http://localhost:8922/post",
+  "frame": null,
+  "title": "posted POST",
+  "marker": null,
+  "shelled": false,
+  "requests": [
+   "10011.7 POST localhost:8922/post dest=document site=same-site body=who=tirth&n=42"
+  ],
+  "skip": {
+   "t": 26.3,
+   "ev": "skip",
+   "why": "post"
+  },
+  "after": {
+   "body": "POST who=tirth&n=42"
+  }
+ },
+ "f_same_origin_POST_target_top": {
+  "ok": true,
+  "settled": true,
+  "ms": 142,
+  "top": "http://localhost:8921/post",
+  "frame": null,
+  "title": "posted POST",
+  "marker": null,
+  "shelled": false,
+  "requests": [
+   "10306.2 POST localhost:8921/post dest=document site=same-origin body=who=same"
+  ],
+  "skip": {
+   "t": 26.1,
+   "ev": "skip",
+   "why": "flagged"
+  },
+  "after": {
+   "body": "POST who=same"
+  }
+ }
+}
+== T6 (28131 ms)
+{
+ "assign_guarded": {
+  "topDocumentRequests2s": 1,
+  "iframeRequests2s": 1,
+  "top": "http://localhost:8921/p/bust-assign?bust=assign",
+  "frame": "http://localhost:8921/p/bust-assign?bust=assign",
+  "title": "page bust-assign",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "page bust-assign",
+  "cardHtmlDisplay": "block",
+  "events": [
+   "bust-blocked replace cancelable=true"
+  ]
+ },
+ "assign_unguarded": {
+  "topDocumentRequests2s": 35,
+  "iframeRequests2s": 34,
+  "top": "http://localhost:8921/p/bust-assign?bust=assign&margin-nonav",
+  "frame": "",
+  "title": "",
+  "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+  "shelled": true,
+  "cardTitle": null,
+  "cardHtmlDisplay": null,
+  "events": []
+ },
+ "replace_guarded": {
+  "topDocumentRequests2s": 1,
+  "iframeRequests2s": 1,
+  "top": "http://localhost:8921/p/bust-replace?bust=replace",
+  "frame": "http://localhost:8921/p/bust-replace?bust=replace",
+  "title": "page bust-replace",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "page bust-replace",
+  "cardHtmlDisplay": "block",
+  "events": [
+   "bust-blocked replace cancelable=true"
+  ]
+ },
+ "replace_unguarded": {
+  "topDocumentRequests2s": 36,
+  "iframeRequests2s": 36,
+  "top": "http://localhost:8921/p/bust-replace?bust=replace&margin-nonav",
+  "frame": "http://localhost:8921/p/bust-replace?bust=replace&margin-nonav",
+  "title": "Loading http://localhost:8921/p/bust-replace?bust=replace&margin-nonav",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+  "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+  "events": null
+ },
+ "href_guarded": {
+  "topDocumentRequests2s": 1,
+  "iframeRequests2s": 1,
+  "top": "http://localhost:8921/p/bust-href?bust=href",
+  "frame": "http://localhost:8921/p/bust-href?bust=href",
+  "title": "page bust-href",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "page bust-href",
+  "cardHtmlDisplay": "block",
+  "events": [
+   "bust-blocked replace cancelable=true"
+  ]
+ },
+ "href_unguarded": {
+  "topDocumentRequests2s": 32,
+  "iframeRequests2s": 32,
+  "top": "http://localhost:8921/p/bust-href?bust=href&margin-nonav",
+  "frame": "http://localhost:8921/p/bust-href?bust=href&margin-nonav",
+  "title": "",
+  "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+  "shelled": true,
+  "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+  "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+  "events": []
+ },
+ "reload_guarded": {
+  "topDocumentRequests2s": 1,
+  "iframeRequests2s": 1,
+  "top": "http://localhost:8921/p/bust-reload?bust=reload",
+  "frame": "http://localhost:8921/p/bust-reload?bust=reload",
+  "title": "page bust-reload",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "page bust-reload",
+  "cardHtmlDisplay": "block",
+  "events": [
+   "bust-blocked(reload-while-loading) reload cancelable=true"
+  ]
+ },
+ "reload_unguarded": {
+  "topDocumentRequests2s": 29,
+  "iframeRequests2s": 28,
+  "top": "http://localhost:8921/p/bust-reload?bust=reload&margin-nonav",
+  "frame": "http://localhost:8921/p/bust-reload?bust=reload&margin-nonav",
+  "title": "",
+  "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+  "shelled": true,
+  "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+  "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+  "events": []
+ },
+ "other_guarded": {
+  "topDocumentRequests2s": 1,
+  "iframeRequests2s": 2,
+  "top": "http://localhost:8921/p/framed-warning",
+  "frame": "http://localhost:8921/p/framed-warning",
+  "title": "page framed-warning",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "page framed-warning",
+  "cardHtmlDisplay": "block",
+  "events": [
+   "top-nav->frame push cancelable=true"
+  ]
+ },
+ "other_unguarded": {
+  "topDocumentRequests2s": 2,
+  "iframeRequests2s": 2,
+  "top": "http://localhost:8921/p/framed-warning",
+  "frame": "http://localhost:8921/p/framed-warning",
+  "title": "page framed-warning",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "page framed-warning",
+  "cardHtmlDisplay": "block",
+  "events": []
+ },
+ "owasp_guarded": {
+  "topDocumentRequests2s": 1,
+  "iframeRequests2s": 1,
+  "top": "http://localhost:8921/p/bust-owasp?owasp=1",
+  "frame": "http://localhost:8921/p/bust-owasp?owasp=1",
+  "title": "page bust-owasp",
+  "marker": null,
+  "shelled": true,
+  "cardTitle": "page bust-owasp",
+  "cardHtmlDisplay": "block",
+  "events": [
+   "bust-blocked replace cancelable=true",
+   "unhide  cancelable="
+  ]
+ },
+ "owasp_unguarded": {
+  "topDocumentRequests2s": 38,
+  "iframeRequests2s": 38,
+  "top": "http://localhost:8921/p/bust-owasp?owasp=1&margin-nonav",
+  "frame": "http://localhost:8921/p/bust-owasp?owasp=1&margin-nonav",
+  "title": "",
+  "marker": "ERR Error: page.evaluate: Execution context was destroyed, most likely because of a navigation",
+  "shelled": true,
+  "cardTitle": "ERR Error: frame.evaluate: Frame was detached",
+  "cardHtmlDisplay": "ERR Error: frame.evaluate: Frame was detached",
+  "events": []
+ }
+}
+== T7 (65449 ms)
+{
+ "matrix": {
+  "none_noFallback": {
+   "xfoSameorigin": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h1-xfoSameorigin?xfo=SAMEORIGIN&margin-nofallback",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1229
+   },
+   "cspAncestorsSelf": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h2-cspAncestorsSelf?csp=frame-ancestors%20%27self%27&margin-nofallback",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1231
+   },
+   "xfoDeny": {
+    "outcome": "BLOCKED in card (card title=\"localhost\")",
+    "cardUrl": "chrome-error://chromewebdata/",
+    "inlineScriptRanInCard": 0,
+    "documentRequests": "document,iframe",
+    "shellEvents": "fallback:frame-unreadable",
+    "ms": 1235
+   },
+   "cspAncestorsNone": {
+    "outcome": "BLOCKED in card (card title=\"localhost\")",
+    "cardUrl": "chrome-error://chromewebdata/",
+    "inlineScriptRanInCard": 0,
+    "documentRequests": "document,iframe",
+    "shellEvents": "fallback:frame-unreadable",
+    "ms": 1224
+   },
+   "cspNonePlusScriptSrc": {
+    "outcome": "BLOCKED in card (card title=\"localhost\")",
+    "cardUrl": "chrome-error://chromewebdata/",
+    "inlineScriptRanInCard": 0,
+    "documentRequests": "document,iframe",
+    "shellEvents": "fallback:frame-unreadable",
+    "ms": 1226
+   },
+   "xfoDenyPlusScriptSrc": {
+    "outcome": "BLOCKED in card (card title=\"localhost\")",
+    "cardUrl": "chrome-error://chromewebdata/",
+    "inlineScriptRanInCard": 0,
+    "documentRequests": "document,iframe",
+    "shellEvents": "fallback:frame-unreadable",
+    "ms": 1224
+   },
+   "topCspFrameSrcNone": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h7-topCspFrameSrcNone?csp=frame-src%20%27none%27&margin-nofallback",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1226
+   },
+   "topCspDefaultSrcNone": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h8-topCspDefaultSrcNone?csp=default-src%20%27none%27&margin-nofallback",
+    "inlineScriptRanInCard": 0,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1231
+   },
+   "cspSandbox": {
+    "outcome": "top-level (unshelled)",
+    "cardUrl": null,
+    "inlineScriptRanTopLevel": 1,
+    "documentRequests": "document",
+    "shellEvents": "skip:opaque-origin",
+    "ms": 1241
+   }
+  },
+  "none_fallback": {
+   "xfoSameorigin": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h10-xfoSameorigin?xfo=SAMEORIGIN",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1231
+   },
+   "cspAncestorsSelf": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h11-cspAncestorsSelf?csp=frame-ancestors%20%27self%27",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1233
+   },
+   "xfoDeny": {
+    "outcome": "top-level (unshelled)",
+    "cardUrl": null,
+    "inlineScriptRanTopLevel": 1,
+    "documentRequests": "document,iframe,document",
+    "shellEvents": "skip:flagged",
+    "ms": 1225
+   },
+   "cspAncestorsNone": {
+    "outcome": "top-level (unshelled)",
+    "cardUrl": null,
+    "inlineScriptRanTopLevel": 1,
+    "documentRequests": "document,iframe,document",
+    "shellEvents": "skip:flagged",
+    "ms": 1228
+   },
+   "cspNonePlusScriptSrc": {
+    "outcome": "top-level (unshelled)",
+    "cardUrl": null,
+    "inlineScriptRanTopLevel": 0,
+    "documentRequests": "document,iframe,document",
+    "shellEvents": "skip:flagged",
+    "ms": 1228
+   },
+   "xfoDenyPlusScriptSrc": {
+    "outcome": "top-level (unshelled)",
+    "cardUrl": null,
+    "inlineScriptRanTopLevel": 0,
+    "documentRequests": "document,iframe,document",
+    "shellEvents": "skip:flagged",
+    "ms": 1223
+   },
+   "topCspFrameSrcNone": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h16-topCspFrameSrcNone?csp=frame-src%20%27none%27",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1230
+   },
+   "topCspDefaultSrcNone": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h17-topCspDefaultSrcNone?csp=default-src%20%27none%27",
+    "inlineScriptRanInCard": 0,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1231
+   },
+   "cspSandbox": {
+    "outcome": "top-level (unshelled)",
+    "cardUrl": null,
+    "inlineScriptRanTopLevel": 1,
+    "documentRequests": "document",
+    "shellEvents": "skip:opaque-origin",
+    "ms": 1238
+   }
+  },
+  "static_firstParty_subframe_XFO_CSP": {
+   "xfoSameorigin": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h19-xfoSameorigin?xfo=SAMEORIGIN",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1230
+   },
+   "cspAncestorsSelf": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h20-cspAncestorsSelf?csp=frame-ancestors%20%27self%27",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1226
+   },
+   "xfoDeny": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h21-xfoDeny?xfo=DENY",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1229
+   },
+   "cspAncestorsNone": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h22-cspAncestorsNone?csp=frame-ancestors%20%27none%27",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 1227
+   },
+   "cspNonePlusScriptSrc": {
+    "outcome": "in card",
+    "cardUrl": "http://localhost:8921/p/h23-cspNonePlusScriptSrc?csp=frame-ancestors%20%27none%27%3B%20script-src%20%27self%27",
+    "inlineScriptRanInCard": 1,
+    "documentRequests": "document,iframe",
+    "shellEvents": "",
+    "ms": 122
+== T8 (68590 ms)
+{
+ "runs": {
+  "noext_ttfb0": {
+   "medianLoadMs": 23.4,
+   "medianDclMs": 18.3,
+   "medianFcpMs": 40,
+   "topDocInlineRan": "11111",
+   "topDocExternalScriptRan": "11111",
+   "cardInlineRan": "00000",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "11111",
+   "topRenders": "yyyyy"
+  },
+  "openstop_ttfb0": {
+   "medianLoadMs": 48.1,
+   "medianDclMs": 45.8,
+   "medianFcpMs": 71.2,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "swap_ttfb0": {
+   "medianLoadMs": 51.2,
+   "medianDclMs": 50.3,
+   "medianFcpMs": 71,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "open_ttfb0": {
+   "medianLoadMs": 60,
+   "medianDclMs": 58.7,
+   "medianFcpMs": 73.3,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "stop_ttfb0": {
+   "medianLoadMs": 50.5,
+   "medianDclMs": 49.5,
+   "medianFcpMs": null,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js",
+   "htmlRequests": "22222",
+   "topRenders": "nnnnn"
+  },
+  "nostop_ttfb0": {
+   "medianLoadMs": 65.5,
+   "medianDclMs": 62.1,
+   "medianFcpMs": 78.1,
+   "topDocInlineRan": "11111",
+   "topDocExternalScriptRan": "11111",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "swapstoptimeout_ttfb0": {
+   "medianLoadMs": 51.5,
+   "medianDclMs": 50,
+   "medianFcpMs": 69.4,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "noext_ttfb150": {
+   "medianLoadMs": 174.1,
+   "medianDclMs": 167.8,
+   "medianFcpMs": 196,
+   "topDocInlineRan": "11111",
+   "topDocExternalScriptRan": "11111",
+   "cardInlineRan": "00000",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "11111",
+   "topRenders": "yyyyy"
+  },
+  "openstop_ttfb150": {
+   "medianLoadMs": 353.9,
+   "medianDclMs": 353.4,
+   "medianFcpMs": 374,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "swap_ttfb150": {
+   "medianLoadMs": 355.9,
+   "medianDclMs": 355.6,
+   "medianFcpMs": 373.9,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "open_ttfb150": {
+   "medianLoadMs": 359.5,
+   "medianDclMs": 359.1,
+   "medianFcpMs": 374.2,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "stop_ttfb150": {
+   "medianLoadMs": 359.3,
+   "medianDclMs": 357.5,
+   "medianFcpMs": null,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "",
+   "htmlRequests": "22222",
+   "topRenders": "nnnnn"
+  },
+  "nostop_ttfb150": {
+   "medianLoadMs": 358.1,
+   "medianDclMs": 357.6,
+   "medianFcpMs": 377.9,
+   "topDocInlineRan": "11111",
+   "topDocExternalScriptRan": "11111",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "yyyyy"
+  },
+  "swapstoptimeout_ttfb150": {
+   "medianLoadMs": 360.3,
+   "medianDclMs": 358.4,
+   "medianFcpMs": 372.1,
+   "topDocInlineRan": "00000",
+   "topDocExternalScriptRan": "00000",
+   "cardInlineRan": "11111",
+   "topDocSubresourcesFetched": "/ext.js,/img.png",
+   "htmlRequests": "22222",
+   "topRenders": "nyyyy"
+  }
+ },
+ "stream": {
+  "noext": {
+   "requests": [
+    {
+     "dest": "document",
+     "at": 0,
+     "finished": true,
+     "aborted": false,
+     "closedAt": 816
+    }
+   ],
+   "shellFirstRafMs": null,
+   "cardFcpMsFromTopNavStart": null
+  },
+  "openstop": {
+   "requests": [
+    {
+     "dest": "document",
+     "at": 0,
+     "finished": false,
+     "aborted": true,
+     "closedAt": 14.3
+    },
+    {
+     "dest": "iframe",
+     "at": 22.1,
+     "finished": true,
+     "aborted": false,
+     "closedAt": 839.1
+    }
+   ],
+   "shellFirstRafMs": 23.8,
+   "cardFcpMsFromTopNavStart": 865.1
+  },
+  "swap": {
+   "requests": [
+    {
+     "dest": "document",
+     "at": 0,
+     "finished": true,
+     "aborted": false,
+     "closedAt": 820.7
+    },
+    {
+     "dest": "iframe",
+     "at": 18.2,
+     "finished": true,
+     "aborted": false,
+     "closedAt": 859.2
+    }
+   ],
+   "shellFirstRafMs": 454.9,
+   "cardFcpMsFromTopNavStart": 1063.8
+  },
+  "open": {
+   "requests": [
+    {
+     "dest": "document",
+     "at": 0,
+     "finished": true,
+     "aborted": false,
+     "closedAt": 816.6
+    },
+    {
+     "dest": "iframe",
+     "at": 20.5,
+     "finished": true,
+     "aborted": false,
+     "closedAt": 864.2
+    }
+   ],
+   "shellFirstRafMs": 22.6,
+   "cardFcpMsFromTopNavStart": 887.4
+  },
+  "stop": {
+   "requests": [
+    {
+     "dest": "document",
+     "at": 0,
+     "finished": false,
+     "aborted": true,
+     "closedAt": 13.9
+    },
+    {
+     "dest": "iframe",
+     "at": 19.8,
+     "finished": true,
+     "aborted": false,
+     "closedAt": 835.8
+    }
+   ],
+   "shellFirstRafMs": null,
+   "cardFcpMsFromTopNavStart": null
+  },
+  "swapstopraf": {
+   "requests": [
+    {
+     "dest": "document",
+     "at": 0,
+     "finished": false,
+     "aborted": true,
+     "closedA
+== T9 (7734 ms)
+{
+ "noext": {
+  "initialFocus": {
+   "topActive": "BODY",
+   "cardHasFocus": null
+  },
+  "afterSpace": 511,
+  "afterArrowDown2": 591
+ },
+ "shell": {
+  "initialFocus": {
+   "topActive": "margin-frame",
+   "cardHasFocus": true
+  },
+  "afterSpace": 497,
+  "afterArrowDown2": 577,
+  "afterSidebarClick": {
+   "topActive": "margin-frame",
+   "cardHasFocus": true
+  },
+  "afterSidebarClickThenSpace": 497,
+  "sidebarInputValue": "abc ",
+  "scrollWhileTypingInSidebar": 0,
+  "afterInputFocus": {
+   "topActive": "margin-input",
+   "cardHasFocus": false
+  },
+  "afterCardClickThenSpace": 497
+ },
+ "shell_nofocus": {
+  "initialFocus": {
+   "topActive": "BODY",
+   "cardHasFocus": false
+  },
+  "afterSpace": 0,
+  "afterArrowDown2": 0,
+  "afterSidebarClick": {
+   "topActive": "BODY",
+   "cardHasFocus": false
+  },
+  "afterSidebarClickThenSpace": 0,
+  "sidebarInputValue": "abc ",
+  "scrollWhileTypingInSidebar": 0,
+  "afterInputFocus": {
+   "topActive": "margin-input",
+   "cardHasFocus": false
+  },
+  "afterCardClickThenSpace": 497
+ }
+}
+== T10 (6409 ms)
+{
+ "a_target_top_same_origin": {
+  "top": "http://localhost:8921/p/topsame",
+  "frame": "http://localhost:8921/p/topsame",
+  "title": "page topsame",
+  "marker": "alive",
+  "shelled": true,
+  "requests": [
+   "180976.3 GET localhost:8921/p/topsame dest=iframe site=same-origin"
+  ],
+  "events": [
+   {
+    "t": 206.6,
+    "ev": "top-nav->frame",
+    "type": "push",
+    "url": "http://localhost:8921/p/topsame",
+    "sameDocument": false,
+    "cancelable": true,
+    "userInitiated": true,
+    "form": false
+   }
+  ]
+ },
+ "b_target_blank_same_origin": {
+  "top": "http://localhost:8921/p/blanksame",
+  "frame": "http://localhost:8921/p/blanksame",
+  "title": "page blanksame",
+  "marker": null,
+  "shelled": true,
+  "hasOpener": false,
+  "skip": null,
+  "requests": [
+   "181070.3 GET localhost:8921/p/blanksame dest=document site=same-origin",
+   "181099.6 GET localhost:8921/p/blanksame dest=iframe site=same-origin"
+  ]
+ },
+ "c_target_blank_rel_opener": {
+  "top": "http://localhost:8921/p/blankopener",
+  "frame": null,
+  "title": "page blankopener",
+  "marker": null,
+  "shelled": false,
+  "hasOpener": true,
+  "skip": {
+   "t": 22.4,
+   "ev": "skip",
+   "why": "popup"
+  },
+  "requests": [
+   "182372.3 GET localhost:8921/p/blankopener dest=document site=same-origin"
+  ],
+  "openerIsTheCard": "/p/topsame",
+  "cardReceived": [
+   "hi-from-popup"
+  ]
+ },
+ "d_window_open_from_card": {
+  "top": "http://localhost:8921/p/popup",
+  "frame": null,
+  "title": "page popup",
+  "marker": null,
+  "shelled": false,
+  "hasOpener": true,
+  "skip": {
+   "t": 34.3,
+   "ev": "skip",
+   "why": "popup"
+  },
+  "requests": [
+   "183867.5 GET localhost:8921/p/popup dest=document site=same-origin"
+  ],
+  "openerIsTheCard": "/p/topsame",
+  "cardReceived": [
+   "hi-from-popup",
+   "hi-from-popup"
+  ]
+ },
+ "e_target_blank_cross_origin": {
+  "top": "http://localhost:8922/p/blankxo",
+  "frame": "http://localhost:8922/p/blankxo",
+  "title": "page blankxo",
+  "marker": null,
+  "shelled": true,
+  "hasOpener": false,
+  "skip": null,
+  "requests": [
+   "185372.9 GET localhost:8922/p/blankxo dest=document site=same-site",
+   "185402.4 GET localhost:8922/p/blankxo dest=iframe site=same-origin"
+  ]
+ },
+ "f_target_top_cross_origin": {
+  "top": "http://localhost:8922/p/topxo",
+  "frame": "http://localhost:8922/p/topxo",
+  "title": "page topxo",
+  "marker": null,
+  "shelled": true,
+  "requests": [
+   "186655.7 GET localhost:8922/p/topxo dest=document site=same-site",
+   "186677.6 GET localhost:8922/p/topxo dest=iframe site=same-origin"
+  ]
+ }
+}
+== T11 (2052 ms)
+{
+ "browserReload": {
+  "top": "http://localhost:8921/p/B",
+  "frame": "http://localhost:8921/p/B",
+  "title": "page B",
+  "marker": null,
+  "shelled": true,
+  "requests": [
+   "187442.6 GET localhost:8921/p/B dest=document site=same-origin",
+   "187469.6 GET localhost:8921/p/B dest=iframe site=same-origin"
+  ],
+  "events": [
+   "shell",
+   "first-raf",
+   "focus",
+   "frame-load",
+   "sync"
+  ]
+ },
+ "scriptReloadOfTopFromCard": {
+  "top": "http://localhost:8921/p/B",
+  "frame": "http://localhost:8921/p/B",
+  "title": "page B",
+  "marker": null,
+  "shelled": true,
+  "requests": [
+   "187533.6 GET localhost:8921/p/B dest=iframe site=same-origin"
+  ],
+  "events": [
+   "top-reload->frame-reload"
+  ]
+ }
+}
+== T12 (1108 ms)
+{
+ "plain": {
+  "pdfPages": 4,
+  "bytes": 47326
+ },
+ "shell_topLevelPrint": {
+  "pdfPages": 1,
+  "bytes": 74372
+ },
+ "shell_cardPrintCall": "function"
+}
+== T13 (1557 ms)
+{
+ "cardFs": {
+  "fs": "ok",
+  "el": "vw",
+  "iw": 1000,
+  "ih": 600
+ },
+ "topFs": {
+  "el": "margin-frame",
+  "rect": {
+   "x": 0,
+   "y": 0,
+   "width": 1000,
+   "height": 600,
+   "top": 0,
+   "right": 1000,
+   "bottom": 600,
+   "left": 0
+  }
+ }
+}
+{"rules": "none", "victim": "?xfo=SAMEORIGIN", "filter": null, "frame": "title=\"page victim\" inline=1"}
+{"rules": "none", "victim": "?xfo=DENY", "filter": null, "frame": "no-access"}
+{"rules": "none", "victim": "?csp=frame-ancestors%20'none'", "filter": null, "frame": "no-access"}
+{"rules": "none", "victim": "?csp=frame-ancestors%20'self'", "filter": null, "frame": "title=\"page victim\" inline=1"}
+{"rules": "rules-block.json", "victim": "?xfo=SAMEORIGIN", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-block.json", "victim": "?xfo=DENY", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-block.json", "victim": "?csp=frame-ancestors%20'none'", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-block.json", "victim": "?csp=frame-ancestors%20'self'", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-modify.json", "victim": "?xfo=SAMEORIGIN", "filter": "compiled", "frame": "title=\"page victim\" inline=1"}
+{"rules": "rules-modify.json", "victim": "?xfo=DENY", "filter": "compiled", "frame": "no-access"}
+{"rules": "rules-modify.json", "victim": "?csp=frame-ancestors%20'none'", "filter": "compiled", "frame": "no-access"}
+{"rules": "rules-modify.json", "victim": "?csp=frame-ancestors%20'self'", "filter": "compiled", "frame": "title=\"page victim\" inline=1"}
+requests carrying x-margin-test: 0 of 8 victim requests
+EXIT 0

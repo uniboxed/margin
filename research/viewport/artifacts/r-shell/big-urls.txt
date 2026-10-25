@@ -1,0 +1,6 @@
+/p?mode=none&tag=T-none-d100-g0-r1&delay=100&els=8000
+/p?mode=tsrcdoc2&tag=T-tsrcdoc2-d100-g0-r1&delay=100&els=8000
+/p?mode=none&tag=T-none-d100-g0-r2&delay=100&els=8000
+/p?mode=tsrcdoc2&tag=T-tsrcdoc2-d100-g0-r2&delay=100&els=8000
+/p?mode=none&tag=T-none-d100-g0-r3&delay=100&els=8000
+/p?mode=tsrcdoc2&tag=T-tsrcdoc2-d100-g0-r3&delay=100&els=8000

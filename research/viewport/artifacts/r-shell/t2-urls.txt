@@ -1,0 +1,4 @@
+/p?mode=tsrcdoc&tag=tsrcdoc&pagenav=1&interceptnav=1
+/p?mode=tsrcdoc&tag=tsrcdocA&nonce=abc&csp=frame-src%20https%3A//www.youtube.com
+/p?mode=tblank&tag=tblank&pagenav=1&interceptnav=1
+/p?mode=tblank&tag=tblankA&nonce=abc&csp=frame-src%20https%3A//www.youtube.com

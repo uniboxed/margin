@@ -1,0 +1,121 @@
+{
+  "steps": [
+    {
+      "label": "card: history.back()",
+      "ms": 36,
+      "top": "http://localhost:8921/p/B",
+      "frame": "http://localhost:8921/p/B",
+      "title": "page B",
+      "marker": "alive",
+      "shelled": true,
+      "browserHistory": {
+        "currentIndex": 2,
+        "entries": [
+          "about:blank | ",
+          "http://localhost:8921/p/B | page A",
+          "http://localhost:8921/p/B | page B",
+          "http://localhost:8921/p/B | page C"
+        ]
+      }
+    },
+    {
+      "label": "top (shell): history.back()",
+      "ms": 33,
+      "top": "http://localhost:8921/p/A",
+      "frame": "http://localhost:8921/p/A",
+      "title": "page A",
+      "marker": "alive",
+      "shelled": true,
+      "browserHistory": {
+        "currentIndex": 1,
+        "entries": [
+          "about:blank | ",
+          "http://localhost:8921/p/A | page A",
+          "http://localhost:8921/p/A | page B",
+          "http://localhost:8921/p/A | page C"
+        ]
+      }
+    },
+    {
+      "label": "browser forward (CDP navigateToHistoryEntry)",
+      "ms": 30,
+      "top": "http://localhost:8921/p/B",
+      "frame": "http://localhost:8921/p/B",
+      "title": "page B",
+      "marker": "alive",
+      "shelled": true,
+      "browserHistory": {
+        "currentIndex": 2,
+        "entries": [
+          "about:blank | ",
+          "http://localhost:8921/p/B | page A",
+          "http://localhost:8921/p/B | page B",
+          "http://localhost:8921/p/B | page C"
+        ]
+      }
+    },
+    {
+      "label": "browser forward again",
+      "ms": 29,
+      "top": "http://localhost:8921/p/C",
+      "frame": "http://localhost:8921/p/C",
+      "title": "page C",
+      "marker": "alive",
+      "shelled": true,
+      "browserHistory": {
+        "currentIndex": 3,
+        "entries": [
+          "about:blank | ",
+          "http://localhost:8921/p/C | page A",
+          "http://localhost:8921/p/C | page B",
+          "http://localhost:8921/p/C | page C"
+        ]
+      }
+    },
+    {
+      "label": "browser back",
+      "ms": 32,
+      "top": "http://localhost:8921/p/B",
+      "frame": "http://localhost:8921/p/B",
+      "title": "page B",
+      "marker": "alive",
+      "shelled": true,
+      "browserHistory": {
+        "currentIndex": 2,
+        "entries": [
+          "about:blank | ",
+          "http://localhost:8921/p/B | page A",
+          "http://localhost:8921/p/B | page B",
+          "http://localhost:8921/p/B | page C"
+        ]
+      }
+    }
+  ],
+  "afterABC": {
+    "top": "http://localhost:8921/p/C",
+    "frame": "http://localhost:8921/p/C",
+    "title": "page C",
+    "marker": "alive",
+    "shelled": true,
+    "historyLength": 4,
+    "browserHistory": {
+      "currentIndex": 3,
+      "entries": [
+        "about:blank | ",
+        "http://localhost:8921/p/C | page A",
+        "http://localhost:8921/p/C | page B",
+        "http://localhost:8921/p/C | page C"
+      ]
+    }
+  },
+  "requestsDuringHistory": [
+    "6104.4 GET localhost:8921/p/B dest=iframe site=same-origin",
+    "6238.8 GET localhost:8921/p/C dest=iframe site=same-origin",
+    "6316 GET localhost:8921/p/B dest=iframe site=same-origin",
+    "6357.9 GET localhost:8921/p/A dest=iframe site=same-origin",
+    "6395.3 GET localhost:8921/p/B dest=iframe site=same-origin",
+    "6430.7 GET localhost:8921/p/C dest=iframe site=same-origin",
+    "6464.9 GET localhost:8921/p/B dest=iframe site=same-origin"
+  ],
+  "markerAtEnd": "alive"
+}

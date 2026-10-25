@@ -1,0 +1,50 @@
+{
+  "noext": {
+    "initialFocus": {
+      "topActive": "BODY",
+      "cardHasFocus": null
+    },
+    "afterSpace": 511,
+    "afterArrowDown2": 591
+  },
+  "shell": {
+    "initialFocus": {
+      "topActive": "margin-frame",
+      "cardHasFocus": true
+    },
+    "afterSpace": 497,
+    "afterArrowDown2": 577,
+    "afterSidebarClick": {
+      "topActive": "margin-frame",
+      "cardHasFocus": true
+    },
+    "afterSidebarClickThenSpace": 497,
+    "sidebarInputValue": "abc ",
+    "scrollWhileTypingInSidebar": 0,
+    "afterInputFocus": {
+      "topActive": "margin-input",
+      "cardHasFocus": false
+    },
+    "afterCardClickThenSpace": 497
+  },
+  "shell_nofocus": {
+    "initialFocus": {
+      "topActive": "BODY",
+      "cardHasFocus": false
+    },
+    "afterSpace": 0,
+    "afterArrowDown2": 0,
+    "afterSidebarClick": {
+      "topActive": "BODY",
+      "cardHasFocus": false
+    },
+    "afterSidebarClickThenSpace": 0,
+    "sidebarInputValue": "abc ",
+    "scrollWhileTypingInSidebar": 0,
+    "afterInputFocus": {
+      "topActive": "margin-input",
+      "cardHasFocus": false
+    },
+    "afterCardClickThenSpace": 497
+  }
+}

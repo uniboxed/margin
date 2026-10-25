@@ -1,0 +1,6 @@
+ttfb=0 {"requestStart":2,"responseStart":6,"domInteractive":61} [margin] timing (ms) injected=20 storage=31 rendered=50 | page DOMContentLoaded=61 load=68 keepOpen=false
+ttfb=0 {"requestStart":2,"responseStart":4,"domInteractive":66} [margin] timing (ms) injected=26 storage=38 rendered=53 | page DOMContentLoaded=66 load=69 keepOpen=false
+ttfb=150 {"requestStart":1,"responseStart":153,"domInteractive":191} [margin] timing (ms) injected=169 storage=178 rendered=188 | page DOMContentLoaded=192 load=197 keepOpen=false
+ttfb=150 {"requestStart":2,"responseStart":154,"domInteractive":199} [margin] timing (ms) injected=171 storage=184 rendered=196 | page DOMContentLoaded=199 load=204 keepOpen=false
+ttfb=400 {"requestStart":1,"responseStart":403,"domInteractive":444} [margin] timing (ms) injected=417 storage=428 rendered=437 | page DOMContentLoaded=444 load=451 keepOpen=false
+ttfb=400 {"requestStart":1,"responseStart":403,"domInteractive":448} [margin] timing (ms) injected=418 storage=430 rendered=439 | page DOMContentLoaded=448 load=453 keepOpen=false

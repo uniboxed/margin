@@ -1,0 +1,6 @@
+/p?mode=stop&tag=cspA-stop&nonce=abc&navafter=1&csp=frame-src%20https%3A//www.youtube.com
+/p?mode=transplant&tag=cspA-transplant&nonce=abc&navafter=1&csp=frame-src%20https%3A//www.youtube.com
+/p?mode=stop&tag=cspB-stop&nonce=abc&navafter=1&csp=default-src%20%27none%27%3B%20script-src%20%27nonce-abc%27%3B%20img-src%20%27self%27%3B%20style-src%20%27self%27
+/p?mode=transplant&tag=cspB-transplant&nonce=abc&navafter=1&csp=default-src%20%27none%27%3B%20script-src%20%27nonce-abc%27%3B%20img-src%20%27self%27%3B%20style-src%20%27self%27
+/p?mode=stop&tag=cspC-stop&nonce=abc&navafter=1&csp=frame-src%20%27self%27
+/p?mode=transplant&tag=cspC-transplant&nonce=abc&navafter=1&csp=frame-src%20%27self%27

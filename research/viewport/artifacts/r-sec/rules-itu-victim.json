@@ -1,0 +1,1 @@
+[{"trigger": {"url-filter": "/t/plain", "resource-type": ["child-document"], "if-top-url": ["^http://127\\.0\\.0\\.1:8871/"]}, "action": {"type": "block"}}]

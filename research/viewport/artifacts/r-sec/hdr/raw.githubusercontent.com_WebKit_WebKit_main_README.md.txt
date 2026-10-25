@@ -1,0 +1,26 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/2 404 
+content-security-policy: default-src 'none'; style-src 'unsafe-inline'; sandbox
+strict-transport-security: max-age=31536000
+x-content-type-options: nosniff
+x-frame-options: deny
+x-xss-protection: 1; mode=block
+content-type: text/plain; charset=utf-8
+x-github-request-id: 503E:2F3231:99129A:B3633B:6ADDB9E4
+x-github-edge-region: iad
+accept-ranges: bytes
+date: Sun, 25 Oct 2026 08:12:28 GMT
+via: 1.1 varnish
+x-served-by: cache-iad-kiad7000126-IAD
+x-cache: HIT
+x-cache-hits: 1
+x-timer: S1792915949.599160,VS0,VE1
+vary: Authorization,Accept-Encoding
+access-control-allow-origin: *
+cross-origin-resource-policy: cross-origin
+x-fastly-request-id: 1726467e10a45cb5f6e2fd27ee6b8ac34f709a94
+expires: Sun, 25 Oct 2026 08:17:28 GMT
+source-age: 8
+content-length: 14
+

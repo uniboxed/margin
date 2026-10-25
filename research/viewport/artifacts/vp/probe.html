@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><title>probe</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #36c; color: #fff; }
+  #wide { width: 100vw; height: 30px; background: #c63; margin-top: 50px; }
+  #widget { position: fixed; right: 10px; bottom: 10px; width: 60px; height: 30px; background: #3a3; }
+  #sticky { position: sticky; top: 40px; height: 20px; background: #999; }
+  .spacer { height: 3000px; }
+</style>
+<style id="strategy"></style>
+</head><body>
+<div id="header">header</div><div id="wide">100vw</div><div id="sticky">sticky</div><div class="spacer"></div><div id="widget">w</div>
+<script>
+  const W = 260;
+  const STRATEGIES = {
+    margin: `html { margin-left: ${W}px; width: auto; }`,
+    transform: `html { transform: translateX(${W}px); width: calc(100% - ${W}px); }`,
+    filter: `html { filter: drop-shadow(0 0 0 transparent); margin-left: ${W}px; width: auto; }`,
+    'body-scroller': `html { overflow: hidden; height: 100%; transform: translateX(${W}px); width: calc(100% - ${W}px); }
+                      body { height: 100%; overflow: auto; }`,
+    zoom: `html { zoom: ${(1000 - W - 8) / 1000}; margin-left: ${W / ((1000 - W - 8) / 1000)}px; width: auto; overflow-x: hidden; }`,
+  };
+  const name = new URLSearchParams(location.search).get('s');
+  document.getElementById('strategy').textContent = STRATEGIES[name] || '';
+  let windowScrollEvents = 0;
+  addEventListener('scroll', () => windowScrollEvents++);
+  const rect = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right)]; };
+  function measure() {
+    return { header: rect('header'), wide: rect('wide'), widget: rect('widget'), sticky: rect('sticky'), vw: innerWidth };
+  }
+  window.run = async () => {
+    const before = measure();
+    scrollTo(0, 500);
+    document.scrollingElement.scrollTop = 500;
+    document.body.scrollTop = 500;
+    await new Promise((r) => setTimeout(r, 200));
+    const after = measure();
+    return { before, after, windowScrollY: Math.round(scrollY), bodyScrollTop: Math.round(document.body.scrollTop), windowScrollEvents };
+  };
+  // For engines without an automation API: put the result in the title.
+  if (new URLSearchParams(location.search).has('auto')) run().then((r) => { document.title = JSON.stringify(r); });
+</script>
+</body></html>

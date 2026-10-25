@@ -1,0 +1,11 @@
+import { createRequire } from 'node:module';
+const require = createRequire('/home/user/margin/package.json');
+const { chromium } = require('playwright');
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1000, height: 600 } });
+p.on('pageerror', (e) => console.log('ERR', e.message));
+await p.goto(`file://${process.argv[2]}/adapter.html`);
+console.log(JSON.stringify(await p.evaluate(() => measure())));
+await p.evaluate(() => { scrollTo(0, 500); late(); });
+console.log(JSON.stringify(await p.evaluate(() => measure())));
+await b.close();

@@ -1,0 +1,2 @@
+csp=[] {"url": "http://127.0.0.1:8871/page?csp=", "world": "margin", "title": "LOADED:plain siteInlineRanInTop=true"}
+csp=[script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'self'] {"url": "http://127.0.0.1:8871/page?csp=script-src%20%27none%27%3B%20object-src%20%27none%27%3B%20base-uri%20%27none%27%3B%20form-action%20%27none%27%3B%20frame-src%20%27self%27", "world": "margin", "title": "LOADED:plain siteInlineRanInTop=false"}

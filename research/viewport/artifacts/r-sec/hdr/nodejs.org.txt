@@ -1,0 +1,15 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/2 307 
+date: Sun, 25 Oct 2026 08:36:30 GMT
+content-type: text/plain
+location: /en
+cf-ray: a4ffe4dc4e330622-IAD
+cf-cache-status: DYNAMIC
+cache-control: public, max-age=0, must-revalidate
+server: cloudflare
+set-cookie: NEXT_LOCALE=en; Path=/; SameSite=lax
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-content-type-options: nosniff
+x-vercel-id: iad1::6tlmc-1792917390776-f26d0850caf5
+

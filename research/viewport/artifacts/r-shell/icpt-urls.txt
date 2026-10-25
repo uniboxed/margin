@@ -1,0 +1,2 @@
+/p?mode=stop&tag=icpS&pagenav=1&interceptnav=1
+/p?mode=transplant&tag=icpT&pagenav=1&interceptnav=1

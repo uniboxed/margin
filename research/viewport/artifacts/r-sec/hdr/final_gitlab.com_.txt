@@ -1,0 +1,39 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/2 301 
+date: Sun, 25 Oct 2026 08:36:45 GMT
+content-type: text/html; charset=utf-8
+content-length: 91
+location: https://about.gitlab.com/
+set-cookie: _cfuvid=Mbi3WmiwKPJuxsK07nwHrzMLoaqe32N3Ljz_MS5R6bM-1792917405.1332436-1.0.1.1-o_jfAs7pHy1od6EyHjUc94vDPZG733MgQAhC0VaQ.Po; HttpOnly; SameSite=None; Secure; Path=/; Domain=gitlab.com
+cf-ray: a4ffe5361f8da3a2-IAD
+cf-cache-status: BYPASS
+cache-control: no-store
+server: cloudflare
+strict-transport-security: max-age=31536000
+content-security-policy: base-uri 'self'; child-src https://www.google.com/recaptcha/ https://www.recaptcha.net/ https://www.googletagmanager.com/ns.html https://*.zuora.com/apps/PublicHostedPageLite.do https://gitlab.com/admin/ https://gitlab.com/assets/ https://gitlab.com/-/speedscope/index.html https://gitlab.com/-/sandbox/ 'self' https://gitlab.com/assets/ blob: data:; connect-src 'self' https://gitlab.com wss://gitlab.com https://sentry.gitlab.net https://new-sentry.gitlab.net https://customers.gitlab.com https://snowplow.trx.gitlab.net https://sourcegraph.com https://collector.prd-278964.gl-product-analytics.com https://analytics.gitlab.com snowplowprd.trx.gitlab.net; default-src 'self'; font-src 'self'; form-action 'self' https: http:; frame-ancestors 'self'; frame-src https://www.google.com/recaptcha/ https://www.recaptcha.net/ https://www.googletagmanager.com/ns.html https://*.zuora.com/apps/PublicHostedPageLite.do https://gitlab.com/admin/ https://gitlab.com/assets/ https://gitlab.com/-/speedscope/index.html https://gitlab.com/-/sandbox/; img-src 'self' data: blob: http: https:; manifest-src 'self'; media-src 'self' data: blob: http: https:; object-src 'none'; report-uri https://new-sentry.gitlab.net/api/4/security/?sentry_key=f5573e26de8f4293b285e556c35dfd6e&sentry_environment=gprd; script-src 'strict-dynamic' 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://www.recaptcha.net/ https://apis.google.com https://*.zuora.com/apps/PublicHostedPageLite.do 'nonce-3VMsZ0bGVRJcliCErHBaug=='; style-src 'self' 'unsafe-inline'; worker-src 'self' https://gitlab.com/assets/ blob: data:
+gitlab-lb: haproxy-main-21-lb-gprd
+gitlab-sv: web-gke-us-east1-d
+nel: {"max_age": 0}
+permissions-policy: interest-cohort=()
+ratelimit-limit: 500
+ratelimit-name: throttle_unauthenticated_web
+ratelimit-observed: 2
+ratelimit-remaining: 498
+ratelimit-reset: 1792917420
+referrer-policy: strict-origin-when-cross-origin
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+x-gitlab-meta: {"correlation_id":"a4ffe5361f8da3a2-IAD","version":"1"}
+x-permitted-cross-domain-policies: none
+x-request-id: a4ffe5361f8da3a2-IAD
+x-runtime: 0.024626
+x-ua-compatible: IE=edge
+x-xss-protection: 1; mode=block
+
+HTTP/1.1 403 Forbidden
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Content-Length: 74
+Connection: close
+

@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "shell-test-main",
+  "version": "1.0",
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["main.js"], "run_at": "document_start", "world": "MAIN" },
+    { "matches": ["<all_urls>"], "js": ["cs.js"], "run_at": "document_start", "all_frames": true, "match_about_blank": true }
+  ]
+}

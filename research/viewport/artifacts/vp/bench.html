@@ -1,0 +1,17 @@
+<!doctype html><html><head><title>bench</title><style>body{margin:0}.w{width:100vw}</style></head><body><div class="w"></div><script>
+const f = document.createDocumentFragment(); for (let i = 0; i < 5000; i++) { const d = document.createElement('div'); d.innerHTML = '<span>x</span><a>y</a>'; f.append(d); } document.body.append(f);
+const push = new CSSStyleSheet(); push.replaceSync('html { margin-left: 260px; margin-right: 8px; width: auto; overflow-x: hidden; }');
+const s = new CSSStyleSheet(); document.adoptedStyleSheets = [push, s];
+const all = [...document.querySelectorAll('*')];
+const T = (fn) => { const t = performance.now(); fn(); return +(performance.now() - t).toFixed(1); };
+document.body.offsetWidth;
+const r = {};
+r.gcsPosition = T(() => { for (const el of all) getComputedStyle(el).position; });
+r.offsetWidth = T(() => { for (const el of all) el.offsetWidth; });
+r.writeThenRead = T(() => { s.replaceSync('[data-x="1"]{left:1px}'); document.body.offsetWidth; });
+r.writeThenRead2 = T(() => { s.replaceSync('[data-x="2"]{left:1px}'); document.body.offsetWidth; });
+r.attrWriteRead = T(() => { all[5].setAttribute('data-x', '2'); document.body.offsetWidth; });
+r.cssRule = T(() => { s.cssRules.length ? s.deleteRule(0) : 0; s.insertRule('[data-x="2"]{left:2px}'); document.body.offsetWidth; });
+r.scrollWidth = T(() => document.documentElement.scrollWidth);
+document.title = JSON.stringify(r);
+</script></body></html>

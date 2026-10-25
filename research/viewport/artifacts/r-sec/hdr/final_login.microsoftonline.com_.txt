@@ -1,0 +1,29 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/1.1 302 Found
+Cache-Control: no-store, no-cache
+Pragma: no-cache
+Content-Type: text/html; charset=utf-8
+Expires: -1
+Location: https://www.office.com/login#
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+P3P: CP="DSP CUR OTPi IND OTRi ONL FIN"
+x-ms-request-id: f54a6ce7-17d1-41e4-89c8-b84550fd8300
+x-ms-ests-server: 2.1.25378.3 - SCUS ProdSlices
+x-ms-srs: 1.P
+Content-Security-Policy-Report-Only: object-src 'none'; base-uri 'self'; script-src 'self' 'nonce-6BuW04Roz9P-yBzZKJifpQ' 'unsafe-inline' 'unsafe-eval' https://*.msauth.net https://*.msftauth.net https://*.msftauthimages.net https://*.msauthimages.net https://*.msidentity.com https://*.microsoftonline-p.com https://*.microsoftazuread-sso.com https://*.azureedge.net https://*.outlook.com https://*.office.com https://*.office365.com https://*.microsoft.com https://*.bing.com 'report-sample'; report-uri https://csp.microsoft.com/report/ESTS-UX-All
+X-XSS-Protection: 0
+Set-Cookie: fpc=Aj2KotPs7mRFvpSqDobaH9o; expires=Tue, 24-Nov-2026 08:36:44 GMT; path=/; secure; HttpOnly; SameSite=None
+Set-Cookie: esctx=PBgABBwEAAAA9VeaV3ywaSLp1O3c4_Et5RXZvU3RzQXJ0aWZhY3RzDQAAAAAAsoiwWse_tI7kyvwyA5KcoEoxcXywowJQWt80dZGMUrWsr2oizapOM9NHD3I81Uo_ZGl-4oY9dOx0lNJxWuctiSQEcm0EDFiCntoHzOyQpgH28JtXGKZxxmd7DtuQtnsqV5uI8nbIMYmcyKgFa6MJT-gQNEIu7Ie3B9sXlrbOwuYp7NpgVl3TqMrWgQHSf_HnA5b1fy7h1PMHCILpheoLOxhySYjSNSEhXo1G3OP1Yugj4_MRbgS5RgEOhA6msohLhCEiOzj0hMB5atuvexHHTAgSyApoDL_GtOzgcwpvvQrBRNimk29z1SRW8ehCm5wtEYHgcL1WQy-h5xzSRo0zKh0K5tsf4yoy0erlVpfQBWOb1SIhBrwNcGdlhkyZ_SnDOdIV_rds6iEUYhtsXifW5VpmTsmDuH-Xh7OwLLrmAaU9dmFZ39XvOpQqMJDuy5eK_Mp-PgVaMrdJMPIAgV9M6XRrXCBH_aUcHZGmcVldTTy7DGWTOs2XGdDOSmUuYpZ9Shj11nULM6KYwnbMjlI9rlxD8TFdKgVtvY7LJOA9RIXCzx1zEytYo_SiKCSjgcIT7l8uudVRCRcbIfasUdlUlnmlKtscW9qF8QguLVvHyx3paTt0zGUFQ-gWwhIKj1alopT93BnFNRTN4VgrcUBHgVj33a39w14XewNr8FjMc391HwCVxs6tewtbNdt_YYSkO0BXeUjcCaQHXMA5YvffB6OCJGiFguzhw5PnxKHhaNIgAA; domain=.login.microsoftonline.com; path=/; secure; HttpOnly; SameSite=None
+Set-Cookie: x-ms-gateway-slice=estsfd; path=/; secure; samesite=none; httponly
+Set-Cookie: stsservicecookie=estsfd; path=/; secure; samesite=none; httponly
+Date: Sun, 25 Oct 2026 08:36:44 GMT
+Content-Length: 146
+
+HTTP/1.1 403 Forbidden
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Content-Length: 72
+Connection: close
+

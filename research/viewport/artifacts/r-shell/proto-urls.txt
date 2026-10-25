@@ -1,0 +1,5 @@
+/p?tag=proto1&delay=100
+/fid?x=1
+/p?tag=proto-pn&pagenav=1&nonce=abc&csp=frame-src%20https%3A//www.youtube.com%3B%20script-src%20%27nonce-abc%27
+/form?action=%2Fpost%3Ftag%3Dprotopost
+/p?tag=proto-xfo&xfo=DENY&child=1

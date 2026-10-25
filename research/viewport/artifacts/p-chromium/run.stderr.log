@@ -1,0 +1,12 @@
+T6 assign true
+T6 assign false
+T6 replace true
+T6 replace false
+T6 href true
+T6 href false
+T6 reload true
+T6 reload false
+T6 other true
+T6 other false
+T6 owasp true
+T6 owasp false

@@ -1,0 +1,33 @@
+{
+  "browserReload": {
+    "top": "http://localhost:8921/p/B",
+    "frame": "http://localhost:8921/p/B",
+    "title": "page B",
+    "marker": null,
+    "shelled": true,
+    "requests": [
+      "187442.6 GET localhost:8921/p/B dest=document site=same-origin",
+      "187469.6 GET localhost:8921/p/B dest=iframe site=same-origin"
+    ],
+    "events": [
+      "shell",
+      "first-raf",
+      "focus",
+      "frame-load",
+      "sync"
+    ]
+  },
+  "scriptReloadOfTopFromCard": {
+    "top": "http://localhost:8921/p/B",
+    "frame": "http://localhost:8921/p/B",
+    "title": "page B",
+    "marker": null,
+    "shelled": true,
+    "requests": [
+      "187533.6 GET localhost:8921/p/B dest=iframe site=same-origin"
+    ],
+    "events": [
+      "top-reload->frame-reload"
+    ]
+  }
+}

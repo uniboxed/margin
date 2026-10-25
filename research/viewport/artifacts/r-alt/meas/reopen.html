@@ -1,0 +1,11 @@
+<!doctype html><html><body><script>
+const f=document.createElement('iframe'); document.body.appendChild(f);
+const out=[];
+const html = (n)=>`<!doctype html><script>try{ eval('1'); }catch(e){}<\/script><script>let g=${n}; window.top.__o.push('ran'+${n}+':'+g+':same?'+(window.__mark||'no'));<\/script><script>window.__mark='m${n}';<\/script>`;
+window.__o=out;
+window.onerror=(m)=>out.push('toperr '+m);
+f.contentWindow.onerror=null;
+function w(n){ const d=f.contentDocument; d.open(); f.contentWindow.addEventListener('error', e=>out.push('err'+n+' '+e.message)); d.write(html(n)); d.close(); }
+w(1); w(2);
+setTimeout(()=>{document.title=JSON.stringify({out})},500);
+</script></body></html>

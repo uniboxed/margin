@@ -1,0 +1,62 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/2 302 
+content-type: text/html; charset=UTF-8
+strict-transport-security: max-age=31536000; includeSubDomains
+set-cookie: __Host-GAPS=1:QegwLz24oIF6-VsxM66qqXDiqxMkaw:rCz9mx8syDHfCyaH;Path=/;Expires=Tue, 24-Oct-2028 08:36:47 GMT;Secure;HttpOnly;Priority=HIGH
+x-frame-options: DENY
+content-security-policy: script-src 'nonce-2d4CP8AL-c3u5N0KzxsHsQ' 'unsafe-inline' 'unsafe-eval';object-src 'none';base-uri 'self';report-uri /cspreport
+location: https://accounts.google.com/ServiceLogin?passive=1209600&continue=https%3A%2F%2Faccounts.google.com%2F&followup=https%3A%2F%2Faccounts.google.com%2F
+content-length: 365
+date: Sun, 25 Oct 2026 08:36:47 GMT
+expires: Sun, 25 Oct 2026 08:36:47 GMT
+cache-control: private, max-age=0
+x-content-type-options: nosniff
+x-xss-protection: 1; mode=block
+server: GSE
+
+HTTP/2 302 
+content-type: application/binary
+set-cookie: __Host-GAPS=1:ZU6xdRsOsC1VPwTMVFoE1xGMaSBB6g:YlCviFR7qUwjWWGC; Expires=Tue, 24-Oct-2028 08:36:47 GMT; Path=/; Secure; HttpOnly; Priority=HIGH
+cache-control: no-cache, no-store, max-age=0, must-revalidate
+pragma: no-cache
+expires: Mon, 01 Jan 1990 00:00:00 GMT
+date: Sun, 25 Oct 2026 08:36:47 GMT
+location: https://accounts.google.com/v3/signin/identifier?continue=https://accounts.google.com/&followup=https://accounts.google.com/&passive=1209600&flowName=WebLiteSignIn&flowEntry=ServiceLogin&dsh=S-80440721:1792917407600537
+strict-transport-security: max-age=31536000; includeSubDomains
+permissions-policy: ch-ua-arch=*, ch-ua-bitness=*, ch-ua-full-version=*, ch-ua-full-version-list=*, ch-ua-model=*, ch-ua-wow64=*, ch-ua-form-factors=*, ch-ua-platform=*, ch-ua-platform-version=*
+content-security-policy: script-src 'nonce-RfsTkuPxZtClqeQI4KHkPg' 'unsafe-inline';object-src 'none';base-uri 'self';report-uri /_/AccountsSigninPassiveLoginHttp/cspreport;worker-src 'self'
+content-security-policy: require-trusted-types-for 'script';report-uri /_/AccountsSigninPassiveLoginHttp/cspreport
+accept-ch: Sec-CH-UA-Arch, Sec-CH-UA-Bitness, Sec-CH-UA-Full-Version, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Model, Sec-CH-UA-WoW64, Sec-CH-UA-Form-Factors, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version
+cross-origin-resource-policy: cross-origin
+cross-origin-opener-policy: unsafe-none
+server: ESF
+content-length: 0
+x-xss-protection: 0
+x-content-type-options: nosniff
+
+HTTP/2 200 
+content-type: text/html; charset=utf-8
+x-frame-options: DENY
+set-cookie: __Host-GAPS=1:5Pe87Y3nsZ2arKpahF4_HllrnQDRfw:RzxlJCig5wyI52jV; Expires=Tue, 24-Oct-2028 08:36:47 GMT; Path=/; Secure; HttpOnly; Priority=HIGH
+x-auto-login: realm=com.google&args=continue%3Dhttps://accounts.google.com/
+x-ua-compatible: IE=edge
+cache-control: no-cache, no-store, max-age=0, must-revalidate
+pragma: no-cache
+expires: Mon, 01 Jan 1990 00:00:00 GMT
+date: Sun, 25 Oct 2026 08:36:47 GMT
+strict-transport-security: max-age=31536000; includeSubDomains
+report-to: {"group":"AccountsSignInUi","max_age":2592000,"endpoints":[{"url":"https://csp.withgoogle.com/csp/report-to/AccountsSignInUi"}]}
+cross-origin-opener-policy-report-only: same-origin; report-to="AccountsSignInUi"
+cross-origin-resource-policy: same-site
+content-security-policy: script-src 'nonce-jJkCb-telWYzazrgX8Zlvw' 'unsafe-inline';object-src 'none';base-uri 'self';report-uri /v3/signin/_/AccountsSignInUi/cspreport;worker-src 'self'
+content-security-policy: require-trusted-types-for 'script';report-uri /v3/signin/_/AccountsSignInUi/cspreport
+permissions-policy: ch-ua-arch=*, ch-ua-bitness=*, ch-ua-full-version=*, ch-ua-full-version-list=*, ch-ua-model=*, ch-ua-wow64=*, ch-ua-form-factors=*, ch-ua-platform=*, ch-ua-platform-version=*
+accept-ch: Sec-CH-UA-Arch, Sec-CH-UA-Bitness, Sec-CH-UA-Full-Version, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Model, Sec-CH-UA-WoW64, Sec-CH-UA-Form-Factors, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version
+reporting-endpoints: default="/v3/signin/_/AccountsSignInUi/web-reports?context=eJwNw2tIk2EYBmB98b0Js7KjuiDCCLRQp3kIjMTERk6nc_um25xL2WwDcTo3IwvNTAX1hxCWqKFFUaIl4Z8oLYs0JZyly3YoJDyQWFmSkmTUc8Hl38mP-It8JGEin8HQJ6znwFP2mDoMbvaJnhxws3T6OcPDQmQeFkZd9R7meOFh9bFeZr_lZZLEOZasm2ep1K9_gUXLF9lm5yK7HrDE2mmd28Gv0Qcpk3woa5Lbbk_yK7SRtlHT2Xe8mEYfnOJJ1Brs5Jdp-HEnj6DD6U5erX3PX4W7-Bg1WVx8tdLFAy-6eMq6i0voSLKbdx318HNVXr7P4-UiOu78yCfonfw01PhKUUe_SKT4Slu7pKh-I0UtXZuVYoPu_C5F5qoU96bTER6ZgQi6Xp4BP1sGlutlWKG9rTL00ylPJvy-ZWLkQxbGaUWsHHFKOVLoTLccludylFPHvBxTNKEvG-7hbJgWsvFjrwK_aGCwAnvoz3gF1mjaCQVkdKFAgSX6m27S3YUKBFFnnwIPNxQo1Stho5ZLSszeVSJpVImcwwIqzAIOVQpYbhKwQoV-AY-GBEQ8E1D2WoCdNk4IqJ0UEDWkQg2to820hd6gHbRgWgXV_hxoqFCVAzVNCMlFIg1KzYWInurNxWla1KCGaVSNYmr4o0b-GQ2az2vQQtvva3CTzr3UQKbSYkyrRduAFp10a2gedlD_q3nYTicadPjbpEPwoA49b3Xw3ZYP53BcyK6ALV3_1mcQ2N0xO8hCowotZXqzwVhiM9suFFktJTZjiaHAbjPZzeVGa4XRqo8Rx8RHi2PEkeJj-lLxf73wFC4"
+server: ESF
+x-xss-protection: 0
+x-content-type-options: nosniff
+accept-ranges: none
+vary: Sec-Fetch-Dest, Sec-Fetch-Mode, Sec-Fetch-Site,Accept-Encoding
+

@@ -1,0 +1,1 @@
+[["xfo-sameorigin", "xfo=SAMEORIGIN"], ["xfo-deny", "xfo=DENY"], ["fa-self", "fa=%27self%27"], ["fa-none", "fa=%27none%27"], ["fa-explicit-own", "fa=http%3A//localhost%3A8701"], ["fa-other", "fa=https%3A//partner.example"], ["xfo-allowfrom", "xfo=ALLOW-FROM%20https%3A//partner.example"], ["fa-self+xfo-deny", "fa=%27self%27&xfo=DENY"]]

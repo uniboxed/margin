@@ -1,0 +1,1 @@
+http://127.0.0.1:8871/t/hop?to=http%3A%2F%2Flocalhost%3A8871%2Ft%2Fplain,http://127.0.0.1:8871/t/redir?to=http%3A%2F%2F127.0.0.1%3A8872%2Ft%2Fsame,http://127.0.0.1:8871/t/embeds3p?g=http%3A%2F%2Flocalhost%3A8872%2Ft%2Fplain,http://127.0.0.1:8871/t/deny

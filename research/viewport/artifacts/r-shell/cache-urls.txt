@@ -1,0 +1,3 @@
+/p?mode=stop&tag=cache1&delay=100&cache=private%2C%20max-age%3D60
+/p?mode=stop&tag=cache2&delay=100&gap=200&cache=private%2C%20max-age%3D60
+/p?mode=stop&tag=cache3&delay=100&cache=no-cache

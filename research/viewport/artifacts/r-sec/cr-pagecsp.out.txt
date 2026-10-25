@@ -1,0 +1,12 @@
+noRules | site CSP=[]                                        {"iframe":"LOADED","siteInlineScriptRanInTop":true}
+noRules | site CSP=[frame-src 'none']                        {"iframe":"LOADED","siteInlineScriptRanInTop":true}
+noRules | site CSP=[default-src 'none']                      {"iframe":"LOADED","siteInlineScriptRanInTop":false}
+noRules | site CSP=[child-src 'none']                        {"iframe":"LOADED","siteInlineScriptRanInTop":true}
+noRules | site CSP=[frame-src 'self']                        {"iframe":"LOADED","siteInlineScriptRanInTop":true}
+noRules | site CSP=[script-src 'self']                       {"iframe":"LOADED","siteInlineScriptRanInTop":false}
+mainFrame_setStrictShellCSP | site CSP=[]                    {"iframe":"LOADED","siteInlineScriptRanInTop":false}
+mainFrame_setStrictShellCSP | site CSP=[frame-src 'none']    {"iframe":"LOADED","siteInlineScriptRanInTop":false}
+mainFrame_setStrictShellCSP | site CSP=[default-src 'none']  {"iframe":"LOADED","siteInlineScriptRanInTop":false}
+mainFrame_setStrictShellCSP | site CSP=[child-src 'none']    {"iframe":"LOADED","siteInlineScriptRanInTop":false}
+mainFrame_setStrictShellCSP | site CSP=[frame-src 'self']    {"iframe":"LOADED","siteInlineScriptRanInTop":false}
+mainFrame_setStrictShellCSP | site CSP=[script-src 'self']   {"iframe":"LOADED","siteInlineScriptRanInTop":false}

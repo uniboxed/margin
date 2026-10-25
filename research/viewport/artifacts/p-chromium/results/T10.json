@@ -1,0 +1,102 @@
+{
+  "a_target_top_same_origin": {
+    "top": "http://localhost:8921/p/topsame",
+    "frame": "http://localhost:8921/p/topsame",
+    "title": "page topsame",
+    "marker": "alive",
+    "shelled": true,
+    "requests": [
+      "180976.3 GET localhost:8921/p/topsame dest=iframe site=same-origin"
+    ],
+    "events": [
+      {
+        "t": 206.6,
+        "ev": "top-nav->frame",
+        "type": "push",
+        "url": "http://localhost:8921/p/topsame",
+        "sameDocument": false,
+        "cancelable": true,
+        "userInitiated": true,
+        "form": false
+      }
+    ]
+  },
+  "b_target_blank_same_origin": {
+    "top": "http://localhost:8921/p/blanksame",
+    "frame": "http://localhost:8921/p/blanksame",
+    "title": "page blanksame",
+    "marker": null,
+    "shelled": true,
+    "hasOpener": false,
+    "skip": null,
+    "requests": [
+      "181070.3 GET localhost:8921/p/blanksame dest=document site=same-origin",
+      "181099.6 GET localhost:8921/p/blanksame dest=iframe site=same-origin"
+    ]
+  },
+  "c_target_blank_rel_opener": {
+    "top": "http://localhost:8921/p/blankopener",
+    "frame": null,
+    "title": "page blankopener",
+    "marker": null,
+    "shelled": false,
+    "hasOpener": true,
+    "skip": {
+      "t": 22.4,
+      "ev": "skip",
+      "why": "popup"
+    },
+    "requests": [
+      "182372.3 GET localhost:8921/p/blankopener dest=document site=same-origin"
+    ],
+    "openerIsTheCard": "/p/topsame",
+    "cardReceived": [
+      "hi-from-popup"
+    ]
+  },
+  "d_window_open_from_card": {
+    "top": "http://localhost:8921/p/popup",
+    "frame": null,
+    "title": "page popup",
+    "marker": null,
+    "shelled": false,
+    "hasOpener": true,
+    "skip": {
+      "t": 34.3,
+      "ev": "skip",
+      "why": "popup"
+    },
+    "requests": [
+      "183867.5 GET localhost:8921/p/popup dest=document site=same-origin"
+    ],
+    "openerIsTheCard": "/p/topsame",
+    "cardReceived": [
+      "hi-from-popup",
+      "hi-from-popup"
+    ]
+  },
+  "e_target_blank_cross_origin": {
+    "top": "http://localhost:8922/p/blankxo",
+    "frame": "http://localhost:8922/p/blankxo",
+    "title": "page blankxo",
+    "marker": null,
+    "shelled": true,
+    "hasOpener": false,
+    "skip": null,
+    "requests": [
+      "185372.9 GET localhost:8922/p/blankxo dest=document site=same-site",
+      "185402.4 GET localhost:8922/p/blankxo dest=iframe site=same-origin"
+    ]
+  },
+  "f_target_top_cross_origin": {
+    "top": "http://localhost:8922/p/topxo",
+    "frame": "http://localhost:8922/p/topxo",
+    "title": "page topxo",
+    "marker": null,
+    "shelled": true,
+    "requests": [
+      "186655.7 GET localhost:8922/p/topxo dest=document site=same-site",
+      "186677.6 GET localhost:8922/p/topxo dest=iframe site=same-origin"
+    ]
+  }
+}

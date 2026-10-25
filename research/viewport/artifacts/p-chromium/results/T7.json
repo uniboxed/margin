@@ -1,0 +1,505 @@
+{
+  "matrix": {
+    "none_noFallback": {
+      "xfoSameorigin": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h1-xfoSameorigin?xfo=SAMEORIGIN&margin-nofallback",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1229
+      },
+      "cspAncestorsSelf": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h2-cspAncestorsSelf?csp=frame-ancestors%20%27self%27&margin-nofallback",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1231
+      },
+      "xfoDeny": {
+        "outcome": "BLOCKED in card (card title=\"localhost\")",
+        "cardUrl": "chrome-error://chromewebdata/",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "shellEvents": "fallback:frame-unreadable",
+        "ms": 1235
+      },
+      "cspAncestorsNone": {
+        "outcome": "BLOCKED in card (card title=\"localhost\")",
+        "cardUrl": "chrome-error://chromewebdata/",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "shellEvents": "fallback:frame-unreadable",
+        "ms": 1224
+      },
+      "cspNonePlusScriptSrc": {
+        "outcome": "BLOCKED in card (card title=\"localhost\")",
+        "cardUrl": "chrome-error://chromewebdata/",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "shellEvents": "fallback:frame-unreadable",
+        "ms": 1226
+      },
+      "xfoDenyPlusScriptSrc": {
+        "outcome": "BLOCKED in card (card title=\"localhost\")",
+        "cardUrl": "chrome-error://chromewebdata/",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "shellEvents": "fallback:frame-unreadable",
+        "ms": 1224
+      },
+      "topCspFrameSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h7-topCspFrameSrcNone?csp=frame-src%20%27none%27&margin-nofallback",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1226
+      },
+      "topCspDefaultSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h8-topCspDefaultSrcNone?csp=default-src%20%27none%27&margin-nofallback",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1231
+      },
+      "cspSandbox": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document",
+        "shellEvents": "skip:opaque-origin",
+        "ms": 1241
+      }
+    },
+    "none_fallback": {
+      "xfoSameorigin": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h10-xfoSameorigin?xfo=SAMEORIGIN",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1231
+      },
+      "cspAncestorsSelf": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h11-cspAncestorsSelf?csp=frame-ancestors%20%27self%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1233
+      },
+      "xfoDeny": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document,iframe,document",
+        "shellEvents": "skip:flagged",
+        "ms": 1225
+      },
+      "cspAncestorsNone": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document,iframe,document",
+        "shellEvents": "skip:flagged",
+        "ms": 1228
+      },
+      "cspNonePlusScriptSrc": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 0,
+        "documentRequests": "document,iframe,document",
+        "shellEvents": "skip:flagged",
+        "ms": 1228
+      },
+      "xfoDenyPlusScriptSrc": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 0,
+        "documentRequests": "document,iframe,document",
+        "shellEvents": "skip:flagged",
+        "ms": 1223
+      },
+      "topCspFrameSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h16-topCspFrameSrcNone?csp=frame-src%20%27none%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1230
+      },
+      "topCspDefaultSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h17-topCspDefaultSrcNone?csp=default-src%20%27none%27",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1231
+      },
+      "cspSandbox": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document",
+        "shellEvents": "skip:opaque-origin",
+        "ms": 1238
+      }
+    },
+    "static_firstParty_subframe_XFO_CSP": {
+      "xfoSameorigin": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h19-xfoSameorigin?xfo=SAMEORIGIN",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1230
+      },
+      "cspAncestorsSelf": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h20-cspAncestorsSelf?csp=frame-ancestors%20%27self%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1226
+      },
+      "xfoDeny": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h21-xfoDeny?xfo=DENY",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1229
+      },
+      "cspAncestorsNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h22-cspAncestorsNone?csp=frame-ancestors%20%27none%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1227
+      },
+      "cspNonePlusScriptSrc": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h23-cspNonePlusScriptSrc?csp=frame-ancestors%20%27none%27%3B%20script-src%20%27self%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1228
+      },
+      "xfoDenyPlusScriptSrc": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h24-xfoDenyPlusScriptSrc?xfo=DENY&csp=script-src%20%27self%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1227
+      },
+      "topCspFrameSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h25-topCspFrameSrcNone?csp=frame-src%20%27none%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1236
+      },
+      "topCspDefaultSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h26-topCspDefaultSrcNone?csp=default-src%20%27none%27",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "shellEvents": "",
+        "ms": 1233
+      },
+      "cspSandbox": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document",
+        "shellEvents": "skip:opaque-origin",
+        "ms": 1241
+      }
+    },
+    "narrow_session_XFO_CSP": {
+      "xfoSameorigin": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h28-xfoSameorigin?xfo=SAMEORIGIN&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 27.9,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786526,
+          "host": "localhost",
+          "ms": 0.8
+        },
+        "shellEvents": "armed",
+        "ms": 1229
+      },
+      "cspAncestorsSelf": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h29-cspAncestorsSelf?csp=frame-ancestors%20%27self%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 24.7,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786528,
+          "host": "localhost",
+          "ms": 1
+        },
+        "shellEvents": "armed",
+        "ms": 1223
+      },
+      "xfoDeny": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h30-xfoDeny?xfo=DENY&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 30.1,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786530,
+          "host": "localhost",
+          "ms": 1.2
+        },
+        "shellEvents": "armed",
+        "ms": 1229
+      },
+      "cspAncestorsNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h31-cspAncestorsNone?csp=frame-ancestors%20%27none%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 30.1,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786532,
+          "host": "localhost",
+          "ms": 1.2
+        },
+        "shellEvents": "armed",
+        "ms": 1227
+      },
+      "cspNonePlusScriptSrc": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h32-cspNonePlusScriptSrc?csp=frame-ancestors%20%27none%27%3B%20script-src%20%27self%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 38.1,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786534,
+          "host": "localhost",
+          "ms": 0.8
+        },
+        "shellEvents": "armed",
+        "ms": 1231
+      },
+      "xfoDenyPlusScriptSrc": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h33-xfoDenyPlusScriptSrc?xfo=DENY&csp=script-src%20%27self%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 27.5,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786536,
+          "host": "localhost",
+          "ms": 0.4
+        },
+        "shellEvents": "armed",
+        "ms": 1224
+      },
+      "topCspFrameSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h34-topCspFrameSrcNone?csp=frame-src%20%27none%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 35.7,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786538,
+          "host": "localhost",
+          "ms": 1.3
+        },
+        "shellEvents": "armed",
+        "ms": 1236
+      },
+      "topCspDefaultSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h35-topCspDefaultSrcNone?csp=default-src%20%27none%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 22.9,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786540,
+          "host": "localhost",
+          "ms": 0.8
+        },
+        "shellEvents": "armed",
+        "ms": 1223
+      },
+      "cspSandbox": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document",
+        "shellEvents": "skip:opaque-origin",
+        "ms": 1235
+      }
+    },
+    "narrow_session_XFOonly_fallback": {
+      "xfoSameorigin": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h37-xfoSameorigin?xfo=SAMEORIGIN&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 29.9,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786544,
+          "host": "localhost",
+          "ms": 1.2
+        },
+        "shellEvents": "armed",
+        "ms": 1225
+      },
+      "cspAncestorsSelf": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h38-cspAncestorsSelf?csp=frame-ancestors%20%27self%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 34.3,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786546,
+          "host": "localhost",
+          "ms": 0.9
+        },
+        "shellEvents": "armed",
+        "ms": 1234
+      },
+      "xfoDeny": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h39-xfoDeny?xfo=DENY&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 25.4,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786548,
+          "host": "localhost",
+          "ms": 1
+        },
+        "shellEvents": "armed",
+        "ms": 1231
+      },
+      "cspAncestorsNone": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document,iframe,document",
+        "shellEvents": "skip:flagged",
+        "ms": 1225
+      },
+      "cspNonePlusScriptSrc": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 0,
+        "documentRequests": "document,iframe,document",
+        "shellEvents": "skip:flagged",
+        "ms": 1224
+      },
+      "xfoDenyPlusScriptSrc": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h42-xfoDenyPlusScriptSrc?xfo=DENY&csp=script-src%20%27self%27&margin-narrow",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 31.5,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786554,
+          "host": "localhost",
+          "ms": 0.9
+        },
+        "shellEvents": "armed",
+        "ms": 1228
+      },
+      "topCspFrameSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h43-topCspFrameSrcNone?csp=frame-src%20%27none%27&margin-narrow",
+        "inlineScriptRanInCard": 1,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 26.6,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786556,
+          "host": "localhost",
+          "ms": 0.7
+        },
+        "shellEvents": "armed",
+        "ms": 1231
+      },
+      "topCspDefaultSrcNone": {
+        "outcome": "in card",
+        "cardUrl": "http://localhost:8921/p/h44-topCspDefaultSrcNone?csp=default-src%20%27none%27&margin-narrow",
+        "inlineScriptRanInCard": 0,
+        "documentRequests": "document,iframe",
+        "armed": {
+          "t": 29.3,
+          "ev": "armed",
+          "armed": true,
+          "id": 1171786558,
+          "host": "localhost",
+          "ms": 0.9
+        },
+        "shellEvents": "armed",
+        "ms": 1225
+      },
+      "cspSandbox": {
+        "outcome": "top-level (unshelled)",
+        "cardUrl": null,
+        "inlineScriptRanTopLevel": 1,
+        "documentRequests": "document",
+        "shellEvents": "skip:opaque-origin",
+        "ms": 1232
+      }
+    }
+  },
+  "probes": {
+    "none": {
+      "sameSiteCrossOriginAttacker_otherTab": "BLOCKED (frame title=\"localhost\")",
+      "crossSiteAttacker_otherTab": "BLOCKED (frame title=\"localhost\")"
+    },
+    "static_firstParty": {
+      "sameSiteCrossOriginAttacker_otherTab": "LOADED (victim framed)",
+      "crossSiteAttacker_otherTab": "BLOCKED (frame title=\"localhost\")"
+    },
+    "narrow_session": {
+      "sameSiteCrossOriginAttacker_otherTab": "BLOCKED (frame title=\"localhost\")",
+      "crossSiteAttacker_otherTab": "BLOCKED (frame title=\"localhost\")",
+      "armedTab_crossSiteAttacker": "BLOCKED (frame title=\"localhost\")",
+      "armedTab_sameHostOtherPortAttacker": "LOADED (victim framed)",
+      "sessionRules": [
+        "{\"initiatorDomains\":[\"localhost\"],\"requestDomains\":[\"localhost\"],\"resourceTypes\":[\"sub_frame\"],\"tabIds\":[1171785574]}"
+      ]
+    }
+  }
+}

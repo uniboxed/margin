@@ -1,0 +1,26 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/2 200 
+date: Sun, 25 Oct 2026 08:36:29 GMT
+content-type: text/html;charset=UTF-8
+content-length: 178426
+server: AtlassianEdge
+set-cookie: atlCohort={"bucketAll":{"bucketedAtUTC":"2026-10-25T08:36:29.200Z","version":"2","index":29,"bucketId":0}}; Max-Age=31536000; Domain=bitbucket.org; Path=/
+set-cookie: ajs_anonymous_id=%2247e7ffb5-5d10-fbfe-0550-966ee4e17106%22; Max-Age=315360000; Domain=bitbucket.org; Path=/; Expires=Wed, 22 Oct 2036 08:36:29 GMT
+set-cookie: bxp_gateway_request_id=ea6944d2-789a-57d4-5171-871cb9a1e77c; Max-Age=300; Domain=bitbucket.org; Path=/; Expires=Sun, 25 Oct 2026 08:41:29 GMT; Secure
+cache-control: s-maxage=0, no-store, no-cache, must-revalidate
+x-magnolia-registration: Registered
+last-modified: Fri, 23 Oct 2026 19:42:30 GMT
+x-envoy-attempt-count: 1
+x-frame-options: deny
+content-security-policy: frame-ancestors 'none';
+vary: Accept-Encoding, Referer
+x-content-type-options: nosniff
+x-xss-protection: 1; mode=block
+atl-traceid: d72ac532a4474a16aed78911db90b7fe
+atl-request-id: d72ac532-a447-4a16-aed7-8911db90b7fe
+strict-transport-security: max-age=63072000; includeSubDomains; preload
+report-to: {"endpoints": [{"url": "https://dz8aopenkvv6s.cloudfront.net"}], "group": "endpoint-1", "include_subdomains": true, "max_age": 600}
+nel: {"failure_fraction": 0.01, "include_subdomains": true, "max_age": 600, "report_to": "endpoint-1"}
+server-timing: atl-edge;dur=19,atl-edge-internal;dur=3,atl-edge-upstream;dur=16,atl-edge-pop;desc="aws-us-east-1"
+

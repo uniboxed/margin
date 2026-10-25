@@ -1,0 +1,2 @@
+/p?mode=stop&tag=q5stop&child=1
+/p?mode=tblank&tag=q5tb&child=1

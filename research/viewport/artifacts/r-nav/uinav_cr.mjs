@@ -1,0 +1,11 @@
+import { createRequire } from 'node:module';
+const require = createRequire('/home/user/margin/package.json');
+const { chromium } = require('playwright');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const b = await chromium.launch(); const p = await b.newPage();
+await p.goto('http://localhost:8701/site?id=cr-ui-nav2&prevent=1'); await sleep(1200);
+await p.goto('http://localhost:8701/site?id=cr-ui-nav2&mode=landed-ui'); await sleep(1200); console.log('after browser-initiated goto ->', p.url());
+await p.reload(); await sleep(1200); console.log('after reload ->', p.url());
+const log = await (await fetch('http://localhost:8701/results?id=cr-ui-nav2')).json();
+for (const e of log) if (['top-navigate', 'shell-start'].includes(e.ev)) console.log('  ', e.ev, JSON.stringify({ action: e.action, type: e.type, cancelable: e.cancelable, dest: e.dest, at: e.at }));
+await b.close();

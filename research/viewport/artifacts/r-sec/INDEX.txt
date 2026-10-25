@@ -1,0 +1,15 @@
+r-sec evidence files (security of the same-origin iframe shell)
+
+almanac/security-{2022,2024,2025}.md   Web Almanac security chapters (raw from HTTPArchive GitHub). XFO table: 2025 lines 940-981; CSP top values: 2025 lines 262-314; CSP adoption 21.9%: ~line 246; XFO by rank 67% top-1k vs 30% all: line 1472.
+hdr/*.txt                              Raw response headers measured with curl through the proxy (2026-10-25). final_* = after redirects.
+apple/guidelines.txt                   App Review Guidelines text (developer.apple.com). 4.4.2 at line 367, 1.6 at 197, 2.5.1 at 240.
+policy/moz-addon-policies.md           Mozilla add-on policies (GitHub raw). Line 152: "Add-ons must not relax web page security headers".
+server.js                              Test server: /t/{plain,deny,same,fanone,faself,both}, /shell, /ad (3p middle frame), /navshell (meta CSP frame-src 'self'), /page?csp=, /hdr.
+ext/ + cr-matrix.mjs -> cr-matrix.out.json, cr-matrix.summary.txt   Chromium DNR rule sets R0-R7 x attack scenarios S1-S4.
+cr-navguard.mjs -> cr-navguard.out.txt                              Chromium: shell meta CSP frame-src 'self' as navigation guard.
+ext2/ + cr-pagecsp.mjs -> cr-pagecsp.out.txt                         Chromium: page CSP vs content-script iframe; main_frame strict shell CSP via DNR set.
+wkframe.py, wk-matrix.sh -> wk-baseline.out.txt, wk-conditions2.out.txt   WebKitGTK 2.52: framing baseline; content-rule-list condition semantics (block action as probe).
+wk-navguard.out.txt                                                   WebKitGTK: meta CSP frame-src 'self' navigation guard.
+wkuser.py -> wk-pagecsp.out.txt, wk-shellcsp.out.txt                 WebKitGTK: isolated-world user script iframe vs page CSP; strict shell CSP emulated as response header.
+rules-*.json                                                          Content rule lists used above. rules-reqhdr.json shows modify-headers has no effect in WebKitGTK (request or response).
+wksrc/                                                                WebKit main sources fetched for citations (ContentExtensionActions.h, ResourceLoadInfo.cpp, ...).

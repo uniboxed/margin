@@ -1,0 +1,3 @@
+/p?mode=tblank&tag=mw&mainwrite=1&pagenav=1&interceptnav=1
+/p?mode=tblank&tag=mwA&mainwrite=1&nonce=abc&csp=frame-src%20https%3A//www.youtube.com%3B%20script-src%20%27nonce-abc%27
+/p?mode=tblank&tag=mwTT&mainwrite=1&csp=require-trusted-types-for%20%27script%27

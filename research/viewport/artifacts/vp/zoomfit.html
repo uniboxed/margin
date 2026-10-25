@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8"><title>zoomfit</title>
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  #header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #36c; }
+  #wide { width: 100vw; height: 30px; background: #c63; margin-top: 50px; }
+  #bleed { width: 100vw; margin-left: calc(50% - 50vw); height: 30px; background: #6c3; }
+  #text { width: 200px; }
+  .spacer { height: 3000px; }
+</style><style id="mode"></style></head><body>
+<div id="header"></div><div id="wide"></div><div id="bleed"></div><div id="text">hello</div><div class="spacer"></div>
+<script>
+  const W = 260, R = 8;
+  const mode = new URLSearchParams(location.search).get('mode');
+  const vw = innerWidth, card = vw - W - R, z = card / vw;
+  document.getElementById('mode').textContent = mode === 'zoom'
+    ? `html { zoom: ${z}; margin-left: ${W / z}px; margin-right: ${R / z}px; width: auto; overflow-x: hidden; }`
+    : `html { margin-left: ${W}px; margin-right: ${R}px; width: auto; overflow-x: hidden; }`;
+  const rect = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)]; };
+  // Where things really are on screen: hit-test points instead of trusting rects.
+  const hit = (x, y) => document.elementFromPoint(x, y)?.id || '-';
+  setTimeout(() => {
+    const out = {
+      mode, z: +z.toFixed(3), innerWidth, mq900: matchMedia('(min-width: 900px)').matches,
+      header: rect('header'), wide: rect('wide'), bleed: rect('bleed'), text: rect('text'),
+      // screen-space probes: just right of the sidebar, and near the card's right edge
+      hitHeaderAt265: hit(265, 20), hitWideAt985: hit(985, 60 * (mode === 'zoom' ? z : 1) + 5),
+    };
+    document.title = JSON.stringify(out);
+  }, 100);
+</script></body></html>

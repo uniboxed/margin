@@ -1,0 +1,25 @@
+<!doctype html><html><head><meta charset="utf-8"><title>spoof</title>
+<style>
+  body { margin: 0; }
+  #header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #36c; }
+  #wide { width: 100vw; height: 30px; margin-top: 50px; background: #c63; }
+  #bp { display: none; }
+  @media (max-width: 800px) { #bp { display: block; } }
+</style></head><body><div id="header"></div><div id="wide"></div><div id="bp">narrow layout</div>
+<script>
+  // "Tell the page the window is narrower", the strongest way JS can:
+  // override every width getter, matchMedia, and fire a resize event.
+  const fake = 732;
+  for (const [obj, prop] of [[window, 'innerWidth'], [window, 'outerWidth'], [document.documentElement, 'clientWidth'], [screen, 'width'], [screen, 'availWidth']]) {
+    Object.defineProperty(obj, prop, { get: () => fake, configurable: true });
+  }
+  if (window.visualViewport) Object.defineProperty(visualViewport, 'width', { get: () => fake, configurable: true });
+  const realMatch = matchMedia.bind(window);
+  window.matchMedia = (q) => (q.includes('max-width: 800px') ? { matches: true, media: q, addEventListener() {} } : realMatch(q));
+  dispatchEvent(new Event('resize'));
+  const r = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right)]; };
+  document.title = JSON.stringify({
+    jsSees: { innerWidth, matches800: matchMedia('(max-width: 800px)').matches },
+    layout: { header: r('header'), wide: r('wide'), cssBreakpointApplied: getComputedStyle(document.getElementById('bp')).display === 'block' },
+  });
+</script></body></html>

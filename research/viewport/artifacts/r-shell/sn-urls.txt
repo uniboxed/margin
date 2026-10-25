@@ -1,0 +1,2 @@
+/p?mode=tsrcdoc2&tag=sn-tr&csp=script-src%20%27none%27
+/p?mode=stop&tag=sn-stop&csp=script-src%20%27none%27

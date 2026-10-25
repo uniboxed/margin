@@ -1,0 +1,25 @@
+HTTP/1.1 200 Connection Established
+
+HTTP/1.1 200 OK
+Server: Apple
+Date: Sun, 25 Oct 2026 08:32:58 GMT
+Content-Type: text/html
+X-Frame-Options: SAMEORIGIN
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+Cache-Control: max-age=60, public
+Accept-Ranges: bytes
+X-XSS-Protection: 1; mode=block
+Content-Security-Policy: default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval' https://*.apple.com http://*.apple.com https://*.mzstatic.com https://*.apple-mapkit.com https://p-events-delivery.akamaized.net http://p-events-delivery.akamaized.net https://apple-events.akamaized.net https://mediaservices.cdn-apple.com http://mediaservices.cdn-apple.com https://wwdr-aws-dev.apple.com https://bricks.cdn-apple.com https://sfss.cdn-apple.com https://sf-saas.cdn-apple.com https://df-webapp-blue-ausw2.apple.com https://df-webapp-green-ausw2.apple.com https://cdn.captionhub.com https://cdnjs.cloudflare.com
+Cache-Control: max-age=300, public
+Host: developer.apple.com
+X-Frame-Options: SAMEORIGIN
+rqId: aedbf77b5f8a620815233bae570f42e0
+Strict-Transport-Security: max-age=31536000
+Age: 229
+Content-Length: 136179
+Via: http/1.1 uschi6-xdc-mx-003.ts.apple.com (acdn/25.17695), https/1.1 uschi5-edge-fx-046.ts.apple.com (acdn/25.17695)
+X-Cache: hit-fresh, hit-stale
+CDNUUID: 2deb402f-3766-492f-9e35-d28b042bd62f-2169451440
+Connection: keep-alive
+

@@ -1,0 +1,2 @@
+/fid?mode=none
+/fid?mode=tsrcdoc2

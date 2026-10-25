@@ -1,0 +1,10 @@
+import { createRequire } from 'node:module';
+const require = createRequire('/home/user/margin/package.json');
+const { chromium } = require('playwright');
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1000, height: 600 } });
+p.on('pageerror', (e) => console.log('ERR', e.message));
+await p.goto(process.argv[2]);
+await p.waitForFunction(() => document.title.startsWith('{'));
+console.log(`chromium: ${await p.title()}`);
+await b.close();

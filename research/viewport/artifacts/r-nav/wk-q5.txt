@@ -1,0 +1,21 @@
+=== WebKitGTK xfo-sameorigin (xfo=SAMEORIGIN)
+   page-load isTop= False {'ancestorOrigins': ['http://localhost:8701']}
+   shell-iframe-load isTop= True {'url': 'http://localhost:8701/site?id=wk-q5-xfo-sameorigin&xfo=SAMEORIGIN', 'doc': 'doc'}
+=== WebKitGTK xfo-deny (xfo=DENY)
+   shell-iframe-load isTop= True {'url': 'THROWS:SecurityError', 'doc': 'null'}
+=== WebKitGTK fa-self (fa=%27self%27)
+   page-load isTop= False {'ancestorOrigins': ['http://localhost:8701']}
+   shell-iframe-load isTop= True {'url': 'http://localhost:8701/site?id=wk-q5-fa-self&fa=%27self%27', 'doc': 'doc'}
+=== WebKitGTK fa-none (fa=%27none%27)
+   shell-iframe-load isTop= True {'url': 'THROWS:SecurityError', 'doc': 'null'}
+=== WebKitGTK fa-explicit-own (fa=http%3A//localhost%3A8701)
+   page-load isTop= False {'ancestorOrigins': ['http://localhost:8701']}
+   shell-iframe-load isTop= True {'url': 'http://localhost:8701/site?id=wk-q5-fa-explicit-own&fa=http%3A//localhost%3A8701', 'doc': 'doc'}
+=== WebKitGTK fa-other (fa=https%3A//partner.example)
+   shell-iframe-load isTop= True {'url': 'THROWS:SecurityError', 'doc': 'null'}
+=== WebKitGTK xfo-allowfrom (xfo=ALLOW-FROM%20https%3A//partner.example)
+   page-load isTop= False {'ancestorOrigins': ['http://localhost:8701']}
+   shell-iframe-load isTop= True {'url': 'http://localhost:8701/site?id=wk-q5-xfo-allowfrom&xfo=ALLOW-FROM%20https%3A//partner.example', 'doc': 'doc'}
+=== WebKitGTK fa-self+xfo-deny (fa=%27self%27&xfo=DENY)
+   page-load isTop= False {'ancestorOrigins': ['http://localhost:8701']}
+   shell-iframe-load isTop= True {'url': 'http://localhost:8701/site?id=wk-q5-fa-self+xfo-deny&fa=%27self%27&xfo=DENY', 'doc': 'doc'}

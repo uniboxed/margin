@@ -1,0 +1,5 @@
+=== http://localhost:8701/site?id=cr-click-top&prevent=1 -> final http://localhost:8701/site?id=cr-click-top&prevent=1 
+   top-navigate {'action': 'prevented', 'type': 'push', 'cancelable': True, 'userInitiated': True, 'dest': 'http://localhost:8701/site?id=cr-click-top&mode=landed-top', 'sourceElement': 'A#lnkTop'}
+=== http://localhost:8701/site?id=cr-click-cross&prevent=0&guard=1 -> final http://localhost:8702/site?id=cr-click-cross&role=xo 
+   top-navigate {'action': 'allow', 'type': 'push', 'cancelable': True, 'userInitiated': False, 'dest': 'http://localhost:8702/site?id=cr-click-cross&role=xo', 'sourceElement': None}
+   frame-navigate {'action': 'prevented->top(guard1)', 'type': 'push', 'cancelable': True, 'userInitiated': True, 'dest': 'http://localhost:8702/site?id=cr-click-cross&role=xo', 'sourceElement': 'A#lnkCross'}

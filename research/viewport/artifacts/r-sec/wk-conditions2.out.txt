@@ -1,0 +1,30 @@
+## no-rules:  -> block /t/plain
+S1_shell_sameOrigin filter= None {'plain': 'LOADED(inline-script-ran)'}
+S2_crossSiteAttacker filter= None {'plain': 'LOADED(inline-script-ran)'}
+S3_sameSiteOtherOrigin filter= None {'plain': 'LOADED(inline-script-ran)'}
+S4_3pFrameInsideVictimTop filter= None {'plain': 'LOADED(inline-script-ran)'}
+## rules-lt-first.json: "load-type": ["first-party"] -> block /t/plain
+S1_shell_sameOrigin filter= compiled {'plain': 'BLOCKED'}
+S2_crossSiteAttacker filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S3_sameSiteOtherOrigin filter= compiled {'plain': 'BLOCKED'}
+S4_3pFrameInsideVictimTop filter= compiled {'plain': 'BLOCKED'}
+## rules-ifu-ad.json: "if-frame-url": ["^http://localhost:8872/"] -> block /t/plain
+S1_shell_sameOrigin filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S2_crossSiteAttacker filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S3_sameSiteOtherOrigin filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S4_3pFrameInsideVictimTop filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+## rules-ifu-blank.json: "if-frame-url": ["^about:blank"] -> block /t/plain
+S1_shell_sameOrigin filter= compiled {'plain': 'BLOCKED'}
+S2_crossSiteAttacker filter= compiled {'plain': 'BLOCKED'}
+S3_sameSiteOtherOrigin filter= compiled {'plain': 'BLOCKED'}
+S4_3pFrameInsideVictimTop filter= compiled {'plain': 'BLOCKED'}
+## rules-ifu-victim.json: "if-frame-url": ["^http://127\\.0\\.0\\.1:8871/"] -> block /t/plain
+S1_shell_sameOrigin filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S2_crossSiteAttacker filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S3_sameSiteOtherOrigin filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S4_3pFrameInsideVictimTop filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+## rules-ifd-att.json: "if-domain": ["*localhost"] -> block /t/plain
+S1_shell_sameOrigin filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S2_crossSiteAttacker filter= compiled {'plain': 'BLOCKED'}
+S3_sameSiteOtherOrigin filter= compiled {'plain': 'LOADED(inline-script-ran)'}
+S4_3pFrameInsideVictimTop filter= compiled {'plain': 'LOADED(inline-script-ran)'}

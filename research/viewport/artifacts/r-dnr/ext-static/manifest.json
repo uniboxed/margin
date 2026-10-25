@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "dnr-frame-test",
+  "version": "1.0",
+  "permissions": ["declarativeNetRequestWithHostAccess"],
+  "host_permissions": ["<all_urls>"],
+  "declarative_net_request": {
+    "rule_resources": [{ "id": "frame", "enabled": true, "path": "rules.json" }]
+  }
+}

@@ -1,0 +1,13 @@
+{"rules": "none", "victim": "?xfo=SAMEORIGIN", "filter": null, "frame": "title=\"page victim\" inline=1"}
+{"rules": "none", "victim": "?xfo=DENY", "filter": null, "frame": "no-access"}
+{"rules": "none", "victim": "?csp=frame-ancestors%20'none'", "filter": null, "frame": "no-access"}
+{"rules": "none", "victim": "?csp=frame-ancestors%20'self'", "filter": null, "frame": "title=\"page victim\" inline=1"}
+{"rules": "rules-block.json", "victim": "?xfo=SAMEORIGIN", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-block.json", "victim": "?xfo=DENY", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-block.json", "victim": "?csp=frame-ancestors%20'none'", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-block.json", "victim": "?csp=frame-ancestors%20'self'", "filter": "compiled", "frame": "title=\"\" inline=0"}
+{"rules": "rules-modify.json", "victim": "?xfo=SAMEORIGIN", "filter": "compiled", "frame": "title=\"page victim\" inline=1"}
+{"rules": "rules-modify.json", "victim": "?xfo=DENY", "filter": "compiled", "frame": "no-access"}
+{"rules": "rules-modify.json", "victim": "?csp=frame-ancestors%20'none'", "filter": "compiled", "frame": "no-access"}
+{"rules": "rules-modify.json", "victim": "?csp=frame-ancestors%20'self'", "filter": "compiled", "frame": "title=\"page victim\" inline=1"}
+requests carrying x-margin-test: 0 of 8 victim requests

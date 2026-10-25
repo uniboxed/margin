@@ -1,0 +1,274 @@
+{
+ "R0_noRules": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "LOADED(inline-script-blocked)@http://www.victim.test:8871",
+   "both": "BLOCKED"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ },
+ "R1_removeXFO_firstParty": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "LOADED(inline-script-blocked)@http://www.victim.test:8871",
+   "both": "BLOCKED"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ },
+ "R2_removeXFO_firstParty_exactHostInitiator": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "LOADED(inline-script-blocked)@http://www.victim.test:8871",
+   "both": "BLOCKED"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ },
+ "R3_removeXFOandCSP_firstParty": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "faself": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "both": "LOADED(inline-script-ran)@http://www.victim.test:8871"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "faself": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "both": "LOADED(inline-script-ran)@http://www.victim.test:8871"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ },
+ "R4_appendCSP_frameAncestorsStar": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "LOADED(inline-script-blocked)@http://www.victim.test:8871",
+   "both": "BLOCKED"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ },
+ "R6_setXFO_SAMEORIGIN_requestHost_only": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "LOADED(inline-script-blocked)@http://www.victim.test:8871",
+   "both": "BLOCKED"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "BLOCKED",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "BLOCKED",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "BLOCKED",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ },
+ "R7_setXFO_SAMEORIGIN_requestHost_firstParty": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "BLOCKED",
+   "faself": "LOADED(inline-script-blocked)@http://www.victim.test:8871",
+   "both": "BLOCKED"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "BLOCKED",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ },
+ "R5_setCSP_frameAncestorsSelf": {
+  "S1_shell_sameOrigin": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "same": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "fanone": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "faself": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "both": "LOADED(inline-script-ran)@http://www.victim.test:8871"
+  },
+  "S2_crossSiteAttacker": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S3_sameSiteSubdomainAttacker": {
+   "plain": "BLOCKED",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  },
+  "S4_malvertisingInsideVictimPage": {
+   "plain": "LOADED(inline-script-ran)@http://www.victim.test:8871",
+   "deny": "BLOCKED",
+   "same": "BLOCKED",
+   "fanone": "BLOCKED",
+   "faself": "BLOCKED",
+   "both": "BLOCKED"
+  }
+ }
+}

@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset=utf-8>
+<style id=base>
+body{margin:0;font:14px sans-serif}
+#fxl{position:fixed;left:0;top:0;width:50px;height:50px;background:red}
+#fxr{position:fixed;right:0;top:0;width:50px;height:50px;background:blue}
+#vw{width:100vw;height:10px;background:green}
+#pct{width:100%;height:10px;background:orange}
+#tall{height:3000px;background:linear-gradient(90deg,#ffe 0,#ffe 50%,#eef 50%,#eef 100%)}
+#over{position:fixed;left:-400px;top:100px;width:600px;height:100px;background:rgba(255,0,255,.8);z-index:2147483647}
+</style>
+<style id=variant></style>
+</head><body>
+<div id=fxl></div><div id=fxr></div><div id=vw></div><div id=pct></div><div id=over></div><div id=tall></div>
+<script>
+const V = new URLSearchParams(location.search).get('v') || 'none';
+const css = {
+  none: '',
+  sbright: `html{overflow-y:scroll} ::-webkit-scrollbar{width:300px;background:#ddd} ::-webkit-scrollbar-thumb{background:#888}`,
+  sbleft: `html{overflow-y:scroll;direction:rtl} body{direction:ltr} ::-webkit-scrollbar{width:300px;background:#ddd} ::-webkit-scrollbar-thumb{background:#888}`,
+  gutter: `html{scrollbar-gutter:stable both-edges} ::-webkit-scrollbar{width:150px;background:#ddd}`,
+  meta: '',
+  atviewport: `@viewport{width:600px}`,
+};
+document.getElementById('variant').textContent = css[V] || '';
+if (V==='meta'){ const m=document.createElement('meta'); m.name='viewport'; m.content='width=600'; document.head.appendChild(m); }
+window.__md = [];
+document.addEventListener('mousedown', e=>window.__md.push([e.clientX,e.clientY,e.target.id||e.target.tagName]), true);
+function r(id){const b=document.getElementById(id).getBoundingClientRect();return [Math.round(b.left),Math.round(b.right)]}
+function measure(){
+  const sheet=document.getElementById('variant').sheet;
+  return {v:V, innerWidth:innerWidth, clientWidth:document.documentElement.clientWidth,
+    vvWidth: window.visualViewport?visualViewport.width:null,
+    fxl:r('fxl'), fxr:r('fxr'), vw:r('vw'), pct:r('pct'),
+    mq_max800: matchMedia('(max-width: 800px)').matches, mq_min900: matchMedia('(min-width: 900px)').matches,
+    efp_100: (document.elementFromPoint(100,300)||{}).tagName||null,
+    efp_100_over: (document.elementFromPoint(100,150)||{}).id||null,
+    rules: sheet? sheet.cssRules.length : null, md: window.__md};
+}
+window.measure = measure;
+setTimeout(()=>{document.title=JSON.stringify(measure())},300);
+</script></body></html>

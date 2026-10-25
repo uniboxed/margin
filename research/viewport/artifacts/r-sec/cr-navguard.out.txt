@@ -1,0 +1,42 @@
+console: Framing 'http://evil.victim.test:8871/' violates the following Content Security Policy directive: "frame-src 'self'". The request has been blocked.
+
+console: Refused to display 'http://www.victim.test:8871/' in a frame because it set 'X-Frame-Options' to 'deny'.
+console: Framing 'http://attacker.test:8871/' violates the following Content Security Policy directive: "frame-src 'self'". The request has been blocked.
+
+{
+ "got": {
+  "plain": {
+   "name": "plain",
+   "origin": "http://ads.test:8871",
+   "inlineRan": true,
+   "topSameOrigin": false
+  }
+ },
+ "viol": [
+  {
+   "dir": "frame-src",
+   "blockedURI": "http://evil.victim.test:8871",
+   "src": "http://www.victim.test:8871/navshell"
+  },
+  {
+   "dir": "frame-src",
+   "blockedURI": "http://attacker.test:8871",
+   "src": "http://www.victim.test:8871/t/hop"
+  }
+ ],
+ "loads": [
+  "http://www.victim.test:8871/t/redir?to=http%3A%2F%2Fevil.victim.test%3A8871%2Ft%2Fsame -> CROSS-ORIGIN(SecurityError)",
+  "http://www.victim.test:8871/t/deny -> CROSS-ORIGIN(SecurityError)",
+  "http://www.victim.test:8871/t/hop?to=http%3A%2F%2Fattacker.test%3A8871%2Ft%2Fplain -> http://www.victim.test:8871/t/hop?to=http%3A%2F%2Fattacker.test%3A8871%2Ft%2Fplain",
+  "http://www.victim.test:8871/t/embeds3p?g=http%3A%2F%2Fads.test%3A8871%2Ft%2Fplain -> http://www.victim.test:8871/t/embeds3p?g=http%3A%2F%2Fads.test%3A8871%2Ft%2Fplain",
+  "http://www.victim.test:8871/t/hop?to=http%3A%2F%2Fattacker.test%3A8871%2Ft%2Fplain -> CROSS-ORIGIN(SecurityError)"
+ ]
+}
+frames: [
+  'http://www.victim.test:8871/navshell?f=http%3A%2F%2Fwww.victim.test%3A8871%2Ft%2Fhop%3Fto%3Dhttp%253A%252F%252Fattacker.test%253A8871%252Ft%252Fplain%2Chttp%3A%2F%2Fwww.victim.test%3A8871%2Ft%2Fredir%3Fto%3Dhttp%253A%252F%252Fevil.victim.test%253A8871%252Ft%252Fsame%2Chttp%3A%2F%2Fwww.victim.test%3A8871%2Ft%2Fembeds3p%3Fg%3Dhttp%253A%252F%252Fads.test%253A8871%252Ft%252Fplain%2Chttp%3A%2F%2Fwww.victim.test%3A8871%2Ft%2Fdeny',
+  'chrome-error://chromewebdata/',
+  'chrome-error://chromewebdata/',
+  'http://www.victim.test:8871/t/embeds3p?g=http%3A%2F%2Fads.test%3A8871%2Ft%2Fplain',
+  'chrome-error://chromewebdata/',
+  'http://ads.test:8871/t/plain'
+]

@@ -1,0 +1,70 @@
+<!doctype html><html><head><meta charset="utf-8"><title>adapter</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #36c; }
+  #logo { position: fixed; top: 50px; left: 12px; width: 80px; height: 20px; background: #c36; }
+  #modal { position: fixed; top: 100px; left: 50%; width: 300px; transform: translateX(-50%); height: 50px; background: #6c3; }
+  #backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.1); pointer-events: none; }
+  #pct { position: fixed; top: 200px; left: 10%; width: 50%; height: 20px; background: #cc3; }
+  #widget { position: fixed; right: 10px; bottom: 10px; width: 60px; height: 30px; background: #3a3; }
+  #vw { position: fixed; top: 300px; left: 0; width: 100vw; height: 20px; background: #3cc; }
+  #late { top: 400px; left: 0; right: 0; height: 20px; background: #c93; }
+  .fixed { position: fixed; }
+  .spacer { height: 3000px; }
+</style></head><body>
+<div id="header"></div><div id="logo"></div><div id="modal"></div><div id="backdrop"></div><div id="pct"></div>
+<div id="widget"></div><div id="vw"></div><div id="late"></div><div class="spacer"></div>
+<script>
+  const W = 260, R = 8;
+  const push = new CSSStyleSheet();
+  push.replaceSync(`html { margin-left: ${W}px; margin-right: ${R}px; width: auto; overflow-x: hidden; }`);
+  const fix = new CSSStyleSheet();
+  document.adoptedStyleSheets = [push, fix];
+
+  // The containing block a fixed element should have: the page card.
+  const card = () => ({ left: W, width: innerWidth - W - R });
+  const isAuto = (v) => v instanceof CSSKeywordValue && v.value === 'auto';
+  // A computed inset/width resolved against the card instead of the viewport.
+  function resolve(v, base) {
+    if (v instanceof CSSUnitValue) return v.unit === 'percent' ? (v.value / 100) * base : v.unit === 'px' ? v.value : null;
+    return null; // calc() etc.: fall back to used values
+  }
+  const ids = new WeakMap();
+  let next = 0;
+  const rules = new Map(); // id -> css text
+  function adapt(el) {
+    let id = ids.get(el);
+    if (id != null) { rules.delete(id); el.removeAttribute('data-mfx'); }
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed') return flush();
+    const map = el.computedStyleMap();
+    const vw = innerWidth, c = card();
+    const left = map.get('left'), right = map.get('right'), width = map.get('width');
+    const decl = [];
+    if (!isAuto(left)) {
+      const px = resolve(left, vw); const pct = left.unit === 'percent';
+      decl.push(`left: ${c.left + (pct ? (left.value / 100) * c.width : px ?? parseFloat(cs.left))}px`);
+    }
+    if (!isAuto(right)) {
+      const pct = right.unit === 'percent';
+      decl.push(`right: ${R + (pct ? (right.value / 100) * c.width : resolve(right, vw) ?? parseFloat(cs.right))}px`);
+    }
+    if (!isAuto(width)) {
+      // percentages and full-viewport widths (100vw computes to px) follow the card
+      if (width.unit === 'percent') decl.push(`width: ${(width.value / 100) * c.width}px`);
+      else if (width.unit === 'px' && Math.abs(width.value - vw) < 1) decl.push(`width: ${c.width}px`);
+    }
+    if (isAuto(left) && isAuto(right)) return flush(); // static position: already inside the pushed page
+    if (id == null) { id = ++next; ids.set(el, id); }
+    rules.set(id, `[data-mfx="${id}"] { ${decl.map((d) => d + ' !important').join('; ')} }`);
+    el.setAttribute('data-mfx', id);
+    flush();
+  }
+  function flush() { fix.replaceSync([...rules.values()].join('\n')); }
+  for (const el of document.body.querySelectorAll('*')) adapt(el);
+
+  window.measure = () => Object.fromEntries([...document.querySelectorAll('body > div[id]')].map((e) => {
+    const r = e.getBoundingClientRect(); return [e.id, [Math.round(r.left), Math.round(r.right)]];
+  }));
+  window.late = () => { const e = document.getElementById('late'); e.className = 'fixed'; adapt(e); };
+</script></body></html>

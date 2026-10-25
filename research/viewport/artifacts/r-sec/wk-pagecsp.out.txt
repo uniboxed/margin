@@ -1,0 +1,12 @@
+csp=[] {"url": "http://127.0.0.1:8871/page?csp=", "world": "margin", "title": "LOADED:plain"}
+csp=[] {"url": "http://127.0.0.1:8871/page?csp=", "world": "main", "title": "LOADED:plain"}
+csp=[frame-src 'none'] {"url": "http://127.0.0.1:8871/page?csp=frame-src%20%27none%27", "world": "margin", "title": "BLOCKED"}
+csp=[frame-src 'none'] {"url": "http://127.0.0.1:8871/page?csp=frame-src%20%27none%27", "world": "main", "title": "BLOCKED"}
+csp=[default-src 'none'] {"url": "http://127.0.0.1:8871/page?csp=default-src%20%27none%27", "world": "margin", "title": "BLOCKED"}
+csp=[default-src 'none'] {"url": "http://127.0.0.1:8871/page?csp=default-src%20%27none%27", "world": "main", "title": "BLOCKED"}
+csp=[frame-src https://other.example] {"url": "http://127.0.0.1:8871/page?csp=frame-src%20https%3A%2F%2Fother.example", "world": "margin", "title": "BLOCKED"}
+csp=[frame-src https://other.example] {"url": "http://127.0.0.1:8871/page?csp=frame-src%20https%3A%2F%2Fother.example", "world": "main", "title": "BLOCKED"}
+csp=[child-src 'none'] {"url": "http://127.0.0.1:8871/page?csp=child-src%20%27none%27", "world": "margin", "title": "BLOCKED"}
+csp=[child-src 'none'] {"url": "http://127.0.0.1:8871/page?csp=child-src%20%27none%27", "world": "main", "title": "BLOCKED"}
+csp=[frame-src 'self'] {"url": "http://127.0.0.1:8871/page?csp=frame-src%20%27self%27", "world": "margin", "title": "LOADED:plain"}
+csp=[frame-src 'self'] {"url": "http://127.0.0.1:8871/page?csp=frame-src%20%27self%27", "world": "main", "title": "LOADED:plain"}

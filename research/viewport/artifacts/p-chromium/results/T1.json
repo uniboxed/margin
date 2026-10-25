@@ -1,0 +1,117 @@
+{
+  "plain": {
+    "before": {
+      "url": "http://localhost:8921/p/viewport",
+      "innerWidth": 1000,
+      "innerHeight": 600,
+      "clientWidth": 985,
+      "headerLeft": 0,
+      "headerWidth": 985,
+      "headerTop": 0,
+      "vwWidth": 1000,
+      "mq800": false,
+      "mqCssContent": "\"wide\"",
+      "visualViewportWidth": 985,
+      "scrollY": 0,
+      "scrolls": 0
+    },
+    "afterWheel": {
+      "url": "http://localhost:8921/p/viewport",
+      "innerWidth": 1000,
+      "innerHeight": 600,
+      "clientWidth": 985,
+      "headerLeft": 0,
+      "headerWidth": 985,
+      "headerTop": 0,
+      "vwWidth": 1000,
+      "mq800": false,
+      "mqCssContent": "\"wide\"",
+      "visualViewportWidth": 985,
+      "scrollY": 600,
+      "scrolls": 1
+    },
+    "topScrollY": 600,
+    "afterScrollTo": {
+      "url": "http://localhost:8921/p/viewport",
+      "innerWidth": 1000,
+      "innerHeight": 600,
+      "clientWidth": 985,
+      "headerLeft": 0,
+      "headerWidth": 985,
+      "headerTop": 0,
+      "vwWidth": 1000,
+      "mq800": false,
+      "mqCssContent": "\"wide\"",
+      "visualViewportWidth": 985,
+      "scrollY": 1500,
+      "scrolls": 2
+    }
+  },
+  "shell": {
+    "before": {
+      "url": "http://localhost:8921/p/viewport",
+      "innerWidth": 732,
+      "innerHeight": 584,
+      "clientWidth": 717,
+      "headerLeft": 0,
+      "headerWidth": 717,
+      "headerTop": 0,
+      "vwWidth": 732,
+      "mq800": true,
+      "mqCssContent": "\"narrow\"",
+      "visualViewportWidth": 717,
+      "scrollY": 0,
+      "scrolls": 0
+    },
+    "iframeRectInTop": {
+      "x": 260,
+      "y": 8,
+      "width": 732,
+      "height": 584,
+      "top": 8,
+      "right": 992,
+      "bottom": 592,
+      "left": 260
+    },
+    "afterWheel": {
+      "url": "http://localhost:8921/p/viewport",
+      "innerWidth": 732,
+      "innerHeight": 584,
+      "clientWidth": 717,
+      "headerLeft": 0,
+      "headerWidth": 717,
+      "headerTop": 0,
+      "vwWidth": 732,
+      "mq800": true,
+      "mqCssContent": "\"narrow\"",
+      "visualViewportWidth": 717,
+      "scrollY": 600,
+      "scrolls": 1
+    },
+    "topScrollY": 0,
+    "afterScrollTo": {
+      "url": "http://localhost:8921/p/viewport",
+      "innerWidth": 732,
+      "innerHeight": 584,
+      "clientWidth": 717,
+      "headerLeft": 0,
+      "headerWidth": 717,
+      "headerTop": 0,
+      "vwWidth": 732,
+      "mq800": true,
+      "mqCssContent": "\"narrow\"",
+      "visualViewportWidth": 717,
+      "scrollY": 1500,
+      "scrolls": 2
+    }
+  },
+  "verdict": {
+    "iframeWidth": 732,
+    "headerSpansIframe": true,
+    "vwEqualsIframe": true,
+    "innerWidthEqualsIframe": true,
+    "mqReflectsIframe": true,
+    "wheelScrolls": true,
+    "headerStaysPut": true
+  }
+}

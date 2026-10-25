@@ -1,0 +1,99 @@
+{
+  "linkClick": {
+    "frameUrl": "http://localhost:8921/p/B",
+    "topUrl": "http://localhost:8921/p/B",
+    "topTitle": "page B",
+    "syncedMs": 161,
+    "synced": true,
+    "topMarker": "top-alive",
+    "topNavEntries": 1,
+    "requests": [
+      "4892.2 GET localhost:8921/p/B dest=iframe site=same-origin"
+    ],
+    "favicon": "http://localhost:8921/icon.png?n=B",
+    "themeColor": "#3366ff"
+  },
+  "pushState": {
+    "topUrl": "http://localhost:8921/spa/one?x=1"
+  },
+  "titleChange": {
+    "topTitle": "SPA title"
+  },
+  "hashLink": {
+    "topUrl": "http://localhost:8921/p/B#section2",
+    "frameUrl": "http://localhost:8921/p/B#section2"
+  },
+  "topMarkerAtEnd": "top-alive",
+  "shellLog": [
+    {
+      "t": 33.6,
+      "ev": "shell",
+      "mode": "openstop",
+      "target": "http://localhost:8921/p/A"
+    },
+    {
+      "t": 37.3,
+      "ev": "first-raf"
+    },
+    {
+      "t": 76.6,
+      "ev": "frame-load",
+      "ok": true,
+      "href": "http://localhost:8921/p/A"
+    },
+    {
+      "t": 76.7,
+      "ev": "sync",
+      "why": "load",
+      "href": "http://localhost:8921/p/A",
+      "title": "page A",
+      "changed": false
+    },
+    {
+      "t": 249.2,
+      "ev": "sync",
+      "why": "start",
+      "href": "http://localhost:8921/p/B",
+      "title": "page A",
+      "changed": true
+    },
+    {
+      "t": 263.6,
+      "ev": "frame-load",
+      "ok": true,
+      "href": "http://localhost:8921/p/B"
+    },
+    {
+      "t": 263.6,
+      "ev": "sync",
+      "why": "load",
+      "href": "http://localhost:8921/p/B",
+      "title": "page B",
+      "changed": false
+    },
+    {
+      "t": 285.1,
+      "ev": "sync",
+      "why": "currententrychange",
+      "href": "http://localhost:8921/spa/one?x=1",
+      "title": "page B",
+      "changed": true
+    },
+    {
+      "t": 299.6,
+      "ev": "sync",
+      "why": "currententrychange",
+      "href": "http://localhost:8921/p/B",
+      "title": "SPA title",
+      "changed": true
+    },
+    {
+      "t": 363.7,
+      "ev": "sync",
+      "why": "currententrychange",
+      "href": "http://localhost:8921/p/B#section2",
+      "title": "SPA title",
+      "changed": true
+    }
+  ]
+}

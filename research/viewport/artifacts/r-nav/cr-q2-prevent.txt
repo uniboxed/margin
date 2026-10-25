@@ -1,0 +1,72 @@
+=== http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1
+final: http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1 | title: shell | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-assign-p1&mode=assign&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-assign-p1&mode=assign&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "replace", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1", "sameDoc": false, "formData": null, "sourceElement": null, "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1", "isTop": true}
+   frame-after {"mode": "assign", "url": "http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-assign-p1&mode=assign&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1
+final: http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1 | title: shell | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-href-p1&mode=href&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-href-p1&mode=href&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "replace", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1", "sameDoc": false, "formData": null, "sourceElement": null, "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1", "isTop": true}
+   frame-after {"mode": "href", "url": "http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-href-p1&mode=href&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1
+final: http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1 | title: shell | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-replace-p1&mode=replace&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-replace-p1&mode=replace&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "replace", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1", "sameDoc": false, "formData": null, "sourceElement": null, "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1", "isTop": true}
+   frame-after {"mode": "replace", "url": "http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-replace-p1&mode=replace&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1
+final: http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1 | title: shell | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-open-p1&mode=open&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-open-p1&mode=open&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "replace", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1", "sameDoc": false, "formData": null, "sourceElement": null, "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1", "isTop": true}
+   frame-after {"mode": "open", "url": "http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-open-p1&mode=open&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1
+final: http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1 | title: shell | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-a-p1&mode=a&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-a-p1&mode=a&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "replace", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1", "sameDoc": false, "formData": null, "sourceElement": "A#bustA", "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1", "isTop": true}
+   frame-after {"mode": "a", "url": "http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-a-p1&mode=a&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1
+final: http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1 | title:  | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-formget-p1&mode=formget&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-formget-p1&mode=formget&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "push", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1", "sameDoc": false, "formData": null, "sourceElement": "FORM#[object HTMLInputElement]", "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1", "isTop": true}
+   frame-after {"mode": "formget", "url": "http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-formget-p1&mode=formget&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1
+final: http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1 | title:  | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-formpost-p1&mode=formpost&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-formpost-p1&mode=formpost&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "push", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1", "sameDoc": false, "formData": "x=y", "sourceElement": "FORM#bustP", "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1", "isTop": true}
+   frame-after {"mode": "formpost", "url": "http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-formpost-p1&mode=formpost&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-other-p1&mode=other&prevent=1
+final: http://localhost:8701/site?id=cr-q2-other-p1&mode=other&prevent=1 | title: shell | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-other-p1&mode=other&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-other-p1&mode=other&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-other-p1&mode=other&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-other-p1&mode=other&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "push", "cancelable": true, "canIntercept": true, "userInitiated": false, "dest": "http://localhost:8701/site?id=cr-q2-other-p1&mode=other-dest", "sameDoc": false, "formData": null, "sourceElement": null, "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-other-p1&mode=other&prevent=1", "isTop": true}
+   frame-after {"mode": "other", "url": "http://localhost:8701/site?id=cr-q2-other-p1&mode=other&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-other-p1&mode=other&prevent=1", "isTop": false}
+ 
+=== http://localhost:8701/site?id=cr-q2-topcross-p1&mode=topcross&prevent=1
+final: http://localhost:8701/site?id=cr-q2-topcross-p1&mode=topcross&prevent=1 | title: shell | counts: {'server-hit': 2, 'shell-start': 1, 'shell-iframe-load': 1, 'frame-bust-attempt': 1, 'top-navigate': 1, 'frame-after': 1}
+   server-hit GET document localhost:8701 /site?id=cr-q2-topcross-p1&mode=topcross&prevent=1
+   server-hit GET iframe localhost:8701 /site?id=cr-q2-topcross-p1&mode=topcross&prevent=1
+   shell-iframe-load {"url": "http://localhost:8701/site?id=cr-q2-topcross-p1&mode=topcross&prevent=1", "doc": "doc", "at": "http://localhost:8701/site?id=cr-q2-topcross-p1&mode=topcross&prevent=1", "isTop": true}
+   top-navigate {"action": "prevented", "type": "push", "cancelable": true, "canIntercept": false, "userInitiated": false, "dest": "http://localhost:8702/site?id=cr-q2-topcross-p1&role=xo", "sameDoc": false, "formData": null, "sourceElement": null, "defaultPrevented": true, "at": "http://localhost:8701/site?id=cr-q2-topcross-p1&mode=topcross&prevent=1", "isTop": true}
+   frame-after {"mode": "topcross", "url": "http://localhost:8701/site?id=cr-q2-topcross-p1&mode=topcross&prevent=1", "at": "http://localhost:8701/site?id=cr-q2-topcross-p1&mode=topcross&prevent=1", "isTop": false}
+ 

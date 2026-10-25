@@ -1,0 +1,3 @@
+/p?mode=rc&tag=rc
+/p?mode=stoponly&tag=so
+/p?mode=stoponly&tag=sogap&gap=300

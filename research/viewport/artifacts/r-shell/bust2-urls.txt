@@ -1,0 +1,2 @@
+/p?tag=bust2&bust=1
+/p?tag=proto-pn2&pagenav=1

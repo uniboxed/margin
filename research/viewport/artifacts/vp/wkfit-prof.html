@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8"><title>fit</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #36c; }
+  #logo { position: fixed; top: 50px; left: 12px; width: 80px; height: 20px; background: #c36; }
+  #modal { position: fixed; top: 100px; left: 50%; width: 300px; transform: translateX(-50%); height: 50px; background: #6c3; }
+  #backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.05); pointer-events: none; }
+  #pct { position: fixed; top: 200px; left: 10%; width: 50%; height: 20px; background: #cc3; }
+  #widget { position: fixed; right: 10px; bottom: 10px; width: 60px; height: 30px; background: #3a3; }
+  #fixedvw { position: fixed; top: 300px; left: 0; width: 100vw; height: 20px; background: #3cc; }
+  #late { top: 400px; left: 0; right: 0; height: 20px; background: #c93; }
+  .stuck { position: fixed; }
+  #tooltip { position: fixed; top: 0; width: 20px; background: #000; color: #fff; }
+  #moving { transform: translateZ(0); }
+  #inside { position: fixed; left: 0; top: 0; width: 10px; height: 10px; }
+  .container { max-width: 500px; margin: 450px auto 0; }
+  #wide { width: 100vw; height: 30px; background: #c63; }
+  #bleed { width: 100vw; margin-left: calc(50% - 50vw); height: 30px; background: #6c3; }
+  #bleedchild { width: 100%; height: 10px; background: #000; }
+  #bleed2 { width: 100vw; position: relative; left: 50%; transform: translateX(-50%); height: 30px; background: #63c; }
+  #normal { height: 30px; background: #999; }
+</style></head><body>
+<div id="header"></div><div id="logo"></div><div id="modal"></div><div id="backdrop"></div><div id="pct"></div>
+<div id="widget"></div><div id="fixedvw"></div><div id="late"></div>
+<div id="tooltip" style="left: 300px">tip</div>
+<div id="moving"><div id="inside"></div></div>
+<div class="container"><div id="wide"></div><div id="bleed"><div id="bleedchild"></div></div><div id="bleed2"></div><div id="normal"></div></div>
+<div style="height: 3000px"></div>
+<script src="fit-prof.js"></script><script>
+const big = new URLSearchParams(location.search).get('big');
+if (big) { const f = document.createDocumentFragment(); for (let i = 0; i < +big; i++) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = '<span>x</span><a>y</a>'; f.append(d); } document.body.append(f); }
+const push = new CSSStyleSheet(); push.replaceSync('html { margin-left: 260px !important; margin-right: 8px !important; width: auto !important; overflow-x: hidden !important; }');
+document.adoptedStyleSheets = [push];
+document.body.offsetWidth;
+const fit = Margin.fit.createPageFit({ gap: 8 });
+const t0 = performance.now(); fit.apply(260); const first = performance.now() - t0;
+document.body.offsetWidth;
+const t1 = performance.now(); fit.apply(300); document.body.offsetWidth; fit.apply(260); document.body.offsetWidth; const resize = (performance.now() - t1) / 2;
+const t2 = performance.now(); push.replaceSync(push.cssRules[0].cssText.replace('260px', '261px')); document.body.offsetWidth; const pushOnly = performance.now() - t2;
+const edges = () => Object.fromEntries([...document.querySelectorAll('[id]')].map((e) => { const r = e.getBoundingClientRect(); return [e.id, [Math.round(r.left), Math.round(r.right)]]; }));
+setTimeout(() => { document.title = JSON.stringify({ cw: document.documentElement.clientWidth, elements: document.getElementsByTagName('*').length, firstMs: +first.toFixed(1), T: globalThis.T, resizeMs: +resize.toFixed(1), pushRelayoutMs: +pushOnly.toFixed(1), edges: big ? undefined : edges() }); }, 300);
+</script></body></html>

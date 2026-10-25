@@ -1,0 +1,2 @@
+/p?tag=bust0&bust=1
+/p?tag=bust1&bust=1&guard=1

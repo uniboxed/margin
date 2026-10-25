@@ -1,0 +1,6 @@
+/p?mode=stop&tag=pnA-stop&nonce=abc&pagenav=1&csp=frame-src%20https%3A//www.youtube.com
+/p?mode=transplant&tag=pnA-transplant&nonce=abc&pagenav=1&csp=frame-src%20https%3A//www.youtube.com
+/p?mode=stop&tag=ttT-stop&csp=require-trusted-types-for%20%27script%27
+/p?mode=transplant&tag=ttT-transplant&csp=require-trusted-types-for%20%27script%27
+/p?mode=stop&tag=ttT2-stop&csp=require-trusted-types-for%20%27script%27%3B%20trusted-types%20sitepolicy
+/p?mode=transplant&tag=ttT2-transplant&csp=require-trusted-types-for%20%27script%27%3B%20trusted-types%20sitepolicy

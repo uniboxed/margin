@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset=utf-8>
+<style>
+body{margin:0;font:14px sans-serif}
+html{overflow-y:scroll}
+::-webkit-scrollbar{width:300px;background:transparent}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.0)}
+#tall{height:3000px;background:linear-gradient(#ffe,#eef)}
+#fx{position:fixed;right:-300px;top:50px;width:400px;height:100px;background:#c0f;z-index:2147483647}
+#pop{position:fixed;inset:auto;right:-300px;left:auto;top:200px;width:400px;height:100px;margin:0;border:0;padding:0;background:#0cf}
+</style></head><body>
+<div id=tall></div><div id=fx>fixed</div><div id=pop popover=manual>popover</div>
+<script>
+try{document.getElementById('pop').showPopover()}catch(e){}
+window.__md=[];
+document.addEventListener('mousedown',e=>window.__md.push([e.clientX,e.clientY,e.target.id||e.target.tagName, Math.round(scrollY)]),true);
+window.measure=()=>({clientWidth:document.documentElement.clientWidth, scrollY:Math.round(scrollY), efp_fx:(document.elementFromPoint(850,100)||{}).id||null, efp_inside:(document.elementFromPoint(650,100)||{}).id||null, md:window.__md});
+setTimeout(()=>{document.title=JSON.stringify(measure())},300);
+</script></body></html>

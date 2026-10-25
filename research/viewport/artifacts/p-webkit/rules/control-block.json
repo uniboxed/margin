@@ -1,0 +1,4 @@
+[
+  {"trigger": {"url-filter": "style\\.css"}, "action": {"type": "block"}},
+  {"trigger": {"url-filter": ".*"}, "action": {"type": "modify-headers", "priority": 1, "request-headers": [{"operation": "set", "header": "X-Margin-Test", "value": "any"}]}}
+]

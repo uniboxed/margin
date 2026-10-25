@@ -1,0 +1,57 @@
+=== WebKitGTK isolated-world CS: http://localhost:8701/site?id=wk-cs-bust&mode=assign&prevent=0&guard=0
+final: http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "at": "http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": true}
+   {"ev": "shell-iframe-load", "url": "http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "doc": "doc", "at": "http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": true}
+   {"ev": "cs-top-navigate", "type": "push", "cancelable": true, "dest": "http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "prevented": true, "userInitiated": false, "at": "http://localhost:8701/site?id=wk-cs2-bust&mode=assign&prevent=0&guard=0", "isTop": true}
+=== WebKitGTK isolated-world CS: http://localhost:8701/site?id=wk-cs-redir&mode=f-redirect&prevent=0&guard=0
+final: http://localhost:8702/site?id=wk-cs2-redir&role=xo
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "at": "http://localhost:8701/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "shell-iframe-load", "url": "http://localhost:8701/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "doc": "doc", "at": "http://localhost:8701/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-redirect", "to": "http://localhost:8702/site?id=wk-cs2-redir&role=xo"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redir&role=xo", "dest": "iframe", "host": "localhost:8702"}
+   {"ev": "cs-start", "origin": "http://localhost:8702", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8702/site?id=wk-cs2-redir&role=xo", "isTop": false}
+   {"ev": "cs-xo-frame-escape", "url": "http://localhost:8702/site?id=wk-cs2-redir&role=xo", "at": "http://localhost:8702/site?id=wk-cs2-redir&role=xo", "isTop": false}
+   {"ev": "cs-top-message", "url": "http://localhost:8702/site?id=wk-cs2-redir&role=xo", "origin": "http://localhost:8702", "at": "http://localhost:8701/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "cs-top-navigate", "type": "replace", "cancelable": true, "dest": "http://localhost:8702/site?id=wk-cs2-redir&role=xo", "prevented": false, "userInitiated": false, "at": "http://localhost:8701/site?id=wk-cs2-redir&mode=f-redirect&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redir&role=xo", "dest": "document", "host": "localhost:8702"}
+   {"ev": "cs-start", "origin": "http://localhost:8702", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8702/site?id=wk-cs2-redir&role=xo", "isTop": true}
+=== WebKitGTK isolated-world CS: http://localhost:8701/site?id=wk-cs-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0
+final: http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "at": "http://localhost:8701/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": true}
+   {"ev": "shell-iframe-load", "url": "http://localhost:8701/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "doc": "doc", "at": "http://localhost:8701/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-redirect", "to": "http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "dest": "iframe", "host": "localhost:8702"}
+   {"ev": "cs-start", "origin": "http://localhost:8702", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "isTop": false}
+   {"ev": "cs-xo-frame-escape", "url": "http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "at": "http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "isTop": false}
+   {"ev": "cs-top-message", "url": "http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "origin": "null", "at": "http://localhost:8701/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": true}
+   {"ev": "cs-top-navigate", "type": "replace", "cancelable": true, "dest": "http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "prevented": false, "userInitiated": false, "at": "http://localhost:8701/site?id=wk-cs2-redirxfo&mode=f-redirect-xfo&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "dest": "document", "host": "localhost:8702"}
+   {"ev": "cs-start", "origin": "http://localhost:8702", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8702/site?id=wk-cs2-redirxfo&role=xo&xfo=DENY", "isTop": true}
+=== WebKitGTK isolated-world CS: http://localhost:8701/site?id=wk-cs-redirxs&mode=f-redirect-xs&prevent=0&guard=0
+final: http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "dest": "document", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "dest": "iframe", "host": "localhost:8701"}
+   {"ev": "cs-start", "origin": "http://localhost:8701", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": false, "at": "http://localhost:8701/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": false}
+   {"ev": "cs-top-customevent", "detail": "hello-from-frame-cs", "detailType": "string", "at": "http://localhost:8701/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "shell-iframe-load", "url": "http://localhost:8701/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "doc": "doc", "at": "http://localhost:8701/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-redirect", "to": "http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs"}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxs&role=xs", "dest": "iframe", "host": "127.0.0.1:8702"}
+   {"ev": "cs-start", "origin": "http://127.0.0.1:8702", "name": "margin-frame", "ancestorOrigins": ["http://localhost:8701"], "hasNav": true, "hasBrowser": false, "at": "http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs", "isTop": false}
+   {"ev": "cs-xo-frame-escape", "url": "http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs", "at": "http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs", "isTop": false}
+   {"ev": "cs-top-message", "url": "http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs", "origin": "http://127.0.0.1:8702", "at": "http://localhost:8701/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "cs-top-navigate", "type": "replace", "cancelable": true, "dest": "http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs", "prevented": false, "userInitiated": false, "at": "http://localhost:8701/site?id=wk-cs2-redirxs&mode=f-redirect-xs&prevent=0&guard=0", "isTop": true}
+   {"ev": "server-hit", "method": "GET", "path": "/site?id=wk-cs2-redirxs&role=xs", "dest": "document", "host": "127.0.0.1:8702"}
+   {"ev": "cs-start", "origin": "http://127.0.0.1:8702", "name": "", "ancestorOrigins": [], "hasNav": true, "hasBrowser": false, "at": "http://127.0.0.1:8702/site?id=wk-cs2-redirxs&role=xs", "isTop": true}

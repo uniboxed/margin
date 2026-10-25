@@ -1,0 +1,1 @@
+[{"trigger": {"url-filter": "/t/plain", "resource-type": ["child-document"], "if-frame-url": ["^http://localhost:8872/"]}, "action": {"type": "block"}}]

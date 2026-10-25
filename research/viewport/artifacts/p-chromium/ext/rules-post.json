@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        { "header": "server-timing", "operation": "append", "value": "margin-post" }
+      ]
+    },
+    "condition": { "resourceTypes": ["main_frame"], "requestMethods": ["post"] }
+  }
+]

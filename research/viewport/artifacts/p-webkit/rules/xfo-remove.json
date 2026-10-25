@@ -1,0 +1,7 @@
+[
+  {"trigger": {"url-filter": ".*", "resource-type": ["child-document"], "load-type": ["first-party"]},
+   "action": {"type": "modify-headers", "priority": 1,
+              "request-headers": [{"operation": "set", "header": "X-Margin-Test", "value": "child-first-party"}],
+              "response-headers": [{"operation": "remove", "header": "X-Frame-Options"},
+                                   {"operation": "remove", "header": "Content-Security-Policy"}]}}
+]

@@ -1,0 +1,5 @@
+[
+  {"trigger": {"url-filter": ".*"},
+   "action": {"type": "modify-headers", "priority": 1,
+              "response-headers": [{"operation": "remove", "header": "X-Frame-Options"}]}}
+]

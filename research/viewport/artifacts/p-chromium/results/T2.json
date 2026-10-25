@@ -1,0 +1,23 @@
+{
+  "firstVisit": [
+    "3241.4 GET localhost:8921/p/cookies?cookie=1 dest=document site=none",
+    "3318.6 GET localhost:8921/p/cookies?cookie=1 dest=iframe site=same-origin cookie=[lax=L8921; strict=S8921; honly=H8921]"
+  ],
+  "frameDocumentCookie": "lax=L8921; strict=S8921",
+  "crossSiteArrival": [
+    "3744.1 GET localhost:8922/p/xo dest=document site=cross-site cookie=[lax=L8921; honly=H8921]",
+    "3801.9 GET localhost:8922/p/xo dest=iframe site=same-origin cookie=[lax=L8921; strict=S8921; honly=H8921]"
+  ],
+  "crossSiteArrivalFrameCookie": "lax=L8921; strict=S8921",
+  "crossSiteArrivalReferer": [
+    "document: Referer=http://127.0.0.1:8921/ Sec-Fetch-User=?1",
+    "iframe: Referer=http://localhost:8922/p/xo Sec-Fetch-User=(none)"
+  ],
+  "crossSiteArrivalDocumentReferrerInCard": "http://localhost:8922/p/xo",
+  "storage": {
+    "cardSeesPlainTopLocalStorage": "yes",
+    "shellTopSeesCardLocalStorage": "yes",
+    "shellTopSeesCardSessionStorage": "card",
+    "plainTopSeesCardLocalStorage": "yes"
+  }
+}
