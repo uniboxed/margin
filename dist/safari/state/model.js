@@ -29,6 +29,12 @@
     blockGestures: true, // Safari: no swipe back/forward, pinch for all tabs, or page bounce (shared/gestures.js)
     pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.js)
     swipeNavigation: true, // Safari: Margin's two-finger swipe back/forward (shared/pull.js)
+    sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (content/sidebar.js page listener)
+    // Safari, with "Keep open": pages go in a frame beside the sidebar, laid
+    // out as in a narrower window (content/shell.js). Origins listed in
+    // fitPagesExcept keep the push layout.
+    fitPages: true,
+    fitPagesExcept: [],
     // Defaults from the build's platform profile (shared/platform.js; loaded
     // before this file in the background). Editable in Settings. Fallback:
     // the Chrome profile's ⌃⌘ + arrows (e.g. in node tests).

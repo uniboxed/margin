@@ -58,8 +58,9 @@
   // handled once, in one place.
   // `getSettings()` → current settings (shortcuts may change any time);
   // return null to pause, e.g. while a shortcut is being recorded.
-  function installNavigation({ send, getSettings }) {
-    addEventListener('keydown', (event) => {
+  // `target`: the window to listen on (the card's, in the fitted layout).
+  function installNavigation({ send, getSettings, target = globalThis }) {
+    target.addEventListener('keydown', (event) => {
       const settings = getSettings();
       if (settings === null) return;
       const keys = navigationFor(settings);

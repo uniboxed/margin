@@ -169,7 +169,9 @@
         if (host.matches?.(':popover-open')) host.hidePopover();
       } catch {}
       input.blur();
-      if (restoreFocus?.isConnected) restoreFocus.focus?.({ preventScroll: true });
+      // Back to the page; in the fitted layout that's the card, not the shell.
+      if (Margin.shell?.card && (!restoreFocus?.isConnected || restoreFocus === document.body)) Margin.shell.focusCard();
+      else if (restoreFocus?.isConnected) restoreFocus.focus?.({ preventScroll: true });
     }
 
     // The content keydown listener and the `commands` fallback can both fire
@@ -186,8 +188,9 @@
   }
 
   // Capture-phase listener so the page can't swallow the shortcut first.
-  function installShortcut(palette, getShortcut) {
-    addEventListener('keydown', (e) => {
+  // `target`: the window to listen on (the card's, in the fitted layout).
+  function installShortcut(palette, getShortcut, target = globalThis) {
+    target.addEventListener('keydown', (e) => {
       if (!Margin.shortcuts.matches(e, getShortcut())) return;
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -205,11 +208,13 @@
   const palette = createPalette({
     send: c.send,
     getState: () => c.getState().state,
-    getContext: () => ({ ...c.getState(), canToggleSidebar: true }),
+    getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFit: !!Margin.platform?.shell, fitted: !!Margin.shell }),
     onLocal: (action) => action.local === 'toggleSidebar' && c.sidebar.toggle(),
     theme: c.theme,
   });
-  installShortcut(palette, () => c.getState().state?.settings?.paletteShortcut ?? 'Alt+KeyK');
+  const paletteKey = () => c.getState().state?.settings?.paletteShortcut ?? 'Alt+KeyK';
+  installShortcut(palette, paletteKey);
+  c.onCard?.((win) => installShortcut(palette, paletteKey, win));
   c.onCommand = (command) => {
     if (command === 'open-palette') palette.toggle();
     if (command === 'show-palette') palette.open(); // ⌘T, via the new-tab page

@@ -35,7 +35,15 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 - **Safari's own sidebar can also open at the left edge, in full-screen windows only.** Resting the cursor at the very edge of a full-screen window reveals Safari's sidebar; extensions can't disable that, and Safari has no setting for it. Avoid it by filling the screen with Window → Fill (or ⌥-click the green button) instead of full screen, or by using Keep open. In full screen, Margin opens from 24px out (10px otherwise), so the cursor rarely reaches the edge.
 - **No sidebar while the address bar has focus.** Hover reveal needs the page to receive mouse events, and page shortcuts need the page to have keyboard focus.
 - **⌘T, ⌘W, ⌘L, Ctrl+Tab and friends can't be intercepted.** Margin takes over new tabs by replacing the new-tab page instead. Safari focuses its address bar on a new tab, so the launcher field usually doesn't get focus. That's expected.
-- **"Keep open" can break some layouts.** Safari can't shrink the page area, so Margin shifts the page right by hand. Headers and toolbars pinned to the screen (`position: fixed`) don't move and stay partly under the sidebar. Full-window-width elements get clipped on the right, and centered popups sit a bit off-center. Hover mode never moves the page. If a site misbehaves, switch to auto-hide (⌥S).
+- **"Keep open" fits pages beside the sidebar by putting them in a frame (Safari, experimental).** Safari can't shrink the page area, so Margin moves each page it loads into a frame of its own tab, sized to the space beside the sidebar. The page is laid out exactly as in a narrower window: pinned headers, full-width sections and mobile breakpoints fit. What it costs:
+  - A page appears once its HTML has fully arrived, so pages that stream lose progressive rendering. Until then Safari keeps showing the previous page.
+  - Reader, Hide Distracting Items, and other extensions that only work on the top of the page see Margin's frame instead of the page.
+  - File → Print prints the frame's view; ⌘P prints the page.
+  - Text-fragment links don't highlight. Back without Safari's page cache restores the scroll position but not typed form fields.
+  - Sites can tell they're in a frame.
+  - Popups, non-HTML documents, quirks-mode pages, pages in other text encodings, and loads where Margin starts too late keep the older push layout: the page shifted right by hand, with pinned headers partly under the sidebar and full-width sections clipped.
+  - Turning Keep open on doesn't refit pages that are already open; it applies from their next load.
+  - If a site misbehaves, use the palette's "Show this site without fitting it beside the sidebar", or turn off Settings → "With Keep open, fit pages beside the sidebar". Hover mode never moves the page. Auto-hide: ⌥S.
 - **Pins are URL-based.** Navigating a pinned tab to another URL makes it a regular tab again.
 - **Tabs closed with ⌘W aren't archived.** Only auto-archived tabs and tabs closed with Margin's × are.
 - **Unverified in Safari.** Everything was automated-tested in headless Chromium only. See [TESTING.md](TESTING.md) for what needs a manual check.

@@ -3,14 +3,25 @@
   const api = globalThis.browser ?? globalThis.chrome;
   // Load timing, in ms since navigation start (see logTiming below).
   const timing = { injected: Math.round(performance.now()) };
-  // Injection probe (shared/probe.js): what <html> held when this ran. All
-  // content scripts run back to back, so nothing has parsed since the first.
-  const probe = globalThis.Margin.probe.snapshot('manifest');
   if (location.href.startsWith(api.runtime.getURL(''))) return;
   if (document.querySelector('margin-sidebar-host')) return;
 
   const Margin = globalThis.Margin;
   Margin.content = { api };
+
+  // Fitted layout (content/shell.js, registered while "Keep open" is on; it
+  // runs right after this script): the page moves into a frame, the "card",
+  // and this document becomes Margin's shell around it. Whatever must also
+  // hear the page (pointer, keys, wheel, pinch) registers with onCard and is
+  // attached to the card's window once the page is in it.
+  const cardHooks = [];
+  Margin.content.onCard = (fn) => {
+    cardHooks.push(fn);
+    if (Margin.shell?.card) fn(Margin.shell.card);
+  };
+  Margin.content.cardReady = (win) => {
+    for (const fn of cardHooks) fn(win);
+  };
 
   // Reveal zone: 10px, or 24px in a full-screen window, where Safari's own
   // sidebar opens if the cursor rests at the very edge (see view.revealZone).
@@ -75,6 +86,7 @@
     swipe.style.setProperty('--width', `${liveWidth}px`);
     zoomHud.style.setProperty('--width', `${liveWidth}px`);
     if (pushed) setPushed(true, liveWidth);
+    Margin.shell?.setLayout({ width: liveWidth });
   }
   // Arc-style frame: sidebar-colored strips around the page card with its
   // corners, shown while the sidebar is open. Never takes clicks.
@@ -140,9 +152,14 @@
   let state = null;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
-  const gestureGuard = Margin.platform?.blockGestures
-    ? Margin.gestures.installGestureGuard({ getSettings: () => state?.settings, onPinch: (pinch) => handlePinch(pinch) })
-    : null;
+  const guardWindow = (win) => Margin.gestures.installGestureGuard({ getSettings: () => state?.settings, onPinch: (pinch) => handlePinch(pinch), win });
+  const gestureGuard = Margin.platform?.blockGestures ? guardWindow(window) : null;
+  const cardGuards = [];
+  if (gestureGuard) Margin.content.onCard((win) => cardGuards.push(guardWindow(win)));
+  const updateGestureGuards = () => {
+    gestureGuard?.update();
+    for (const guard of cardGuards) guard.update();
+  };
   let reason = null; // 'hover' | 'toggle' | null
   let hideTimer = null;
 
@@ -161,6 +178,7 @@
     zoomHud.classList.toggle('in-frame', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
+    Margin.shell?.setLayout({ docked, width: sidebar.width() });
     if (state) syncPlaceholder();
     frame.style.setProperty('--width', `${sidebar.width()}px`);
     cardEdge.style.setProperty('--width', `${sidebar.width()}px`);
@@ -196,8 +214,11 @@
   // Taking over from the placeholder's pill (content/docked/w-*.css), the
   // pill shows at once (no fade-in dip) and fades out normally, even if the
   // page has already finished loading.
+  // In the fitted layout the page loads in the card: the top document is
+  // complete long before (card hook below).
+  const pageComplete = () => (Margin.shell ? Margin.shell.card?.document.readyState === 'complete' : document.readyState === 'complete');
   function startLoader() {
-    const complete = document.readyState === 'complete';
+    const complete = pageComplete();
     if (loaderShownAt != null || (complete && !placeholderTookOver)) return;
     loaderShownAt = performance.now();
     if (placeholderTookOver) {
@@ -208,9 +229,10 @@
       showPill();
     }
     if (complete) return stopLoader();
-    addEventListener('load', stopLoader, { once: true });
+    if (!Margin.shell) addEventListener('load', stopLoader, { once: true });
     loaderMaxTimer = setTimeout(stopLoader, LOADER_MAX_MS);
   }
+  Margin.content.onCard((win) => win.addEventListener('load', () => stopLoader(), { once: true }));
   function stopLoader() {
     clearTimeout(loaderMaxTimer);
     if (loaderShownAt == null || leaving) return;
@@ -248,15 +270,18 @@
   });
   addEventListener('pageshow', (event) => { if (event.persisted) stayed(); });
   for (const type of ['pointerdown', 'keydown']) addEventListener(type, stayed, true);
+  Margin.content.onCard((win) => {
+    for (const type of ['pointerdown', 'keydown']) win.addEventListener(type, stayed, true);
+  });
 
   // Same-page navigations a site runs through the Navigation API
   // (navigation.intercept, e.g. some single-page apps): show the pill while
   // one takes longer than TRANSITION_PILL_MS, until it finishes. Without the
   // API (or for sites that don't use it) nothing changes.
   const TRANSITION_PILL_MS = 150;
-  globalThis.navigation?.addEventListener?.('navigate', () => {
+  const watchTransitions = (navigation) => navigation?.addEventListener?.('navigate', () => {
     setTimeout(() => { // the page decides during the event whether it intercepts
-      const transition = globalThis.navigation.transition;
+      const transition = navigation.transition;
       if (!transition?.finished || firstRender) return;
       let done = false;
       let shownAt = null;
@@ -273,6 +298,8 @@
       transition.finished.then(finish, finish);
     });
   });
+  watchTransitions(globalThis.navigation);
+  Margin.content.onCard((win) => watchTransitions(win.navigation));
 
   // ---- pull to refresh (Safari builds) ---------------------------------------
   // Safari's own pull-to-refresh goes away with the page bounce (gesture
@@ -304,7 +331,9 @@
       location.reload();
       // If the page stays (a cancelled "Leave page?" prompt), the next click
       // or key clears it; at the latest after 10s.
-      for (const type of ['pointerdown', 'keydown']) addEventListener(type, resetPull, { capture: true, once: true });
+      for (const target of [window, Margin.shell?.card].filter(Boolean)) {
+        for (const type of ['pointerdown', 'keydown']) target.addEventListener(type, resetPull, { capture: true, once: true });
+      }
     }, 300);
     pullStuckTimer = setTimeout(resetPull, 10000);
   }
@@ -363,7 +392,8 @@
     const pullTracker = Margin.pull.createPullTracker();
     const swipeTracker = Margin.pull.createSwipeTracker();
     let endTimer = null;
-    addEventListener('wheel', (event) => {
+    // The page's document: this one, or the card's in the fitted layout.
+    const watchWheel = (win, doc) => win.addEventListener('wheel', (event) => {
       if (event.ctrlKey) return; // a pinch
       const path = event.composedPath();
       // Not over Margin's own panels; pixel deltas only (a trackpad).
@@ -371,8 +401,8 @@
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
       const pulling = pullEnabled() && !pullRefreshing;
       const swiping = swipeEnabled();
-      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: usable && Margin.gestures.atPageTop(event, document) }));
-      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && historyAllows(event.deltaX) && Margin.gestures.canSwipe(event, document) }));
+      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: usable && Margin.gestures.atPageTop(event, doc) }));
+      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && historyAllows(event.deltaX) && Margin.gestures.canSwipe(event, doc) }));
       if (!pulling && !swiping) return;
       clearTimeout(endTimer);
       endTimer = setTimeout(() => {
@@ -380,6 +410,8 @@
         if (swiping) showSwipe(swipeTracker.end());
       }, Margin.pull.DEFAULTS.GAP_MS + 20);
     }, { capture: true, passive: true });
+    watchWheel(window, document);
+    Margin.content.onCard((win) => watchWheel(win, win.document));
   }
 
   // ---- pinch to zoom (Safari builds) -------------------------------------------
@@ -440,7 +472,7 @@
   let pushSheet = null;
   let pushStyle = null;
   function setPushed(on, width = sidebar.width()) {
-    if (!canPush || (on === pushed && (!on || width === pushedWidth))) return;
+    if (!canPush || Margin.shell || (on === pushed && (!on || width === pushedWidth))) return; // the fitted layout needs no push
     pushed = on;
     pushedWidth = on ? width : null;
     if ('adoptedStyleSheets' in document && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
@@ -491,7 +523,13 @@
   }
   // With "Keep open" on, the shortcut switches back to auto-hide (hide()
   // alone would leave it pinned open).
+  // The shortcut's page listener and a `commands` key can both fire for one
+  // press; collapse them.
+  let lastToggle = 0;
   function toggle() {
+    const now = Date.now();
+    if (now - lastToggle < 200) return;
+    lastToggle = now;
     if (pinnedOpen()) {
       state = { ...state, settings: { ...state.settings, sidebarPinnedOpen: false } };
       send('updateSettings', { patch: { sidebarPinnedOpen: false } });
@@ -513,35 +551,56 @@
 
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space.
   Margin.shortcuts.installNavigation({ send, getSettings: () => state?.settings });
+  Margin.content.onCard((win) => Margin.shortcuts.installNavigation({ send, getSettings: () => state?.settings, target: win }));
   Margin.content.peek = peek;
 
-  document.addEventListener(
-    'mousemove',
-    (e) => {
-      if (e.clientX <= edgePx()) show('hover');
-      else if (e.clientX > sidebar.width() + FRAME_PX) scheduleHide();
-      else if (hideTimer && sidebar.el.classList.contains('open')) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-    },
-    { capture: true, passive: true },
-  );
-  // Cursor left the window: keep open if it left through the left edge.
-  document.addEventListener('mouseout', (e) => {
-    if (!e.relatedTarget && e.clientX > edgePx()) scheduleHide();
-  });
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (e.key === 'Escape' && reason === 'toggle') hide();
-    },
-    true,
-  );
-  // Clicking the page closes a toggled sidebar (clicks inside are retargeted to the host).
-  document.addEventListener('mousedown', (e) => {
-    if (reason === 'toggle' && e.target !== host) hide();
+  // Show/hide shortcut (Settings; default Option+S), in the page itself: the
+  // manifest's `commands` can't suggest it (Chrome allows four, taken by the
+  // tab and space keys).
+  const watchToggleKey = (win) => win.addEventListener('keydown', (e) => {
+    // Not a page's synthetic key press: with Keep open on, this changes a setting.
+    if (!e.isTrusted || !Margin.shortcuts.matches(e, state?.settings?.sidebarShortcut ?? 'Alt+KeyS')) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    toggle();
   }, true);
+  watchToggleKey(window);
+  Margin.content.onCard(watchToggleKey);
+
+  // `target`: this document, or the card's window in the fitted layout,
+  // whose coordinates start `offsetX` px into the window.
+  function watchPointer(target, offsetX = () => 0) {
+    target.addEventListener(
+      'mousemove',
+      (e) => {
+        const x = e.clientX + offsetX();
+        if (x <= edgePx()) show('hover');
+        else if (x > sidebar.width() + FRAME_PX) scheduleHide();
+        else if (hideTimer && sidebar.el.classList.contains('open')) {
+          clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+      },
+      { capture: true, passive: true },
+    );
+    // Cursor left the window: keep open if it left through the left edge.
+    target.addEventListener('mouseout', (e) => {
+      if (!e.relatedTarget && e.clientX + offsetX() > edgePx()) scheduleHide();
+    });
+    target.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key === 'Escape' && reason === 'toggle') hide();
+      },
+      true,
+    );
+    // Clicking the page closes a toggled sidebar (clicks inside are retargeted to the host).
+    target.addEventListener('mousedown', (e) => {
+      if (reason === 'toggle' && e.target !== host) hide();
+    }, true);
+  }
+  watchPointer(document);
+  Margin.content.onCard((win) => watchPointer(win, () => Margin.shell?.cardLeft() ?? 0));
 
   // ---- data ---------------------------------------------------------------
 
@@ -557,7 +616,7 @@
     sidebar.update(state, { windowId, tabId });
     Margin.content.onState?.(state, { tabId, windowId });
     if (!reason) setOpen(pinnedOpen());
-    gestureGuard?.update();
+    updateGestureGuards();
     if (firstRender) {
       firstRender = false;
       startLoader(); // now its position (docked or not) is known
@@ -596,18 +655,11 @@
     const fmt = (n) => (n == null ? '–' : `${Math.round(n)}`);
     console.debug(
       `[margin] timing (ms) injected=${fmt(timing.injected)} storage=${fmt(timing.storage)} rendered=${fmt(timing.rendered)}` +
-        ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${pinnedOpen()}` +
-        ` | probe ${Margin.probe.verdict(probe)} htmlKids=[${probe.kids}]`,
+        ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${pinnedOpen()} fitted=${!!Margin.shell}`,
     );
   }
   if (document.readyState === 'complete') setTimeout(logTiming);
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
-
-  // The probe record goes to the background now, so loads the user leaves
-  // early still count. A page restored from the back-forward cache runs no
-  // content script; it's logged too, so Back/Forward tests add up.
-  send('probe', { record: probe });
-  addEventListener('pageshow', (e) => e.persisted && send('probe', { record: { source: 'manifest', restored: true, url: probe.url, nav: 'back_forward' } }));
   refresh();
   send('hello').then((ctx) => {
     if (!ctx) return;
@@ -636,6 +688,8 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reportIcon, { once: true });
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
+  // Icons a page adds from script, in the fitted layout (the shell copies them).
+  Margin.content.onCard((win) => win.addEventListener('load', () => setTimeout(reportIcon), { once: true }));
 
   api.runtime.onMessage.addListener((message, _, sendResponse) => {
     if (message?.type === 'ping') return sendResponse('pong'); // background: is Margin running here?

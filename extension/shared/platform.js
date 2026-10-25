@@ -18,6 +18,9 @@
       // No search API: the engine is learned from Safari's own searches
       // (shared/search.js).
       search: 'learn',
+      // "Keep open" fits pages beside the sidebar (content/shell.js), using
+      // Safari's early content scripts and Navigation API (26.2+).
+      shell: true,
       // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
       // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
       // both builds: verified working in Safari, while ⌥⌘↓/↑ as a manifest
@@ -39,6 +42,9 @@
       blockGestures: false,
       // chrome.search.query: Chrome's default engine.
       search: 'browser',
+      // Push layout only: Chrome runs a document.write from a content script
+      // under the extension's CSP, so the page's scripts wouldn't run.
+      shell: false,
       // Same as the manifest commands (⌃⌘ + arrows; Chrome refuses ⌘⌥ there
       // and then won't load the extension at all).
       navigation: {

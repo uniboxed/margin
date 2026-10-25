@@ -88,6 +88,13 @@ if (Margin.platform?.blockGestures) {
   swipeNavigation.addEventListener('change', () => send('updateSettings', { patch: { swipeNavigation: swipeNavigation.checked } }));
 }
 
+// Fitted layout with "Keep open" (content/shell.js; Safari builds only).
+const fitPages = $('fit-pages');
+if (Margin.platform?.shell) {
+  $('fit-setting').hidden = false;
+  fitPages.addEventListener('change', () => send('updateSettings', { patch: { fitPages: fitPages.checked } }));
+}
+
 // Navigation shortcuts from Settings (next/previous tab and space; the
 // sidebar is always visible here, so no peek).
 Margin.shortcuts.installNavigation({ send, getSettings: () => (recording ? null : state?.settings) });
@@ -116,14 +123,18 @@ api.runtime.onMessage.addListener((message) => {
 const shortcutInputs = [...document.querySelectorAll('.shortcut-input')];
 const shortcutHelp = $('shortcut-help');
 const defaultHelp = shortcutHelp.textContent;
-const SHORTCUT_NAMES = { paletteShortcut: 'Command palette', nextTab: 'Next tab', prevTab: 'Previous tab', nextSpace: 'Next space', prevSpace: 'Previous space' };
+const SHORTCUT_NAMES = { paletteShortcut: 'Command palette', sidebarShortcut: 'Show or hide the sidebar', nextTab: 'Next tab', prevTab: 'Previous tab', nextSpace: 'Next space', prevSpace: 'Previous space' };
 let recording = false;
 
 function currentShortcuts() {
-  return { paletteShortcut: state?.settings?.paletteShortcut ?? 'Alt+KeyK', ...Margin.shortcuts.navigationFor(state?.settings) };
+  return {
+    paletteShortcut: state?.settings?.paletteShortcut ?? 'Alt+KeyK',
+    sidebarShortcut: state?.settings?.sidebarShortcut ?? 'Alt+KeyS',
+    ...Margin.shortcuts.navigationFor(state?.settings),
+  };
 }
 function saveShortcut(name, combo) {
-  if (name === 'paletteShortcut') return send('updateSettings', { patch: { paletteShortcut: combo } });
+  if (name === 'paletteShortcut' || name === 'sidebarShortcut') return send('updateSettings', { patch: { [name]: combo } });
   return send('updateSettings', { patch: { shortcuts: { ...Margin.shortcuts.navigationFor(state?.settings), [name]: combo } } });
 }
 function showHelp(text, error = false) {
@@ -161,7 +172,7 @@ addEventListener('keydown', (event) => {
 }, true);
 $('shortcuts-reset').addEventListener('click', () => {
   showHelp(defaultHelp);
-  send('updateSettings', { patch: { paletteShortcut: 'Alt+KeyK', shortcuts: { ...Margin.shortcuts.NAVIGATION } } });
+  send('updateSettings', { patch: { paletteShortcut: 'Alt+KeyK', sidebarShortcut: 'Alt+KeyS', shortcuts: { ...Margin.shortcuts.NAVIGATION } } });
 });
 
 function ago(ts) {
@@ -202,6 +213,7 @@ function renderLauncher() {
   pullToRefresh.disabled = !blockGestures.checked;
   swipeNavigation.checked = state.settings.swipeNavigation !== false;
   swipeNavigation.disabled = !blockGestures.checked;
+  fitPages.checked = state.settings.fitPages !== false;
   gestureGuard?.update();
   if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
   if (!recording) {

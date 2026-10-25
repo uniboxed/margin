@@ -241,38 +241,39 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Press ⌘R on a slow page (e.g. YouTube): the pill appears right away, on the current page, and stays until the page has reloaded, without blinking off in between (Keep open). In auto-hide mode, a short gap right as the new page appears is expected.
 - [ ] Click a download link: the pill may appear; it goes away on your next click or key press (or after 10s).
 
-## Injection probe: go/no-go for the transplant shell (Safari 27, about 25 min)
+## Fitted layout with Keep open (Safari 27)
 
-The rule for reading the result is in DECISIONS.md ("Injection probe"). After each block: palette → **Injection probe results** → **Copy report**, paste it into a note under the block's name, then **Clear**. Each step lists the rows to expect; a missing row is not a pass (wait for the page to finish loading and redo the step).
+Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margin on every website, turn **Keep open** on, then reload the tabs you test in. Turning Keep open on doesn't refit pages that are already open. To see why a page wasn't fitted, open its Web Inspector console with Debug messages shown: `[margin] fitted layout: …`.
 
-**Setup**
-1. Use one Margin copy: Develop → Add Temporary Extension… → `dist/safari/` from branch `feat/injection-probe`. Turn off any other Margin copy.
-2. Safari → Settings → Extensions → Margin: allow it on every website (not per site, not "for one day").
-3. Turn "Keep open" on.
-4. Close or reload every tab that was open, open the results page, press **Clear**.
-5. During blocks A–C: don't change site access, don't toggle or reload Margin, and don't open PDFs, images, videos or .txt links. If any of that happens, press Clear and redo the block.
+**Layout**
+- [ ] github.com, youtube.com, google.com, a news site: the page sits in the card beside the sidebar, and nothing is cut off on the right. Pinned headers span exactly the card, and the site's narrow (tablet) layout kicks in when you widen the sidebar. Dragging the sidebar edge re-lays the page out live.
+- [ ] Sites that refuse to be framed load normally: gist.github.com, pypi.org, accounts.google.com.
+- [ ] macOS full screen (green button): same layout. A YouTube video's own full-screen button fills the screen, and Picture in Picture works.
+- [ ] A page opens without flashing an empty gray card: the previous page stays until the new one is ready.
 
-**Block A: Margin alone** (turn other extensions off in Settings → Extensions first; then reload tabs and Clear)
-- [ ] A1. Type each in the address bar of the same tab, pressing Return: google.com, github.com, youtube.com, en.wikipedia.org, example.com. Expect 5 manifest rows: pass, ready=loading, nav=navigate.
-- [ ] A2. On Wikipedia, click 2 article links. Expect 2 pass. (GitHub and YouTube links are same-page navigations: no row, by design.)
-- [ ] A3. ⌘R twice on Wikipedia, once on github.com and youtube.com; then ⌥⌘R once (Reload Page From Origin, Develop menu). Expect 5 pass, nav=reload.
-- [ ] A4. Cached HTML: type example.com again in a new tab. Expect pass.
-- [ ] A5. Back/Forward without the back-forward cache: youtube.com → example.com → Back → Forward. YouTube sends `no-store`, so Back to it is a real load: expect a pass row with nav=back_forward. Then open Web Inspector on a Wikipedia tab, Network tab → tick **Disable Caches**, click a link, Back, Forward: expect pass rows with nav=back_forward, no bfcache rows. Untick it and close the Inspector.
-- [ ] A6. Back/Forward with the cache: on Wikipedia click a link, Back, Forward. Expect bfcache rows (no injection) or pass rows.
-- [ ] A7. New tabs: ⌘-click a Wikipedia link, then open the new tab. Close a tab and reopen it with ⇧⌘T. Expect pass for each.
-- [ ] A8. A slow page: a long Wikipedia article or a heavy news site. Expect pass.
-- [ ] A9. Registered rows for the same loads: pass or foreign (kids usually `MARGIN-SIDEBAR-HOST`), ready=loading.
+**Navigation and Safari's UI**
+- [ ] Click links A → B → C, then Back, Back, Forward: each lands on the right page. Long-press Back: the titles are right. History menu: the visits are there.
+- [ ] The address bar, tab title, favicon and Safari's tab color match the page. The loading bar and stop button work while a page loads.
+- [ ] ⌘R reloads in place and keeps the scroll position. Back to a logged-in page (Gmail, a bank) also keeps the scroll position.
+- [ ] GitHub: open a repo, click files and folders (in-page navigation), then Back and Forward. YouTube: open videos from the home page, then Back.
+- [ ] A link to a section (#heading): it scrolls there, the address bar shows the #, and Back scrolls back.
+- [ ] ⌘-click opens a link in a new tab. Option-click downloads. A download link downloads. mailto: opens Mail.
+- [ ] Space, arrows, ⌘F and the page's own keyboard shortcuts (YouTube k/f/j/l) work right after a page opens, without clicking it first.
 
-**Block B: typed with Top Hit preloading** (only if Safari → Settings → Search → "Preload Top Hit in the background" is on)
-- [ ] Type the start of a site you visit often (e.g. "githu"), wait a second, press Return. Do it for 3 sites. Expect pass. Late here would be a product question, not an automatic NO-GO (DECISIONS.md).
+**Margin's own features on a fitted page**
+- [ ] ⌥K palette, ⌥S toggle (Keep open off: the page widens to the whole window and the sidebar floats over it on hover; ⌥S again: back beside it), ⌘⌥↓/↑ tabs, ⌃⌘→/← spaces, all with the focus in the page.
+- [ ] Pull down at the top to reload, two-finger swipe back/forward, pinch to zoom, the loading pill.
+- [ ] Palette → "Show this site without fitting it beside the sidebar": the page reloads with the push layout. Palette → "Fit this site beside the sidebar again": it reloads fitted.
+- [ ] Settings → "With Keep open, fit pages beside the sidebar" off: the next page loads with the push layout.
 
-**Block C: your normal extensions on** (turn them back on, reload tabs, Clear)
-- [ ] Repeat A1 and A3. Expect pass or foreign. Note any extension whose nodes appear in kids.
+**Logins and forms**
+- [ ] Log in on a site with Safari's saved passwords: AutoFill offers the password, and a new login offers to save it.
+- [ ] A passkey login (e.g. github.com with a passkey).
+- [ ] A search or comment form posts and shows the result. ⌘P prints the page (not the sidebar).
 
-**Block D (optional): check the existing verdict**
-- [ ] With some tabs loaded, turn Margin off and on in Settings → Extensions. Expect existing rows for the open tabs (ready=interactive or complete), not late.
+**Known and accepted** (DECISIONS.md, "Fitted layout"): Reader and Hide Distracting Items, other extensions that only act on the top of a page, File → Print, progressive rendering of slow pages, typed form fields on Back without Safari's page cache, text-fragment highlights.
 
-**Block E (optional): relaunch with tabs restored.** Needs the Xcode app (a temporary extension is removed when Safari quits): `npm run build`, then `scripts/make-xcode.sh`, build, enable it, and turn the temporary copy off.
-- [ ] Have 2 windows with a site in front of each, quit, relaunch with windows restored, open the results page. Expect pass, or late/existing for the restored front tabs (that means a skip condition, not NO-GO). Click a background tab: expect pass. Do it twice; it's a race.
+## Option+S and the tab menu (Safari)
 
-**Send back:** the copied report of each block. If any block A step shows late with ready=loading, re-run that step 5 times before reporting it.
+- [ ] ⌥S shows and hides the sidebar on any page, including while a text field has focus. Settings → Keyboard shortcuts → "Show or hide the sidebar" can change it.
+- [ ] Right-click a tab in the sidebar → Pin Tab: it moves to the pinned section. Right-click → Move to another space, and Close Tab: both work. Same on the new-tab page's sidebar.

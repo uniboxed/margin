@@ -47,10 +47,16 @@
       <label id="pull-setting" hidden>Pull down at the top of a page to reload
         <input id="pull-to-refresh" type="checkbox" switch>
       </label>
+      <label id="fit-setting" hidden>With “Keep open”, fit pages beside the sidebar, laid out as in a narrower window
+        <input id="fit-pages" type="checkbox" switch>
+      </label>
       <fieldset id="shortcuts" aria-describedby="shortcut-help">
         <legend>Keyboard shortcuts</legend>
         <label>Command palette
           <input id="shortcut" class="shortcut-input" data-shortcut="paletteShortcut" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Show or hide the sidebar
+          <input class="shortcut-input" data-shortcut="sidebarShortcut" type="text" readonly placeholder="Press keys…">
         </label>
         <label>Next tab
           <input class="shortcut-input" data-shortcut="nextTab" type="text" readonly placeholder="Press keys…">

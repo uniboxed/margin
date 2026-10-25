@@ -210,8 +210,15 @@
     action('new-window', 'New window', { type: 'newWindow' }, { emoji: '⧉' });
     if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
     if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
-    // Temporary: results of the injection probe (shared/probe.js).
-    action('probe', 'Injection probe results', { type: 'openProbe', windowId: ctx.windowId }, { emoji: '🧪' });
+    // Fitted layout (content/shell.js) off or back on for this site.
+    const origin = current && isWebUrl(current.url) ? view.originOf(current.url) : null;
+    if (origin && ctx.canFit && state.settings?.sidebarPinnedOpen && state.settings?.fitPages !== false) {
+      if ((state.settings.fitPagesExcept ?? []).includes(origin)) {
+        action('fit-site', 'Fit this site beside the sidebar again', { type: 'setFitSite', origin, fit: true }, { emoji: '▣' });
+      } else if (ctx.fitted) {
+        action('unfit-site', 'Show this site without fitting it beside the sidebar', { type: 'setFitSite', origin, fit: false }, { emoji: '▢' });
+      }
+    }
     for (const s of state.spaces) {
       if (s.id === spaceId) continue;
       action(`space:${s.id}`, `Switch to space ${s.name}`, { type: 'setSpace', windowId: ctx.windowId, spaceId: s.id }, { emoji: s.emoji });

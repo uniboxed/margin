@@ -1,11 +1,10 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
 // Classic service worker: Safari ignores "type": "module" for backgrounds.
-importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js', 'shared/search.js', 'shared/probe.js');
+importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js', 'shared/search.js', 'shared/shell-logic.js');
 const M = globalThis.Margin.model;
 const S = globalThis.Margin.search;
 const I = globalThis.Margin.icons;
-const P = globalThis.Margin.probe;
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -228,9 +227,17 @@ const handlers = {
   },
   async pinTab({ tabId }) {
     const s = await load();
-    const tab = s.tabs[tabId];
-    if (!tab) return;
-    await mutate((st) => M.addPin(st, { id: newId(), spaceId: st.tabSpace[tabId], url: tab.url, title: tab.title }));
+    const tab = s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
+    if (!tab?.url) return console.warn('[margin] pin: unknown tab', tabId);
+    let result = 'pinned';
+    await mutate((st) => {
+      // A tab Margin hasn't placed in a space yet goes to its window's space.
+      const spaceId = st.tabSpace[tabId] ?? globalThis.Margin.view.activeSpaceId(st, tab.windowId);
+      const next = M.addPin(st, { id: newId(), spaceId, url: tab.url, title: tab.title });
+      if (next === st) result = 'not pinned (already pinned in that space, or no space)';
+      return next;
+    });
+    console.info(`[margin] pin tab ${tabId}: ${result}`);
   },
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
@@ -321,23 +328,18 @@ const handlers = {
   async updateSettings({ patch }) {
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
-  // Injection probe (shared/probe.js). Kept in storage.session, not
-  // storage.local: every sidebar re-renders on storage.local changes.
-  async probe({ record }, sender) {
-    const entry = P.entry(record, { tabId: sender.tab?.id ?? null, at: now() });
-    console.info(`[margin] probe ${P.line(entry)}`);
-    if (!api.storage.session) return;
-    probeQueue = probeQueue.then(async () => {
-      const { probe = [] } = await api.storage.session.get('probe');
-      await api.storage.session.set({ probe: [...probe, entry].slice(-P.MAX) });
-    }).catch((err) => console.warn('[margin] probe', err));
-    await probeQueue;
-  },
-  async openProbe({ windowId }) {
-    await openTab({ windowId, url: api.runtime.getURL('diag/probe.html') });
+  // Fitted layout on or off for one site (the palette), then reload the
+  // page in the new layout once the registered script matches.
+  async setFitSite({ origin, fit }, sender) {
+    if (!/^https?:\/\/[^/]+$/.test(origin ?? '')) return;
+    await mutate((s) => {
+      const except = (s.settings.fitPagesExcept ?? []).filter((o) => o !== origin);
+      return { ...s, settings: { ...s.settings, fitPagesExcept: fit ? except : [...except, origin] } };
+    });
+    await queueDockedSync();
+    if (sender.tab?.id != null) await api.tabs.reload(sender.tab.id);
   },
 };
-let probeQueue = Promise.resolve();
 
 // sendResponse + `return true` works in both Safari and Chrome (Chrome
 // ignores promises returned from onMessage listeners).
@@ -446,7 +448,11 @@ async function syncDockedCss() {
 }
 let dockedSync = Promise.resolve();
 const queueDockedSync = () => {
-  dockedSync = dockedSync.then(syncDockedCss).catch((err) => console.warn('[margin] docked css', err));
+  dockedSync = dockedSync
+    .then(syncDockedCss)
+    .catch((err) => console.warn('[margin] docked css', err))
+    .then(() => syncShell())
+    .catch((err) => console.warn('[margin] fitted layout', err));
   return dockedSync;
 };
 api.storage.onChanged.addListener((changes, area) => {
@@ -454,19 +460,39 @@ api.storage.onChanged.addListener((changes, area) => {
 });
 queueDockedSync();
 
-// The injection probe's registered copy (content/probe-registered.js), kept
-// registered for as long as the probe exists. Queued with the docked CSS so
-// the two registrations never overlap.
-const PROBE_ID = 'margin-probe';
-async function registerProbe() {
+// The fitted layout (content/shell.js; Safari builds): registered while "Keep
+// open" and the fitPages setting are on, except on the sites listed in
+// fitPagesExcept. Registered scripts run right after the manifest's, in the
+// same world, still before the parser adds anything to <html>.
+const SHELL_ID = 'margin-shell';
+async function syncShell() {
   if (!api.scripting?.registerContentScripts) return;
-  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [PROBE_ID] });
-  if (current) return;
-  await api.scripting.registerContentScripts([
-    { id: PROBE_ID, js: ['shared/probe.js', 'content/probe-registered.js'], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
-  ]);
+  const { settings } = await api.storage.local.get('settings');
+  const on = !!globalThis.Margin.platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
+  const want = on
+    ? { js: ['shared/shell-logic.js', 'content/shell.js'], excludeMatches: globalThis.Margin.shellLogic.excludePatterns(settings.fitPagesExcept) }
+    : null;
+  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [SHELL_ID] });
+  const have = current ? { js: current.js ?? [], excludeMatches: current.excludeMatches ?? [] } : null;
+  if (JSON.stringify(want) === JSON.stringify(have)) return;
+  if (current) await api.scripting.unregisterContentScripts({ ids: [SHELL_ID] });
+  if (want) {
+    await api.scripting.registerContentScripts([{
+      id: SHELL_ID,
+      js: want.js,
+      matches: ['<all_urls>'],
+      ...(want.excludeMatches.length ? { excludeMatches: want.excludeMatches } : {}),
+      runAt: 'document_start',
+      allFrames: false,
+    }]);
+  }
 }
-dockedSync = dockedSync.then(registerProbe).catch((err) => console.warn('[margin] probe registration', err));
+// Left registered by the injection probe (removed): drop it, in turn with
+// the other registrations.
+dockedSync = dockedSync.then(async () => {
+  const [probe] = (await api.scripting?.getRegisteredContentScripts?.({ ids: ['margin-probe'] })) ?? [];
+  if (probe) await api.scripting.unregisterContentScripts({ ids: ['margin-probe'] });
+}).catch(() => {});
 
 // ---- auto-archive -----------------------------------------------------------
 
