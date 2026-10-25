@@ -68,6 +68,12 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
     return this.querySelector('.frame .hole').getBoundingClientRect().left;
   });
   assert.equal(hole, 330, 'frame edge follows');
+  const edge = await evalInShadow(page, 'margin-sidebar-host', function () {
+    const e = this.querySelector('.card-edge');
+    const s = getComputedStyle(e);
+    return { left: e.getBoundingClientRect().left, open: e.classList.contains('open'), image: s.borderImageSource.slice(0, 30), opacity: s.opacity };
+  });
+  assert.deepEqual(edge, { left: 330, open: true, image: 'url("data:image/svg+xml,%3Csvg', opacity: '1' }, 'card corners and shadow follow');
   await waitFor(async () => (await registered())?.endsWith('content/docked/w-330.css'));
 
   // Other tabs pick the width up.
@@ -131,6 +137,9 @@ test('hover mode: resizing keeps the sidebar open and never moves the page', asy
   assert.equal(await htmlLeft(page), 0);
   await page.mouse.move(900, 300);
   await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 1500 });
+  assert.equal(await evalInShadow(page, 'margin-sidebar-host', function () {
+    return this.querySelector('.card-edge').classList.contains('open');
+  }), false, 'no card edge in auto-hide mode');
   await setSettings({ sidebarWidth: 260 });
   await page.close();
 });

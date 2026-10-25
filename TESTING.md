@@ -189,6 +189,12 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] They also work while the address bar has focus and on pages where Margin has no sidebar (e.g. a PDF). That's the extension-command path: if they don't work there but do on normal pages, Safari isn't delivering the commands, so note it.
 - [ ] Holding ⌥⌘↓ repeats (page path) on normal pages.
 
+## Page card (Keep open)
+
+- [ ] The page's corners look like Arc's: small and smooth, with the curve easing into the edges, not a plain round arc. Same on the new-tab page.
+- [ ] A soft shadow around the page, a little stronger along the bottom edge. No thin outline.
+- [ ] Opening a page: the corners and shadow are there from the first frame and don't change when Margin finishes loading. Resizing the sidebar: they move with the edge.
+
 ## Page-load indicator
 
 - [ ] With "Keep open" on, reload a page (⌘R): a small dark pill appears centered in the gray strip above the page, pulses gently while it loads, and fades out when done. Click a link to another page: same.

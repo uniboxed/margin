@@ -66,16 +66,20 @@
   function applyLiveWidth() {
     widthFrame = null;
     frame.style.setProperty('--width', `${liveWidth}px`);
+    cardEdge.style.setProperty('--width', `${liveWidth}px`);
     loader.style.setProperty('--width', `${liveWidth}px`);
     if (pushed) setPushed(true, liveWidth);
   }
-  // Arc-style frame: sidebar-colored strips around the page with rounded
+  // Arc-style frame: sidebar-colored strips around the page card with its
   // corners, shown while the sidebar is open. Never takes clicks.
   const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
+  // The page card's continuous corners and soft shadow, above the sidebar so
+  // the shadow also falls on its edge (sidebar.css .card-edge).
+  const cardEdge = Margin.ui.el(document, 'div', { class: 'card-edge', 'aria-hidden': 'true' });
   // Arc-style page-load indicator: a small dark pill, centered over the page
   // (in the frame's top strip when docked), shown while the page loads.
   const loader = Margin.ui.el(document, 'div', { class: 'loader', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'bar' }));
-  shadow.append(frame, loader, sidebar.el);
+  shadow.append(frame, sidebar.el, cardEdge, loader);
 
   // Styles are bundled in content/styles.js and applied synchronously, so the
   // panel is styled from the first frame (no fetch, no unstyled flash).
@@ -84,6 +88,7 @@
   // there when the page appears, not animate in on every navigation.
   sidebar.el.classList.add('instant');
   frame.classList.add('instant');
+  cardEdge.classList.add('instant');
   let firstRender = true;
 
   // ---- theme: follow the page, then the OS -------------------------------
@@ -115,11 +120,13 @@
     sidebar.el.classList.toggle('open', open);
     sidebar.el.classList.toggle('docked', docked);
     frame.classList.toggle('open', docked);
+    cardEdge.classList.toggle('open', docked);
     loader.classList.toggle('in-frame', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
     if (state) syncPlaceholder();
     frame.style.setProperty('--width', `${sidebar.width()}px`);
+    cardEdge.style.setProperty('--width', `${sidebar.width()}px`);
     loader.style.setProperty('--width', `${sidebar.width()}px`);
   }
 
@@ -348,6 +355,7 @@
       requestAnimationFrame(() => requestAnimationFrame(() => {
         sidebar.el.classList.remove('instant');
         frame.classList.remove('instant');
+        cardEdge.classList.remove('instant');
       }));
     }
   }
