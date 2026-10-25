@@ -39,6 +39,7 @@
         "shared/pull.js",
         "content/styles.js",
         "shared/ui.js",
+        "content/page-frame.js",
         "content/sidebar.js",
         "content/palette.js"
       ],

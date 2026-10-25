@@ -206,7 +206,13 @@ const frameState = (page) =>
   evalInShadow(page, 'margin-sidebar-host', function () {
     const frame = this.querySelector('.frame');
     const r = this.querySelector('.frame .hole').getBoundingClientRect();
-    return { open: frame.classList.contains('open'), hole: [r.left, r.top, innerWidth - r.right, innerHeight - r.bottom] };
+    const pageFrame = this.querySelector('.page-frame');
+    const pr = pageFrame.getBoundingClientRect();
+    return {
+      open: frame.classList.contains('open'),
+      hole: [r.left, r.top, innerWidth - r.right, innerHeight - r.bottom],
+      pageFrame: { on: pageFrame.classList.contains('on'), loaded: pageFrame.dataset.loaded, left: pr.left, width: pr.width },
+    };
   });
 const htmlMargins = (page) =>
   page.evaluate(() => {
@@ -239,34 +245,43 @@ test('hover: a floating sidebar over the page, no frame, page never moves', asyn
   await page.close();
 });
 
-test('Keep open pushes the page to start at the sidebar edge, without touching page markup; off restores it', async () => {
-  const page = await openPage('push');
+test('Keep open renders the page in a real narrow viewport; off restores the shell', async () => {
+  const page = await openPage('frame-layout');
   const before = await htmlMargins(page);
   await setKeepOpen(true);
-  await waitFor(async () => (await htmlMargins(page)).left === '260px');
-  const pushed = await htmlMargins(page);
-  assert.equal(pushed.right, '8px');
-  assert.equal(pushed.styleAttr, before.styleAttr, 'no inline style on <html>');
-  assert.equal(pushed.styleTags, before.styleTags, 'no <style> injected into the page');
-  const h1Left = await page.evaluate(() => document.querySelector('h1').getBoundingClientRect().left);
-  assert.ok(h1Left >= 260, `content starts after the sidebar (h1 at ${h1Left})`);
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll');
+  await waitFor(async () => (await frameState(page)).pageFrame.loaded === 'true');
+  const framed = await frameState(page);
+  assert.equal(framed.pageFrame.on, true);
+  assert.equal(framed.pageFrame.left, 260);
+  assert.equal(framed.pageFrame.width, await page.evaluate(() => innerWidth - 268));
+  assert.equal((await htmlMargins(page)).left, '0px', 'the shell is never root-pushed');
+  assert.equal((await htmlMargins(page)).styleAttr, before.styleAttr, 'no inline style on <html>');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).display), 'none', 'the original page is only a shell');
+  const inside = await evalInShadow(page, 'margin-sidebar-host', function () {
+    const frame = this.querySelector('.page-frame');
+    const fixed = frame.contentDocument.querySelector('#fixed').getBoundingClientRect();
+    const wide = frame.contentDocument.querySelector('#wide').getBoundingClientRect();
+    return { viewport: frame.contentWindow.innerWidth, fixed: [fixed.left, fixed.right, fixed.width], wide: [wide.left, wide.right, wide.width] };
+  });
+  assert.equal(inside.viewport, framed.pageFrame.width, 'iframe gets the page-card viewport');
+  assert.deepEqual(inside.fixed, [0, inside.viewport, inside.viewport], 'fixed and 100vw content fits the card');
+  assert.deepEqual(inside.wide, [0, inside.viewport, inside.viewport], 'full-width content fits the card');
   assert.equal((await frameState(page)).open, true);
-  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], 'frame wraps the pushed page');
+  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], 'frame wraps the iframe card');
   await page.waitForTimeout(250);
   assert.deepEqual(await panelRect(page), [0, 0, 0], 'docked flush to the window');
 
-  await page.emulateMedia({ media: 'print' });
-  assert.equal((await htmlMargins(page)).left, '0px', 'print is unaffected');
-  await page.emulateMedia({ media: 'screen' });
-
   await setKeepOpen(false);
-  await waitFor(async () => (await htmlMargins(page)).left === '0px');
+  await waitFor(async () => (await frameState(page)).pageFrame.on === true);
+  const auto = await frameState(page);
+  assert.equal(auto.pageFrame.left, 0, 'the live iframe expands instead of revealing stale shell content');
+  assert.equal(auto.pageFrame.width, await page.evaluate(() => innerWidth));
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).display), 'none');
   assert.equal((await sidebarSnapshot(page)).open, false);
   await page.close();
 });
 
-test('Keep open: sidebar and push are in place while the page is still loading', async () => {
+test('Keep open: the shell and iframe are in place while the page is still loading', async () => {
   const { createServer } = await import('node:http');
   const slow = createServer((req, res) => {
     if (req.url === '/slow.png') return setTimeout(() => res.end(), 3000); // holds the load event
@@ -280,7 +295,9 @@ test('Keep open: sidebar and push are in place while the page is still loading',
     await page.goto(`http://127.0.0.1:${slow.address().port}/`, { waitUntil: 'commit' });
     await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
     await waitFor(async () => (await sidebarSnapshot(page))?.open, { timeout: 1500 });
-    assert.equal((await htmlMargins(page)).left, '260px');
+    assert.equal((await htmlMargins(page)).left, '0px');
+    assert.equal((await frameState(page)).pageFrame.on, true);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).display), 'none');
     assert.notEqual(await page.evaluate(() => document.readyState), 'complete', 'page has not finished loading');
   } finally {
     await setKeepOpen(false);
@@ -289,7 +306,7 @@ test('Keep open: sidebar and push are in place while the page is still loading',
   }
 });
 
-test('Keep open registers the first-paint placeholder for the current width; Margin takes over on the page', async () => {
+test('Keep open clears the legacy first-paint placeholder and uses the iframe', async () => {
   const registered = () =>
     ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r[0]?.css?.[0] ?? null));
   const placeholder = (page) =>
@@ -300,12 +317,11 @@ test('Keep open registers the first-paint placeholder for the current width; Mar
     }));
 
   await setKeepOpen(true);
-  await waitFor(async () => (await registered())?.endsWith('content/docked/w-260.css'));
+  await waitFor(async () => (await registered()) === null);
   const page = await openPage('placeholder');
-  // The placeholder pushed the first paint; Margin's live push now holds the
-  // same width and the placeholder is switched off on this page.
   await waitFor(async () => (await placeholder(page)).attr === 'off');
-  assert.deepEqual(await placeholder(page), { content: 'none', left: '260px', attr: 'off' });
+  assert.deepEqual(await placeholder(page), { content: 'none', left: '0px', attr: 'off' });
+  await waitFor(async () => (await frameState(page)).pageFrame.loaded === 'true');
 
   const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'placeholder').id;
   await ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
@@ -313,8 +329,8 @@ test('Keep open registers the first-paint placeholder for the current width; Mar
   await waitFor(async () => (await placeholder(page)).left === '0px');
 
   await setKeepOpen(true);
-  await waitFor(async () => (await placeholder(page)).left === '260px');
-  await waitFor(async () => (await registered()) !== null);
+  await waitFor(async () => (await placeholder(page)).left === '0px');
+  await waitFor(async () => (await frameState(page)).pageFrame.loaded === 'true');
   await setKeepOpen(false);
   await waitFor(async () => (await registered()) === null);
   await page.close();

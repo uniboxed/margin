@@ -405,27 +405,14 @@ async function learnIcon(origin, href) {
 
 // ---- docked placeholder ---------------------------------------------------
 
-// While "Keep open" is on, register content/docked.css: the browser applies it
-// before first paint, ahead of content scripts. Feature-detected; without the
-// scripting API the sidebar simply appears when the content script runs.
+// Remove the old root-margin placeholder from previous builds. Kept-open pages
+// now use a real iframe viewport; registering this CSS would briefly reflow the
+// page before that viewport is ready.
 const DOCKED_ID = 'margin-docked';
-// One placeholder file per sidebar width (content/docked/w-<width>.css), so
-// the first paint already matches the user's width.
 async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
-  const { settings } = await api.storage.local.get('settings');
-  const want = settings?.sidebarPinnedOpen
-    ? `content/docked/w-${globalThis.Margin.view.sidebarWidth({ settings })}.css`
-    : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
-  const have = current?.css?.[0] ?? null;
-  if (want === have) return;
   if (current) await api.scripting.unregisterContentScripts({ ids: [DOCKED_ID] });
-  if (want) {
-    await api.scripting.registerContentScripts([
-      { id: DOCKED_ID, css: [want], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
-    ]);
-  }
 }
 let dockedSync = Promise.resolve();
 const queueDockedSync = () => {

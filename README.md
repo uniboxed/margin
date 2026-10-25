@@ -2,7 +2,7 @@
 
 An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It recreates the feel of Arc inside real Safari:
 
-- **Hover-reveal sidebar** on every website. Move the cursor to the left edge and the sidebar slides in as a floating card over the page. With **Keep open**, it docks: the page shifts right to start where the sidebar ends, inside an Arc-style frame.
+- **Hover-reveal sidebar** on every website. Move the cursor to the left edge and the sidebar slides in as a floating card over the page. With **Keep open**, it docks and loads the same page into a real narrower viewport beside it, inside an Arc-style frame.
 - **Spaces** (emoji chips) that filter the sidebar to that space's tabs, separately in each window. Create, rename, recolor, and delete them inline, and drag tabs onto a chip to move them.
 - **Pinned items** per space. A pin focuses its open tab, or reopens the page.
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
@@ -35,7 +35,7 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 - **Safari's own sidebar can also open at the left edge, in full-screen windows only.** Resting the cursor at the very edge of a full-screen window reveals Safari's sidebar; extensions can't disable that, and Safari has no setting for it. Avoid it by filling the screen with Window → Fill (or ⌥-click the green button) instead of full screen, or by using Keep open. In full screen, Margin opens from 24px out (10px otherwise), so the cursor rarely reaches the edge.
 - **No sidebar while the address bar has focus.** Hover reveal needs the page to receive mouse events, and page shortcuts need the page to have keyboard focus.
 - **⌘T, ⌘W, ⌘L, Ctrl+Tab and friends can't be intercepted.** Margin takes over new tabs by replacing the new-tab page instead. Safari focuses its address bar on a new tab, so the launcher field usually doesn't get focus. That's expected.
-- **"Keep open" can break some layouts.** Safari can't shrink the page area, so Margin shifts the page right by hand. Headers and toolbars pinned to the screen (`position: fixed`) don't move and stay partly under the sidebar. Full-window-width elements get clipped on the right, and centered popups sit a bit off-center. Hover mode never moves the page. If a site misbehaves, switch to auto-hide (⌥S).
+- **"Keep open" uses a second page document.** The top-level document becomes a thin shell and the same address is loaded into a real iframe viewport, so fixed headers, full-width elements, and responsive breakpoints measure the card rather than the browser window. Links and forms target the actual tab. Sites that explicitly forbid framing with `X-Frame-Options` or CSP cannot be embedded; for those pages Margin keeps the setting on and leaves the page visible behind the open sidebar rather than showing a blank card.
 - **Pins are URL-based.** Navigating a pinned tab to another URL makes it a regular tab again.
 - **Tabs closed with ⌘W aren't archived.** Only auto-archived tabs and tabs closed with Margin's × are.
 - **Unverified in Safari.** Everything was automated-tested in headless Chromium only. See [TESTING.md](TESTING.md) for what needs a manual check.
@@ -91,8 +91,10 @@ extension/              The one shared source (loads unbuilt too: it detects the
   shared/ui.js          Sidebar renderer used by both the overlay and the new tab.
   content/sidebar.js    Content script: closed-shadow-DOM overlay, hover reveal, theme.
   content/palette.js    Command palette (own closed shadow root), used by content + new tab.
-  content/docked/       Generated per sidebar width from docked.template.css; registered only
-                        while "Keep open" is on; applied before first paint.
+  content/page-frame.js Page-card controller: same-address iframe, navigation bridge,
+                        and the security fallback for pages that forbid framing.
+  content/docked/       Legacy generated first-paint assets. New builds unregister any
+                        old registration and use the page iframe instead.
   content/*.css         Styles (source of truth). Bundled into content/styles.js by `npm run styles`
                         so content scripts apply them synchronously, with no fetch.
   newtab/               Launcher page with the sidebar permanently open.

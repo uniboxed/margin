@@ -120,16 +120,16 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Clicking an archived entry on the new tab reopens it in that tab, in its original space. In the palette, typing its title shows an "Archived" row, and Enter reopens it in a new tab.
 - [ ] More than 12 archived entries shows "Show all N".
 
-## Arc frame and Keep open push
+## Arc frame and Keep open page viewport
 
 - [ ] Hover the left edge (anywhere within about 10px): the sidebar slides in as a floating rounded card with a shadow, 8px from the window edges. There's no frame and the page doesn't move. Moving right past the card hides it.
 - [ ] Full-screen window (⌃⌘F): Margin opens about 24px before the edge, so moving left and stopping there doesn't trigger Safari's own sidebar (that only opens when resting at the very edge, which Margin can't block). Window → Fill: Safari's sidebar never opens from the edge.
-- [ ] Turn on "Keep open": the sidebar docks flush left, the Arc frame appears, and the page reflows to start right after the sidebar, nothing is hidden behind it on normal sites, and there's no horizontal scrollbar.
-- [ ] With "Keep open" on, load a new site (e.g. github.com): the sidebar and push are there right away, before the page finishes loading, with no slide-in and no unstyled flash. To measure: Web Inspector on the page → Console → enable **Debug** messages, and after the page loads look for `[margin] timing (ms) injected=… storage=… rendered=… | page DOMContentLoaded=… load=…`. `rendered` should be well below `load` (Chromium: about 20–45 vs 1,500 on a slow page).
-- [ ] Sticky headers (github.com, conventionalcommits.org) stay inside the frame. Note any site whose fixed header sits under the sidebar or that looks broken.
-- [ ] With "Keep open" on, open a fast site (google.com): the page appears already shifted inside the frame from its very first frame (the sidebar's contents may fill in a split second later). There should be no visible jump from full width to pushed.
-- [ ] ⌥S or "Auto-hide" removes the push immediately and the page goes back to full width.
-- [ ] Print preview (⌘P) shows the page without the shift.
+- [ ] Turn on "Keep open": the sidebar docks flush left, the Arc frame appears, and the same page address is loaded in the card to its right. The original document is only a shell.
+- [ ] With "Keep open" on, load a new site (e.g. github.com): the iframe card and sidebar appear before the page finishes loading, with no slide-in and no unstyled flash. To measure: Web Inspector on the page → Console → enable **Debug** messages, and after the page loads look for `[margin] timing (ms) injected=… storage=… rendered=… | page DOMContentLoaded=… load=…`.
+- [ ] Sticky/fixed headers and full-width content (github.com, conventionalcommits.org) stay inside the card; responsive layouts see the card's narrower width.
+- [ ] Follow a same-origin link or submit a form: the actual tab navigates, rather than navigating a nested frame. Use Back/Forward and check the address bar stays synchronized for same-origin SPA history.
+- [ ] ⌥S or "Auto-hide" expands the live iframe to the full viewport and hides only the sidebar; a subsequent top-level navigation replaces the shell naturally.
+- [ ] Visit a site that sends `X-Frame-Options: DENY` or a restrictive CSP: the setting remains on, the sidebar remains open, and the original page remains visible instead of a blank card.
 - [ ] The new tab page uses the same frame look.
 
 ## Highlighted tab
@@ -165,7 +165,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 ## Resizing the sidebar
 
 - [ ] Hover the sidebar's right edge: the cursor becomes ↔ and a light rounded line appears just inside the sidebar edge, running the height of the page, almost touching it (like Arc). Drag: the sidebar resizes live between about the widths in Tirth's two Arc screenshots (160–500), and stops at both ends.
-- [ ] With "Keep open" on, the page and the frame move with the edge while dragging. Release: other tabs use the new width, and newly opened pages appear at the new width from their first frame (no jump from the old width).
+- [ ] With "Keep open" on, the iframe page viewport and frame move with the edge while dragging. Release: other tabs use the new width, and newly opened pages appear at the new width from their first frame (no jump from the old width).
 - [ ] In hover mode the sidebar stays open while you drag, and the page doesn't move.
 - [ ] Double-click the edge: back to the default width.
 - [ ] At the narrowest width the footer shows "+ New tab" and just the ⇤/⇥ icon, all on one line.

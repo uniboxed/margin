@@ -53,8 +53,8 @@
     mode: 'overlay',
     // "+ New tab" opens the command palette here (palette.js sets openPalette).
     onNewTab: () => (Margin.content.openPalette ? Margin.content.openPalette() : send('newTab', { windowId })),
-    // While resizing: move the frame edge and, with "Keep open", the pushed
-    // page along with it (at most once per animation frame).
+    // While resizing: move the frame edge and the real page viewport along
+    // with it (at most once per animation frame).
     onWidth: (width, { done }) => {
       liveWidth = width;
       if (done) return applyLiveWidth();
@@ -71,11 +71,12 @@
     pull.style.setProperty('--width', `${liveWidth}px`);
     swipe.style.setProperty('--width', `${liveWidth}px`);
     zoomHud.style.setProperty('--width', `${liveWidth}px`);
-    if (pushed) setPushed(true, liveWidth);
+    pageFrameController?.setWidth(liveWidth);
   }
   // Arc-style frame: sidebar-colored strips around the page card with its
   // corners, shown while the sidebar is open. Never takes clicks.
   const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
+  const pageFrame = Margin.ui.el(document, 'iframe', { class: 'page-frame', title: 'Page content', scrolling: 'auto' });
   // The page card's continuous corners and soft shadow, above the sidebar so
   // the shadow also falls on its edge (sidebar.css .card-edge).
   const cardEdge = Margin.ui.el(document, 'div', { class: 'card-edge', 'aria-hidden': 'true' });
@@ -105,7 +106,7 @@
   const swipe = Margin.ui.el(document, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
   // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
   const zoomHud = Margin.ui.el(document, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
-  shadow.append(frame, sidebar.el, cardEdge, loader, pull, swipe, zoomHud);
+  shadow.append(pageFrame, frame, sidebar.el, cardEdge, loader, pull, swipe, zoomHud);
 
   // Styles are bundled in content/styles.js and applied synchronously, so the
   // panel is styled from the first frame (no fetch, no unstyled flash).
@@ -135,6 +136,19 @@
   // ---- visibility ---------------------------------------------------------
 
   let state = null;
+  const pageFrameController = Margin.pageFrame.create({
+    document,
+    element: pageFrame,
+    getState: () => ({ scrollX: globalThis.scrollX, scrollY: globalThis.scrollY }),
+    onReady: () => stopLoader(),
+    onFailure: (reason) => {
+      host.dataset.frameFallback = reason;
+      // Keep the user-selected setting and the sidebar open. Only the page
+      // card is unavailable when the site forbids embedding itself.
+      host.dataset.pushed = 'false';
+      stopLoader();
+    },
+  });
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
   const gestureGuard = Margin.platform?.blockGestures
@@ -144,8 +158,8 @@
   let hideTimer = null;
 
   const pinnedOpen = () => !!state?.settings?.sidebarPinnedOpen;
-  // Hover: a floating card over the page. Keep open: docked, with the frame
-  // around the page and the page pushed right.
+  // Hover: a floating card over the page. Keep open: docked, with the page
+  // rendered in a genuinely narrower iframe viewport.
   function setOpen(open) {
     const docked = open && pinnedOpen();
     sidebar.el.classList.toggle('open', open);
@@ -157,7 +171,10 @@
     swipe.classList.toggle('in-frame', docked);
     zoomHud.classList.toggle('in-frame', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
-    setPushed(docked);
+    if (docked) delete host.dataset.frameFallback;
+    pageFrameController.setMode(docked ? 'docked' : (pageFrameController.hasFrame() ? 'overlay' : 'off'));
+    pageFrameController.setWidth(sidebar.width());
+    host.dataset.pushed = 'false';
     if (state) syncPlaceholder();
     frame.style.setProperty('--width', `${sidebar.width()}px`);
     cardEdge.style.setProperty('--width', `${sidebar.width()}px`);
@@ -211,6 +228,7 @@
   function stopLoader() {
     clearTimeout(loaderMaxTimer);
     if (loaderShownAt == null || leaving) return;
+    if (pinnedOpen() && !pageFrameController.isLoaded() && !host.dataset.frameFallback) return;
     hidePill(Math.max(0, LOADER_MIN_MS - (performance.now() - loaderShownAt)));
   }
 
@@ -417,56 +435,14 @@
     zoomHudTimer = setTimeout(() => zoomHud.classList.remove('show'), 700);
   }
 
-  // ---- push (only while "Keep open" is on) ---------------------------------
-  // Shifts the page right so it starts where the sidebar ends. A separate
-  // adopted stylesheet (never the page's own markup or inline styles), screen
-  // media only, removed as soon as "Keep open" is off. Known trade-offs are in
-  // DECISIONS.md: position:fixed elements don't move, 100vw elements are
-  // clipped on the right.
-  const pushCss = (width) => `@media screen {
-    html {
-      margin-left: ${width}px !important;
-      margin-right: ${FRAME_PX}px !important;
-      width: auto !important;
-      overflow-x: hidden !important;
-    }
-  }`;
-  const canPush = document.documentElement instanceof HTMLHtmlElement;
-  let pushed = false;
-  let pushedWidth = null;
-  let pushSheet = null;
-  let pushStyle = null;
-  function setPushed(on, width = sidebar.width()) {
-    if (!canPush || (on === pushed && (!on || width === pushedWidth))) return;
-    pushed = on;
-    pushedWidth = on ? width : null;
-    if ('adoptedStyleSheets' in document && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
-      pushSheet ??= new CSSStyleSheet();
-      pushSheet.replaceSync(pushCss(width));
-      const others = document.adoptedStyleSheets.filter((s) => s !== pushSheet);
-      document.adoptedStyleSheets = on ? [...others, pushSheet] : others;
-    } else if (on) {
-      pushStyle ??= document.createElement('style');
-      pushStyle.textContent = pushCss(width);
-      if (!pushStyle.isConnected) document.documentElement.appendChild(pushStyle);
-    } else {
-      pushStyle?.remove();
-    }
-    host.dataset.pushed = String(on);
-  }
-
-  // The first-paint placeholder (content/docked/w-<width>.css, registered
-  // while "Keep open" is on) pushes and paints until Margin runs. Once it does,
-  // the live push above takes over (same frame, same width, so nothing moves)
-  // and the placeholder is switched off on this page, so it can't fight a
-  // resize or linger after "Keep open" is turned off. Only touches <html>
-  // when the placeholder is present.
+  // Clear an old registered placeholder if an older Margin build left one
+  // applied before this content script ran. New builds no longer register it:
+  // a root-margin first paint would briefly defeat the real iframe viewport.
   function syncPlaceholder() {
     const html = document.documentElement;
-    if (!canPush || html.dataset.marginDocked === 'off') return;
-    if (getComputedStyle(html, '::after').content !== 'none') {
+    if (html.dataset.marginDocked !== 'off') {
+      if (getComputedStyle(html, '::after').content !== 'none') placeholderTookOver = true;
       html.dataset.marginDocked = 'off';
-      placeholderTookOver = true;
     }
   }
 

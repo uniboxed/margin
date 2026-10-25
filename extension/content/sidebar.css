@@ -50,7 +50,7 @@
   transition: transform 160ms ease;
 }
 /* Keep open: docked flush to the window and opaque, so sidebar and frame
-   read as one surface around the (pushed) page. */
+   read as one surface around the iframe page card. */
 .margin-sidebar.overlay.docked {
   top: 0;
   left: 0;
@@ -58,6 +58,32 @@
   border-radius: 0;
   background: var(--frame);
   box-shadow: none;
+}
+
+/* A kept-open page is rendered in this real viewport. The top-level document
+   is only a thin shell for Margin, so fixed and 100vw page content measures
+   this card instead of the browser window. */
+.page-frame {
+  position: fixed;
+  z-index: 0;
+  top: 8px;
+  left: var(--width, 260px);
+  width: calc(100vw - var(--width, 260px) - 8px);
+  height: calc(100vh - 16px);
+  display: none;
+  border: 0;
+  border-radius: 6.25px;
+  background: transparent;
+  pointer-events: auto;
+  color-scheme: normal;
+}
+.page-frame.on { display: block; }
+.page-frame.full {
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
 }
 
 /* First render after page load: appear without animating. */

@@ -40,7 +40,10 @@ export async function startServer() {
     const name = decodeURIComponent(req.url.slice(1).split('?')[0]) || 'home';
     res.setHeader('content-type', 'text/html; charset=utf-8');
     const bg = req.url.includes('dark') ? '#111' : '#fff';
-    res.end(`<!doctype html><title>${name}</title><body style="margin:0;background:${bg}"><h1>${name}</h1></body>`);
+    const framedLayout = name === 'frame-layout'
+      ? '<style>#fixed { position:fixed; top:0; right:0; width:100vw; height:20px; background:red } #wide { width:100vw; height:24px; background:blue }</style><div id="fixed"></div><div id="wide"></div>'
+      : '';
+    res.end(`<!doctype html><title>${name}</title><body style="margin:0;background:${bg}"><h1>${name}</h1>${framedLayout}</body>`);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
