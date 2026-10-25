@@ -61,5 +61,16 @@
     return pool[0]?.windowId ?? null;
   }
 
-  Margin.view = { normalizeUrl, activeSpaceId, sidebar, guessWindow };
+  // How close to the left edge (px) the cursor must be to reveal the sidebar.
+  // In a full-screen window Safari reveals its *own* sidebar when the cursor
+  // rests at the very edge, and extensions can't turn that off, so Margin
+  // opens from further out there and the cursor rarely needs to reach it.
+  const EDGE_PX = 10;
+  const FULLSCREEN_EDGE_PX = 24;
+  function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }) {
+    const fullScreen = outerWidth >= screenWidth && outerHeight >= screenHeight;
+    return fullScreen ? FULLSCREEN_EDGE_PX : EDGE_PX;
+  }
+
+  Margin.view = { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone };
 })();

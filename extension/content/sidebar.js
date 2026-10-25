@@ -9,9 +9,10 @@
   const Margin = globalThis.Margin;
   Margin.content = { api };
 
-  // Reveal zone. Margin opens instantly here; Safari's own sidebar only opens
-  // after the cursor rests at the very edge, which extensions can't disable.
-  const EDGE_PX = 10;
+  // Reveal zone: 10px, or 24px in a full-screen window, where Safari's own
+  // sidebar opens if the cursor rests at the very edge (see view.revealZone).
+  const edgePx = () =>
+    Margin.view.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
   const HIDE_DELAY_MS = 300;
   const WIDTH_PX = 260; // keep in sync with sidebar.css (--width, .frame .hole left)
   const FRAME_PX = 8; // keep in sync with sidebar.css (.frame .hole inset, floating inset)
@@ -185,7 +186,7 @@
   document.addEventListener(
     'mousemove',
     (e) => {
-      if (e.clientX <= EDGE_PX) show('hover');
+      if (e.clientX <= edgePx()) show('hover');
       else if (e.clientX > HOVER_PX) scheduleHide();
       else if (hideTimer && sidebar.el.classList.contains('open')) {
         clearTimeout(hideTimer);
@@ -196,7 +197,7 @@
   );
   // Cursor left the window: keep open if it left through the left edge.
   document.addEventListener('mouseout', (e) => {
-    if (!e.relatedTarget && e.clientX > EDGE_PX) scheduleHide();
+    if (!e.relatedTarget && e.clientX > edgePx()) scheduleHide();
   });
   document.addEventListener(
     'keydown',
