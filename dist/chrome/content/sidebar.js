@@ -420,9 +420,9 @@
   // ---- push (only while "Keep open" is on) ---------------------------------
   // Shifts the page right so it starts where the sidebar ends. A separate
   // adopted stylesheet (never the page's own markup or inline styles), screen
-  // media only, removed as soon as "Keep open" is off. Known trade-offs are in
-  // DECISIONS.md: position:fixed elements don't move, 100vw elements are
-  // clipped on the right.
+  // media only, removed as soon as "Keep open" is off. Fixed and window-wide
+  // elements don't follow a margin; shared/fit.js re-anchors them to the card.
+  // Trade-offs are in DECISIONS.md.
   const pushCss = (width) => `@media screen {
     html {
       margin-left: ${width}px !important;
@@ -436,6 +436,7 @@
   let pushedWidth = null;
   let pushSheet = null;
   let pushStyle = null;
+  const pageFit = canPush ? Margin.fit.createPageFit({ doc: document, win: window, gap: FRAME_PX }) : null;
   function setPushed(on, width = sidebar.width()) {
     if (!canPush || (on === pushed && (!on || width === pushedWidth))) return;
     pushed = on;
@@ -452,6 +453,8 @@
     } else {
       pushStyle?.remove();
     }
+    if (on) pageFit.apply(width);
+    else pageFit.stop();
     host.dataset.pushed = String(on);
   }
 
