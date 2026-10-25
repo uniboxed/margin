@@ -187,3 +187,7 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 
 - **Reported:** ⌘⌥←/→ switched *tabs* and ⌘⌥↑/↓ did nothing. Margin's ←/→ handler only changes the sidebar's space and can't switch tabs, so the tab switching comes from outside Margin: Safari's own shortcuts or another app on the Mac (window managers often use ⌘⌥ arrows). The keys never reached the page. Which one is pending a key test on Tirth's Mac (TESTING.md).
 - **Margin bug fixed:** before the background has told a page its tab id, ⌘⌥↓/↑ treated the current tab as "not in the list" and could pick the tab already being shown, so nothing seemed to happen. It now falls back to the window's active tab.
+
+## Gray sidebar (2026-10-25)
+
+- **Per Tirth (from an Arc screenshot):** the sidebar and frame use one neutral gray, `#9c9da1`, sampled from Arc. It's the same in Light and Dark Mode, which replaces the earlier light/dark pair. Text: `#1c1c1e` (6.3:1 contrast) and secondary `#2f3033` (4.9:1, above the 4.5:1 guideline for small text). Hover is white at 20%, the active tab white at 55%. The same color is in `sidebar.css`, `newtab.css` and the first-paint `docked.css`. The palette still follows Light/Dark Mode. A color setting may come later.

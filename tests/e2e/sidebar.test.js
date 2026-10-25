@@ -108,7 +108,7 @@ test('switching space filters tabs; new tabs join the active space', async () =>
   for (const p of [page, nt, fresh]) await p.close();
 });
 
-test('one sidebar color: follows the Mac appearance, not the page or the space', async () => {
+test('one sidebar color: the same gray on every site, in every space, in Light and Dark Mode', async () => {
   const bg = (page) => evalInShadow(page, 'margin-sidebar-host', function () {
     const aside = this.querySelector('.margin-sidebar');
     return { theme: aside.dataset.theme, bg: getComputedStyle(aside).backgroundColor };
@@ -121,7 +121,7 @@ test('one sidebar color: follows the Mac appearance, not the page or the space',
   const b = await bg(lightSite);
   assert.deepEqual(a, b, 'same color on a dark site and a light site');
   assert.equal(a.theme, 'light');
-  assert.equal(a.bg, 'rgb(231, 230, 237)');
+  assert.equal(a.bg, 'rgb(156, 157, 161)');
 
   // A space with a different color doesn't tint it.
   const nt = await ctx.context.newPage();
@@ -129,16 +129,16 @@ test('one sidebar color: follows the Mac appearance, not the page or the space',
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Red', color: '#d63031' }), windowId);
   await waitFor(async () => (await sidebarSnapshot(lightSite)).chips.length >= 2);
-  assert.equal((await bg(lightSite)).bg, 'rgb(231, 230, 237)');
+  assert.equal((await bg(lightSite)).bg, 'rgb(156, 157, 161)');
   await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: 'personal' }), windowId);
   await nt.close();
 
-  // Dark Mode switches it, on every site alike.
+  // Dark Mode keeps the same gray.
   await darkSite.emulateMedia({ colorScheme: 'dark' });
   await lightSite.emulateMedia({ colorScheme: 'dark' });
   await waitFor(async () => (await bg(lightSite)).theme === 'dark');
   assert.deepEqual(await bg(darkSite), await bg(lightSite));
-  assert.equal((await bg(lightSite)).bg, 'rgb(29, 28, 34)');
+  assert.equal((await bg(lightSite)).bg, 'rgb(156, 157, 161)');
   await darkSite.close();
   await lightSite.close();
 });

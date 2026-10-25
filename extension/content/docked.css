@@ -22,13 +22,8 @@
     left: 260px !important;
     border-radius: 10px !important;
     /* Same fixed color as the sidebar (sidebar.css --frame). */
-    box-shadow: 0 0 0 100vmax #e7e6ed !important;
+    box-shadow: 0 0 0 100vmax #9c9da1 !important;
     pointer-events: none !important;
     z-index: 2147483646 !important;
-  }
-}
-@media screen and (prefers-color-scheme: dark) {
-  html:not([data-margin-docked="off"])::after {
-    box-shadow: 0 0 0 100vmax #1d1c22 !important;
   }
 }
