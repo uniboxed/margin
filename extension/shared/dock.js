@@ -22,12 +22,24 @@
     };
   }
 
-  // Where the dock should be for the target's current bounds: flush against
-  // its left edge, same top and height. null if it's already there.
-  function followLayout(target, dock, width = WIDTH) {
-    if (!target || !dock) return null;
-    const want = { left: target.left - width, top: target.top, width, height: target.height };
-    const off = ['left', 'top', 'width', 'height'].some((k) => Math.abs((dock[k] ?? 0) - want[k]) > SLACK);
+  // Follow the target relatively: when the target window moved or resized
+  // since `prev`, shift the dock by the same amount from where it actually
+  // is. Never chases absolute coordinates: Safari reports window positions
+  // slightly offset from where it draws them, and re-requesting the "ideal"
+  // spot every tick made the dock jump off-screen and back twice a second.
+  // Clamped so the dock never leaves the screen (`minLeft`/`minTop`).
+  // null when nothing needs to move.
+  function followLayout(prev, target, dock, { minLeft = -Infinity, minTop = -Infinity } = {}) {
+    if (!prev || !target || !dock) return null;
+    const moved = ['left', 'top', 'width', 'height'].some((k) => Math.abs((target[k] ?? 0) - (prev[k] ?? 0)) > SLACK);
+    if (!moved) return null;
+    const want = {
+      left: Math.max(minLeft, dock.left + (target.left - prev.left)),
+      top: Math.max(minTop, dock.top + (target.top - prev.top)),
+      width: dock.width,
+      height: Math.max(200, dock.height + (target.height - prev.height)),
+    };
+    const off = ['left', 'top', 'width', 'height'].some((k) => Math.abs(dock[k] - want[k]) > SLACK);
     return off ? want : null;
   }
 

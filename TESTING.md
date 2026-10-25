@@ -140,9 +140,10 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 2. New tab → Settings → check **Sidebar in its own window (experiment)** (or palette → "Dock sidebar as its own window").
 3. Record in DECISIONS.md:
    - [ ] Does a narrow Margin window open at the left of the Safari window, with Safari's window shrunk to sit right of it?
-   - [ ] What the dock window's bottom line says (✓/✗) and the hover details (asked vs got, and the window type).
+   - [ ] The dock window's bottom line says "Docked"; hover it for the asked vs got numbers and the window type.
    - [ ] Does the dock window have a title bar or toolbar? How wide is it really?
-   - [ ] Move and resize the Safari window: does the dock follow within about half a second ("follows ✓")?
+   - [ ] With nothing moving, the dock stays perfectly still (no jumping).
+   - [ ] Move and resize the Safari window: does the dock follow within about half a second?
    - [ ] Open new pages: the sidebar stays visible during the blank moment.
    - [ ] Click tabs, spaces, "+ New tab" in the dock: they act on the Safari window.
    - [ ] "Undock" (or closing the dock window) gives the Safari window its width back.

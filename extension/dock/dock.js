@@ -35,10 +35,9 @@ async function refresh() {
   document.documentElement.style.setProperty('--space-color', sidebar.el.style.getPropertyValue('--space-color'));
   const d = state.dock;
   if (d?.actual) {
-    const ok = (r, a) => D.describe(r, a).startsWith('✓');
-    const placed = ok(d.requested.dock, d.actual.dock) && !d.actual.targetError && ok(d.requested.target, d.actual.target);
-    const follow = d.lastFollow ? (ok(d.lastFollow.requested, d.lastFollow.actual) ? ' · follows ✓' : ' · follow ✗') : '';
-    $('status').textContent = `${placed ? '✓ Placed as asked' : '✗ Not placed as asked'}${follow} (hover)`;
+    // Safari reports window coordinates slightly offset from where it draws
+    // them, so exact-match ✓/✗ was misleading; the numbers stay on hover.
+    $('status').textContent = 'Docked';
     $('status').title = `Dock window: ${D.describe(d.requested.dock, d.actual.dock)} (type ${d.actual.dockType})\nSafari window: ${
       d.actual.targetError ? `resize refused: ${d.actual.targetError}` : D.describe(d.requested.target, d.actual.target)
     }`;
@@ -50,6 +49,9 @@ refresh();
 // ---- follow the target window -------------------------------------------------
 
 const self = await api.windows.getCurrent();
+// Where the target was last time we looked; the dock follows changes from
+// here (see Margin.dock.followLayout).
+let baseline = null;
 let following = false;
 async function follow() {
   if (following) return;
@@ -57,7 +59,9 @@ async function follow() {
   try {
     const [target, me] = await Promise.all([api.windows.get(targetWindowId), api.windows.get(self.id)]);
     if (target.state === 'minimized' || target.state === 'fullscreen') return;
-    const want = D.followLayout(D.box(target), D.box(me));
+    const now = D.box(target);
+    const want = D.followLayout(baseline, now, D.box(me), { minLeft: screen.availLeft ?? 0, minTop: screen.availTop ?? 0 });
+    baseline = now;
     if (!want) return;
     await api.windows.update(self.id, want);
     const got = D.box(await api.windows.get(self.id));
@@ -69,3 +73,4 @@ async function follow() {
   }
 }
 setInterval(follow, FOLLOW_MS);
+follow();

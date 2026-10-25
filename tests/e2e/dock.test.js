@@ -58,6 +58,15 @@ test('dock-window experiment: docks beside the window, follows it, and undocks',
   assert.equal((await sidebarSnapshot(page)).open, false);
   assert.equal(await nt.isHidden('#sidebar'), true);
 
+  // Nothing moving: the dock stays perfectly still across several follow
+  // cycles (it used to fight Safari's coordinates and jump twice a second).
+  const samples = [];
+  for (let i = 0; i < 4; i++) {
+    samples.push(JSON.stringify((await windows()).find((w) => w.id === dock.dockWindowId)));
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  assert.equal(new Set(samples).size, 1, `dock moved while idle: ${samples.join(' | ')}`);
+
   // Move the main window: the dock follows (it polls every 500ms).
   await ctx.worker.evaluate((id) => chrome.windows.update(id, { left: 300, top: 0, width: 500, height: 550 }), main.id);
   const mainNow = (await windows()).find((w) => w.id === main.id);
