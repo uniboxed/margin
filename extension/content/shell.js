@@ -128,6 +128,7 @@
     if (!held) return;
     held = false;
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== hold);
+    for (const link of loadHolds.values()) link.remove();
     log(`showing (${why}) after ${Math.round(performance.now())}ms`);
   }
   const HOLD_MAX_MS = 2500;
@@ -244,17 +245,21 @@
   addEventListener('pagehide', saveScroll);
 
   // Top-level redo of a navigation the card started.
-  function goTop({ url, type, fields, method = 'post', enctype, link }) {
+  function goTop({ url, type, fields, method = 'post', enctype, link, anchor = true }) {
     saveScroll();
     ownNavigation = true;
     if (type === 'reload') return location.reload();
-    // A link that limits its referrer (rel=noreferrer, referrerpolicy) is
-    // followed with the same limits.
-    if (link && type !== 'replace') {
+    // Followed as a link when the user started it: a link that limits its
+    // referrer (rel=noreferrer, referrerpolicy) keeps its limits, and WebKit
+    // gives it a history entry of its own even while the shell is still
+    // loading, which a redo after the click's user gesture (redoRefused)
+    // otherwise doesn't get. A script's navigation keeps WebKit's own rule
+    // (no entry of its own before the page's load event).
+    if (type === 'push' && !fields && anchor) {
       const a = document.createElement('a');
       a.href = url;
-      a.rel = link.rel;
-      a.referrerPolicy = link.referrerPolicy;
+      a.rel = link?.rel ?? '';
+      if (link) a.referrerPolicy = link.referrerPolicy;
       a.hidden = true;
       body.append(own(a));
       a.click();
@@ -318,7 +323,8 @@
         enctype = source?.formEnctype || form?.enctype || null;
       }
       event.preventDefault();
-      goTop({ url, type: event.navigationType, fields, enctype, link: linkReferrer(source) });
+      const user = event.userInitiated || win.navigator.userActivation?.isActive || source?.localName === 'a' || source?.localName === 'area';
+      goTop({ url, type: event.navigationType, fields, enctype, link: linkReferrer(source), anchor: Boolean(user) });
     });
 
     // WebKit checks a frame navigation against the shell's CSP (the page's
@@ -372,7 +378,12 @@
       const action = element?.hasAttribute('formaction') ? element.formAction : form.action;
       if (!L.routable(action)) return;
       const fields = L.postFields(event.formData.entries(), (name) => form.elements.namedItem(name)?.type);
-      remember({ kind: 'form', href: method === 'get' ? L.getSubmissionUrl(action, event.formData.entries()) : action, action, method, fields, enctype: attr('enctype') || null });
+      // Whether a GET one can be redone as a link to href: the user submitted
+      // it and its URL is exactly what the browser would send (UTF-8: the
+      // card only holds UTF-8 pages, see skipReason).
+      const charset = attr('accept-charset');
+      const asLink = (win.navigator.userActivation?.isActive ?? true) && (!charset || /(^|[\s,])utf-8($|[\s,])/i.test(charset));
+      remember({ kind: 'form', href: method === 'get' ? L.getSubmissionUrl(action, event.formData.entries()) : action, action, method, fields, enctype: attr('enctype') || null, asLink });
     }, true);
   }
 
@@ -497,6 +508,16 @@
     if (match) activations.splice(activations.indexOf(match), 1);
     if (match?.kind === 'form') {
       log('redoing at the top a form the page\'s CSP refused in the card:', match.action);
+      // Until the shell's load event (it waits for the card's images), WebKit
+      // gives a form submitted without the click's user gesture (this runs
+      // after it) no history entry of its own, so Back would skip this page:
+      // a GET one goes as a link then. The card already checked its URL
+      // against form-action, but a link's redirects aren't, so not when the
+      // page has a form-action rule (as far as the shell can see: the
+      // refusing policy and <meta> ones). WebKit sends POST ones through
+      // routeCard, in the click.
+      const formAction = [event.originalPolicy, ...cspCopied].some((policy) => /(^|;)\s*form-action\b/i.test(policy ?? ''));
+      if (match.method === 'get' && match.asLink && !formAction && document.readyState !== 'complete') return goTop({ url: match.href, type: 'push' });
       return goTop({ url: match.action, type: 'push', fields: match.fields, method: match.method, enctype: match.enctype });
     }
     if (match?.kind === 'link') {
@@ -514,10 +535,14 @@
     // reload. Only a same-origin one is reported in full.
     if (!L.routable(reported) || new URL(reported).origin !== origin || reported === origin) return log('left alone a navigation the page\'s CSP refused in the card:', reported);
     log('redoing at the top a navigation the page\'s CSP refused in the card:', reported);
-    goTop({ url: reported, type: reported === card.location.href.split('#')[0] ? 'reload' : 'push' });
+    goTop({ url: reported, type: reported === card.location.href.split('#')[0] ? 'reload' : 'push', anchor: false });
   }
 
-  const frameLoaded = new Promise((resolve) => frame.addEventListener('load', resolve, { once: true }));
+  let frameReady = false; // the card's empty srcdoc has loaded
+  const frameLoaded = new Promise((resolve) => frame.addEventListener('load', () => {
+    frameReady = true;
+    resolve();
+  }, { once: true }));
   let transplanted = false;
 
   function fail(why) {
@@ -528,13 +553,29 @@
     location.reload();
   }
 
+  // Null when there's nothing to wait for.
   function waitForStyles(doc, maxMs) {
     const links = [...doc.querySelectorAll('link[rel~="stylesheet"]')].filter((l) => !l.sheet && !l.disabled);
+    if (!links.length) return null;
+    // A stylesheet the page's CSP blocks fires neither event in WebKit; its
+    // violation says it's settled (blockedURI is just the origin for some).
+    const blocked = new Map();
+    const onViolation = (event) => {
+      if (event.disposition === 'report' || !/^(style-src(-elem)?|default-src)$/.test(event.effectiveDirective)) return;
+      const uri = event.blockedURI;
+      for (const [link, done] of blocked) {
+        const href = link.href.split('#')[0];
+        if (href === uri || (uri && !/^https?:\/\/[^/]+\//.test(uri) && href.startsWith(`${uri}/`))) done();
+      }
+    };
+    doc.addEventListener('securitypolicyviolation', onViolation, true);
     const loaded = links.map((l) => new Promise((resolve) => {
       l.addEventListener('load', resolve, { once: true });
       l.addEventListener('error', resolve, { once: true });
+      blocked.set(l, resolve);
     }));
-    return Promise.race([Promise.all(loaded), new Promise((resolve) => setTimeout(resolve, maxMs))]);
+    return Promise.race([Promise.all(loaded), new Promise((resolve) => setTimeout(resolve, maxMs))])
+      .finally(() => doc.removeEventListener('securitypolicyviolation', onViolation, true));
   }
 
   // <table><form><tr><td><input>…: the parser puts the form in the table
@@ -559,15 +600,62 @@
     }
   }
 
+  // Load hold. Safari keeps showing the previous page until the new one is
+  // visually non-empty (the hidden shell never is) or has finished loading.
+  // The shell's own load is done once its parser is (the card's requests
+  // aren't counted: the card's frame had finished loading its empty srcdoc
+  // before the page was written into it), so without this Safari showed the
+  // still-hidden shell, blank, while the page's stylesheets loaded. The same
+  // stylesheets linked from the shell too, for no media, keep its load going
+  // until they're in. They share the page's requests (WebKit reuses its
+  // preloads and loads in flight), so nothing is fetched twice.
+  const loadHolds = new Map();
+  function holdLoad(links, resolve) {
+    if (!held) return;
+    for (const link of links) {
+      if (link.disabled || /(^|\s)alternate(\s|$)/i.test(link.rel) || link.sheet) continue;
+      let href;
+      try {
+        href = resolve(link);
+      } catch {
+        continue;
+      }
+      if (!/^https?:/.test(href) || loadHolds.has(href)) continue;
+      const hold = document.createElement('link');
+      hold.rel = 'stylesheet';
+      hold.media = 'not all';
+      if (link.crossOrigin != null) hold.crossOrigin = link.crossOrigin;
+      if (link.integrity) hold.integrity = link.integrity;
+      if (link.referrerPolicy) hold.referrerPolicy = link.referrerPolicy;
+      if (link.nonce) hold.nonce = link.nonce;
+      hold.href = href;
+      own(hold);
+      head.append(hold);
+      loadHolds.set(href, hold);
+    }
+  }
+
   async function transplant() {
     if (transplanted) return;
     transplanted = true;
     parseObserver.disconnect();
     mirror(old);
-    await frameLoaded;
-    // One task later: written straight from the frame's load handler, the
-    // card would never fire its own load event (window.onload).
-    await new Promise((resolve) => setTimeout(resolve));
+    // Written in this same task when the card is ready (it usually is), so
+    // the shell's load can't finish before the page is in the card.
+    // Otherwise through the wait, the links in the parsed tree hold it (it
+    // isn't in the document, so its <base> is applied by hand).
+    // Not when the page has a <meta> CSP: the shell only gets it once the
+    // card exists, and a hold must not fetch what the page's policy blocks.
+    if (!frameReady) {
+      const base = old.querySelector('base[href]')?.getAttribute('href');
+      const baseUrl = base ? new URL(base, location.href).href : location.href;
+      const metaCsp = [...old.querySelectorAll('meta[http-equiv]')].some((meta) => meta.httpEquiv.toLowerCase() === 'content-security-policy');
+      if (!metaCsp) holdLoad(old.querySelectorAll('link[rel~="stylesheet"][href]'), (link) => new URL(link.getAttribute('href'), baseUrl).href);
+      await frameLoaded;
+      // One task later: written straight from the frame's load handler, the
+      // card would never fire its own load event (window.onload).
+      await new Promise((resolve) => setTimeout(resolve));
+    }
     const win = frame.contentWindow;
     const doc = frame.contentDocument;
     if (!win || !doc) return fail('no card document');
@@ -636,13 +724,20 @@
     if (!doc.head) doc.addEventListener('DOMContentLoaded', watchHead, { once: true });
     queueMirror(doc.documentElement);
 
-    await waitForStyles(doc, 1500);
+    // The page's <meta> CSP into the shell first (mirror), so the holds obey it.
+    mirror(doc.documentElement);
+    holdLoad(doc.querySelectorAll('link[rel~="stylesheet"][href]'), (link) => link.href);
+    const styles = waitForStyles(doc, 1500);
+    if (styles) await styles;
     // The page's canvas (white, or dark for a dark color-scheme) behind it,
     // not Margin's gray, for pages without a background of their own.
     frame.style.setProperty('color-scheme', win.getComputedStyle(doc.documentElement).colorScheme || 'normal');
-    // Not in a frame callback: WebKit doesn't render a hidden document until
-    // its load event, so one would wait for every image.
-    setTimeout(() => release('page ready'));
+    // Right away, not in a frame callback: WebKit doesn't render a hidden
+    // document until its load event, so one would wait for every image.
+    release('page ready');
+    // Ready for a tab switch (content/sidebar.js announceReady): the page is
+    // in the card and showing, also when the hold already timed out.
+    Margin.content?.shellShown?.();
     // Stayed in the card: not a reload loop (see loopCheck).
     setTimeout(() => {
       if (readJson(LOOP_KEY)?.url === href) writeJson(LOOP_KEY, null);

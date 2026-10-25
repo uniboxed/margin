@@ -139,7 +139,9 @@
   function getSubmissionUrl(action, entries) {
     const url = new URL(action);
     const params = new URLSearchParams();
-    for (const [name, value] of entries) params.append(name, typeof value === 'string' ? value : value?.name ?? '');
+    // Line breaks as a form sends them (CRLF).
+    const crlf = (text) => String(text).replace(/\r\n|\r|\n/g, '\r\n');
+    for (const [name, value] of entries) params.append(crlf(name), crlf(typeof value === 'string' ? value : value?.name ?? ''));
     url.search = params.toString();
     return url.href;
   }

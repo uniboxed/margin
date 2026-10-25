@@ -127,6 +127,7 @@ test('refused URLs are matched the way WebKit reports them for frame-src', () =>
 
 test('GET submissions replace the query with the form data', () => {
   assert.equal(getSubmissionUrl('https://a.com/s?old=1#top', [['q', 'a b'], ['f', { name: 'x.png' }]]), 'https://a.com/s?q=a+b&f=x.png#top');
+  assert.equal(getSubmissionUrl('https://a.com/s', [['t', 'one\ntwo\r\nthree\rfour']]), 'https://a.com/s?t=one%0D%0Atwo%0D%0Athree%0D%0Afour');
   assert.equal(topOnly('data:text/html,x'), true);
   assert.equal(topOnly('https://a.com'), false);
 });
