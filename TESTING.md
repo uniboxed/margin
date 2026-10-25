@@ -34,7 +34,7 @@ Additional Safari-only checks:
 | # | Result |
 |---|--------|
 | 1 | ✅ Works once Safari → Settings → General → "New tabs open with" is set to Margin. Safari still focuses its address bar on the new tab, as expected |
-| 2 | ⚠️ Colored letters everywhere. Not yet known whether `favIconUrl` is empty or the images fail to load |
+| 2 | ❌ Safari gives extensions no favicon: `tab.favIconUrl` is `""` for every tab (checked in the background console). Letter avatars are the permanent result |
 | 3 | ✅ Option+K opens the palette and Option+S toggles the sidebar. (Option+S did nothing while "Keep open" was on: fixed, it now switches back to auto-hide) |
 | 4 | ✅ `browser.alarms` is available (`[margin] auto-archive via browser.alarms`) |
 | 5 | ✅ Background shows "not loaded" when idle and starts on demand. Tab events reach it (`tabs`/`tabSpace` stay populated) |

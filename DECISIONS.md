@@ -96,7 +96,7 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 ## Safari results (Tirth's Mac, 2026-10-24)
 
 - Checks 1, 3, 4, 5, A and B pass. Details are in TESTING.md. Option+K stays the default palette shortcut. `browser.alarms` drives auto-archive.
-- **Favicons:** Safari shows letter avatars. It's still open whether `tab.favIconUrl` is empty. If it is, letters stay: SPEC rules out favicon services, and fetching `https://<host>/favicon.ico` from inside other sites' pages would be a cross-site request.
+- **Favicons:** confirmed `tab.favIconUrl` is `""` for every tab in Safari, so the sidebar shows letter avatars. That stays: SPEC rules out favicon services, and fetching `https://<host>/favicon.ico` from inside other sites' pages would be a cross-site request.
 - **Toggle with "Keep open":** the toggle shortcut used to do nothing while `sidebarPinnedOpen` was on. It now turns "Keep open" off and hides the sidebar.
 - **Overlay hides content while kept open:** confirmed as designed (SPEC hard constraint). Pushing the page wouldn't move `position: fixed` headers and breaks sticky/fixed layouts.
 - **Dev workflow:** Safari's **Develop → Add Temporary Extension…** loads `extension/` directly, confirmed working on Tirth's Mac without Xcode or "Allow unsigned extensions". It's now the primary workflow in README and TESTING. The Xcode build (`scripts/make-xcode.sh`) stays for the packaged app. Only one copy should be enabled at a time: each copy has its own storage and new-tab override.
