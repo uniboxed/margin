@@ -78,6 +78,9 @@
   box-shadow: none;
 }
 
+/* First render after page load: appear without animating. */
+.instant, .instant * { transition: none !important; }
+
 /* Frame: covers the page edges around a rounded "card" whose left edge is
    the sidebar's right edge. pointer-events: none, so the page stays usable. */
 .frame {

@@ -215,3 +215,26 @@ test('Keep open pushes the page to start at the sidebar edge, without touching p
   assert.equal((await sidebarSnapshot(page)).open, false);
   await page.close();
 });
+
+test('Keep open: sidebar and push are in place while the page is still loading', async () => {
+  const { createServer } = await import('node:http');
+  const slow = createServer((req, res) => {
+    if (req.url === '/slow.png') return setTimeout(() => res.end(), 3000); // holds the load event
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    res.end('<!doctype html><title>slow</title><body style="margin:0"><h1>slow</h1><img src="/slow.png"></body>');
+  });
+  await new Promise((r) => slow.listen(0, '127.0.0.1', r));
+  await setKeepOpen(true);
+  const page = await ctx.context.newPage();
+  try {
+    await page.goto(`http://127.0.0.1:${slow.address().port}/`, { waitUntil: 'commit' });
+    await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
+    await waitFor(async () => (await sidebarSnapshot(page))?.open, { timeout: 1500 });
+    assert.equal((await htmlMargins(page)).left, '260px');
+    assert.notEqual(await page.evaluate(() => document.readyState), 'complete', 'page has not finished loading');
+  } finally {
+    await setKeepOpen(false);
+    await page.close();
+    await new Promise((r) => { slow.closeAllConnections(); slow.close(r); });
+  }
+});

@@ -33,6 +33,7 @@
         "shared/view.js",
         "shared/search.js",
         "shared/shortcuts.js",
+        "content/styles.js",
         "shared/ui.js",
         "content/sidebar.js",
         "content/palette.js"
@@ -59,16 +60,5 @@
       },
       "description": "Open the Margin command palette"
     }
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "content/sidebar.css",
-        "content/palette.css"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  }
 }

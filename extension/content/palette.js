@@ -18,7 +18,7 @@
     function build() {
       host = Margin.ui.createHost(document, 'margin-palette-host');
       const shadow = host.attachShadow({ mode: 'closed' });
-      Margin.ui.adoptStyles(shadow, api.runtime.getURL('content/palette.css')).catch((err) => console.warn('[margin] css', err));
+      Margin.ui.adoptStyles(shadow, Margin.styles.palette);
       input = el(document, 'input', {
         type: 'text',
         class: 'query',

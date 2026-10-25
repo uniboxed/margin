@@ -46,10 +46,9 @@
     return img;
   }
 
-  // Apply a stylesheet from the extension inside a shadow root. Constructable
+  // Apply CSS text inside a shadow root, synchronously. Constructable
   // stylesheets aren't subject to the page's CSP; fall back to <style>.
-  async function adoptStyles(shadow, url) {
-    const css = await (await fetch(url)).text();
+  function adoptStyles(shadow, css) {
     if ('adoptedStyleSheets' in shadow && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
       const sheet = new CSSStyleSheet();
       sheet.replaceSync(css);

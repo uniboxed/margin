@@ -75,7 +75,8 @@ extension/
   shared/ui.js          Sidebar renderer used by both the overlay and the new tab.
   content/sidebar.js    Content script: closed-shadow-DOM overlay, hover reveal, theme.
   content/palette.js    Command palette (own closed shadow root), used by content + new tab.
-  content/*.css         Styles, loaded into the shadow roots as constructable stylesheets.
+  content/*.css         Styles (source of truth). Bundled into content/styles.js by `npm run styles`
+                        so content scripts apply them synchronously, with no fetch.
   newtab/               Launcher page with the sidebar permanently open.
 tests/
   *.test.js             node --test unit tests
@@ -95,6 +96,7 @@ No build step and no runtime dependencies: `extension/` loads as-is. Node 22+.
 ```sh
 npm test            # unit tests (node --test)
 npm run test:e2e    # Playwright + headless Chromium (uses an installed Chromium; run `npx playwright install chromium` locally if needed)
+npm run styles      # after editing content/*.css: regenerate content/styles.js (a test checks it)
 npm run icons       # regenerate extension/icons
 ```
 

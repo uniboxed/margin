@@ -111,3 +111,10 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 
 - **Two looks, per Tirth:** hover (auto-hide) shows a floating card: inset 8px from the window edges, 12px radius, shadow, slightly translucent with backdrop blur, no frame, and the page never moves. "Keep open" docks it flush to the window (opaque, no radius) with the frame and the push. The frame no longer appears in hover mode.
 - **Reveal zone widened from 6px to 10px**, and hide now starts once the cursor passes the card's right edge (268px). Safari has its own sidebar that opens when the cursor rests at the window's left edge, and extensions can't disable it. Margin opens instantly in the wider zone, so the user doesn't need to rest at the very edge.
+
+## Sidebar instantly on page load (2026-10-25)
+
+- **Cause:** with "Keep open", the sidebar showed up only after the page finished loading in Safari. Waiting for the background was fixed earlier. The remaining wait was the stylesheet: the content script `fetch()`ed `content/sidebar.css` and kept the panel hidden until it arrived, and in Safari that request likely queues behind the page's own resources. On top of that, the docked sidebar slid in (160ms) on every navigation.
+- **Fix:** `content/*.css` stay the source of truth. `scripts/build-styles.js` (`npm run styles`) bundles them into `content/styles.js`, which loads as a content script before the UI and is applied synchronously, so the sidebar is styled from its first frame. A unit test fails if `styles.js` is stale, and another fails if a content script `fetch`es. With no stylesheets fetched by pages, `web_accessible_resources` was removed, so web pages can no longer probe for Margin's files.
+- **No animation on first render:** an `instant` class suppresses transitions until two frames after the first render, so a kept-open sidebar is simply there. Hover still animates.
+- **The only remaining wait** is one `storage.local.get` (needed to know the spaces, tabs and the "Keep open" setting). Each page logs `[margin] sidebar ready N ms after navigation start` at debug level, so the delay can be measured in Safari.

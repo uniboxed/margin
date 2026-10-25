@@ -51,18 +51,14 @@
   const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
   shadow.append(frame, sidebar.el);
 
-  // Hidden until our CSS is in, so the panel never flashes unstyled.
-  let cssReady = false;
-  sidebar.el.style.display = 'none';
-  frame.style.display = 'none';
-  Margin.ui.adoptStyles(shadow, api.runtime.getURL('content/sidebar.css'))
-    .catch((err) => console.warn('[margin] css', err))
-    .finally(() => {
-      cssReady = true;
-      sidebar.el.style.display = '';
-      frame.style.display = '';
-      render();
-    });
+  // Styles are bundled in content/styles.js and applied synchronously, so the
+  // panel is styled from the first frame (no fetch, no unstyled flash).
+  Margin.ui.adoptStyles(shadow, Margin.styles.sidebar);
+  // No slide/fade on the first render: a kept-open sidebar should simply be
+  // there when the page appears, not animate in on every navigation.
+  sidebar.el.classList.add('instant');
+  frame.classList.add('instant');
+  let firstRender = true;
 
   // ---- theme: follow the page, then the OS -------------------------------
 
@@ -104,7 +100,7 @@
     sidebar.el.classList.toggle('docked', docked);
     frame.classList.toggle('open', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
-    setPushed(docked && cssReady);
+    setPushed(docked);
   }
 
   // ---- push (only while "Keep open" is on) ---------------------------------
@@ -212,6 +208,16 @@
     frame.style.setProperty('--space-color', sidebar.el.style.getPropertyValue('--space-color'));
     Margin.content.onState?.(state, { tabId, windowId });
     if (!reason) setOpen(pinnedOpen());
+    if (firstRender) {
+      firstRender = false;
+      // performance.now() counts from navigation start: how long the page
+      // went without its sidebar (see TESTING.md).
+      console.debug('[margin] sidebar ready', Math.round(performance.now()), 'ms after navigation start');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        sidebar.el.classList.remove('instant');
+        frame.classList.remove('instant');
+      }));
+    }
   }
 
   // Storage reads can resolve out of order; only the latest one renders.

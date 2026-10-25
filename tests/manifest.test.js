@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { buildStyles } from '../scripts/build-styles.js';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
@@ -26,7 +27,7 @@ test('every file the manifest and new tab reference exists', () => {
     manifest.background.service_worker,
     ...Object.values(manifest.icons),
     ...manifest.content_scripts.flatMap((c) => c.js),
-    ...manifest.web_accessible_resources.flatMap((w) => w.resources),
+    ...(manifest.web_accessible_resources ?? []).flatMap((w) => w.resources),
     manifest.chrome_url_overrides.newtab,
   ];
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
@@ -48,5 +49,18 @@ test('no third-party URLs in extension code (search engine templates excepted)',
     'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
     const text = readFileSync(new URL(f, root), 'utf8');
     for (const [url] of text.matchAll(/https?:\/\/[^\s'"`)$]+/g)) if (!url.endsWith("://")) assert.match(url, allowed, `${f}: ${url}`);
+  }
+});
+
+test('content/styles.js is up to date with the CSS files (run `npm run styles`)', () => {
+  assert.equal(readFileSync(new URL('content/styles.js', root), 'utf8'), buildStyles());
+});
+
+test('content scripts load styles before the UI, without fetching anything', () => {
+  const js = manifest.content_scripts[0].js;
+  assert.ok(js.indexOf('content/styles.js') < js.indexOf('content/sidebar.js'));
+  assert.equal(manifest.web_accessible_resources, undefined, 'nothing exposed to web pages');
+  for (const f of ['content/sidebar.js', 'content/palette.js', 'shared/ui.js']) {
+    assert.ok(!readFileSync(new URL(f, root), 'utf8').includes('fetch('), `${f} must not fetch`);
   }
 });
