@@ -71,9 +71,9 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
   const edge = await evalInShadow(page, 'margin-sidebar-host', function () {
     const e = this.querySelector('.card-edge');
     const s = getComputedStyle(e);
-    return { left: e.getBoundingClientRect().left, open: e.classList.contains('open'), image: s.borderImageSource.slice(0, 30), opacity: s.opacity };
+    return { left: e.getBoundingClientRect().left, open: e.classList.contains('open'), radius: s.borderTopLeftRadius, shadow: s.boxShadow !== 'none', opacity: s.opacity };
   });
-  assert.deepEqual(edge, { left: 330, open: true, image: 'url("data:image/svg+xml,%3Csvg', opacity: '1' }, 'card corners and shadow follow');
+  assert.deepEqual(edge, { left: 330, open: true, radius: '6.25px', shadow: true, opacity: '1' }, 'card shadow follows');
   await waitFor(async () => (await registered())?.endsWith('content/docked/w-330.css'));
 
   // Other tabs pick the width up.

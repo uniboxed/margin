@@ -100,21 +100,22 @@ test('manifest command keys are the default navigation shortcuts', async () => {
   }
 });
 
-test('page card corners/shadow are current wherever the card is drawn (run `npm run styles`)', async () => {
-  const { PAGE_CARD_FILES, withPageCard } = await import('../scripts/build-styles.js');
-  const { pageCardImage, squirclePath, CARD } = await import('../scripts/page-card.js');
-  for (const f of PAGE_CARD_FILES) {
-    const css = readFileSync(new URL(f, root), 'utf8');
-    assert.match(css, /\/\* page-card!?: generated/, `${f} has a page-card block`);
-    assert.equal(css, withPageCard(css), `${f}: page-card block is stale`);
-  }
-  // The live frame and the first-paint placeholder use the same image.
-  const url = (f) => readFileSync(new URL(f, root), 'utf8').match(/border-image: (url\("[^"]+"\))/)[1];
-  assert.equal(url('content/sidebar.css'), url('content/docked.template.css'));
-  assert.equal(url('content/sidebar.css'), url('newtab/newtab.css'));
-  const { size, slice, outset, inset } = pageCardImage();
-  assert.equal(size, 2 * slice + 2);
-  assert.ok(inset >= (1 + CARD.smoothing) * CARD.radius, 'corner fits inside the corner slice');
-  assert.ok(outset >= Math.max(...CARD.shadows.map((s) => s.dy + 3 * s.sigma)), 'shadow fits inside the outset');
-  assert.throws(() => squirclePath(0, 0, 10, 10, CARD), /too large/);
+test('the page card has the same corner radius and shadow wherever it is drawn', () => {
+  const read = (f) => readFileSync(new URL(f, root), 'utf8');
+  const decl = (css, selector, prop) => {
+    const block = css.slice(css.indexOf(selector));
+    return block.match(new RegExp(`\\b${prop}: ([^;]+?)( !important)?;`))[1];
+  };
+  const sidebar = read('content/sidebar.css');
+  const radius = decl(sidebar, '.frame .hole, .card-edge {', 'border-radius');
+  const shadow = decl(sidebar, '.card-edge {\n  position: fixed', 'box-shadow');
+  assert.equal(radius, '6.25px');
+  const docked = read('content/docked.template.css');
+  assert.equal(decl(docked, 'html:not([data-margin-docked="off"])::after', 'border-radius'), radius);
+  assert.ok(decl(docked, 'html:not([data-margin-docked="off"])::after', 'box-shadow').startsWith(`${shadow}, 0 0 0 100vmax`), 'placeholder: same shadow, then the frame');
+  const newtab = read('newtab/newtab.css');
+  assert.equal(decl(newtab, '#launcher, #page-card {', 'border-radius'), radius);
+  assert.equal(decl(newtab, '#page-card {\n', 'box-shadow'), shadow);
+  // Plain CSS only: nothing for the browser to load (no images, no url()).
+  for (const css of [sidebar, docked, newtab]) assert.doesNotMatch(css, /border-image|url\(/);
 });

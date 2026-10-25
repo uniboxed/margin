@@ -191,7 +191,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Page card (Keep open)
 
-- [ ] The page's corners look like Arc's: small and smooth, with the curve easing into the edges, not a plain round arc. Same on the new-tab page.
+- [ ] The page's corners are rounded (small, about 6pt, like Arc's), not square. Same on the new-tab page.
 - [ ] A soft shadow around the page, a little stronger along the bottom edge. No thin outline.
 - [ ] Opening a page: the corners and shadow are there from the first frame and don't change when Margin finishes loading. Resizing the sidebar: they move with the edge.
 
