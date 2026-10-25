@@ -163,6 +163,9 @@ async function openTab({ windowId, url, spaceId }) {
   return tab;
 }
 
+// Tabs opened from a page by openLink, so the next one goes after them.
+const openedFrom = new Map(); // opener tab id → { index, at }
+
 const handlers = {
   async hello(_, sender) {
     return { tabId: sender.tab?.id ?? null, windowId: sender.tab?.windowId ?? null };
@@ -224,6 +227,22 @@ const handlers = {
   async newTab({ windowId, url, spaceId }) {
     const tab = await openTab({ windowId, url, spaceId });
     return { tabId: tab.id };
+  },
+  // A ⌘- or middle-clicked link in a fitted page that the page's CSP refused
+  // before Safari could open its tab (content/shell.js): opened like Safari
+  // would, in a tab after the page (later ones after earlier ones, so they
+  // keep the click order), in the background unless ⇧ was held; ⌘⌥ opens a
+  // window.
+  async openLink({ url, window: inWindow, active }, sender) {
+    if (!/^https?:/i.test(url ?? '')) return;
+    if (inWindow && api.windows?.create) return void (await api.windows.create({ url, focused: !!active }));
+    const opener = sender.tab;
+    if (!opener) return void (await api.tabs.create({ url, active: !!active }));
+    const last = openedFrom.get(opener.id);
+    const index = last && now() - last.at < 60_000 ? last.index + 1 : opener.index + 1;
+    const tab = await api.tabs.create({ url, active: !!active, windowId: opener.windowId, index })
+      .catch(() => api.tabs.create({ url, active: !!active }));
+    openedFrom.set(opener.id, { index: tab?.index ?? index, at: now() });
   },
   async pinTab({ tabId }) {
     const s = await load();

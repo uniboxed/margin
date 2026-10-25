@@ -102,6 +102,47 @@
   // Which links and forms Margin redoes at the top: web pages only (mailto:,
   // app links and the like are left to the browser).
   const routable = (url) => /^https?:/i.test(String(url));
+  // Also sent to the top, where WebKit's top-level rules decide them as
+  // without the shell (a data: page must not show under the site's address).
+  const topOnly = (url) => /^(data|blob):/i.test(String(url));
+
+  // A click the browser would turn into a navigation of the card itself (not
+  // a new tab, window or download), so Margin must redo it at the top before
+  // the page's frame-src CSP refuses it. `target` is the link's (or the
+  // page's <base target>).
+  function cardNavigatingClick({ button, metaKey, ctrlKey, shiftKey, altKey, download, target }) {
+    if (button !== 0 || metaKey || ctrlKey || shiftKey || altKey || download) return false;
+    const t = String(target ?? '').toLowerCase();
+    return t === '' || t === '_self';
+  }
+
+  // How WebKit reports a URL a frame-src rule refused (ContentSecurityPolicy::
+  // createURLForReporting): another origin's as just that origin, one of the
+  // page's own without its fragment (and credentials), data: or blob: as the
+  // bare scheme. `origin` is the page's.
+  function reportKey(url, origin) {
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'data:' || u.protocol === 'blob:') return u.protocol.slice(0, -1);
+      if (u.origin !== origin) return u.origin;
+      u.hash = '';
+      u.username = '';
+      u.password = '';
+      return u.href;
+    } catch {
+      return '';
+    }
+  }
+
+  // A GET form submission's URL: the action with its query replaced by the
+  // form data (files by name), as the browser builds it.
+  function getSubmissionUrl(action, entries) {
+    const url = new URL(action);
+    const params = new URLSearchParams();
+    for (const [name, value] of entries) params.append(name, typeof value === 'string' ? value : value?.name ?? '');
+    url.search = params.toString();
+    return url.href;
+  }
 
   // The URL patterns that turn the fitted layout off for these origins
   // (registerContentScripts excludeMatches).
@@ -116,5 +157,5 @@
     return [...new Set(out)];
   }
 
-  Margin.shellLogic = { PARSED, LOOP, skipReason, loopCheck, doctypeString, serialize, postFields, isBust, routable, excludePatterns, TEXT_TYPES };
+  Margin.shellLogic = { PARSED, LOOP, skipReason, loopCheck, doctypeString, serialize, postFields, isBust, routable, topOnly, cardNavigatingClick, reportKey, getSubmissionUrl, excludePatterns, TEXT_TYPES };
 })();

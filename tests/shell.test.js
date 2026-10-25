@@ -102,3 +102,31 @@ test('per-site opt-outs become exclude patterns', () => {
   assert.deepEqual(excludePatterns(['https://a.com', 'http://b.org:8080', 'https://a.com', 'file:///x', 'junk']), ['https://a.com/*', 'http://b.org/*']);
   assert.deepEqual(excludePatterns(undefined), []);
 });
+
+const { cardNavigatingClick, reportKey, getSubmissionUrl, topOnly } = globalThis.Margin.shellLogic;
+
+test('only plain clicks that navigate the card itself are redone at the top', () => {
+  const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, download: false, target: '' };
+  assert.equal(cardNavigatingClick(click), true);
+  assert.equal(cardNavigatingClick({ ...click, target: null }), true);
+  assert.equal(cardNavigatingClick({ ...click, target: '_SELF' }), true);
+  for (const change of [{ button: 1 }, { metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { download: true }, { target: '_blank' }, { target: '_top' }, { target: 'named' }]) {
+    assert.equal(cardNavigatingClick({ ...click, ...change }), false, JSON.stringify(change));
+  }
+});
+
+test('refused URLs are matched the way WebKit reports them for frame-src', () => {
+  const origin = 'https://github.com';
+  assert.equal(reportKey('https://github.com/a/b?x=1#diff-1', origin), 'https://github.com/a/b?x=1', 'own origin: no fragment');
+  assert.equal(reportKey('https://u:p@github.com/a', origin), 'https://github.com/a', 'no credentials');
+  assert.equal(reportKey('https://docs.github.com/en/x#y', origin), 'https://docs.github.com', 'another origin: origin only');
+  assert.equal(reportKey('blob:https://github.com/123', origin), 'blob');
+  assert.equal(reportKey('data:text/plain,x', origin), 'data');
+  assert.equal(reportKey('not a url', origin), '');
+});
+
+test('GET submissions replace the query with the form data', () => {
+  assert.equal(getSubmissionUrl('https://a.com/s?old=1#top', [['q', 'a b'], ['f', { name: 'x.png' }]]), 'https://a.com/s?q=a+b&f=x.png#top');
+  assert.equal(topOnly('data:text/html,x'), true);
+  assert.equal(topOnly('https://a.com'), false);
+});

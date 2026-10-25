@@ -257,6 +257,7 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 - [ ] ⌘R reloads in place and keeps the scroll position. Back to a logged-in page (Gmail, a bank) also keeps the scroll position.
 - [ ] GitHub: open a repo, click files and folders (in-page navigation), then Back and Forward. YouTube: open videos from the home page, then Back.
 - [ ] A link to a section (#heading): it scrolls there, the address bar shows the #, and Back scrolls back.
+- [ ] GitHub (its CSP limits frames): click files, folders, commits and a link with a #fragment; submit the search; ⌘-click a link (opens a background tab next to the page, in click order for several), ⌘⇧-click (foreground tab), ⌘⌥-click (new window); download a raw file or a release asset. No "Refused to load … frame-src" leaves you stuck.
 - [ ] ⌘-click opens a link in a new tab. Option-click downloads. A download link downloads. mailto: opens Mail.
 - [ ] Space, arrows, ⌘F and the page's own keyboard shortcuts (YouTube k/f/j/l) work right after a page opens, without clicking it first.
 

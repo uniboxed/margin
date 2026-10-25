@@ -244,7 +244,7 @@
   addEventListener('pagehide', saveScroll);
 
   // Top-level redo of a navigation the card started.
-  function goTop({ url, type, fields, enctype, link }) {
+  function goTop({ url, type, fields, method = 'post', enctype, link }) {
     saveScroll();
     ownNavigation = true;
     if (type === 'reload') return location.reload();
@@ -261,8 +261,9 @@
       return a.remove();
     }
     if (fields) {
+      // A form, GET too: the shell has the page's CSP, so form-action applies.
       const form = document.createElement('form');
-      form.method = 'post';
+      form.method = method;
       form.action = url;
       form.acceptCharset = 'UTF-8';
       if (enctype) form.enctype = enctype;
@@ -307,7 +308,7 @@
       // data: and blob: go to the top too, where WebKit's top-level rules
       // decide them as without the shell (a data: page must not show under
       // the site's address).
-      if (!event.cancelable || event.downloadRequest != null || !(L.routable(url) || /^(data|blob):/i.test(url))) return;
+      if (!event.cancelable || event.downloadRequest != null || !(L.routable(url) || L.topOnly(url))) return;
       let fields = null;
       let enctype = null;
       const source = event.sourceElement;
@@ -316,13 +317,89 @@
         fields = L.postFields(event.formData.entries(), (name) => form?.elements.namedItem(name)?.type);
         enctype = source?.formEnctype || form?.enctype || null;
       }
-      const link = !fields && (source?.localName === 'a' || source?.localName === 'area')
-        && (/\bnoreferrer\b/i.test(source.rel) || source.hasAttribute('referrerpolicy'))
-        ? { rel: source.rel, referrerPolicy: source.referrerPolicy }
-        : null;
       event.preventDefault();
-      goTop({ url, type: event.navigationType, fields, enctype, link });
+      goTop({ url, type: event.navigationType, fields, enctype, link: linkReferrer(source) });
     });
+
+    // WebKit checks a frame navigation against the shell's CSP (the page's
+    // own frame-src / child-src / default-src) before the navigate event
+    // above exists, so on sites that limit frames (GitHub: default-src
+    // 'none') links, forms and script navigations in the card are refused.
+    // Margin doesn't take them over: the browser still decides what a click
+    // or submit does (routers, editors, pings, downloads all keep working).
+    // It only records what the user activated, so a refusal (redoRefused,
+    // below) can be redone at the top with the full URL and form data.
+    const doc = win.document;
+    const onActivate = (event) => {
+      if (!event.isTrusted) return;
+      const a = event.composedPath().find((n) => n.localName === 'a' || n.localName === 'area');
+      const href = a && (typeof a.href === 'string' ? a.href : a.getAttribute('href') && new URL(a.getAttribute('href'), doc.baseURI).href);
+      if (!href || !(L.routable(href) || L.topOnly(href))) return;
+      const target = a.getAttribute('target') ?? doc.querySelector('base[target]')?.getAttribute('target');
+      if (!L.cardNavigatingClick({ button: 0, target })) return;
+      const { button, metaKey, shiftKey, altKey, ctrlKey } = event;
+      if (button > 1 || ctrlKey) return; // ⌃-click is the Mac's context menu
+      remember({ kind: 'link', href, referrer: linkReferrer(a), button, metaKey, shiftKey, altKey });
+    };
+    win.addEventListener('click', onActivate, true);
+    win.addEventListener('auxclick', onActivate, true);
+    // Download links Margin can save from the shell (same origin, or a blob:
+    // or data: URL the page made) are saved right away: the CSP refuses them
+    // in the card before the download starts, and a page often revokes its
+    // blob: URL straight after the click.
+    win.addEventListener('click', (event) => {
+      if (!event.isTrusted || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const a = event.composedPath().find((n) => n.localName === 'a' && n.hasAttribute('download'));
+      if (!a?.href || !(L.topOnly(a.href) || new URL(a.href).origin === win.location.origin)) return;
+      event.preventDefault();
+      saveFrom(a.href, a.getAttribute('download'));
+    });
+    let submitter = null; // { form, element } of the last trusted submit
+    win.addEventListener('submit', (event) => {
+      if (event.isTrusted) submitter = { form: event.target, element: event.submitter };
+    }, true);
+    // Fired for every submission the browser builds (form.submit() too),
+    // with the exact data it will send.
+    win.addEventListener('formdata', (event) => {
+      const form = event.target;
+      if (!event.isTrusted || form?.localName !== 'form') return;
+      const element = submitter?.form === form ? submitter.element : null;
+      submitter = null;
+      const attr = (name) => (element?.hasAttribute(`form${name}`) ? element.getAttribute(`form${name}`) : form.getAttribute(name));
+      const target = attr('target') ?? doc.querySelector('base[target]')?.getAttribute('target');
+      const method = (attr('method') || 'get').toLowerCase();
+      if (!L.cardNavigatingClick({ button: 0, target }) || (method !== 'get' && method !== 'post')) return;
+      const action = element?.hasAttribute('formaction') ? element.formAction : form.action;
+      if (!L.routable(action)) return;
+      const fields = L.postFields(event.formData.entries(), (name) => form.elements.namedItem(name)?.type);
+      remember({ kind: 'form', href: method === 'get' ? L.getSubmissionUrl(action, event.formData.entries()) : action, action, method, fields, enctype: attr('enctype') || null });
+    }, true);
+  }
+
+  // Recent user activations in the card (links and forms), for redoRefused.
+  const activations = [];
+  const remember = (record) => {
+    activations.push({ ...record, at: performance.now() });
+    while (activations.length > 10) activations.shift();
+  };
+
+  // A link that limits its referrer (rel=noreferrer, referrerpolicy) is
+  // followed with the same limits.
+  function linkReferrer(source) {
+    if (source?.localName !== 'a' && source?.localName !== 'area') return null;
+    if (!/\bnoreferrer\b/i.test(source.rel) && !source.hasAttribute('referrerpolicy')) return null;
+    return { rel: source.rel, referrerPolicy: source.referrerPolicy };
+  }
+
+  // A download, from the shell (same origin as the page).
+  function saveFrom(url, name) {
+    const a = own(document.createElement('a'));
+    a.href = url;
+    a.download = name ?? '';
+    a.hidden = true;
+    body.append(a);
+    a.click();
+    a.remove();
   }
 
   // ⌘P prints the page, not Margin's shell (File > Print still prints the
@@ -394,7 +471,51 @@
     log(`the page's CSP blocked ${event.blockedURI || 'an inline script'} (${event.effectiveDirective}) in ${where},`,
       `from ${event.sourceFile || 'the page'}:${event.lineNumber}`, event.sample ? `"${event.sample}"` : '');
   }
-  document.addEventListener('securitypolicyviolation', (event) => reportViolation(event, "Margin's shell"), true);
+  document.addEventListener('securitypolicyviolation', (event) => {
+    reportViolation(event, "Margin's shell");
+    redoRefused(event);
+  }, true);
+
+  // A card navigation the shell's CSP refused (see routeCard): the card is
+  // the shell's only frame of its own, so a frame-src refusal reported here
+  // is the card navigating (or a frame page code put into window.top, which
+  // is skipped). WebKit reports a cross-origin URL as its origin only and a
+  // same-origin one without its fragment, so the full URL comes from what the
+  // user activated; a script navigation to the same origin is redone as
+  // reported, and one Margin can't identify is left alone.
+  let lastRedo = null;
+  function redoRefused(event) {
+    const reported = event.blockedURI;
+    if (!event.isTrusted || !card || !/^(frame-src|child-src|default-src)$/.test(event.effectiveDirective) || !reported) return;
+    const origin = card.location.origin;
+    const key = (url) => L.reportKey(url, origin);
+    if ([...document.querySelectorAll('iframe, frame, object, embed')].some((el) => el !== frame && key(el.src || el.data || '') === reported)) return;
+    if (lastRedo && lastRedo.reported === reported && performance.now() - lastRedo.at < 1000) return; // WebKit can report it twice
+    lastRedo = { reported, at: performance.now() };
+    const now = performance.now();
+    const match = activations.filter((r) => now - r.at < 2000 && key(r.href) === reported).pop();
+    if (match) activations.splice(activations.indexOf(match), 1);
+    if (match?.kind === 'form') {
+      log('redoing at the top a form the page\'s CSP refused in the card:', match.action);
+      return goTop({ url: match.action, type: 'push', fields: match.fields, method: match.method, enctype: match.enctype });
+    }
+    if (match?.kind === 'link') {
+      const { href, button, metaKey, shiftKey, altKey } = match;
+      if (metaKey || button === 1) {
+        log('opening as Safari would a ⌘-clicked link the page\'s CSP refused in the card:', href);
+        return void api?.runtime.sendMessage({ type: 'openLink', url: href, window: metaKey && altKey, active: shiftKey }).catch(() => {});
+      }
+      if (altKey) return L.topOnly(href) || new URL(href).origin === origin ? saveFrom(href, '') : undefined;
+      if (shiftKey) return; // Reading List: extensions can't add to it; at least don't navigate
+      log('redoing at the top a link the page\'s CSP refused in the card:', href);
+      return goTop({ url: href, type: 'push', link: match.referrer });
+    }
+    // Not something the user activated: a script navigation, meta refresh or
+    // reload. Only a same-origin one is reported in full.
+    if (!L.routable(reported) || new URL(reported).origin !== origin || reported === origin) return log('left alone a navigation the page\'s CSP refused in the card:', reported);
+    log('redoing at the top a navigation the page\'s CSP refused in the card:', reported);
+    goTop({ url: reported, type: reported === card.location.href.split('#')[0] ? 'reload' : 'push' });
+  }
 
   const frameLoaded = new Promise((resolve) => frame.addEventListener('load', resolve, { once: true }));
   let transplanted = false;
