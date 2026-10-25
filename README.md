@@ -14,6 +14,19 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 
 No accounts, no sync, no analytics, CDNs, or favicon services. The only requests Margin makes are for the icon of each site you visit, fetched once from that site without cookies, because Safari doesn't give extensions favicons.
 
+## Closest to Arc: optional Safari feature flags
+
+Margin works without these, and checks for each feature before using it. Turned on, they bring it closer to Arc:
+
+| Safari → Settings → Feature Flags | What it changes in Margin |
+|---|---|
+| **CSS corner-shape property** | Real continuous ("squircle") corners on the page card, sidebar rows, menus and the palette, like Arc's (measured: about 4× closer to Arc's page corner than plain rounded corners). Already on by default in WebKit's development version. |
+| **Threaded Time-based Animations** | Smoother sidebar and badge animations on busy pages (animations run off the page's main thread). Nothing changes in Margin's code. |
+
+Leave the others alone, especially Security and Privacy: they're experimental and can break sites.
+
+Already used where your Safari has them (no flag needed): the Navigation API (swipe only where there's history; a loading pill for in-page navigations of apps that use it), the top layer (the palette and right-click menu stay above a site's own popovers), and switch toggles in Settings.
+
 ## Known limitations
 
 Safari extensions can't change Safari's own UI, so Margin works around it:

@@ -246,6 +246,31 @@
   addEventListener('pageshow', (event) => { if (event.persisted) stayed(); });
   for (const type of ['pointerdown', 'keydown']) addEventListener(type, stayed, true);
 
+  // Same-page navigations a site runs through the Navigation API
+  // (navigation.intercept, e.g. some single-page apps): show the pill while
+  // one takes longer than TRANSITION_PILL_MS, until it finishes. Without the
+  // API (or for sites that don't use it) nothing changes.
+  const TRANSITION_PILL_MS = 150;
+  globalThis.navigation?.addEventListener?.('navigate', () => {
+    setTimeout(() => { // the page decides during the event whether it intercepts
+      const transition = globalThis.navigation.transition;
+      if (!transition?.finished || firstRender) return;
+      let done = false;
+      let shownAt = null;
+      const timer = setTimeout(() => {
+        if (done || leaving) return;
+        shownAt = performance.now();
+        showPill();
+      }, TRANSITION_PILL_MS);
+      const finish = () => {
+        done = true;
+        clearTimeout(timer);
+        if (shownAt != null && !leaving) hidePill(Math.max(0, LOADER_MIN_MS - (performance.now() - shownAt)));
+      };
+      transition.finished.then(finish, finish);
+    });
+  });
+
   // ---- pull to refresh (Safari builds) ---------------------------------------
   // Safari's own pull-to-refresh goes away with the page bounce (gesture
   // guard); this is Margin's: pull down at the top of a page past the
@@ -323,6 +348,13 @@
     swipeHideTimer = setTimeout(() => showSwipe({ state: 'idle' }), 450);
   }
   addEventListener('pageshow', (event) => { if (event.persisted) showSwipe({ state: 'idle' }); });
+  // With the Navigation API (Safari 26, Chrome), only swipe where there's
+  // history to go to; without it, any swipe may try (as before).
+  const nav = globalThis.navigation;
+  const historyAllows = (dx) => {
+    if (!dx || typeof nav?.canGoBack !== 'boolean') return true;
+    return dx < 0 ? nav.canGoBack : nav.canGoForward;
+  };
 
   if (gestureGuard) {
     const pullTracker = Margin.pull.createPullTracker();
@@ -337,7 +369,7 @@
       const pulling = pullEnabled() && !pullRefreshing;
       const swiping = swipeEnabled();
       if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: usable && Margin.gestures.atPageTop(event, document) }));
-      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && Margin.gestures.canSwipe(event, document) }));
+      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && historyAllows(event.deltaX) && Margin.gestures.canSwipe(event, document) }));
       if (!pulling && !swiping) return;
       clearTimeout(endTimer);
       endTimer = setTimeout(() => {

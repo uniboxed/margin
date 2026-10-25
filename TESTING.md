@@ -220,6 +220,14 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Swipe right with two fingers (back): a dark round badge with ← appears on the page's left edge, darkening as you swipe; let go past the point where it's fully dark and the page goes back. Swipe left: → on the right edge, forward. A short swipe, or one over a carousel/wide table that scrolls sideways, doesn't navigate.
 - [ ] Settings → "Swipe sideways with two fingers to go back or forward" off: no badge, no navigation.
 
+## Optional feature flags (Safari → Settings → Feature Flags)
+
+- [ ] With "CSS corner-shape property" **off** (default today): corners look exactly as before.
+- [ ] Turn it **on**, reload pages: the page card, sidebar rows, right-click menu and palette get smoother continuous corners (same size, softer curve). The page card's shadow follows the curve.
+- [ ] "Threaded Time-based Animations" on: sidebar slide/badges stay smooth while a heavy page is loading.
+- [ ] A fresh tab with no history: swiping back shows no badge. After clicking a link, swiping back works.
+- [ ] Settings toggles look like macOS switches.
+
 ## Page card (Keep open)
 
 - [ ] The page's corners are rounded (small, about 6pt, like Arc's), not square. Same on the new-tab page.

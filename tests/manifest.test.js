@@ -119,3 +119,20 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   // Plain CSS only: nothing for the browser to load (no images, no url()).
   for (const css of [sidebar, docked, newtab]) assert.doesNotMatch(css, /border-image|url\(/);
 });
+
+test('squircles are an enhancement: the circular-corner rules stay, squircles only inside @supports', () => {
+  for (const [f, card] of [['content/sidebar.css', '.frame .hole, .card-edge'], ['newtab/newtab.css', '#launcher, #page-card'], ['content/docked.template.css', 'html:not([data-margin-docked="off"])::after']]) {
+    const css = readFileSync(new URL(f, root), 'utf8').replaceAll('{{WIDTH}}', '260'); // the placeholder template
+    const at = css.indexOf('@supports (corner-shape: squircle)');
+    assert.ok(at > 0, `${f}: has the @supports block`);
+    const outside = css.slice(0, at);
+    assert.doesNotMatch(outside.replace(/\/\*[\s\S]*?\*\//g, ''), /corner-shape/, `${f}: corner-shape only inside @supports`);
+    assert.match(outside, new RegExp(`${card.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^{]*\\{[^}]*border-radius: 6\\.25px`), `${f}: fallback radius kept`);
+    assert.match(css.slice(at), /border-radius: 11px( !important)?;\s*corner-shape: squircle/, `${f}: the fitted squircle`);
+  }
+});
+
+test('Settings toggles are switches where supported (checkboxes elsewhere)', () => {
+  const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
+  for (const id of ['block-gestures', 'pull-to-refresh', 'swipe-navigation']) assert.match(html, new RegExp(`id="${id}" type="checkbox" switch`), id);
+});

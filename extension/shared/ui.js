@@ -75,6 +75,16 @@
     return host;
   }
 
+  // A site's modal <dialog> makes everything outside it inert, even what's in
+  // the top layer above it: Margin's UI then stays out of the top layer.
+  function siteModalOpen(doc) {
+    try {
+      return !!doc.querySelector(':modal');
+    } catch {
+      return false; // no :modal support
+    }
+  }
+
   const SPACE_COLORS = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72'];
   const TAB_MIME = 'application/x-margin-tab';
 
@@ -318,6 +328,12 @@
 
     const menu = el(doc, 'div', { class: 'tab-menu', role: 'menu', tabindex: '-1', hidden: true });
     root.append(menu);
+    // In the top layer (popover) where supported, so nothing on the page can
+    // cover it; placed in viewport coordinates then. Otherwise inside the
+    // sidebar, as before.
+    const menuPopover = typeof menu.showPopover === 'function';
+    // (Not while the site has a modal dialog open: see siteModalOpen.)
+    if (menuPopover) menu.setAttribute('popover', 'manual');
     let menuFor = null; // { tabId } | { pinId }
     const menuItem = (label, action, data = {}) =>
       el(doc, 'button', { class: 'menu-item', role: 'menuitem', 'data-menu': action, ...data, text: label });
@@ -344,16 +360,30 @@
       }
       menu.replaceChildren(...items);
       menu.hidden = false;
-      // Place at the pointer, kept inside the sidebar.
-      const box = root.getBoundingClientRect();
-      const left = Math.max(4, Math.min(x - box.left, box.width - menu.offsetWidth - 4));
-      const top = Math.max(4, Math.min(y - box.top, box.height - menu.offsetHeight - 4));
-      menu.style.left = `${left}px`;
-      menu.style.top = `${top}px`;
+      let inTopLayer = false;
+      if (menuPopover && !siteModalOpen(doc)) {
+        try {
+          if (!menu.matches(':popover-open')) menu.showPopover();
+          inTopLayer = true;
+        } catch {}
+      }
+      menu.classList.toggle('top-layer', inTopLayer);
+      if (inTopLayer) { // at the pointer, kept inside the window
+        const view = doc.defaultView;
+        menu.style.left = `${Math.max(4, Math.min(x, view.innerWidth - menu.offsetWidth - 4))}px`;
+        menu.style.top = `${Math.max(4, Math.min(y, view.innerHeight - menu.offsetHeight - 4))}px`;
+      } else { // at the pointer, kept inside the sidebar
+        const box = root.getBoundingClientRect();
+        menu.style.left = `${Math.max(4, Math.min(x - box.left, box.width - menu.offsetWidth - 4))}px`;
+        menu.style.top = `${Math.max(4, Math.min(y - box.top, box.height - menu.offsetHeight - 4))}px`;
+      }
       menu.focus({ preventScroll: true }); // keys work; nothing highlighted until hover or ↓/↑
     }
     function closeMenu() {
       if (menu.hidden) return;
+      try {
+        if (menuPopover && menu.matches(':popover-open')) menu.hidePopover();
+      } catch {}
       menu.hidden = true;
       menuFor = null;
     }
@@ -455,5 +485,5 @@
     };
   }
 
-  Margin.ui = { el, avatar, adoptStyles, createHost, createSidebar };
+  Margin.ui = { el, avatar, adoptStyles, createHost, createSidebar, siteModalOpen };
 })();

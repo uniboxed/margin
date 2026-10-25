@@ -134,6 +134,16 @@
     function show() {
       if (!host) build();
       if (!host.isConnected) document.documentElement.appendChild(host);
+      // In the top layer (popover) where supported, so a site's own popovers
+      // or full-screen elements can't cover it; otherwise the max z-index, as
+      // before. Not while the site has a modal dialog open: everything outside
+      // it is inert then, so the palette would show but take no typing.
+      if (typeof host.showPopover === 'function' && !Margin.ui.siteModalOpen(document)) {
+        if (!host.hasAttribute('popover')) host.setAttribute('popover', 'manual');
+        try {
+          if (!host.matches(':popover-open')) host.showPopover();
+        } catch {} // e.g. removed meanwhile: the z-index still applies
+      }
       restoreFocus = document.activeElement;
       // Always Arc's dark command bar; the selected row takes the current
       // space's color.
@@ -155,6 +165,9 @@
       if (!open) return;
       open = false;
       host.dataset.open = 'false';
+      try {
+        if (host.matches?.(':popover-open')) host.hidePopover();
+      } catch {}
       input.blur();
       if (restoreFocus?.isConnected) restoreFocus.focus?.({ preventScroll: true });
     }

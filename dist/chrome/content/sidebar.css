@@ -184,6 +184,11 @@ ul { list-style: none; margin: 0; padding: 0; }
   color: #1c1c1e;
 }
 .tab-menu[hidden] { display: none; }
+/* In the top layer (popover): fixed to the viewport, none of the browser's
+   popover defaults (margin: auto, border, inset: 0, overflow). */
+.tab-menu[popover] { margin: 0; border: 0; inset: auto; overflow: visible; color: #1c1c1e; }
+.tab-menu.top-layer { position: fixed; }
+.tab-menu[popover]:not(:popover-open):not(.top-layer):not([hidden]) { display: block; } /* no top layer: as before */
 .menu-item {
   display: block;
   width: 100%;
@@ -427,4 +432,23 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
 @media (prefers-reduced-motion: reduce) {
   .loader { transition: opacity 150ms linear; }
   .loader.on .bar { animation: none; }
+}
+
+/* ---- Squircle corners where Safari supports them -------------------------
+   Arc's corners are continuous curves ("squircles"), not circular arcs.
+   With CSS corner-shape (Safari: Settings → Feature Flags → "CSS
+   corner-shape property"; on by default in Chrome and coming in WebKit),
+   use real ones; everything above stays the fallback. A squircle looks
+   about as big as a circular corner 1/1.75 its radius (measured: Arc's page
+   corner = 11px squircle ≈ 6.25px circle; DECISIONS.md), so radii scale by
+   1.75 to keep each corner's size and gain the smooth curve. */
+@supports (corner-shape: squircle) {
+  .frame .hole, .card-edge { border-radius: 11px; corner-shape: squircle; }
+  .margin-sidebar.overlay { border-radius: 21px; corner-shape: squircle; }
+  .chip, .tab, .pin, .tab-menu, .new-tab, .keep-open { border-radius: 14px; corner-shape: squircle; }
+  .avatar { border-radius: 7px; corner-shape: squircle; }
+  .icon { border-radius: 10.5px; corner-shape: squircle; }
+  .menu-item { border-radius: 9px; corner-shape: squircle; }
+  .editor { border-radius: 17.5px; corner-shape: squircle; }
+  .editor input, .editor .actions button { border-radius: 12px; corner-shape: squircle; }
 }

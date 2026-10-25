@@ -21,6 +21,13 @@
     pointer-events: none !important;
     z-index: 2147483646 !important;
   }
+  /* Squircle corners where supported (as sidebar.css .frame .hole). */
+  @supports (corner-shape: squircle) {
+    html:not([data-margin-docked="off"])::after {
+      border-radius: 11px !important;
+      corner-shape: squircle !important;
+    }
+  }
   /* The page-load pill (sidebar.css .loader.in-frame), from the first frame,
      so it doesn't drop out between the old page (which shows it from ⌘R or
      the click) and Margin's script starting on this one. It fades out by
