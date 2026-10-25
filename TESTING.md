@@ -250,6 +250,7 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 - [ ] Sites that refuse to be framed load normally: gist.github.com, pypi.org, accounts.google.com.
 - [ ] macOS full screen (green button): same layout. A YouTube video's own full-screen button fills the screen, and Picture in Picture works.
 - [ ] A page opens without flashing an empty gray card: the previous page stays until the new one is ready.
+- [ ] No blank moment between pages: click links on a few sites (a news site, GitHub, YouTube). The previous page stays until the new one appears with its sidebar; nothing goes white or gray in between. The same after ⌘R and Back.
 
 **Navigation and Safari's UI**
 - [ ] Click links A → B → C, then Back, Back, Forward: each lands on the right page. Long-press Back: the titles are right. History menu: the visits are there.
@@ -278,3 +279,11 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 
 - [ ] ⌥S shows and hides the sidebar on any page, including while a text field has focus. Settings → Keyboard shortcuts → "Show or hide the sidebar" can change it.
 - [ ] Right-click a tab in the sidebar → Pin Tab: it moves to the pinned section. Right-click → Move to another space, and Close Tab: both work. Same on the new-tab page's sidebar.
+
+## Switching to a tab Safari put to sleep
+
+Safari unloads tabs it hasn't shown for a while (more likely with many tabs open; leaving a tab for an hour or so usually does it).
+- [ ] Click a long-unused tab in the sidebar: the current page stays, dimmed and blurred, with a spinner, and the tab's row spins; then Safari switches to it with the page and sidebar already drawn (no blank page, no sidebar flicker). Same from the palette and from a pinned tab.
+- [ ] While it's loading: Escape, or a click on the dimmed page, cancels (you stay, the veil goes away). Clicking another tab instead switches to that one.
+- [ ] A tab that's awake switches at once, as before. A tab on a site Margin can't run on (Safari's own pages, a site without permission) switches at once.
+- [ ] From the new-tab page's sidebar: the launcher dims and the row spins the same way.

@@ -112,7 +112,27 @@ const palette = Margin.createPalette({
   theme: () => (dark.matches ? 'dark' : 'light'),
 });
 Margin.installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
+// Switching to a sleeping tab from here (background.js switchTo): its row
+// spins and the launcher dims until Margin switches (at most 10s).
+let switchTimer = null;
+function showSwitching(tabId) {
+  clearTimeout(switchTimer);
+  sidebar.setPending(tabId);
+  document.body.classList.toggle('switching', tabId != null);
+  if (tabId != null) switchTimer = setTimeout(() => showSwitching(null), 10000);
+}
+function cancelSwitch() {
+  if (!document.body.classList.contains('switching')) return;
+  showSwitching(null);
+  send('cancelSwitch');
+}
+addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') cancelSwitch();
+}, true);
+// Left for another page meanwhile: no switching away from it.
+addEventListener('pagehide', cancelSwitch);
 api.runtime.onMessage.addListener((message) => {
+  if (message?.type === 'switching' && message.inTab === self?.id) return showSwitching(message.tabId ?? null);
   if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
 });
 

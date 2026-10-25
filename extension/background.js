@@ -126,9 +126,24 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   // the change without it, or it redirected).
   const url = change.url ?? (change.status === 'complete' ? tab.url : null);
   if (url) learnSearchEngine([url], { tabId });
+  // Margin ran on another site in this tab: whether it runs on this one is
+  // only known once it says hello.
+  if (change.url && marginTabs.has(tabId) && marginTabs.get(tabId) !== originOf(change.url)) forgetMarginTab(tabId);
+  // A sleeping tab Margin is loading before switching to it (switchTo).
+  const waiter = readyWaiters.get(tabId);
+  if (waiter && change.status === 'loading') waiter.started = true;
+  // Loaded but no pageReady (a page Margin doesn't run on now): switch anyway.
+  if (waiter && change.status === 'complete') setTimeout(() => waiter.finish('loaded'), 500);
 });
-api.tabs.onRemoved.addListener((tabId) => mutate((s) => M.removeTab(s, tabId)));
+api.tabs.onRemoved.addListener((tabId) => {
+  mutate((s) => M.removeTab(s, tabId));
+  forgetMarginTab(tabId);
+  for (const [windowId, pending] of pendingSwitch) if (pending.tabId === tabId || pending.fromTabId === tabId) cancelSwitch(windowId);
+});
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  // The user switched tabs some other way meanwhile: drop a pending switch.
+  const pending = pendingSwitch.get(windowId);
+  if (pending && tabId !== pending.fromTabId) cancelSwitch(windowId);
   // The user switched tabs themselves: shortcut chaining restarts from here.
   if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
   mutate((s) => M.activateTab(s, tabId, windowId, now()));
@@ -157,6 +172,124 @@ async function focusTab(tabId) {
   if (!win?.focused) await api.windows.update(tab.windowId, { focused: true });
 }
 
+// ---- switching to a tab Safari put to sleep ----------------------------------
+// Safari unloads tabs that haven't been used in a while and reloads them when
+// they're shown, so switching to one used to show a blank page and then the
+// page and sidebar appearing. Instead, when the user switches through Margin
+// (sidebar, palette, pins): if the target tab doesn't answer (its page isn't
+// running) but Margin ran in it before, it's reloaded in the background while
+// the current page stays, veiled, with the target's row spinning (content/
+// sidebar.js showSwitching); Margin switches once the tab reports it's ready
+// (pageReady) or loaded, or after SWITCH_MAX_MS. If Safari doesn't start
+// loading it within SWITCH_START_MS, Margin switches straight away.
+const SWITCH_START_MS = 1500;
+const SWITCH_MAX_MS = 8000;
+const pendingSwitch = new Map(); // windowId → { tabId, fromTabId, done }
+const readyWaiters = new Map(); // tabId → { started, finish }
+const switching = new Set(); // tabs switchTo is busy with
+// Tabs Margin's content script has run in (hello), with the site it ran on:
+// a sleeping tab is only woken up for a site Margin runs on, or it would
+// never say it's ready. Kept in session storage, as the background can be
+// stopped and started again meanwhile.
+const marginTabs = new Map(); // tabId → origin
+const originOf = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+};
+const marginTabsLoaded = (api.storage.session?.get('marginTabs') ?? Promise.resolve({}))
+  .then(({ marginTabs: saved = [] }) => {
+    for (const entry of saved) if (Array.isArray(entry) && !marginTabs.has(entry[0])) marginTabs.set(entry[0], entry[1]);
+  })
+  .catch(() => {});
+let marginTabsWrite = null;
+function saveMarginTabs() {
+  clearTimeout(marginTabsWrite);
+  marginTabsWrite = setTimeout(async () => {
+    await marginTabsLoaded;
+    api.storage.session?.set({ marginTabs: [...marginTabs] }).catch(() => {});
+  }, 500);
+}
+function rememberMarginTab(tabId, url) {
+  const origin = originOf(url);
+  if (tabId == null || !origin || marginTabs.get(tabId) === origin) return;
+  marginTabs.set(tabId, origin);
+  saveMarginTabs();
+}
+function forgetMarginTab(tabId) {
+  if (marginTabs.delete(tabId)) saveMarginTabs();
+}
+
+// 'pong': Margin is running there. 'none': nothing answered (WebKit answers
+// at once for a tab without a page or without Margin). 'timeout': the page is
+// there but busy.
+const pingTab = (tabId, ms = 400) => Promise.race([
+  api.tabs.sendMessage(tabId, { type: 'ping' }).then((r) => (r === 'pong' ? 'pong' : 'none'), () => 'none'),
+  new Promise((resolve) => setTimeout(() => resolve('timeout'), ms)),
+]);
+// To the page the user switched from: a content script, or Margin's own
+// new-tab page (an extension page, which tabs.sendMessage doesn't reach).
+const tellSwitching = (fromTabId, tabId) => {
+  api.tabs.sendMessage(fromTabId, { type: 'switching', tabId }).catch(() => {});
+  api.runtime.sendMessage({ type: 'switching', tabId, inTab: fromTabId }).catch(() => {});
+};
+
+function cancelSwitch(windowId) {
+  const pending = pendingSwitch.get(windowId);
+  if (!pending) return;
+  pendingSwitch.delete(windowId);
+  pending.done('cancelled');
+  tellSwitching(pending.fromTabId, null);
+}
+
+async function switchTo(tabId, fromTab) {
+  if (switching.has(tabId)) return; // a second click on the same row
+  switching.add(tabId);
+  try {
+    const target = await api.tabs.get(tabId).catch(() => null);
+    if (!target) return;
+    cancelSwitch(target.windowId);
+    await marginTabsLoaded;
+    const asleep = !target.active && target.status !== 'loading' && /^https?:/i.test(target.url ?? '')
+      && fromTab?.windowId === target.windowId && marginTabs.get(tabId) === originOf(target.url)
+      && (await pingTab(tabId)) === 'none';
+    if (!asleep) return await focusTab(tabId);
+    console.info(`[margin] tab ${tabId} is asleep: loading it before switching`);
+    let pending;
+    const outcome = new Promise((resolve) => {
+      const waiter = { started: false };
+      waiter.finish = (why) => {
+        if (readyWaiters.get(tabId) === waiter) readyWaiters.delete(tabId);
+        clearTimeout(startTimer);
+        clearTimeout(maxTimer);
+        resolve(why);
+      };
+      readyWaiters.set(tabId, waiter);
+      pending = { tabId, fromTabId: fromTab.id, done: waiter.finish };
+      pendingSwitch.set(target.windowId, pending);
+      const startTimer = setTimeout(() => { if (!waiter.started) waiter.finish('not loading in the background'); }, SWITCH_START_MS);
+      const maxTimer = setTimeout(() => waiter.finish('timeout'), SWITCH_MAX_MS);
+    });
+    tellSwitching(fromTab.id, tabId);
+    try {
+      await api.tabs.reload(tabId);
+    } catch {
+      pending.done('reload failed');
+    }
+    const why = await outcome;
+    if (why === 'cancelled' || pendingSwitch.get(target.windowId) !== pending) return;
+    pendingSwitch.delete(target.windowId);
+    console.info(`[margin] switching to tab ${tabId} (${why})`);
+    // The tab only, not its window: the user may be in another one by now.
+    await api.tabs.update(tabId, { active: true }).catch(() => {});
+    tellSwitching(fromTab.id, null);
+  } finally {
+    switching.delete(tabId);
+  }
+}
+
 async function openTab({ windowId, url, spaceId }) {
   const tab = await api.tabs.create({ windowId, url, active: true });
   if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));
@@ -168,10 +301,18 @@ const openedFrom = new Map(); // opener tab id → { index, at }
 
 const handlers = {
   async hello(_, sender) {
+    rememberMarginTab(sender.tab?.id, sender.url ?? sender.tab?.url);
     return { tabId: sender.tab?.id ?? null, windowId: sender.tab?.windowId ?? null };
   },
-  async activateTab({ tabId }) {
-    await focusTab(tabId);
+  async activateTab({ tabId }, sender) {
+    await switchTo(tabId, sender.tab);
+  },
+  // A page finished appearing (content/sidebar.js announceReady).
+  async pageReady(_, sender) {
+    readyWaiters.get(sender.tab?.id)?.finish('ready');
+  },
+  async cancelSwitch(_, sender) {
+    if (sender.tab) cancelSwitch(sender.tab.windowId);
   },
   // Closing from Margin archives the tab, like Arc.
   async closeTab({ tabId }) {
@@ -261,14 +402,14 @@ const handlers = {
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
   },
-  async openPin({ pinId, windowId }) {
+  async openPin({ pinId, windowId }, sender) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
     const key = M.normalizeUrl(pin.url);
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
-    if (existing) await focusTab(existing.id);
+    if (existing) await switchTo(existing.id, sender.tab);
     else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
   },
   async setSpace({ windowId, spaceId }) {
