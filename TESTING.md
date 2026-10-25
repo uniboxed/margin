@@ -125,6 +125,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Turn on "Keep open": the sidebar docks flush left, the Arc frame appears, and the page reflows to start right after the sidebar, nothing is hidden behind it on normal sites, and there's no horizontal scrollbar.
 - [ ] With "Keep open" on, load a new site (e.g. github.com): the sidebar and push are there right away, before the page finishes loading, with no slide-in and no unstyled flash. To measure: Web Inspector on the page → Console, and after the page loads look for `[margin] timing (ms) injected=… storage=… rendered=… | page DOMContentLoaded=… load=…`. `rendered` should be well below `load` (Chromium: about 20–45 vs 1,500 on a slow page).
 - [ ] Sticky headers (github.com, conventionalcommits.org) stay inside the frame. Note any site whose fixed header sits under the sidebar or that looks broken.
+- [ ] With "Keep open" on, open a fast site (google.com): the page appears already shifted inside the frame from its very first frame (the sidebar's contents may fill in a split second later). There should be no visible jump from full width to pushed.
 - [ ] ⌥S or "Auto-hide" removes the push immediately and the page goes back to full width.
 - [ ] Print preview (⌘P) shows the page without the shift.
 - [ ] The new tab page uses the same frame look.

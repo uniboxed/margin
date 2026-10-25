@@ -196,6 +196,35 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+// ---- docked placeholder ---------------------------------------------------
+
+// While "Keep open" is on, register content/docked.css: the browser applies it
+// before first paint, ahead of content scripts. Feature-detected; without the
+// scripting API the sidebar simply appears when the content script runs.
+const DOCKED_ID = 'margin-docked';
+async function syncDockedCss() {
+  if (!api.scripting?.registerContentScripts) return;
+  const { settings } = await api.storage.local.get('settings');
+  const want = !!settings?.sidebarPinnedOpen;
+  const have = (await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] })).length > 0;
+  if (want && !have) {
+    await api.scripting.registerContentScripts([
+      { id: DOCKED_ID, css: ['content/docked.css'], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
+    ]);
+  } else if (!want && have) {
+    await api.scripting.unregisterContentScripts({ ids: [DOCKED_ID] });
+  }
+}
+let dockedSync = Promise.resolve();
+const queueDockedSync = () => {
+  dockedSync = dockedSync.then(syncDockedCss).catch((err) => console.warn('[margin] docked css', err));
+  return dockedSync;
+};
+api.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.settings) queueDockedSync();
+});
+queueDockedSync();
+
 // ---- auto-archive -----------------------------------------------------------
 
 // Close stale tabs and add them to the archive. Runs on wake, on a
@@ -230,7 +259,7 @@ if (api.alarms) {
 }
 
 // Debug hook for Web Inspector and tests: `margin.archiveNow()`.
-globalThis.margin = { archiveNow: archiveStale };
+globalThis.margin = { archiveNow: archiveStale, syncDockedCss: queueDockedSync };
 
 // ---- commands -------------------------------------------------------------
 

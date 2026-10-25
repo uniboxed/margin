@@ -103,6 +103,7 @@
     frame.classList.toggle('open', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
+    if (state) syncPlaceholder(docked);
   }
 
   // ---- push (only while "Keep open" is on) ---------------------------------
@@ -138,6 +139,20 @@
       pushStyle?.remove();
     }
     host.dataset.pushed = String(on);
+  }
+
+  // content/docked.css (registered while "Keep open" is on) pushes and paints
+  // from the first frame. Switch it off on this page whenever the page isn't
+  // docked: after leaving "Keep open", or if the setting changed while the
+  // page was loading. Only touches <html> when the placeholder is present.
+  function syncPlaceholder(docked) {
+    const html = document.documentElement;
+    if (!canPush) return;
+    if (docked) {
+      if (html.dataset.marginDocked === 'off') delete html.dataset.marginDocked;
+    } else if (html.dataset.marginDocked !== 'off' && getComputedStyle(html, '::after').content !== 'none') {
+      html.dataset.marginDocked = 'off';
+    }
   }
   function show(why) {
     clearTimeout(hideTimer);

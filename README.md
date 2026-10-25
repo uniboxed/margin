@@ -65,7 +65,7 @@ In Xcode, choose the **Margin (macOS)** scheme and Run (⌘R). Safari picks up t
 
 ```
 extension/
-  manifest.json         MV3: tabs, storage, alarms; <all_urls>; newtab override; commands
+  manifest.json         MV3: tabs, storage, alarms, scripting; <all_urls>; newtab override; commands
   background.js         State owner (classic service worker; loads state/model.js via importScripts). Tab events → pure model → storage.local.
                         Message router for the UI. Auto-archive scheduler.
   state/model.js        Pure state functions (no browser APIs), unit tested. Classic script.
@@ -75,6 +75,7 @@ extension/
   shared/ui.js          Sidebar renderer used by both the overlay and the new tab.
   content/sidebar.js    Content script: closed-shadow-DOM overlay, hover reveal, theme.
   content/palette.js    Command palette (own closed shadow root), used by content + new tab.
+  content/docked.css    Registered only while "Keep open" is on; applied before first paint.
   content/*.css         Styles (source of truth). Bundled into content/styles.js by `npm run styles`
                         so content scripts apply them synchronously, with no fetch.
   newtab/               Launcher page with the sidebar permanently open.

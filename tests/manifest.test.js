@@ -29,6 +29,7 @@ test('every file the manifest and new tab reference exists', () => {
     ...manifest.content_scripts.flatMap((c) => c.js),
     ...(manifest.web_accessible_resources ?? []).flatMap((w) => w.resources),
     manifest.chrome_url_overrides.newtab,
+    'content/docked.css', // registered at runtime by background.js
   ];
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
   for (const [, ref] of html.matchAll(/(?:src|href)="([^"]+)"/g)) files.push(new URL(ref, new URL('newtab/', root)).pathname.split('/extension/')[1]);
@@ -46,7 +47,7 @@ test('all extension scripts parse', () => {
 test('no third-party URLs in extension code (search engine templates excepted)', () => {
   const allowed = /duckduckgo\.com|google\.com|bing\.com|ecosia\.org|startpage\.com|www\.w3\.org/;
   for (const f of ['background.js', 'state/model.js', 'shared/view.js', 'shared/ui.js', 'shared/search.js', 'shared/shortcuts.js',
-    'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
+    'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'content/docked.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
     const text = readFileSync(new URL(f, root), 'utf8');
     for (const [url] of text.matchAll(/https?:\/\/[^\s'"`)$]+/g)) if (!url.endsWith("://")) assert.match(url, allowed, `${f}: ${url}`);
   }
