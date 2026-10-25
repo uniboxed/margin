@@ -1,9 +1,10 @@
-# Viewport research (in progress)
+# Viewport research
 
 The question: can Margin, staying a Safari Web Extension, show pages beside its sidebar laid out exactly as if the window were narrower (fixed headers, full-width sections and breakpoints all right), in macOS full screen too? Tirth's Safari: 27.
 
-**Status (2026-10-25, 10:50 UTC):** all 8 investigations are finished, including both prototypes (Chromium and WebKitGTK). The synthesis is done but **not yet reviewed**. Three adversarial reviewers are checking it now, and a final report follows. Nothing here is built into Margin.
+**Status (2026-10-25, research stopped at about 11:00 UTC):** all 8 investigations and both prototypes are finished, and the synthesis is done. Two of the three adversarial reviews finished (engine: sound with fixes; UX parity: sound with fixes); the security & robustness review was stopped part-way, and no final report was written. Nothing here is built into Margin. To continue elsewhere, start from [../HANDOFF.md](../HANDOFF.md).
 
+- [reviews.md](reviews.md): the two finished adversarial reviews. Where they refute something in synthesis.md, they win.
 - [synthesis.md](synthesis.md): the combined recommendation (architecture, load-bearing claims with evidence, losses, fallbacks, risks, the real-Safari checklist, implementation plan). The final report may correct it.
 - [findings.md](findings.md): every finished investigation's report, unedited (evidence, file:line references, measurements, open questions).
 - `artifacts/`: the scripts, test pages, outputs, screenshots and print PDFs the investigations wrote, plus the browser data of the test runs. That covers WebKitGTK profile folders (`r-parity/out/wkdata*`: caches, cookies and storage from local test servers only, checked to contain no real sites) and compiled content-rule-list stores (`cfstore*`). Left out: downloaded WebKit/Chromium source (re-fetchable from GitHub at the cited paths) and cloned prior-art repos. Absolute paths in the scripts point at the cloud session's scratch folder; adjust them to re-run.
@@ -19,7 +20,8 @@ The question: can Margin, staying a Safari Web Extension, show pages beside its 
 | `r-alt/` | Every other possible approach; prior art |
 | `p-chromium/` | Working prototype as a real MV3 extension in Chromium |
 | `p-webkit/` | Prototype in WebKitGTK |
-| `v-*/` | Reviewers' re-checks (in progress) |
+| `synth/` | The synthesis' own prototype (shell5.js, main-wrap5.js) and runs |
+| `v-*/` | Reviewers' re-checks (v-security-robustness is partial) |
 
 ## Where it stands
 
