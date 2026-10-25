@@ -282,7 +282,8 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 
 ## Switching to a tab Safari put to sleep
 
-Safari unloads tabs it hasn't shown for a while (more likely with many tabs open; leaving a tab for an hour or so usually does it).
+Safari unloads tabs it hasn't shown for a while (more likely with many tabs open; leaving a tab for an hour or so usually does it). Don't test right after reinstalling Margin: its tabs then aren't asleep, just from before the install. A quicker way to get sleeping tabs: quit Safari with several tabs open and reopen it with its windows restored (Safari loads restored tabs only when shown).
+- [ ] After reinstalling or updating Margin, tabs that were open get the sidebar back without a reload (push layout until the next page load), and there's only one sidebar.
 - [ ] Click a long-unused tab in the sidebar: the current page stays, dimmed and blurred, with a spinner, and the tab's row spins; then Safari switches to it with the page and sidebar already drawn (no blank page, no sidebar flicker). Same from the palette and from a pinned tab.
 - [ ] While it's loading: Escape, or a click on the dimmed page, cancels (you stay, the veil goes away). Clicking another tab instead switches to that one.
 - [ ] A tab that's awake switches at once, as before. A tab on a site Margin can't run on (Safari's own pages, a site without permission) switches at once.

@@ -4,9 +4,17 @@
   // Load timing, in ms since navigation start (see logTiming below).
   const timing = { injected: Math.round(performance.now()) };
   if (location.href.startsWith(api.runtime.getURL(''))) return;
-  if (document.querySelector('margin-sidebar-host')) return;
 
   const Margin = globalThis.Margin;
+  if (Margin.content) return; // already running in this page
+  // A sidebar and palette left by an earlier copy of Margin (reinstalled or
+  // updated: Safari leaves its page changes, and they no longer work; the
+  // background adds this copy to open pages, see injectIntoOpenTabs) are
+  // hidden and removed, and this copy takes over.
+  for (const stale of document.querySelectorAll('margin-sidebar-host, margin-palette-host')) {
+    stale.style.setProperty('display', 'none', 'important');
+    stale.remove();
+  }
   Margin.content = { api };
 
   // Fitted layout (content/shell.js, registered while "Keep open" is on; it

@@ -67,7 +67,27 @@ function resync({ fresh } = {}) {
 
 api.runtime.onInstalled.addListener((details) => {
   console.log('[margin] installed', details.reason);
+  if (details.reason === 'install' || details.reason === 'update') injectIntoOpenTabs();
 });
+
+// Pages already open when Margin is installed or updated get no content
+// scripts (browsers add them only to pages loaded afterwards), and after an
+// update the old copy's sidebar stays in them, not working: add Margin to
+// them, so they needn't be reloaded (content/sidebar.js replaces the old
+// sidebar). Only where Margin has access (permissions.contains doesn't
+// prompt; executeScript could), in loaded pages (a sleeping tab gets them
+// when it loads). The fitted layout only comes with the next page load.
+async function injectIntoOpenTabs() {
+  const files = api.runtime.getManifest().content_scripts?.find((c) => c.js?.includes('content/sidebar.js'))?.js;
+  if (!files?.length || !api.scripting?.executeScript) return;
+  const tabs = await api.tabs.query({}).catch(() => []);
+  await Promise.all(tabs.map(async (tab) => {
+    const origin = /^https?:/i.test(tab.url ?? '') && !tab.discarded ? originOf(tab.url) : null;
+    if (!origin || !(await api.permissions?.contains({ origins: [`${origin}/*`] }).catch(() => false))) return;
+    if ((await pingTab(tab.id)) === 'pong') return;
+    await api.scripting.executeScript({ target: { tabId: tab.id }, files }).catch(() => {});
+  }));
+}
 
 if (!api.storage.session) {
   api.runtime.onStartup.addListener(() => resync({ fresh: true }));
