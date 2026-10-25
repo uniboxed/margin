@@ -5,7 +5,7 @@ The question: can Margin, staying a Safari Web Extension, show pages beside its 
 **Status (2026-10-25):** 7 of 8 investigations are finished. Still running: the WebKit prototype, then a synthesis, three adversarial reviews and a final report. This folder is a safety copy of what's finished. Nothing here is built into Margin.
 
 - [findings.md](findings.md): every finished investigation's report, unedited (evidence, file:line references, measurements, open questions).
-- `artifacts/`: the scripts, test pages and outputs the investigations wrote. Downloaded WebKit/Chromium source, cloned repos, screenshots and browser data were left out. Absolute paths in the scripts point at the cloud session's scratch folder; adjust them to re-run.
+- `artifacts/`: the scripts, test pages, outputs, screenshots and print PDFs the investigations wrote, plus the browser data of the test runs. That covers WebKitGTK profile folders (`r-parity/out/wkdata*`: caches, cookies and storage from local test servers only, checked to contain no real sites) and compiled content-rule-list stores (`cfstore*`). Left out: downloaded WebKit/Chromium source (re-fetchable from GitHub at the cited paths) and cloned prior-art repos. Absolute paths in the scripts point at the cloud session's scratch folder; adjust them to re-run.
 
 | Folder | Investigation |
 |---|---|
