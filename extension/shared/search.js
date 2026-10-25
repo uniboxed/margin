@@ -45,7 +45,7 @@
     yahoo: {
       name: 'Yahoo',
       host: /^([a-z]{2,10}\.)?search\.yahoo(\.[a-z]{2,3}){1,2}$/,
-      path: /^\/search$/,
+      path: /^\/search(;[^/]*)?$/, // Yahoo adds ;_ylt=…;_ylc=… to the path
       fromSafari: (p) => /^(aapl|iphone$|ipad$)/.test(p.get('fr') ?? '') || p.get('.tsrc') === 'apple',
       template: (host) => `https://${host}/search?ei=utf-8&fr=aaplw&p=%s`,
     },
@@ -67,6 +67,16 @@
       }
     }
     return null;
+  }
+
+  // Which engine's site a URL is on (any search there), for diagnostics.
+  function searchEngineOf(url) {
+    try {
+      const u = new URL(url);
+      return Object.values(SAFARI_ENGINES).find((e) => e.host.test(u.hostname) && e.path.test(u.pathname))?.name ?? null;
+    } catch {
+      return null;
+    }
   }
 
   // The engine Margin's searches use in Safari: learned, else the default.
@@ -249,7 +259,7 @@
   }
 
   Margin.search = {
-    SAFARI_ENGINES, SAFARI_DEFAULT, detectSafariSearch, safariEngine, searchUrl, engineLabel,
+    SAFARI_ENGINES, SAFARI_DEFAULT, detectSafariSearch, searchEngineOf, safariEngine, searchUrl, engineLabel,
     resolveInput, fuzzyScore, paletteItems, rankPalette,
   };
 })();

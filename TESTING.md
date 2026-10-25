@@ -87,6 +87,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Typing `hello world` + Return searches with Safari's search engine. Before you've searched from Safari's address bar since installing Margin, that's Google (Safari's default); Settings says so.
 - [ ] Change Safari → Settings → Search → Search engine (e.g. to DuckDuckGo), search once from Safari's address bar, then search from Margin (launcher or palette ⌥K): it uses the new engine, and Settings names it. There's no engine picker in Margin's Settings.
 - [ ] A search typed on an engine's own site (e.g. on duckduckgo.com) doesn't change which engine Margin uses.
+- [ ] If Margin doesn't pick up a change: open Develop → Web Extension Background Content → Margin, set the console to show Debug messages, search from Safari's address bar again, and copy the `[margin] … search not from Safari's address bar` line (it shows the URL Safari made).
 - [ ] Pin a page (right-click its tab in the sidebar → Pin Tab). New tab shows it as a tile. Clicking the tile focuses the open tab, or opens the page in this tab if it's closed.
 
 ## M4 spaces and pins

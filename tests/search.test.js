@@ -43,6 +43,8 @@ test('Safari\'s own address-bar searches are recognized, with the engine and a m
     ['https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=monkey', 'Yahoo', 'https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
     ['https://no.search.yahoo.com/search?p=monkey&fr=iphone&.tsrc=apple', 'Yahoo', 'https://no.search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
     ['https://www.ecosia.org/search?q=monkey&tts=st_asaf_macos', 'Ecosia', 'https://www.ecosia.org/search?q=%s&tts=st_asaf_macos'],
+    // Yahoo's results pages put ;_ylt=…;_ylc=… into the path.
+    ['https://search.yahoo.com/search;_ylt=AwrFOX;_ylc=X1MDMjc?p=monkey&fr=aaplw&ei=UTF-8', 'Yahoo', 'https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
   ];
   for (const [url, name, template] of cases) {
     const found = detectSafariSearch(url);
@@ -66,6 +68,14 @@ test('other searches and look-alikes are not Safari\'s engine', () => {
     'not a url',
     undefined,
   ]) assert.equal(detectSafariSearch(url), null, String(url));
+});
+
+test('which engine\'s site a URL is on, Safari\'s parameters or not (for diagnostics)', () => {
+  const { searchEngineOf } = globalThis.Margin.search;
+  assert.equal(searchEngineOf('https://search.yahoo.com/search;_ylt=x?p=monkey'), 'Yahoo');
+  assert.equal(searchEngineOf('https://www.google.com/search?q=x'), 'Google');
+  assert.equal(searchEngineOf('https://example.com/search?q=x'), null);
+  assert.equal(searchEngineOf('nope'), null);
 });
 
 test('searches in Safari use the learned engine, else Safari\'s default (Google)', () => {

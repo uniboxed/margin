@@ -316,3 +316,10 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
   - **Before Margin has seen a Safari search:** Google, Safari's out-of-box default. Settings says so and explains how it follows Safari.
   - **Not recognized:** Baidu, Sogou and 360 Search (Safari's engines in China) carry no Safari parameters, so a Safari search there can't be told from one on their own sites. Margin keeps the last engine it knew.
 - **Settings:** the engine picker is gone; a line names the engine searches use and where to change it (the browser's settings).
+- **Fix (reported: switched Safari to Yahoo, Margin still searched Google):**
+  - **Same-tab skip:** the 30s skip for tabs Margin had just searched in ignored *any* search there, so a Safari address-bar search right after a Margin search in the same tab wasn't learned. Now it skips only the engine Margin itself used; a different engine there is Safari's. Covered by an E2E test, mutation-checked.
+  - **Yahoo's URLs** put `;_ylt=…;_ylc=…` into the path; the pattern now allows that.
+  - **Reported URLs:** the URL is also checked once a page finishes loading, in case Safari reports a navigation without it.
+  - **Diagnostics:** a search on a known engine's site without Safari's parameters is logged with `console.debug` in the background console, with its URL.
+  - **Settings** shows when the engine was last seen in Safari's address bar.
+  - **Still inherent:** Margin can only learn a new engine once Safari has searched with it from its address bar.

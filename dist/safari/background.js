@@ -87,15 +87,27 @@ resync().then(async () => {
 // Safari has no search API: follow the engine Safari itself searches with,
 // learned from its address-bar searches (shared/search.js). Chrome uses
 // chrome.search.query instead (the `search` handler).
-// Tabs Margin itself just searched in (they carry Safari-style URLs too, so
-// they'd "confirm" Margin's own default): not learned from for a while.
+// Margin's own searches carry Safari-style URLs too, so they'd "confirm"
+// Margin's current engine: a search in a tab Margin just searched in, with
+// that same engine, isn't learned from. A different engine there is Safari's
+// (the user searched from the address bar) and is.
 const OWN_SEARCH_MS = 30000;
-const ownSearchTabs = new Map(); // tabId → time
-const isOwnSearch = (tabId) => now() - (ownSearchTabs.get(tabId) ?? -Infinity) < OWN_SEARCH_MS;
-function learnSearchEngine(urls) {
+const ownSearchTabs = new Map(); // tabId → { at, template }
+function isOwnSearch(tabId, found) {
+  const own = ownSearchTabs.get(tabId);
+  return !!own && now() - own.at < OWN_SEARCH_MS && own.template === found.template;
+}
+function learnSearchEngine(urls, { tabId } = {}) {
   if (globalThis.Margin.platform?.search !== 'learn') return;
   const found = urls.map(S.detectSafariSearch).find(Boolean);
-  if (!found) return;
+  if (!found) {
+    // On an engine's site but without Safari's parameters: not an address-bar
+    // search (or Safari changed them). Visible in the background console.
+    const engine = urls.map(S.searchEngineOf).find(Boolean);
+    if (engine) console.debug(`[margin] ${engine} search not from Safari's address bar (no Safari parameters), not learned:`, urls.find(S.searchEngineOf));
+    return;
+  }
+  if (tabId != null && isOwnSearch(tabId, found)) return;
   return mutate((s) => (s.settings.safariSearch?.template === found.template
     ? s
     : { ...s, settings: { ...s.settings, safariSearch: { ...found, at: now() } } }));
@@ -110,7 +122,10 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
   }
-  if (change.url && !isOwnSearch(tabId)) learnSearchEngine([change.url]);
+  // The URL when it changes, and again once loaded (in case Safari reported
+  // the change without it, or it redirected).
+  const url = change.url ?? (change.status === 'complete' ? tab.url : null);
+  if (url) learnSearchEngine([url], { tabId });
 });
 api.tabs.onRemoved.addListener((tabId) => mutate((s) => M.removeTab(s, tabId)));
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
@@ -184,17 +199,19 @@ const handlers = {
       await (tabId != null ? api.search.query({ text, tabId }) : api.search.query({ text, disposition: 'NEW_TAB' }));
       return;
     }
-    const url = S.searchUrl(text, (await load()).settings);
+    const { settings } = await load();
+    const url = S.searchUrl(text, settings);
+    const own = { at: now(), template: S.safariEngine(settings).template };
     if (tabId != null) {
-      ownSearchTabs.set(tabId, now());
+      ownSearchTabs.set(tabId, own);
       await api.tabs.update(tabId, { url });
     } else {
       // Mark the tab before it navigates: create it blank, then load the search.
       const tab = await openTab({ windowId, url: 'about:blank' });
-      ownSearchTabs.set(tab.id, now());
+      ownSearchTabs.set(tab.id, own);
       await api.tabs.update(tab.id, { url });
     }
-    for (const [id, at] of ownSearchTabs) if (now() - at > OWN_SEARCH_MS) ownSearchTabs.delete(id);
+    for (const [id, entry] of ownSearchTabs) if (now() - entry.at > OWN_SEARCH_MS) ownSearchTabs.delete(id);
   },
   async newTab({ windowId, url, spaceId }) {
     const tab = await openTab({ windowId, url, spaceId });

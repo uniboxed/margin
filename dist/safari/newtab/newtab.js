@@ -29,7 +29,7 @@ function renderSearchEngine() {
   const text = Margin.platform?.search === 'browser'
     ? 'Searches use Chrome’s search engine (Chrome Settings → Search engine).'
     : learned
-      ? `Searches use Safari’s search engine: ${learned.name}. Margin follows it: change it in Safari → Settings → Search, then search once from Safari’s address bar.`
+      ? `Searches use Safari’s search engine: ${learned.name} (seen in Safari’s address bar ${new Date(learned.at).toLocaleString()}). Margin follows it: after changing it in Safari → Settings → Search, search once from Safari’s address bar.`
       : `Searches use Safari’s default search engine (${Margin.search.SAFARI_DEFAULT.name}) until you search once from Safari’s address bar; from then on, whatever Safari uses (Safari → Settings → Search).`;
   $('engine-info').textContent = text;
 }

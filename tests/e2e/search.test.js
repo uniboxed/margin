@@ -78,3 +78,16 @@ test('a search on an engine\'s own site doesn\'t change it; Safari\'s own search
   assert.equal(await nt.locator('#engine').count(), 0);
   await nt.close();
 });
+
+test('switching engines in Safari right after a Margin search in the same tab is still learned', async () => {
+  // Margin searches (with the engine it knows) in this tab...
+  const page = await launcherSearch('first');
+  await page.waitForURL(/duckduckgo\.com\/\?q=first/);
+  // ...then, in the same tab, a search from Safari's address bar with Yahoo.
+  await page.goto('https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=second');
+  await waitFor(async () => (await settings()).safariSearch?.name === 'Yahoo');
+  const next = await launcherSearch('third');
+  await next.waitForURL('https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=third');
+  await next.close();
+  await page.close();
+});
