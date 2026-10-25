@@ -1,8 +1,9 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
 // Classic service worker: Safari ignores "type": "module" for backgrounds.
-importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js');
+importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js', 'shared/search.js');
 const M = globalThis.Margin.model;
+const S = globalThis.Margin.search;
 const I = globalThis.Margin.icons;
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -19,6 +20,7 @@ async function load() {
   // Saved under another build's default shortcuts (normalizeShortcuts moved
   // them): save, so pages, which read storage directly, use the new ones.
   if (raw.settings && raw.settings.shortcutDefaults !== cache.settings.shortcutDefaults) missing.push('settings');
+  else if (raw.settings && 'searchEngine' in raw.settings) missing.push('settings'); // drop the removed setting
   if (missing.length) await api.storage.local.set(Object.fromEntries(missing.map((key) => [key, cache[key]])));
   return cache;
 }
@@ -71,7 +73,33 @@ if (!api.storage.session) {
   api.runtime.onStartup.addListener(() => resync({ fresh: true }));
 }
 
-resync().then(() => archiveStale());
+resync().then(async () => {
+  // Safari's search engine from tabs already open, if none is known yet (a
+  // stale tab mustn't override one learned since).
+  const s = await load();
+  if (!s.settings.safariSearch) {
+    learnSearchEngine(Object.values(s.tabs).sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0)).map((t) => t.url));
+  }
+  return archiveStale();
+});
+
+// ---- the browser's search engine -------------------------------------------
+// Safari has no search API: follow the engine Safari itself searches with,
+// learned from its address-bar searches (shared/search.js). Chrome uses
+// chrome.search.query instead (the `search` handler).
+// Tabs Margin itself just searched in (they carry Safari-style URLs too, so
+// they'd "confirm" Margin's own default): not learned from for a while.
+const OWN_SEARCH_MS = 30000;
+const ownSearchTabs = new Map(); // tabId → time
+const isOwnSearch = (tabId) => now() - (ownSearchTabs.get(tabId) ?? -Infinity) < OWN_SEARCH_MS;
+function learnSearchEngine(urls) {
+  if (globalThis.Margin.platform?.search !== 'learn') return;
+  const found = urls.map(S.detectSafariSearch).find(Boolean);
+  if (!found) return;
+  return mutate((s) => (s.settings.safariSearch?.template === found.template
+    ? s
+    : { ...s, settings: { ...s.settings, safariSearch: { ...found, at: now() } } }));
+}
 
 // ---- tab events -----------------------------------------------------------
 
@@ -82,6 +110,7 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
   }
+  if (change.url && !isOwnSearch(tabId)) learnSearchEngine([change.url]);
 });
 api.tabs.onRemoved.addListener((tabId) => mutate((s) => M.removeTab(s, tabId)));
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
@@ -146,6 +175,26 @@ const handlers = {
       const tab = await openTab({ windowId, url: entry.url, spaceId });
       await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
     }
+  },
+  // Search with the browser's engine: in `tabId`, else in a new tab.
+  async search({ query, windowId, tabId }) {
+    const text = String(query ?? '').trim();
+    if (!text) return;
+    if (globalThis.Margin.platform?.search === 'browser' && api.search?.query) {
+      await (tabId != null ? api.search.query({ text, tabId }) : api.search.query({ text, disposition: 'NEW_TAB' }));
+      return;
+    }
+    const url = S.searchUrl(text, (await load()).settings);
+    if (tabId != null) {
+      ownSearchTabs.set(tabId, now());
+      await api.tabs.update(tabId, { url });
+    } else {
+      // Mark the tab before it navigates: create it blank, then load the search.
+      const tab = await openTab({ windowId, url: 'about:blank' });
+      ownSearchTabs.set(tab.id, now());
+      await api.tabs.update(tab.id, { url });
+    }
+    for (const [id, at] of ownSearchTabs) if (now() - at > OWN_SEARCH_MS) ownSearchTabs.delete(id);
   },
   async newTab({ windowId, url, spaceId }) {
     const tab = await openTab({ windowId, url, spaceId });

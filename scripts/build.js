@@ -12,10 +12,14 @@ const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
 export const TARGETS = ['chrome', 'safari'];
 
+// Overrides replace top-level keys, except `add_permissions`, which is
+// appended to the shared `permissions` (so the list lives in one place).
 export function manifestFor(target) {
   const base = JSON.parse(readFileSync(new URL('manifest.json', SOURCE), 'utf8'));
-  const overrides = JSON.parse(readFileSync(new URL(`platform/${target}/manifest.json`, root), 'utf8'));
-  return { ...base, ...overrides };
+  const { add_permissions: addPermissions = [], ...overrides } = JSON.parse(readFileSync(new URL(`platform/${target}/manifest.json`, root), 'utf8'));
+  const manifest = { ...base, ...overrides };
+  if (addPermissions.length) manifest.permissions = [...new Set([...(manifest.permissions ?? []), ...addPermissions])];
+  return manifest;
 }
 
 export function platformFileFor(target) {

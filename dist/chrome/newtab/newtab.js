@@ -23,12 +23,24 @@ const windowId = () => state?.tabs?.[self?.id]?.windowId ?? self?.windowId;
 // Navigate this tab rather than opening another one.
 const go = (url) => api.tabs.update(self.id, { url });
 
+// Which engine searches use: always the browser's (shared/search.js).
+function renderSearchEngine() {
+  const learned = state?.settings?.safariSearch;
+  const text = Margin.platform?.search === 'browser'
+    ? 'Searches use Chrome’s search engine (Chrome Settings → Search engine).'
+    : learned
+      ? `Searches use Safari’s search engine: ${learned.name}. Margin follows it: change it in Safari → Settings → Search, then search once from Safari’s address bar.`
+      : `Searches use Safari’s default search engine (${Margin.search.SAFARI_DEFAULT.name}) until you search once from Safari’s address bar; from then on, whatever Safari uses (Safari → Settings → Search).`;
+  $('engine-info').textContent = text;
+}
+
 // ---- launcher ---------------------------------------------------------------
 
 $('search').addEventListener('submit', (event) => {
   event.preventDefault();
-  const target = Margin.search.resolveInput($('query').value, state?.settings?.searchEngine);
-  if (target) go(target.url);
+  const target = Margin.search.resolveInput($('query').value);
+  if (target?.kind === 'url') go(target.url);
+  else if (target) send('search', { query: target.query, tabId: self.id }); // the browser's engine
 });
 // Safari focuses the address bar on a new tab; this only helps elsewhere.
 $('query').focus();
@@ -60,9 +72,6 @@ hours.addEventListener('change', () => {
   if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { archiveAfterHours: value } });
 });
 
-const engine = $('engine');
-for (const { name, url } of Margin.search.SEARCH_ENGINES) engine.append(el(document, 'option', { value: url, text: name }));
-engine.addEventListener('change', () => send('updateSettings', { patch: { searchEngine: engine.value } }));
 
 // Safari's trackpad swipe/pinch (Safari builds only).
 const blockGestures = $('block-gestures');
@@ -86,7 +95,10 @@ const palette = Margin.createPalette({
   send,
   getState: () => state,
   getContext: () => ({ windowId: windowId(), tabId: self?.id, inNewTab: true, canToggleSidebar: false }),
-  onLocal: (action) => action.local === 'navigate' && go(action.url),
+  onLocal: (action) => {
+    if (action.local === 'navigate') go(action.url);
+    if (action.local === 'search') send('search', { query: action.query, tabId: self.id });
+  },
   theme: () => (dark.matches ? 'dark' : 'light'),
 });
 Margin.installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
@@ -180,11 +192,7 @@ function renderLauncher() {
     ),
   );
 
-  const known = Margin.search.SEARCH_ENGINES.some((e) => e.url === state.settings.searchEngine);
-  if (!known && state.settings.searchEngine) {
-    engine.append(el(document, 'option', { value: state.settings.searchEngine, text: 'Custom' }));
-  }
-  engine.value = state.settings.searchEngine;
+  renderSearchEngine();
   blockGestures.checked = state.settings.blockGestures !== false;
   // Margin's pull-to-refresh replaces Safari's, which only goes away with the bounce.
   pullToRefresh.checked = state.settings.pullToRefresh !== false;

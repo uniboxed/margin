@@ -95,7 +95,7 @@ On browser restart, tab ids change: rebuild `tabSpace` by matching open tabs to 
 
 ### M3 — New-tab page
 - `newtab.html` shows the sidebar permanently open, plus a centered launcher: a search/URL field, the active space's pins as large tiles, and recently archived tabs.
-- Entering a URL navigates; anything else becomes a web search on DuckDuckGo (`https://duckduckgo.com/?q=`). Make the engine a setting.
+- Entering a URL navigates; anything else becomes a web search with **the browser's own search engine** (Tirth's decision, 2026-10-25; replaces DuckDuckGo and an engine setting). Chrome: `chrome.search.query`. Safari has no search API, so Margin follows the engine Safari searches with, learned from Safari's address-bar searches (Google until it has seen one).
 - Note in the README: Safari focuses the address bar first on a new tab, so the launcher field may not get focus — that's expected.
 
 ### M4 — Spaces and pins

@@ -3,22 +3,87 @@
 (() => {
   const Margin = (globalThis.Margin ??= {});
 
-  const SEARCH_ENGINES = [
-    { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
-    { name: 'Google', url: 'https://www.google.com/search?q=%s' },
-    { name: 'Bing', url: 'https://www.bing.com/search?q=%s' },
-    { name: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' },
-    { name: 'Startpage', url: 'https://www.startpage.com/do/search?q=%s' },
-  ];
-  const DEFAULT_ENGINE = SEARCH_ENGINES[0].url;
+  // ---- the browser's search engine ------------------------------------------
+  // Margin searches with the browser's engine, never its own choice:
+  //  - Chrome: the `search` API (chrome.search.query) uses Chrome's default.
+  //  - Safari has no such API and no way to read its settings, so Margin
+  //    learns the engine from searches Safari makes from its address bar:
+  //    Safari tags those URLs (Google `client=safari`, Bing `form=AP…`,
+  //    DuckDuckGo `t=osx`, Ecosia `tts=st_asaf_…`, Yahoo `fr=aapl…`; see
+  //    DECISIONS.md), so a search made on an engine's own site doesn't count.
+  //    Until it has seen one, Safari's default (Google). Margin's searches use
+  //    the same URLs Safari makes on macOS, on the same (regional) host.
+  const SAFARI_ENGINES = {
+    google: {
+      name: 'Google',
+      host: /^www\.google(\.[a-z]{2,3}){1,2}$/,
+      path: /^\/search$/,
+      fromSafari: (p) => p.get('client') === 'safari',
+      template: (host) => `https://${host}/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8`,
+    },
+    bing: {
+      name: 'Bing',
+      host: /^www\.bing\.com$/,
+      path: /^\/search$/,
+      fromSafari: (p) => /^AP/.test(p.get('form') ?? ''),
+      template: (host) => `https://${host}/search?q=%s&form=APMCS1&PC=APMC`,
+    },
+    duckduckgo: {
+      name: 'DuckDuckGo',
+      host: /^duckduckgo\.com$/,
+      path: /^\/$/,
+      fromSafari: (p) => ['osx', 'iphone', 'ipad'].includes(p.get('t')),
+      template: (host) => `https://${host}/?q=%s&t=osx&ia=web`,
+    },
+    ecosia: {
+      name: 'Ecosia',
+      host: /^www\.ecosia\.org$/,
+      path: /^\/search$/,
+      fromSafari: (p) => (p.get('tts') ?? '').startsWith('st_asaf_'),
+      template: (host) => `https://${host}/search?q=%s&tts=st_asaf_macos`,
+    },
+    yahoo: {
+      name: 'Yahoo',
+      host: /^([a-z]{2,10}\.)?search\.yahoo(\.[a-z]{2,3}){1,2}$/,
+      path: /^\/search$/,
+      fromSafari: (p) => /^(aapl|iphone$|ipad$)/.test(p.get('fr') ?? '') || p.get('.tsrc') === 'apple',
+      template: (host) => `https://${host}/search?ei=utf-8&fr=aaplw&p=%s`,
+    },
+  };
+  const SAFARI_DEFAULT = Object.freeze({ id: 'google', name: 'Google', template: SAFARI_ENGINES.google.template('www.google.com') });
+
+  // A search Safari made from its address bar → { id, name, template }, else null.
+  function detectSafariSearch(url) {
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      return null;
+    }
+    if (u.protocol !== 'https:') return null;
+    for (const [id, e] of Object.entries(SAFARI_ENGINES)) {
+      if (e.host.test(u.hostname) && e.path.test(u.pathname) && e.fromSafari(u.searchParams)) {
+        return { id, name: e.name, template: e.template(u.hostname) };
+      }
+    }
+    return null;
+  }
+
+  // The engine Margin's searches use in Safari: learned, else the default.
+  const safariEngine = (settings) => (settings?.safariSearch?.template?.includes('%s') ? settings.safariSearch : SAFARI_DEFAULT);
+  const searchUrl = (query, settings) => safariEngine(settings).template.replace('%s', encodeURIComponent(query));
+  // For display: which engine a search goes to.
+  const engineLabel = (settings, platform = Margin.platform) =>
+    (platform?.search === 'browser' ? 'Chrome’s search engine' : safariEngine(settings).name);
 
   const WITH_SCHEME = /^(https?|file|ftp):\/\//i;
   const OPAQUE_SCHEME = /^(about|data|mailto|view-source):/i;
   const LOCAL = /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\])(:\d+)?([/?#]\S*)?$/i;
   const DOMAIN = /^([a-z0-9-]+\.)+[a-z][a-z0-9-]*\.?(:\d+)?([/?#]\S*)?$/i;
 
-  // Text typed into the launcher or palette → { kind: 'url' | 'search', url }.
-  function resolveInput(text, engine = DEFAULT_ENGINE) {
+  // Text typed into the launcher or palette → { kind: 'url', url } or
+  // { kind: 'search', query } (run by the background with the browser's engine).
+  function resolveInput(text) {
     const input = (text ?? '').trim();
     if (!input) return null;
     if (WITH_SCHEME.test(input) || OPAQUE_SCHEME.test(input)) return { kind: 'url', url: input };
@@ -26,8 +91,7 @@
       if (LOCAL.test(input)) return { kind: 'url', url: `http://${input}` };
       if (DOMAIN.test(input)) return { kind: 'url', url: `https://${input}` };
     }
-    const template = engine?.includes('%s') ? engine : DEFAULT_ENGINE;
-    return { kind: 'search', url: template.replace('%s', encodeURIComponent(input)) };
+    return { kind: 'search', query: input };
   }
 
   // ---- fuzzy matching ---------------------------------------------------------
@@ -164,16 +228,19 @@
         .map((r) => r.item);
     }
     ranked = ranked.slice(0, limit);
-    const target = resolveInput(q, state.settings?.searchEngine);
+    const target = resolveInput(q);
     if (target) {
+      const isUrl = target.kind === 'url';
       const go = {
         id: 'go',
         kind: 'go',
-        title: target.kind === 'url' ? `Open ${target.url}` : `Search for “${q}”`,
-        badge: target.kind === 'url' ? 'Open' : 'Search',
-        subtitle: target.kind === 'url' ? '' : target.url,
-        emoji: target.kind === 'url' ? '↗' : '⌕',
-        action: ctx.inNewTab ? { local: 'navigate', url: target.url } : { type: 'newTab', windowId: ctx.windowId, url: target.url },
+        title: isUrl ? `Open ${target.url}` : `Search for “${q}”`,
+        badge: isUrl ? 'Open' : 'Search',
+        subtitle: isUrl ? '' : engineLabel(state.settings),
+        emoji: isUrl ? '↗' : '⌕',
+        action: isUrl
+          ? (ctx.inNewTab ? { local: 'navigate', url: target.url } : { type: 'newTab', windowId: ctx.windowId, url: target.url })
+          : (ctx.inNewTab ? { local: 'search', query: target.query } : { type: 'search', query: target.query, windowId: ctx.windowId }),
       };
       if (target.kind === 'url') ranked.unshift(go);
       else ranked.push(go);
@@ -181,5 +248,8 @@
     return ranked;
   }
 
-  Margin.search = { SEARCH_ENGINES, DEFAULT_ENGINE, resolveInput, fuzzyScore, paletteItems, rankPalette };
+  Margin.search = {
+    SAFARI_ENGINES, SAFARI_DEFAULT, detectSafariSearch, safariEngine, searchUrl, engineLabel,
+    resolveInput, fuzzyScore, paletteItems, rankPalette,
+  };
 })();

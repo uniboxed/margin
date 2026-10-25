@@ -22,7 +22,9 @@
     sidebarPinnedOpen: false,
     archiveAfterHours: 12,
     paletteShortcut: 'Alt+KeyK',
-    searchEngine: 'https://duckduckgo.com/?q=%s',
+    // Searches use the browser's engine (shared/search.js). Safari: the one
+    // learned from Safari's own address-bar searches, { id, name, template, at }.
+    safariSearch: null,
     sidebarWidth: 260, // px, resizable 160–500 in 10px steps (shared/view.js)
     blockGestures: true, // Safari: no swipe back/forward, pinch for all tabs, or page bounce (shared/gestures.js)
     pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.js)
@@ -72,7 +74,7 @@
       archive: Array.isArray(raw.archive) ? raw.archive : [],
       settings: {
         ...base.settings,
-        ...raw.settings,
+        ...withoutKeys(raw.settings, REMOVED_SETTINGS),
         shortcuts: normalizeShortcuts(raw.settings, base.settings),
         shortcutDefaults: base.settings.shortcutDefaults,
       },
@@ -80,6 +82,11 @@
       favicons: { ...raw.favicons },
     };
   }
+
+  // Settings that no longer exist: `searchEngine` (Margin's own engine
+  // choice, replaced by the browser's).
+  const REMOVED_SETTINGS = ['searchEngine'];
+  const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 
   // Saved shortcuts include the defaults of the build that saved them. When
   // the defaults change (another build, e.g. Safari's ⌥⌘↓/↑ for tabs after

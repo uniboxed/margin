@@ -6,7 +6,8 @@ let ctx, server;
 before(async () => {
   ctx = await launch();
   server = await startServer();
-  await ctx.context.route(/^https:\/\/duckduckgo\.com\//, (route) => route.fulfill({ contentType: 'text/html', body: '<title>ddg</title>' }));
+  // Never hit real sites (search engines) from tests: the test server is http.
+  await ctx.context.route(/^https:\/\//, (route) => route.fulfill({ contentType: 'text/html', body: '<title>engine</title>' }));
 });
 after(async () => {
   await ctx?.context.close();
@@ -68,7 +69,7 @@ test('arrow keys move the selection; actions run (Toggle sidebar)', async () => 
   await page.close();
 });
 
-test('"Search for" opens a new tab on the search engine', async () => {
+test('"Search for" opens a new tab, searching with Chrome\'s own search engine', async () => {
   const page = await openPage('palette-go');
   await page.keyboard.press('Alt+KeyK');
   await page.keyboard.type('margin browser');
@@ -81,7 +82,7 @@ test('"Search for" opens a new tab on the search engine', async () => {
   const opened = ctx.context.waitForEvent('page');
   await page.keyboard.press('Enter');
   const tab = await opened;
-  await tab.waitForURL('https://duckduckgo.com/?q=margin%20browser');
+  await tab.waitForURL((url) => url.protocol === 'https:' && [...url.searchParams.values()].includes('margin browser'));
   await tab.close();
   await page.close();
 });

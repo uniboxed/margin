@@ -111,3 +111,12 @@ test('the validators agree with what was verified by hand', () => {
   assert.equal(webkitShortcut('Command+Alt+Shift+Down'), null, 'WebKit: at most 3 parts');
   assert.equal(webkitShortcut('Hyper+Down'), null);
 });
+
+test('the `search` permission (chrome.search) is Chrome-only; Safari has no search API', () => {
+  assert.ok(manifestFor('chrome').permissions.includes('search'));
+  assert.ok(!manifestFor('safari').permissions.includes('search'));
+  const base = manifestFor('safari').permissions;
+  assert.deepEqual(manifestFor('chrome').permissions.filter((p) => p !== 'search'), base, 'otherwise the same list');
+  assert.equal(PROFILES.chrome.search, 'browser');
+  assert.equal(PROFILES.safari.search, 'learn');
+});

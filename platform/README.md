@@ -5,7 +5,7 @@
 | Folder | What it overrides | Build |
 |---|---|---|
 | `platform/safari/manifest.json` | Top-level manifest keys (today: none) | `dist/safari/` |
-| `platform/chrome/manifest.json` | Top-level manifest keys (today: none) | `dist/chrome/` |
+| `platform/chrome/manifest.json` | Top-level manifest keys, plus `add_permissions` (appended to the shared list). Today: the `search` permission (`chrome.search.query`: searches use Chrome's default engine; Safari has no such API) | `dist/chrome/` |
 
 The shortcut `commands` are ⌃⌘ + arrows in both (in `extension/manifest.json`). Safari's build once had ⌥⌘↓/↑ commands for tabs; they didn't respond in Safari, while ⌃⌘ does, and Chrome refuses ⌘⌥ commands outright.
 

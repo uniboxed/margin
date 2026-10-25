@@ -6,8 +6,8 @@ let ctx, server;
 before(async () => {
   ctx = await launch();
   server = await startServer();
-  // Never hit real search engines from tests.
-  await ctx.context.route(/^https:\/\/(duckduckgo\.com|www\.google\.com)\//, (route) =>
+  // Never hit real sites (search engines) from tests: the test server is http.
+  await ctx.context.route(/^https:\/\//, (route) =>
     route.fulfill({ contentType: 'text/html', body: '<title>engine</title>' }),
   );
 });
@@ -32,21 +32,18 @@ test('launcher: a host:port entry navigates this tab', async () => {
   await page.close();
 });
 
-test('launcher: other text searches DuckDuckGo by default, and the engine is a setting', async () => {
+// Does `url` carry `text` as a query parameter (any engine's name for it)?
+const searchesFor = (url, text) => [...new URL(url).searchParams.values()].includes(text);
+
+test('launcher: other text searches with Chrome\'s own search engine (chrome.search), not one of Margin\'s', async () => {
   const page = await newTab();
+  assert.equal(await page.locator('#engine').count(), 0, 'no engine picker');
+  await page.click('#settings summary');
+  assert.match(await page.textContent('#engine-info'), /Chrome’s search engine/);
   await page.fill('#query', 'hello world');
   await page.press('#query', 'Enter');
-  await page.waitForURL('https://duckduckgo.com/?q=hello%20world');
-
-  const again = await newTab();
-  await again.click('#settings summary');
-  await again.selectOption('#engine', { label: 'Google' });
-  await waitFor(() => ctx.worker.evaluate(() => chrome.storage.local.get('settings').then((s) => s.settings.searchEngine.includes('google'))));
-  await again.fill('#query', 'margin');
-  await again.press('#query', 'Enter');
-  await again.waitForURL('https://www.google.com/search?q=margin');
+  await page.waitForURL((url) => url.protocol === 'https:' && searchesFor(url.href, 'hello world'));
   await page.close();
-  await again.close();
 });
 
 test('launcher: pins of the active space show as tiles; a tile focuses or opens its page', async () => {

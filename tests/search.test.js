@@ -4,13 +4,9 @@ import '../extension/shared/platform.js';
 import '../extension/shared/search.js';
 import '../extension/state/model.js';
 
-const { DEFAULT_SETTINGS } = globalThis.Margin.model;
+const { DEFAULT_SETTINGS, normalizeState } = globalThis.Margin.model;
 
-const { resolveInput, DEFAULT_ENGINE } = globalThis.Margin.search;
-
-test('default engine matches the model default setting', () => {
-  assert.equal(DEFAULT_ENGINE, DEFAULT_SETTINGS.searchEngine);
-});
+const { resolveInput, detectSafariSearch, searchUrl, safariEngine, engineLabel, SAFARI_DEFAULT } = globalThis.Margin.search;
 
 test('URLs pass through or get a scheme', () => {
   assert.deepEqual(resolveInput('https://a.com/x'), { kind: 'url', url: 'https://a.com/x' });
@@ -21,13 +17,65 @@ test('URLs pass through or get a scheme', () => {
   assert.deepEqual(resolveInput('about:blank'), { kind: 'url', url: 'about:blank' });
 });
 
-test('everything else is a search on the configured engine', () => {
-  assert.equal(resolveInput('hello world').url, 'https://duckduckgo.com/?q=hello%20world');
-  assert.equal(resolveInput('c++').url, 'https://duckduckgo.com/?q=c%2B%2B');
+test('everything else is a search, left to the browser\'s engine', () => {
+  assert.deepEqual(resolveInput('  hello world '), { kind: 'search', query: 'hello world' });
   assert.equal(resolveInput('node.js tutorial').kind, 'search');
-  assert.equal(resolveInput('margin', 'https://www.google.com/search?q=%s').url, 'https://www.google.com/search?q=margin');
-  assert.equal(resolveInput('x', 'garbage').url, 'https://duckduckgo.com/?q=x');
   assert.equal(resolveInput('   '), null);
+});
+
+test('no search engine of Margin\'s own: the old setting is gone, also from saved settings', () => {
+  assert.equal('searchEngine' in DEFAULT_SETTINGS, false);
+  assert.equal(DEFAULT_SETTINGS.safariSearch, null);
+  const s = normalizeState({ settings: { searchEngine: 'https://duckduckgo.com/?q=%s', archiveAfterHours: 3 } });
+  assert.equal('searchEngine' in s.settings, false);
+  assert.equal(s.settings.archiveAfterHours, 3);
+});
+
+// Real Safari address-bar searches (macOS, and iOS where they differ), as in
+// SafariKeywordSearch's tests (github.com/arnemart/SafariKeywordSearch).
+test('Safari\'s own address-bar searches are recognized, with the engine and a matching template', () => {
+  const cases = [
+    ['https://www.google.com/search?client=safari&rls=en&q=monkey&ie=UTF-8&oe=UTF-8', 'Google', 'https://www.google.com/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8'],
+    ['https://www.google.co.uk/search?q=monkey&ie=UTF-8&oe=UTF-8&hl=en&client=safari&iga=1', 'Google', 'https://www.google.co.uk/search?client=safari&rls=en&q=%s&ie=UTF-8&oe=UTF-8'],
+    ['https://duckduckgo.com/?q=monkey&t=osx&ia=web', 'DuckDuckGo', 'https://duckduckgo.com/?q=%s&t=osx&ia=web'],
+    ['https://duckduckgo.com/?q=monkey&t=iphone&ia=web', 'DuckDuckGo', 'https://duckduckgo.com/?q=%s&t=osx&ia=web'],
+    ['https://www.bing.com/search?q=monkey&form=APMCS1&PC=APMC', 'Bing', 'https://www.bing.com/search?q=%s&form=APMCS1&PC=APMC'],
+    ['https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=monkey', 'Yahoo', 'https://search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
+    ['https://no.search.yahoo.com/search?p=monkey&fr=iphone&.tsrc=apple', 'Yahoo', 'https://no.search.yahoo.com/search?ei=utf-8&fr=aaplw&p=%s'],
+    ['https://www.ecosia.org/search?q=monkey&tts=st_asaf_macos', 'Ecosia', 'https://www.ecosia.org/search?q=%s&tts=st_asaf_macos'],
+  ];
+  for (const [url, name, template] of cases) {
+    const found = detectSafariSearch(url);
+    assert.ok(found, url);
+    assert.equal(found.name, name, url);
+    assert.equal(found.template, template, url);
+  }
+});
+
+test('other searches and look-alikes are not Safari\'s engine', () => {
+  for (const url of [
+    'https://www.google.com/search?q=monkey', // searched on google.com itself
+    'https://duckduckgo.com/?q=monkey', // on duckduckgo.com itself
+    'https://www.bing.com/search?q=monkey&form=QBLH',
+    'https://maps.google.com/?q=monkey&client=safari',
+    'https://docs.google.com/search?client=safari&q=x',
+    'https://notgoogle.com/search?client=safari&q=monkey',
+    'https://www.google.com.evil.com/search?client=safari&q=x',
+    'http://www.google.com/search?client=safari&q=x', // not https
+    'https://example.com/?q=monkey&t=osx',
+    'not a url',
+    undefined,
+  ]) assert.equal(detectSafariSearch(url), null, String(url));
+});
+
+test('searches in Safari use the learned engine, else Safari\'s default (Google)', () => {
+  assert.equal(searchUrl('hello world', {}), 'https://www.google.com/search?client=safari&rls=en&q=hello%20world&ie=UTF-8&oe=UTF-8');
+  assert.equal(safariEngine(null), SAFARI_DEFAULT);
+  const settings = { safariSearch: detectSafariSearch('https://duckduckgo.com/?q=x&t=osx&ia=web') };
+  assert.equal(searchUrl('c++ & more', settings), 'https://duckduckgo.com/?q=c%2B%2B%20%26%20more&t=osx&ia=web');
+  assert.equal(searchUrl('x', { safariSearch: { name: 'Broken', template: 'https://nope' } }), searchUrl('x', {}), 'a template without %s is ignored');
+  assert.equal(engineLabel(settings, { search: 'learn' }), 'DuckDuckGo');
+  assert.equal(engineLabel(settings, { search: 'browser' }), 'Chrome’s search engine');
 });
 
 // ---- fuzzy + palette --------------------------------------------------------

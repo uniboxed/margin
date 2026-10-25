@@ -15,6 +15,9 @@
       // Trackpad swipe back/forward and pinch-for-all-tabs can be blocked
       // (shared/gestures.js; setting `blockGestures`).
       blockGestures: true,
+      // No search API: the engine is learned from Safari's own searches
+      // (shared/search.js).
+      search: 'learn',
       // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
       // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
       // both builds: verified working in Safari, while ⌥⌘↓/↑ as a manifest
@@ -34,6 +37,8 @@
       // Not needed (and a page-wide non-passive wheel listener costs scroll
       // performance in Chrome).
       blockGestures: false,
+      // chrome.search.query: Chrome's default engine.
+      search: 'browser',
       // Same as the manifest commands (⌃⌘ + arrows; Chrome refuses ⌘⌥ there
       // and then won't load the extension at all).
       navigation: {
