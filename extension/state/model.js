@@ -23,7 +23,8 @@
     color: '#6c5ce7',
   });
 
-  const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'archive', 'settings', 'tabs'];
+  const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'archive', 'settings', 'tabs', 'favicons'];
+  const FAVICON_CAP = 150;
 
   function defaultState() {
     return {
@@ -36,6 +37,8 @@
       // Snapshot of open tabs, written by the background so content scripts
       // (which have no `tabs` API) can render from storage alone.
       tabs: {},
+      // Site icons Margin fetched itself (Safari gives none): { [origin]: { data, href, at } }.
+      favicons: {},
     };
   }
 
@@ -51,6 +54,7 @@
       archive: Array.isArray(raw.archive) ? raw.archive : [],
       settings: { ...base.settings, ...raw.settings },
       tabs: { ...raw.tabs },
+      favicons: { ...raw.favicons },
     };
   }
 
@@ -236,6 +240,15 @@
     return { ...state, archive: [entry, ...rest].slice(0, cap) };
   }
 
+  // Remember a site's icon; keeps the most recently fetched FAVICON_CAP sites.
+  function rememberFavicon(state, origin, { data, href, at }, cap = FAVICON_CAP) {
+    if (!origin || !data) return state;
+    const entries = Object.entries({ ...state.favicons, [origin]: { data, href, at } })
+      .sort((a, b) => b[1].at - a[1].at)
+      .slice(0, cap);
+    return { ...state, favicons: Object.fromEntries(entries) };
+  }
+
   function removeArchived(state, archiveId) {
     return { ...state, archive: state.archive.filter((a) => a.id !== archiveId) };
   }
@@ -280,6 +293,8 @@
     deleteSpace,
     archiveTab,
     removeArchived,
+    rememberFavicon,
+    FAVICON_CAP,
     staleTabs,
     archiveEntryForTab,
   };

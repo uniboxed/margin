@@ -34,7 +34,7 @@ Additional Safari-only checks:
 | # | Result |
 |---|--------|
 | 1 | ✅ Works once Safari → Settings → General → "New tabs open with" is set to Margin. Safari still focuses its address bar on the new tab, as expected |
-| 2 | ❌ Safari gives extensions no favicon: `tab.favIconUrl` is `""` for every tab (checked in the background console). Letter avatars are the permanent result |
+| 2 | ❌ Safari gives extensions no favicon: `tab.favIconUrl` is `""` for every tab. Since 2026-10-25 Margin fetches each site's own icon itself; see "Site icons" below |
 | 3 | ✅ Option+K opens the palette and Option+S toggles the sidebar. (Option+S did nothing while "Keep open" was on: fixed, it now switches back to auto-hide) |
 | 4 | ✅ `browser.alarms` is available (`[margin] auto-archive via browser.alarms`) |
 | 5 | ✅ Background shows "not loaded" when idle and starts on demand. Tab events reach it (`tabs`/`tabSpace` stay populated) |
@@ -140,3 +140,9 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] ⌘⌥→ / ⌘⌥← switch to the next/previous space. In auto-hide mode the sidebar peeks open for about a second showing the new space. With "Keep open" it just switches.
 - [ ] Both work on Margin's new-tab page (click the page first; Safari focuses the address bar on a new tab).
 - [ ] Note any of the four combos that Safari or macOS swallows (nothing happens). Record them in DECISIONS.md.
+
+## Site icons
+
+- [ ] Visit a few sites (github.com, google.com, youtube.com). Within a second or two of each page loading, its sidebar row shows the real site icon instead of a letter. Icons also show in the palette, on pinned tiles on the new tab, and for closed pins and archived tabs.
+- [ ] Check what was stored: background console → `browser.storage.local.get('favicons').then(s => Object.entries(s.favicons).map(([o, f]) => [o, f.data.length]))`. Entries are `data:image/png…` of roughly 1–3k characters (larger means Safari couldn't shrink them; note it).
+- [ ] A site whose icon can't be fetched still shows a colored letter, with no errors in the page.

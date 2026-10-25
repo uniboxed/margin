@@ -308,3 +308,35 @@ test('view.cycleSpace: next/previous space per window, wrapping', () => {
   assert.equal(view.cycleSpace(s, 1, 1), 'personal', 'wraps');
   assert.equal(view.cycleSpace(s, 2, 1), 'work', 'other window keeps its own space');
 });
+
+test('favicons: pick the best icon link, else /favicon.ico', () => {
+  const page = 'https://example.com/a/b';
+  const L = (rel, href, extra = {}) => ({ rel, href, ...extra });
+  assert.equal(view.pickIconHref([], page), 'https://example.com/favicon.ico');
+  assert.equal(view.pickIconHref([], 'about:blank'), null, 'non-web page');
+  assert.equal(view.pickIconHref([
+    L('apple-touch-icon', 'https://example.com/apple.png'),
+    L('icon', 'https://example.com/big.png', { sizes: '192x192' }),
+    L('icon', 'https://example.com/32.png', { sizes: '32x32' }),
+  ], page), 'https://example.com/32.png');
+  assert.equal(view.pickIconHref([
+    L('icon', 'https://example.com/32.png', { sizes: '32x32' }),
+    L('icon', 'https://cdn.example.com/i.svg', { type: 'image/svg+xml' }),
+  ], page), 'https://cdn.example.com/i.svg', 'scalable wins');
+  assert.equal(view.pickIconHref([L('shortcut icon', 'https://example.com/f.ico')], page), 'https://example.com/f.ico');
+  assert.equal(view.pickIconHref([L('apple-touch-icon', 'https://example.com/apple.png')], page), 'https://example.com/apple.png');
+  assert.equal(view.pickIconHref([L('icon', 'javascript:alert(1)'), L('stylesheet', 'https://example.com/s.css')], page), 'https://example.com/favicon.ico');
+  assert.equal(view.pickIconHref([L('icon', 'data:image/png;base64,AAAA')], page), 'data:image/png;base64,AAAA');
+});
+
+test('favicons: browser icon first, else the fetched one for that site; cache is capped', () => {
+  let s = M.defaultState();
+  s = M.rememberFavicon(s, 'https://a.com', { data: 'data:image/png;base64,AA', href: 'https://a.com/favicon.ico', at: 1 });
+  assert.equal(view.iconFor(s, { url: 'https://a.com/page', favIconUrl: '' }), 'data:image/png;base64,AA', 'Safari: empty favIconUrl');
+  assert.equal(view.iconFor(s, { url: 'https://a.com/page', favIconUrl: 'https://a.com/x.png' }), 'https://a.com/x.png', 'browser icon wins');
+  assert.equal(view.iconFor(s, { url: 'https://b.com/', favIconUrl: '' }), '', 'unknown site: letter avatar');
+  assert.equal(view.iconFor(s, { url: 'chrome://settings' }), '');
+  for (let i = 0; i < 10; i++) s = M.rememberFavicon(s, `https://s${i}.com`, { data: 'd', href: 'h', at: 10 + i }, 5);
+  assert.deepEqual(Object.keys(s.favicons).sort(), ['https://s5.com', 'https://s6.com', 'https://s7.com', 'https://s8.com', 'https://s9.com']);
+  assert.equal(M.rememberFavicon(s, null, { data: 'd', at: 1 }), s);
+});

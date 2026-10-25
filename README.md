@@ -10,7 +10,7 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 - **Custom new-tab page:** search/URL field, the space's pins as tiles, recently archived tabs, and settings.
 - **Auto-archive:** tabs left idle for 12 hours (configurable) close into a restorable archive.
 
-No accounts, no sync, no network requests of its own: no analytics, CDNs, or favicon services.
+No accounts, no sync, no analytics, CDNs, or favicon services. The only requests Margin makes are for the icon of each site you visit, fetched once from that site without cookies, because Safari doesn't give extensions favicons.
 
 ## Known limitations
 

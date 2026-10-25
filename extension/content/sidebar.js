@@ -281,6 +281,26 @@
     render();
   });
 
+  // Safari gives extensions no favicons: tell the background which icon this
+  // page uses (it fetches and stores it once per site). Again on load, for
+  // pages that add their icon from script.
+  let reportedIcon = null;
+  function reportIcon() {
+    const links = [...document.querySelectorAll('link[rel]')].map((l) => ({
+      rel: l.rel,
+      href: l.href,
+      sizes: l.getAttribute('sizes') ?? '',
+      type: l.type,
+    }));
+    const href = Margin.view.pickIconHref(links, location.href);
+    if (!href || href === reportedIcon) return;
+    reportedIcon = href;
+    send('pageIcon', { href });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reportIcon, { once: true });
+  else reportIcon();
+  addEventListener('load', reportIcon, { once: true });
+
   api.runtime.onMessage.addListener((message) => {
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();

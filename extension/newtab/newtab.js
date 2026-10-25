@@ -120,7 +120,7 @@ function renderLauncher() {
   $('pins-section').hidden = view.pins.length === 0;
   $('pin-tiles').replaceChildren(
     ...view.pins.map((p) =>
-      el(document, 'li', { class: 'tile', 'data-pin-id': p.id, title: p.url }, avatar(document, p), el(document, 'span', { class: 'title', text: p.title })),
+      el(document, 'li', { class: 'tile', 'data-pin-id': p.id, title: p.url }, avatar(document, { ...p, favIconUrl: Margin.view.iconFor(state, p) }), el(document, 'span', { class: 'title', text: p.title })),
     ),
   );
 
@@ -132,7 +132,7 @@ function renderLauncher() {
   $('archive-list').replaceChildren(
     ...archive.map((a) =>
       el(document, 'li', { 'data-archive-id': a.id, title: a.url },
-        avatar(document, a),
+        avatar(document, { ...a, favIconUrl: Margin.view.iconFor(state, a) }),
         el(document, 'span', { class: 'title', text: a.title || a.url }),
         el(document, 'span', { class: 'when', text: ago(a.closedAt) })),
     ),

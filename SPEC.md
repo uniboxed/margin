@@ -19,7 +19,7 @@ You are running in a **Linux cloud session** with no Xcode, no `xcodebuild`, no 
 - **Isolate our UI in a closed Shadow DOM** so site CSS can't affect it and ours can't leak.
 - **Safari has no `tabs.hide`, no `bookmarks`, no `history` API, no `tabGroups`.** "Spaces" are a Margin concept: the sidebar filters to show the active space's tabs. Safari's own tab bar will still show all tabs — that's accepted.
 - **The background script can be unloaded at any time** (non-persistent). Never rely on in-memory state; persist everything to `browser.storage.local` and rehydrate on wake.
-- **No third-party network requests.** No favicon services, no analytics, no CDNs. If `tab.favIconUrl` is unavailable, render a colored letter avatar.
+- **No third-party network requests.** No favicon services, no analytics, no CDNs. If `tab.favIconUrl` is unavailable (always, in Safari), the background fetches the visited site's own icon once (from the page's `<link rel=icon>` or `/favicon.ico`; no cookies; cross-site icon hosts must be https and non-local), shrinks it and stores it as a `data:` URL so showing it makes no further requests (Tirth's decision, 2026-10-25). If that fails, render a colored letter avatar.
 - **Out of scope:** split view, iframing other sites, header stripping, a native companion app, iOS, syncing, accounts, monetization.
 
 ## Tech choices (decided)

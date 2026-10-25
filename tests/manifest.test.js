@@ -38,7 +38,7 @@ test('every file the manifest and new tab reference exists', () => {
 
 test('all extension scripts parse', () => {
   const scripts = [
-    'background.js', 'state/model.js', 'newtab/newtab.js',
+    'background.js', 'state/model.js', 'newtab/newtab.js', 'shared/icons.js',
     ...manifest.content_scripts.flatMap((c) => c.js),
   ];
   for (const s of scripts) execFileSync(process.execPath, ['--check', new URL(s, root).pathname]);
@@ -46,7 +46,7 @@ test('all extension scripts parse', () => {
 
 test('no third-party URLs in extension code (search engine templates excepted)', () => {
   const allowed = /duckduckgo\.com|google\.com|bing\.com|ecosia\.org|startpage\.com|www\.w3\.org/;
-  for (const f of ['background.js', 'state/model.js', 'shared/view.js', 'shared/ui.js', 'shared/search.js', 'shared/shortcuts.js',
+  for (const f of ['background.js', 'state/model.js', 'shared/view.js', 'shared/ui.js', 'shared/search.js', 'shared/shortcuts.js', 'shared/icons.js',
     'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'content/docked.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
     const text = readFileSync(new URL(f, root), 'utf8');
     for (const [url] of text.matchAll(/https?:\/\/[^\s'"`)$]+/g)) if (!url.endsWith("://")) assert.match(url, allowed, `${f}: ${url}`);

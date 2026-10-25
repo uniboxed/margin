@@ -93,5 +93,50 @@
     return state.spaces[(at + dir + state.spaces.length) % state.spaces.length].id;
   }
 
-  Margin.view = { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, cycleTab, cycleSpace };
+  // ---- favicons ---------------------------------------------------------------
+  // Safari never gives extensions tab.favIconUrl. Each page reports its own
+  // icon link, the background fetches it once per site and stores it as a
+  // data: URL in state.favicons[origin] (see background.js pageIcon).
+
+  function originOf(url) {
+    try {
+      const u = new URL(url);
+      return /^https?:$/.test(u.protocol) ? u.origin : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Best icon among a page's <link rel=…icon…> elements ({rel, href, sizes,
+  // type}): a scalable or ~16–64px "icon" first, then any "icon", then
+  // apple-touch-icon, else /favicon.ico. Returns an absolute http(s) or
+  // data:image URL, or null for non-web pages.
+  function pickIconHref(links, pageUrl) {
+    const origin = originOf(pageUrl);
+    if (!origin) return null;
+    const usable = (href) => /^https?:/i.test(href ?? '') || /^data:image\//i.test(href ?? '');
+    const score = (l) => {
+      const rel = (l.rel ?? '').toLowerCase().split(/\s+/);
+      if (!rel.some((r) => r === 'icon' || r === 'apple-touch-icon' || r === 'apple-touch-icon-precomposed')) return -1;
+      if (!usable(l.href)) return -1;
+      if (!rel.includes('icon')) return 1; // apple-touch-icon: large, last resort
+      const sizes = (l.sizes ?? '').toLowerCase();
+      if ((l.type ?? '').includes('svg') || sizes === 'any') return 5;
+      const px = Math.max(0, ...[...sizes.matchAll(/(\d+)x\d+/g)].map((m) => Number(m[1])));
+      if (px >= 16 && px <= 64) return 4;
+      return px ? 2 : 3;
+    };
+    const best = links.map((l) => ({ l, s: score(l) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s)[0];
+    return best ? best.l.href : `${origin}/favicon.ico`;
+  }
+
+  // What to show for a tab/pin/archive entry: the browser's icon if it gave
+  // one (Chrome does), else the icon Margin fetched for that site.
+  function iconFor(state, item) {
+    if (/^(https?|data):/.test(item?.favIconUrl ?? '')) return item.favIconUrl;
+    const origin = originOf(item?.url);
+    return (origin && state?.favicons?.[origin]?.data) || '';
+  }
+
+  Margin.view = { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };
 })();
