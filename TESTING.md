@@ -186,3 +186,9 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] ⌃⌘→ / ⌃⌘← switch spaces (the sidebar peeks open).
 - [ ] They also work while the address bar has focus and on pages where Margin has no sidebar (e.g. a PDF). That's the extension-command path: if they don't work there but do on normal pages, Safari isn't delivering the commands, so note it.
 - [ ] Holding ⌃⌘↓ repeats (page path) on normal pages.
+
+## Page-load indicator
+
+- [ ] With "Keep open" on, reload a page (⌘R): a small dark pill appears centered in the gray strip above the page, pulses gently while it loads, and fades out when done. Click a link to another page: same.
+- [ ] In auto-hide mode the pill shows at the very top of the page, centered on the window.
+- [ ] It never blocks clicks, and very fast pages don't leave it behind.

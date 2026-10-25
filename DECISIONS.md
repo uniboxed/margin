@@ -229,3 +229,10 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
   - **Instant highlight:** activation is recorded immediately.
   - **No re-focusing:** `focusTab` only focuses a window that isn't already focused.
 - **Custom shortcuts** recorded in Settings work through the page listener only. Manifest keys are fixed, and Safari has no UI to change them.
+
+## Page-load indicator (2026-10-25)
+
+- **From Tirth's Arc recording (frame by frame):** a small dark rounded pill centered horizontally over the page, in the frame's top strip above the page card. It fades in while widening slightly (81 → 95px wide on a 2× capture, about 48×4pt), stays while the page loads, and fades out. About 0.8s per reload in the clips.
+- **Margin's version:** `.loader` in the sidebar's shadow root, 48×4px, radius 2px, `rgba(28,28,30,.88)`. Its fade/scale transition is 250ms, and a gentle opacity pulse runs while loading (none with `prefers-reduced-motion`). With "Keep open" it's centered in the 8px top strip over the page area (`left: calc(width + (100vw - width - 8px)/2)`). In auto-hide mode it's at `top: 2px`, centered on the window. `pointer-events: none`.
+- **When:** if the page is still loading at Margin's first render, it shows until the `load` event, for at least 500ms (no flicker) and at most 15s (pages that never finish). It starts on first render, not at injection, so it appears in the right place (docked or not) instead of jumping.
+- **Limit:** Safari runs Margin's content script about 0.2s into a load, so the pill can't appear before that, and never during the blank first instant of a new page. A page restored instantly from the back/forward cache doesn't load, so it gets no pill.

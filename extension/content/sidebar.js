@@ -66,12 +66,16 @@
   function applyLiveWidth() {
     widthFrame = null;
     frame.style.setProperty('--width', `${liveWidth}px`);
+    loader.style.setProperty('--width', `${liveWidth}px`);
     if (pushed) setPushed(true, liveWidth);
   }
   // Arc-style frame: sidebar-colored strips around the page with rounded
   // corners, shown while the sidebar is open. Never takes clicks.
   const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
-  shadow.append(frame, sidebar.el);
+  // Arc-style page-load indicator: a small dark pill, centered over the page
+  // (in the frame's top strip when docked), shown while the page loads.
+  const loader = Margin.ui.el(document, 'div', { class: 'loader', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'bar' }));
+  shadow.append(frame, loader, sidebar.el);
 
   // Styles are bundled in content/styles.js and applied synchronously, so the
   // panel is styled from the first frame (no fetch, no unstyled flash).
@@ -111,10 +115,39 @@
     sidebar.el.classList.toggle('open', open);
     sidebar.el.classList.toggle('docked', docked);
     frame.classList.toggle('open', docked);
+    loader.classList.toggle('in-frame', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
     if (state) syncPlaceholder();
     frame.style.setProperty('--width', `${sidebar.width()}px`);
+    loader.style.setProperty('--width', `${sidebar.width()}px`);
+  }
+
+  // ---- page-load indicator --------------------------------------------------
+  // Margin's script starts ~0.2s into a load in Safari (it can't draw
+  // earlier). If the page is still loading by Margin's first render, show the
+  // pill until the load event: at least LOADER_MIN_MS so it never flickers,
+  // at most LOADER_MAX_MS in case a page never finishes.
+  const LOADER_MIN_MS = 500;
+  const LOADER_MAX_MS = 15000;
+  let loaderShownAt = null;
+  let loaderMaxTimer = null;
+  function startLoader() {
+    if (loaderShownAt != null || document.readyState === 'complete') return;
+    loaderShownAt = performance.now();
+    loader.classList.add('on');
+    host.dataset.loading = 'true'; // test/debug hook
+    addEventListener('load', stopLoader, { once: true });
+    loaderMaxTimer = setTimeout(stopLoader, LOADER_MAX_MS);
+  }
+  function stopLoader() {
+    if (loaderShownAt == null) return;
+    clearTimeout(loaderMaxTimer);
+    const wait = Math.max(0, LOADER_MIN_MS - (performance.now() - loaderShownAt));
+    setTimeout(() => {
+      loader.classList.remove('on');
+      host.dataset.loading = 'false';
+    }, wait);
   }
 
   // ---- push (only while "Keep open" is on) ---------------------------------
@@ -253,6 +286,7 @@
     if (!reason) setOpen(pinnedOpen());
     if (firstRender) {
       firstRender = false;
+      startLoader(); // now its position (docked or not) is known
       // performance.now() counts from navigation start: how long the page
       // went without its sidebar (see TESTING.md).
       timing.rendered = Math.round(performance.now());
