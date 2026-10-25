@@ -41,14 +41,19 @@
 }
 .margin-sidebar *, .margin-sidebar *::before, .margin-sidebar *::after { box-sizing: border-box; }
 
-/* Overlay: fixed on the left, off-screen until revealed. Same color as the
-   frame, no edge of its own, so sidebar + frame read as one surface. */
+/* Hover (auto-hide): a floating card over the page, inset from the edges.
+   Never moves the page. */
 .margin-sidebar.overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  height: 100vh;
-  transform: translateX(-100%);
+  top: 8px;
+  left: 8px;
+  height: calc(100vh - 16px);
+  border-radius: 12px;
+  background: var(--frame);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: 0 0 0 1px var(--border), 0 12px 40px rgba(0, 0, 0, 0.22);
+  transform: translateX(calc(-100% - 16px));
   visibility: hidden;
   transition: transform 160ms ease, visibility 0s linear 160ms;
 }
@@ -56,6 +61,21 @@
   transform: none;
   visibility: visible;
   transition: transform 160ms ease;
+}
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+  .margin-sidebar.overlay:not(.docked) { background: color-mix(in srgb, var(--frame) 92%, transparent); }
+}
+/* Keep open: docked flush to the window and opaque, so sidebar and frame
+   read as one surface around the (pushed) page. */
+.margin-sidebar.overlay.docked {
+  top: 0;
+  left: 0;
+  height: 100vh;
+  border-radius: 0;
+  background: var(--frame);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
 }
 
 /* Frame: covers the page edges around a rounded "card" whose left edge is

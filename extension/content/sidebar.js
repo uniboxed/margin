@@ -7,10 +7,13 @@
   const Margin = globalThis.Margin;
   Margin.content = { api };
 
-  const EDGE_PX = 6;
+  // Reveal zone. Margin opens instantly here; Safari's own sidebar only opens
+  // after the cursor rests at the very edge, which extensions can't disable.
+  const EDGE_PX = 10;
   const HIDE_DELAY_MS = 300;
   const WIDTH_PX = 260; // keep in sync with sidebar.css (--width, .frame .hole left)
-  const FRAME_PX = 8; // keep in sync with sidebar.css (.frame .hole inset)
+  const FRAME_PX = 8; // keep in sync with sidebar.css (.frame .hole inset, floating inset)
+  const HOVER_PX = WIDTH_PX + FRAME_PX; // right edge of the floating sidebar
 
   const host = Margin.ui.createHost(document, 'margin-sidebar-host');
   const shadow = host.attachShadow({ mode: 'closed' });
@@ -93,11 +96,15 @@
   let hideTimer = null;
 
   const pinnedOpen = () => !!state?.settings?.sidebarPinnedOpen;
+  // Hover: a floating card over the page. Keep open: docked, with the frame
+  // around the page and the page pushed right.
   function setOpen(open) {
+    const docked = open && pinnedOpen();
     sidebar.el.classList.toggle('open', open);
-    frame.classList.toggle('open', open);
+    sidebar.el.classList.toggle('docked', docked);
+    frame.classList.toggle('open', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
-    setPushed(open && pinnedOpen() && cssReady);
+    setPushed(docked && cssReady);
   }
 
   // ---- push (only while "Keep open" is on) ---------------------------------
@@ -166,7 +173,7 @@
     'mousemove',
     (e) => {
       if (e.clientX <= EDGE_PX) show('hover');
-      else if (e.clientX > WIDTH_PX) scheduleHide();
+      else if (e.clientX > HOVER_PX) scheduleHide();
       else if (hideTimer && sidebar.el.classList.contains('open')) {
         clearTimeout(hideTimer);
         hideTimer = null;

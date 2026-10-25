@@ -166,16 +166,26 @@ const htmlMargins = (page) =>
 const setKeepOpen = (on) =>
   ctx.worker.evaluate((v) => chrome.storage.local.get('settings').then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, sidebarPinnedOpen: v } })), on);
 
-test('Arc frame: wraps the page while the sidebar is open; hover never pushes the page', async () => {
+const panelRect = (page) =>
+  evalInShadow(page, 'margin-sidebar-host', function () {
+    const r = this.querySelector('.margin-sidebar').getBoundingClientRect();
+    return [Math.round(r.left), Math.round(r.top), Math.round(innerHeight - r.bottom)];
+  });
+
+test('hover: a floating sidebar over the page, no frame, page never moves', async () => {
   const page = await openPage('frame');
-  assert.equal((await frameState(page)).open, false);
   await page.mouse.move(400, 200);
-  await page.mouse.move(3, 200);
-  await waitFor(async () => (await frameState(page)).open);
-  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8]);
+  await page.mouse.move(8, 200); // within the 10px reveal zone
+  await waitFor(async () => (await sidebarSnapshot(page)).open);
+  await page.waitForTimeout(250); // slide-in transition
+  assert.deepEqual(await panelRect(page), [8, 8, 8], 'inset 8px from the edges');
+  assert.equal((await frameState(page)).open, false, 'frame only with Keep open');
   assert.equal((await htmlMargins(page)).left, '0px');
+  await page.mouse.move(264, 200); // over the card's right part: stays open
+  await page.waitForTimeout(450);
+  assert.equal((await sidebarSnapshot(page)).open, true);
   await page.mouse.move(700, 200);
-  await waitFor(async () => !(await frameState(page)).open, { timeout: 1500 });
+  await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 1500 });
   await page.close();
 });
 
@@ -192,6 +202,9 @@ test('Keep open pushes the page to start at the sidebar edge, without touching p
   assert.ok(h1Left >= 260, `content starts after the sidebar (h1 at ${h1Left})`);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll');
   assert.equal((await frameState(page)).open, true);
+  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], 'frame wraps the pushed page');
+  await page.waitForTimeout(250);
+  assert.deepEqual(await panelRect(page), [0, 0, 0], 'docked flush to the window');
 
   await page.emulateMedia({ media: 'print' });
   assert.equal((await htmlMargins(page)).left, '0px', 'print is unaffected');

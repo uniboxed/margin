@@ -120,8 +120,9 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Arc frame and Keep open push
 
-- [ ] Hover the left edge: the sidebar and an Arc-style frame (same color, rounded page corners, small margin top/right/bottom) slide in together. Moving away hides both. The page itself doesn't move.
-- [ ] Turn on "Keep open": the page reflows to start right after the sidebar, nothing is hidden behind it on normal sites, and there's no horizontal scrollbar.
+- [ ] Hover the left edge (anywhere within about 10px): the sidebar slides in as a floating rounded card with a shadow, 8px from the window edges. There's no frame and the page doesn't move. Moving right past the card hides it.
+- [ ] Note whether Safari's own sidebar still opens when you rest at the very edge. Margin can't block that, but it should rarely be needed now.
+- [ ] Turn on "Keep open": the sidebar docks flush left, the Arc frame appears, and the page reflows to start right after the sidebar, nothing is hidden behind it on normal sites, and there's no horizontal scrollbar.
 - [ ] With "Keep open" on, load a new site (e.g. github.com): the sidebar and push appear right away, not only after the page finishes loading, and there's no unstyled flash.
 - [ ] Sticky headers (github.com, conventionalcommits.org) stay inside the frame. Note any site whose fixed header sits under the sidebar or that looks broken.
 - [ ] ⌥S or "Auto-hide" removes the push immediately and the page goes back to full width.
