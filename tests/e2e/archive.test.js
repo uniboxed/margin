@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, clickInShadow, sidebarSnapshot, paletteSnapshot, tabsInBrowser, waitFor } from './helpers.js';
+import { launch, startServer, clickInShadow, sidebarSnapshot, paletteSnapshot, tabsInBrowser, waitFor, launcherUrl } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -33,7 +33,7 @@ test('stale, unpinned, inactive tabs are closed and archived; pinned and active 
   const pinned = await openPage('pinned-stale');
   const active = await openPage('active');
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   const tabs = await tabsInBrowser(ctx.worker);
   const id = (title) => tabs.find((t) => t.title === title).id;
   await send(nt, { type: 'pinTab', tabId: id('pinned-stale') });
@@ -64,7 +64,7 @@ test('closing from the sidebar archives; the new-tab archive list restores in pl
   await waitFor(async () => (await storage('archive'))[0]?.title === 'closeme');
 
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   await nt.waitForSelector('#archive-list li');
   assert.equal(await nt.textContent('#archive-list li .title'), 'closeme');
   await nt.click('#archive-list li');
@@ -77,7 +77,7 @@ test('closing from the sidebar archives; the new-tab archive list restores in pl
 test('archived tabs are restorable from the palette, into their space', async () => {
   const page = await openPage('palette-archive');
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const { result } = await send(nt, { type: 'createSpace', windowId, name: 'Old', emoji: '📦' });
   const victim = await openPage('archived-in-old');
@@ -104,7 +104,7 @@ test('archived tabs are restorable from the palette, into their space', async ()
 
 test('archive-after setting is editable on the new tab', async () => {
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   await nt.waitForSelector('#sidebar .margin-sidebar');
   await nt.click('#settings summary');
   assert.equal(await nt.inputValue('#archive-hours'), '12');

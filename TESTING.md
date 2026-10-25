@@ -146,3 +146,16 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Visit a few sites (github.com, google.com, youtube.com). Within a second or two of each page loading, its sidebar row shows the real site icon instead of a letter. Icons also show in the palette, on pinned tiles on the new tab, and for closed pins and archived tabs.
 - [ ] Check what was stored: background console → `browser.storage.local.get('favicons').then(s => Object.entries(s.favicons).map(([o, f]) => [o, f.data.length]))`. Entries are `data:image/png…` of roughly 1–3k characters (larger means Safari couldn't shrink them; note it).
 - [ ] A site whose icon can't be fetched still shows a colored letter, with no errors in the page.
+
+## ⌘T / ⌘N
+
+- [ ] On a website, ⌘T: the new tab disappears (it may flash briefly), you're back on the page, and the command palette is open. Note whether you can type straight away or the cursor is in Safari's address bar. Typing a URL or search + Enter opens it in a new tab.
+- [ ] ⌘N: a new window opens showing Margin's new-tab page with the palette open, and the sidebar shows the same space as the window you came from.
+- [ ] "+ New tab" in the sidebar opens the palette.
+- [ ] Palette → "Margin start page & settings" opens the launcher page (with Settings) and it stays open.
+
+## Which ⌘⌥-arrow keys reach Margin
+
+- [ ] On a normal website, open Web Inspector → Console and paste:
+  `addEventListener('keydown', e => e.key.startsWith('Arrow') && console.log('[key]', e.key, 'cmd', e.metaKey, 'opt', e.altKey), true)`
+  Then click the page and press ⌘⌥↑, ⌘⌥↓, ⌘⌥←, ⌘⌥→. Every combo that prints a `[key]` line reaches Margin; one that prints nothing is taken by Safari or another app first. Also look in Safari's **Window** menu for shortcuts shown next to "Show Previous/Next Tab", and check apps like Rectangle, Magnet, Raycast or BetterTouchTool for ⌘⌥ arrow bindings.

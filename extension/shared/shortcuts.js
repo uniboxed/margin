@@ -56,8 +56,12 @@
     addEventListener('keydown', (event) => {
       const action = Object.keys(NAVIGATION).find((name) => matches(event, NAVIGATION[name]));
       if (!action) return;
-      const { state, windowId, tabId } = getContext();
+      const { state, windowId } = getContext();
       if (!state || windowId == null) return;
+      // Before the background has told this page its tab id, the page being
+      // looked at is the window's active tab. (Without this, ↓ could "move"
+      // to the tab you're already on, so nothing seemed to happen.)
+      const tabId = getContext().tabId ?? Object.values(state.tabs ?? {}).find((t) => t.windowId === windowId && t.active)?.id ?? null;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (event.repeat && action.endsWith('Space')) return; // don't fly through spaces while held

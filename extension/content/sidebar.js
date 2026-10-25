@@ -48,7 +48,13 @@
   }
   Margin.content.send = send;
 
-  const sidebar = Margin.ui.createSidebar({ document, send, mode: 'overlay' });
+  const sidebar = Margin.ui.createSidebar({
+    document,
+    send,
+    mode: 'overlay',
+    // "+ New tab" opens the command palette here (palette.js sets openPalette).
+    onNewTab: () => (Margin.content.openPalette ? Margin.content.openPalette() : send('newTab', { windowId })),
+  });
   // Arc-style frame: sidebar-colored strips around the page with rounded
   // corners, shown while the sidebar is open. Never takes clicks.
   const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
@@ -301,7 +307,8 @@
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
 
-  api.runtime.onMessage.addListener((message) => {
+  api.runtime.onMessage.addListener((message, _, sendResponse) => {
+    if (message?.type === 'ping') return sendResponse('pong'); // background: is Margin running here?
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
     else Margin.content.onCommand?.(message.command);

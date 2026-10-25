@@ -103,6 +103,16 @@
     return { ...state, tabSpace: { ...state.tabSpace, [tabId]: activeSpaceId(state, windowId) } };
   }
 
+  // A window Margin hasn't seen yet (e.g. ⌘N) starts in the space of the
+  // window used most recently, instead of the first space.
+  function inheritSpace(state, windowId) {
+    if (state.activeSpaceByWindow[windowId] != null) return state;
+    const others = Object.values(state.tabs).filter((t) => t.windowId !== windowId);
+    if (!others.length) return state;
+    const recent = others.reduce((a, b) => ((b.lastActive ?? 0) > (a.lastActive ?? 0) ? b : a));
+    return setActiveSpace(state, windowId, activeSpaceId(state, recent.windowId));
+  }
+
   // Record a created/updated tab and give it a space if it has none.
   // `active` is only taken from the event for a tab we haven't seen yet: for
   // known tabs it's owned by activateTab(), because Safari can deliver an
@@ -117,7 +127,9 @@
       return assignTab(next, tab.id, tab.windowId);
     }
     record.active = false;
-    let next = { ...state, tabs: { ...state.tabs, [tab.id]: record } };
+    const newWindow = !Object.values(state.tabs).some((t) => t.windowId === tab.windowId);
+    let next = newWindow ? inheritSpace(state, tab.windowId) : state;
+    next = { ...next, tabs: { ...next.tabs, [tab.id]: record } };
     // A new tab that opens focused takes over its window's highlight even if
     // the browser never sends onActivated for it.
     if (tab.active) next = activateTab(next, tab.id, tab.windowId, now);
@@ -294,6 +306,7 @@
     archiveTab,
     removeArchived,
     rememberFavicon,
+    inheritSpace,
     FAVICON_CAP,
     staleTabs,
     archiveEntryForTab,

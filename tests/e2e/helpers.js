@@ -120,3 +120,7 @@ export function paletteSnapshot(page) {
     };
   });
 }
+
+// Margin's launcher page opened on purpose (not as a fresh ⌘T tab, which
+// hands off to the palette and closes itself).
+export const launcherUrl = (ctx) => `chrome-extension://${ctx.extensionId}/newtab/newtab.html#launcher`;

@@ -124,12 +124,14 @@
 
     const action = (id, title, act, extra = {}) =>
       items.push({ id: `action:${id}`, kind: 'action', title, subtitle: '', boost: 12, action: act, ...extra });
-    action('new-tab', 'New tab', { type: 'newTab', windowId: ctx.windowId }, { emoji: '＋' });
     const current = state.tabs?.[ctx.tabId];
     const currentSpace = state.tabSpace?.[ctx.tabId];
     if (current && isWebUrl(current.url) && !state.pins.some((p) => p.spaceId === currentSpace && view.normalizeUrl(p.url) === view.normalizeUrl(current.url))) {
       action('pin-current', 'Pin current tab', { type: 'pinTab', tabId: ctx.tabId }, { emoji: '📌' });
     }
+    // ⌘T opens this palette instead of the launcher page, so the launcher
+    // (and its Settings) is reachable from here.
+    if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
     if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
     for (const s of state.spaces) {
       if (s.id === spaceId) continue;

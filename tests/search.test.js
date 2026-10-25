@@ -82,11 +82,11 @@ test('palette: multi-token queries need every token', () => {
 test('palette: actions are offered and searchable', () => {
   const s = paletteState();
   const empty = rankPalette(s, '', ctx).map((i) => i.id);
-  for (const id of ['action:new-tab', 'action:pin-current', 'action:toggle-sidebar', 'action:space:work']) assert.ok(empty.includes(id), id);
+  for (const id of ['action:pin-current', 'action:toggle-sidebar', 'action:space:work']) assert.ok(empty.includes(id), id);
+  assert.ok(!empty.includes('action:new-tab'), 'the palette is the new tab, no "New tab" row');
   assert.ok(!empty.includes('tab:3'), 'the current tab is not suggested');
   assert.ok(!empty.includes('action:space:personal'), 'no switch to the current space');
   assert.equal(rankPalette(s, 'switch work', ctx)[0].id, 'action:space:work');
-  assert.equal(rankPalette(s, 'new tab', ctx)[0].id, 'action:new-tab');
   const pinned = M.addPin(s, { id: 'p2', spaceId: 'personal', url: 'https://current.example/', title: 'C' });
   assert.ok(!rankPalette(pinned, '', ctx).some((i) => i.id === 'action:pin-current'));
   assert.ok(!rankPalette(s, '', { ...ctx, canToggleSidebar: false }).some((i) => i.id === 'action:toggle-sidebar'));
@@ -98,4 +98,10 @@ test('palette: URLs open first; in the new tab they navigate in place', () => {
   assert.deepEqual(first.action, { type: 'newTab', windowId: 1, url: 'https://example.com' });
   const [inNewTab] = rankPalette(s, 'example.com', { ...ctx, inNewTab: true });
   assert.deepEqual(inNewTab.action, { local: 'navigate', url: 'https://example.com' });
+});
+
+test('palette: "Margin start page & settings" on web pages, not on the start page itself', () => {
+  const s = paletteState();
+  assert.deepEqual(rankPalette(s, 'settings', ctx)[0].action, { type: 'openLauncher', windowId: 1 });
+  assert.ok(!rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:launcher'));
 });

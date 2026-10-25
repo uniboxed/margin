@@ -10,7 +10,7 @@ async function send(type, payload = {}) {
 }
 
 const dark = matchMedia('(prefers-color-scheme: dark)');
-const sidebar = Margin.ui.createSidebar({ document, send, mode: 'newtab' });
+const sidebar = Margin.ui.createSidebar({ document, send, mode: 'newtab', onNewTab: () => palette.open() });
 const applyTheme = () => sidebar.setTheme(dark.matches ? 'dark' : 'light');
 applyTheme();
 dark.addEventListener('change', applyTheme);
@@ -162,3 +162,15 @@ async function refresh() {
 
 api.storage.onChanged.addListener((_, area) => area === 'local' && refresh());
 refresh();
+
+// ---- ⌘T / ⌘N ----------------------------------------------------------------
+// Safari never lets extensions intercept ⌘T/⌘N; it opens this page instead.
+// On a fresh new tab (not Back, not a reload), ask the background: for ⌘T it
+// returns to the previous tab and opens the palette there, closing this tab;
+// otherwise (⌘N's first tab) the palette opens over this page.
+const nav = performance.getEntriesByType?.('navigation')?.[0];
+// `newtab.html#launcher` opens the launcher on purpose and never redirects.
+const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && location.hash !== '#launcher';
+if (fresh) {
+  send('newTabPage').then((res) => res?.openPalette && palette.open());
+}

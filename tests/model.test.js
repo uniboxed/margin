@@ -37,6 +37,7 @@ function twoSpaces() {
 
 test('assign new tab: joins its window\'s active space', () => {
   let s = twoSpaces();
+  s = M.upsertTab(s, tab(9, 2, 'https://first.com'), 0); // window 2 already open
   s = M.setActiveSpace(s, 1, 'work');
   s = M.upsertTab(s, tab(10, 1, 'https://a.com'), 0);
   s = M.upsertTab(s, tab(11, 2, 'https://b.com'), 0);
@@ -339,4 +340,20 @@ test('favicons: browser icon first, else the fetched one for that site; cache is
   for (let i = 0; i < 10; i++) s = M.rememberFavicon(s, `https://s${i}.com`, { data: 'd', href: 'h', at: 10 + i }, 5);
   assert.deepEqual(Object.keys(s.favicons).sort(), ['https://s5.com', 'https://s6.com', 'https://s7.com', 'https://s8.com', 'https://s9.com']);
   assert.equal(M.rememberFavicon(s, null, { data: 'd', at: 1 }), s);
+});
+
+test('new window (⌘N) starts in the space of the most recently used window', () => {
+  let s = M.defaultState();
+  s = M.createSpace(s, { id: 'work', name: 'Work' });
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { active: true }), 10);
+  s = M.upsertTab(s, tab(2, 2, 'https://b.com', { active: true }), 5); // another window, Personal
+  s = M.setActiveSpace(s, 1, 'work');
+  s = M.activateTab(s, 1, 1, 20); // window 1 used last
+  s = M.upsertTab(s, tab(3, 3, '', { active: true }), 30); // ⌘N
+  assert.equal(s.activeSpaceByWindow[3], 'work');
+  assert.equal(s.tabSpace[3], 'work', 'its first tab joins that space');
+  // A new tab in an existing window doesn't change that window's space.
+  s = M.upsertTab(s, tab(4, 2, '', { active: true }), 40);
+  assert.equal(M.activeSpaceId(s, 2), 'personal');
+  assert.equal(s.tabSpace[4], 'personal');
 });

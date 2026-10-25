@@ -195,6 +195,30 @@ const handlers = {
     }
     await iconInflight.get(origin);
   },
+  // A fresh new-tab page (⌘T, ⌘N, or Safari opening one) asks what to do.
+  // ⌘T in a window with a web page: go back to the tab the user was on,
+  // close the new tab and open the command palette there (Arc-style, no
+  // empty page). Otherwise (⌘N's first tab, or a previous tab without
+  // Margin's content script) the new-tab page opens its own palette.
+  // The launcher on purpose (#launcher: it doesn't hand off to the palette).
+  async openLauncher({ windowId }) {
+    await openTab({ windowId, url: api.runtime.getURL('newtab/newtab.html#launcher') });
+  },
+  async newTabPage(_, sender) {
+    const tab = sender.tab;
+    if (!tab) return { openPalette: true };
+    const s = await load();
+    const prev = Object.values(s.tabs)
+      .filter((t) => t.windowId === tab.windowId && t.id !== tab.id && /^https?:/.test(t.url))
+      .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
+    if (!prev) return { openPalette: true };
+    const alive = await api.tabs.sendMessage(prev.id, { type: 'ping' }).then((r) => r === 'pong').catch(() => false);
+    if (!alive) return { openPalette: true };
+    await focusTab(prev.id);
+    await api.tabs.remove(tab.id).catch(() => {});
+    await api.tabs.sendMessage(prev.id, { type: 'command', command: 'show-palette' }).catch(() => {});
+    return { handled: true };
+  },
   async updateSettings({ patch }) {
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },

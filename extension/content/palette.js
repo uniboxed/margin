@@ -168,7 +168,11 @@
     theme: c.theme,
   });
   installShortcut(palette, () => c.getState().state?.settings?.paletteShortcut ?? 'Alt+KeyK');
-  c.onCommand = (command) => command === 'open-palette' && palette.toggle();
+  c.onCommand = (command) => {
+    if (command === 'open-palette') palette.toggle();
+    if (command === 'show-palette') palette.open(); // ⌘T, via the new-tab page
+  };
+  c.openPalette = () => palette.open();
   const prev = c.onState;
   c.onState = (...args) => {
     prev?.(...args);

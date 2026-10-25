@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, tabsInBrowser, waitFor } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, launcherUrl } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -91,7 +91,7 @@ test('pin a tab; clicking the pin focuses the existing tab, or opens it if close
 test('switching space filters tabs; new tabs join the active space', async () => {
   const page = await openPage('space-a');
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const res = await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Work', emoji: '💼' }), windowId);
   assert.equal(res.ok, true);
@@ -125,7 +125,7 @@ test('one sidebar color: follows the Mac appearance, not the page or the space',
 
   // A space with a different color doesn't tint it.
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Red', color: '#d63031' }), windowId);
   await waitFor(async () => (await sidebarSnapshot(lightSite)).chips.length >= 2);
@@ -146,11 +146,22 @@ test('one sidebar color: follows the Mac appearance, not the page or the space',
 test('new-tab page renders the sidebar itself and gets no injected overlay', async () => {
   await openPage('nt-check');
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   await nt.waitForSelector('#sidebar .margin-sidebar.newtab .tab');
   assert.equal(await nt.locator('margin-sidebar-host').count(), 0);
+  // "+ New tab" opens the command palette (Arc-style), here and on web pages.
+  const tabsBefore = (await tabsInBrowser(ctx.worker)).length;
   await nt.locator('#sidebar .new-tab').click();
-  await waitFor(async () => (await tabsInBrowser(ctx.worker)).filter((t) => t.url.startsWith('chrome://newtab')).length >= 2);
+  await waitFor(async () => (await paletteSnapshot(nt))?.open);
+  const web = await openPage('nt-plus');
+  await web.mouse.move(400, 200);
+  await web.mouse.move(5, 200);
+  await waitFor(async () => (await sidebarSnapshot(web)).open);
+  await clickInShadow(web, '.new-tab');
+  await waitFor(async () => (await paletteSnapshot(web))?.open);
+  assert.equal((await tabsInBrowser(ctx.worker)).length, tabsBefore + 1, 'only the page opened above, no extra tab');
+  await web.close();
+  await nt.close();
 });
 
 test('toggle shortcut: opens and closes; with "Keep open" on it switches back to auto-hide', async () => {

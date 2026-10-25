@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, tabsInBrowser, waitFor } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, tabsInBrowser, waitFor, launcherUrl } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -62,7 +62,7 @@ test('⌘⌥→ / ⌘⌥← switch the space and peek the sidebar; the page itse
   const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
   // Create the second space through the background, like the "+" button does.
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   const { result } = await nt.evaluate(() => chrome.runtime.sendMessage({ type: 'createSpace', name: 'Work', emoji: '💼' }));
   const work = result.spaceId;
   await nt.close();
@@ -88,7 +88,7 @@ test('⌘⌥→ / ⌘⌥← switch the space and peek the sidebar; the page itse
 
 test('the new-tab page handles the same shortcuts', async () => {
   const nt = await ctx.context.newPage();
-  await nt.goto('chrome://newtab');
+  await nt.goto(launcherUrl(ctx));
   await nt.waitForSelector('#sidebar .chip[data-space-id]');
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const before = (await storage('activeSpaceByWindow'))[windowId] ?? 'personal';

@@ -174,3 +174,16 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 - **Safety:** the page chooses the URL, and the background can fetch what pages can't. So icons on another host must be https and not on a local or private network (`iconUrlAllowed`). Same-host icons are always allowed. No cookies are sent.
 - **SPEC change:** the "no third-party requests" rule stays; fetching the visited site's own icon is the one request Margin makes (SPEC updated).
 - **Needs a Safari check:** whether the background's `fetch` reaches sites under Safari's website-access permission, and whether Safari's worker supports `OffscreenCanvas` (without it, icons are stored unshrunk up to 24KB).
+
+## ⌘T opens the palette, ⌘N inherits the space (2026-10-25)
+
+- **Per Tirth:** ⌘T should open the command palette over the current page, with no empty new-tab page. ⌘N should open a new window in the same space, with the palette open. Safari never delivers ⌘T/⌘N to extensions, so Margin reacts to the new-tab page they open instead.
+- **⌘T:** a *fresh* new-tab page (history length 1, navigation type `navigate`, not `#launcher`) sends `newTabPage`. If its window has a web tab with Margin's content script (checked with a `ping`), the background re-activates the most recently used one, closes the new tab, and sends `show-palette`. The new tab may flash briefly, since Safari creates it first. Typing a URL or search there opens it in a new tab.
+- **⌘N:** the new window's first tab has nowhere to hand off to, so the new-tab page opens its own palette, where Enter navigates in place. `upsertTab` gives a window Margin hasn't seen before the active space of the most recently used window (`inheritSpace`). It only applies to new windows; tabs in existing windows keep their window's space, and the restart rebuild doesn't use it.
+- **Also:** "+ New tab" in the sidebar opens the palette (`createSidebar({ onNewTab })`). The palette's "New tab" row was removed, since the palette is the new tab. A new palette action, "Margin start page & settings", opens `newtab.html#launcher`, which never hands off, so the launcher and its Settings stay reachable. E2E tests open that URL when they need the launcher.
+- **Needs a Safari check:** after the new tab closes, whether keyboard focus lands in the palette field or in Safari's address bar.
+
+## ⌘⌥ arrows: what Safari did (2026-10-25)
+
+- **Reported:** ⌘⌥←/→ switched *tabs* and ⌘⌥↑/↓ did nothing. Margin's ←/→ handler only changes the sidebar's space and can't switch tabs, so the tab switching comes from outside Margin: Safari's own shortcuts or another app on the Mac (window managers often use ⌘⌥ arrows). The keys never reached the page. Which one is pending a key test on Tirth's Mac (TESTING.md).
+- **Margin bug fixed:** before the background has told a page its tab id, ⌘⌥↓/↑ treated the current tab as "not in the list" and could pick the tab already being shown, so nothing seemed to happen. It now falls back to the window's active tab.

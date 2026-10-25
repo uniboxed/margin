@@ -78,7 +78,9 @@
   const SPACE_COLORS = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72'];
   const TAB_MIME = 'application/x-margin-tab';
 
-  function createSidebar({ document: doc, send, mode }) {
+  // `onNewTab`: what "+ New tab" does (the command palette, Arc-style);
+  // without it, a new tab is opened.
+  function createSidebar({ document: doc, send, mode, onNewTab }) {
     const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
     const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
     const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
@@ -182,7 +184,7 @@
         case 'open-pin': return send('openPin', { pinId, windowId });
         case 'unpin': return send('unpin', { pinId });
         case 'set-space': return send('setSpace', { windowId, spaceId });
-        case 'new-tab': return send('newTab', { windowId });
+        case 'new-tab': return onNewTab ? onNewTab() : send('newTab', { windowId });
         case 'add-space':
           // The new space can reach us (via storage) before the reply does,
           // so open it now if it's already here, else when it arrives.
