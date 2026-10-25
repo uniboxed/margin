@@ -1,6 +1,8 @@
 // Injected overlay. Renders from storage.local, never pushes the page.
 (() => {
   const api = globalThis.browser ?? globalThis.chrome;
+  // Load timing, in ms since navigation start (see logTiming below).
+  const timing = { injected: Math.round(performance.now()) };
   if (location.href.startsWith(api.runtime.getURL(''))) return;
   if (document.querySelector('margin-sidebar-host')) return;
 
@@ -212,7 +214,7 @@
       firstRender = false;
       // performance.now() counts from navigation start: how long the page
       // went without its sidebar (see TESTING.md).
-      console.debug('[margin] sidebar ready', Math.round(performance.now()), 'ms after navigation start');
+      timing.rendered = Math.round(performance.now());
       requestAnimationFrame(() => requestAnimationFrame(() => {
         sidebar.el.classList.remove('instant');
         frame.classList.remove('instant');
@@ -225,6 +227,7 @@
   async function refresh() {
     const mine = ++version;
     const next = await api.storage.local.get(null);
+    timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return; // stale, or background not initialized yet
     state = next;
     render();
@@ -232,6 +235,21 @@
 
   Margin.content.getState = () => ({ state, tabId, windowId });
   api.storage.onChanged.addListener((_, area) => area === 'local' && refresh());
+
+  // One line per page, once it has loaded: where the time before the sidebar
+  // went. All numbers are ms since navigation start. If "injected" is late,
+  // Safari ran the content script late; if "storage" is late, the
+  // storage.local read was slow; "rendered" is when the sidebar appeared.
+  function logTiming() {
+    const nav = performance.getEntriesByType?.('navigation')?.[0];
+    const fmt = (n) => (n == null ? '–' : `${Math.round(n)}`);
+    console.info(
+      `[margin] timing (ms) injected=${fmt(timing.injected)} storage=${fmt(timing.storage)} rendered=${fmt(timing.rendered)}` +
+        ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${pinnedOpen()}`,
+    );
+  }
+  if (document.readyState === 'complete') setTimeout(logTiming);
+  else addEventListener('load', () => setTimeout(logTiming), { once: true });
   refresh();
   send('hello').then((ctx) => {
     if (!ctx) return;
