@@ -162,7 +162,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Resizing the sidebar
 
-- [ ] Hover the sidebar's right edge: the cursor becomes ↔ and a thin line appears. Drag: the sidebar resizes live between about the widths in Tirth's two Arc screenshots (160–500), and stops at both ends.
+- [ ] Hover the sidebar's right edge: the cursor becomes ↔ and a light rounded line appears just inside the sidebar edge, running the height of the page, almost touching it (like Arc). Drag: the sidebar resizes live between about the widths in Tirth's two Arc screenshots (160–500), and stops at both ends.
 - [ ] With "Keep open" on, the page and the frame move with the edge while dragging. Release: other tabs use the new width, and newly opened pages appear at the new width from their first frame (no jump from the old width).
 - [ ] In hover mode the sidebar stays open while you drag, and the page doesn't move.
 - [ ] Double-click the edge: back to the default width.
@@ -194,3 +194,5 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] With "Keep open" on, reload a page (⌘R): a small dark pill appears centered in the gray strip above the page, pulses gently while it loads, and fades out when done. Click a link to another page: same.
 - [ ] In auto-hide mode the pill shows at the very top of the page, centered on the window.
 - [ ] It never blocks clicks, and very fast pages don't leave it behind.
+- [ ] Press ⌘R on a slow page (e.g. YouTube): the pill appears right away, on the current page, and stays until the page has reloaded, without blinking off in between (Keep open). In auto-hide mode, a short gap right as the new page appears is expected.
+- [ ] Click a download link: the pill may appear; it goes away on your next click or key press (or after 10s).

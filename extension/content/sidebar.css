@@ -210,11 +210,15 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
 
 /* Resize handle: the right edge of the sidebar (160–500px). */
 .margin-sidebar.newtab { position: relative; }
+/* Resize handle (Arc): on hover or while dragging, a soft light pill runs the
+   height of the page card, just inside the sidebar's edge, 2px from the page.
+   The hit area (12px) straddles the edge; the pill is 4px wide, at
+   width-6 … width-2, inset 8px top and bottom like the page card. */
 .resizer {
   position: absolute;
   top: 0;
   right: -4px;
-  width: 8px;
+  width: 12px;
   height: 100%;
   cursor: col-resize;
   z-index: 2;
@@ -223,15 +227,16 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
 .resizer::after {
   content: "";
   position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 3px;
-  width: 2px;
-  border-radius: 1px;
-  background: transparent;
-  transition: background 120ms ease;
+  top: 8px;
+  bottom: 8px;
+  right: 6px;
+  width: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
-.resizer:hover::after, .resizing .resizer::after { background: rgba(0, 0, 0, 0.25); }
+.resizer:hover::after, .resizing .resizer::after { opacity: 1; }
 .margin-sidebar.resizing { user-select: none; cursor: col-resize; }
 .margin-sidebar.resizing, .margin-sidebar.resizing * { transition: none !important; }
 
@@ -251,6 +256,7 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
 }
 .loader.in-frame { left: calc(var(--width, 260px) + (100vw - var(--width, 260px) - 8px) / 2); }
 .loader.on { opacity: 1; transform: translateX(-50%) scaleX(1); }
+.loader.instant { transition: none; }
 .loader .bar {
   width: 100%;
   height: 100%;

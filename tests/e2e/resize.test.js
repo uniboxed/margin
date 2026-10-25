@@ -89,6 +89,33 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
   await page.close();
 });
 
+test('the resize handle: a light pill just inside the sidebar edge, shown on hover', async () => {
+  await setSettings({ sidebarPinnedOpen: true, sidebarWidth: 260 });
+  const page = await openPage('resize-handle');
+  await page.bringToFront();
+  await waitFor(async () => (await htmlLeft(page)) === 260);
+  const pill = () => evalInShadow(page, 'margin-sidebar-host', function () {
+    const handle = this.querySelector('.margin-sidebar .resizer');
+    const r = handle.getBoundingClientRect();
+    const s = getComputedStyle(handle, '::after');
+    const left = r.right - parseFloat(s.right) - parseFloat(s.width);
+    return { opacity: s.opacity, left, right: left + parseFloat(s.width), top: r.top + parseFloat(s.top), bottom: r.bottom - parseFloat(s.bottom), radius: s.borderRadius, vh: innerHeight };
+  });
+  await page.mouse.move(600, 400);
+  assert.equal((await pill()).opacity, '0', 'hidden until hovered');
+  await page.mouse.move(258, 400); // inside the hit area
+  const p = await waitFor(async () => {
+    const v = await pill();
+    return v.opacity === '1' && v;
+  });
+  assert.deepEqual([p.left, p.right], [254, 258], '4px wide, 2px from the page edge at 260');
+  assert.deepEqual([p.top, p.bottom], [8, p.vh - 8], 'as tall as the page card');
+  assert.equal(p.radius, '2px');
+  await page.mouse.move(600, 400);
+  await setSettings({ sidebarPinnedOpen: false });
+  await page.close();
+});
+
 test('hover mode: resizing keeps the sidebar open and never moves the page', async () => {
   await setSettings({ sidebarPinnedOpen: false, sidebarWidth: 260 });
   const page = await openPage('resize-hover');

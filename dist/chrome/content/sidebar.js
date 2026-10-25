@@ -132,23 +132,75 @@
   const LOADER_MAX_MS = 15000;
   let loaderShownAt = null;
   let loaderMaxTimer = null;
-  function startLoader() {
-    if (loaderShownAt != null || document.readyState === 'complete') return;
-    loaderShownAt = performance.now();
+  let loaderHideTimer = null;
+  let placeholderTookOver = false; // the placeholder's pill was showing until Margin ran
+  const showPill = () => {
+    clearTimeout(loaderHideTimer);
     loader.classList.add('on');
     host.dataset.loading = 'true'; // test/debug hook
+  };
+  const hidePill = (delay = 0) => {
+    clearTimeout(loaderHideTimer);
+    loaderHideTimer = setTimeout(() => {
+      loader.classList.remove('on');
+      host.dataset.loading = 'false';
+    }, delay);
+  };
+  // Taking over from the placeholder's pill (content/docked/w-*.css), the
+  // pill shows at once (no fade-in dip) and fades out normally, even if the
+  // page has already finished loading.
+  function startLoader() {
+    const complete = document.readyState === 'complete';
+    if (loaderShownAt != null || (complete && !placeholderTookOver)) return;
+    loaderShownAt = performance.now();
+    if (placeholderTookOver) {
+      loader.classList.add('instant');
+      showPill();
+      requestAnimationFrame(() => requestAnimationFrame(() => loader.classList.remove('instant')));
+    } else {
+      showPill();
+    }
+    if (complete) return stopLoader();
     addEventListener('load', stopLoader, { once: true });
     loaderMaxTimer = setTimeout(stopLoader, LOADER_MAX_MS);
   }
   function stopLoader() {
-    if (loaderShownAt == null) return;
     clearTimeout(loaderMaxTimer);
-    const wait = Math.max(0, LOADER_MIN_MS - (performance.now() - loaderShownAt));
-    setTimeout(() => {
-      loader.classList.remove('on');
-      host.dataset.loading = 'false';
-    }, wait);
+    if (loaderShownAt == null || leaving) return;
+    hidePill(Math.max(0, LOADER_MIN_MS - (performance.now() - loaderShownAt)));
   }
+
+  // Leaving the page (⌘R, a link, a form, a script navigation): show the pill
+  // on this page at once. Otherwise it would only appear once the next page
+  // has arrived and Margin runs there, which in Safari is the server's
+  // response time plus ~0.2s. `beforeunload` doesn't keep pages out of the
+  // back/forward cache in WebKit or Chrome. If the page stays after all, hide
+  // it again: a "Leave page?" prompt (checked once the event is done; while
+  // the prompt is up, timers wait), a download, a link that opens another
+  // app, or anything the user does on the page meanwhile; at the latest after
+  // LEAVING_MAX_MS. Returning from the back/forward cache hides it too.
+  const LEAVING_MAX_MS = 10000;
+  let leaving = false;
+  let leavingTimer = null;
+  function stayed() {
+    if (!leaving) return;
+    leaving = false;
+    clearTimeout(leavingTimer);
+    hidePill();
+  }
+  addEventListener('beforeunload', (event) => {
+    if (firstRender) return; // nothing drawn yet: position unknown
+    leaving = true;
+    showPill();
+    clearTimeout(leavingTimer);
+    leavingTimer = setTimeout(stayed, LEAVING_MAX_MS);
+    setTimeout(() => {
+      const prompted = event.defaultPrevented || (typeof event.returnValue === 'string' && event.returnValue !== '');
+      if (prompted) stayed();
+    });
+  });
+  addEventListener('pageshow', (event) => { if (event.persisted) stayed(); });
+  for (const type of ['pointerdown', 'keydown']) addEventListener(type, stayed, true);
 
   // ---- push (only while "Keep open" is on) ---------------------------------
   // Shifts the page right so it starts where the sidebar ends. A separate
@@ -197,7 +249,10 @@
   function syncPlaceholder() {
     const html = document.documentElement;
     if (!canPush || html.dataset.marginDocked === 'off') return;
-    if (getComputedStyle(html, '::after').content !== 'none') html.dataset.marginDocked = 'off';
+    if (getComputedStyle(html, '::after').content !== 'none') {
+      html.dataset.marginDocked = 'off';
+      placeholderTookOver = true;
+    }
   }
 
   function show(why) {

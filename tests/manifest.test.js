@@ -86,7 +86,7 @@ test('first-paint placeholders: one up-to-date file per sidebar width, nothing e
   for (const w of expected) {
     const css = readFileSync(new URL(`content/docked/w-${w}.css`, root), 'utf8');
     assert.equal(css, buildDocked(w), `w-${w}.css is stale: run npm run styles`);
-    assert.equal(css.split('*/')[1].match(new RegExp(`${w}px`, 'g')).length, 2, 'margin-left and the frame edge');
+    assert.equal(css.replace(/\/\*[\s\S]*?\*\//g, '').match(new RegExp(`${w}px`, 'g')).length, 4, 'margin-left, the frame edge, and the loader pill (twice)');
     assert.ok(!css.includes('{{WIDTH}}'));
   }
 });

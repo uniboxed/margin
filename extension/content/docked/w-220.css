@@ -20,4 +20,29 @@
     pointer-events: none !important;
     z-index: 2147483646 !important;
   }
+  /* The page-load pill (sidebar.css .loader.in-frame), from the first frame,
+     so it doesn't drop out between the old page (which shows it from ⌘R or
+     the click) and Margin's script starting on this one. It fades out by
+     itself; if the page is still loading by then, the real pill has taken
+     over on top of it. */
+  html:not([data-margin-docked="off"])::before {
+    content: "" !important;
+    position: fixed !important;
+    top: 2px !important;
+    left: calc(220px + (100vw - 220px - 8px) / 2) !important;
+    width: 48px !important;
+    height: 4px !important;
+    margin: 0 0 0 -24px !important;
+    border-radius: 2px !important;
+    background: rgba(28, 28, 30, 0.88) !important;
+    box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3) !important;
+    pointer-events: none !important;
+    z-index: 2147483646 !important;
+    opacity: 0;
+    animation: margin-docked-loader 1000ms ease-in forwards !important;
+  }
+}
+@keyframes margin-docked-loader {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
 }
