@@ -79,6 +79,7 @@
     const items = [];
 
     for (const t of Object.values(state.tabs ?? {})) {
+      if ((t.url ?? '').includes('/dock/dock.html')) continue; // Margin's own dock window
       const space = spaceOf(state.tabSpace?.[t.id]);
       items.push({
         id: `tab:${t.id}`,
@@ -130,6 +131,8 @@
       action('pin-current', 'Pin current tab', { type: 'pinTab', tabId: ctx.tabId }, { emoji: '📌' });
     }
     if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
+    action('dock', state.dock ? 'Undock sidebar window (experiment)' : 'Dock sidebar as its own window (experiment)',
+      { type: 'setDock', on: !state.dock }, { emoji: '◫' });
     for (const s of state.spaces) {
       if (s.id === spaceId) continue;
       action(`space:${s.id}`, `Switch to space ${s.name}`, { type: 'setSpace', windowId: ctx.windowId, spaceId: s.id }, { emoji: s.emoji });

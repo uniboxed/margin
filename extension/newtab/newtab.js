@@ -60,6 +60,17 @@ hours.addEventListener('change', () => {
   if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { archiveAfterHours: value } });
 });
 
+const dockToggle = $('dock-window');
+dockToggle.addEventListener('change', async () => {
+  dockToggle.disabled = true;
+  const res = await api.runtime.sendMessage({ type: 'setDock', on: dockToggle.checked });
+  dockToggle.disabled = false;
+  if (res && !res.ok) {
+    dockToggle.checked = false;
+    $('dock-help').textContent = `Couldn't dock: ${res.error}`;
+  }
+});
+
 const engine = $('engine');
 for (const { name, url } of Margin.search.SEARCH_ENGINES) engine.append(el(document, 'option', { value: url, text: name }));
 engine.addEventListener('change', () => send('updateSettings', { patch: { searchEngine: engine.value } }));
@@ -137,6 +148,9 @@ function renderLauncher() {
   }
   engine.value = state.settings.searchEngine;
   if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
+  dockToggle.checked = !!state.dock;
+  // Docked: the dock window is this window's sidebar.
+  $('sidebar').hidden = state.dock?.targetWindowId === windowId();
   if (!recording) shortcut.value = Margin.shortcuts.format(state.settings.paletteShortcut);
 }
 

@@ -133,3 +133,16 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 ## Highlighted tab
 
 - [ ] Open five or six pages in a row (e.g. several searches from the new tab), then switch between them from the sidebar and with Safari's own tab bar or ⌃Tab. Every time, exactly one row is highlighted: the page you're on.
+
+## Experiment: sidebar as its own window
+
+1. Make the Safari window large (not full screen; use Window → Fill or drag it wide, at least 740px).
+2. New tab → Settings → check **Sidebar in its own window (experiment)** (or palette → "Dock sidebar as its own window").
+3. Record in DECISIONS.md:
+   - [ ] Does a narrow Margin window open at the left of the Safari window, with Safari's window shrunk to sit right of it?
+   - [ ] What the dock window's bottom line says (✓/✗) and the hover details (asked vs got, and the window type).
+   - [ ] Does the dock window have a title bar or toolbar? How wide is it really?
+   - [ ] Move and resize the Safari window: does the dock follow within about half a second ("follows ✓")?
+   - [ ] Open new pages: the sidebar stays visible during the blank moment.
+   - [ ] Click tabs, spaces, "+ New tab" in the dock: they act on the Safari window.
+   - [ ] "Undock" (or closing the dock window) gives the Safari window its width back.
