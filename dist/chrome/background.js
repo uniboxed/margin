@@ -118,6 +118,7 @@ function learnSearchEngine(urls, { tabId } = {}) {
 const TRACKED_CHANGES = ['title', 'url', 'favIconUrl'];
 
 api.tabs.onCreated.addListener((tab) => mutate((s) => M.upsertTab(s, tab, now())));
+const shownAt = new Map(); // tabId → when it was last activated
 api.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
@@ -129,6 +130,11 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   // Margin ran on another site in this tab: whether it runs on this one is
   // only known once it says hello.
   if (change.url && marginTabs.has(tabId) && marginTabs.get(tabId) !== originOf(change.url)) forgetMarginTab(tabId);
+  // Safari reloading a tab as it's shown: it had unloaded it (diagnostics
+  // for switchTo, which tries to load such tabs before showing them).
+  if (change.status === 'loading' && !change.url && shownAt.get(tabId) > Date.now() - 1000 && !readyWaiters.has(tabId)) {
+    console.info(`[margin] tab ${tabId} reloaded as it was shown (marginRanOn=${marginTabs.get(tabId) ?? 'unknown'})`);
+  }
   // A sleeping tab Margin is loading before switching to it (switchTo).
   const waiter = readyWaiters.get(tabId);
   if (waiter && change.status === 'loading') waiter.started = true;
@@ -138,9 +144,11 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
 api.tabs.onRemoved.addListener((tabId) => {
   mutate((s) => M.removeTab(s, tabId));
   forgetMarginTab(tabId);
+  shownAt.delete(tabId);
   for (const [windowId, pending] of pendingSwitch) if (pending.tabId === tabId || pending.fromTabId === tabId) cancelSwitch(windowId);
 });
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  shownAt.set(tabId, Date.now());
   // The user switched tabs some other way meanwhile: drop a pending switch.
   const pending = pendingSwitch.get(windowId);
   if (pending && tabId !== pending.fromTabId) cancelSwitch(windowId);
@@ -252,10 +260,15 @@ async function switchTo(tabId, fromTab) {
     if (!target) return;
     cancelSwitch(target.windowId);
     await marginTabsLoaded;
-    const asleep = !target.active && target.status !== 'loading' && /^https?:/i.test(target.url ?? '')
-      && fromTab?.windowId === target.windowId && marginTabs.get(tabId) === originOf(target.url)
-      && (await pingTab(tabId)) === 'none';
-    if (!asleep) return await focusTab(tabId);
+    const candidate = !target.active && target.status !== 'loading' && /^https?:/i.test(target.url ?? '')
+      && fromTab?.windowId === target.windowId && marginTabs.get(tabId) === originOf(target.url);
+    const ping = candidate ? await pingTab(tabId) : 'not asked';
+    // Why it is or isn't treated as asleep (Safari's tab sleeping can't be
+    // observed otherwise).
+    console.info(`[margin] switch to tab ${tabId}: active=${target.active} status=${target.status} discarded=${target.discarded}`
+      + ` url=${originOf(target.url)} sameWindow=${fromTab?.windowId === target.windowId} marginRanOn=${marginTabs.get(tabId) ?? 'unknown'}`
+      + ` ping=${ping} (${marginTabs.size} tabs known)`);
+    if (ping !== 'none') return await focusTab(tabId);
     console.info(`[margin] tab ${tabId} is asleep: loading it before switching`);
     let pending;
     const outcome = new Promise((resolve) => {
