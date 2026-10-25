@@ -1,5 +1,4 @@
-libEGL warning: DRI3 error: Could not get DRI3 device
-libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+WebKitGTK 2.52.6
 n 489
 AcceleratedCompositing embedder True True
 AcceleratedCompositingForFixedPosition embedder False False

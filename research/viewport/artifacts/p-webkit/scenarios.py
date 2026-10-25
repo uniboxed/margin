@@ -656,3 +656,48 @@ def BFSKIP2(p):
         yield ('forward', 900)
         lands.append((yield ('js', "return location.pathname;", 'main')))
     yield ('emit', {'step': 'BFSKIP2', 'pre': p.get('pre'), 'expected': ['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B'], 'landed': lands})
+
+
+def REF(p):
+    """cross-site arrival: what referrer does the framed page see (document.referrer + Referer header of the iframe request)?"""
+    yield ('load', X + '/p/X?__noshell=1')
+    yield ('sleep', 800)
+    yield ('srv', '/__clear')
+    yield ('js', "location.href = %r; return 1;" % (A + '/p/A?from=x'), 'main')
+    r = yield ('waitfor', FRAME_READY, 'main', 8000)
+    v = yield ('js', "const f = document.getElementById('margin-frame'); return {topReferrer: document.referrer, frameReferrer: f.contentDocument.referrer, frameNavType: f.contentWindow.performance.getEntriesByType('navigation')[0].type, frameHistoryLength: f.contentWindow.history.length};", 'main')
+    log = yield ('srv', '/__log')
+    yield ('emit', {'step': 'REF', 'ready': r['ok'], 'js': v, 'srv': [(e['method'], e['path'], e['dest'], e['site'], e['referer']) for e in log if e['path'].startswith('/p/')]})
+
+
+def CSPSTYLE(p):
+    """top response CSP that restricts styles/frames: does the shell (built by the content script inside that same document) still lay out?"""
+    q = p.get('q', "tcsp=style-src%20%27none%27")
+    yield ('srv', '/__clear')
+    yield ('load', A + '/p/A?' + q)
+    yield ('sleep', int(p.get('wait', 1500)))
+    g = yield ('js', """const f = document.getElementById('margin-frame'); if (!f) return {noFrame: true, href: location.href};
+      const r = f.getBoundingClientRect(); const sb = document.getElementById('margin-sidebar');
+      let fr = null; try { fr = {href: f.contentWindow.location.href, innerWidth: f.contentWindow.innerWidth, hdr: !!f.contentDocument.getElementById('hdr')}; } catch (e) { fr = String(e); }
+      return {iframe: [r.x, r.y, r.width, r.height], sidebarPosition: getComputedStyle(sb).position, styleSheets: document.styleSheets.length, frame: fr};""", 'main')
+    log = yield ('srv', '/__log')
+    yield ('emit', {'step': 'CSPSTYLE', 'q': q, 'geom': g, 'srv': [e['path'][:50] + ' ' + str(e['dest']) for e in log if e['path'].startswith('/p/')]})
+
+
+CSP_PROBE = """const mk = (id) => { const d = document.createElement('div'); d.id = id; document.body.append(d); return d; };
+const res = {};
+const a = mk('pe'); const st = document.createElement('style'); st.textContent = '#pe{position:fixed}'; document.head.append(st); res.styleElement = getComputedStyle(a).position;
+const b = mk('pa'); b.setAttribute('style', 'position:fixed'); res.styleAttribute = getComputedStyle(b).position;
+const c = mk('pc'); c.style.setProperty('position', 'fixed'); res.cssomSetProperty = getComputedStyle(c).position;
+const d = mk('pd'); try { const s = new CSSStyleSheet(); s.replaceSync('#pd{position:fixed}'); document.adoptedStyleSheets = [...document.adoptedStyleSheets, s]; res.adoptedSheet = getComputedStyle(d).position; } catch (e) { res.adoptedSheet = 'err ' + e; }
+const h = mk('ph'); const sr = h.attachShadow({mode: 'closed'}); const inner = document.createElement('div'); sr.append(inner); try { const s2 = new CSSStyleSheet(); s2.replaceSync('div{position:fixed}'); sr.adoptedStyleSheets = [s2]; res.shadowAdoptedSheet = getComputedStyle(inner).position; } catch (e) { res.shadowAdoptedSheet = 'err ' + e; }
+const st2 = document.createElement('style'); st2.textContent = 'div{position:fixed}'; const h2 = mk('ph2'); const sr2 = h2.attachShadow({mode: 'open'}); const in2 = document.createElement('div'); sr2.append(st2, in2); res.shadowStyleElement = getComputedStyle(in2).position;
+return res;"""
+
+def CSPPROBE(p):
+    """which styling mechanisms survive a page CSP style-src 'none' when used from the content-script world (run with --no-shell)."""
+    q = p.get('q', "tcsp=style-src%20%27none%27")
+    yield ('load', A + '/p/A?__noshell=1&' + q)
+    yield ('waitfor', page_ready_noshell(), 'main', 8000)
+    r = yield ('js', CSP_PROBE, 'shell')
+    yield ('emit', {'step': 'CSPPROBE', 'q': q, 'world': p.get('w', 'shell'), 'res': r})

@@ -1,0 +1,2 @@
+{"step": "T11.find", "base": true, "find": [{"t": 1604.7, "counted": 1}, {"t": 2107.2, "found": 1}], "selectionInFrame": "needle-A", "scenario": "T11", "world": "margin", "cfg": {}}
+{"step": "T11.find", "base": false, "find": [{"t": 1608.5, "counted": 1}, {"t": 2108.5, "found": 1}], "selectionInFrame": "needle-A", "scenario": "T11", "world": "margin", "cfg": {}}

@@ -6,6 +6,7 @@
 //   navapi:   true  -> use the Navigation API on top to cancel frame-busting / retarget same-origin _top navs
 //   sandbox:  string -> sandbox attribute for the iframe (fallback for frame-busting without Navigation API)
 //   refocus:  true  -> after a click in the sidebar (not on an input), give focus back to the frame
+//   styleMode: 'element' (default, <style> in head) | 'adopted' (document.adoptedStyleSheets; survives page CSP style-src)
 (() => {
   const CFG = (typeof __MCFG !== 'undefined') ? __MCFG : {};
   if (window !== window.top) return;
@@ -49,7 +50,15 @@
 #margin-sidebar input{width:200px}
 #margin-card{position:fixed;left:${SB}px;top:${G}px;right:${G}px;bottom:${G}px;border-radius:10px;overflow:hidden;background:#fff}
 #margin-frame{border:0;display:block;width:100%;height:100%}`;
-    head.append(st, document.createElement('title'));
+    if (CFG.styleMode === 'adopted') {
+      // A <style> element inserted by a content script is still subject to the PAGE's CSP (style-src / default-src):
+      // WebKit blocks it even from an isolated world. Constructable stylesheets are not blocked (see CSPPROBE).
+      const sheet = new CSSStyleSheet(); sheet.replaceSync(st.textContent);
+      document.adoptedStyleSheets = [sheet];
+      head.append(document.createElement('title'));
+    } else {
+      head.append(st, document.createElement('title'));
+    }
     const sb = document.createElement('div'); sb.id = 'margin-sidebar';
     sb.innerHTML = '<div id="sb-tabs">tabs</div><input id="sb-input" placeholder="sidebar input"><div id="sb-pad" style="height:200px">sidebar blank area</div>';
     const card = document.createElement('div'); card.id = 'margin-card';

@@ -1,0 +1,1 @@
+{"step": "FS", "enabled": {"fullscreenEnabled": true, "topFullscreenEnabled": true}, "after": {"fs": {"topFsEl": "margin-frame", "ok": true, "fsEl": "content"}, "topInner": [1000, 600], "frameInner": [1000, 600]}, "gtkFullscreen": [{"t": 328.4, "ev": "enter"}], "scenario": "FS", "world": "margin", "cfg": {}}

@@ -2,8 +2,9 @@
 
 The question: can Margin, staying a Safari Web Extension, show pages beside its sidebar laid out exactly as if the window were narrower (fixed headers, full-width sections and breakpoints all right), in macOS full screen too? Tirth's Safari: 27.
 
-**Status (2026-10-25):** 7 of 8 investigations are finished. Still running: the WebKit prototype, then a synthesis, three adversarial reviews and a final report. This folder is a safety copy of what's finished. Nothing here is built into Margin.
+**Status (2026-10-25, 10:50 UTC):** all 8 investigations are finished, including both prototypes (Chromium and WebKitGTK). The synthesis is done but **not yet reviewed**. Three adversarial reviewers are checking it now, and a final report follows. Nothing here is built into Margin.
 
+- [synthesis.md](synthesis.md): the combined recommendation (architecture, load-bearing claims with evidence, losses, fallbacks, risks, the real-Safari checklist, implementation plan). The final report may correct it.
 - [findings.md](findings.md): every finished investigation's report, unedited (evidence, file:line references, measurements, open questions).
 - `artifacts/`: the scripts, test pages, outputs, screenshots and print PDFs the investigations wrote, plus the browser data of the test runs. That covers WebKitGTK profile folders (`r-parity/out/wkdata*`: caches, cookies and storage from local test servers only, checked to contain no real sites) and compiled content-rule-list stores (`cfstore*`). Left out: downloaded WebKit/Chromium source (re-fetchable from GitHub at the cited paths) and cloned prior-art repos. Absolute paths in the scripts point at the cloud session's scratch folder; adjust them to re-run.
 
@@ -17,7 +18,8 @@ The question: can Margin, staying a Safari Web Extension, show pages beside its 
 | `r-sec/` | How many sites forbid framing; security of header changes |
 | `r-alt/` | Every other possible approach; prior art |
 | `p-chromium/` | Working prototype as a real MV3 extension in Chromium |
-| `p-webkit/` | Prototype in WebKitGTK (snapshot of an unfinished run) |
+| `p-webkit/` | Prototype in WebKitGTK |
+| `v-*/` | Reviewers' re-checks (in progress) |
 
 ## Where it stands
 

@@ -88,7 +88,7 @@ function handler(port) {
       cookie: req.headers.cookie || null, xmt: req.headers['x-margin-test'] || null, referer: req.headers.referer || null,
     };
     if (!u.pathname.startsWith('/__')) log.push(entry);
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cache-Control', u.searchParams.get('cache') ? 'max-age=' + u.searchParams.get('cache') : 'no-store');
     if (u.pathname === '/__log') {
       const since = Number(u.searchParams.get('since') || 0);
       res.setHeader('Content-Type', 'application/json');

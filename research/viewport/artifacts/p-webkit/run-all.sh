@@ -1,13 +1,15 @@
 #!/bin/bash
 # Re-run the whole WebKitGTK 2.52 iframe-shell test matrix.
 #   needs: Xvfb on :99, /usr/bin/python3.12 with gi (Gtk 3.0, WebKit2 4.1), node, pdfinfo/pdftotext (poppler-utils)
-#   usage: ./run-all.sh            -> results in out/*.jsonl, console log in out/run-all.log
+#   usage: ./run-all.sh            -> results in out/*.jsonl (cleared first), console log in out/run-all.log
+#          /usr/bin/python3.12 summarize-all.py > out/summary.txt   -> compact digest of all results
 # Single scenario: ./wk.sh SCENARIO [--world margin|main] [--cfg JSON] [--no-shell] [--rules FILE]
 #                  [--feature NavigationAPI=0] [--param k=v] [--size WxH] [--no-page-cache] [--out FILE]
 # Files: wkserver.mjs (test site, ports 8931/8932), shell.js (top-frame content script), frame.js (all-frames part),
 #        run.py (harness), scenarios.py (T1..T11 + extras), rules/*.json (content rule lists), *sum.py (pretty printers)
 cd "$(dirname "$0")"
 mkdir -p out tmp
+rm -f out/*.jsonl out/*.pdf
 ./restart-server.sh
 R() { local name=$1; shift; echo "=== $name: $*"; ./wk.sh "$@" --out "out/$name.jsonl"; }
 SB='allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-top-navigation-by-user-activation allow-pointer-lock allow-presentation allow-storage-access-by-user-activation'
@@ -64,11 +66,13 @@ R T7-rules T8 --no-shell --rules rules/redirect.json --param 'q=__noshell=1'
 R T7 T7 --param "q=tcsp=frame-src%20https://other.example"
 R T7 T7 --world main --param "q=tcsp=frame-src%20https://other.example"
 R T7 DUMP --param url="http://localhost:8931/p/A?tcsp=frame-src%20https://other.example" --param wait=150
+R T7-dump-deny DUMP --param url='http://localhost:8931/p/A?xfo=DENY' --param wait=1500
 # T8 top-level page scripts + cost of the double fetch
 R T8 T8 --no-shell --param q=__noshell=1
 R T8 T8
 R T8 T8 --world main
 R T8 T8 --cfg '{"stop":false}'
+R T8-cache T8 --param q=cache=600
 R T8 T8 --param 'q=big=300&linkpreload=1'
 R T8 T8 --no-shell --param 'q=big=300&linkpreload=1&__noshell=1'
 for d in 0 300; do R T8 T8timing --no-shell --param base=1 --param n=7 --param delay=$d; R T8 T8timing --param n=7 --param delay=$d; done
@@ -93,4 +97,9 @@ R FS FS
 R ISO ISO
 R POST POSTIN
 R POST POSTFRAME
+R REF REF
+# page CSP vs the shell's own styles/iframe (the shell lives inside the page's document, so the page's CSP applies to it)
+for q in "tcsp=style-src%20%27none%27" "tcsp=default-src%20%27self%27" "x=1"; do R CSPPROBE CSPPROBE --no-shell --param "q=$q"; done
+for q in "tcsp=style-src%20%27none%27" "tcsp=default-src%20%27self%27" "tcsp=default-src%20%27none%27" "tcsp=frame-src%20%27none%27"; do R CSPSTYLE CSPSTYLE --param "q=$q"; done
+for q in "tcsp=style-src%20%27none%27" "tcsp=default-src%20%27self%27"; do R CSPSTYLE CSPSTYLE --cfg '{"styleMode":"adopted"}' --param "q=$q"; done
 } 2>&1 | tee out/run-all.log

@@ -1,0 +1,149 @@
+## T1 viewport
+  shell[margin]: iframe 732x584 at (260,8); frame innerWidth=732 clientWidth=732 100vw=732 fixed hdr 0..732 mq800=True css="narrow" outerWidth=1000 top.innerWidth=1000
+  T1.scrollTo500[margin]: scrollY=500 scrollEvents=1 hdr.top=0 elementAt5x5=hdr
+  T1.wheel5[margin]: scrollY=855 scrollEvents=7 hdr.top=0 elementAt5x5=hdr
+  no-shell window: innerWidth=1000 100vw=1000 hdr=0..1000 mq800=False; after wheel scrollY=855
+  no-shell window: innerWidth=732 100vw=732 hdr=0..732 mq800=True; after wheel scrollY=845
+  shell[main]: iframe 732x584 at (260,8); frame innerWidth=732 clientWidth=732 100vw=732 fixed hdr 0..732 mq800=True css="narrow" outerWidth=1000 top.innerWidth=1000
+  T1.scrollTo500[main]: scrollY=500 scrollEvents=1 hdr.top=0 elementAt5x5=hdr
+  T1.wheel5[main]: scrollY=855 scrollEvents=6 hdr.top=0 elementAt5x5=hdr
+## T2 cookies
+  values: {'topLS': 'yes-1792923243261', 'topCookie': 'lax=Lmvno7gf7; strict=Smvno7gf7', 'frameLS': 'yes-1792923243261', 'sameOrigin': True, 'frameOrigin': 'http://localhost:8931', 'frameCookie': 'lax=Lmvno7gf7; strict=Smvno7gf7'} hasStorageAccess: ['called', True]
+   T2 [('/p/A?cookie=1', 'document', 'none', None), ('/p/A?cookie=1', 'iframe', 'same-origin', 'lax=Lmvno7ged; strict=Smvno7ged; honly=Hmvno7ged')]
+   T2.frameNavB [('/p/B', 'iframe', 'same-origin', 'lax=Lmvno7gf7; strict=Smvno7gf7; honly=Hmvno7gf7')]
+   T2x.crossSiteArrival [('/p/A', 'document', 'cross-site', 'lax=Lmvno7h92; honly=Hmvno7h92'), ('/p/A', 'iframe', 'same-origin', 'lax=Lmvno7h92; strict=Smvno7h92; honly=Hmvno7h92')]
+## T3 same-origin navigation
+  [margin] ready=True markerSurvived=True topLoadsStarted=0 uri=http://localhost:8931/p/B title=Page B srv=[('/p/A', 'document'), ('/p/A', 'iframe'), ('/p/B', 'iframe')] copiedHead=['<meta name="theme-color" content="#00aa00" data-margin-copy="">', '<link rel="icon" href="http://localhost:8931/favicon-B.png" data-margin-copy="">']
+  [margin] SPA pushState -> uri=http://localhost:8931/p/B/spa?x=1 title=SPA title; hash -> http://localhost:8931/p/B/spa?x=1#h1
+  [main] ready=True markerSurvived=True topLoadsStarted=0 uri=http://localhost:8931/p/B title=Page B srv=[('/p/A', 'document'), ('/p/A', 'iframe'), ('/p/B', 'iframe')] copiedHead=['<meta name="theme-color" content="#00aa00" data-margin-copy="">', '<link rel="icon" href="http://localhost:8931/favicon-B.png" data-margin-copy="">']
+  [main] SPA pushState -> uri=http://localhost:8931/p/B/spa?x=1 title=SPA title; hash -> http://localhost:8931/p/B/spa?x=1#h1
+  Navigation API events (top-level, no shell): ['navigate:push /p/A/push1', '--after push sync, currentEntry=/p/A?__noshell=1', 'navigatesuccess', 'navigate:replace /p/A/replace1', '--after replace sync', 'navigatesuccess', 'navigate:push /p/A/replace1#x', 'currententrychange:push', 'popstate', '--after hash sync', 'navigatesuccess', 'hashchange', 'navigate:push /p/A/nav1', '--after navigation.navigate (intercepted)', 'navigatesuccess']
+  NAV frame sets top.location to other same-origin URL: ready=True topLoads=0 uri=http://localhost:8931/p/C?fromframe=1 cancels=[{'kind': 'retarget', 'dest': 'http://localhost:8931/p/C?fromframe=1'}]
+## T4 back/forward
+  [T4 cfg={}] T4.atC  ok=None uri=http://localhost:8931/p/C title=Page C backLabels=['http://localhost:8931/p/A', 'http://localhost:8931/p/C'] cur=http://localhost:8931/p/A fwd=[]
+  [T4 cfg={}] T4.back->/p/B ui ok=True uri=http://localhost:8931/p/B title=Page B backLabels=['http://localhost:8931/p/C'] cur=http://localhost:8931/p/B fwd=['http://localhost:8931/p/A']
+  [T4 cfg={}] T4.back->/p/A ui ok=True uri=http://localhost:8931/p/A title=Page A backLabels=[] cur=http://localhost:8931/p/A fwd=['http://localhost:8931/p/A', 'http://localhost:8931/p/B']
+  [T4 cfg={}] T4.forward->/p/B ui ok=True uri=http://localhost:8931/p/B title=Page B backLabels=['http://localhost:8931/p/A'] cur=http://localhost:8931/p/B fwd=['http://localhost:8931/p/A']
+  [T4 cfg={}] T4.reload  ok=True uri=http://localhost:8931/p/B title=Page B backLabels=['http://localhost:8931/p/A'] cur=http://localhost:8931/p/B fwd=['http://localhost:8931/p/A']
+  [T4 cfg={}] T4.atC  ok=None uri=http://localhost:8931/p/C title=Page C backLabels=['http://localhost:8931/p/A', 'http://localhost:8931/p/C'] cur=http://localhost:8931/p/A fwd=[]
+  [T4 cfg={}] T4.back->/p/B js ok=True uri=http://localhost:8931/p/B title=Page B backLabels=['http://localhost:8931/p/C'] cur=http://localhost:8931/p/B fwd=['http://localhost:8931/p/A']
+  [T4 cfg={}] T4.back->/p/A js ok=True uri=http://localhost:8931/p/A title=Page A backLabels=[] cur=http://localhost:8931/p/A fwd=['http://localhost:8931/p/A', 'http://localhost:8931/p/B']
+  [T4 cfg={}] T4.forward->/p/B js ok=True uri=http://localhost:8931/p/B title=Page B backLabels=['http://localhost:8931/p/A'] cur=http://localhost:8931/p/B fwd=['http://localhost:8931/p/A']
+  [T4 cfg={}] T4.reload  ok=True uri=http://localhost:8931/p/B title=Page B backLabels=['http://localhost:8931/p/A'] cur=http://localhost:8931/p/B fwd=['http://localhost:8931/p/A']
+  [BF-topmode cfg={'histMode': 'top'}] T4.atC  ok=None uri=http://localhost:8931/p/C title=Page C backLabels=['http://localhost:8931/p/B', 'http://localhost:8931/p/A'] cur=http://localhost:8931/p/C fwd=[]
+  [BF-topmode cfg={'histMode': 'top'}] T4.back->/p/B ui ok=True uri=http://localhost:8931/p/B title=Page B backLabels=['http://localhost:8931/p/A'] cur=http://localhost:8931/p/B fwd=['http://localhost:8931/p/C']
+  [BF-topmode cfg={'histMode': 'top'}] T4.back->/p/A ui ok=True uri=http://localhost:8931/p/A title=Page A backLabels=[] cur=http://localhost:8931/p/A fwd=['http://localhost:8931/p/C', 'http://localhost:8931/p/B']
+  [BF-topmode cfg={'histMode': 'top'}] T4.forward->/p/B ui ok=False uri=http://localhost:8931/p/C title=Page C backLabels=['http://localhost:8931/p/B', 'http://localhost:8931/p/A'] cur=http://localhost:8931/p/C fwd=[]
+  [BF-topmode cfg={'histMode': 'top'}] T4.reload  ok=False uri=http://localhost:8931/p/C title=Page C backLabels=['http://localhost:8931/p/B', 'http://localhost:8931/p/A'] cur=http://localhost:8931/p/C fwd=[]
+  [BF] BF.atB shell=False uri=http://localhost:8931/p/B?__noshell=1 backLabels=['http://localhost:8931/p/A?__noshell=1'] cur=http://localhost:8931/p/B?__noshell=1
+  [BF] BF.atC shell=False uri=http://localhost:8931/p/C?__noshell=1 backLabels=['http://localhost:8931/p/B?__noshell=1', 'http://localhost:8931/p/A?__noshell=1'] cur=http://localhost:8931/p/C?__noshell=1
+  [BF] BF.afterBack shell=False uri=http://localhost:8931/p/B?__noshell=1 backLabels=['http://localhost:8931/p/A?__noshell=1'] cur=http://localhost:8931/p/B?__noshell=1
+  [BF] BF.atB shell=True uri=http://localhost:8931/p/B backLabels=['http://localhost:8931/p/B'] cur=http://localhost:8931/p/A
+  [BF] BF.atC shell=True uri=http://localhost:8931/p/C backLabels=['http://localhost:8931/p/A', 'http://localhost:8931/p/C'] cur=http://localhost:8931/p/A
+  [BF] BF.afterBack shell=True uri=http://localhost:8931/p/B backLabels=['http://localhost:8931/p/C'] cur=http://localhost:8931/p/B
+  [BF cfg={} pc=1] Back from other site -> uri=http://localhost:8931/p/A frame={'top': 'http://localhost:8931/p/A', 'frame': 'http://localhost:8931/p/A'} refetched=['/p/A document', '/p/A iframe']
+  [BF cfg={} pc=0] Back from other site -> uri=http://localhost:8931/p/A frame={'top': 'http://localhost:8931/p/A', 'frame': 'http://localhost:8931/p/A'} refetched=['/p/A document', '/p/A iframe']
+  [BF] BFC q='?__noshell=1' restoredFromBFCache=True
+  [BF] BFC q='' restoredFromBFCache=True
+  [BF cfg={}] back x3 / fwd x3 landed=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B'] expected=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B']
+  [BF cfg={}] back x3 / fwd x3 landed=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B'] expected=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B']
+  [BF-topmode cfg={'histMode': 'top'} pc=1] Back from other site -> uri=http://localhost:8931/p/C frame={'top': 'http://localhost:8931/p/C', 'frame': 'http://localhost:8931/p/C'} refetched=[]
+  [BF-topmode cfg={'histMode': 'top'}] back x3 / fwd x3 landed=['/p/C', '/p/B', '/p/A', '/p/C', '/p/B', '/p/B'] expected=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B']
+  [BF-topmode cfg={'histMode': 'top'}] back x3 / fwd x3 landed=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B'] expected=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B']
+## T5 cross-origin escapes
+  [T5] T5.lX -> uri=http://127.0.0.1:8931/p/X ms=234.5 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('loc:8931', '/b?ev=escape-frame-navigate-event&url=', 'image'), ('127:8931', '/p/X', 'document'), ('127:8931', '/p/X', 'iframe')]
+  [T5] T5.lO -> uri=http://localhost:8932/p/O ms=214.3 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('loc:8931', '/b?ev=escape-frame-navigate-event&url=', 'image'), ('loc:8932', '/p/O', 'document'), ('loc:8932', '/p/O', 'iframe')]
+  [T5] T5.assign -> uri=http://127.0.0.1:8931/p/X2 ms=30.7 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('loc:8931', '/b?ev=escape-frame-navigate-event&url=', 'image'), ('127:8931', '/p/X2', 'document'), ('127:8931', '/p/X2', 'iframe')]
+  [T5] T5.form -> uri=http://127.0.0.1:8931/p/XF? ms=28.9 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('loc:8931', '/b?ev=escape-frame-navigate-event&url=', 'image'), ('127:8931', '/p/XF', 'document'), ('127:8931', '/p/XF', 'iframe')]
+  [T5] T5.lR -> uri=http://127.0.0.1:8931/p/RX ms=166.9 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('loc:8931', '/r?to=http%3A%2F%2F127.0.0.1%3A8931%2F', 'iframe'), ('127:8931', '/p/RX', 'iframe'), ('loc:8931', '/b?ev=escape-frame-side-message&url=ht', 'image'), ('127:8931', '/p/RX', 'document'), ('127:8931', '/p/RX', 'iframe')]
+  [T5] T5.lRD -> uri=http://127.0.0.1:8931/p/RXD?xfo=DENY ms=218.1 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('loc:8931', '/r?to=http%3A%2F%2F127.0.0.1%3A8931%2F', 'iframe'), ('127:8931', '/p/RXD?xfo=DENY', 'iframe'), ('loc:8931', '/b?ev=escape-frame-side-message&url=ht', 'image'), ('127:8931', '/p/RXD?xfo=DENY', 'document'), ('127:8931', '/p/RXD?xfo=DENY', 'iframe'), ('127:8931', '/p/RXD?xfo=DENY', 'document')]
+  [T5] T5dbg.lRD frame={'hrefErr': "TypeError: null is not an object (evaluating 'f.contentWindow')", 'cdErr': "TypeError: null is not an object (evaluating 'f.contentDocument')"}
+  [T5-nonavapi] T5.lX -> uri=http://127.0.0.1:8931/p/X ms=202.1 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('127:8931', '/p/X', 'document'), ('127:8931', '/p/X', 'iframe')]
+  [T5-nonavapi] T5.assign -> uri=http://127.0.0.1:8931/p/X2 ms=28.8 requests=[('loc:8931', '/p/A', 'document'), ('loc:8931', '/p/A', 'iframe'), ('127:8931', '/p/X2', 'iframe'), ('loc:8931', '/b?ev=escape-frame-side-message&url=ht', 'image'), ('127:8931', '/p/X2', 'document'), ('127:8931', '/p/X2', 'iframe')]
+## T6 frame busting
+  cfg={} topLoadsStarted(3s)=1 pageRequests=2 frame={'href': 'http://localhost:8931/p/A?bust=1', 'bustErr': None, 'bustTried': 1, 'title': 'Page A', 'hdr': True}
+  cfg={'navapi': False} topLoadsStarted(3s)=121 pageRequests=242 frame={'bustTried': 0, 'hdr': False, 'bustErr': None, 'href': 'about:blank', 'title': ''}
+  cfg={} topLoadsStarted(3s)=121 pageRequests=242 frame={'bustErr': None, 'href': 'about:blank', 'title': '', 'bustTried': 0, 'hdr': False}
+  cfg={'navapi': False, 'sandbox': 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads allow-top-navigation-by-user-activation allow-pointer-lock allow-presentation allow-storage-access-by-user-activation'} topLoadsStarted(3s)=1 pageRequests=2 frame={'bustErr': 'SecurityError: The operation is insecure.', 'href': 'http://localhost:8931/p/A?bust=1', 'title': 'Page A', 'bustTried': 1, 'hdr': True}
+  OWASP anti-clickjack cfg={'hiddenCheck': False}: topLoads=1 frame={'href': 'http://localhost:8931/p/A?owasp=1', 'cd': {'url': 'http://localhost:8931/p/A?owasp=1', 'title': 'Page A', 'origin': 'http://localhost:8931', 'bodyDisplay': 'none'}} srv=['/p/A?owasp=1 document', '/p/A?owasp=1 iframe', '/b?ev=inline-head&page=A&ctx=frame&t=1792923376179 image', '/s.js?page=A script']
+  OWASP anti-clickjack cfg={}: topLoads=2 frame={'href': 'http://localhost:8931/p/A?owasp=1', 'noFrame': True, 'title': 'Page A'} srv=['/p/A?owasp=1 document', '/p/A?owasp=1 iframe', '/b?ev=inline-head&page=A&ctx=frame&t=1792923378655 image', '/s.js?page=A script']
+## T7 framing headers
+  [T7][margin] q=xfo=SAMEORIGIN: framedInShell=True topLoads=1 requests=[('/p/A?xfo=SAMEORIGIN', 'document', None), ('/p/A?xfo=SAMEORIGIN', 'iframe', None)]
+  [T7][margin] q=fa=self: framedInShell=True topLoads=1 requests=[('/p/A?fa=self', 'document', None), ('/p/A?fa=self', 'iframe', None)]
+  [T7][margin] q=xfo=SAMEORIGIN&fa=self: framedInShell=True topLoads=1 requests=[('/p/A?xfo=SAMEORIGIN&fa=self', 'document', None), ('/p/A?xfo=SAMEORIGIN&fa=self', 'iframe', None)]
+  [T7][margin] q=xfo=DENY: framedInShell=False topLoads=2 requests=[('/p/A?xfo=DENY', 'document', None), ('/p/A?xfo=DENY', 'iframe', None), ('/p/A?xfo=DENY', 'document', None)]
+  [T7][margin] q=fa=none: framedInShell=False topLoads=2 requests=[('/p/A?fa=none', 'document', None), ('/p/A?fa=none', 'iframe', None), ('/p/A?fa=none', 'document', None)]
+  [T7][margin] q=tcsp=frame-src%20https://other.example: framedInShell=False topLoads=2 requests=[('/p/A?tcsp=frame-src%20https://', 'document', None), ('/p/A?tcsp=frame-src%20https://', 'document', None)]
+  [T7][main] q=tcsp=frame-src%20https://other.example: framedInShell=False topLoads=2 requests=[('/p/A?tcsp=frame-src%20https://', 'document', None), ('/p/A?tcsp=frame-src%20https://', 'document', None)]
+  [T7] DUMP http://localhost:8931/p/A?tcsp=frame-src%20https://other.example: log=['stopped', 'build', 'frame-load', 'blank', 'focus', 'built', 'csp-violation', 'top-navigate']
+  [T7-rules][margin] q=xfo=DENY: framedInShell=False topLoads=2 requests=[('/p/A?xfo=DENY', 'document', None), ('/p/A?xfo=DENY', 'iframe', None), ('/p/A?xfo=DENY', 'document', None)]
+  [T7-rules][margin] q=fa=none: framedInShell=False topLoads=2 requests=[('/p/A?fa=none', 'document', None), ('/p/A?fa=none', 'iframe', None), ('/p/A?fa=none', 'document', None)]
+  [T7-rules][margin] q=xfo=DENY: framedInShell=False topLoads=2 requests=[('/p/A?xfo=DENY', 'document', None), ('/p/A?xfo=DENY', 'iframe', None), ('/p/A?xfo=DENY', 'document', None)]
+  [T7-rules][margin] q=fa=none: framedInShell=False topLoads=2 requests=[('/p/A?fa=none', 'document', None), ('/p/A?fa=none', 'iframe', None), ('/p/A?fa=none', 'document', None)]
+  [T7-rules][margin] q=xfo=DENY: framedInShell=False topLoads=2 requests=[('/p/A?xfo=DENY', 'document', None), ('/p/A?xfo=DENY', 'iframe', None), ('/p/A?xfo=DENY', 'document', None)]
+  [T7-rules][margin] q=fa=none: framedInShell=False topLoads=2 requests=[('/p/A?fa=none', 'document', None), ('/p/A?fa=none', 'iframe', None), ('/p/A?fa=none', 'document', None)]
+  [T7-rules][margin] q=xfo=SAMEORIGIN: framedInShell=True topLoads=1 requests=[('/p/A?xfo=SAMEORIGIN', 'document', None), ('/p/A?xfo=SAMEORIGIN', 'iframe', None)]
+  [T7-rules] control rule list on q=__noshell=1: requests=[('/p/A?__noshell=1', None), ('/s.js?page=A', None), ('/b?ev=inline-head&page=A&', None), ('/img.png?page=A', None), ('/b?ev=inline-body&page=A&', None)]
+  [T7-rules] control rule list on q=__noshell=1: requests=[('/p/A?__noshell=1', None), ('/s.js?page=A', None), ('/style.css?page=A', None), ('/b?ev=inline-head&page=A&', None), ('/img.png?page=A', None), ('/b?ev=inline-body&page=A&', None)]
+## T8 top-level scripts / cost
+  [margin cfg={}] q='__noshell=1': top={'ctx': 'top', 'rs': 'complete', 'title': 'Page A', 'ext': 1, 'inlineHead': 1, 'inlineBody': 1, 'nodes': 33} frame=None counts={'/p/A': 1, '/s.js': 1, '/style.css': 1, '/b top': 2, '/img.png': 1}
+  [margin cfg={}] q='': top={'ctx': None, 'inlineHead': 0, 'inlineBody': 0, 'title': 'Page A', 'rs': 'complete', 'nodes': 13, 'ext': 0} frame={'inlineHead': 1, 'inlineBody': 1, 'ext': 1, 'ctx': 'frame'} counts={'/p/A': 2, '/b frame': 2, '/s.js': 1, '/style.css': 1, '/img.png': 1}
+  [main cfg={}] q='': top={'ctx': None, 'inlineBody': 0, 'inlineHead': 0, 'title': 'Page A', 'rs': 'complete', 'ext': 0, 'nodes': 13} frame={'inlineHead': 1, 'inlineBody': 1, 'ext': 1, 'ctx': 'frame'} counts={'/p/A': 2, '/b frame': 2, '/s.js': 1, '/style.css': 1, '/img.png': 1}
+  [margin cfg={'stop': False}] q='': top={'inlineHead': 1, 'inlineBody': 1, 'nodes': 45, 'title': 'Page A', 'ext': 1, 'ctx': 'top', 'rs': 'complete'} frame={'inlineHead': 1, 'ext': 1, 'inlineBody': 1, 'ctx': 'frame'} counts={'/p/A': 2, '/b top': 2, '/s.js': 2, '/style.css': 2, '/img.png': 2, '/b frame': 2}
+  [margin cfg={}] q='big=300&linkpreload=1': top={'ctx': None, 'inlineBody': 0, 'inlineHead': 0, 'rs': 'complete', 'title': 'Page A', 'nodes': 13, 'ext': 0} frame={'inlineBody': 1, 'ext': 21, 'ctx': 'frame', 'inlineHead': 1} counts={'/p/A': 2, '/img.png': 3, '/s.js': 21, '/b frame': 2, '/style.css': 21}
+  [margin cfg={}] q='big=300&linkpreload=1&__noshell=1': top={'ctx': 'top', 'title': 'Page A', 'inlineHead': 1, 'ext': 21, 'rs': 'complete', 'inlineBody': 1, 'nodes': 73} frame=None counts={'/p/A': 1, '/img.png': 2, '/b top': 2, '/s.js': 21, '/style.css': 21}
+  timing base=True delay=0ms: median=17 vals=[15, 16, 16, 17, 18, 19, 93]
+  timing base=False delay=0ms: median=24 vals=[19, 22, 24, 24, 32, 49, 89]
+  timing base=True delay=300ms: median=320 vals=[317, 318, 318, 320, 320, 321, 390]
+  timing base=False delay=300ms: median=624 vals=[622, 623, 624, 624, 625, 628, 632]
+## T9 keyboard / focus
+  no-shell: before scrollY=0 keys=[] | Space scrollY=480 keys=[' '] | Down scrollY=551 keys=[' ', 'ArrowDown']
+  cfg={} after load: before scrollY=0 keys=[] | Space scrollY=467 keys=[' '] | Down scrollY=536 keys=[' ', 'ArrowDown']
+  cfg={} after sidebar click: Space scrollY=536 keys=[' ', 'ArrowDown'] topActive=BODY
+  cfg={} sidebar input typing: {'active': 'sb-input', 'value': 'a'}
+  cfg={} after clicking in frame: Space scrollY=1003 keys=[' ', 'ArrowDown', ' ']
+  cfg={'refocus': True} after load: before scrollY=0 keys=[] | Space scrollY=467 keys=[' '] | Down scrollY=536 keys=[' ', 'ArrowDown']
+  cfg={'refocus': True} after sidebar click: Space scrollY=1003 keys=[' ', 'ArrowDown', ' '] topActive=margin-frame
+  cfg={'refocus': True} sidebar input typing: {'value': 'a', 'active': 'sb-input'}
+  cfg={'refocus': True} after clicking in frame: Space scrollY=1470 keys=[' ', 'ArrowDown', ' ', ' ']
+  cfg={'focus': 'none'} after load: before scrollY=0 keys=[] | Space scrollY=0 keys=[] | Down scrollY=0 keys=[]
+  cfg={'focus': 'none'} after sidebar click: Space scrollY=0 keys=[] topActive=BODY
+  cfg={'focus': 'none'} sidebar input typing: {'value': 'a', 'active': 'sb-input'}
+  cfg={'focus': 'none'} after clicking in frame: Space scrollY=467 keys=[' ']
+  cfg={'focus': 'element'} after load: before scrollY=0 keys=[] | Space scrollY=467 keys=[' '] | Down scrollY=536 keys=[' ', 'ArrowDown']
+  cfg={'focus': 'element'} after sidebar click: Space scrollY=536 keys=[' ', 'ArrowDown'] topActive=margin-frame
+  cfg={'focus': 'element'} sidebar input typing: {'value': 'a', 'active': 'sb-input'}
+  cfg={'focus': 'element'} after clicking in frame: Space scrollY=1003 keys=[' ', 'ArrowDown', ' ']
+  autofocus base=True: afterLoad={'active': 'inp', 'value': '', 'scrollY': 841} afterTyping={'value': 'a', 'scrollY': 841, 'active': 'inp'}
+  autofocus base=False: afterLoad={'active': 'inp', 'scrollY': 857, 'value': ''} afterTyping={'scrollY': 857, 'active': 'inp', 'value': 'a'}
+## T10 target=_top / _blank
+  cfg={} _top: ready=True markerSurvived=True topLoads=0 uri=http://localhost:8931/p/T requests=[('/p/T', 'iframe')]
+  cfg={} _blank: create=[{'t': 819.6, 'uri': 'http://localhost:8931/p/N', 'frame_name': None, 'user_gesture': True}] policy=[('new-window-action', 'http://localhost:8931/p/N', '_blank')]
+  cfg={'navapi': False} _top: ready=True markerSurvived=False topLoads=1 uri=http://localhost:8931/p/T requests=[('/p/T', 'document'), ('/p/T', 'iframe')]
+  cfg={'navapi': False} _blank: create=[{'t': 812.1, 'uri': 'http://localhost:8931/p/N', 'frame_name': None, 'user_gesture': True}] policy=[('new-window-action', 'http://localhost:8931/p/N', '_blank')]
+## extras
+  find-in-page base=True: [{'t': 1612.3, 'counted': 1}, {'t': 2112.4, 'found': 1}] selection='needle-A'
+  find-in-page base=False: [{'t': 1609.0, 'counted': 1}, {'t': 2110.4, 'found': 1}] selection='needle-A'
+  print base=True cfg={}: ['Pages:           3'] hasSection2=True startsWith='fixed header A\n\nwide\nneedle-A unique tex'
+  print base=False cfg={'printFix': False}: ['Pages:           1'] hasSection2=False startsWith='tabs\nsidebar input\nsidebar blank area\n\nf'
+  print base=False cfg={}: ['Pages:           4'] hasSection2=True startsWith='fixed header A\n\nnarrow\nneedle-A unique t'
+  fullscreen from frame: {'fullscreenEnabled': True, 'topFullscreenEnabled': True} {'fs': {'fsEl': 'content', 'topFsEl': 'margin-frame', 'ok': True}, 'frameInner': [1000, 600], 'topInner': [1000, 600]} gtk=[{'t': 350.9, 'ev': 'enter'}]
+  isolated world: {'frameMainSeesShell': 'undefined', 'topMainSeesShell': 'undefined', 'frameMainInlineRan': 1} {'frameSideRuns': 1, 'shellWorldSeesPageGlobals': 'undefined', 'shellWorldSeesShell': 'object'}
+  POSTIN: ['POST /p/POSTED document', 'GET /p/POSTED iframe'] uri={'uri': 'http://localhost:8931/p/POSTED'}
+  POSTFRAME: ['POST /p/POSTED iframe'] uri=http://localhost:8931/p/POSTED
+  POSTFRAME.reloadTop: ['GET /p/POSTED document', 'GET /p/POSTED iframe'] uri=http://localhost:8931/p/POSTED
+  referrer on cross-site arrival: {'frameNavType': 'navigate', 'topReferrer': 'http://127.0.0.1:8931/', 'frameReferrer': 'http://localhost:8931/p/A?from=x', 'frameHistoryLength': 2} requests=[['GET', '/p/A?from=x', 'document', 'cross-site', 'http://127.0.0.1:8931/'], ['GET', '/p/A?from=x', 'iframe', 'same-origin', 'http://localhost:8931/p/A?from=x']]
+  [BF-topmode cfg={'histMode': 'top'}] BFSKIP2 pre-click=0 landed=['/p/C', '/p/B', '/p/A', '/p/C', '/p/B', '/p/B'] expected=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B']
+  [BF-topmode cfg={'histMode': 'top'}] BFSKIP2 pre-click=1 landed=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B'] expected=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B']
+  [BF cfg={}] BFSKIP2 pre-click=0 landed=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B'] expected=['/p/C', '/p/B', '/p/A', '/p/B', '/p/C', '/p/B']
+  cacheable top response q=cache=600: requestCounts={'/p/A': 2, '/b frame': 2, '/s.js': 1, '/style.css': 1, '/img.png': 1}
+  XFO DENY trace: frame={'noFrame': True, 'href': 'http://localhost:8931/p/A?xfo=DENY', 'title': 'Page A'} topLoads=2 requests=['/p/A?xfo=DENY document', '/p/A?xfo=DENY iframe', '/b?ev=unframeable-reload-frame-side-message&url=http%3A%2F%2 image', '/p/A?xfo=DENY document']
+  CSP probe (content-script world, no shell) tcsp=style-src%20%27none%27: {'shadowStyleElement': 'static', 'shadowAdoptedSheet': 'fixed', 'cssomSetProperty': 'fixed', 'adoptedSheet': 'fixed', 'styleElement': 'static', 'styleAttribute': 'static'}
+  CSP probe (content-script world, no shell) tcsp=default-src%20%27self%27: {'shadowStyleElement': 'static', 'shadowAdoptedSheet': 'fixed', 'cssomSetProperty': 'fixed', 'adoptedSheet': 'fixed', 'styleElement': 'static', 'styleAttribute': 'static'}
+  CSP probe (content-script world, no shell) x=1: {'shadowAdoptedSheet': 'fixed', 'styleAttribute': 'fixed', 'shadowStyleElement': 'fixed', 'adoptedSheet': 'fixed', 'cssomSetProperty': 'fixed', 'styleElement': 'fixed'}
+  shell under top CSP tcsp=style-src%20%27none%27 cfg={}: {'sidebarPosition': 'static', 'styleSheets': 0, 'frame': {'hdr': True, 'innerWidth': 300, 'href': 'http://localhost:8931/p/A?tcsp=style-src%20%27none%27'}, 'iframe': [8, 70, 304, 154]} requests=['/p/A?tcsp=style-src%20%27none%27 document', '/p/A?tcsp=style-src%20%27none%27 iframe']
+  shell under top CSP tcsp=default-src%20%27self%27 cfg={}: {'iframe': [8, 70, 304, 154], 'styleSheets': 0, 'frame': {'hdr': True, 'innerWidth': 300, 'href': 'http://localhost:8931/p/A?tcsp=default-src%20%27self%27'}, 'sidebarPosition': 'static'} requests=['/p/A?tcsp=default-src%20%27self%27 document', '/p/A?tcsp=default-src%20%27self%27 iframe']
+  shell under top CSP tcsp=default-src%20%27none%27 cfg={}: {'href': 'http://localhost:8931/p/A?tcsp=default-src%20%27none%27', 'noFrame': True} requests=['/p/A?tcsp=default-src%20%27none%27 document', '/p/A?tcsp=default-src%20%27none%27 document']
+  shell under top CSP tcsp=frame-src%20%27none%27 cfg={}: {'href': 'http://localhost:8931/p/A?tcsp=frame-src%20%27none%27', 'noFrame': True} requests=['/p/A?tcsp=frame-src%20%27none%27 document', '/p/A?tcsp=frame-src%20%27none%27 document']
+  shell under top CSP tcsp=style-src%20%27none%27 cfg={'styleMode': 'adopted'}: {'iframe': [260, 8, 732, 584], 'styleSheets': 1, 'frame': {'hdr': True, 'innerWidth': 732, 'href': 'http://localhost:8931/p/A?tcsp=style-src%20%27none%27'}, 'sidebarPosition': 'fixed'} requests=['/p/A?tcsp=style-src%20%27none%27 document', '/p/A?tcsp=style-src%20%27none%27 iframe']
+  shell under top CSP tcsp=default-src%20%27self%27 cfg={'styleMode': 'adopted'}: {'iframe': [260, 8, 732, 584], 'styleSheets': 1, 'frame': {'hdr': True, 'innerWidth': 732, 'href': 'http://localhost:8931/p/A?tcsp=default-src%20%27self%27'}, 'sidebarPosition': 'fixed'} requests=['/p/A?tcsp=default-src%20%27self%27 document', '/p/A?tcsp=default-src%20%27self%27 iframe']

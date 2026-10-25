@@ -1,0 +1,3 @@
+{"step": "POSTIN", "state": {"uri": "http://localhost:8931/p/POSTED"}, "top": {"hasShell": true, "type": "navigate"}, "srv": ["POST /p/POSTED document", "GET /p/POSTED iframe"], "scenario": "POSTIN", "world": "margin", "cfg": {}}
+{"step": "POSTFRAME", "ready": true, "uri": "http://localhost:8931/p/POSTED", "srv": ["POST /p/POSTED iframe"], "scenario": "POSTFRAME", "world": "margin", "cfg": {}}
+{"step": "POSTFRAME.reloadTop", "uri": "http://localhost:8931/p/POSTED", "srv": ["GET /p/POSTED document", "GET /p/POSTED iframe"], "scenario": "POSTFRAME", "world": "margin", "cfg": {}}

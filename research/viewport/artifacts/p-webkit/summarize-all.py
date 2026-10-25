@@ -129,3 +129,17 @@ for d in rows('ISO'):
     print(f"  isolated world: {d['mainWorld']} {d['shellWorld']}")
 for d in rows('POST'):
     print(f"  {d['step']}: {d.get('srv')} uri={d.get('uri') or d.get('state')}")
+for d in rows('REF'):
+    print(f"  referrer on cross-site arrival: {d['js']} requests={d['srv']}")
+for name in ('BF-topmode', 'BF'):
+    for d in rows(name):
+        if d['step'] == 'BFSKIP2':
+            print(f"  [{name} cfg={d['cfg']}] BFSKIP2 pre-click={d['pre']} landed={d['landed']} expected={d['expected']}")
+for d in rows('T8-cache'):
+    print(f"  cacheable top response q={d['q']}: requestCounts={d['requestCounts']}")
+for d in rows('T7-dump-deny'):
+    print(f"  XFO DENY trace: frame={d['frame']} topLoads={d['topLoadsStarted']} requests={d['srv'][:4]}")
+for d in rows('CSPPROBE'):
+    print(f"  CSP probe (content-script world, no shell) {d['q']}: {d['res']}")
+for d in rows('CSPSTYLE'):
+    print(f"  shell under top CSP {d['q']} cfg={d['cfg']}: {d['geom']} requests={d['srv']}")
