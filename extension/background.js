@@ -127,13 +127,10 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   // the change without it, or it redirected).
   const url = change.url ?? (change.status === 'complete' ? tab.url : null);
   if (url) learnSearchEngine([url], { tabId });
-  // Margin ran on another site in this tab: whether it runs on this one is
-  // only known once it says hello.
-  if (change.url && marginTabs.has(tabId) && marginTabs.get(tabId) !== originOf(change.url)) forgetMarginTab(tabId);
   // Safari reloading a tab as it's shown: it had unloaded it (diagnostics
   // for switchTo, which tries to load such tabs before showing them).
   if (change.status === 'loading' && !change.url && shownAt.get(tabId) > Date.now() - 1000 && !readyWaiters.has(tabId)) {
-    console.info(`[margin] tab ${tabId} reloaded as it was shown (marginRanOn=${marginTabs.get(tabId) ?? 'unknown'})`);
+    console.info(`[margin] tab ${tabId} reloaded as it was shown`);
   }
   // A sleeping tab Margin is loading before switching to it (switchTo).
   const waiter = readyWaiters.get(tabId);
@@ -143,7 +140,6 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
 });
 api.tabs.onRemoved.addListener((tabId) => {
   mutate((s) => M.removeTab(s, tabId));
-  forgetMarginTab(tabId);
   shownAt.delete(tabId);
   for (const [windowId, pending] of pendingSwitch) if (pending.tabId === tabId || pending.fromTabId === tabId) cancelSwitch(windowId);
 });
@@ -184,8 +180,8 @@ async function focusTab(tabId) {
 // Safari unloads tabs that haven't been used in a while and reloads them when
 // they're shown, so switching to one used to show a blank page and then the
 // page and sidebar appearing. Instead, when the user switches through Margin
-// (sidebar, palette, pins): if the target tab doesn't answer (its page isn't
-// running) but Margin ran in it before, it's reloaded in the background while
+// (sidebar, palette, pins): if the target tab's page isn't running (asleep),
+// it's reloaded in the background while
 // the current page stays, veiled, with the target's row spinning (content/
 // sidebar.js showSwitching); Margin switches once the tab reports it's ready
 // (pageReady) or loaded, or after SWITCH_MAX_MS. If Safari doesn't start
@@ -195,11 +191,6 @@ const SWITCH_MAX_MS = 8000;
 const pendingSwitch = new Map(); // windowId → { tabId, fromTabId, done }
 const readyWaiters = new Map(); // tabId → { started, finish }
 const switching = new Set(); // tabs switchTo is busy with
-// Tabs Margin's content script has run in (hello), with the site it ran on:
-// a sleeping tab is only woken up for a site Margin runs on, or it would
-// never say it's ready. Kept in session storage, as the background can be
-// stopped and started again meanwhile.
-const marginTabs = new Map(); // tabId → origin
 const originOf = (url) => {
   try {
     return new URL(url).origin;
@@ -207,28 +198,6 @@ const originOf = (url) => {
     return null;
   }
 };
-const marginTabsLoaded = (api.storage.session?.get('marginTabs') ?? Promise.resolve({}))
-  .then(({ marginTabs: saved = [] }) => {
-    for (const entry of saved) if (Array.isArray(entry) && !marginTabs.has(entry[0])) marginTabs.set(entry[0], entry[1]);
-  })
-  .catch(() => {});
-let marginTabsWrite = null;
-function saveMarginTabs() {
-  clearTimeout(marginTabsWrite);
-  marginTabsWrite = setTimeout(async () => {
-    await marginTabsLoaded;
-    api.storage.session?.set({ marginTabs: [...marginTabs] }).catch(() => {});
-  }, 500);
-}
-function rememberMarginTab(tabId, url) {
-  const origin = originOf(url);
-  if (tabId == null || !origin || marginTabs.get(tabId) === origin) return;
-  marginTabs.set(tabId, origin);
-  saveMarginTabs();
-}
-function forgetMarginTab(tabId) {
-  if (marginTabs.delete(tabId)) saveMarginTabs();
-}
 
 // 'pong': Margin is running there. 'none': nothing answered (WebKit answers
 // at once for a tab without a page or without Margin). 'timeout': the page is
@@ -237,6 +206,20 @@ const pingTab = (tabId, ms = 400) => Promise.race([
   api.tabs.sendMessage(tabId, { type: 'ping' }).then((r) => (r === 'pong' ? 'pong' : 'none'), () => 'none'),
   new Promise((resolve) => setTimeout(() => resolve('timeout'), ms)),
 ]);
+// Nothing answered: is the page there at all? A script runs in any loaded
+// page Margin may access (one opened before Margin was, say: no content
+// script yet), and can't without one (WebKit: no web view). Only asked where
+// Margin has access (permissions.contains doesn't prompt; executeScript
+// could). 'alive', 'asleep', or 'unknown'.
+async function probeTab(tabId, url, ms = 400) {
+  const origin = originOf(url);
+  const allowed = origin && await api.permissions?.contains({ origins: [`${origin}/*`] }).catch(() => false);
+  if (!allowed || !api.scripting?.executeScript) return 'unknown';
+  return Promise.race([
+    api.scripting.executeScript({ target: { tabId }, func: () => true }).then((r) => (r?.[0]?.result === true ? 'alive' : 'asleep'), () => 'asleep'),
+    new Promise((resolve) => setTimeout(() => resolve('unknown'), ms)),
+  ]);
+}
 // To the page the user switched from: a content script, or Margin's own
 // new-tab page (an extension page, which tabs.sendMessage doesn't reach).
 const tellSwitching = (fromTabId, tabId) => {
@@ -259,16 +242,15 @@ async function switchTo(tabId, fromTab) {
     const target = await api.tabs.get(tabId).catch(() => null);
     if (!target) return;
     cancelSwitch(target.windowId);
-    await marginTabsLoaded;
     const candidate = !target.active && target.status !== 'loading' && /^https?:/i.test(target.url ?? '')
-      && fromTab?.windowId === target.windowId && marginTabs.get(tabId) === originOf(target.url);
+      && fromTab?.windowId === target.windowId;
     const ping = candidate ? await pingTab(tabId) : 'not asked';
+    const probe = ping === 'none' ? await probeTab(tabId, target.url) : 'not asked';
     // Why it is or isn't treated as asleep (Safari's tab sleeping can't be
     // observed otherwise).
     console.info(`[margin] switch to tab ${tabId}: active=${target.active} status=${target.status} discarded=${target.discarded}`
-      + ` url=${originOf(target.url)} sameWindow=${fromTab?.windowId === target.windowId} marginRanOn=${marginTabs.get(tabId) ?? 'unknown'}`
-      + ` ping=${ping} (${marginTabs.size} tabs known)`);
-    if (ping !== 'none') return await focusTab(tabId);
+      + ` url=${originOf(target.url)} sameWindow=${fromTab?.windowId === target.windowId} ping=${ping} page=${probe}`);
+    if (probe !== 'asleep') return await focusTab(tabId);
     console.info(`[margin] tab ${tabId} is asleep: loading it before switching`);
     let pending;
     const outcome = new Promise((resolve) => {
@@ -314,7 +296,6 @@ const openedFrom = new Map(); // opener tab id → { index, at }
 
 const handlers = {
   async hello(_, sender) {
-    rememberMarginTab(sender.tab?.id, sender.url ?? sender.tab?.url);
     return { tabId: sender.tab?.id ?? null, windowId: sender.tab?.windowId ?? null };
   },
   async activateTab({ tabId }, sender) {
