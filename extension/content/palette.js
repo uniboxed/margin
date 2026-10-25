@@ -7,6 +7,25 @@
 
   // `getState()` → storage state; `getContext()` → { windowId, tabId, inNewTab,
   // canToggleSidebar }; `onLocal(action)` handles actions that aren't messages.
+  // Small inline SVG icons (no network, no fonts).
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function icon(paths, cls) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', cls);
+    for (const d of paths) {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      svg.append(path);
+    }
+    return svg;
+  }
+  const searchIcon = () => icon(['M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z', 'M15.5 15.5 20 20'], 'search-icon');
+  const arrowIcon = () => icon(['M5 12h13', 'M13 6l6 6-6 6'], 'arrow-icon');
+  // Rows that go somewhere get Arc's arrow button; plain actions don't.
+  const GOES = new Set(['tab', 'pin', 'archive', 'go']);
+
   function createPalette({ send, getState, getContext, onLocal, theme }) {
     let host = null;
     let panel, input, list;
@@ -22,7 +41,7 @@
       input = el(document, 'input', {
         type: 'text',
         class: 'query',
-        placeholder: 'Search tabs, pins, archive, or enter a URL…',
+        placeholder: 'Search or Enter URL…',
         'aria-label': 'Command palette',
         spellcheck: 'false',
         autocomplete: 'off',
@@ -31,7 +50,9 @@
         'aria-controls': 'margin-results',
       });
       list = el(document, 'ul', { class: 'results', id: 'margin-results', role: 'listbox' });
-      panel = el(document, 'div', { class: 'palette', role: 'dialog', 'aria-label': 'Margin command palette' }, input, list);
+      panel = el(document, 'div', { class: 'palette', role: 'dialog', 'aria-label': 'Margin command palette' },
+        el(document, 'div', { class: 'search' }, searchIcon(), input),
+        list);
       const backdrop = el(document, 'div', { class: 'backdrop' });
       shadow.append(backdrop, panel);
 
@@ -89,12 +110,11 @@
       selected = Math.min(selected, Math.max(items.length - 1, 0));
       list.replaceChildren(
         ...items.map((item, index) =>
-          el(document, 'li', { role: 'option', 'data-index': String(index), 'data-id': item.id, class: item.kind },
+          el(document, 'li', { role: 'option', 'data-index': String(index), 'data-id': item.id, class: item.kind, title: item.subtitle || item.title },
             item.emoji ? el(document, 'span', { class: 'avatar emoji', text: item.emoji }) : avatar(document, item),
-            el(document, 'span', { class: 'text' },
-              el(document, 'span', { class: 'title', text: item.title }),
-              item.subtitle ? el(document, 'span', { class: 'subtitle', text: item.subtitle }) : null),
-            item.badge ? el(document, 'span', { class: 'badge', text: item.badge }) : null),
+            el(document, 'span', { class: 'title', text: item.title }),
+            item.badge ? el(document, 'span', { class: 'badge', text: item.badge }) : null,
+            GOES.has(item.kind) ? el(document, 'span', { class: 'go-button' }, arrowIcon()) : null),
         ),
       );
       if (!items.length) list.append(el(document, 'li', { class: 'empty', text: 'No matches' }));
@@ -113,7 +133,14 @@
       if (!host) build();
       if (!host.isConnected) document.documentElement.appendChild(host);
       restoreFocus = document.activeElement;
-      panel.dataset.theme = theme?.() ?? 'light';
+      // Always Arc's dark command bar; the selected row takes the current
+      // space's color.
+      void theme;
+      const state = getState();
+      const ctx = getContext();
+      const spaceId = state ? Margin.view.activeSpaceId(state, ctx.windowId) : null;
+      const color = state?.spaces?.find((s) => s.id === spaceId)?.color;
+      if (color) panel.style.setProperty('--space-color', color);
       host.dataset.open = 'true';
       open = true;
       input.value = '';

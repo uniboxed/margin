@@ -201,3 +201,16 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 - **Placeholder hand-off:** once Margin runs on a page, it switches the placeholder off there (`data-margin-docked="off"`) and its own push holds the same width in the same frame. Otherwise the placeholder's fixed width would fight a live resize.
 - **Narrow widths:** footer buttons never wrap. Below 230px the Keep open / Auto-hide button shows only its icon (container query), keeping "+ New tab" readable.
 - **Tests:** E2E pushes settings changes through the background. Writing `storage.local` directly leaves the background's cached settings stale, and its next write would undo the change. Real users always go through the background.
+
+## Shortcuts, ⌘N and the Arc command bar (2026-10-25)
+
+- **⌘⌥←/→ belong to Safari.** In Safari, ⌘⌥←/→ switched tabs and never reached the page. A third-party guide lists them as Safari's next/previous tab keys; Apple's list doesn't. Either way, Safari handles them before any page sees them. Extension `commands` were considered: Chrome refuses ⌘⌥ in suggested keys and then fails to load the *whole extension* (verified by bisecting), and the same manifest can't be tested in Safari, so shipping it risked Margin not loading there at all. Instead:
+  - **All navigation shortcuts are settings** (`settings.shortcuts`, merged with defaults in `normalizeState` / `shortcuts.navigationFor`). They're edited in new tab → Settings → Keyboard shortcuts with the same recorder as the palette shortcut. Duplicates are refused, and there's a reset button. The recorder doubles as the test: a combination Safari or macOS keeps never arrives, so the field stays empty.
+  - **Defaults:** next/previous tab ⌘⌥↓/↑ (Arc's; Safari has no menu item on them), next/previous space ⌃⌘→/← (moved off ⌘⌥ because of Safari).
+  - **One implementation:** the page reports the action (`navigate`) and the background does it with the sender's real tab and window. A page that hasn't learned its tab id can't pick the wrong current tab. The space peek is triggered from there.
+- **⌘N opening a tab is macOS, not Margin.** "Prefer tabs when opening documents" (System Settings → Desktop & Dock) defaults to *In Full Screen Only*, and in a full-screen window ⌘N opens a tab. Margin gets the same new-tab page as ⌘T and can't tell them apart, so it shows the palette over the current page. Fixes on the Mac side: set it to *Never*, or use ⌥⌘N (Apple's always-a-window shortcut). Margin adds a palette **"New window"** action (`newWindow`: `windows.create`, then palette in the new window, same space). Each new tab logs one `[margin] new tab …` line in the background console with the decision and reason.
+- **Command bar, measured from Tirth's Arc screenshot:**
+  - **Panel:** about 760px wide (half the window), top at 33vh, 60px search row with a magnifier and "Search or Enter URL…", 44px one-line rows. Dark translucent (`rgba(36,32,36,.86)` + blur), the page not dimmed.
+  - **Rows:** each shows the item's space name, plus an arrow button for rows that go somewhere (tabs, pins, archive, open/search). The URL moved to the row tooltip.
+  - **Selection:** the selected row is the current space's color (darkened 18%) with a near-white arrow button.
+  - **Theme:** always dark now, like Arc's.

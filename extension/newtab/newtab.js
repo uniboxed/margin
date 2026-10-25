@@ -66,10 +66,7 @@ engine.addEventListener('change', () => send('updateSettings', { patch: { search
 
 // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space (the sidebar is
 // always visible here, so no peek).
-Margin.shortcuts.installNavigation({
-  getContext: () => ({ state, windowId: windowId(), tabId: self?.id }),
-  send,
-});
+Margin.shortcuts.installNavigation({ send, getSettings: () => (recording ? null : state?.settings) });
 
 // ---- palette ----------------------------------------------------------------
 
@@ -85,27 +82,60 @@ api.runtime.onMessage.addListener((message) => {
   if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
 });
 
-const shortcut = $('shortcut');
+// ---- keyboard shortcut settings -----------------------------------------------
+// Click a field, press a combination: it's saved. While recording, Margin's own
+// shortcuts are paused. A combination Safari/macOS keeps never arrives here,
+// which doubles as a test of what's usable.
+const shortcutInputs = [...document.querySelectorAll('.shortcut-input')];
+const shortcutHelp = $('shortcut-help');
+const defaultHelp = shortcutHelp.textContent;
+const SHORTCUT_NAMES = { paletteShortcut: 'Command palette', nextTab: 'Next tab', prevTab: 'Previous tab', nextSpace: 'Next space', prevSpace: 'Previous space' };
 let recording = false;
-shortcut.addEventListener('focus', () => {
-  recording = true;
-  shortcut.value = '';
-});
-shortcut.addEventListener('blur', () => {
-  recording = false;
-  renderLauncher();
-});
-// Capture phase, so recording wins over the palette shortcut itself.
+
+function currentShortcuts() {
+  return { paletteShortcut: state?.settings?.paletteShortcut ?? 'Alt+KeyK', ...Margin.shortcuts.navigationFor(state?.settings) };
+}
+function saveShortcut(name, combo) {
+  if (name === 'paletteShortcut') return send('updateSettings', { patch: { paletteShortcut: combo } });
+  return send('updateSettings', { patch: { shortcuts: { ...Margin.shortcuts.navigationFor(state?.settings), [name]: combo } } });
+}
+function showHelp(text, error = false) {
+  shortcutHelp.textContent = text;
+  shortcutHelp.classList.toggle('error', error);
+}
+
+for (const input of shortcutInputs) {
+  input.addEventListener('focus', () => {
+    recording = true;
+    input.value = '';
+    input.classList.add('recording');
+  });
+  input.addEventListener('blur', () => {
+    recording = false;
+    input.classList.remove('recording');
+    renderLauncher();
+  });
+}
+// Capture phase, so recording wins over Margin's shortcuts themselves.
 addEventListener('keydown', (event) => {
-  if (!recording || event.target !== shortcut) return;
+  const input = shortcutInputs.find((i) => i === event.target);
+  if (!recording || !input) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  if (event.key === 'Escape') return shortcut.blur();
+  if (event.key === 'Escape') return input.blur();
   const combo = Margin.shortcuts.fromEvent(event);
   if (!combo || !Margin.shortcuts.parse(combo)) return;
-  send('updateSettings', { patch: { paletteShortcut: combo } });
-  shortcut.blur();
+  const name = input.dataset.shortcut;
+  const taken = Object.entries(currentShortcuts()).find(([other, value]) => other !== name && value === combo);
+  if (taken) return showHelp(`${Margin.shortcuts.format(combo)} is already used for “${SHORTCUT_NAMES[taken[0]]}”.`, true);
+  showHelp(defaultHelp);
+  saveShortcut(name, combo);
+  input.blur();
 }, true);
+$('shortcuts-reset').addEventListener('click', () => {
+  showHelp(defaultHelp);
+  send('updateSettings', { patch: { paletteShortcut: 'Alt+KeyK', shortcuts: { ...Margin.shortcuts.NAVIGATION } } });
+});
 
 function ago(ts) {
   const minutes = Math.round((Date.now() - ts) / 60000);
@@ -144,7 +174,10 @@ function renderLauncher() {
   }
   engine.value = state.settings.searchEngine;
   if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
-  if (!recording) shortcut.value = Margin.shortcuts.format(state.settings.paletteShortcut);
+  if (!recording) {
+    const values = currentShortcuts();
+    for (const input of shortcutInputs) input.value = Margin.shortcuts.format(values[input.dataset.shortcut]);
+  }
 }
 
 // ---- data -------------------------------------------------------------------

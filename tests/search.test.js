@@ -105,3 +105,9 @@ test('palette: "Margin start page & settings" on web pages, not on the start pag
   assert.deepEqual(rankPalette(s, 'settings', ctx)[0].action, { type: 'openLauncher', windowId: 1 });
   assert.ok(!rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:launcher'));
 });
+
+test('palette: "New window" is always offered', () => {
+  const s = paletteState();
+  assert.deepEqual(rankPalette(s, 'new window', ctx)[0].action, { type: 'newWindow' });
+  assert.ok(rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:new-window'));
+});

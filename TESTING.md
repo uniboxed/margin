@@ -167,3 +167,15 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] In hover mode the sidebar stays open while you drag, and the page doesn't move.
 - [ ] Double-click the edge: back to the default width.
 - [ ] At the narrowest width the footer shows "+ New tab" and just the ⇤/⇥ icon, all on one line.
+
+## Keyboard shortcuts (settings) and ⌘N
+
+- [ ] New tab → Settings → Keyboard shortcuts shows: palette ⌥K, next tab ⌥⌘↓, previous tab ⌥⌘↑, next space ⌃⌘→, previous space ⌃⌘←.
+- [ ] On a website: ⌥⌘↓/↑ move through the sidebar's tabs; ⌃⌘→/← switch spaces (the sidebar peeks open).
+- [ ] If one doesn't work: click its field in Settings and press it. If the field stays empty, Safari or macOS keeps that combination. Record another, and note the one that was swallowed in DECISIONS.md.
+- [ ] ⌘N in a **normal** window opens a new window with the palette. In **full screen**, macOS turns ⌘N into a tab (System Settings → Desktop & Dock → "Prefer tabs when opening documents"). Use ⌥⌘N or palette → "New window" there, or set that option to *Never*.
+- [ ] Background console after ⌘T / ⌘N: a `[margin] new tab … in window …: …` line explains what Margin did.
+
+## Command bar look
+
+- [ ] ⌥K or ⌘T: a dark, slightly see-through panel about half the window wide, a third of the way down, with "Search or Enter URL…". Rows show favicon, title, the space name and an arrow button. The selected row is filled with the current space's color.

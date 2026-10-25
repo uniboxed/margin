@@ -56,7 +56,7 @@ test('⌘⌥↓ / ⌘⌥↑ move through the sidebar tabs in order, wrapping', a
   for (const p of Object.values(pages)) await p.close();
 });
 
-test('⌘⌥→ / ⌘⌥← switch the space and peek the sidebar; the page itself does not get the keys', async () => {
+test('⌃⌘→ / ⌃⌘← switch the space and peek the sidebar; the page itself does not get the keys', async () => {
   const page = await openPage('nav-space');
   await focus(page, 'nav-space');
   const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
@@ -74,13 +74,13 @@ test('⌘⌥→ / ⌘⌥← switch the space and peek the sidebar; the page itse
     addEventListener('keydown', (e) => e.key.startsWith('Arrow') && window.__pageKeys++);
   });
 
-  await page.keyboard.press('Meta+Alt+ArrowRight');
+  await page.keyboard.press('Control+Meta+ArrowRight');
   await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === work);
   await waitFor(async () => (await sidebarSnapshot(page)).open, { timeout: 1000 });
   assert.equal((await sidebarSnapshot(page)).chips.find((c) => c.active).id, work);
   await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 2500 }); // peek ends
 
-  await page.keyboard.press('Meta+Alt+ArrowLeft');
+  await page.keyboard.press('Control+Meta+ArrowLeft');
   await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === 'personal');
   assert.equal(await page.evaluate(() => window.__pageKeys), 0, 'the arrow keys of the shortcuts are not passed on to the page');
   await page.close();
@@ -93,7 +93,44 @@ test('the new-tab page handles the same shortcuts', async () => {
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const before = (await storage('activeSpaceByWindow'))[windowId] ?? 'personal';
   await nt.locator('body').click({ position: { x: 600, y: 600 } });
-  await nt.keyboard.press('Meta+Alt+ArrowRight');
+  await nt.keyboard.press('Control+Meta+ArrowRight');
   await waitFor(async () => ((await storage('activeSpaceByWindow'))[windowId] ?? 'personal') !== before);
+  await nt.close();
+});
+
+test('shortcuts are settings: record a new one, duplicates are refused, reset restores defaults', async () => {
+  const nt = await ctx.context.newPage();
+  await nt.goto(launcherUrl(ctx));
+  await nt.click('#settings summary');
+  const field = (name) => nt.locator(`.shortcut-input[data-shortcut="${name}"]`);
+  assert.equal(await field('nextTab').inputValue(), '⌥⌘↓');
+  assert.equal(await field('nextSpace').inputValue(), '⌃⌘→');
+
+  // Record ⌥⇧L for "Next space".
+  await field('nextSpace').click();
+  await nt.keyboard.press('Alt+Shift+KeyL');
+  await waitFor(async () => (await storage('settings')).shortcuts?.nextSpace === 'Alt+Shift+KeyL');
+  assert.equal(await field('nextSpace').inputValue(), '⌥⇧L');
+  assert.equal((await storage('settings')).shortcuts.nextTab, 'Alt+Meta+ArrowDown', 'others unchanged');
+
+  // A combination already in use is refused.
+  await field('prevSpace').click();
+  await nt.keyboard.press('Alt+Meta+ArrowDown');
+  assert.match(await nt.textContent('#shortcut-help'), /already used for “Next tab”/);
+  assert.equal((await storage('settings')).shortcuts.prevSpace, 'Control+Meta+ArrowLeft'.replace('Control', 'Ctrl'));
+  await nt.keyboard.press('Escape');
+
+  // The new shortcut works on web pages right away.
+  const page = await openPage('custom-key');
+  await focus(page, 'custom-key');
+  const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
+  const before = (await storage('activeSpaceByWindow'))[windowId] ?? 'personal';
+  await page.keyboard.press('Alt+Shift+KeyL');
+  await waitFor(async () => ((await storage('activeSpaceByWindow'))[windowId] ?? 'personal') !== before);
+
+  await nt.bringToFront();
+  await nt.click('#shortcuts-reset');
+  await waitFor(async () => (await storage('settings')).shortcuts.nextSpace === 'Ctrl+Meta+ArrowRight');
+  await page.close();
   await nt.close();
 });

@@ -206,11 +206,8 @@
   }
 
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space.
-  Margin.shortcuts.installNavigation({
-    getContext: () => ({ state, windowId, tabId }),
-    send,
-    onSpace: peek,
-  });
+  Margin.shortcuts.installNavigation({ send, getSettings: () => state?.settings });
+  Margin.content.peek = peek;
 
   document.addEventListener(
     'mousemove',
@@ -327,6 +324,7 @@
     if (message?.type === 'ping') return sendResponse('pong'); // background: is Margin running here?
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
+    else if (message.command === 'peek') Margin.content.peek?.();
     else Margin.content.onCommand?.(message.command);
   });
 })();

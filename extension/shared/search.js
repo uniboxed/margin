@@ -87,7 +87,7 @@
         subtitle: t.url,
         url: t.url,
         favIconUrl: Margin.view.iconFor(state, t),
-        badge: space && space.id !== spaceId ? `${space.emoji} ${space.name}` : '',
+        badge: space?.name ?? '', // Arc-style: the row shows which space it's in
         boost: (space?.id === spaceId ? 30 : 10) + (t.id === ctx.tabId ? -25 : 0),
         recency: t.lastActive ?? 0,
         action: { type: 'activateTab', tabId: t.id },
@@ -102,7 +102,7 @@
         subtitle: p.url,
         url: p.url,
         favIconUrl: Margin.view.iconFor(state, p),
-        badge: `📌${space && space.id !== spaceId ? ` ${space.emoji} ${space.name}` : ''}`,
+        badge: space?.name ?? 'Pinned',
         boost: p.spaceId === spaceId ? 20 : 8,
         action: { type: 'openPin', pinId: p.id, windowId: ctx.windowId },
       });
@@ -131,6 +131,9 @@
     }
     // ⌘T opens this palette instead of the launcher page, so the launcher
     // (and its Settings) is reachable from here.
+    // A real window even when macOS turns ⌘N into a tab ("Prefer tabs when
+    // opening documents", which defaults to doing that in full screen).
+    action('new-window', 'New window', { type: 'newWindow' }, { emoji: '⧉' });
     if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
     if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
     for (const s of state.spaces) {
@@ -167,6 +170,7 @@
         id: 'go',
         kind: 'go',
         title: target.kind === 'url' ? `Open ${target.url}` : `Search for “${q}”`,
+        badge: target.kind === 'url' ? 'Open' : 'Search',
         subtitle: target.kind === 'url' ? '' : target.url,
         emoji: target.kind === 'url' ? '↗' : '⌕',
         action: ctx.inNewTab ? { local: 'navigate', url: target.url } : { type: 'newTab', windowId: ctx.windowId, url: target.url },

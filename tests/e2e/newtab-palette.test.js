@@ -95,3 +95,23 @@ test('the palette can open the start page (with Settings) on purpose', async () 
   await launcher.close();
   await page.close();
 });
+
+test('palette "New window" opens a real window in the same space, with the palette ready', async () => {
+  const page = await openPage('new-window-origin');
+  await page.bringToFront();
+  const fromWindow = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
+  const before = (await ctx.worker.evaluate(() => chrome.windows.getAll())).length;
+  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.type('new window');
+  await waitFor(async () => (await paletteSnapshot(page))?.ids[0] === 'action:new-window');
+  const opened = ctx.context.waitForEvent('page');
+  await page.keyboard.press('Enter');
+  const nt = await opened;
+  await waitFor(async () => (await ctx.worker.evaluate(() => chrome.windows.getAll())).length === before + 1);
+  await waitFor(async () => (await paletteSnapshot(nt))?.open);
+  const newWindowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
+  const spaces = await storage('activeSpaceByWindow');
+  assert.equal(spaces[newWindowId] ?? 'personal', spaces[fromWindow] ?? 'personal');
+  await ctx.worker.evaluate((id) => chrome.windows.remove(id), newWindowId);
+  await page.close();
+});

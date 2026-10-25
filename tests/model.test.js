@@ -369,3 +369,14 @@ test('sidebar width: default 260, clamped to 160–500, snapped to 10px', () => 
   assert.equal(view.snapWidth(9000), 500);
   assert.equal(view.clampWidth(171.5), 171.5, 'live dragging is not snapped');
 });
+
+test('navigation shortcut defaults match shared/shortcuts.js; stored values merge with defaults', async () => {
+  await import('../extension/shared/shortcuts.js');
+  assert.deepEqual(M.DEFAULT_SETTINGS.shortcuts, globalThis.Margin.shortcuts.NAVIGATION);
+  const s = M.normalizeState({ settings: { shortcuts: { nextSpace: 'Alt+Shift+KeyL' } } });
+  assert.equal(s.settings.shortcuts.nextSpace, 'Alt+Shift+KeyL');
+  assert.equal(s.settings.shortcuts.nextTab, 'Alt+Meta+ArrowDown');
+  const d = M.defaultState();
+  d.settings.shortcuts.nextTab = 'x';
+  assert.equal(M.DEFAULT_SETTINGS.shortcuts.nextTab, 'Alt+Meta+ArrowDown', 'defaults are not shared/mutated');
+});

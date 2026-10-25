@@ -33,11 +33,19 @@ test('format for display', () => {
   assert.equal(format('nope+'), '');
 });
 
-test('navigation shortcuts are ⌘⌥ + arrows and parse', () => {
-  const { NAVIGATION } = globalThis.Margin.shortcuts;
+test('navigation defaults: ⌘⌥↓/↑ tabs, ⌃⌘→/← spaces (Safari keeps ⌘⌥←/→); stored ones override', () => {
+  const { NAVIGATION, navigationFor } = globalThis.Margin.shortcuts;
   assert.equal(format(NAVIGATION.nextTab), '⌥⌘↓');
-  assert.equal(format(NAVIGATION.prevSpace), '⌥⌘←');
+  assert.equal(format(NAVIGATION.prevTab), '⌥⌘↑');
+  assert.equal(format(NAVIGATION.nextSpace), '⌃⌘→');
+  assert.equal(format(NAVIGATION.prevSpace), '⌃⌘←');
   assert.equal(matches(ev('ArrowDown', { altKey: true, metaKey: true }), NAVIGATION.nextTab), true);
-  assert.equal(matches(ev('ArrowDown', { metaKey: true }), NAVIGATION.nextTab), false);
+  assert.equal(matches(ev('ArrowRight', { ctrlKey: true, metaKey: true }), NAVIGATION.nextSpace), true);
+  assert.equal(matches(ev('ArrowRight', { altKey: true, metaKey: true }), NAVIGATION.nextSpace), false);
   for (const s of Object.values(NAVIGATION)) assert.ok(parse(s), s);
+  assert.deepEqual(navigationFor(undefined), NAVIGATION);
+  assert.equal(navigationFor({ shortcuts: { nextSpace: 'Alt+Shift+KeyL' } }).nextSpace, 'Alt+Shift+KeyL');
+  assert.equal(navigationFor({ shortcuts: { nextSpace: 'Alt+Shift+KeyL' } }).nextTab, NAVIGATION.nextTab);
+  // A shortcut recorded from a real key press round-trips.
+  assert.equal(fromEvent(ev('ArrowRight', { ctrlKey: true, metaKey: true })), NAVIGATION.nextSpace);
 });

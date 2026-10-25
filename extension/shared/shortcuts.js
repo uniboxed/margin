@@ -40,42 +40,41 @@
     return MODIFIERS.filter((m) => s[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
   }
 
-  // Fixed navigation shortcuts (⌘⌥ + arrows).
+  // Default navigation shortcuts; users can change them in Settings
+  // (settings.shortcuts). Spaces aren't on ⌘⌥←/→: Safari keeps those for its
+  // own tab switching, so pages never see them. Keep in sync with
+  // state/model.js DEFAULT_SETTINGS.shortcuts.
   const NAVIGATION = {
     nextTab: 'Alt+Meta+ArrowDown',
     prevTab: 'Alt+Meta+ArrowUp',
-    nextSpace: 'Alt+Meta+ArrowRight',
-    prevSpace: 'Alt+Meta+ArrowLeft',
+    nextSpace: 'Ctrl+Meta+ArrowRight',
+    prevSpace: 'Ctrl+Meta+ArrowLeft',
   };
+  const navigationFor = (settings) => ({ ...NAVIGATION, ...settings?.shortcuts });
 
-  // Capture-phase listener for the navigation shortcuts, shared by the
-  // content script and the new-tab page. `getContext()` → { state, windowId,
-  // tabId }; `onSpace(spaceId)` runs after a space switch (e.g. to peek the
-  // sidebar). Requires shared/view.js.
-  function installNavigation({ getContext, send, onSpace }) {
+  // Navigation actions, shared with the background and manifest commands.
+  const ACTIONS = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
+
+  // Capture-phase listener for the navigation shortcuts, used by the content
+  // script and the new-tab page. It only reports the action: the background
+  // does the work (background.js navigate), the same as for the manifest
+  // `commands`, so whichever path Safari delivers a key press through, it's
+  // handled once, in one place.
+  // `getSettings()` → current settings (shortcuts may change any time);
+  // return null to pause, e.g. while a shortcut is being recorded.
+  function installNavigation({ send, getSettings }) {
     addEventListener('keydown', (event) => {
-      const action = Object.keys(NAVIGATION).find((name) => matches(event, NAVIGATION[name]));
-      if (!action) return;
-      const { state, windowId } = getContext();
-      if (!state || windowId == null) return;
-      // Before the background has told this page its tab id, the page being
-      // looked at is the window's active tab. (Without this, ↓ could "move"
-      // to the tab you're already on, so nothing seemed to happen.)
-      const tabId = getContext().tabId ?? Object.values(state.tabs ?? {}).find((t) => t.windowId === windowId && t.active)?.id ?? null;
+      const settings = getSettings();
+      if (settings === null) return;
+      const keys = navigationFor(settings);
+      const name = Object.keys(keys).find((n) => matches(event, keys[n]));
+      if (!name) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (event.repeat && action.endsWith('Space')) return; // don't fly through spaces while held
-      if (action === 'nextTab' || action === 'prevTab') {
-        const next = Margin.view.cycleTab(state, windowId, tabId, action === 'nextTab' ? 1 : -1);
-        if (next != null) send('activateTab', { tabId: next });
-      } else {
-        const spaceId = Margin.view.cycleSpace(state, windowId, action === 'nextSpace' ? 1 : -1);
-        if (spaceId == null) return;
-        send('setSpace', { windowId, spaceId });
-        onSpace?.(spaceId);
-      }
+      if (event.repeat && name.endsWith('Space')) return; // don't fly through spaces while held
+      send('navigate', { action: ACTIONS[name] });
     }, true);
   }
 
-  Margin.shortcuts = { parse, matches, fromEvent, format, NAVIGATION, installNavigation };
+  Margin.shortcuts = { parse, matches, fromEvent, format, NAVIGATION, ACTIONS, navigationFor, installNavigation };
 })();

@@ -15,6 +15,15 @@
     paletteShortcut: 'Alt+KeyK',
     searchEngine: 'https://duckduckgo.com/?q=%s',
     sidebarWidth: 260, // px, resizable 160–500 in 10px steps (shared/view.js)
+    // Editable in Settings. Spaces aren't on ⌘⌥←/→: Safari keeps those for its
+    // own tab switching, so pages never see them. Keep in sync with
+    // shared/shortcuts.js NAVIGATION.
+    shortcuts: Object.freeze({
+      nextTab: 'Alt+Meta+ArrowDown',
+      prevTab: 'Alt+Meta+ArrowUp',
+      nextSpace: 'Ctrl+Meta+ArrowRight',
+      prevSpace: 'Ctrl+Meta+ArrowLeft',
+    }),
   });
 
   const DEFAULT_SPACE = Object.freeze({
@@ -34,7 +43,7 @@
       tabSpace: {},
       pins: [],
       archive: [],
-      settings: { ...DEFAULT_SETTINGS },
+      settings: { ...DEFAULT_SETTINGS, shortcuts: { ...DEFAULT_SETTINGS.shortcuts } },
       // Snapshot of open tabs, written by the background so content scripts
       // (which have no `tabs` API) can render from storage alone.
       tabs: {},
@@ -53,7 +62,11 @@
       tabSpace: { ...raw.tabSpace },
       pins: Array.isArray(raw.pins) ? raw.pins : [],
       archive: Array.isArray(raw.archive) ? raw.archive : [],
-      settings: { ...base.settings, ...raw.settings },
+      settings: {
+        ...base.settings,
+        ...raw.settings,
+        shortcuts: { ...base.settings.shortcuts, ...raw.settings?.shortcuts },
+      },
       tabs: { ...raw.tabs },
       favicons: { ...raw.favicons },
     };

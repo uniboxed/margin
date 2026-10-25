@@ -38,10 +38,26 @@
       <label>Archive tabs not used for (hours, 0 = never)
         <input id="archive-hours" type="number" min="0" max="720" step="1">
       </label>
-      <label>Command palette shortcut
-        <input id="shortcut" type="text" readonly placeholder="Press keys…" aria-describedby="shortcut-help">
-      </label>
-      <p id="shortcut-help" class="help">Click the field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels.</p>
+      <fieldset id="shortcuts" aria-describedby="shortcut-help">
+        <legend>Keyboard shortcuts</legend>
+        <label>Command palette
+          <input id="shortcut" class="shortcut-input" data-shortcut="paletteShortcut" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Next tab
+          <input class="shortcut-input" data-shortcut="nextTab" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Previous tab
+          <input class="shortcut-input" data-shortcut="prevTab" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Next space
+          <input class="shortcut-input" data-shortcut="nextSpace" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Previous space
+          <input class="shortcut-input" data-shortcut="prevSpace" type="text" readonly placeholder="Press keys…">
+        </label>
+        <button id="shortcuts-reset" type="button">Reset shortcuts</button>
+      </fieldset>
+      <p id="shortcut-help" class="help">Click a field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels. If a combination shows nothing when you press it, Safari or macOS keeps it for itself (⌘⌥← / ⌘⌥→ switch Safari's tabs), so pick another.</p>
     </details>
   </main>
 </body>

@@ -204,20 +204,34 @@ const handlers = {
   async openLauncher({ windowId }) {
     await openTab({ windowId, url: api.runtime.getURL('newtab/newtab.html#launcher') });
   },
+  // A real new window (the palette's "New window"): its new-tab page opens
+  // the palette, and the window inherits the space (model.inheritSpace).
+  async newWindow() {
+    await api.windows?.create({ focused: true });
+  },
   async newTabPage(_, sender) {
     const tab = sender.tab;
-    if (!tab) return { openPalette: true };
+    // One line per new tab, so what Safari did (⌘T vs ⌘N, a new window or a
+    // tab — macOS can turn ⌘N into a tab) is visible in the background console.
+    const log = (decision, why) => console.info(`[margin] new tab ${tab?.id} in window ${tab?.windowId}: ${decision} (${why})`);
+    if (!tab) return log('palette on the new-tab page', 'no sender tab'), { openPalette: true };
     const s = await load();
     const prev = Object.values(s.tabs)
       .filter((t) => t.windowId === tab.windowId && t.id !== tab.id && /^https?:/.test(t.url))
       .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
-    if (!prev) return { openPalette: true };
+    if (!prev) return log('palette on the new-tab page', 'no web page in this window: a new window'), { openPalette: true };
     const alive = await api.tabs.sendMessage(prev.id, { type: 'ping' }).then((r) => r === 'pong').catch(() => false);
-    if (!alive) return { openPalette: true };
+    if (!alive) return log('palette on the new-tab page', `previous tab ${prev.id} has no Margin script`), { openPalette: true };
+    log(`palette over tab ${prev.id}, new tab closed`, 'web page in this window: ⌘T (or ⌘N made into a tab by macOS)');
     await focusTab(prev.id);
     await api.tabs.remove(tab.id).catch(() => {});
     await api.tabs.sendMessage(prev.id, { type: 'command', command: 'show-palette' }).catch(() => {});
     return { handled: true };
+  },
+  async navigate({ action }, sender) {
+    if (!NAV_ACTIONS.has(action)) return;
+    const tab = sender.tab ?? (await api.tabs.query({ active: true, currentWindow: true }))[0];
+    await navigate(action, tab);
   },
   async updateSettings({ patch }) {
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
@@ -377,6 +391,29 @@ globalThis.margin = { archiveNow: archiveStale, syncDockedCss: queueDockedSync }
 
 // ---- commands -------------------------------------------------------------
 
+// Next/previous tab and space (shortcuts are settings; see
+// shared/shortcuts.js). Pages report the action; the work happens here, with
+// the sender's real tab and window, so a page that hasn't learned its tab id
+// yet can't pick the wrong "current" tab. Not manifest `commands`: Chrome
+// rejects ⌘⌥ in suggested keys (the whole extension fails to load), and the
+// same manifest can't be tested in Safari.
+async function navigate(action, tab) {
+  if (!tab) return;
+  const s = await load();
+  const V = globalThis.Margin.view;
+  if (action === 'next-tab' || action === 'prev-tab') {
+    const next = V.cycleTab(s, tab.windowId, tab.id, action === 'next-tab' ? 1 : -1);
+    if (next != null) await focusTab(next);
+  } else if (action === 'next-space' || action === 'prev-space') {
+    const spaceId = V.cycleSpace(s, tab.windowId, action === 'next-space' ? 1 : -1);
+    if (spaceId == null) return;
+    await mutate((st) => M.setActiveSpace(st, tab.windowId, spaceId));
+    // Show where you landed (auto-hide mode); Margin's own pages ignore it.
+    api.tabs.sendMessage(tab.id, { type: 'command', command: 'peek' }).catch(() => {});
+  }
+}
+
+const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-space']);
 api.commands?.onCommand.addListener(async (command) => {
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
