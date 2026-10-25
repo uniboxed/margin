@@ -192,7 +192,11 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 ## Trackpad gestures (Safari)
 
 - [ ] On a normal page, two-finger swipe left/right does **not** go back/forward. Vertical scrolling is unaffected, and so are things that scroll sideways (a carousel, a wide table, a horizontally scrolling page): they scroll.
-- [ ] Pinching in (two fingers together) at normal zoom does **not** open the all-tabs overview. Pinching out still zooms the page in, and pinching back in zooms it back out.
+- [ ] Pinching in (two fingers together) at normal zoom does **not** open the all-tabs overview, on web pages and the new-tab page.
+- [ ] Note whether pinching out still zooms the page in (it may not: Margin now cancels the start of every pinch at normal zoom). ⌘+ / ⌘− always zoom.
+- [ ] If the overview still opens: on that page, open Web Inspector → Console, paste
+  `['gesturestart','gesturechange','gestureend'].forEach(t => addEventListener(t, e => console.log(t, e.scale.toFixed(2), 'blocked:', e.defaultPrevented, 'zoom:', visualViewport.scale)))`
+  then pinch in once and send the lines. "blocked: true" on all of them while the overview still opens means Safari doesn't let pages stop it.
 - [ ] Same on the new-tab page.
 - [ ] New tab → Settings → "Block Safari's swipe back/forward and pinch for all tabs" off: both gestures work again on pages you then use.
 - [ ] Known gaps: over an embedded frame (e.g. a YouTube video inside another page) the gestures still work; a swipe that starts mostly up/down and turns sideways can still go back.
