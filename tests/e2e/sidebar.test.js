@@ -268,3 +268,19 @@ test('Keep open registers a first-paint placeholder; leaving Keep open on a page
   await waitFor(async () => (await registered()) === 0);
   await page.close();
 });
+
+test('exactly one highlighted tab, the current one, after opening and switching pages', async () => {
+  const highlighted = (page) =>
+    evalInShadow(page, 'margin-sidebar-host', function () {
+      return [...this.querySelectorAll('.tab.active .title, .pin.active .title')].map((n) => n.textContent);
+    });
+  const pages = [];
+  for (const name of ['one', 'two', 'three']) pages.push(await openPage(`hl-${name}`));
+  for (const [i, page] of [[0, pages[0]], [2, pages[2]], [1, pages[1]]]) {
+    await page.bringToFront();
+    const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === `hl-${['one', 'two', 'three'][i]}`).id;
+    await ctx.worker.evaluate((id) => chrome.tabs.update(id, { active: true }), tabId);
+    await waitFor(async () => JSON.stringify(await highlighted(page)) === JSON.stringify([`hl-${['one', 'two', 'three'][i]}`]));
+  }
+  for (const p of pages) await p.close();
+});

@@ -148,7 +148,7 @@ async function refresh() {
   const next = await api.storage.local.get(null);
   if (mine !== version || !next.spaces?.length) return;
   state = next;
-  sidebar.update(state, { windowId: windowId() });
+  sidebar.update(state, { windowId: windowId(), tabId: self?.id });
   document.documentElement.style.setProperty('--space-color', sidebar.el.style.getPropertyValue('--space-color'));
   renderLauncher();
   palette.refresh();

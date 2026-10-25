@@ -129,3 +129,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] ⌥S or "Auto-hide" removes the push immediately and the page goes back to full width.
 - [ ] Print preview (⌘P) shows the page without the shift.
 - [ ] The new tab page uses the same frame look.
+
+## Highlighted tab
+
+- [ ] Open five or six pages in a row (e.g. several searches from the new tab), then switch between them from the sidebar and with Safari's own tab bar or ⌃Tab. Every time, exactly one row is highlighted: the page you're on.

@@ -221,7 +221,7 @@
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? Margin.view.guessWindow(state, location.href);
-    sidebar.update(state, { windowId });
+    sidebar.update(state, { windowId, tabId });
     frame.style.setProperty('--space-color', sidebar.el.style.getPropertyValue('--space-color'));
     Margin.content.onState?.(state, { tabId, windowId });
     if (!reason) setOpen(pinnedOpen());

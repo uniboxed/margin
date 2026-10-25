@@ -100,10 +100,23 @@
   }
 
   // Record a created/updated tab and give it a space if it has none.
+  // `active` is only taken from the event for a tab we haven't seen yet: for
+  // known tabs it's owned by activateTab(), because Safari can deliver an
+  // update for a page that finished loading *after* the user switched away,
+  // still saying active: true, which left two tabs highlighted.
   function upsertTab(state, tab, now) {
-    const record = tabRecord(tab, state.tabs[tab.id], now);
-    if (record.active) record.lastActive = now;
-    const next = { ...state, tabs: { ...state.tabs, [tab.id]: record } };
+    const prev = state.tabs[tab.id];
+    const record = tabRecord(tab, prev, now);
+    if (prev) {
+      record.active = prev.active && prev.windowId === record.windowId;
+      const next = { ...state, tabs: { ...state.tabs, [tab.id]: record } };
+      return assignTab(next, tab.id, tab.windowId);
+    }
+    record.active = false;
+    let next = { ...state, tabs: { ...state.tabs, [tab.id]: record } };
+    // A new tab that opens focused takes over its window's highlight even if
+    // the browser never sends onActivated for it.
+    if (tab.active) next = activateTab(next, tab.id, tab.windowId, now);
     return assignTab(next, tab.id, tab.windowId);
   }
 
@@ -115,7 +128,11 @@
     return { ...state, tabs, tabSpace };
   }
 
+  // Exactly one active tab per window. `windowId` may be missing from the
+  // event; fall back to the tab's own window.
   function activateTab(state, tabId, windowId, now) {
+    windowId ??= state.tabs[tabId]?.windowId;
+    if (windowId == null) return state;
     const tabs = {};
     for (const [id, t] of Object.entries(state.tabs)) {
       if (t.windowId !== windowId) tabs[id] = t;

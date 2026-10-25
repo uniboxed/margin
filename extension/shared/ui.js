@@ -111,11 +111,12 @@
 
     let state = null;
     let windowId = null;
+    let currentTabId = null;
     let pendingEdit = null; // a just-created space opens in the editor once it arrives
 
     function render() {
       if (!state || windowId == null) return;
-      const view = Margin.view.sidebar(state, windowId);
+      const view = Margin.view.sidebar(state, windowId, currentTabId);
       root.style.setProperty('--space-color', view.spaces.find((s) => s.id === view.spaceId)?.color ?? '');
 
       chips.replaceChildren(
@@ -295,6 +296,7 @@
       update(nextState, context) {
         state = nextState;
         if (context?.windowId != null) windowId = context.windowId;
+        if (context?.tabId != null) currentTabId = context.tabId;
         render();
         if (pendingEdit && state.spaces.some((s) => s.id === pendingEdit)) {
           openEditor(pendingEdit);

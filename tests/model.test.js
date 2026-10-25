@@ -220,3 +220,51 @@ test('view.guessWindow: picks the window before the background answers', () => {
   assert.equal(view.guessWindow(s, 'https://b.com/'), 9, 'URL match, active wins');
   assert.equal(view.guessWindow(s, 'https://nowhere.com/'), 7, 'most recently active window');
 });
+
+const activeIn = (s, windowId) => Object.values(s.tabs).filter((t) => t.windowId === windowId && t.active).map((t) => t.id);
+
+test('active tab: a late update for a tab you left does not re-highlight it', () => {
+  let s = M.defaultState();
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { active: true }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://b.com'), 0);
+  s = M.activateTab(s, 2, 1, 10);
+  // Safari: tab 1 finishes loading after the switch, update still says active.
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { active: true, title: 'A loaded' }), 11);
+  assert.deepEqual(activeIn(s, 1), [2]);
+  assert.equal(s.tabs[1].title, 'A loaded', 'the rest of the update still applies');
+});
+
+test('active tab: a new focused tab takes over even without onActivated', () => {
+  let s = M.defaultState();
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { active: true }), 0);
+  s = M.upsertTab(s, tab(9, 2, 'https://other-window.com', { active: true }), 0);
+  s = M.upsertTab(s, tab(2, 1, '', { active: true }), 5); // e.g. ⌘T
+  assert.deepEqual(activeIn(s, 1), [2]);
+  assert.deepEqual(activeIn(s, 2), [9], 'other windows untouched');
+  // A new background tab doesn't steal it.
+  s = M.upsertTab(s, tab(3, 1, 'https://c.com', { active: false }), 6);
+  assert.deepEqual(activeIn(s, 1), [2]);
+});
+
+test('active tab: activation without a windowId uses the tab\'s window; at most one per window', () => {
+  let s = M.defaultState();
+  for (const id of [1, 2, 3]) s = M.upsertTab(s, tab(id, 1, `https://${id}.com`, { active: id === 1 }), 0);
+  s = M.activateTab(s, 3, undefined, 5);
+  assert.deepEqual(activeIn(s, 1), [3]);
+  assert.equal(M.activateTab(s, 99, undefined, 6), s, 'unknown tab, unknown window: no change');
+  // Activated before it was created: the create event then highlights it alone.
+  s = M.activateTab(s, 4, 1, 7);
+  s = M.upsertTab(s, tab(4, 1, 'https://4.com', { active: true }), 7);
+  assert.deepEqual(activeIn(s, 1), [4]);
+});
+
+test('view.sidebar: the tab the sidebar is drawn in is the highlighted one', () => {
+  let s = M.defaultState();
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { active: true }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://b.com'), 0);
+  // Stale snapshot: background still thinks 1 is active, but we're on 2.
+  const active = (v) => v.tabs.filter((t) => t.active).map((t) => t.id);
+  assert.deepEqual(active(view.sidebar(s, 1, 2)), [2]);
+  assert.deepEqual(active(view.sidebar(s, 1)), [1], 'without a current tab, the snapshot decides');
+  assert.deepEqual(active(view.sidebar(s, 1, 99)), [1], 'unknown current tab: snapshot decides');
+});

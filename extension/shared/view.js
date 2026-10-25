@@ -20,11 +20,15 @@
     return state.spaces.some((s) => s.id === id) ? id : state.spaces[0].id;
   }
 
-  // What the sidebar shows for one window.
-  function sidebar(state, windowId) {
+  // What the sidebar shows for one window. `currentTabId` is the tab the
+  // sidebar is drawn in: the page being looked at is by definition the active
+  // tab of its window, so it wins over a possibly stale `active` flag.
+  function sidebar(state, windowId, currentTabId = null) {
     const spaceId = activeSpaceId(state, windowId);
+    const known = currentTabId != null && state.tabs?.[currentTabId]?.windowId === windowId;
     const windowTabs = Object.values(state.tabs ?? {})
       .filter((t) => t.windowId === windowId)
+      .map((t) => (known && t.active !== (t.id === currentTabId) ? { ...t, active: t.id === currentTabId } : t))
       .sort((a, b) => a.index - b.index);
     const spaceTabs = windowTabs.filter((t) => state.tabSpace[t.id] === spaceId);
     const pins = state.pins
