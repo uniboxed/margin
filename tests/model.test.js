@@ -275,3 +275,36 @@ test('view.revealZone: wider in a full-screen window, where Safari reveals its o
   assert.equal(view.revealZone({ outerWidth: 1512, outerHeight: 949, ...screen }), 10, 'Window → Fill (menu bar visible)');
   assert.equal(view.revealZone({ outerWidth: 1200, outerHeight: 800, ...screen }), 10, 'normal window');
 });
+
+test('view.cycleTab: sidebar order (open pins, then tabs), wrapping', () => {
+  let s = M.defaultState();
+  s = M.createSpace(s, { id: 'work', name: 'Work' });
+  s = M.addPin(s, { id: 'p', spaceId: 'personal', url: 'https://pin.com', title: 'Pin' });
+  s = M.addPin(s, { id: 'closed', spaceId: 'personal', url: 'https://closed.com', title: 'Closed pin' });
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { index: 1 }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://pin.com', { index: 2 }), 0);
+  s = M.upsertTab(s, tab(3, 1, 'https://c.com', { index: 3 }), 0);
+  s = M.upsertTab(s, tab(4, 1, 'https://work.com', { index: 0 }), 0);
+  s = M.moveTab(s, 4, 'work');
+  // Order: pin tab 2, then tabs 1, 3 (tab 4 is in another space).
+  assert.equal(view.cycleTab(s, 1, 2, 1), 1);
+  assert.equal(view.cycleTab(s, 1, 1, 1), 3);
+  assert.equal(view.cycleTab(s, 1, 3, 1), 2, 'wraps to the top');
+  assert.equal(view.cycleTab(s, 1, 2, -1), 3, 'wraps to the bottom');
+  assert.equal(view.cycleTab(s, 1, 4, 1), 2, 'from outside the list: first');
+  assert.equal(view.cycleTab(s, 1, 4, -1), 3, 'from outside the list: last');
+  const lone = M.removeTab(M.removeTab(s, 1), 3);
+  assert.equal(view.cycleTab(lone, 1, 2, 1), null, 'only one tab: stay');
+});
+
+test('view.cycleSpace: next/previous space per window, wrapping', () => {
+  let s = M.defaultState();
+  assert.equal(view.cycleSpace(s, 1, 1), null, 'one space');
+  s = M.createSpace(s, { id: 'work', name: 'Work' });
+  s = M.createSpace(s, { id: 'fun', name: 'Fun' });
+  assert.equal(view.cycleSpace(s, 1, 1), 'work');
+  assert.equal(view.cycleSpace(s, 1, -1), 'fun', 'wraps');
+  s = M.setActiveSpace(s, 1, 'fun');
+  assert.equal(view.cycleSpace(s, 1, 1), 'personal', 'wraps');
+  assert.equal(view.cycleSpace(s, 2, 1), 'work', 'other window keeps its own space');
+});

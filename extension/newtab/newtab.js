@@ -64,6 +64,13 @@ const engine = $('engine');
 for (const { name, url } of Margin.search.SEARCH_ENGINES) engine.append(el(document, 'option', { value: url, text: name }));
 engine.addEventListener('change', () => send('updateSettings', { patch: { searchEngine: engine.value } }));
 
+// ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space (the sidebar is
+// always visible here, so no peek).
+Margin.shortcuts.installNavigation({
+  getContext: () => ({ state, windowId: windowId(), tabId: self?.id }),
+  send,
+});
+
 // ---- palette ----------------------------------------------------------------
 
 const palette = Margin.createPalette({

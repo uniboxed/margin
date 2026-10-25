@@ -158,7 +158,7 @@
   function show(why) {
     clearTimeout(hideTimer);
     hideTimer = null;
-    if (!reason || why === 'toggle') reason = why;
+    if (!reason || reason === 'peek' || why === 'toggle') reason = why;
     setOpen(true);
   }
   function hide() {
@@ -182,6 +182,23 @@
     return reason ? hide() : show('toggle');
   }
   Margin.content.sidebar = { show, hide, toggle };
+
+  // Briefly show the sidebar (after ⌘⌥←/→) so the new space is visible even
+  // in auto-hide mode. Hovering or toggling during the peek keeps it open.
+  let peekTimer = null;
+  function peek() {
+    if (pinnedOpen() || (reason && reason !== 'peek')) return;
+    show('peek');
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => reason === 'peek' && hide(), 1200);
+  }
+
+  // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space.
+  Margin.shortcuts.installNavigation({
+    getContext: () => ({ state, windowId, tabId }),
+    send,
+    onSpace: peek,
+  });
 
   document.addEventListener(
     'mousemove',

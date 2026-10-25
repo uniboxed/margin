@@ -72,5 +72,26 @@
     return fullScreen ? FULLSCREEN_EDGE_PX : EDGE_PX;
   }
 
-  Margin.view = { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone };
+  // ⌘⌥↓ / ⌘⌥↑: the next/previous tab in the order the sidebar shows them
+  // (open pinned tabs, then the space's tabs), wrapping around. From a tab
+  // that isn't in the list, ↓ goes to the first and ↑ to the last. null if
+  // there's nowhere to go.
+  function cycleTab(state, windowId, currentTabId, dir) {
+    const v = sidebar(state, windowId, currentTabId);
+    const order = [...v.pins.filter((p) => p.tabId != null).map((p) => p.tabId), ...v.tabs.map((t) => t.id)];
+    if (!order.length) return null;
+    const at = order.indexOf(currentTabId);
+    if (at < 0) return dir > 0 ? order[0] : order[order.length - 1];
+    const next = order[(at + dir + order.length) % order.length];
+    return next === currentTabId ? null : next;
+  }
+
+  // ⌘⌥→ / ⌘⌥←: the next/previous space for this window, wrapping around.
+  function cycleSpace(state, windowId, dir) {
+    if (state.spaces.length < 2) return null;
+    const at = state.spaces.findIndex((s) => s.id === activeSpaceId(state, windowId));
+    return state.spaces[(at + dir + state.spaces.length) % state.spaces.length].id;
+  }
+
+  Margin.view = { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, cycleTab, cycleSpace };
 })();

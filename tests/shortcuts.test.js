@@ -32,3 +32,12 @@ test('format for display', () => {
   assert.equal(format('Ctrl+Shift+Digit1'), '⌃⇧1');
   assert.equal(format('nope+'), '');
 });
+
+test('navigation shortcuts are ⌘⌥ + arrows and parse', () => {
+  const { NAVIGATION } = globalThis.Margin.shortcuts;
+  assert.equal(format(NAVIGATION.nextTab), '⌥⌘↓');
+  assert.equal(format(NAVIGATION.prevSpace), '⌥⌘←');
+  assert.equal(matches(ev('ArrowDown', { altKey: true, metaKey: true }), NAVIGATION.nextTab), true);
+  assert.equal(matches(ev('ArrowDown', { metaKey: true }), NAVIGATION.nextTab), false);
+  for (const s of Object.values(NAVIGATION)) assert.ok(parse(s), s);
+});

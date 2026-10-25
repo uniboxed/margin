@@ -35,9 +35,43 @@
   function format(text) {
     const s = parse(text);
     if (!s) return '';
-    const key = s.code.replace(/^Key|^Digit/, '').replace(/^Slash$/, '/').replace(/^Period$/, '.').replace(/^Space$/, 'Space');
+    const ARROWS = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
+    const key = ARROWS[s.code] ?? s.code.replace(/^Key|^Digit/, '').replace(/^Slash$/, '/').replace(/^Period$/, '.').replace(/^Space$/, 'Space');
     return MODIFIERS.filter((m) => s[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
   }
 
-  Margin.shortcuts = { parse, matches, fromEvent, format };
+  // Fixed navigation shortcuts (⌘⌥ + arrows).
+  const NAVIGATION = {
+    nextTab: 'Alt+Meta+ArrowDown',
+    prevTab: 'Alt+Meta+ArrowUp',
+    nextSpace: 'Alt+Meta+ArrowRight',
+    prevSpace: 'Alt+Meta+ArrowLeft',
+  };
+
+  // Capture-phase listener for the navigation shortcuts, shared by the
+  // content script and the new-tab page. `getContext()` → { state, windowId,
+  // tabId }; `onSpace(spaceId)` runs after a space switch (e.g. to peek the
+  // sidebar). Requires shared/view.js.
+  function installNavigation({ getContext, send, onSpace }) {
+    addEventListener('keydown', (event) => {
+      const action = Object.keys(NAVIGATION).find((name) => matches(event, NAVIGATION[name]));
+      if (!action) return;
+      const { state, windowId, tabId } = getContext();
+      if (!state || windowId == null) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.repeat && action.endsWith('Space')) return; // don't fly through spaces while held
+      if (action === 'nextTab' || action === 'prevTab') {
+        const next = Margin.view.cycleTab(state, windowId, tabId, action === 'nextTab' ? 1 : -1);
+        if (next != null) send('activateTab', { tabId: next });
+      } else {
+        const spaceId = Margin.view.cycleSpace(state, windowId, action === 'nextSpace' ? 1 : -1);
+        if (spaceId == null) return;
+        send('setSpace', { windowId, spaceId });
+        onSpace?.(spaceId);
+      }
+    }, true);
+  }
+
+  Margin.shortcuts = { parse, matches, fromEvent, format, NAVIGATION, installNavigation };
 })();

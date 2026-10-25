@@ -133,3 +133,10 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 ## Highlighted tab
 
 - [ ] Open five or six pages in a row (e.g. several searches from the new tab), then switch between them from the sidebar and with Safari's own tab bar or ⌃Tab. Every time, exactly one row is highlighted: the page you're on.
+
+## Tab and space shortcuts
+
+- [ ] On a website, ⌘⌥↓ switches to the next tab in the sidebar's order (open pins first), and ⌘⌥↑ to the previous. Both wrap around at the ends.
+- [ ] ⌘⌥→ / ⌘⌥← switch to the next/previous space. In auto-hide mode the sidebar peeks open for about a second showing the new space. With "Keep open" it just switches.
+- [ ] Both work on Margin's new-tab page (click the page first; Safari focuses the address bar on a new tab).
+- [ ] Note any of the four combos that Safari or macOS swallows (nothing happens). Record them in DECISIONS.md.

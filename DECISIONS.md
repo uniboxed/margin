@@ -154,3 +154,10 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 ## "+" space editor race (2026-10-25)
 
 - **Bug:** clicking "+" sometimes created the space but never opened its editor. The editor was set to open when the new space appeared in storage, but that was only set up once the `createSpace` reply arrived. When storage delivered the space first, the trigger had already passed. It showed up as intermittent E2E failures in full runs. Fix: when the reply arrives, open the editor at once if the space is already present, else when it arrives. A test holds the reply back to force that order every time.
+
+## Tab and space shortcuts (2026-10-25)
+
+- **⌘⌥↓ / ⌘⌥↑:** next/previous tab in the order the sidebar shows them: open pinned tabs, then the space's tabs (`view.cycleTab`). Wraps at both ends. From a tab that isn't listed (e.g. one from another space), ↓ goes to the first and ↑ to the last. Holding the keys repeats.
+- **⌘⌥→ / ⌘⌥←:** next/previous space for this window (`view.cycleSpace`), wrapping. As SPEC defines spaces, this changes only what the sidebar shows; the current page stays. In auto-hide mode the sidebar peeks open for 1.2s so the new space is visible. Hovering or toggling during the peek keeps it open. Held keys don't repeat, so you don't fly through spaces.
+- **Handled** by one capture-phase `keydown` listener (`shortcuts.installNavigation`) in the content script and on the new-tab page. It calls `preventDefault` and `stopImmediatePropagation`, so sites don't get the arrow key. Like Arc, Margin takes these keys on every site, including in text fields. That shadows site shortcuts that use the same keys, e.g. multi-cursor ⌘⌥↑/↓ in web code editors. They're fixed (not a setting) for now. There's no `commands` fallback: Chrome only allows four suggested command keys, and two are already used.
+- **Needs a Safari check:** whether Safari or macOS reserves any of these combos before the page sees them (same as the Option+K check).

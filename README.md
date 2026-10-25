@@ -6,6 +6,7 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 - **Spaces** (emoji chips) that filter the sidebar to that space's tabs, separately in each window. Create, rename, recolor, and delete them inline, and drag tabs onto a chip to move them.
 - **Pinned items** per space. A pin focuses its open tab, or reopens the page.
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
+- **Keyboard navigation:** ⌘⌥↓ / ⌘⌥↑ next/previous tab (sidebar order, wrapping), ⌘⌥→ / ⌘⌥← next/previous space (the sidebar peeks open for a second so you can see where you landed).
 - **Custom new-tab page:** search/URL field, the space's pins as tiles, recently archived tabs, and settings.
 - **Auto-archive:** tabs left idle for 12 hours (configurable) close into a restorable archive.
 
