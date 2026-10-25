@@ -20,10 +20,9 @@ Margin works without these, and checks for each feature before using it. Turned 
 
 | Safari → Settings → Feature Flags | What it changes in Margin |
 |---|---|
-| **CSS corner-shape property** | Real continuous ("squircle") corners on the page card, sidebar rows, menus and the palette, like Arc's (measured: about 4× closer to Arc's page corner than plain rounded corners). Already on by default in WebKit's development version. |
 | **Threaded Time-based Animations** | Smoother sidebar and badge animations on busy pages (animations run off the page's main thread). Nothing changes in Margin's code. |
 
-Leave the others alone, especially Security and Privacy: they're experimental and can break sites.
+Leave the others alone, especially Security and Privacy: they're experimental and can break sites. **CSS corner-shape property** in particular: Safari's current (experimental) version draws Arc-style squircle corners as squares, so Margin doesn't use it yet; it has no effect on Margin either way.
 
 Already used where your Safari has them (no flag needed): the Navigation API (swipe only where there's history; a loading pill for in-page navigations of apps that use it), the top layer (the palette and right-click menu stay above a site's own popovers), and switch toggles in Settings.
 

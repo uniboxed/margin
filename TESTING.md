@@ -222,8 +222,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Optional feature flags (Safari → Settings → Feature Flags)
 
-- [ ] With "CSS corner-shape property" **off** (default today): corners look exactly as before.
-- [ ] Turn it **on**, reload pages: the page card, sidebar rows, right-click menu and palette get smoother continuous corners (same size, softer curve). The page card's shadow follows the curve.
+- [ ] "CSS corner-shape property" on or off: corners look the same, rounded (Margin doesn't use it; Safari's experimental version draws squares).
 - [ ] "Threaded Time-based Animations" on: sidebar slide/badges stay smooth while a heavy page is loading.
 - [ ] A fresh tab with no history: swiping back shows no badge. After clicking a link, swiping back works.
 - [ ] Settings toggles look like macOS switches.

@@ -109,19 +109,3 @@ ul { list-style: none; margin: 0; padding: 0; }
 #archive-hours { width: 72px; }
 #archive-more { margin-top: 6px; padding: 4px 10px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 #archive-more:hover { background: var(--card); color: var(--fg); }
-
-/* ---- Squircle corners where Safari supports them -------------------------
-   Arc's corners are continuous curves ("squircles"), not circular arcs.
-   With CSS corner-shape (Safari: Settings → Feature Flags → "CSS
-   corner-shape property"; on by default in Chrome and coming in WebKit),
-   use real ones; everything above stays the fallback. A squircle looks
-   about as big as a circular corner 1/1.75 its radius (measured: Arc's page
-   corner = 11px squircle ≈ 6.25px circle; DECISIONS.md), so radii scale by
-   1.75 to keep each corner's size and gain the smooth curve. */
-@supports (corner-shape: squircle) {
-  #launcher, #page-card { border-radius: 11px; corner-shape: squircle; }
-  #query, .tile { border-radius: 24.5px; corner-shape: squircle; }
-  .tile .avatar, #shortcuts-reset, #archive-more, #settings select, #settings input:not([type="checkbox"]) { border-radius: 14px; corner-shape: squircle; }
-  #archive-list li { border-radius: 17.5px; corner-shape: squircle; }
-  #archive-list .avatar { border-radius: 7px; corner-shape: squircle; }
-}

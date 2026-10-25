@@ -8,7 +8,8 @@ import { launch, evalInShadow, waitFor, launcherUrl, buildSafariProfile, palette
 // Progressive enhancements (DECISIONS.md "Arc-closer with newer Safari
 // features"): each is used only where supported; otherwise Margin behaves as
 // before. Chromium here supports all of them; the fallbacks are covered by
-// unit tests (CSS) and feature checks in the code.
+// feature checks in the code. (CSS corner-shape is deliberately not used:
+// see the first test.)
 let ctx, dir, server, base, control;
 before(async () => {
   dir = buildSafariProfile();
@@ -48,20 +49,21 @@ async function open(name) {
   return page;
 }
 
-test('squircle corners where corner-shape is supported (page card 11px squircle; rows too)', async () => {
+test('plain rounded corners even where corner-shape is supported (no squircles yet)', async () => {
   await setSettings({ sidebarPinnedOpen: true });
-  const page = await open('squircle');
+  const page = await open('rounded');
+  assert.equal(await page.evaluate(() => CSS.supports('corner-shape', 'squircle')), true, 'this Chromium supports it');
   const styles = await waitFor(() => evalInShadow(page, 'margin-sidebar-host', function () {
     const pick = (sel) => {
       const s = getComputedStyle(this.querySelector(sel));
-      return { radius: s.borderTopLeftRadius, shape: s.cornerTopLeftShape };
+      // The default, round, is reported as 'round' or 'superellipse(1)'.
+      return { radius: s.borderTopLeftRadius, shape: s.cornerTopLeftShape === 'superellipse(1)' ? 'round' : s.cornerTopLeftShape };
     };
-    const edge = this.querySelector('.card-edge');
-    return edge.classList.contains('open') && { hole: pick('.frame .hole'), edge: pick('.card-edge'), row: pick('.tab') };
+    return this.querySelector('.card-edge').classList.contains('open') && { hole: pick('.frame .hole'), edge: pick('.card-edge'), row: pick('.tab') };
   }));
-  assert.deepEqual(styles.hole, { radius: '11px', shape: 'superellipse(2)' });
-  assert.deepEqual(styles.edge, { radius: '11px', shape: 'superellipse(2)' });
-  assert.deepEqual(styles.row, { radius: '14px', shape: 'superellipse(2)' });
+  assert.deepEqual(styles.hole, { radius: '6.25px', shape: 'round' });
+  assert.deepEqual(styles.edge, { radius: '6.25px', shape: 'round' });
+  assert.deepEqual(styles.row, { radius: '8px', shape: 'round' });
   await setSettings({ sidebarPinnedOpen: false });
   await page.close();
 });

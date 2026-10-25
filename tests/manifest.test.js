@@ -120,16 +120,14 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   for (const css of [sidebar, docked, newtab]) assert.doesNotMatch(css, /border-image|url\(/);
 });
 
-test('squircles are an enhancement: the circular-corner rules stay, squircles only inside @supports', () => {
-  for (const [f, card] of [['content/sidebar.css', '.frame .hole, .card-edge'], ['newtab/newtab.css', '#launcher, #page-card'], ['content/docked.template.css', 'html:not([data-margin-docked="off"])::after']]) {
-    const css = readFileSync(new URL(f, root), 'utf8').replaceAll('{{WIDTH}}', '260'); // the placeholder template
-    const at = css.indexOf('@supports (corner-shape: squircle)');
-    assert.ok(at > 0, `${f}: has the @supports block`);
-    const outside = css.slice(0, at);
-    assert.doesNotMatch(outside.replace(/\/\*[\s\S]*?\*\//g, ''), /corner-shape/, `${f}: corner-shape only inside @supports`);
-    assert.match(outside, new RegExp(`${card.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^{]*\\{[^}]*border-radius: 6\\.25px`), `${f}: fallback radius kept`);
-    assert.match(css.slice(at), /border-radius: 11px( !important)?;\s*corner-shape: squircle/, `${f}: the fitted squircle`);
-  }
+test('no CSS corner-shape (yet): Safari\'s experimental version passes @supports but draws squares', () => {
+  // Turning on Safari's "CSS corner-shape property" flag (Testable) made every
+  // corner Margin gave a squircle draw square; WebKitGTK 2.52 with the same
+  // flag draws them round. @supports can't tell, so Margin doesn't use it until
+  // Safari ships it working (DECISIONS.md, Follow-ups).
+  const files = ['content/sidebar.css', 'content/palette.css', 'newtab/newtab.css', 'content/docked.template.css', 'content/styles.js'];
+  for (const f of files) assert.doesNotMatch(readFileSync(new URL(f, root), 'utf8'), /corner-shape/, f);
+  for (const w of DOCKED_WIDTHS) assert.doesNotMatch(readFileSync(new URL(`content/docked/w-${w}.css`, root), 'utf8'), /corner-shape/, `w-${w}.css`);
 });
 
 test('Settings toggles are switches where supported (checkboxes elsewhere)', () => {

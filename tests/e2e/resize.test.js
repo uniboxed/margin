@@ -73,9 +73,7 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
     const s = getComputedStyle(e);
     return { left: e.getBoundingClientRect().left, open: e.classList.contains('open'), radius: s.borderTopLeftRadius, shadow: s.boxShadow !== 'none', opacity: s.opacity };
   });
-  // 11px squircle where corner-shape is supported (Chromium), else the 6.25px circle.
-  const radius = (await page.evaluate(() => CSS.supports('corner-shape', 'squircle'))) ? '11px' : '6.25px';
-  assert.deepEqual(edge, { left: 330, open: true, radius, shadow: true, opacity: '1' }, 'card shadow follows');
+  assert.deepEqual(edge, { left: 330, open: true, radius: '6.25px', shadow: true, opacity: '1' }, 'card shadow follows');
   await waitFor(async () => (await registered())?.endsWith('content/docked/w-330.css'));
 
   // Other tabs pick the width up.
