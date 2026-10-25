@@ -252,14 +252,15 @@
   Margin.content.getState = () => ({ state, tabId, windowId });
   api.storage.onChanged.addListener((_, area) => area === 'local' && refresh());
 
-  // One line per page, once it has loaded: where the time before the sidebar
+  // One debug-level line per page (hidden unless the console shows Debug
+  // messages), once it has loaded: where the time before the sidebar
   // went. All numbers are ms since navigation start. If "injected" is late,
   // Safari ran the content script late; if "storage" is late, the
   // storage.local read was slow; "rendered" is when the sidebar appeared.
   function logTiming() {
     const nav = performance.getEntriesByType?.('navigation')?.[0];
     const fmt = (n) => (n == null ? '–' : `${Math.round(n)}`);
-    console.info(
+    console.debug(
       `[margin] timing (ms) injected=${fmt(timing.injected)} storage=${fmt(timing.storage)} rendered=${fmt(timing.rendered)}` +
         ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${pinnedOpen()}`,
     );
