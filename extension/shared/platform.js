@@ -12,9 +12,11 @@
       name: 'safari',
       // Safari gives extensions no tab.favIconUrl: fetch each site's own icon.
       fetchFavicons: true,
-      // Default shortcuts, matching platform/safari/manifest.json commands.
-      // Tabs on ⌘⌥↓/↑ (WebKit accepts ⌘⌥ in manifest commands); spaces stay
-      // on ⌃⌘→/← because Safari keeps ⌘⌥←/→ for its own tab switching.
+      // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
+      // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
+      // both builds: verified working in Safari, while ⌥⌘↓/↑ as a manifest
+      // command did not respond there. Spaces on ⌃⌘→/← because Safari keeps
+      // ⌘⌥←/→ for its own tab switching.
       navigation: {
         nextTab: 'Alt+Meta+ArrowDown',
         prevTab: 'Alt+Meta+ArrowUp',
@@ -26,8 +28,8 @@
       name: 'chrome',
       // Chrome provides tab.favIconUrl: no extra requests.
       fetchFavicons: false,
-      // Chrome refuses ⌘⌥ in manifest commands (the whole extension fails to
-      // load), so all four are ⌃⌘ + arrows, matching platform/chrome/manifest.json.
+      // Same as the manifest commands (⌃⌘ + arrows; Chrome refuses ⌘⌥ there
+      // and then won't load the extension at all).
       navigation: {
         nextTab: 'Ctrl+Meta+ArrowDown',
         prevTab: 'Ctrl+Meta+ArrowUp',

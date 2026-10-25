@@ -381,3 +381,23 @@ test('navigation shortcut defaults match shared/shortcuts.js; stored values merg
   d.settings.shortcuts.nextTab = 'x';
   assert.equal(M.DEFAULT_SETTINGS.shortcuts.nextTab, 'Ctrl+Meta+ArrowDown', 'defaults are not shared/mutated');
 });
+
+test('saved default shortcuts follow the build; customized ones stay', () => {
+  const { platformProfiles: P } = globalThis.Margin;
+  const safari = { shortcuts: { ...P.safari.navigation }, shortcutDefaults: 'safari' };
+  // Saved by a version before per-browser builds (no marker): all ⌃⌘ defaults, one customized.
+  const legacy = { shortcuts: { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Alt+Shift+KeyL', prevSpace: 'Ctrl+Meta+ArrowLeft' } };
+  assert.deepEqual(M.normalizeShortcuts(legacy, safari), {
+    nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Shift+KeyL', prevSpace: 'Ctrl+Meta+ArrowLeft',
+  });
+  // Already on Safari's defaults: a deliberate ⌃⌘↓ is kept.
+  const chosen = { shortcuts: { ...P.safari.navigation, nextTab: 'Ctrl+Meta+ArrowDown' }, shortcutDefaults: 'safari' };
+  assert.equal(M.normalizeShortcuts(chosen, safari).nextTab, 'Ctrl+Meta+ArrowDown');
+  // Safari's defaults loaded into the Chrome build: back to ⌃⌘.
+  const chrome = { shortcuts: { ...P.chrome.navigation }, shortcutDefaults: 'chrome' };
+  assert.deepEqual(M.normalizeShortcuts({ shortcuts: { ...P.safari.navigation }, shortcutDefaults: 'safari' }, chrome), P.chrome.navigation);
+  // normalizeState records which defaults apply now.
+  const s = M.normalizeState({ settings: legacy });
+  assert.equal(s.settings.shortcutDefaults, 'chrome');
+  assert.equal(s.settings.shortcuts.nextSpace, 'Alt+Shift+KeyL');
+});

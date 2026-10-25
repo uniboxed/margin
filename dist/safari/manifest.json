@@ -51,14 +51,14 @@
     "next-tab": {
       "suggested_key": {
         "default": "Alt+Shift+Down",
-        "mac": "Command+Alt+Down"
+        "mac": "MacCtrl+Command+Down"
       },
       "description": "Next tab in the sidebar"
     },
     "prev-tab": {
       "suggested_key": {
         "default": "Alt+Shift+Up",
-        "mac": "Command+Alt+Up"
+        "mac": "MacCtrl+Command+Up"
       },
       "description": "Previous tab in the sidebar"
     },

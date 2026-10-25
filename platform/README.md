@@ -4,9 +4,11 @@
 
 | Folder | What it overrides | Build |
 |---|---|---|
-| `platform/safari/manifest.json` | Top-level manifest keys (today: `commands`, with ⌘⌥↓/↑ for tabs, which WebKit accepts) | `dist/safari/` |
-| `platform/chrome/manifest.json` | Top-level manifest keys (today: `commands`, all ⌃⌘ + arrows; Chrome refuses ⌘⌥ and then won't load the extension) | `dist/chrome/` |
+| `platform/safari/manifest.json` | Top-level manifest keys (today: none) | `dist/safari/` |
+| `platform/chrome/manifest.json` | Top-level manifest keys (today: none) | `dist/chrome/` |
 
-Behavior that differs (Safari fetches site icons since it has no `tab.favIconUrl`; default shortcuts) lives in the profiles in `extension/shared/platform.js`; the build stamps which profile a folder uses. Keep each profile's `navigation` in sync with its manifest's `commands` (a unit test checks this).
+The shortcut `commands` are ⌃⌘ + arrows in both (in `extension/manifest.json`). Safari's build once had ⌥⌘↓/↑ commands for tabs; they didn't respond in Safari, while ⌃⌘ does, and Chrome refuses ⌘⌥ commands outright.
+
+Behavior that differs (Safari fetches site icons since it has no `tab.favIconUrl`; default shortcuts) lives in the profiles in `extension/shared/platform.js`; the build stamps which profile a folder uses. Safari's default *page* shortcuts for tabs are ⌥⌘↓/↑ (on top of the ⌃⌘ commands).
 
 Don't edit `dist/` by hand: change `extension/` or these files, then run `npm run build` (a unit test fails if `dist/` is stale). Load `dist/safari/` in Safari and `dist/chrome/` in Chrome.

@@ -16,6 +16,9 @@ async function load() {
   cache = M.normalizeState(raw);
   // First run: persist defaults so readers (content scripts) see a full state.
   const missing = M.STATE_KEYS.filter((key) => !(key in raw));
+  // Saved under another build's default shortcuts (normalizeShortcuts moved
+  // them): save, so pages, which read storage directly, use the new ones.
+  if (raw.settings && raw.settings.shortcutDefaults !== cache.settings.shortcutDefaults) missing.push('settings');
   if (missing.length) await api.storage.local.set(Object.fromEntries(missing.map((key) => [key, cache[key]])));
   return cache;
 }

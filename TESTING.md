@@ -49,7 +49,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 **Recommended: temporary extension** (no Xcode, no "Allow unsigned extensions").
 
 1. Safari → Settings → Advanced → enable **Show features for web developers** (older Safari: "Show Develop menu in menu bar").
-2. **Develop → Add Temporary Extension…** → choose the repo's `dist/safari/` folder (not `extension/`: only `dist/safari/` has Safari's ⌥⌘↓/↑ shortcuts). Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
+2. **Develop → Add Temporary Extension…** → choose the repo's `dist/safari/` folder (not `extension/`). Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
 3. Safari → Settings → Extensions → Margin → set website access to **Always Allow on Every Website**.
 4. Safari → Settings → General → **New tabs open with** → **Margin**. Set **New windows open with** to Margin too if you like.
 5. If an Xcode-built Margin is also installed, turn it off in Safari → Settings → Extensions so only one copy runs.
@@ -180,14 +180,14 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 - [ ] ⌥K or ⌘T: a dark, slightly see-through panel about half the window wide, a third of the way down, with "Search or Enter URL…". Rows show favicon, title, the space name and an arrow button. The selected row is filled with the current space's color.
 
-## Navigation shortcuts (⌥⌘↓/↑ tabs, ⌃⌘→/← spaces)
+## Navigation shortcuts (⌃⌘ + arrows everywhere; ⌥⌘↓/↑ on pages)
 
-- [ ] Settings shows ⌥⌘↓ / ⌥⌘↑ for next/previous tab. If it shows ⌃⌘ (saved by an older version), click **Reset shortcuts**.
-- [ ] ⌥⌘↓ / ⌥⌘↑ switch to the next/previous tab in the sidebar's order, also when pressed quickly several times in a row, and right after a page starts loading.
+- [ ] Settings shows ⌥⌘↓ / ⌥⌘↑ for next/previous tab (also after upgrading from a version that showed ⌃⌘; shortcuts you changed yourself stay).
+- [ ] ⌃⌘↓ / ⌃⌘↑ switch to the next/previous tab in the sidebar's order, also when pressed quickly several times in a row, and right after a page starts loading.
+- [ ] ⌥⌘↓ / ⌥⌘↑ do the same once you've clicked into a page. If they do nothing, run the check in "Which ⌘⌥-arrow keys reach Margin" below.
 - [ ] ⌃⌘→ / ⌃⌘← switch spaces (the sidebar peeks open).
 - [ ] They also work while the address bar has focus and on pages where Margin has no sidebar (e.g. a PDF). That's the extension-command path: if they don't work there but do on normal pages, Safari isn't delivering the commands, so note it.
 - [ ] Holding ⌥⌘↓ repeats (page path) on normal pages.
-- [ ] ⌥⌘↓/↑ while typing in a text field on a page: still switches tabs (the extension command wins). Note it if Safari does something else instead.
 
 ## Page-load indicator
 

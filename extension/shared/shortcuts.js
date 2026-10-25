@@ -41,10 +41,10 @@
   }
 
   // Default navigation shortcuts come from the build's platform profile
-  // (shared/platform.js): Safari ⌘⌥↓/↑ for tabs, Chrome ⌃⌘↓/↑; spaces ⌃⌘→/←
-  // in both. They're also manifest `commands` (platform/<browser>/manifest.json),
-  // which the browser matches in the app, whatever has focus. This page
-  // listener adds key repeat and custom shortcuts from Settings.
+  // (shared/platform.js): Safari ⌥⌘↓/↑ for tabs, Chrome ⌃⌘↓/↑; spaces ⌃⌘→/←
+  // in both. Separately, the manifest `commands` are ⌃⌘ + arrows in both
+  // builds; the browser matches those in the app, whatever has focus. This
+  // page listener handles the Settings shortcuts, with key repeat.
   const NAVIGATION = { ...(Margin.platform ?? Margin.platformProfiles?.chrome)?.navigation };
   const navigationFor = (settings) => ({ ...NAVIGATION, ...settings?.shortcuts });
 

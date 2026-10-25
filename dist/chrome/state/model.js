@@ -9,6 +9,15 @@
 (() => {
   const ARCHIVE_CAP = 200;
 
+  // The defaults before per-browser builds; settings saved then have no
+  // `shortcutDefaults`. Same as the Chrome profile's.
+  const LEGACY_SHORTCUTS = Object.freeze({
+    nextTab: 'Ctrl+Meta+ArrowDown',
+    prevTab: 'Ctrl+Meta+ArrowUp',
+    nextSpace: 'Ctrl+Meta+ArrowRight',
+    prevSpace: 'Ctrl+Meta+ArrowLeft',
+  });
+
   const DEFAULT_SETTINGS = Object.freeze({
     sidebarPinnedOpen: false,
     archiveAfterHours: 12,
@@ -18,14 +27,9 @@
     // Defaults from the build's platform profile (shared/platform.js; loaded
     // before this file in the background). Editable in Settings. Fallback:
     // the Chrome profile's ⌃⌘ + arrows (e.g. in node tests).
-    shortcuts: Object.freeze({
-      ...(globalThis.Margin?.platform?.navigation ?? {
-        nextTab: 'Ctrl+Meta+ArrowDown',
-        prevTab: 'Ctrl+Meta+ArrowUp',
-        nextSpace: 'Ctrl+Meta+ArrowRight',
-        prevSpace: 'Ctrl+Meta+ArrowLeft',
-      }),
-    }),
+    shortcuts: Object.freeze({ ...(globalThis.Margin?.platform?.navigation ?? LEGACY_SHORTCUTS) }),
+    // Which profile's defaults `shortcuts` started from (see normalizeShortcuts).
+    shortcutDefaults: globalThis.Margin?.platform?.name ?? 'chrome',
   });
 
   const DEFAULT_SPACE = Object.freeze({
@@ -67,11 +71,26 @@
       settings: {
         ...base.settings,
         ...raw.settings,
-        shortcuts: { ...base.settings.shortcuts, ...raw.settings?.shortcuts },
+        shortcuts: normalizeShortcuts(raw.settings, base.settings),
+        shortcutDefaults: base.settings.shortcutDefaults,
       },
       tabs: { ...raw.tabs },
       favicons: { ...raw.favicons },
     };
+  }
+
+  // Saved shortcuts include the defaults of the build that saved them. When
+  // the defaults change (another build, e.g. Safari's ⌥⌘↓/↑ for tabs after
+  // ⌃⌘↓/↑), a saved value that is still the old default moves to the new
+  // default; anything the user changed in Settings stays.
+  function normalizeShortcuts(rawSettings, baseSettings) {
+    const saved = { ...rawSettings?.shortcuts };
+    const from = rawSettings?.shortcutDefaults;
+    if (from !== baseSettings.shortcutDefaults) {
+      const old = (from && globalThis.Margin?.platformProfiles?.[from]?.navigation) || LEGACY_SHORTCUTS;
+      for (const [name, value] of Object.entries(saved)) if (value === old[name]) delete saved[name];
+    }
+    return { ...baseSettings.shortcuts, ...saved };
   }
 
   // Pins and tabs are matched by URL, ignoring the fragment and a bare
@@ -304,6 +323,7 @@
     STATE_KEYS,
     defaultState,
     normalizeState,
+    normalizeShortcuts,
     normalizeUrl,
     activeSpaceId,
     pinForUrl,

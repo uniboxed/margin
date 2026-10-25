@@ -76,28 +76,31 @@ function fromSetting(combo) {
 const ACTIONS = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-space', prevSpace: 'prev-space' };
 
 for (const target of TARGETS) {
-  test(`${target}: manifest commands are valid there and match the profile's default shortcuts`, () => {
+  test(`${target}: manifest commands load in Safari and Chrome and match the profile's shortcuts`, () => {
     const { commands } = manifestFor(target);
     const withKeys = Object.entries(commands).filter(([, c]) => c.suggested_key);
     assert.ok(withKeys.length <= 4, 'browsers allow at most 4 commands with a shortcut');
     for (const [name, c] of withKeys) {
       const spec = c.suggested_key.mac;
       assert.ok(webkitShortcut(spec), `${name}: Safari would drop "${spec}"`);
-      if (target === 'chrome') assert.ok(chromeAccepts(spec) && chromeAccepts(c.suggested_key.default), `${name}: Chrome refuses "${spec}"`);
+      assert.ok(chromeAccepts(spec) && chromeAccepts(c.suggested_key.default), `${name}: Chrome refuses "${spec}"`);
     }
     const { navigation } = PROFILES[target];
     assert.deepEqual(Object.keys(navigation).sort(), Object.keys(ACTIONS).sort());
-    for (const [setting, command] of Object.entries(ACTIONS)) {
-      assert.deepEqual(webkitShortcut(commands[command].suggested_key.mac), fromSetting(navigation[setting]), `${target} ${setting}`);
+    // Safari's tab shortcuts are page-only extras (⌥⌘↓/↑, test below).
+    const shared = target === 'safari' ? ['nextSpace', 'prevSpace'] : Object.keys(ACTIONS);
+    for (const setting of shared) {
+      assert.deepEqual(webkitShortcut(commands[ACTIONS[setting]].suggested_key.mac), fromSetting(navigation[setting]), `${target} ${setting}`);
     }
   });
 }
 
-test('safari: tabs on ⌘⌥↓/↑, spaces on ⌃⌘→/← (Safari keeps ⌘⌥←/→ for itself)', () => {
+test('safari: ⌥⌘↓/↑ page shortcuts for tabs, on top of the ⌃⌘ commands', () => {
+  const { navigation } = PROFILES.safari;
+  assert.equal(navigation.nextTab, 'Alt+Meta+ArrowDown');
+  assert.equal(navigation.prevTab, 'Alt+Meta+ArrowUp');
   const { commands } = manifestFor('safari');
-  assert.equal(commands['next-tab'].suggested_key.mac, 'Command+Alt+Down');
-  assert.equal(commands['prev-tab'].suggested_key.mac, 'Command+Alt+Up');
-  for (const c of ['next-space', 'prev-space']) assert.doesNotMatch(commands[c].suggested_key.mac, /Alt/);
+  for (const c of Object.values(ACTIONS)) assert.match(commands[c].suggested_key.mac, /^MacCtrl\+Command\+(Up|Down|Left|Right)$/, c);
 });
 
 test('the validators agree with what was verified by hand', () => {

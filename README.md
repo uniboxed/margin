@@ -8,7 +8,7 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
 - **Page-load indicator:** an Arc-style dark pill, centered at the top of the page, while a page loads.
 - **Resizable:** drag the sidebar's right edge (160–500 px); double-click it to reset.
-- **Keyboard navigation:** next/previous tab (sidebar order, wrapping) is ⌥⌘↓ / ⌥⌘↑ in Safari and ⌃⌘↓ / ⌃⌘↑ in Chrome; next/previous space is ⌃⌘→ / ⌃⌘← in both (the sidebar peeks open so you can see where you landed). They're extension shortcuts, so the browser handles them even when the page doesn't have focus. Extra or different keys can be set in Settings (those only work while a page has focus). Spaces aren't on ⌘⌥ because Safari keeps ⌘⌥←/→ for its own tab switching; Chrome's tabs aren't because Chrome refuses ⌘⌥ for extension shortcuts.
+- **Keyboard navigation:** ⌃⌘↓ / ⌃⌘↑ next/previous tab (sidebar order, wrapping) and ⌃⌘→ / ⌃⌘← next/previous space (the sidebar peeks open so you can see where you landed), in both browsers. These are extension shortcuts, so the browser handles them even when the page doesn't have focus. In Safari, ⌥⌘↓ / ⌥⌘↑ also switch tabs while a page has focus (Settings shortcuts, changeable there). ⌥⌘ can't be an extension shortcut: in Safari it didn't respond, and Chrome refuses it.
 - **Custom new-tab page:** search/URL field, the space's pins as tiles, recently archived tabs, and settings.
 - **Auto-archive:** tabs left idle for 12 hours (configurable) close into a restorable archive.
 
@@ -111,4 +111,4 @@ npm run styles      # after editing content/*.css: regenerate content/styles.js 
 npm run icons       # regenerate extension/icons
 ```
 
-To try it in Chrome: chrome://extensions → Developer mode → Load unpacked → `dist/chrome/` (run `npm run build` after changes), and use the reload icon. `dist/safari/` won't load in Chrome: its ⌘⌥ shortcuts make Chrome reject it. This is handy for fast iteration; check Safari-specific behavior (favicons, shortcuts, new tab) in Safari.
+To try it in Chrome: chrome://extensions → Developer mode → Load unpacked → `dist/chrome/` (run `npm run build` after changes), and use the reload icon. Use `dist/chrome/` there: `dist/safari/` fetches site icons Chrome already provides. This is handy for fast iteration; check Safari-specific behavior (favicons, shortcuts, new tab) in Safari.

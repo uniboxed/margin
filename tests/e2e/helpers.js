@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
 export const EXTENSION_PATH = fileURLToPath(new URL('../../dist/chrome', import.meta.url));
 
 // Safari's behavior (shared/platform.js profile) with Chrome's manifest, so
-// Chromium can load it: Chrome refuses the Safari manifest's ⌘⌥ commands.
+// the tests can load it the same way as the Chrome build.
 export function buildSafariProfile() {
   return buildTo(join(mkdtempSync(join(tmpdir(), 'margin-safari-')), 'ext'), { profile: 'safari', manifest: 'chrome' });
 }

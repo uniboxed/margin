@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, sidebarSnapshot, tabsInBrowser, waitFor, buildSafariProfile } from './helpers.js';
+import { launch, sidebarSnapshot, tabsInBrowser, waitFor, buildSafariProfile, launcherUrl } from './helpers.js';
 
 const PNG = readFileSync(new URL('../../extension/icons/icon-48.png', import.meta.url));
 let server, base;
@@ -67,6 +67,41 @@ test('Safari profile: ⌥⌘↓/↑ are the default tab shortcuts on the page, a
     await waitFor(async () => (await activeTitle()) === order[(order.indexOf('safari-a') + 1) % order.length]);
     await b.close();
     await a.close();
+  } finally {
+    await ctx.context.close();
+    rmSync(dirname(dir), { recursive: true, force: true });
+  }
+});
+
+test('upgrading to the Safari build: saved ⌃⌘ defaults move to ⌥⌘↓/↑, customized shortcuts stay', async () => {
+  const dir = buildSafariProfile();
+  const ctx = await launch({ extensionPath: dir });
+  try {
+    await waitFor(async () => (await storage(ctx, 'settings'))?.shortcuts);
+    // As saved by a version before per-browser builds (⌃⌘ defaults, no
+    // marker), with one custom shortcut. Then stop the background so it
+    // starts fresh from storage, as after Safari reloads Margin.
+    await ctx.worker.evaluate(() => chrome.storage.local.get('settings').then(({ settings }) => {
+      delete settings.shortcutDefaults;
+      settings.shortcuts = { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Alt+Shift+KeyL', prevSpace: 'Ctrl+Meta+ArrowLeft' };
+      return chrome.storage.local.set({ settings });
+    }));
+    const page = await ctx.context.newPage();
+    await page.goto(launcherUrl(ctx));
+    const cdp = await ctx.context.newCDPSession(page);
+    await cdp.send('ServiceWorker.enable');
+    await cdp.send('ServiceWorker.stopAllWorkers');
+    await page.evaluate(() => chrome.runtime.sendMessage({ type: 'hello' }).catch(() => {})); // wakes it
+    ctx.worker = await waitFor(() => ctx.context.serviceWorkers()[0]);
+    // Only a fresh background rewrites the settings (the stopped one had
+    // them cached), so this also proves the restart.
+    const settings = await waitFor(async () => {
+      const s = await storage(ctx, 'settings');
+      return s?.shortcutDefaults === 'safari' && s;
+    });
+    assert.deepEqual(settings.shortcuts, {
+      nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Shift+KeyL', prevSpace: 'Ctrl+Meta+ArrowLeft',
+    });
   } finally {
     await ctx.context.close();
     rmSync(dirname(dir), { recursive: true, force: true });
