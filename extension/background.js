@@ -452,7 +452,8 @@ const queueDockedSync = () => {
     .then(syncDockedCss)
     .catch((err) => console.warn('[margin] docked css', err))
     .then(() => syncShell())
-    .catch((err) => console.warn('[margin] fitted layout', err));
+    .catch((err) => console.warn('[margin] fitted layout', err))
+    .then(() => dropProbe());
   return dockedSync;
 };
 api.storage.onChanged.addListener((changes, area) => {
@@ -487,12 +488,13 @@ async function syncShell() {
     }]);
   }
 }
-// Left registered by the injection probe (removed): drop it, in turn with
-// the other registrations.
-dockedSync = dockedSync.then(async () => {
-  const [probe] = (await api.scripting?.getRegisteredContentScripts?.({ ids: ['margin-probe'] })) ?? [];
-  if (probe) await api.scripting.unregisterContentScripts({ ids: ['margin-probe'] });
-}).catch(() => {});
+// Left registered by the injection probe (removed; its files are now empty
+// stubs, see shared/probe.js): drop it. Tried on every sync, because Safari
+// loads stored registrations asynchronously after the background starts. It
+// fails harmlessly once it's gone.
+async function dropProbe() {
+  await api.scripting?.unregisterContentScripts?.({ ids: ['margin-probe'] }).catch(() => {});
+}
 
 // ---- auto-archive -----------------------------------------------------------
 
