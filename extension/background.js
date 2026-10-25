@@ -1,7 +1,7 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
 // Classic service worker: Safari ignores "type": "module" for backgrounds.
-importScripts('state/model.js', 'shared/icons.js', 'shared/view.js');
+importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js');
 const M = globalThis.Margin.model;
 const I = globalThis.Margin.icons;
 
@@ -188,6 +188,7 @@ const handlers = {
     await mutate((s) => M.moveTab(s, tabId, spaceId));
   },
   async pageIcon({ href }, sender) {
+    if (!globalThis.Margin.platform?.fetchFavicons) return; // the browser provides icons
     const pageUrl = sender.tab?.url ?? sender.url;
     let origin;
     try {

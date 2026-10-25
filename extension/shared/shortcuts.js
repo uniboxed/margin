@@ -40,18 +40,12 @@
     return MODIFIERS.filter((m) => s[m.toLowerCase()]).map((m) => SYMBOLS[m]).join('') + key;
   }
 
-  // Default navigation shortcuts: ⌃⌘ + arrows. They're also manifest
-  // `commands`, which Safari matches in the app (works whatever has focus and
-  // before the page's script loads); this page listener adds key repeat and
-  // custom shortcuts from Settings. Not ⌘⌥: Safari keeps ⌘⌥←/→ for its own tab
-  // switching, and Chrome refuses ⌘⌥ in manifest commands. Keep in sync with
-  // state/model.js DEFAULT_SETTINGS.shortcuts and manifest.json commands.
-  const NAVIGATION = {
-    nextTab: 'Ctrl+Meta+ArrowDown',
-    prevTab: 'Ctrl+Meta+ArrowUp',
-    nextSpace: 'Ctrl+Meta+ArrowRight',
-    prevSpace: 'Ctrl+Meta+ArrowLeft',
-  };
+  // Default navigation shortcuts come from the build's platform profile
+  // (shared/platform.js): Safari ⌘⌥↓/↑ for tabs, Chrome ⌃⌘↓/↑; spaces ⌃⌘→/←
+  // in both. They're also manifest `commands` (platform/<browser>/manifest.json),
+  // which the browser matches in the app, whatever has focus. This page
+  // listener adds key repeat and custom shortcuts from Settings.
+  const NAVIGATION = { ...(Margin.platform ?? Margin.platformProfiles?.chrome)?.navigation };
   const navigationFor = (settings) => ({ ...NAVIGATION, ...settings?.shortcuts });
 
   // Navigation actions, shared with the background and manifest commands.

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import '../extension/shared/platform.js';
 import '../extension/state/model.js';
 import '../extension/shared/view.js';
 

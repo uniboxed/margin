@@ -1,20 +1,31 @@
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildTo } from '../../scripts/build.js';
 
 // Resolve playwright from local node_modules or the globally installed copy.
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
-export const EXTENSION_PATH = fileURLToPath(new URL('../../extension', import.meta.url));
+// The Chrome build (`npm run test:e2e` rebuilds dist/ first).
+export const EXTENSION_PATH = fileURLToPath(new URL('../../dist/chrome', import.meta.url));
 
-export async function launch() {
+// Safari's behavior (shared/platform.js profile) with Chrome's manifest, so
+// Chromium can load it: Chrome refuses the Safari manifest's ⌘⌥ commands.
+export function buildSafariProfile() {
+  return buildTo(join(mkdtempSync(join(tmpdir(), 'margin-safari-')), 'ext'), { profile: 'safari', manifest: 'chrome' });
+}
+
+export async function launch({ extensionPath = EXTENSION_PATH } = {}) {
   const context = await chromium.launchPersistentContext('', {
     headless: false,
     args: [
       '--headless=new',
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
     ],
   });
   let [worker] = context.serviceWorkers();

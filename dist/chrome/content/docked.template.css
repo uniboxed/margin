@@ -1,0 +1,32 @@
+/* Registered by the background (scripting.registerContentScripts) only while
+   "Keep open" is on. Safari applies it before the page's first paint, which is
+   earlier than it runs content scripts (~200ms after navigation start), so the
+   pushed layout and the sidebar/frame background are there from the first
+   frame. The real sidebar (content/sidebar.js) renders on top moments later.
+   sidebar.js sets data-margin-docked="off" on <html> to switch this off on a
+   page where the user leaves "Keep open".
+   TEMPLATE: scripts/build-styles.js writes content/docked/w-<width>.css for
+   every sidebar width (160–500, 10px steps), replacing {{WIDTH}}. The
+   background registers the one matching settings.sidebarWidth. Keep the
+   geometry in sync with sidebar.css and sidebar.js (8px frame, 10px corners). */
+@media screen {
+  html:not([data-margin-docked="off"]) {
+    margin-left: {{WIDTH}}px !important;
+    margin-right: 8px !important;
+    width: auto !important;
+    overflow-x: hidden !important;
+  }
+  html:not([data-margin-docked="off"])::after {
+    content: "" !important;
+    position: fixed !important;
+    top: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    left: {{WIDTH}}px !important;
+    border-radius: 10px !important;
+    /* Same fixed color as the sidebar (sidebar.css --frame). */
+    box-shadow: 0 0 0 100vmax #9c9da1 !important;
+    pointer-events: none !important;
+    z-index: 2147483646 !important;
+  }
+}

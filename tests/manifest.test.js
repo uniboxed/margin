@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import '../extension/shared/platform.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { buildStyles, buildDocked, DOCKED_WIDTHS } from '../scripts/build-styles.js';

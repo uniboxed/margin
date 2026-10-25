@@ -339,6 +339,7 @@
   // pages that add their icon from script.
   let reportedIcon = null;
   function reportIcon() {
+    if (!Margin.platform?.fetchFavicons) return; // the browser provides icons (Chrome)
     const links = [...document.querySelectorAll('link[rel]')].map((l) => ({
       rel: l.rel,
       href: l.href,

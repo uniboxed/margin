@@ -8,7 +8,7 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
 - **Page-load indicator:** an Arc-style dark pill, centered at the top of the page, while a page loads.
 - **Resizable:** drag the sidebar's right edge (160–500 px); double-click it to reset.
-- **Keyboard navigation:** ⌃⌘↓ / ⌃⌘↑ next/previous tab (sidebar order, wrapping), ⌃⌘→ / ⌃⌘← next/previous space (the sidebar peeks open so you can see where you landed). They're extension shortcuts, so Safari handles them even when the page doesn't have focus. Extra or different keys can be set in Settings (those only work while a page has focus). Not ⌘⌥: Safari keeps ⌘⌥←/→ for its own tab switching, and Chrome refuses ⌘⌥ for extension shortcuts.
+- **Keyboard navigation:** next/previous tab (sidebar order, wrapping) is ⌥⌘↓ / ⌥⌘↑ in Safari and ⌃⌘↓ / ⌃⌘↑ in Chrome; next/previous space is ⌃⌘→ / ⌃⌘← in both (the sidebar peeks open so you can see where you landed). They're extension shortcuts, so the browser handles them even when the page doesn't have focus. Extra or different keys can be set in Settings (those only work while a page has focus). Spaces aren't on ⌘⌥ because Safari keeps ⌘⌥←/→ for its own tab switching; Chrome's tabs aren't because Chrome refuses ⌘⌥ for extension shortcuts.
 - **Custom new-tab page:** search/URL field, the space's pins as tiles, recently archived tabs, and settings.
 - **Auto-archive:** tabs left idle for 12 hours (configurable) close into a restorable archive.
 
@@ -30,14 +30,14 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 
 ## Install for development (temporary extension, no Xcode)
 
-The fastest loop: Safari loads `extension/` straight from the repo. There's no Xcode build and no "Allow unsigned extensions" toggle.
+The fastest loop: Safari loads `dist/safari/` straight from the repo (committed, so no Node needed on the Mac). There's no Xcode build and no "Allow unsigned extensions" toggle.
 
 1. Safari → Settings → Advanced → enable **Show features for web developers**.
-2. **Develop → Add Temporary Extension…** → choose this repo's `extension/` folder.
+2. **Develop → Add Temporary Extension…** → choose this repo's `dist/safari/` folder.
 3. Safari → Settings → Extensions → Margin → website access **Always Allow on Every Website**.
 4. Safari → Settings → General → **New tabs open with** → **Margin**.
 
-**After `git pull` or any edit:** reload Margin from Safari → Settings → Extensions (or remove it and add the folder again), then reload open pages. A temporary extension doesn't survive quitting Safari, so add it again after a relaunch.
+**After `git pull`:** reload Margin from Safari → Settings → Extensions (or remove it and add the folder again), then reload open pages. After editing files yourself, run `npm run build` first. A temporary extension doesn't survive quitting Safari, so add it again after a relaunch.
 
 **Don't run both copies.** If the Xcode-built Margin app is also installed, turn that one off in Safari → Settings → Extensions. Two copies keep separate spaces, pins, and archives, and fight over the new-tab page.
 
@@ -55,20 +55,21 @@ open xcode/Margin/Margin.xcodeproj
 The script runs Apple's converter:
 
 ```sh
-xcrun safari-web-extension-converter extension --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
+xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
 ```
 
 It then fixes the bundle IDs. The converter names the app `io.tirth.Margin` (capitalized from the app name) but the extension `io.tirth.margin.Extension`, and Xcode refuses to build with "Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier." The script sets the app to `io.tirth.margin`, the extension to `io.tirth.margin.Extension`, and `extensionBundleIdentifier` in the app's Swift code to match, then prints all three.
 
 In Xcode, choose the **Margin (macOS)** scheme and Run (⌘R). Safari picks up the extension from the app. If signing complains, set the same Team (your Personal Team, or "Sign to Run Locally") on both targets under Signing & Capabilities.
 
-**After pulling new changes,** re-run `scripts/make-xcode.sh` and Run again. That's always safe, and needed whenever files under `extension/` are added or removed. For edits to existing files, just Run again in Xcode and reload pages in Safari. If Safari still shows old behavior, regenerate.
+**After pulling new changes,** re-run `scripts/make-xcode.sh` and Run again. That's always safe, and needed whenever files under `dist/safari/` are added or removed. For edits to existing files, just Run again in Xcode and reload pages in Safari. If Safari still shows old behavior, regenerate.
 
 ## Architecture
 
 ```
-extension/
+extension/              The one shared source (loads unbuilt too: it detects the browser)
   manifest.json         MV3: tabs, storage, alarms, scripting; <all_urls>; newtab override; commands
+  shared/platform.js    Per-browser profiles (favicon fetching, default shortcuts); stamped by the build
   background.js         State owner (classic service worker; loads state/model.js via importScripts). Tab events → pure model → storage.local.
                         Message router for the UI. Auto-archive scheduler.
   state/model.js        Pure state functions (no browser APIs), unit tested. Classic script.
@@ -83,9 +84,13 @@ extension/
   content/*.css         Styles (source of truth). Bundled into content/styles.js by `npm run styles`
                         so content scripts apply them synchronously, with no fetch.
   newtab/               Launcher page with the sidebar permanently open.
+platform/<browser>/     Manifest overrides per browser (today: the shortcut `commands`)
+dist/safari/, dist/chrome/
+                        Ready-to-load builds from `npm run build` (generated, committed; a test checks they're current)
+scripts/build.js        extension/ + platform/<browser>/ → dist/<browser>/
 tests/
   *.test.js             node --test unit tests
-  e2e/*.test.js         Playwright (headless Chromium) tests that load extension/ unpacked
+  e2e/*.test.js         Playwright (headless Chromium) tests that load dist/chrome/ (and a Safari-profile variant) unpacked
 ```
 
 **Data flow:** the background is the only writer. It mirrors open tabs into `storage.local.tabs` and owns `spaces`, `activeSpaceByWindow`, `tabSpace`, `pins`, `archive`, and `settings`. Content scripts and the new tab render from `storage.local` (instantly, even while the background is asleep), update on `storage.onChanged`, and send typed messages (`activateTab`, `closeTab`, `newTab`, `pinTab`, `unpin`, `openPin`, `setSpace`, `createSpace`, `renameSpace`, `deleteSpace`, `moveTabToSpace`, `restoreArchive`, `updateSettings`) to change anything. The background can be unloaded at any time: it serializes writes through one queue, rehydrates from storage on wake, and rebuilds tab→space assignments from pins after a browser restart.
@@ -96,13 +101,14 @@ Design decisions and every Safari fallback are in [DECISIONS.md](DECISIONS.md).
 
 ## Development
 
-No build step and no runtime dependencies: `extension/` loads as-is. Node 22+.
+No runtime dependencies and no bundler. `npm run build` only copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile. Node 22+.
 
 ```sh
+npm run build       # after any change under extension/ or platform/: regenerate dist/ (a test checks it; also runs `styles`)
 npm test            # unit tests (node --test)
-npm run test:e2e    # Playwright + headless Chromium (uses an installed Chromium; run `npx playwright install chromium` locally if needed)
+npm run test:e2e    # builds, then Playwright + headless Chromium (uses an installed Chromium; run `npx playwright install chromium` locally if needed)
 npm run styles      # after editing content/*.css: regenerate content/styles.js (a test checks it)
 npm run icons       # regenerate extension/icons
 ```
 
-To try it in Chrome: chrome://extensions → Developer mode → Load unpacked → `extension/`, and use the reload icon after changes. This is handy for fast iteration; check Safari-specific behavior (favicons, shortcuts, new tab) in Safari.
+To try it in Chrome: chrome://extensions → Developer mode → Load unpacked → `dist/chrome/` (run `npm run build` after changes), and use the reload icon. `dist/safari/` won't load in Chrome: its ⌘⌥ shortcuts make Chrome reject it. This is handy for fast iteration; check Safari-specific behavior (favicons, shortcuts, new tab) in Safari.

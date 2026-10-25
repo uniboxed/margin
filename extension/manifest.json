@@ -31,6 +31,7 @@
         "<all_urls>"
       ],
       "js": [
+        "shared/platform.js",
         "shared/view.js",
         "shared/search.js",
         "shared/shortcuts.js",

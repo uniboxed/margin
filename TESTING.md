@@ -4,7 +4,7 @@
 
 ```sh
 npm test            # unit tests: node --test tests/*.test.js
-npm run test:e2e    # Playwright, headless Chromium, loads extension/ unpacked
+npm run test:e2e    # builds dist/, then Playwright, headless Chromium, loads dist/chrome/ unpacked
 ```
 
 Everything below this line is **manual, in Safari on macOS**. The automated tests only prove the extension works in Chromium.
@@ -49,7 +49,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 **Recommended: temporary extension** (no Xcode, no "Allow unsigned extensions").
 
 1. Safari → Settings → Advanced → enable **Show features for web developers** (older Safari: "Show Develop menu in menu bar").
-2. **Develop → Add Temporary Extension…** → choose the repo's `extension/` folder. Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
+2. **Develop → Add Temporary Extension…** → choose the repo's `dist/safari/` folder (not `extension/`: only `dist/safari/` has Safari's ⌥⌘↓/↑ shortcuts). Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
 3. Safari → Settings → Extensions → Margin → set website access to **Always Allow on Every Website**.
 4. Safari → Settings → General → **New tabs open with** → **Margin**. Set **New windows open with** to Margin too if you like.
 5. If an Xcode-built Margin is also installed, turn it off in Safari → Settings → Extensions so only one copy runs.
@@ -59,7 +59,7 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 1. Run `scripts/make-xcode.sh`, open `xcode/Margin/Margin.xcodeproj`, choose the **Margin (macOS)** scheme, and Run (⌘R). The container app opens. You can close it.
 2. Safari → Settings → Developer (older Safari: the Develop menu) → enable **Allow unsigned extensions**. You'll be asked for your password. **This resets every time Safari quits.**
 3. Then steps 3–4 above, after checking **Margin** in Safari → Settings → Extensions.
-4. If Margin disappears from the Extensions list: press ⌘R in Xcode again, quit and reopen Safari, and toggle "Allow unsigned extensions" off and on. Re-run `scripts/make-xcode.sh` only when files under `extension/` are added or removed. Regenerating is what most often leaves Safari pointing at a deleted app.
+4. If Margin disappears from the Extensions list: press ⌘R in Xcode again, quit and reopen Safari, and toggle "Allow unsigned extensions" off and on. Re-run `scripts/make-xcode.sh` only when files under `dist/safari/` are added or removed. Regenerating is what most often leaves Safari pointing at a deleted app.
 
 ## M1 smoke check
 
@@ -180,12 +180,14 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 - [ ] ⌥K or ⌘T: a dark, slightly see-through panel about half the window wide, a third of the way down, with "Search or Enter URL…". Rows show favicon, title, the space name and an arrow button. The selected row is filled with the current space's color.
 
-## Navigation shortcuts (⌃⌘ + arrows)
+## Navigation shortcuts (⌥⌘↓/↑ tabs, ⌃⌘→/← spaces)
 
-- [ ] ⌃⌘↓ / ⌃⌘↑ switch to the next/previous tab in the sidebar's order, also when pressed quickly several times in a row, and right after a page starts loading.
+- [ ] Settings shows ⌥⌘↓ / ⌥⌘↑ for next/previous tab. If it shows ⌃⌘ (saved by an older version), click **Reset shortcuts**.
+- [ ] ⌥⌘↓ / ⌥⌘↑ switch to the next/previous tab in the sidebar's order, also when pressed quickly several times in a row, and right after a page starts loading.
 - [ ] ⌃⌘→ / ⌃⌘← switch spaces (the sidebar peeks open).
 - [ ] They also work while the address bar has focus and on pages where Margin has no sidebar (e.g. a PDF). That's the extension-command path: if they don't work there but do on normal pages, Safari isn't delivering the commands, so note it.
-- [ ] Holding ⌃⌘↓ repeats (page path) on normal pages.
+- [ ] Holding ⌥⌘↓ repeats (page path) on normal pages.
+- [ ] ⌥⌘↓/↑ while typing in a text field on a page: still switches tabs (the extension command wins). Note it if Safari does something else instead.
 
 ## Page-load indicator
 

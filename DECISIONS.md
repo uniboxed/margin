@@ -236,3 +236,15 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 - **Margin's version:** `.loader` in the sidebar's shadow root, 48×4px, radius 2px, `rgba(28,28,30,.88)`. Its fade/scale transition is 250ms, and a gentle opacity pulse runs while loading (none with `prefers-reduced-motion`). With "Keep open" it's centered in the 8px top strip over the page area (`left: calc(width + (100vw - width - 8px)/2)`). In auto-hide mode it's at `top: 2px`, centered on the window. `pointer-events: none`.
 - **When:** if the page is still loading at Margin's first render, it shows until the `load` event, for at least 500ms (no flicker) and at most 15s (pages that never finish). It starts on first render, not at injection, so it appears in the right place (docked or not) instead of jumping.
 - **Limit:** Safari runs Margin's content script about 0.2s into a load, so the pill can't appear before that, and never during the blank first instant of a new page. A page restored instantly from the back/forward cache doesn't load, so it gets no pill.
+
+## Per-browser builds (2026-10-25)
+
+- **Why:** Safari can bind ⌥⌘↓/↑ as extension commands, but the same manifest makes Chrome refuse to load the extension. One manifest can't serve both, so each browser gets its own build.
+- **Layout:** `extension/` stays the single shared source. `platform/<browser>/manifest.json` holds only the manifest keys that differ (today: `commands`). `scripts/build.js` (`npm run build`) copies `extension/` to `dist/<browser>/`, merges the overrides into the manifest, and stamps `shared/platform.js` with the target. Forked per-browser copies of the code were rejected: every fix would have to land twice, and the two would drift.
+- **Behavior differences** live in the two profiles in `shared/platform.js`, not in scattered browser checks:
+  - **Safari:** tabs ⌥⌘↓/↑, spaces ⌃⌘→/← (Safari keeps ⌘⌥←/→), fetches site icons (no `favIconUrl`).
+  - **Chrome:** all four on ⌃⌘ + arrows, no icon fetching (Chrome provides `favIconUrl`, so Margin makes no extra requests there).
+- **`dist/` is committed** so the Mac needs no Node to load it. A unit test rebuilds into a temp folder and fails if `dist/` differs; others check each manifest's commands against Safari's parsing rules (and Chrome's ⌘⌥ refusal) and against its profile's default shortcuts.
+- **Unbuilt `extension/`** still loads in both browsers (Chrome manifest; the profile is detected from the `safari-web-extension:` URL scheme), but in Safari only the page listener knows ⌥⌘↓/↑ there. Load `dist/safari/` in Safari.
+- **Tests:** E2E loads `dist/chrome/`. Favicon tests, and a check that ⌥⌘↓ switches tabs, use a Safari-profile build with Chrome's manifest, since Chromium can't load the Safari manifest. Whether Safari delivers the ⌥⌘↓/↑ commands is a manual check (TESTING.md).
+- **Existing installs:** settings saved by an older version keep ⌃⌘↓/↑ for the page listener (the manifest's ⌥⌘↓/↑ still works). Settings → Reset shortcuts switches to the new defaults.

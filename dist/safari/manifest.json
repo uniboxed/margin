@@ -1,0 +1,86 @@
+{
+  "manifest_version": 3,
+  "name": "Margin",
+  "short_name": "Margin",
+  "description": "An Arc-style sidebar with spaces, pins, and a command palette.",
+  "version": "0.1.0",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png",
+    "512": "icons/icon-512.png"
+  },
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/platform.js",
+        "shared/view.js",
+        "shared/search.js",
+        "shared/shortcuts.js",
+        "content/styles.js",
+        "shared/ui.js",
+        "content/sidebar.js",
+        "content/palette.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "chrome_url_overrides": {
+    "newtab": "newtab/newtab.html"
+  },
+  "commands": {
+    "next-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+Down",
+        "mac": "Command+Alt+Down"
+      },
+      "description": "Next tab in the sidebar"
+    },
+    "prev-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+Up",
+        "mac": "Command+Alt+Up"
+      },
+      "description": "Previous tab in the sidebar"
+    },
+    "next-space": {
+      "suggested_key": {
+        "default": "Alt+Shift+Right",
+        "mac": "MacCtrl+Command+Right"
+      },
+      "description": "Next space"
+    },
+    "prev-space": {
+      "suggested_key": {
+        "default": "Alt+Shift+Left",
+        "mac": "MacCtrl+Command+Left"
+      },
+      "description": "Previous space"
+    },
+    "toggle-sidebar": {
+      "description": "Toggle the Margin sidebar (Option+S on web pages)"
+    },
+    "open-palette": {
+      "description": "Open the Margin command palette (Option+K on web pages)"
+    }
+  }
+}

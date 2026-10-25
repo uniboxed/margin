@@ -2,10 +2,14 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { launch, evalInShadow, waitFor, launcherUrl } from './helpers.js';
+import { rmSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { launch, evalInShadow, waitFor, launcherUrl, buildSafariProfile } from './helpers.js';
 
 const PNG = readFileSync(new URL('../../extension/icons/icon-48.png', import.meta.url));
-let ctx;
+// Icon fetching is Safari's (Chrome provides tab.favIconUrl), so these run
+// the Safari profile.
+let ctx, safariBuild;
 const servers = [];
 
 // One server per case: icons are stored per site (origin).
@@ -22,11 +26,13 @@ async function site(routes) {
 const page = (title, head = '') => ({ type: 'text/html', body: `<!doctype html><title>${title}</title>${head}<h1>${title}</h1>` });
 
 before(async () => {
-  ctx = await launch();
+  safariBuild = buildSafariProfile();
+  ctx = await launch({ extensionPath: safariBuild });
 });
 after(async () => {
   await ctx?.context.close();
   for (const s of servers) s.close();
+  if (safariBuild) rmSync(dirname(safariBuild), { recursive: true, force: true });
 });
 
 const favicons = () => ctx.worker.evaluate(() => chrome.storage.local.get('favicons').then((s) => s.favicons ?? {}));

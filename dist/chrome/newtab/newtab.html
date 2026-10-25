@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>New Tab</title>
+  <link rel="stylesheet" href="../content/sidebar.css">
+  <link rel="stylesheet" href="newtab.css">
+  <script src="../shared/platform.js"></script>
+  <script src="../shared/view.js"></script>
+  <script src="../shared/search.js"></script>
+  <script src="../shared/shortcuts.js"></script>
+  <script src="../content/styles.js"></script>
+  <script src="../shared/ui.js"></script>
+  <script src="../content/palette.js"></script>
+  <script src="newtab.js" type="module"></script>
+</head>
+<body>
+  <div id="sidebar"></div>
+  <main id="launcher">
+    <form id="search" role="search" autocomplete="off">
+      <input id="query" name="q" type="text" placeholder="Search or enter address" aria-label="Search or enter address" autofocus spellcheck="false">
+    </form>
+    <section id="pins-section" hidden>
+      <h2>Pinned</h2>
+      <ul id="pin-tiles"></ul>
+    </section>
+    <section id="archive-section" hidden>
+      <h2>Recently archived</h2>
+      <ul id="archive-list"></ul>
+      <button id="archive-more" type="button" hidden></button>
+    </section>
+    <details id="settings">
+      <summary>Settings</summary>
+      <label>Search engine
+        <select id="engine"></select>
+      </label>
+      <label>Archive tabs not used for (hours, 0 = never)
+        <input id="archive-hours" type="number" min="0" max="720" step="1">
+      </label>
+      <fieldset id="shortcuts" aria-describedby="shortcut-help">
+        <legend>Keyboard shortcuts</legend>
+        <label>Command palette
+          <input id="shortcut" class="shortcut-input" data-shortcut="paletteShortcut" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Next tab
+          <input class="shortcut-input" data-shortcut="nextTab" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Previous tab
+          <input class="shortcut-input" data-shortcut="prevTab" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Next space
+          <input class="shortcut-input" data-shortcut="nextSpace" type="text" readonly placeholder="Press keys…">
+        </label>
+        <label>Previous space
+          <input class="shortcut-input" data-shortcut="prevSpace" type="text" readonly placeholder="Press keys…">
+        </label>
+        <button id="shortcuts-reset" type="button">Reset shortcuts</button>
+      </fieldset>
+      <p id="shortcut-help" class="help">Click a field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels. If a combination shows nothing when you press it, Safari or macOS keeps it for itself (⌘⌥← / ⌘⌥→ switch Safari's tabs), so pick another.</p>
+    </details>
+  </main>
+</body>
+</html>
