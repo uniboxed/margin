@@ -177,7 +177,7 @@
       mirroredKey = key;
       for (const node of mirrored) node.remove();
       mirrored = copies;
-      head.append(...copies);
+      head.append(...copies.map(own));
     }
     // A page's <meta> CSP also binds the forms Margin rebuilds here (a
     // form-action rule is checked again on redirects). Only ever added: a
@@ -191,10 +191,15 @@
       const copy = document.createElement('meta');
       copy.httpEquiv = 'Content-Security-Policy';
       copy.content = meta.content;
-      head.append(copy);
+      head.append(own(copy));
     }
   }
   const cspCopied = new Set();
+
+  // Margin's own nodes in the shell; anything else in its <head> or <body>
+  // was put there by the page (see stray styles below).
+  const ours = new WeakSet();
+  const own = (node) => (ours.add(node), node);
   let mirrorQueued = false;
   const queueMirror = (root) => {
     if (mirrorQueued) return;
@@ -251,7 +256,7 @@
       a.rel = link.rel;
       a.referrerPolicy = link.referrerPolicy;
       a.hidden = true;
-      body.append(a);
+      body.append(own(a));
       a.click();
       return a.remove();
     }
@@ -278,7 +283,7 @@
         }
         form.append(input);
       }
-      body.append(form);
+      body.append(own(form));
       return form.submit();
     }
     if (type === 'replace') location.replace(url);
@@ -357,6 +362,24 @@
     }
   });
 
+  // Stylesheets the page puts into the shell (code made to also run in a
+  // frame may use window.parent.document; content/shell-main.js makes parent
+  // the page itself, this catches what gets past it): moved into the card's
+  // <head>, where they apply.
+  const strayObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (!card || ours.has(node) || node.nodeType !== 1) continue;
+        if (node.localName === 'style' || (node.localName === 'link' && /\bstylesheet\b/i.test(node.rel))) {
+          card.document.head?.append(node);
+          log('moved a stylesheet the page put in the shell into the page');
+        }
+      }
+    }
+  });
+  strayObserver.observe(head, { childList: true });
+  strayObserver.observe(body, { childList: true });
+
   // ---- the page goes into the card ---------------------------------------------
 
   const api = globalThis.browser ?? globalThis.chrome;
@@ -367,38 +390,9 @@
       return null;
     }
   };
-  // Inline scripts and where they sit (document, template content, shadow
-  // root), with their nonce state: for a refused script, its record in the
-  // page as parsed and in the card tells what the transplant changed.
-  function inlineScripts(root) {
-    const found = [];
-    const visit = (node, path) => {
-      for (const el of node.querySelectorAll('*')) {
-        if (el.localName === 'script' && !el.hasAttribute('src')) found.push({ el, where: path.join(' > ') || 'document' });
-        if (el.localName === 'template' && el.content) visit(el.content, [...path, `template#${el.id}`]);
-        const root2 = el.shadowRoot ?? closedRoot(el);
-        if (root2) visit(root2, [...path, `shadow(${root2.mode}) of ${el.localName}`]);
-      }
-    };
-    visit(root, []);
-    return found.map(({ el, where }) => ({
-      text: el.text.trim().slice(0, 60),
-      where,
-      parent: el.parentNode?.nodeName,
-      nonceAttribute: !el.hasAttribute('nonce') ? 'none' : el.getAttribute('nonce') ? 'set' : 'empty',
-      nonce: el.nonce ? 'set' : 'empty',
-      type: el.getAttribute('type') ?? '',
-      svg: el.namespaceURI !== 'http://www.w3.org/1999/xhtml',
-    }));
-  }
-  let parsedScripts = [];
   function reportViolation(event, where = 'the page') {
     log(`the page's CSP blocked ${event.blockedURI || 'an inline script'} (${event.effectiveDirective}) in ${where},`,
       `from ${event.sourceFile || 'the page'}:${event.lineNumber}`, event.sample ? `"${event.sample}"` : '');
-    const sample = (event.sample ?? '').replace(/^"|"$/g, '').slice(0, 30);
-    if (!sample || !card) return;
-    const match = (list) => list.filter((s) => s.text.startsWith(sample)).map(({ text, ...rest }) => rest);
-    log('  that script as parsed:', JSON.stringify(match(parsedScripts)), 'in the card:', JSON.stringify(match(inlineScripts(card.document))));
   }
   document.addEventListener('securitypolicyviolation', (event) => reportViolation(event, "Margin's shell"), true);
 
@@ -461,7 +455,6 @@
     try {
       for (const [el, src] of parked) el.setAttribute('src', src);
       tieTableForms(old);
-      parsedScripts = inlineScripts(old);
       // Every declarative shadow root (server-rendered components), not just
       // serializable ones: open ones directly, closed ones through the
       // extension API (Safari 26+). A root left out would leave its host's
@@ -494,6 +487,7 @@
       // What the page's CSP blocks in the card, with where it came from, so a
       // console error can be told apart from Margin's own doing.
       doc.addEventListener('securitypolicyviolation', (event) => reportViolation(event), true);
+      win.addEventListener('margin-page-ready', () => log('page-side script active in the card'), { once: true });
       watchPrintKey(win);
       Margin.content?.cardReady?.(win, frame);
       doc.write(html);
@@ -543,8 +537,6 @@
       else win.addEventListener('load', () => setTimeout(restore), { once: true });
     }
     const closed = roots.filter((r) => r.mode === 'closed').length;
-    const noNonce = parsedScripts.filter((s) => s.nonce === 'empty').length;
-    log(`inline scripts as parsed: ${parsedScripts.length} (${noNonce} without a nonce, ${parsedScripts.filter((s) => s.where !== 'document').length} in templates or shadow roots)`);
     log(`page in the card after ${Math.round(performance.now())}ms (${html.length} characters, ${roots.length} shadow roots, ${closed} closed)`);
   }
 

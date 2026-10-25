@@ -9,6 +9,10 @@
 //  - window.close(): closes the tab, as on the page without the shell.
 //  - window.name: the tab's, kept across page loads (the card's would be
 //    Margin's frame name).
+//  - window.parent and frameElement: the page's own window and null, as for
+//    a top-level page. Code that works inside frames too puts things in
+//    window.parent.document; Google's AI Mode moved its stylesheets into
+//    Margin's shell that way. (window.top can't be redefined.)
 (() => {
   if (window === top || location.href === 'about:srcdoc') return;
   let shelled = false;
@@ -20,6 +24,10 @@
   if (!shelled) return;
   const H = History.prototype;
   if (H.pushState.__margin) return; // already set up in this window
+  // Tells content/shell.js this script runs in the card (a debug log there).
+  dispatchEvent(new CustomEvent('margin-page-ready'));
+  Object.defineProperty(window, 'parent', { value: window, writable: true, configurable: true });
+  Object.defineProperty(window, 'frameElement', { value: null, writable: true, configurable: true });
 
   const push = H.pushState;
   const replace = H.replaceState;
