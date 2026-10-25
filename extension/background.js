@@ -1,9 +1,8 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
 // Classic service worker: Safari ignores "type": "module" for backgrounds.
-importScripts('state/model.js', 'shared/dock.js');
+importScripts('state/model.js');
 const M = globalThis.Margin.model;
-const D = globalThis.Margin.dock;
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -36,9 +35,6 @@ function mutate(fn) {
   return run;
 }
 
-const DOCK_PAGE = 'dock/dock.html';
-const isDockUrl = (url) => (url ?? '').startsWith(api.runtime.getURL(DOCK_PAGE));
-
 const newId = () => crypto.randomUUID().slice(0, 8);
 const now = () => Date.now();
 
@@ -55,7 +51,7 @@ async function isFreshSession() {
 
 function resync({ fresh } = {}) {
   return mutate(async (s) => {
-    const tabs = (await api.tabs.query({})).filter((t) => !isDockUrl(t.url));
+    const tabs = await api.tabs.query({});
     const isFresh = fresh ?? (await isFreshSession());
     return M.syncTabs(s, tabs, { fresh: isFresh, now: now() });
   });
@@ -77,12 +73,8 @@ resync().then(() => archiveStale());
 
 const TRACKED_CHANGES = ['title', 'url', 'favIconUrl'];
 
-// The dock window's own tab is Margin UI, not a tab to list.
-api.tabs.onCreated.addListener((tab) => {
-  if (!isDockUrl(tab.url ?? tab.pendingUrl)) mutate((s) => M.upsertTab(s, tab, now()));
-});
+api.tabs.onCreated.addListener((tab) => mutate((s) => M.upsertTab(s, tab, now())));
 api.tabs.onUpdated.addListener((tabId, change, tab) => {
-  if (isDockUrl(tab.url)) return;
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
   }
@@ -188,15 +180,6 @@ const handlers = {
   async moveTabToSpace({ tabId, spaceId }) {
     await mutate((s) => M.moveTab(s, tabId, spaceId));
   },
-  async setDock({ on }) {
-    if (on) return openDock();
-    await closeDock();
-  },
-  // The dock page reports its own follow-ups (it polls, since Safari has no
-  // window-moved event) so the latest requested/actual pair is inspectable.
-  async dockReport({ requested, actual }) {
-    await mutate((s) => (s.dock ? { ...s, dock: { ...s.dock, lastFollow: { requested, actual, at: now() } } } : s));
-  },
   async updateSettings({ patch }) {
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
@@ -212,74 +195,6 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .catch((err) => sendResponse({ ok: false, error: String(err?.message ?? err) }));
   return true;
 });
-
-// ---- dock-window experiment -------------------------------------------------
-
-// The sidebar in its own popup window glued to the left of a Safari window,
-// which is shrunk to make room. Lives outside any page, so it stays visible
-// while pages load. Whether Safari honors window positions for extensions is
-// exactly what this experiment checks: requested vs actual bounds are stored
-// in state.dock and shown in the dock window.
-
-async function openDock() {
-  if (!api.windows?.create) throw new Error('windows API not available');
-  const { dock } = await load();
-  if (dock) return dock;
-  let target = await api.windows.getLastFocused();
-  if (target.type && target.type !== 'normal') {
-    target = (await api.windows.getAll()).find((w) => w.type === 'normal' && w.focused) ?? target;
-  }
-  const layout = D.dockLayout(D.box(target));
-  if (!layout) throw new Error('window too narrow or position unknown');
-  const win = await api.windows.create({
-    url: `${DOCK_PAGE}?target=${target.id}`,
-    type: 'popup',
-    focused: false,
-    ...layout.dock,
-  });
-  // The browser may refuse the resize (e.g. bounds checks); keep the dock and
-  // record why, since that's what this experiment is measuring.
-  let targetError = null;
-  await api.windows.update(target.id, { ...layout.target, focused: true }).catch((err) => {
-    targetError = String(err?.message ?? err);
-  });
-  const [dockNow, targetNow] = await Promise.all([api.windows.get(win.id), api.windows.get(target.id)]);
-  const next = {
-    dockWindowId: win.id,
-    targetWindowId: target.id,
-    original: D.box(target),
-    requested: { dock: layout.dock, target: layout.target },
-    actual: { dock: D.box(dockNow), target: D.box(targetNow), dockType: dockNow.type ?? null, targetError },
-  };
-  console.log('[margin] dock', 'window', D.describe(layout.dock, next.actual.dock), '| safari', D.describe(layout.target, next.actual.target), '| type', next.actual.dockType, targetError ? `| resize refused: ${targetError}` : '');
-  await mutate((s) => ({ ...s, dock: next, settings: { ...s.settings, dockWindow: true, sidebarPinnedOpen: false } }));
-  return next;
-}
-
-async function closeDock({ closeWindow = true } = {}) {
-  const { dock } = await load();
-  await mutate((s) => ({ ...s, dock: null, settings: { ...s.settings, dockWindow: false } }));
-  if (!dock) return;
-  if (closeWindow) await api.windows.remove(dock.dockWindowId).catch(() => {});
-  const target = await api.windows.get(dock.targetWindowId).catch(() => null);
-  if (target) await api.windows.update(target.id, D.undockLayout(D.box(target))).catch(() => {});
-}
-
-api.windows?.onRemoved.addListener(async (windowId) => {
-  const { dock } = await load();
-  if (dock?.dockWindowId === windowId) closeDock({ closeWindow: false }); // user closed the dock window
-  else if (dock?.targetWindowId === windowId) closeDock(); // its Safari window went away
-});
-
-// After a browser restart window ids are new; a stale dock record is dropped.
-(async () => {
-  const { dock } = await load();
-  if (!dock || !api.windows?.getAll) return;
-  const ids = new Set((await api.windows.getAll()).map((w) => w.id));
-  if (!ids.has(dock.dockWindowId) || !ids.has(dock.targetWindowId)) {
-    await mutate((s) => ({ ...s, dock: null, settings: { ...s.settings, dockWindow: false } }));
-  }
-})().catch((err) => console.warn('[margin] dock', err));
 
 // ---- docked placeholder ---------------------------------------------------
 

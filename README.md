@@ -7,7 +7,6 @@ An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It
 - **Pinned items** per space. A pin focuses its open tab, or reopens the page.
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
 - **Custom new-tab page:** search/URL field, the space's pins as tiles, recently archived tabs, and settings.
-- **Experiment: sidebar as its own window** (new tab → Settings): a separate narrow window docked to the left of Safari's, so the sidebar stays on screen while pages load. Whether Safari places windows precisely is what the experiment checks.
 - **Auto-archive:** tabs left idle for 12 hours (configurable) close into a restorable archive.
 
 No accounts, no sync, no network requests of its own: no analytics, CDNs, or favicon services.
@@ -80,7 +79,6 @@ extension/
   content/*.css         Styles (source of truth). Bundled into content/styles.js by `npm run styles`
                         so content scripts apply them synchronously, with no fetch.
   newtab/               Launcher page with the sidebar permanently open.
-  dock/ + shared/dock.js  Experiment: the sidebar in its own window, docked beside Safari's.
 tests/
   *.test.js             node --test unit tests
   e2e/*.test.js         Playwright (headless Chromium) tests that load extension/ unpacked

@@ -99,6 +99,3 @@ ul { list-style: none; margin: 0; padding: 0; }
 #archive-hours { width: 72px; }
 #archive-more { margin-top: 6px; padding: 4px 10px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 #archive-more:hover { background: var(--card); color: var(--fg); }
-#sidebar[hidden] { display: none; }
-#sidebar[hidden] + #launcher { margin-left: 8px; }
-#dock-window { width: auto; }

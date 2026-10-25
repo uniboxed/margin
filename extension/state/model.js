@@ -14,7 +14,6 @@
     archiveAfterHours: 12,
     paletteShortcut: 'Alt+KeyK',
     searchEngine: 'https://duckduckgo.com/?q=%s',
-    dockWindow: false, // experiment: sidebar in its own window (see shared/dock.js)
   });
 
   const DEFAULT_SPACE = Object.freeze({
@@ -24,7 +23,7 @@
     color: '#6c5ce7',
   });
 
-  const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'archive', 'settings', 'tabs', 'dock'];
+  const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'archive', 'settings', 'tabs'];
 
   function defaultState() {
     return {
@@ -37,8 +36,6 @@
       // Snapshot of open tabs, written by the background so content scripts
       // (which have no `tabs` API) can render from storage alone.
       tabs: {},
-      // Dock-window experiment: { dockWindowId, targetWindowId, requested, actual } or null.
-      dock: null,
     };
   }
 
@@ -54,7 +51,6 @@
       archive: Array.isArray(raw.archive) ? raw.archive : [],
       settings: { ...base.settings, ...raw.settings },
       tabs: { ...raw.tabs },
-      dock: raw.dock ?? null,
     };
   }
 

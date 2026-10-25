@@ -97,10 +97,7 @@
   const pinnedOpen = () => !!state?.settings?.sidebarPinnedOpen;
   // Hover: a floating card over the page. Keep open: docked, with the frame
   // around the page and the page pushed right.
-  // Dock-window experiment: this window's sidebar lives in its own window.
-  const dockedElsewhere = () => state?.dock != null && state.dock.targetWindowId === windowId;
   function setOpen(open) {
-    if (dockedElsewhere()) open = false;
     const docked = open && pinnedOpen();
     sidebar.el.classList.toggle('open', open);
     sidebar.el.classList.toggle('docked', docked);

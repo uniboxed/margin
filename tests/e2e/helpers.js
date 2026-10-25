@@ -11,9 +11,6 @@ export const EXTENSION_PATH = fileURLToPath(new URL('../../extension', import.me
 export async function launch() {
   const context = await chromium.launchPersistentContext('', {
     headless: false,
-    // Use real window sizes: Playwright's default viewport resizes every new
-    // window (including the dock-window experiment's popup) to 1280×720.
-    viewport: null,
     args: [
       '--headless=new',
       `--disable-extensions-except=${EXTENSION_PATH}`,
