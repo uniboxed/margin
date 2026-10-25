@@ -55,6 +55,8 @@
         list);
       const backdrop = el(document, 'div', { class: 'backdrop' });
       shadow.append(backdrop, panel);
+      // While it's open, scrolling moves only its results, never the page.
+      for (const node of [backdrop, panel]) Margin.gestures?.containScroll(node);
 
       backdrop.addEventListener('mousedown', (e) => {
         e.preventDefault();

@@ -201,6 +201,16 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] New tab → Settings → "Block Safari's swipe back/forward and pinch for all tabs" off: both gestures work again on pages you then use.
 - [ ] Known gaps: over an embedded frame (e.g. a YouTube video inside another page) the gestures still work; a swipe that starts mostly up/down and turns sideways can still go back.
 
+## Vertical scrolling (Safari)
+
+- [ ] Scroll to the bottom of a long page and keep scrolling: the page stops, with no rubber-band and no dark gap below it. Same at the top.
+- [ ] Safari's own pull-to-refresh spinner never appears.
+- [ ] At the top of a page, pull down with two fingers (scroll up) and hold: a dark round badge slides down from the top of the page, its ring filling. Past the threshold the arrow flips up; let go and it spins and the page reloads. Let go before that: it slides away, no reload.
+- [ ] A quick flick up at the top, or scrolling up from further down the page into the top, never reloads. A mouse wheel never reloads.
+- [ ] Scrolling over the sidebar never scrolls the page. With more tabs than fit, the tab list scrolls (and stops at its ends without moving the page).
+- [ ] With the palette open, scrolling moves only its results.
+- [ ] Settings: "Pull down at the top of a page to reload" off: pulling does nothing. "Block Safari's swipe… and page bounce" off: the bounce and Safari's own pull-to-refresh come back (Margin's is then off).
+
 ## Page card (Keep open)
 
 - [ ] The page's corners are rounded (small, about 6pt, like Arc's), not square. Same on the new-tab page.

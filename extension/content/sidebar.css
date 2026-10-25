@@ -125,7 +125,7 @@ button {
 ul { list-style: none; margin: 0; padding: 0; }
 .pins-section:empty, .pins:empty { display: none; }
 .pins { display: flex; flex-direction: column; gap: 1px; }
-.tabs-section { flex: 1; overflow-y: auto; min-height: 0; }
+.tabs-section { flex: 1; overflow-y: auto; min-height: 0; overscroll-behavior: none; } /* never scrolls the page; no bounce */
 .divider { height: 1px; background: var(--border); margin: 2px 6px; }
 
 .tab, .pin {
@@ -283,6 +283,64 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
 .resizer:hover::after, .resizing .resizer::after { opacity: 1; }
 .margin-sidebar.resizing { user-select: none; cursor: col-resize; }
 .margin-sidebar.resizing, .margin-sidebar.resizing * { transition: none !important; }
+
+/* Pull-to-refresh (Safari builds; content/sidebar.js, shared/pull.js): a
+   dark round badge, centered over the page like the loading pill, that
+   slides down with the pull (--pull: 0 … 1.2), its ring filling to the
+   threshold; the arrow flips to point up once letting go will reload
+   ("armed"), then it spins while the page reloads. Follows the fingers
+   without easing while tracking, eases back when let go. */
+.pull {
+  --pull: 0;
+  position: fixed;
+  top: 0;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(28, 28, 30, 0.9);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  opacity: clamp(0, calc((var(--pull) - 0.12) * 3), 1);
+  transform: translateY(calc(-44px + min(var(--pull), 1.2) * 60px)) scale(calc(0.75 + min(var(--pull), 1) * 0.25));
+  transition: opacity 200ms ease, transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.pull.in-frame { left: calc(var(--width, 260px) + (100vw - var(--width, 260px) - 8px) / 2); }
+.pull.tracking { transition: none; }
+.pull.armed:not(.refreshing) { transform: translateY(calc(-44px + min(var(--pull), 1.2) * 60px)) scale(1.06); transition: transform 120ms ease; }
+.pull svg { display: block; overflow: visible; }
+.pull .track, .pull .ring { fill: none; stroke-width: 2.5; }
+.pull .track { stroke: rgba(255, 255, 255, 0.22); }
+.pull .ring {
+  stroke: #fff;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - min(var(--pull), 1) * 100);
+  transform: rotate(-90deg);
+  transform-origin: 14px 14px;
+}
+.pull .arrow {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform-origin: 14px 14px;
+  transition: transform 160ms ease;
+}
+.pull.armed .arrow { transform: rotate(180deg); } /* points up: let go to reload */
+.pull.refreshing .arrow { opacity: 0; }
+.pull.refreshing .ring { stroke-dasharray: 28 72; stroke-dashoffset: 0; }
+.pull.refreshing svg { animation: margin-pull-spin 0.8s linear infinite; }
+@keyframes margin-pull-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pull, .pull.armed:not(.refreshing) { transition: opacity 150ms linear; }
+  .pull.refreshing svg { animation: none; }
+  .pull.refreshing .ring { stroke-dasharray: 100; }
+}
 
 /* Page-load indicator (Arc): a small dark pill centered over the page. With
    "Keep open" it sits in the frame's 8px top strip; otherwise at the top of

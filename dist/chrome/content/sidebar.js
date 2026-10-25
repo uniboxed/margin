@@ -68,6 +68,7 @@
     frame.style.setProperty('--width', `${liveWidth}px`);
     cardEdge.style.setProperty('--width', `${liveWidth}px`);
     loader.style.setProperty('--width', `${liveWidth}px`);
+    pull.style.setProperty('--width', `${liveWidth}px`);
     if (pushed) setPushed(true, liveWidth);
   }
   // Arc-style frame: sidebar-colored strips around the page card with its
@@ -79,7 +80,22 @@
   // Arc-style page-load indicator: a small dark pill, centered over the page
   // (in the frame's top strip when docked), shown while the page loads.
   const loader = Margin.ui.el(document, 'div', { class: 'loader', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'bar' }));
-  shadow.append(frame, sidebar.el, cardEdge, loader);
+  // Pull-to-refresh indicator (Safari; shared/pull.js): a dark round badge
+  // that slides down with the pull, its ring filling to the threshold, then
+  // spins while the page reloads. Built with DOM calls (no innerHTML: some
+  // pages enforce Trusted Types).
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const svg = (tag, attrs) => {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+    return node;
+  };
+  const pullRing = svg('circle', { class: 'ring', cx: 14, cy: 14, r: 10, pathLength: 100 });
+  const pullArrow = svg('path', { class: 'arrow', d: 'M14 8.5v10M9.75 14.5 14 18.75l4.25-4.25' });
+  const pullIcon = svg('svg', { viewBox: '0 0 28 28', width: 28, height: 28 });
+  pullIcon.append(svg('circle', { class: 'track', cx: 14, cy: 14, r: 10 }), pullRing, pullArrow);
+  const pull = Margin.ui.el(document, 'div', { class: 'pull', 'aria-hidden': 'true' }, pullIcon);
+  shadow.append(frame, sidebar.el, cardEdge, loader, pull);
 
   // Styles are bundled in content/styles.js and applied synchronously, so the
   // panel is styled from the first frame (no fetch, no unstyled flash).
@@ -109,8 +125,11 @@
   // ---- visibility ---------------------------------------------------------
 
   let state = null;
-  // Safari: keep trackpad swipes and pinches from leaving the page (setting).
-  if (Margin.platform?.blockGestures) Margin.gestures.installGestureGuard({ getSettings: () => state?.settings });
+  // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
+  // distorting the page (setting); re-synced on every render.
+  const gestureGuard = Margin.platform?.blockGestures
+    ? Margin.gestures.installGestureGuard({ getSettings: () => state?.settings })
+    : null;
   let reason = null; // 'hover' | 'toggle' | null
   let hideTimer = null;
 
@@ -124,12 +143,14 @@
     frame.classList.toggle('open', docked);
     cardEdge.classList.toggle('open', docked);
     loader.classList.toggle('in-frame', docked);
+    pull.classList.toggle('in-frame', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
     if (state) syncPlaceholder();
     frame.style.setProperty('--width', `${sidebar.width()}px`);
     cardEdge.style.setProperty('--width', `${sidebar.width()}px`);
     loader.style.setProperty('--width', `${sidebar.width()}px`);
+    pull.style.setProperty('--width', `${sidebar.width()}px`);
   }
 
   // ---- page-load indicator --------------------------------------------------
@@ -198,7 +219,7 @@
     hidePill();
   }
   addEventListener('beforeunload', (event) => {
-    if (firstRender) return; // nothing drawn yet: position unknown
+    if (firstRender || pullRefreshing) return; // nothing drawn yet / the pull spinner shows it
     leaving = true;
     showPill();
     clearTimeout(leavingTimer);
@@ -210,6 +231,64 @@
   });
   addEventListener('pageshow', (event) => { if (event.persisted) stayed(); });
   for (const type of ['pointerdown', 'keydown']) addEventListener(type, stayed, true);
+
+  // ---- pull to refresh (Safari builds) ---------------------------------------
+  // Safari's own pull-to-refresh goes away with the page bounce (gesture
+  // guard); this is Margin's: pull down at the top of a page past the
+  // threshold and let go to reload. The gesture logic is shared/pull.js.
+  let pullRefreshing = false;
+  let pullStuckTimer = null;
+  const pullEnabled = () => state?.settings?.blockGestures !== false && state?.settings?.pullToRefresh !== false;
+  function showPull({ state: phase, progress }) {
+    if (pullRefreshing) return;
+    if (phase === 'refresh') return refreshFromPull();
+    if (phase === 'idle') {
+      pull.classList.remove('tracking', 'armed');
+      pull.style.removeProperty('--pull');
+      return;
+    }
+    pull.classList.add('tracking');
+    pull.classList.toggle('armed', phase === 'armed');
+    pull.style.setProperty('--pull', String(Math.min(progress, 1.2)));
+  }
+  function refreshFromPull() {
+    pullRefreshing = true;
+    pull.classList.remove('tracking');
+    pull.classList.add('armed', 'refreshing');
+    pull.style.setProperty('--pull', '1');
+    host.dataset.pullRefresh = 'true'; // test/debug hook
+    // A moment to see it start, then reload (the next page's pill follows).
+    setTimeout(() => {
+      location.reload();
+      // If the page stays (a cancelled "Leave page?" prompt), the next click
+      // or key clears it; at the latest after 10s.
+      for (const type of ['pointerdown', 'keydown']) addEventListener(type, resetPull, { capture: true, once: true });
+    }, 300);
+    pullStuckTimer = setTimeout(resetPull, 10000);
+  }
+  function resetPull() {
+    if (!pullRefreshing) return;
+    pullRefreshing = false;
+    clearTimeout(pullStuckTimer);
+    pull.classList.remove('armed', 'refreshing', 'tracking');
+    pull.style.removeProperty('--pull');
+    delete host.dataset.pullRefresh;
+  }
+  addEventListener('pageshow', (event) => { if (event.persisted) resetPull(); });
+  if (gestureGuard) {
+    const tracker = Margin.pull.createPullTracker();
+    let endTimer = null;
+    addEventListener('wheel', (event) => {
+      if (!pullEnabled() || pullRefreshing || event.ctrlKey) return;
+      const path = event.composedPath();
+      // Not over Margin's own panels; pixel deltas only (a trackpad).
+      const overMargin = path.some((node) => node === host || node.localName === 'margin-palette-host');
+      const atTop = !overMargin && event.deltaMode === 0 && Margin.gestures.atPageTop(event, document);
+      showPull(tracker.wheel({ deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp, atTop }));
+      clearTimeout(endTimer);
+      endTimer = setTimeout(() => showPull(tracker.end()), Margin.pull.DEFAULTS.GAP_MS + 20);
+    }, { capture: true, passive: true });
+  }
 
   // ---- push (only while "Keep open" is on) ---------------------------------
   // Shifts the page right so it starts where the sidebar ends. A separate
@@ -348,6 +427,7 @@
     sidebar.update(state, { windowId, tabId });
     Margin.content.onState?.(state, { tabId, windowId });
     if (!reason) setOpen(pinnedOpen());
+    gestureGuard?.update();
     if (firstRender) {
       firstRender = false;
       startLoader(); // now its position (docked or not) is known

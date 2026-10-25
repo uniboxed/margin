@@ -57,7 +57,7 @@ test('all extension scripts parse', () => {
 
 test('no third-party URLs in extension code (search engine templates excepted)', () => {
   const allowed = /duckduckgo\.com|google\.com|bing\.com|ecosia\.org|startpage\.com|www\.w3\.org/;
-  for (const f of ['background.js', 'state/model.js', 'shared/view.js', 'shared/ui.js', 'shared/search.js', 'shared/shortcuts.js', 'shared/gestures.js', 'shared/icons.js',
+  for (const f of ['background.js', 'state/model.js', 'shared/view.js', 'shared/ui.js', 'shared/search.js', 'shared/shortcuts.js', 'shared/gestures.js', 'shared/pull.js', 'shared/icons.js',
     'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'content/docked.template.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
     const text = readFileSync(new URL(f, root), 'utf8');
     for (const [url] of text.matchAll(/https?:\/\/[^\s'"`)$]+/g)) if (!url.endsWith("://")) assert.match(url, allowed, `${f}: ${url}`);

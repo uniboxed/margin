@@ -72,7 +72,7 @@
 }
 .query::placeholder { color: var(--muted); }
 
-.results { list-style: none; margin: 0; padding: 8px; overflow-y: auto; }
+.results { list-style: none; margin: 0; padding: 8px; overflow-y: auto; overscroll-behavior: none; }
 .results li {
   display: flex;
   align-items: center;

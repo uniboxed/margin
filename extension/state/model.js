@@ -24,7 +24,8 @@
     paletteShortcut: 'Alt+KeyK',
     searchEngine: 'https://duckduckgo.com/?q=%s',
     sidebarWidth: 260, // px, resizable 160–500 in 10px steps (shared/view.js)
-    blockGestures: true, // Safari: no swipe back/forward or pinch for all tabs (shared/gestures.js)
+    blockGestures: true, // Safari: no swipe back/forward, pinch for all tabs, or page bounce (shared/gestures.js)
+    pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.js)
     // Defaults from the build's platform profile (shared/platform.js; loaded
     // before this file in the background). Editable in Settings. Fallback:
     // the Chrome profile's ⌃⌘ + arrows (e.g. in node tests).

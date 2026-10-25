@@ -113,6 +113,10 @@
       footer,
     );
 
+    // Scrolling over the sidebar moves only its tab list (when it has more
+    // than fits), never the page behind it.
+    Margin.gestures?.containScroll(root);
+
     // ---- resize: drag the right edge (160–500px), double-click to reset ----
     const resizer = el(doc, 'div', { class: 'resizer', title: 'Drag to resize · double-click to reset', 'aria-hidden': 'true' });
     root.append(resizer);
