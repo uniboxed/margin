@@ -43,5 +43,19 @@
     };
   }
 
-  Margin.view = { normalizeUrl, activeSpaceId, sidebar };
+  // Best guess at the window a page is in, before the background has told the
+  // content script its tab id (that needs the background awake, which can
+  // take a while in Safari). Single window → that one; otherwise a tab with
+  // this URL, preferring active and most recently used.
+  function guessWindow(state, url) {
+    const tabs = Object.values(state.tabs ?? {});
+    const windows = new Set(tabs.map((t) => t.windowId));
+    if (windows.size <= 1) return tabs[0]?.windowId ?? null;
+    const byUrl = tabs.filter((t) => t.url === url);
+    const pool = byUrl.length ? byUrl : tabs.filter((t) => t.active);
+    pool.sort((a, b) => Number(b.active) - Number(a.active) || (b.lastActive ?? 0) - (a.lastActive ?? 0));
+    return pool[0]?.windowId ?? null;
+  }
+
+  Margin.view = { normalizeUrl, activeSpaceId, sidebar, guessWindow };
 })();

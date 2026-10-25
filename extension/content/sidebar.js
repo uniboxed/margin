@@ -9,7 +9,8 @@
 
   const EDGE_PX = 6;
   const HIDE_DELAY_MS = 300;
-  const WIDTH_PX = 260;
+  const WIDTH_PX = 260; // keep in sync with sidebar.css (--width, .frame .hole left)
+  const FRAME_PX = 8; // keep in sync with sidebar.css (.frame .hole inset)
 
   const host = Margin.ui.createHost(document, 'margin-sidebar-host');
   const shadow = host.attachShadow({ mode: 'closed' });
@@ -41,10 +42,24 @@
   }
   Margin.content.send = send;
 
-  Margin.ui.adoptStyles(shadow, api.runtime.getURL('content/sidebar.css')).catch((err) => console.warn('[margin] css', err));
-
   const sidebar = Margin.ui.createSidebar({ document, send, mode: 'overlay' });
-  shadow.append(sidebar.el);
+  // Arc-style frame: sidebar-colored strips around the page with rounded
+  // corners, shown while the sidebar is open. Never takes clicks.
+  const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
+  shadow.append(frame, sidebar.el);
+
+  // Hidden until our CSS is in, so the panel never flashes unstyled.
+  let cssReady = false;
+  sidebar.el.style.display = 'none';
+  frame.style.display = 'none';
+  Margin.ui.adoptStyles(shadow, api.runtime.getURL('content/sidebar.css'))
+    .catch((err) => console.warn('[margin] css', err))
+    .finally(() => {
+      cssReady = true;
+      sidebar.el.style.display = '';
+      frame.style.display = '';
+      render();
+    });
 
   // ---- theme: follow the page, then the OS -------------------------------
 
@@ -61,7 +76,11 @@
     return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
   Margin.content.theme = pageTheme;
-  const applyTheme = () => sidebar.setTheme(pageTheme());
+  const applyTheme = () => {
+    const theme = pageTheme();
+    sidebar.setTheme(theme);
+    frame.dataset.theme = theme;
+  };
   applyTheme();
   document.addEventListener('DOMContentLoaded', applyTheme);
   addEventListener('load', applyTheme);
@@ -76,7 +95,44 @@
   const pinnedOpen = () => !!state?.settings?.sidebarPinnedOpen;
   function setOpen(open) {
     sidebar.el.classList.toggle('open', open);
+    frame.classList.toggle('open', open);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
+    setPushed(open && pinnedOpen() && cssReady);
+  }
+
+  // ---- push (only while "Keep open" is on) ---------------------------------
+  // Shifts the page right so it starts where the sidebar ends. A separate
+  // adopted stylesheet (never the page's own markup or inline styles), screen
+  // media only, removed as soon as "Keep open" is off. Known trade-offs are in
+  // DECISIONS.md: position:fixed elements don't move, 100vw elements are
+  // clipped on the right.
+  const PUSH_CSS = `@media screen {
+    html {
+      margin-left: ${WIDTH_PX}px !important;
+      margin-right: ${FRAME_PX}px !important;
+      width: auto !important;
+      overflow-x: hidden !important;
+    }
+  }`;
+  const canPush = document.documentElement instanceof HTMLHtmlElement;
+  let pushed = false;
+  let pushSheet = null;
+  let pushStyle = null;
+  function setPushed(on) {
+    if (!canPush || on === pushed) return;
+    pushed = on;
+    if ('adoptedStyleSheets' in document && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
+      pushSheet ??= new CSSStyleSheet();
+      pushSheet.replaceSync(PUSH_CSS);
+      const others = document.adoptedStyleSheets.filter((s) => s !== pushSheet);
+      document.adoptedStyleSheets = on ? [...others, pushSheet] : others;
+    } else if (on) {
+      pushStyle ??= Object.assign(document.createElement('style'), { textContent: PUSH_CSS });
+      document.documentElement.appendChild(pushStyle);
+    } else {
+      pushStyle?.remove();
+    }
+    host.dataset.pushed = String(on);
   }
   function show(why) {
     clearTimeout(hideTimer);
@@ -137,12 +193,16 @@
   // ---- data ---------------------------------------------------------------
 
   let tabId = null;
+  let helloWindowId = null;
   let windowId = null;
 
   function render() {
     if (!state) return;
-    windowId = state.tabs?.[tabId]?.windowId ?? windowId;
+    // Known tab → its window. Until the background answers `hello`, guess, so
+    // the sidebar draws straight from storage instead of waiting for it.
+    windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? Margin.view.guessWindow(state, location.href);
     sidebar.update(state, { windowId });
+    frame.style.setProperty('--space-color', sidebar.el.style.getPropertyValue('--space-color'));
     Margin.content.onState?.(state, { tabId, windowId });
     if (!reason) setOpen(pinnedOpen());
   }
@@ -162,7 +222,8 @@
   refresh();
   send('hello').then((ctx) => {
     if (!ctx) return;
-    ({ tabId, windowId } = ctx);
+    tabId = ctx.tabId;
+    helloWindowId = ctx.windowId;
     render();
   });
 

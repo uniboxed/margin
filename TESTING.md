@@ -117,3 +117,13 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] × in the sidebar also archives the tab.
 - [ ] Clicking an archived entry on the new tab reopens it in that tab, in its original space. In the palette, typing its title shows an "Archived" row, and Enter reopens it in a new tab.
 - [ ] More than 12 archived entries shows "Show all N".
+
+## Arc frame and Keep open push
+
+- [ ] Hover the left edge: the sidebar and an Arc-style frame (same color, rounded page corners, small margin top/right/bottom) slide in together. Moving away hides both. The page itself doesn't move.
+- [ ] Turn on "Keep open": the page reflows to start right after the sidebar, nothing is hidden behind it on normal sites, and there's no horizontal scrollbar.
+- [ ] With "Keep open" on, load a new site (e.g. github.com): the sidebar and push appear right away, not only after the page finishes loading, and there's no unstyled flash.
+- [ ] Sticky headers (github.com, conventionalcommits.org) stay inside the frame. Note any site whose fixed header sits under the sidebar or that looks broken.
+- [ ] ⌥S or "Auto-hide" removes the push immediately and the page goes back to full width.
+- [ ] Print preview (⌘P) shows the page without the shift.
+- [ ] The new tab page uses the same frame look.

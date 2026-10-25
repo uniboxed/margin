@@ -2,7 +2,7 @@
 
 An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It recreates the feel of Arc inside real Safari:
 
-- **Hover-reveal sidebar** on every website. Move the cursor to the left edge and the sidebar slides in over the page.
+- **Hover-reveal sidebar** on every website. Move the cursor to the left edge and the sidebar slides in, wrapping the page in an Arc-style frame. With **Keep open**, the page shifts right to start where the sidebar ends.
 - **Spaces** (emoji chips) that filter the sidebar to that space's tabs, separately in each window. Create, rename, recolor, and delete them inline, and drag tabs onto a chip to move them.
 - **Pinned items** per space. A pin focuses its open tab, or reopens the page.
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
@@ -19,7 +19,7 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 - **No sidebar where content scripts can't run:** Safari's internal pages (Start Page, Settings, Favorites), PDFs, other extensions' pages, the Web Inspector, and pages Safari blocks extensions on. On Margin's own new tab, the sidebar is built in.
 - **No sidebar while the address bar has focus.** Hover reveal needs the page to receive mouse events, and page shortcuts need the page to have keyboard focus.
 - **⌘T, ⌘W, ⌘L, Ctrl+Tab and friends can't be intercepted.** Margin takes over new tabs by replacing the new-tab page instead. Safari focuses its address bar on a new tab, so the launcher field usually doesn't get focus. That's expected.
-- **Overlay, not a split.** The sidebar floats over the page rather than shrinking it, because resizing the page breaks fixed headers, modals, and sticky elements on many sites.
+- **"Keep open" can break some layouts.** Safari can't shrink the page area, so Margin shifts the page right by hand. Headers and toolbars pinned to the screen (`position: fixed`) don't move and stay partly under the sidebar. Full-window-width elements get clipped on the right, and centered popups sit a bit off-center. Hover mode never moves the page. If a site misbehaves, switch to auto-hide (⌥S).
 - **Pins are URL-based.** Navigating a pinned tab to another URL makes it a regular tab again.
 - **Tabs closed with ⌘W aren't archived.** Only auto-archived tabs and tabs closed with Margin's × are.
 - **Unverified in Safari.** Everything was automated-tested in headless Chromium only. See [TESTING.md](TESTING.md) for what needs a manual check.

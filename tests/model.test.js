@@ -208,3 +208,15 @@ test('auto-archive: only inactive, unpinned web tabs past the threshold', () => 
   const entry = M.archiveEntryForTab(s, s.tabs[3], { id: 'x', closedAt: now });
   assert.deepEqual(entry, { id: 'x', url: 'https://pinned.com', title: 't3', favIconUrl: '', spaceId: 'work', closedAt: now });
 });
+
+test('view.guessWindow: picks the window before the background answers', () => {
+  let s = M.defaultState();
+  assert.equal(view.guessWindow(s, 'https://a.com/'), null);
+  s = M.upsertTab(s, tab(1, 5, 'https://a.com/'), 0);
+  s = M.upsertTab(s, tab(2, 5, 'https://b.com/'), 0);
+  assert.equal(view.guessWindow(s, 'https://zzz.com/'), 5, 'single window');
+  s = M.upsertTab(s, tab(3, 9, 'https://b.com/', { active: true }), 10);
+  s = M.upsertTab(s, tab(4, 7, 'https://c.com/', { active: true }), 20);
+  assert.equal(view.guessWindow(s, 'https://b.com/'), 9, 'URL match, active wins');
+  assert.equal(view.guessWindow(s, 'https://nowhere.com/'), 7, 'most recently active window');
+});

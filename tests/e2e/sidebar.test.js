@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, clickInShadow, tabsInBrowser, waitFor } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, tabsInBrowser, waitFor } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -148,6 +148,57 @@ test('toggle shortcut: opens and closes; with "Keep open" on it switches back to
   await toggle();
   await waitFor(async () => !(await pinned()));
   await page.waitForTimeout(100);
+  assert.equal((await sidebarSnapshot(page)).open, false);
+  await page.close();
+});
+
+const frameState = (page) =>
+  evalInShadow(page, 'margin-sidebar-host', function () {
+    const frame = this.querySelector('.frame');
+    const r = this.querySelector('.frame .hole').getBoundingClientRect();
+    return { open: frame.classList.contains('open'), hole: [r.left, r.top, innerWidth - r.right, innerHeight - r.bottom] };
+  });
+const htmlMargins = (page) =>
+  page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    return { left: cs.marginLeft, right: cs.marginRight, styleAttr: document.documentElement.getAttribute('style'), styleTags: document.querySelectorAll('style').length };
+  });
+const setKeepOpen = (on) =>
+  ctx.worker.evaluate((v) => chrome.storage.local.get('settings').then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, sidebarPinnedOpen: v } })), on);
+
+test('Arc frame: wraps the page while the sidebar is open; hover never pushes the page', async () => {
+  const page = await openPage('frame');
+  assert.equal((await frameState(page)).open, false);
+  await page.mouse.move(400, 200);
+  await page.mouse.move(3, 200);
+  await waitFor(async () => (await frameState(page)).open);
+  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8]);
+  assert.equal((await htmlMargins(page)).left, '0px');
+  await page.mouse.move(700, 200);
+  await waitFor(async () => !(await frameState(page)).open, { timeout: 1500 });
+  await page.close();
+});
+
+test('Keep open pushes the page to start at the sidebar edge, without touching page markup; off restores it', async () => {
+  const page = await openPage('push');
+  const before = await htmlMargins(page);
+  await setKeepOpen(true);
+  await waitFor(async () => (await htmlMargins(page)).left === '260px');
+  const pushed = await htmlMargins(page);
+  assert.equal(pushed.right, '8px');
+  assert.equal(pushed.styleAttr, before.styleAttr, 'no inline style on <html>');
+  assert.equal(pushed.styleTags, before.styleTags, 'no <style> injected into the page');
+  const h1Left = await page.evaluate(() => document.querySelector('h1').getBoundingClientRect().left);
+  assert.ok(h1Left >= 260, `content starts after the sidebar (h1 at ${h1Left})`);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll');
+  assert.equal((await frameState(page)).open, true);
+
+  await page.emulateMedia({ media: 'print' });
+  assert.equal((await htmlMargins(page)).left, '0px', 'print is unaffected');
+  await page.emulateMedia({ media: 'screen' });
+
+  await setKeepOpen(false);
+  await waitFor(async () => (await htmlMargins(page)).left === '0px');
   assert.equal((await sidebarSnapshot(page)).open, false);
   await page.close();
 });
