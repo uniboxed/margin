@@ -2,6 +2,13 @@
 
 Ambiguous calls made while building Margin, newest milestone last. "Verified" means verified in headless Chromium tests only; nothing here has been run in Safari.
 
+## Follow-ups (open; read first)
+
+Things Tirth wants revisited. Remove an item once it's done.
+
+- **Safari's search engine still needs a better answer.** Margin learns it only from a search made in Safari's own address bar, so after changing Safari → Settings → Search, Margin keeps the old engine until one such search (see "Searches use the browser's search engine"). Safari gives extensions no search API and no access to its settings. Ideas to explore: a better first-run default or prompt; detecting the engine some other way; an optional manual override. Tirth (2026-10-25): "we will have to do something about this."
+- **Trackpad gestures are a first version to improve later** (Tirth: "we will improvise it more later"): pull-to-refresh, swipe back/forward and pinch-zoom feel and thresholds (shared/pull.js, shared/gestures.js).
+
 ## Environment
 
 - **Playwright/Chromium:** Chromium is preinstalled in the cloud session (`/opt/pw-browsers`, Playwright 1.63.0), so E2E tests run; nothing is downloaded. `package.json` pins `playwright@1.63.0` as the only dev dependency. Tests load it through `createRequire`, so either a local `npm install` or the global copy works.
@@ -323,3 +330,20 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
   - **Diagnostics:** a search on a known engine's site without Safari's parameters is logged with `console.debug` in the background console, with its URL.
   - **Settings** shows when the engine was last seen in Safari's address bar.
   - **Still inherent:** Margin can only learn a new engine once Safari has searched with it from its address bar.
+
+## Pinch to zoom and two-finger swipe back/forward, Margin's (2026-10-25)
+
+- **Pinch to zoom.** Blocking Safari's pinch (for the all-tabs overview) also blocked pinch-to-zoom: once Safari gets a pinch's start, WebKit's magnification takes the rest of the gesture and bypasses the page (`hasActiveMagnificationGesture` in `WebViewImpl::magnifyWithEvent`), so the pinch can't be split between zoom and overview. So the guard now takes every pinch at normal zoom and hands it to Margin, which zooms with Safari's own page zoom (`tabs.setZoom`/`getZoom`, Safari 14+ per MDN's compat data, implemented in WebKit):
+  - **Levels:** Safari's zoom levels, nearest to (zoom at the pinch's start × pinch scale): 100, 115, 125, 150, 175, 200, 250, 300%. Never below 100% by pinching, so pinching in can't become the overview; ⌘− still zooms out. If already below 100%, it doesn't go lower.
+  - **Feedback:** a small "125%" readout at the top of the page while pinching. The start level is re-read from Safari at each pinch (⌘+/⌘− may have changed it).
+  - **Trade-off vs. Safari's pinch:** this is page zoom (the page re-lays out, like ⌘+), not Safari's magnifier, and it steps by level. A page Safari has magnified itself (two-finger double-tap smart zoom) keeps Safari's pinch.
+- **Swipe back/forward with Arc's badge** (measured from Tirth's recording):
+  - **Badge:** a ~148px dark circle centered on the page card's left edge (back) or right edge (forward), vertically centered, half of it over the sidebar or frame. A bold white arrow sits in its visible half. It fades in and darkens with the swipe; it doesn't slide.
+  - **Gesture:** the gesture logic is the pull tracker generalized to the x axis (`createSwipeTracker`: the direction is set by the first sideways movement; 110px, 6 events, 100ms to arm; same momentum, mouse-notch and release rules).
+  - **Navigation:** `history.back()`/`forward()` from the page, so same-page (SPA) history works too. The badge fades after 450ms if the page doesn't unload.
+  - **When it applies:** only where nothing under the pointer scrolls sideways, as with Safari's swipe; setting `swipeNavigation` (default on, needs `blockGestures`). Direction: fingers moving right (deltaX < 0) go back, like Safari.
+- **Settings:** the master switch now reads "Use Margin's trackpad gestures instead of Safari's…", with sub-switches for pull-to-refresh and swipe navigation.
+- **Tests:**
+  - **Unit:** swipe tracker (both directions, release, reversing, vertical, flick, notches, ineligible), `zoomForPinch` (levels, clamping, the 100% floor, below-100% start), and the guard handing every normal-zoom pinch to `onPinch`.
+  - **E2E (Chromium, Safari profile), with real wheel events:** a sideways swipe shows the badge on the left edge and goes back, the other way goes forward; nothing happens over a sideways-scrollable box, for a small swipe, or with the setting off. The background zoom handlers set and read the tab's zoom, clamped. Mutation-checked.
+  - **Not testable in Chromium:** real pinch events (a test page can't create a pinch the extension's script sees with a `scale`), so pinch → zoom is a manual check.

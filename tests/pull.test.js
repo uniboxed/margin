@@ -16,7 +16,7 @@ test('a deliberate pull at the top arms, and refreshes when the fingers lift (ev
   const states = feed(t, pullDeltas(16)); // 16 × ~12px = ~190px over 240ms
   assert.equal(states[0], 'pulling');
   assert.equal(states.at(-1), 'armed');
-  assert.equal(t.end().state, 'refresh');
+  assert.equal(t.end().state, 'trigger');
 });
 
 test('released before the threshold: no refresh', () => {
@@ -30,14 +30,14 @@ test('armed, then momentum starts (the fingers lifted): refresh right away', () 
   feed(t, pullDeltas(16));
   const momentum = [-20, -17, -14.5, -12.3, -10.5, -8.9];
   const states = momentum.map((d, i) => t.wheel({ deltaY: d, time: 1000 + (16 + i) * 16, atTop: true }).state);
-  assert.ok(states.includes('refresh'), states.join());
+  assert.ok(states.includes('trigger'), states.join());
 });
 
 test('a flick at the top (mostly momentum) never refreshes', () => {
   const t = createPullTracker();
   const flick = [-30, -45, -40, -34, -29, -24.6, -21, -17.8, -15.2, -12.9, -11, -9.3, -7.9, -6.7, -5.7, -4.9, -4.1, -3.5, -3, -2.5];
   const states = feed(t, flick);
-  assert.ok(!states.includes('refresh'), states.join());
+  assert.ok(!states.includes('trigger'), states.join());
   assert.equal(t.end().state, 'idle');
 });
 
@@ -77,6 +77,51 @@ test('pulling back up un-pulls; leaving the top cancels', () => {
 test('a new gesture after a pause starts fresh', () => {
   const t = createPullTracker();
   feed(t, pullDeltas(16));
-  assert.equal(t.end().state, 'refresh');
+  assert.equal(t.end().state, 'trigger');
   assert.equal(feed(t, pullDeltas(3), { t0: 1500 }).at(-1), 'pulling');
+});
+
+// ---- swipe back/forward (axis x) ---------------------------------------------
+
+const { createSwipeTracker } = globalThis.Margin.pull;
+function feedX(tracker, deltas, { t0 = 1000, eligible = true } = {}) {
+  return deltas.map((deltaX, i) => tracker.wheel({ deltaX, deltaY: 0.5, time: t0 + i * 16, eligible }));
+}
+
+test('swipe: a deliberate sideways swipe arms in its direction and triggers on release', () => {
+  const back = createSwipeTracker();
+  const states = feedX(back, Array.from({ length: 12 }, (_, i) => -12 + (i % 3) - 1));
+  assert.equal(states.at(-1).state, 'armed');
+  assert.equal(states.at(-1).direction, -1, 'deltaX < 0: back');
+  assert.deepEqual([back.end().state, back.end().state], ['trigger', 'idle']);
+
+  const forward = createSwipeTracker();
+  feedX(forward, Array(12).fill(12));
+  const end = forward.end();
+  assert.equal(end.state, 'trigger');
+  assert.equal(end.direction, 1, 'deltaX > 0: forward');
+});
+
+test('swipe: reversing un-swipes; a vertical scroll, a flick, notches or an ineligible start never trigger', () => {
+  const t = createSwipeTracker();
+  feedX(t, Array(10).fill(-12));
+  assert.equal(feedX(t, Array(12).fill(12), { t0: 1000 + 160 }).at(-1).state, 'idle', 'swiped back the other way');
+  assert.equal(t.end().state, 'idle');
+
+  const vertical = createSwipeTracker();
+  for (let i = 0; i < 20; i++) vertical.wheel({ deltaX: 2, deltaY: 30, time: 1000 + i * 16, eligible: true });
+  assert.equal(vertical.end().state, 'idle');
+
+  const flick = createSwipeTracker();
+  const states = feedX(flick, [-30, -45, -40, -34, -29, -24.6, -21, -17.8, -15.2, -12.9, -11]);
+  assert.ok(!states.some((s) => s.state === 'trigger'));
+  assert.equal(flick.end().state, 'idle');
+
+  const notches = createSwipeTracker();
+  feedX(notches, [-100, -120, -100, -120, -100, -120, -100]);
+  assert.equal(notches.end().state, 'idle');
+
+  const blocked = createSwipeTracker(); // something under the pointer scrolls sideways
+  feedX(blocked, Array(12).fill(-12), { eligible: false });
+  assert.equal(blocked.end().state, 'idle');
 });

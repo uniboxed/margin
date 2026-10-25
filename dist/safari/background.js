@@ -191,6 +191,14 @@ const handlers = {
       await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
     }
   },
+  // Page zoom for Margin's pinch-to-zoom (Safari's own zoom, like ⌘+).
+  async getZoom(_, sender) {
+    return sender.tab ? api.tabs.getZoom(sender.tab.id) : null;
+  },
+  async setZoom({ factor }, sender) {
+    if (!sender.tab || !Number.isFinite(factor)) return;
+    await api.tabs.setZoom(sender.tab.id, Math.min(3, Math.max(0.25, factor)));
+  },
   // Search with the browser's engine: in `tabId`, else in a new tab.
   async search({ query, windowId, tabId }) {
     const text = String(query ?? '').trim();

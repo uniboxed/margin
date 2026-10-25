@@ -69,6 +69,8 @@
     cardEdge.style.setProperty('--width', `${liveWidth}px`);
     loader.style.setProperty('--width', `${liveWidth}px`);
     pull.style.setProperty('--width', `${liveWidth}px`);
+    swipe.style.setProperty('--width', `${liveWidth}px`);
+    zoomHud.style.setProperty('--width', `${liveWidth}px`);
     if (pushed) setPushed(true, liveWidth);
   }
   // Arc-style frame: sidebar-colored strips around the page card with its
@@ -95,7 +97,15 @@
   const pullIcon = svg('svg', { viewBox: '0 0 28 28', width: 28, height: 28 });
   pullIcon.append(svg('circle', { class: 'track', cx: 14, cy: 14, r: 10 }), pullRing, pullArrow);
   const pull = Margin.ui.el(document, 'div', { class: 'pull', 'aria-hidden': 'true' }, pullIcon);
-  shadow.append(frame, sidebar.el, cardEdge, loader, pull);
+  // Swipe back/forward badge (Arc): a dark circle centered on the page's left
+  // (back) or right (forward) edge, the arrow in its visible half; it darkens
+  // as the swipe goes on.
+  const swipeIcon = svg('svg', { viewBox: '0 0 36 36', width: 36, height: 36 });
+  swipeIcon.append(svg('path', { d: 'M28 18H8.5M17 9.5 8.5 18l8.5 8.5' }));
+  const swipe = Margin.ui.el(document, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
+  // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
+  const zoomHud = Margin.ui.el(document, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
+  shadow.append(frame, sidebar.el, cardEdge, loader, pull, swipe, zoomHud);
 
   // Styles are bundled in content/styles.js and applied synchronously, so the
   // panel is styled from the first frame (no fetch, no unstyled flash).
@@ -128,7 +138,7 @@
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
   const gestureGuard = Margin.platform?.blockGestures
-    ? Margin.gestures.installGestureGuard({ getSettings: () => state?.settings })
+    ? Margin.gestures.installGestureGuard({ getSettings: () => state?.settings, onPinch: (pinch) => handlePinch(pinch) })
     : null;
   let reason = null; // 'hover' | 'toggle' | null
   let hideTimer = null;
@@ -144,6 +154,8 @@
     cardEdge.classList.toggle('open', docked);
     loader.classList.toggle('in-frame', docked);
     pull.classList.toggle('in-frame', docked);
+    swipe.classList.toggle('in-frame', docked);
+    zoomHud.classList.toggle('in-frame', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
     if (state) syncPlaceholder();
@@ -151,6 +163,8 @@
     cardEdge.style.setProperty('--width', `${sidebar.width()}px`);
     loader.style.setProperty('--width', `${sidebar.width()}px`);
     pull.style.setProperty('--width', `${sidebar.width()}px`);
+    swipe.style.setProperty('--width', `${sidebar.width()}px`);
+    zoomHud.style.setProperty('--width', `${sidebar.width()}px`);
   }
 
   // ---- page-load indicator --------------------------------------------------
@@ -241,7 +255,7 @@
   const pullEnabled = () => state?.settings?.blockGestures !== false && state?.settings?.pullToRefresh !== false;
   function showPull({ state: phase, progress }) {
     if (pullRefreshing) return;
-    if (phase === 'refresh') return refreshFromPull();
+    if (phase === 'trigger') return refreshFromPull();
     if (phase === 'idle') {
       pull.classList.remove('tracking', 'armed');
       pull.style.removeProperty('--pull');
@@ -275,19 +289,100 @@
     delete host.dataset.pullRefresh;
   }
   addEventListener('pageshow', (event) => { if (event.persisted) resetPull(); });
+
+  // ---- swipe back/forward (Safari builds) ------------------------------------
+  // Safari's two-finger swipe is blocked by the gesture guard; this is
+  // Margin's, with Arc's edge badge: swipe sideways where nothing scrolls
+  // sideways, past the threshold, and let go to go back (fingers moving
+  // right) or forward. The gesture logic is shared/pull.js (axis x).
+  const swipeEnabled = () => state?.settings?.blockGestures !== false && state?.settings?.swipeNavigation !== false;
+  let swipeHideTimer = null;
+  function showSwipe({ state: phase, progress, direction }) {
+    if (phase === 'trigger') return navigateBySwipe(direction);
+    if (phase === 'idle' || !direction) {
+      swipe.classList.remove('active', 'tracking', 'armed');
+      swipe.style.removeProperty('--swipe');
+      return;
+    }
+    clearTimeout(swipeHideTimer);
+    swipe.classList.add('active', 'tracking');
+    swipe.classList.toggle('forward', direction > 0);
+    swipe.classList.toggle('armed', phase === 'armed');
+    swipe.style.setProperty('--swipe', String(Math.min(progress, 1)));
+  }
+  function navigateBySwipe(direction) {
+    swipe.classList.remove('tracking');
+    swipe.classList.add('active', 'armed');
+    swipe.classList.toggle('forward', direction > 0);
+    swipe.style.setProperty('--swipe', '1');
+    host.dataset.swipe = direction > 0 ? 'forward' : 'back'; // test/debug hook
+    if (direction > 0) history.forward();
+    else history.back();
+    // Same-page history (and no history at all) doesn't unload: fade it out.
+    clearTimeout(swipeHideTimer);
+    swipeHideTimer = setTimeout(() => showSwipe({ state: 'idle' }), 450);
+  }
+  addEventListener('pageshow', (event) => { if (event.persisted) showSwipe({ state: 'idle' }); });
+
   if (gestureGuard) {
-    const tracker = Margin.pull.createPullTracker();
+    const pullTracker = Margin.pull.createPullTracker();
+    const swipeTracker = Margin.pull.createSwipeTracker();
     let endTimer = null;
     addEventListener('wheel', (event) => {
-      if (!pullEnabled() || pullRefreshing || event.ctrlKey) return;
+      if (event.ctrlKey) return; // a pinch
       const path = event.composedPath();
       // Not over Margin's own panels; pixel deltas only (a trackpad).
-      const overMargin = path.some((node) => node === host || node.localName === 'margin-palette-host');
-      const atTop = !overMargin && event.deltaMode === 0 && Margin.gestures.atPageTop(event, document);
-      showPull(tracker.wheel({ deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp, atTop }));
+      const usable = event.deltaMode === 0 && !path.some((node) => node === host || node.localName === 'margin-palette-host');
+      const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
+      const pulling = pullEnabled() && !pullRefreshing;
+      const swiping = swipeEnabled();
+      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: usable && Margin.gestures.atPageTop(event, document) }));
+      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && Margin.gestures.canSwipe(event, document) }));
+      if (!pulling && !swiping) return;
       clearTimeout(endTimer);
-      endTimer = setTimeout(() => showPull(tracker.end()), Margin.pull.DEFAULTS.GAP_MS + 20);
+      endTimer = setTimeout(() => {
+        if (pulling) showPull(pullTracker.end());
+        if (swiping) showSwipe(swipeTracker.end());
+      }, Margin.pull.DEFAULTS.GAP_MS + 20);
     }, { capture: true, passive: true });
+  }
+
+  // ---- pinch to zoom (Safari builds) -------------------------------------------
+  // The gesture guard takes pinches from Safari (pinching in would open the
+  // all-tabs overview) and hands them here: Margin zooms the page with
+  // Safari's own page zoom (tabs.setZoom), stepping through Safari's zoom
+  // levels (shared/gestures.js zoomForPinch), and shows the level.
+  let pageZoom = 1;
+  let pinchStart = 1;
+  let pinchMoved = false;
+  let zoomHudTimer = null;
+  const readZoom = () => send('getZoom', {}, false).then((z) => (Number.isFinite(z) ? z : null));
+  if (gestureGuard) readZoom().then((z) => { if (z) pageZoom = z; });
+  function showZoomHud() {
+    clearTimeout(zoomHudTimer);
+    zoomHud.textContent = `${Math.round(pageZoom * 100)}%`;
+    zoomHud.classList.add('show');
+    host.dataset.zoom = String(pageZoom); // test/debug hook
+  }
+  function handlePinch({ phase, scale }) {
+    if (phase === 'start') {
+      pinchStart = pageZoom;
+      pinchMoved = false;
+      // ⌘+/⌘− may have changed it since: start from the real level unless
+      // the pinch already moved on.
+      readZoom().then((z) => { if (z && !pinchMoved) pinchStart = pageZoom = z; });
+      return showZoomHud();
+    }
+    if (phase === 'change') {
+      const zoom = Margin.gestures.zoomForPinch(pinchStart, scale);
+      if (zoom !== pageZoom) {
+        pageZoom = zoom;
+        pinchMoved = true;
+        send('setZoom', { factor: zoom }, false);
+      }
+      return showZoomHud();
+    }
+    zoomHudTimer = setTimeout(() => zoomHud.classList.remove('show'), 700);
   }
 
   // ---- push (only while "Keep open" is on) ---------------------------------

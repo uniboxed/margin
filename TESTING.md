@@ -213,6 +213,13 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] With the palette open, scrolling moves only its results.
 - [ ] Settings: "Pull down at the top of a page to reload" off: pulling does nothing. "Block Safari's swipe… and page bounce" off: the bounce and Safari's own pull-to-refresh come back (Margin's is then off).
 
+## Pinch to zoom and swipe back/forward (Safari)
+
+- [ ] Pinch out (fingers apart) on a page: it zooms in through Safari's zoom steps (115%, 125%, 150%…), with a small "125%"-style readout at the top. Pinch in: back down, stopping at 100%. Pinching in at 100% never opens the all-tabs overview.
+- [ ] After ⌘+ / ⌘−, the next pinch starts from that level.
+- [ ] Swipe right with two fingers (back): a dark round badge with ← appears on the page's left edge, darkening as you swipe; let go past the point where it's fully dark and the page goes back. Swipe left: → on the right edge, forward. A short swipe, or one over a carousel/wide table that scrolls sideways, doesn't navigate.
+- [ ] Settings → "Swipe sideways with two fingers to go back or forward" off: no badge, no navigation.
+
 ## Page card (Keep open)
 
 - [ ] The page's corners are rounded (small, about 6pt, like Arc's), not square. Same on the new-tab page.

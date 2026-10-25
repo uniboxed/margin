@@ -1,22 +1,27 @@
-// Pull-to-refresh, the logic only (no DOM): Margin's replacement for
-// Safari's, which stops with the page's bounce (shared/gestures.js). Fed the
-// page's wheel events; content/sidebar.js draws the indicator and reloads.
-// Classic script; attaches to globalThis.Margin.pull.
+// Trackpad pull/swipe gestures, the logic only (no DOM): Margin's
+// replacements for Safari's pull-to-refresh and two-finger swipe back/forward,
+// which stop with the page's bounce and the swipe guard (shared/gestures.js).
+// Fed the page's wheel events; content/sidebar.js draws the indicators and
+// acts. Classic script; attaches to globalThis.Margin.pull.
 //
 // Web pages don't get the trackpad's gesture phases, which Safari uses to
 // ignore momentum and to know when the fingers lift, so they're inferred:
 //  - A gesture is a run of wheel events with no gap over GAP_MS. It counts
-//    only if it started at the top of the page (like Safari's).
+//    only if it started where the gesture applies (the top of the page for
+//    a pull; nothing to scroll sideways for a swipe), like Safari's.
 //  - Momentum (after the fingers lift) decays smoothly: once MOMENTUM_RUN
 //    events in a row each shrink by a steady factor, the rest of the gesture
-//    is momentum and doesn't pull. If the pull was already past the
-//    threshold, the fingers have lifted: refresh now.
-//  - A pull must be sustained to arm: THRESHOLD px of upward scrolling, over
-//    at least MIN_EVENTS events and MIN_MS. Single jumps over MAX_STEP px
-//    (a mouse wheel's notches) don't pull at all. Erring towards not
-//    reloading.
-//  - When the events stop (GAP_MS), an armed pull refreshes; anything else
+//    is momentum and doesn't count. If it was already past the threshold, the
+//    fingers have lifted: trigger now.
+//  - It must be sustained to arm: THRESHOLD px along the axis, over at least
+//    MIN_EVENTS events and MIN_MS. Single jumps over MAX_STEP px (a mouse
+//    wheel's notches) don't count. Erring towards not triggering.
+//  - When the events stop (GAP_MS), an armed gesture triggers; anything else
 //    is cancelled.
+//
+// Pull (axis 'y'): scrolling up at the top (deltaY < 0). Swipe (axis 'x'):
+// the direction is set by the gesture's first sideways movement, -1 = back
+// (deltaX < 0, fingers moving right with natural scrolling), 1 = forward.
 
 (() => {
   const Margin = (globalThis.Margin ??= {});
@@ -29,17 +34,18 @@
     MAX_STEP: 80,
     MOMENTUM_RUN: 5,
   };
+  const SWIPE_DEFAULTS = { ...DEFAULTS, THRESHOLD: 110, MIN_EVENTS: 6, MIN_MS: 100 };
 
-  function createPullTracker(options = {}) {
-    const o = { ...DEFAULTS, ...options };
-    let gesture = null; // { start, last, events, pull, eligible, momentum, recent: [] }
+  function createTracker(axis, options) {
+    const o = options;
+    let gesture = null; // { start, last, events, pull, direction, eligible, momentum, recent: [] }
     let lastTime = -Infinity;
 
-    const idle = (progress = 0) => ({ state: 'idle', progress });
+    const idle = () => ({ state: 'idle', progress: 0, direction: 0 });
     const view = (g) => {
       const progress = Math.min(g.pull / o.THRESHOLD, 1.5);
       const armed = g.pull >= o.THRESHOLD && g.events >= o.MIN_EVENTS && g.last - g.start >= o.MIN_MS;
-      return { state: armed ? 'armed' : g.pull > 0 ? 'pulling' : 'idle', progress };
+      return { state: armed ? 'armed' : g.pull > 0 ? 'pulling' : 'idle', progress, direction: g.direction };
     };
 
     // Smooth decay over the last MOMENTUM_RUN deltas: each 72–99% of the one before.
@@ -55,33 +61,41 @@
     };
 
     return {
-      // One wheel event. `atTop`: the page is at its top and nothing under
-      // the pointer scrolls vertically (shared/gestures.js atPageTop).
-      // Returns { state: 'idle' | 'pulling' | 'armed' | 'refresh', progress }.
-      wheel({ deltaY, deltaX = 0, time, atTop }) {
+      // One wheel event. `eligible` (`atTop` for a pull): the gesture applies
+      // here. Returns { state: 'idle' | 'pulling' | 'armed' | 'trigger',
+      // progress, direction }.
+      wheel({ deltaY = 0, deltaX = 0, time, eligible, atTop }) {
+        const ok = eligible ?? atTop;
+        const primary = axis === 'y' ? deltaY : deltaX;
+        const cross = axis === 'y' ? deltaX : deltaY;
         const fresh = time - lastTime > o.GAP_MS;
         lastTime = time;
-        if (fresh) gesture = { start: time, last: time, events: 0, pull: 0, eligible: atTop, momentum: false, recent: [] };
+        if (fresh) {
+          gesture = { start: time, last: time, events: 0, pull: 0, direction: axis === 'y' ? -1 : 0, eligible: ok, momentum: false, recent: [] };
+        }
         const g = gesture;
         if (!g?.eligible) return idle();
         g.last = time;
-        if (!atTop) { // the page scrolled down (or the pointer moved over a list)
+        if (!ok) { // e.g. the page scrolled, or the pointer moved over something that scrolls
           g.eligible = false;
           return idle();
         }
-        const vertical = Math.abs(deltaY) >= Math.abs(deltaX);
-        g.recent.push(Math.abs(vertical ? deltaY : 0));
+        const along = Math.abs(primary) >= Math.abs(cross);
+        g.recent.push(Math.abs(along ? primary : 0));
         if (g.recent.length > o.MOMENTUM_RUN) g.recent.shift();
         if (!g.momentum && decaying(g.recent)) {
           g.momentum = true;
           if (view(g).state === 'armed') {
             g.eligible = false;
-            return { state: 'refresh', progress: view(g).progress };
+            return { ...view(g), state: 'trigger' };
           }
         }
-        if (g.momentum || !vertical || Math.abs(deltaY) > o.MAX_STEP) return g.momentum ? idle() : view(g);
+        if (g.momentum) return idle();
+        if (!along || Math.abs(primary) > o.MAX_STEP) return view(g);
+        if (!g.direction && Math.abs(primary) >= 1) g.direction = Math.sign(primary);
+        if (!g.direction) return view(g);
         g.events += 1;
-        g.pull = Math.max(0, g.pull - deltaY); // scrolling up (deltaY < 0) pulls down
+        g.pull = Math.max(0, g.pull + primary * g.direction);
         return view(g);
       },
       // No wheel events for GAP_MS: the gesture is over.
@@ -90,7 +104,7 @@
         gesture = null;
         lastTime = -Infinity; // the next event starts a new gesture
         if (!g?.eligible || g.momentum) return idle();
-        return view(g).state === 'armed' ? { state: 'refresh', progress: view(g).progress } : idle();
+        return view(g).state === 'armed' ? { ...view(g), state: 'trigger' } : idle();
       },
       reset() {
         gesture = null;
@@ -99,5 +113,8 @@
     };
   }
 
-  Margin.pull = { createPullTracker, DEFAULTS };
+  const createPullTracker = (options = {}) => createTracker('y', { ...DEFAULTS, ...options });
+  const createSwipeTracker = (options = {}) => createTracker('x', { ...SWIPE_DEFAULTS, ...options });
+
+  Margin.pull = { createPullTracker, createSwipeTracker, DEFAULTS, SWIPE_DEFAULTS };
 })();

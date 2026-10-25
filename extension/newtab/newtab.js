@@ -76,13 +76,16 @@ hours.addEventListener('change', () => {
 // Safari's trackpad swipe/pinch (Safari builds only).
 const blockGestures = $('block-gestures');
 const pullToRefresh = $('pull-to-refresh');
+const swipeNavigation = $('swipe-navigation');
 let gestureGuard = null;
 if (Margin.platform?.blockGestures) {
   $('gestures-setting').hidden = false;
   $('pull-setting').hidden = false;
+  $('swipe-setting').hidden = false;
   gestureGuard = Margin.gestures.installGestureGuard({ getSettings: () => state?.settings });
   blockGestures.addEventListener('change', () => send('updateSettings', { patch: { blockGestures: blockGestures.checked } }));
   pullToRefresh.addEventListener('change', () => send('updateSettings', { patch: { pullToRefresh: pullToRefresh.checked } }));
+  swipeNavigation.addEventListener('change', () => send('updateSettings', { patch: { swipeNavigation: swipeNavigation.checked } }));
 }
 
 // Navigation shortcuts from Settings (next/previous tab and space; the
@@ -197,6 +200,8 @@ function renderLauncher() {
   // Margin's pull-to-refresh replaces Safari's, which only goes away with the bounce.
   pullToRefresh.checked = state.settings.pullToRefresh !== false;
   pullToRefresh.disabled = !blockGestures.checked;
+  swipeNavigation.checked = state.settings.swipeNavigation !== false;
+  swipeNavigation.disabled = !blockGestures.checked;
   gestureGuard?.update();
   if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
   if (!recording) {

@@ -135,3 +135,74 @@ test('Chrome build: page bounce is left alone', async () => {
     await chrome.context.close();
   }
 });
+
+// A trackpad-style sideways swipe: n small horizontal scrolls, ~16ms apart.
+async function swipeSideways(page, step, { n = 14, x = 600, y = 300 } = {}) {
+  await page.mouse.move(x, y);
+  for (let i = 0; i < n; i++) {
+    await page.mouse.wheel(step + (i % 3) - 1, 0);
+    await page.waitForTimeout(16);
+  }
+}
+const swipeBadge = (page) => evalInShadow(page, 'margin-sidebar-host', function () {
+  const b = this.querySelector('.swipe');
+  return { active: b.classList.contains('active'), forward: b.classList.contains('forward'), opacity: Number(getComputedStyle(b).opacity) };
+});
+
+test('two-finger swipe: Arc\'s edge badge, then back (fingers moving right) and forward', async () => {
+  const page = await open('swipe-a');
+  await page.goto(`${base}/swipe-b`);
+  await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
+  await page.waitForTimeout(300);
+
+  const shown = waitFor(async () => {
+    const b = await swipeBadge(page).catch(() => null);
+    return b?.active && !b.forward && b.opacity > 0.5 && b;
+  }, { timeout: 3000 });
+  const back = page.waitForURL(`${base}/swipe-a`);
+  await swipeSideways(page, -12);
+  assert.ok(await shown, 'badge on the left edge');
+  await back;
+
+  await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
+  await page.waitForTimeout(300);
+  const forward = page.waitForURL(`${base}/swipe-b`);
+  await swipeSideways(page, 12);
+  await forward;
+  await page.close();
+});
+
+test('no swipe navigation over something that scrolls sideways, for a small swipe, or with the setting off', async () => {
+  const page = await open('swipe-c');
+  await page.goto(`${base}/swipe-d`);
+  await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML('beforeend', '<div id="wide" style="position:fixed;left:400px;top:250px;width:300px;height:120px;overflow-x:auto"><div style="width:2000px;height:100px"></div></div>');
+    document.getElementById('wide').scrollLeft = 900; // can scroll both ways
+  });
+  await swipeSideways(page, -12, { x: 550, y: 300 });
+  await page.waitForTimeout(500);
+  assert.equal(new URL(page.url()).pathname, '/swipe-d', 'the box scrolled instead');
+  await swipeSideways(page, -12, { n: 3 });
+  await page.waitForTimeout(500);
+  assert.equal(new URL(page.url()).pathname, '/swipe-d', 'too small');
+  await setSettings({ swipeNavigation: false });
+  await swipeSideways(page, -12);
+  await page.waitForTimeout(500);
+  assert.equal(new URL(page.url()).pathname, '/swipe-d', 'setting off');
+  await setSettings({ swipeNavigation: true });
+  await page.close();
+});
+
+test('pinch zoom uses the browser\'s page zoom for the tab (background setZoom/getZoom)', async () => {
+  const page = await ctx.context.newPage();
+  await page.goto(launcherUrl(ctx));
+  const tabId = await page.evaluate(() => chrome.tabs.getCurrent().then((t) => t.id));
+  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'setZoom', factor: 1.5 }));
+  assert.equal(await ctx.worker.evaluate((id) => chrome.tabs.getZoom(id), tabId), 1.5);
+  assert.deepEqual(await page.evaluate(() => chrome.runtime.sendMessage({ type: 'getZoom' })), { ok: true, result: 1.5 });
+  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'setZoom', factor: 9 }));
+  assert.equal(await ctx.worker.evaluate((id) => chrome.tabs.getZoom(id), tabId), 3, 'clamped');
+  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'setZoom', factor: 1 }));
+  await page.close();
+});

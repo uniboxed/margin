@@ -342,6 +342,62 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
   .pull.refreshing .ring { stroke-dasharray: 100; }
 }
 
+/* Swipe back/forward badge (Safari builds; measured from Tirth's Arc
+   recording): a 148px dark circle centered on the page's left edge (back) or
+   right edge (forward), vertically centered, half of it over the frame or
+   sidebar; a bold white arrow in its visible half. It fades in and darkens
+   with the swipe (--swipe: 0 … 1), fully dark once letting go will navigate.
+   Drawn over everything Margin draws, never taking clicks. */
+.swipe {
+  --swipe: 0;
+  position: fixed;
+  top: 50%;
+  left: 0;
+  width: 148px;
+  height: 148px;
+  margin: -74px 0 0 -74px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(38, 38, 38, calc(0.45 + var(--swipe) * 0.4));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease, background-color 120ms linear;
+}
+.swipe.in-frame { left: var(--width, 260px); } /* the page card's left edge */
+.swipe.forward { left: auto; right: 0; margin: -74px -74px 0 0; }
+.swipe.forward.in-frame { right: 8px; } /* the page card's right edge */
+.swipe.active { opacity: clamp(0, calc(var(--swipe) * 5), 1); }
+.swipe.tracking { transition: none; }
+.swipe.armed { background: rgba(38, 38, 38, 0.88); }
+.swipe svg { display: block; overflow: visible; transform: translateX(36px); }
+.swipe.forward svg { transform: translateX(-36px) rotate(180deg); }
+.swipe path { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Pinch-to-zoom readout (Safari builds): "125%" in a small dark pill
+   centered at the top of the page while pinching. */
+.zoom-hud {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(28, 28, 30, 0.9);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.zoom-hud.in-frame { left: calc(var(--width, 260px) + (100vw - var(--width, 260px) - 8px) / 2); }
+.zoom-hud.show { opacity: 1; transition-duration: 80ms; }
+@media (prefers-reduced-motion: reduce) {
+  .swipe, .zoom-hud { transition: opacity 120ms linear; }
+}
+
 /* Page-load indicator (Arc): a small dark pill centered over the page. With
    "Keep open" it sits in the frame's 8px top strip; otherwise at the top of
    the page. Fades and widens in, pulses gently while loading, fades out. */
