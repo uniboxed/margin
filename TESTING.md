@@ -46,13 +46,20 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## One-time setup
 
-1. Build the app: see README → "Building for Safari (local, macOS)".
-2. Safari → Settings → Advanced → enable **Show features for web developers** (older Safari: "Show Develop menu in menu bar").
-3. Safari → Settings → Developer (older Safari: the Develop menu) → enable **Allow unsigned extensions**. You'll be asked for your password. **This resets every time Safari quits**, so redo it after each Safari launch.
-4. In Xcode, open `xcode/Margin/Margin.xcodeproj`, select the **Margin (macOS)** scheme, and Run (⌘R). The container app opens. You can close it.
-5. Safari → Settings → Extensions → check **Margin**.
-6. In the same pane, under Margin's permissions, set website access to **Always Allow on Every Website**. (Or click the Margin toolbar icon on any site → "Always Allow on Every Website.")
-7. Safari → Settings → General → **New tabs open with** → **Margin**. Set **New windows open with** to Margin too if you like.
+**Recommended: temporary extension** (no Xcode, no "Allow unsigned extensions").
+
+1. Safari → Settings → Advanced → enable **Show features for web developers** (older Safari: "Show Develop menu in menu bar").
+2. **Develop → Add Temporary Extension…** → choose the repo's `extension/` folder. Redo this after every Safari relaunch. After pulling changes, reload Margin in Safari → Settings → Extensions, then reload pages.
+3. Safari → Settings → Extensions → Margin → set website access to **Always Allow on Every Website**.
+4. Safari → Settings → General → **New tabs open with** → **Margin**. Set **New windows open with** to Margin too if you like.
+5. If an Xcode-built Margin is also installed, turn it off in Safari → Settings → Extensions so only one copy runs.
+
+**Alternative: Xcode-built app** (for testing the real packaged app).
+
+1. Run `scripts/make-xcode.sh`, open `xcode/Margin/Margin.xcodeproj`, choose the **Margin (macOS)** scheme, and Run (⌘R). The container app opens. You can close it.
+2. Safari → Settings → Developer (older Safari: the Develop menu) → enable **Allow unsigned extensions**. You'll be asked for your password. **This resets every time Safari quits.**
+3. Then steps 3–4 above, after checking **Margin** in Safari → Settings → Extensions.
+4. If Margin disappears from the Extensions list: press ⌘R in Xcode again, quit and reopen Safari, and toggle "Allow unsigned extensions" off and on. Re-run `scripts/make-xcode.sh` only when files under `extension/` are added or removed. Regenerating is what most often leaves Safari pointing at a deleted app.
 
 ## M1 smoke check
 

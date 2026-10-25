@@ -24,12 +24,22 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 - **Tabs closed with ⌘W aren't archived.** Only auto-archived tabs and tabs closed with Margin's × are.
 - **Unverified in Safari.** Everything was automated-tested in headless Chromium only. See [TESTING.md](TESTING.md) for what needs a manual check.
 
-## Install (local, unsigned)
+## Install for development (temporary extension, no Xcode)
 
-1. Build the app (below).
-2. Follow the one-time Safari setup in [TESTING.md](TESTING.md#one-time-setup): turn on developer features, **Allow unsigned extensions** (resets every time Safari quits), enable Margin in Safari → Settings → Extensions, grant **Always Allow on Every Website**, and set Safari → Settings → General → **New tabs open with** → **Margin**.
+The fastest loop: Safari loads `extension/` straight from the repo. There's no Xcode build and no "Allow unsigned extensions" toggle.
+
+1. Safari → Settings → Advanced → enable **Show features for web developers**.
+2. **Develop → Add Temporary Extension…** → choose this repo's `extension/` folder.
+3. Safari → Settings → Extensions → Margin → website access **Always Allow on Every Website**.
+4. Safari → Settings → General → **New tabs open with** → **Margin**.
+
+**After `git pull` or any edit:** reload Margin from Safari → Settings → Extensions (or remove it and add the folder again), then reload open pages. A temporary extension doesn't survive quitting Safari, so add it again after a relaunch.
+
+**Don't run both copies.** If the Xcode-built Margin app is also installed, turn that one off in Safari → Settings → Extensions. Two copies keep separate spaces, pins, and archives, and fight over the new-tab page.
 
 ## Building for Safari (local, macOS)
+
+Only needed for a real installable app (or if your Safari has no "Add Temporary Extension…"). The Xcode build is unsigned, so it also needs Safari → Settings → Developer → **Allow unsigned extensions**, which resets every time Safari quits.
 
 The Xcode project is generated locally and not committed (`xcode/` is git-ignored). From the repo root:
 
@@ -87,4 +97,4 @@ npm run test:e2e    # Playwright + headless Chromium (uses an installed Chromium
 npm run icons       # regenerate extension/icons
 ```
 
-To try it in Chrome: chrome://extensions → Developer mode → Load unpacked → `extension/`.
+To try it in Chrome: chrome://extensions → Developer mode → Load unpacked → `extension/`, and use the reload icon after changes. This is handy for fast iteration; check Safari-specific behavior (favicons, shortcuts, new tab) in Safari.
