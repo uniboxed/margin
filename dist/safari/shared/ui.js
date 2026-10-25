@@ -411,7 +411,10 @@
     menu.addEventListener('pointerover', (event) => event.target.closest('.menu-item')?.focus({ preventScroll: true }));
     menu.addEventListener('pointerleave', () => menu.focus({ preventScroll: true }));
     menu.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') return closeMenu();
+      if (event.key === 'Escape') {
+        closeMenu();
+        return Margin.shell?.focusCard(); // fitted layout: keys back to the page
+      }
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
       event.preventDefault();
       const items = [...menu.querySelectorAll('.menu-item')];
@@ -420,8 +423,16 @@
       items[(at + step + items.length) % items.length]?.focus();
     });
     // Any press outside the menu (in the sidebar or on the page) closes it.
+    // Presses inside the sidebar are judged here: in a closed shadow root, a
+    // document listener only sees the host (composedPath() and target hide
+    // everything inside), so it can't tell a press on the menu from one
+    // elsewhere in the sidebar, and used to close the menu before its click.
+    root.addEventListener('pointerdown', (event) => {
+      if (!menu.hidden && !menu.contains(event.target)) closeMenu();
+    }, true);
     doc.addEventListener('pointerdown', (event) => {
-      if (!menu.hidden && !event.composedPath().includes(menu)) closeMenu();
+      const inSidebar = root.contains(event.target) || event.target === root.getRootNode().host;
+      if (!menu.hidden && !inSidebar) closeMenu();
     }, true);
     doc.defaultView?.addEventListener('blur', closeMenu);
 
