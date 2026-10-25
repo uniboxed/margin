@@ -14,6 +14,9 @@ test('a fresh HTML load before parsing is fitted', () => {
   // Other content scripts' nodes (and Margin's own hosts) don't count as parsing.
   assert.equal(skipReason({ ...fresh, kids: ['MARGIN-SIDEBAR-HOST', 'STYLE'] }), null);
   assert.equal(skipReason({ ...fresh, charset: 'utf-8' }), null);
+  // HTML 4.01 Transitional without a system id is plain quirks (compatMode), with one standards-like: fitted.
+  assert.equal(skipReason({ ...fresh, doctype: { publicId: '-//W3C//DTD HTML 4.01//EN', systemId: 'http://www.w3.org/TR/html4/strict.dtd' } }), null);
+  assert.equal(skipReason({ ...fresh, doctype: { publicId: '-//W3C//DTD XHTML 1.0 Strict//EN', systemId: '' } }), null);
 });
 
 test('loads that can\'t be fitted say why', () => {
@@ -32,6 +35,8 @@ test('loads that can\'t be fitted say why', () => {
     [{ origin: 'null' }, /sandboxed/],
     [{ crossOriginIsolated: true }, /isolated/],
     [{ compatMode: 'BackCompat' }, /quirks/],
+    [{ doctype: { publicId: '-//W3C//DTD XHTML 1.0 Transitional//EN', systemId: 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd' } }, /quirks/],
+    [{ doctype: { publicId: '-//W3C//DTD HTML 4.01 Frameset//EN', systemId: 'http://www.w3.org/TR/html4/frameset.dtd' } }, /quirks/],
     [{ optedOut: true }, /turned off/],
   ];
   for (const [change, why] of cases) assert.match(skipReason({ ...fresh, ...change }) ?? '', why, JSON.stringify(change));

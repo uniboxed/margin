@@ -538,6 +538,8 @@
     return reason ? hide() : show('toggle');
   }
   Margin.content.sidebar = { show, hide, toggle };
+  // Something of Margin's is taking keys (fitted layout: don't hand them to the page).
+  Margin.content.uiBusy = () => sidebar.isBusy() || !!Margin.content.paletteOpen?.();
 
   // Briefly show the sidebar (after ⌘⌥←/→) so the new space is visible even
   // in auto-hide mode. Hovering or toggling during the peek keeps it open.

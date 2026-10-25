@@ -26,9 +26,18 @@
     if (p.crossOriginIsolated) return 'cross-origin isolated page';
     // A srcdoc frame is always in standards mode (WebKit
     // HTMLConstructionSite), whatever doctype is written into it.
-    if (p.compatMode === 'BackCompat') return 'quirks-mode page';
+    if (p.compatMode === 'BackCompat' || limitedQuirks(p.doctype)) return 'quirks-mode page';
     if (p.optedOut) return 'turned off for this page (loop breaker or a failed fit)';
     return null;
+  }
+
+  // Doctypes that put a page in limited-quirks mode (HTML spec; compatMode
+  // still says CSS1Compat), which a srcdoc frame also ignores.
+  function limitedQuirks(doctype) {
+    const pub = String(doctype?.publicId ?? '').toLowerCase();
+    const sys = String(doctype?.systemId ?? '');
+    if (pub.startsWith('-//w3c//dtd xhtml 1.0 transitional//') || pub.startsWith('-//w3c//dtd xhtml 1.0 frameset//')) return true;
+    return !!sys && (pub.startsWith('-//w3c//dtd html 4.01 transitional//') || pub.startsWith('-//w3c//dtd html 4.01 frameset//'));
   }
 
   // Loop breaker: building the shell this often for one URL, without the page

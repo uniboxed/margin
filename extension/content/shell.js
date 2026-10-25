@@ -69,6 +69,7 @@
     origin: self.origin,
     crossOriginIsolated: !!self.crossOriginIsolated,
     compatMode: document.compatMode,
+    doctype: document.doctype && { publicId: document.doctype.publicId, systemId: document.doctype.systemId },
     optedOut: (readJson(NO_FIT) ?? []).includes(href) || loop.tooMany,
   });
   if (loop.tooMany) optOut(); // for the rest of this tab's session
@@ -180,7 +181,10 @@
     }
     // A page's <meta> CSP also binds the forms Margin rebuilds here (a
     // form-action rule is checked again on redirects). Only ever added: a
-    // policy stays in force once applied.
+    // policy stays in force once applied. Not before the card's document
+    // exists: it would inherit the policy from its start, ahead of the page's
+    // <meta>, and block what comes before it.
+    if (!card) return;
     for (const meta of pageHead.querySelectorAll('meta[http-equiv]')) {
       if (meta.httpEquiv.toLowerCase() !== 'content-security-policy' || cspCopied.has(meta.content)) continue;
       cspCopied.add(meta.content);
@@ -336,7 +340,9 @@
     if (event.button !== 0) return;
     setTimeout(() => {
       const active = document.activeElement;
-      if (card && (!active || active === document.body)) card.focus();
+      // Not while the palette, a space editor or the tab menu is open: a
+      // click on a button there leaves focus nowhere, but they want the keys.
+      if (card && (!active || active === document.body) && !Margin.content?.uiBusy?.()) card.focus();
     });
   }, true);
 
@@ -376,14 +382,15 @@
   // <table><form><tr><td><input>…: the parser puts the form in the table
   // empty and ties the later controls to it, a tie the markup doesn't carry.
   // Written out as form="…", or those forms wouldn't submit in the card.
-  const FORM_CONTROLS = 'button, fieldset, input, object, output, select, textarea';
+  // Where the parser's tie ended (</form>) leaves no trace either, so only
+  // the certain scope is tied: the form's own row, or its table section.
+  const FORM_CONTROLS = 'button:not([type="button" i]):not([type="reset" i]), fieldset, input, object, output, select, textarea';
   function tieTableForms(root) {
     let n = 0;
     for (const form of root.querySelectorAll('table form, tbody form, thead form, tfoot form, tr form')) {
-      if (!/^(table|tbody|thead|tfoot|tr)$/.test(form.parentElement?.localName ?? '') || form.parentElement.closest('form')) continue;
-      const table = form.closest('table');
-      if (!table) continue;
-      const walker = document.createTreeWalker(table, NodeFilter.SHOW_ELEMENT);
+      const scope = form.parentElement;
+      if (!/^(table|tbody|thead|tfoot|tr)$/.test(scope?.localName ?? '') || scope.closest('form')) continue;
+      const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
       walker.currentNode = form;
       for (let el = walker.nextNode(); el; el = walker.nextNode()) {
         if (el.localName === 'form') break;

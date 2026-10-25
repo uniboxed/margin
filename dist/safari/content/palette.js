@@ -220,6 +220,7 @@
     if (command === 'show-palette') palette.open(); // ⌘T, via the new-tab page
   };
   c.openPalette = () => palette.open();
+  c.paletteOpen = () => palette.isOpen();
   const prev = c.onState;
   c.onState = (...args) => {
     prev?.(...args);
