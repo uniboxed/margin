@@ -4,8 +4,8 @@
 // it up, or handed over at once if core is already waiting.
 //
 // A content theme is { id, geometry: { inset, radius, rail? }, createPalette,
-// mount({ shadow, document, send, onNewTab, onWidth }) → view }, where view
-// is { isBusy(), width(), update(state, ctx), ready(), setColorScheme(s),
+// mount({ shadow, document, send, onNewTab, onWidth, onScroll }) → view }, where view
+// is { isBusy(), width(), update(state, ctx: { windowId, tabId, fit, scroll? }), ready(), instantOnce?(), setColorScheme(s),
 // setLayout({ open, docked, width, rail: { width, expanded } | null }),
 // setWidth(px), setLoading(on, { instant }),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),

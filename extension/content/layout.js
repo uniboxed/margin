@@ -135,6 +135,7 @@ export function startLayout(page, { loader }) {
     railRest = null;
   };
   function show(why) {
+    if (!page.active()) return; // out of the way (Chrome, not in full screen): nothing to open
     clearTimeout(hideTimer);
     hideTimer = null;
     cancelRail();
@@ -262,5 +263,11 @@ export function startLayout(page, { loader }) {
     settle: () => { if (!reason) setOpen(pinnedOpen()); },
     // Once the theme is mounted: open if it was hovered or toggled before.
     reopen: () => { if (reason) setOpen(true); },
+    // The page was left for another tab: an open-over-the-page sidebar
+    // closes here (the next page opens its own, content/core.js), so coming
+    // back doesn't find it still open.
+    leave: () => { cancelRail(); if (reason) hide(); },
+    // How it's open right now ('hover' | 'toggle' | 'peek' | null).
+    reason: () => reason,
   };
 }

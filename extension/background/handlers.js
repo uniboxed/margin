@@ -13,16 +13,53 @@ import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
+import { getScroll, setScroll } from './scroll.js';
+
+// After a switch from the sidebar while it was open over the page (hovered,
+// toggled, or the rail expanded): the page shown next opens it the same way
+// (`why`), so the sidebar doesn't vanish and come back on every switch
+// (content/layout.js). A page that isn't listening yet (loading, or Safari
+// reloading a tab it had unloaded) gets it with `hello` for a few seconds.
+const carried = new Map(); // tab id → { why, until }
+function carryOpen(tabId, why) {
+  const reason = why === 'toggle' ? 'toggle' : 'hover';
+  carried.set(tabId, { why: reason, until: now() + 10000 });
+  api.tabs.sendMessage(tabId, { type: 'command', command: 'carry-open', why: reason }).then(() => carried.delete(tabId), () => {});
+}
+function takeCarried(tabId) {
+  const entry = carried.get(tabId);
+  carried.delete(tabId);
+  return entry && entry.until > now() ? entry.why : null;
+}
+// Only within the window the switch was made from (another window's page
+// stays visible, so its own sidebar stays open there).
+async function carryIfSameWindow(tabId, why, windowId) {
+  const tab = await api.tabs.get(tabId).catch(() => null);
+  if (tab && windowId != null && tab.windowId === windowId) carryOpen(tabId, why);
+}
 
 export const handlers = {
   async hello(_, sender) {
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen };
+    const carry = sender.tab?.id != null ? takeCarried(sender.tab.id) : null;
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry };
   },
-  /** @param {{ tabId: number }} message */
-  async activateTab({ tabId }) {
+  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle' }} message `show`: keep the sidebar open there */
+  async activateTab({ tabId, show }, sender) {
     await focusTab(tabId);
+    if (show) await carryIfSameWindow(tabId, show, sender.tab?.windowId);
+  },
+  // The sidebar's scroll position in this page's window (background/scroll.js).
+  /** @param {{ windowId?: number }} message */
+  async sidebarScroll({ windowId }, sender) {
+    const id = windowId ?? sender.tab?.windowId;
+    return id == null ? 0 : getScroll(id);
+  },
+  /** @param {{ top: number, windowId?: number }} message */
+  async setSidebarScroll({ top, windowId }, sender) {
+    const id = windowId ?? sender.tab?.windowId;
+    if (id != null && Number.isFinite(top)) await setScroll(id, top);
   },
   // content/shell.js, as a page starts: is this Safari loading, as it's shown,
   // a tab it had unloaded (shown in the last few seconds, same URL)? Then
@@ -50,12 +87,18 @@ export const handlers = {
   },
   // Closing from Margin archives the tab, like Arc.
   /** @param {{ tabId: number }} message */
-  async closeTab({ tabId }) {
+  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle' }} message `show`: closing the shown tab from an open sidebar keeps it open on the next one */
+  async closeTab({ tabId, show }) {
     await mutate((s) => {
       const tab = s.tabs[tabId];
       return tab && /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
     });
+    const closing = show ? await api.tabs.get(tabId).catch(() => null) : null;
     await api.tabs.remove(tabId);
+    if (closing?.active) {
+      const [next] = await api.tabs.query({ active: true, windowId: closing.windowId }).catch(() => []);
+      if (next?.id != null) carryOpen(next.id, show);
+    }
   },
   /** @param {{ archiveId: string, windowId?: number, replaceTabId?: number }} message */
   async restoreArchive({ archiveId, windowId, replaceTabId }) {
@@ -144,16 +187,18 @@ export const handlers = {
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
   },
-  /** @param {{ pinId: string, windowId?: number }} message */
-  async openPin({ pinId, windowId }) {
+  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle' }} message `show`: keep the sidebar open there */
+  async openPin({ pinId, windowId, show }) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
     const key = M.normalizeUrl(pin.url);
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
-    if (existing) await focusTab(existing.id);
-    else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
+    if (existing) {
+      await focusTab(existing.id);
+      if (show) await carryIfSameWindow(existing.id, show, windowId);
+    } else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
   },
   /** @param {{ windowId: number, spaceId: string }} message */
   async setSpace({ windowId, spaceId }) {

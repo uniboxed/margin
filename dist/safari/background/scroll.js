@@ -1,0 +1,25 @@
+// The sidebar's scroll position, one per window, so every page's sidebar
+// opens where the last one was (content/core.js, the new-tab page): one
+// sidebar, not one per page. Kept in storage.session, which outlives the
+// background's sleeps but not the browser.
+import { api } from './store.js';
+
+const KEY = 'sidebarScroll';
+let positions = null; // Promise<{ [windowId]: px }>, read once (calls in between share it)
+let saveTimer = null;
+
+function load() {
+  positions ??= (async () => (await api.storage.session?.get(KEY).catch(() => null))?.[KEY] ?? {})();
+  return positions;
+}
+
+export async function getScroll(windowId) {
+  return (await load())[windowId] ?? 0;
+}
+
+export async function setScroll(windowId, top) {
+  const all = await load();
+  all[windowId] = Math.max(0, Math.round(top));
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => api.storage.session?.set({ [KEY]: all }).catch(() => {}), 500);
+}

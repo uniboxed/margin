@@ -37,7 +37,30 @@ export function mount({ api, self, send, windowed = false }) {
   document.body.innerHTML = newtabHtml; // the theme's own markup (newtab.html)
 
   const dark = matchMedia('(prefers-color-scheme: dark)');
-  const sidebar = createSidebar({ document, send, mode: 'newtab', onNewTab: () => palette.open() });
+  // The tab list's scroll position is the window's (background/scroll.js),
+  // shared with the sidebars on its pages.
+  let scrollTimer = null;
+  let scrollTop = 0;
+  let scrollGen = 0; // the user's own scrolling wins over a late reply
+  const flushScroll = () => {
+    if (scrollTimer == null) return;
+    clearTimeout(scrollTimer);
+    scrollTimer = null;
+    send('setSidebarScroll', { top: scrollTop });
+  };
+  const onScroll = (top) => {
+    scrollGen++;
+    scrollTop = top;
+    scrollTimer ??= setTimeout(flushScroll, 150);
+  };
+  // Saved before a switch from the sidebar, so the next page asks for the right one.
+  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab']);
+  /** @type {import('../../../types/margin').Send} */
+  const sidebarSend = (type, ...rest) => {
+    if (SWITCHES.has(type)) flushScroll();
+    return send(type, ...rest);
+  };
+  const sidebar = createSidebar({ document, send: sidebarSend, mode: 'newtab', onNewTab: () => palette.open(), onScroll });
   const applyColorScheme = () => sidebar.setColorScheme(dark.matches ? 'dark' : 'light');
   applyColorScheme();
   dark.addEventListener('change', applyColorScheme);
@@ -282,19 +305,34 @@ export function mount({ api, self, send, windowed = false }) {
   // Settles once the first state is drawn (the palette then has its space's color).
   let firstDrawn;
   const firstState = new Promise((resolve) => { firstDrawn = resolve; });
+  let pendingScroll = null; // applied by the next refresh
   async function refresh() {
     const mine = ++version;
     const next = await api.storage.local.get(null);
     if (mine !== version || !next.spaces?.length) return;
     state = next;
-    sidebar.update(state, { windowId: windowId(), tabId: self?.id });
+    sidebar.update(state, { windowId: windowId(), tabId: self?.id, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    pendingScroll = null;
     renderLauncher();
     palette.refresh();
     firstDrawn();
   }
 
   api.storage.onChanged.addListener((_, area) => area === 'local' && refresh());
-  refresh();
+  // Shown again (or first): the current state, at the window's scroll position.
+  const shown = () => {
+    const gen = scrollGen;
+    send('sidebarScroll').then((top) => {
+      if (!Number.isFinite(top) || gen !== scrollGen) return;
+      pendingScroll = top;
+      refresh(); // drawn with the state read now, then scrolled
+    });
+    refresh();
+  };
+  document.addEventListener('visibilitychange', () => (document.visibilityState === 'visible' ? shown() : flushScroll()));
+  addEventListener('pagehide', flushScroll);
+  addEventListener('pageshow', (event) => event.persisted && shown());
+  shown();
 
   // A fresh new tab the background didn't hand to the previous tab (⌘N's first
   // tab): the palette opens over this page, once the state is in.
