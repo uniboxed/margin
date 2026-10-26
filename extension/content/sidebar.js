@@ -134,10 +134,15 @@
   }
   // A switch to a sleeping tab answers before it's done (background.js
   // switchTo): this page veils itself meanwhile.
+  // The clicked row spins from the click on (a check comes first); the veil
+  // only once the reply says the tab is being woken.
   const sendMessage = send;
   send = async (type, payload, retry) => {
+    const switchingRow = type === 'activateTab' && payload?.tabId != null && !veil.classList.contains('on');
+    if (switchingRow) sidebar.setPending(payload.tabId);
     const result = await sendMessage(type, payload, retry);
     if ((type === 'activateTab' || type === 'openPin') && result?.waking != null) showSwitching(result.waking);
+    else if (switchingRow && !veil.classList.contains('on')) sidebar.setPending(null);
     return result;
   };
   Margin.content.send = send;

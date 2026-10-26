@@ -109,7 +109,12 @@
   sheet.replaceSync(`
     html[data-margin-shell], html[data-margin-shell] > body {
       margin: 0 !important; padding: 0 !important; height: 100% !important; overflow: hidden !important;
-      background: #9c9da1 !important; /* sidebar.css --frame */
+      /* The page's own canvas, not the frame's gray (the sidebar and the
+         docked style draw the frame around the card): when Safari shows a tab
+         it has never drawn (one Margin woke in the background), the card
+         paints a moment after the shell, and gray there read as one more
+         flash. */
+      background: Canvas !important;
     }
     html[data-margin-shell] > body > iframe {
       position: fixed !important; display: block !important; margin: 0 !important; padding: 0 !important;
@@ -731,7 +736,9 @@
     if (styles) await styles;
     // The page's canvas (white, or dark for a dark color-scheme) behind it,
     // not Margin's gray, for pages without a background of their own.
-    frame.style.setProperty('color-scheme', win.getComputedStyle(doc.documentElement).colorScheme || 'normal');
+    const scheme = win.getComputedStyle(doc.documentElement).colorScheme || 'normal';
+    frame.style.setProperty('color-scheme', scheme);
+    shell.style.setProperty('color-scheme', scheme); // the shell's canvas behind the card, the same
     // Right away, not in a frame callback: WebKit doesn't render a hidden
     // document until its load event, so one would wait for every image.
     release('page ready');
