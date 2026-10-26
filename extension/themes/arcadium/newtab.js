@@ -318,7 +318,8 @@ export function mount({ api, self, send, windowed = false }) {
     firstDrawn();
   }
 
-  api.storage.onChanged.addListener((_, area) => area === 'local' && refresh());
+  // Not while hidden: it catches up when shown (below).
+  api.storage.onChanged.addListener((_, area) => area === 'local' && !document.hidden && refresh());
   // Shown again (or first): the current state, at the window's scroll position.
   const shown = () => {
     const gen = scrollGen;
