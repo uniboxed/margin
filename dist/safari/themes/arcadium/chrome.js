@@ -1,0 +1,105 @@
+// Arcadium's chrome around the page: the Arc frame and the page card's edge
+// while docked, the page-load pill, the pull-to-refresh and swipe badges and
+// the pinch-zoom readout. content/core.js decides when each shows; this file
+// only draws them (styles/sidebar.css).
+import { el } from '../../shared/dom.js';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+export function createChrome(doc) {
+  // Built with DOM calls (no innerHTML: some pages enforce Trusted Types).
+  const svg = (tag, attrs) => {
+    const node = doc.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+    return node;
+  };
+  // Arc-style frame: sidebar-colored strips around the page card with its
+  // corners, shown while the sidebar is open. Never takes clicks.
+  const frame = el(doc, 'div', { class: 'frame', 'aria-hidden': 'true' }, el(doc, 'div', { class: 'hole' }));
+  // The page card's continuous corners and soft shadow, above the sidebar so
+  // the shadow also falls on its edge (sidebar.css .card-edge).
+  const cardEdge = el(doc, 'div', { class: 'card-edge', 'aria-hidden': 'true' });
+  // Arc-style page-load indicator: a small dark pill, centered over the page
+  // (in the frame's top strip when docked), shown while the page loads.
+  const loader = el(doc, 'div', { class: 'loader', 'aria-hidden': 'true' }, el(doc, 'div', { class: 'bar' }));
+  // Pull-to-refresh indicator: a dark round badge that slides down with the
+  // pull, its ring filling to the threshold, then spins while the page
+  // reloads.
+  const pullRing = svg('circle', { class: 'ring', cx: 14, cy: 14, r: 10, pathLength: 100 });
+  const pullArrow = svg('path', { class: 'arrow', d: 'M14 8.5v10M9.75 14.5 14 18.75l4.25-4.25' });
+  const pullIcon = svg('svg', { viewBox: '0 0 28 28', width: 28, height: 28 });
+  pullIcon.append(svg('circle', { class: 'track', cx: 14, cy: 14, r: 10 }), pullRing, pullArrow);
+  const pull = el(doc, 'div', { class: 'pull', 'aria-hidden': 'true' }, pullIcon);
+  // Swipe back/forward badge (Arc): a dark circle centered on the page's left
+  // (back) or right (forward) edge, the arrow in its visible half; it darkens
+  // as the swipe goes on.
+  const swipeIcon = svg('svg', { viewBox: '0 0 36 36', width: 36, height: 36 });
+  swipeIcon.append(svg('path', { d: 'M28 18H8.5M17 9.5 8.5 18l8.5 8.5' }));
+  const swipe = el(doc, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
+  // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
+  const zoomHud = el(doc, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
+
+  const sized = [frame, cardEdge, loader, pull, swipe, zoomHud];
+  const inFrame = [loader, pull, swipe, zoomHud];
+
+  return {
+    frame, cardEdge, loader, pull, swipe, zoomHud,
+    // While docked, the frame shows and the indicators sit over the card.
+    setLayout({ docked, width }) {
+      frame.classList.toggle('open', docked);
+      cardEdge.classList.toggle('open', docked);
+      for (const node of inFrame) node.classList.toggle('in-frame', docked);
+      this.setWidth(width);
+    },
+    setWidth(width) {
+      for (const node of sized) node.style.setProperty('--width', `${width}px`);
+    },
+    setColorScheme(scheme) {
+      frame.dataset.theme = scheme;
+    },
+    setLoading(on, { instant = false } = {}) {
+      if (on && instant) {
+        // Taking over from the placeholder's pill: no fade-in dip.
+        loader.classList.add('instant');
+        requestAnimationFrame(() => requestAnimationFrame(() => loader.classList.remove('instant')));
+      }
+      loader.classList.toggle('on', on);
+    },
+    // phase: 'idle' | 'tracking' | 'armed' | 'refreshing'; progress 0…1+.
+    setPull({ phase, progress = 0 }) {
+      if (phase === 'idle') {
+        pull.classList.remove('tracking', 'armed', 'refreshing');
+        pull.style.removeProperty('--pull');
+        return;
+      }
+      if (phase === 'refreshing') {
+        pull.classList.remove('tracking');
+        pull.classList.add('armed', 'refreshing');
+        pull.style.setProperty('--pull', '1');
+        return;
+      }
+      pull.classList.add('tracking');
+      pull.classList.toggle('armed', phase === 'armed');
+      pull.style.setProperty('--pull', String(Math.min(progress, 1.2)));
+    },
+    // phase: 'idle' | 'tracking' | 'armed' | 'going'; direction < 0 back, > 0 forward.
+    setSwipe({ phase, progress = 0, direction = 0 }) {
+      if (phase === 'idle') {
+        swipe.classList.remove('active', 'tracking', 'armed');
+        swipe.style.removeProperty('--swipe');
+        return;
+      }
+      swipe.classList.add('active');
+      swipe.classList.toggle('tracking', phase !== 'going');
+      swipe.classList.toggle('forward', direction > 0);
+      swipe.classList.toggle('armed', phase === 'armed' || phase === 'going');
+      swipe.style.setProperty('--swipe', phase === 'going' ? '1' : String(Math.min(progress, 1)));
+    },
+    // The page zoom level (1 = 100%), or null to hide the readout.
+    setZoom(level) {
+      if (level == null) return zoomHud.classList.remove('show');
+      zoomHud.textContent = `${Math.round(level * 100)}%`;
+      zoomHud.classList.add('show');
+    },
+  };
+}

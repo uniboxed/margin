@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { launch, evalInShadow, waitFor, launcherUrl } from './helpers.js';
+import { launch, evalInShadow, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, base, server, control;
 const reports = [];
@@ -23,7 +23,7 @@ before(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
   control = await ctx.context.newPage();
-  await control.goto(launcherUrl(ctx));
+  await gotoLauncher(control, ctx);
 });
 after(async () => {
   await ctx?.context.close();
@@ -31,7 +31,11 @@ after(async () => {
   server.close();
 });
 
-const setSettings = (patch) => control.evaluate((p) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: p }), patch);
+// The width is Arcadium's own setting (settings.themes.arcadium).
+const setSettings = async ({ sidebarWidth, ...patch }) => {
+  if (Object.keys(patch).length) await control.evaluate((p) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: p }), patch);
+  if (sidebarWidth != null) await control.evaluate((w) => chrome.runtime.sendMessage({ type: 'updateThemeSettings', themeId: 'arcadium', patch: { sidebarWidth: w } }), sidebarWidth);
+};
 const loaderState = (page) =>
   evalInShadow(page, 'margin-sidebar-host', function () {
     const el = this.querySelector('.loader');

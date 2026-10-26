@@ -9,8 +9,9 @@ import { api, load, mutate, newId, now } from './store.js';
 import { focusTab, instanceId, openTab, openedFrom, shownAt, shownUrl } from './tabs.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
-import { queueDockedSync, whenDockedSynced } from './registered.js';
+import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS } from './navigation.js';
+import { THEMES, themeFor } from '../themes/index.js';
 
 export const handlers = {
   async hello(_, sender) {
@@ -32,7 +33,7 @@ export const handlers = {
     const before = shownUrl.get(id);
     return !before || before.split('#')[0] === String(url).split('#')[0];
   },
-  // A page that still had the previous copy of Margin (content/sidebar.js
+  // A page that still had the previous copy of Margin (content/core.js
   // reloadWhenSafe): its URL loaded again once the content scripts a page
   // load needs are registered. A GET (a reload would send a form again), from
   // the browser's side (the old copy's fitted layout would cancel a page's
@@ -41,7 +42,7 @@ export const handlers = {
   async reloadForUpdate(_, sender) {
     const { id, url } = sender.tab ?? {};
     if (id == null || !/^https?:/i.test(url ?? '') || url.includes('#')) return;
-    await whenDockedSynced();
+    await whenRegistered();
     await api.tabs.update(id, { url });
   },
   // Closing from Margin archives the tab, like Arc.
@@ -219,7 +220,7 @@ export const handlers = {
       .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
     if (!prev) return log('palette on the new-tab page', 'no web page in this window: a new window'), { openPalette: true };
     const alive = await api.tabs.sendMessage(prev.id, { type: 'ping' }).then((r) => r === 'pong').catch(() => false);
-    if (!alive) return log('palette on the new-tab page', `previous tab ${prev.id} has no Margin script`), { openPalette: true };
+    if (!alive) return log('palette on the new-tab page', `previous tab ${prev.id} has no Margin palette (yet)`), { openPalette: true };
     log(`palette over tab ${prev.id}, new tab closed`, 'web page in this window: ⌘T (or ⌘N made into a tab by macOS)');
     await focusTab(prev.id);
     await api.tabs.remove(tab.id).catch(() => {});
@@ -232,9 +233,34 @@ export const handlers = {
     const windowId = sender.tab?.windowId ?? (await api.windows?.getLastFocused())?.id;
     await navigate(action, 'page', windowId);
   },
-  /** @param {{ patch: object }} message */
+  /** @param {{ patch: Record<string, any> }} message */
   async updateSettings({ patch }) {
+    if ('theme' in patch && !THEMES[patch.theme]) return; // not a theme Margin has
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
+  },
+  // A theme's own settings (settings.themes[themeId]), merged into what's
+  // there (updateSettings replaces whole top-level keys).
+  /** @param {{ themeId: string, patch: object }} message */
+  async updateThemeSettings({ themeId, patch }) {
+    const theme = THEMES[themeId];
+    if (!theme) return;
+    await mutate((s) => {
+      const themes = s.settings.themes ?? {};
+      const own = theme.settingsOf({ themes: { [themeId]: { ...themes[themeId], ...patch } } });
+      return { ...s, settings: { ...s.settings, themes: { ...themes, [themeId]: own } } };
+    });
+  },
+  // A page the active theme's registered script missed (background/
+  // registered.js; Safari loads stored registrations a moment after it
+  // starts): inject the theme there (top frame, Margin's content-script
+  // world, like the registered script).
+  async injectTheme(_, sender) {
+    const tabId = sender.tab?.id;
+    if (tabId == null || !api.scripting?.executeScript) return false;
+    const { settings } = await load();
+    // At once, not when the page is idle: core already runs there and waits.
+    await api.scripting.executeScript({ target: { tabId }, files: [themeFor(settings).content], injectImmediately: true });
+    return true;
   },
   // Fitted layout on or off for one site (the palette), then reload the
   // page in the new layout once the registered script matches.
@@ -245,7 +271,7 @@ export const handlers = {
       const except = (s.settings.fitPagesExcept ?? []).filter((o) => o !== origin);
       return { ...s, settings: { ...s.settings, fitPagesExcept: fit ? except : [...except, origin] } };
     });
-    await queueDockedSync();
+    await queueRegistrations();
     if (sender.tab?.id != null) await api.tabs.reload(sender.tab.id);
   },
 };

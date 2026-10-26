@@ -1,23 +1,44 @@
-// Content scripts registered at runtime, following the settings.
+// Content scripts registered at runtime, following the settings: the active
+// theme, its first-paint placeholder and the fitted layout. Safari keeps
+// registrations across launches and loads none of them if a file one lists
+// is missing, so a path registered once must stay in the build (see
+// scripts/build.js LEGACY_FILES).
 import { platform } from '../shared/platform.js';
-import * as V from '../shared/view.js';
 import { excludePatterns } from '../shared/shell-logic.js';
+import { themeFor } from '../themes/index.js';
 import { api } from './store.js';
 
-// ---- docked placeholder ---------------------------------------------------
+// ---- the theme -------------------------------------------------------------
 
-// While "Keep open" is on, register content/docked.css: the browser applies it
-// before first paint, ahead of content scripts. Feature-detected; without the
+// The active theme's part on web pages (themes/<id>/content.bundle.js): it
+// runs right after Margin's own content script, so only that theme's code
+// loads. Pages that miss it (Safari loads stored registrations a moment
+// after it starts) ask for it instead (handlers.js injectTheme).
+const THEME_ID = 'margin-theme';
+async function syncTheme() {
+  if (!api.scripting?.registerContentScripts) return;
+  const { settings } = await api.storage.local.get('settings');
+  const want = themeFor(settings).content;
+  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [THEME_ID] });
+  if (current?.js?.length === 1 && current.js[0] === want) return;
+  if (current) await api.scripting.unregisterContentScripts({ ids: [THEME_ID] });
+  await api.scripting.registerContentScripts([
+    { id: THEME_ID, js: [want], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
+  ]);
+}
+
+// ---- first-paint placeholder ------------------------------------------------
+
+// While "Keep open" is on, register the theme's placeholder CSS (Arcadium:
+// themes/arcadium/docked/w-<width>.css, one per sidebar width): the browser
+// applies it before the page's first paint, ahead of content scripts, so the
+// docked layout is there from the first frame. Feature-detected; without the
 // scripting API the sidebar simply appears when the content script runs.
 const DOCKED_ID = 'margin-docked';
-// One placeholder file per sidebar width (content/docked/w-<width>.css), so
-// the first paint already matches the user's width.
 async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
-  const want = settings?.sidebarPinnedOpen
-    ? `content/docked/w-${V.sidebarWidth({ settings })}.css`
-    : null;
+  const want = settings?.sidebarPinnedOpen ? themeFor(settings).placeholder?.(settings) ?? null : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
   const have = current?.css?.[0] ?? null;
   if (want === have) return;
@@ -28,18 +49,21 @@ async function syncDockedCss() {
     ]);
   }
 }
-let dockedSync = Promise.resolve();
-export const queueDockedSync = () => {
-  dockedSync = dockedSync
+
+let registrations = Promise.resolve();
+export const queueRegistrations = () => {
+  registrations = registrations
+    .then(syncTheme)
+    .catch((err) => console.warn('[margin] theme', err))
     .then(syncDockedCss)
     .catch((err) => console.warn('[margin] docked css', err))
     .then(() => syncShell())
     .catch((err) => console.warn('[margin] fitted layout', err))
     .then(() => dropProbe());
-  return dockedSync;
+  return registrations;
 };
 // Settles once the registrations match the settings (reloadForUpdate).
-export const whenDockedSynced = () => dockedSync;
+export const whenRegistered = () => registrations;
 
 // ---- fitted layout ----------------------------------------------------------
 

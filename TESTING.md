@@ -300,3 +300,13 @@ Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then R
 - [ ] Pull-to-refresh and two-finger swipe back/forward; pinch zoom.
 - [ ] Site icons appear for new sites.
 - [ ] After changing Margin's website access in Safari's settings, Option+K still opens the palette once (not open-then-close).
+
+## Themes: Arcadium in its own folder (2026-10-25)
+
+Files were added and moved under `dist/safari/`: re-run `scripts/make-xcode.sh`, then Run in Xcode. Nothing should look or behave differently.
+
+- [ ] After installing, pages you open show the sidebar as before (it now comes from `themes/arcadium/`). Also right after relaunching Safari: the first restored tabs still get it (they ask the background for the theme if Safari hasn't loaded its registrations yet).
+- [ ] "Keep open": the first paint already shows the frame (placeholder), pages push or fit as before, and resizing still saves the width (it's now Arcadium's own setting; your old width carries over).
+- [ ] The new-tab page looks the same; Settings has a new "Theme" row showing Arcadium.
+- [ ] ⌘T still hands off to the palette over the previous tab (the new tab now closes without drawing the launcher first); ⌘N's first tab opens the palette over the launcher.
+- [ ] Loader pill, pull-to-refresh, swipe badge and pinch-zoom readout look and behave as before.

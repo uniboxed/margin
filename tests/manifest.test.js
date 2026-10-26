@@ -1,15 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as shortcuts from '../extension/shared/shortcuts.js';
-import * as view from '../extension/shared/view.js';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { buildStyles, buildDocked, DOCKED_WIDTHS } from '../scripts/build-styles.js';
-import { readdirSync } from 'node:fs';
+import { buildAssets, buildDocked, buildLegacyDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
+import { THEMES } from '../extension/themes/index.js';
+import { WIDTH } from '../extension/themes/arcadium/theme.js';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
 const exists = (path) => existsSync(new URL(path, root));
+// Every source file under extension/ with one of these extensions.
+const sources = (exts, dir = '') => readdirSync(new URL(dir || '.', root)).flatMap((name) => {
+  const path = `${dir}${name}`;
+  return statSync(new URL(path, root)).isDirectory() ? sources(exts, `${path}/`) : exts.some((e) => name.endsWith(e)) ? [path] : [];
+});
+const THEME_IDS = Object.keys(THEMES);
 
 test('manifest follows the SPEC constraints', () => {
   assert.equal(manifest.manifest_version, 3);
@@ -40,7 +46,10 @@ test('every file the manifest and new tab reference exists', () => {
     ...manifest.content_scripts.flatMap((c) => c.js),
     ...(manifest.web_accessible_resources ?? []).flatMap((w) => w.resources),
     manifest.chrome_url_overrides.newtab,
-    ...DOCKED_WIDTHS.map((w) => `content/docked/w-${w}.css`), // registered at runtime by background.js
+    // Registered at runtime by background/registered.js (and by earlier versions).
+    ...THEME_IDS.flatMap((id) => dockedWidths(id).map((w) => `themes/${id}/docked/w-${w}.css`)),
+    ...DOCKED_WIDTHS.map((w) => `content/docked/w-${w}.css`),
+    ...THEME_IDS.flatMap((id) => [`themes/${id}/content.js`, `themes/${id}/newtab.js`]), // bundled by scripts/build.js
   ];
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
   for (const [, ref] of html.matchAll(/(?:src|href)="([^"]+)"/g)) files.push(new URL(ref, new URL('newtab/', root)).pathname.split('/extension/')[1]);
@@ -48,45 +57,44 @@ test('every file the manifest and new tab reference exists', () => {
 });
 
 test('all extension scripts parse', () => {
-  const scripts = [
-    'background.js', 'state/model.js', 'newtab/newtab.js', 'shared/icons.js',
-    ...manifest.content_scripts.flatMap((c) => c.js),
-  ];
+  const scripts = sources(['.js']);
   for (const s of scripts) execFileSync(process.execPath, ['--check', new URL(s, root).pathname]);
 });
 
 test('no third-party URLs in extension code (search engine templates excepted)', () => {
   const allowed = /duckduckgo\.com|google\.com|bing\.com|ecosia\.org|startpage\.com|www\.w3\.org/;
-  for (const f of ['background.js', 'state/model.js', 'shared/view.js', 'shared/ui.js', 'shared/search.js', 'shared/shortcuts.js', 'shared/gestures.js', 'shared/pull.js', 'shared/icons.js',
-    'content/sidebar.js', 'content/palette.js', 'content/sidebar.css', 'content/palette.css', 'content/docked.template.css', 'newtab/newtab.html', 'newtab/newtab.js', 'newtab/newtab.css']) {
+  for (const f of sources(['.js', '.css', '.html'])) {
     const text = readFileSync(new URL(f, root), 'utf8');
     for (const [url] of text.matchAll(/https?:\/\/[^\s'"`)$]+/g)) if (!url.endsWith("://")) assert.match(url, allowed, `${f}: ${url}`);
   }
 });
 
-test('content/styles.js is up to date with the CSS files (run `npm run styles`)', () => {
-  assert.equal(readFileSync(new URL('content/styles.js', root), 'utf8'), buildStyles());
+test('each theme\'s assets.js is up to date with its CSS and markup (run `npm run styles`)', () => {
+  for (const id of THEME_IDS) assert.equal(readFileSync(new URL(`themes/${id}/assets.js`, root), 'utf8'), buildAssets(id), id);
 });
 
-test('content scripts carry their styles, without fetching anything', () => {
-  for (const f of ['content/sidebar.js', 'content/palette.js']) {
-    assert.match(readFileSync(new URL(f, root), 'utf8'), /^import \* as styles from '\.\/styles\.js';$/m, `${f} bundles its CSS`);
+test('themes carry their styles, and nothing on web pages fetches', () => {
+  for (const f of ['themes/arcadium/content.js', 'themes/arcadium/palette.js']) {
+    assert.match(readFileSync(new URL(f, root), 'utf8'), /^import \{ \w+Css \} from '\.\/assets\.js';$/m, `${f} bundles its CSS`);
   }
   assert.equal(manifest.web_accessible_resources, undefined, 'nothing exposed to web pages');
-  for (const f of ['content/sidebar.js', 'content/palette.js', 'shared/ui.js']) {
+  for (const f of sources(['.js']).filter((p) => p.startsWith('content/') || p.startsWith('themes/'))) {
     assert.ok(!readFileSync(new URL(f, root), 'utf8').includes('fetch('), `${f} must not fetch`);
   }
 });
 
 test('first-paint placeholders: one up-to-date file per sidebar width, nothing else', () => {
-  const { WIDTH } = view;
   const expected = [];
   for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
-  assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match shared/view.js');
-  assert.deepEqual(readdirSync(new URL('content/docked/', root)).sort(), expected.map((w) => `w-${w}.css`).sort());
+  assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match Arcadium\'s theme.js');
+  const names = expected.map((w) => `w-${w}.css`).sort();
+  assert.deepEqual(readdirSync(new URL('themes/arcadium/docked/', root)).sort(), names);
+  // The old path stays for Safari's stored registrations (same content).
+  assert.deepEqual(readdirSync(new URL('content/docked/', root)).sort(), names);
   for (const w of expected) {
-    const css = readFileSync(new URL(`content/docked/w-${w}.css`, root), 'utf8');
-    assert.equal(css, buildDocked(w), `w-${w}.css is stale: run npm run styles`);
+    const css = readFileSync(new URL(`themes/arcadium/docked/w-${w}.css`, root), 'utf8');
+    assert.equal(css, buildDocked('arcadium', w), `w-${w}.css is stale: run npm run styles`);
+    assert.equal(readFileSync(new URL(`content/docked/w-${w}.css`, root), 'utf8'), buildLegacyDocked(w), `content/docked/w-${w}.css is stale`);
     assert.equal(css.replace(/\/\*[\s\S]*?\*\//g, '').match(new RegExp(`${w}px`, 'g')).length, 4, 'margin-left, the frame edge, and the loader pill (twice)');
     assert.ok(!css.includes('{{WIDTH}}'));
   }
@@ -107,16 +115,20 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
     const block = css.slice(css.indexOf(selector));
     return block.match(new RegExp(`\\b${prop}: ([^;]+?)( !important)?;`))[1];
   };
-  const sidebar = read('content/sidebar.css');
+  const sidebar = read('themes/arcadium/styles/sidebar.css');
   const radius = decl(sidebar, '.frame .hole, .card-edge {', 'border-radius');
   const shadow = decl(sidebar, '.card-edge {\n  position: fixed', 'box-shadow');
   assert.equal(radius, '6.25px');
-  const docked = read('content/docked.template.css');
+  const docked = read('themes/arcadium/docked.template.css');
   assert.equal(decl(docked, 'html:not([data-margin-docked="off"])::after', 'border-radius'), radius);
   assert.ok(decl(docked, 'html:not([data-margin-docked="off"])::after', 'box-shadow').startsWith(`${shadow}, 0 0 0 100vmax`), 'placeholder: same shadow, then the frame');
-  const newtab = read('newtab/newtab.css');
+  const newtab = read('themes/arcadium/styles/newtab.css');
   assert.equal(decl(newtab, '#launcher, #page-card {', 'border-radius'), radius);
   assert.equal(decl(newtab, '#page-card {\n', 'box-shadow'), shadow);
+  // The fitted layout's card (content/shell.js) and the theme's geometry
+  // (content.js) agree with the CSS.
+  assert.match(read('themes/arcadium/content.js'), new RegExp(`geometry: \\{ inset: 8, radius: '${radius}' \\}`));
+  assert.match(read('content/shell.js'), new RegExp(`let layout = \\{ docked: true, width: 260, inset: 8, radius: '${radius}' \\};`));
   // Plain CSS only: nothing for the browser to load (no images, no url()).
   for (const css of [sidebar, docked, newtab]) assert.doesNotMatch(css, /border-image|url\(/);
 });
@@ -126,12 +138,10 @@ test('no CSS corner-shape (yet): Safari\'s experimental version passes @supports
   // corner Margin gave a squircle draw square; WebKitGTK 2.52 with the same
   // flag draws them round. @supports can't tell, so Margin doesn't use it until
   // Safari ships it working (DECISIONS.md, Follow-ups).
-  const files = ['content/sidebar.css', 'content/palette.css', 'newtab/newtab.css', 'content/docked.template.css', 'content/styles.js'];
-  for (const f of files) assert.doesNotMatch(readFileSync(new URL(f, root), 'utf8'), /corner-shape/, f);
-  for (const w of DOCKED_WIDTHS) assert.doesNotMatch(readFileSync(new URL(`content/docked/w-${w}.css`, root), 'utf8'), /corner-shape/, `w-${w}.css`);
+  for (const f of sources(['.css', '.js'])) assert.doesNotMatch(readFileSync(new URL(f, root), 'utf8'), /corner-shape/, f);
 });
 
 test('Settings toggles are switches where supported (checkboxes elsewhere)', () => {
-  const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
+  const html = readFileSync(new URL('themes/arcadium/newtab.html', root), 'utf8');
   for (const id of ['block-gestures', 'pull-to-refresh', 'swipe-navigation']) assert.match(html, new RegExp(`id="${id}" type="checkbox" switch`), id);
 });

@@ -88,7 +88,7 @@ export const openedFrom = new Map(); // opener tab id → { index, at }
 // it had time to (only where Margin has access: permissions.contains doesn't
 // prompt, executeScript could; and only in loaded pages: a sleeping tab gets
 // them when it loads). A page that still has the previous copy reloads
-// itself (content/sidebar.js).
+// itself (content/core.js).
 export async function injectIntoOpenTabs() {
   // The sidebar's entry: the one not in the page's own world (that's
   // content/shell-main.js), whatever the build named its file.

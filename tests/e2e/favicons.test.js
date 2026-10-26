@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, evalInShadow, waitFor, launcherUrl, buildSafariProfile } from './helpers.js';
+import { launch, evalInShadow, waitFor, buildSafariProfile, gotoLauncher } from './helpers.js';
 
 const PNG = readFileSync(new URL('../../extension/icons/icon-48.png', import.meta.url));
 // Icon fetching is Safari's (Chrome provides tab.favIconUrl), so these run
@@ -88,7 +88,7 @@ test('closed pins show the stored icon (as Safari would, without favIconUrl)', a
   const p = await visit(`${origin}/`);
   await waitFor(async () => (await favicons())[origin]);
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   const tabId = await ctx.worker.evaluate((o) => chrome.tabs.query({}).then((ts) => ts.find((t) => t.url.startsWith(o)).id), origin);
   const space = await ctx.worker.evaluate((id) => chrome.storage.local.get('tabSpace').then((s) => s.tabSpace[id]), tabId);
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));

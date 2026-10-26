@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEGACY_SHELL_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
+import { THEMES } from '../extension/themes/index.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -44,6 +45,14 @@ test('each build loads one bundled script per context', () => {
     const scripts = [...readFileSync(join(dir, 'newtab/newtab.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(scripts, ['newtab.bundle.js'], target);
     for (const file of ['content/content.bundle.js', 'content/shell.bundle.js', 'newtab/newtab.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
+    // Each theme: a content bundle the background registers ('margin-theme',
+    // the path from theme.js) and a new-tab module exporting mount().
+    assert.match(background, /margin-theme/, `${target}: the background registers the theme`);
+    for (const theme of Object.values(THEMES)) {
+      assert.ok(background.includes(JSON.stringify(theme.content)), `${target}: ${theme.content} is the registered path`);
+      assert.ok(statSync(join(dir, theme.content)).size > 0, `${target}/${theme.content}`);
+      assert.match(readFileSync(join(dir, theme.newtab), 'utf8'), /export\s*\{[^}]*\bmount\b/, `${target}/${theme.newtab} exports mount`);
+    }
     // Safari drops every registered script if a file one lists is missing, so
     // the sources an earlier version registered must still be there.
     for (const file of LEGACY_SHELL_FILES) assert.ok(statSync(join(dir, file)).isFile(), `${target}/${file}`);

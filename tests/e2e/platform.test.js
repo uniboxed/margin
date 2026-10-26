@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, sidebarSnapshot, tabsInBrowser, waitFor, buildSafariProfile, launcherUrl } from './helpers.js';
+import { launch, sidebarSnapshot, tabsInBrowser, waitFor, buildSafariProfile, gotoLauncher } from './helpers.js';
 
 const PNG = readFileSync(new URL('../../extension/icons/icon-48.png', import.meta.url));
 let server, base;
@@ -87,7 +87,7 @@ test('upgrading to the Safari build: saved ⌃⌘ defaults move to ⌥⌘↓/↑
       return chrome.storage.local.set({ settings });
     }));
     const page = await ctx.context.newPage();
-    await page.goto(launcherUrl(ctx));
+    await gotoLauncher(page, ctx);
     const cdp = await ctx.context.newCDPSession(page);
     await cdp.send('ServiceWorker.enable');
     await cdp.send('ServiceWorker.stopAllWorkers');
@@ -138,7 +138,7 @@ test('Safari: sideways swipes are blocked, scrolling is not; the setting turns i
 
     // The setting turns it off.
     const nt = await ctx.context.newPage();
-    await nt.goto(launcherUrl(ctx));
+    await gotoLauncher(nt, ctx);
     assert.equal(await nt.isVisible('#gestures-setting'), false, 'collapsed under Settings');
     await nt.click('#settings summary');
     assert.equal(await nt.isChecked('#block-gestures'), true);
@@ -166,7 +166,7 @@ test('Chrome build: no gesture blocking and no setting for it', async () => {
     await waitFor(() => page.evaluate(() => window.__wheel.length > 0));
     assert.equal(await page.evaluate(() => window.__wheel.some(Boolean)), false);
     const nt = await ctx.context.newPage();
-    await nt.goto(launcherUrl(ctx));
+    await gotoLauncher(nt, ctx);
     assert.equal(await nt.evaluate(() => document.getElementById('gestures-setting').hidden), true);
   } finally {
     await ctx.context.close();

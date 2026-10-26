@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, evalInShadow, waitFor, launcherUrl, buildSafariProfile } from './helpers.js';
+import { launch, evalInShadow, waitFor, buildSafariProfile, gotoLauncher } from './helpers.js';
 
 // Margin's scrolling rules in the Safari build (shared/gestures.js, shared/pull.js):
 // no page bounce (and so no Safari pull-to-refresh), Margin's own pull-to-refresh,
@@ -19,7 +19,7 @@ before(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
   control = await ctx.context.newPage();
-  await control.goto(launcherUrl(ctx));
+  await gotoLauncher(control, ctx);
 });
 after(async () => {
   await ctx?.context.close();
@@ -196,7 +196,7 @@ test('no swipe navigation over something that scrolls sideways, for a small swip
 
 test('pinch zoom uses the browser\'s page zoom for the tab (background setZoom/getZoom)', async () => {
   const page = await ctx.context.newPage();
-  await page.goto(launcherUrl(ctx));
+  await gotoLauncher(page, ctx);
   const tabId = await page.evaluate(() => chrome.tabs.getCurrent().then((t) => t.id));
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'setZoom', factor: 1.5 }));
   assert.equal(await ctx.worker.evaluate((id) => chrome.tabs.getZoom(id), tabId), 1.5);

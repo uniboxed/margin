@@ -1,8 +1,8 @@
 // Trackpad pull/swipe gestures, the logic only (no DOM): Margin's
 // replacements for Safari's pull-to-refresh and two-finger swipe back/forward,
 // which stop with the page's bounce and the swipe guard (shared/gestures.js).
-// Fed the page's wheel events; content/sidebar.js draws the indicators and
-// acts.
+// Fed the page's wheel events; content/core.js acts on them and the theme
+// draws the indicators.
 //
 // Web pages don't get the trackpad's gesture phases, which Safari uses to
 // ignore momentum and to know when the fingers lift, so they're inferred:

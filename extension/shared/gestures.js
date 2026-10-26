@@ -25,7 +25,7 @@
 //    with `overscroll-behavior-y: none` on <html>, which WebKit reads for the
 //    page (LocalFrameView::verticalOverscrollBehavior). Added as a separate
 //    stylesheet, never the page's own markup. Margin's own pull-to-refresh
-//    (shared/pull.js, content/sidebar.js) replaces Safari's.
+//    (shared/pull.js, content/core.js) replaces Safari's.
 // Limits: frames other than the top page (e.g. an embedded video) get their
 // own events, which Margin doesn't see; a swipe that starts mostly vertical
 // and turns sideways can still go back.

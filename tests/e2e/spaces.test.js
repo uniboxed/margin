@@ -1,13 +1,13 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, waitFor, launcherUrl } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server, nt;
 before(async () => {
   ctx = await launch();
   server = await startServer();
   nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .chip[data-space-id]');
 });
 after(async () => {

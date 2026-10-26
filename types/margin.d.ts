@@ -32,7 +32,6 @@ export interface Settings {
   paletteShortcut: string;
   sidebarShortcut: string;
   safariSearch: { id: string; name: string; template: string; at: number } | null;
-  sidebarWidth: number;
   blockGestures: boolean;
   pullToRefresh: boolean;
   swipeNavigation: boolean;
@@ -40,6 +39,8 @@ export interface Settings {
   fitPagesExcept: string[];
   shortcuts: Shortcuts;
   shortcutDefaults: string;
+  theme: string; // extension/themes/index.js
+  themes: Record<string, Record<string, unknown>>; // each theme's own settings
 }
 export interface State {
   spaces: Space[];

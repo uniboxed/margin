@@ -1,13 +1,14 @@
 // Builds ready-to-load extensions for each browser from the one shared source:
 //   extension/ (shared) + platform/<target>/manifest.json (overrides)
 //   → dist/<target>/, with shared/platform.js stamped for that browser.
-// Also regenerates content/styles.js and content/docked/ first.
+// Also regenerates the themes' generated files first (scripts/build-styles.js).
 // dist/ is committed (no Node needed on the Mac to use it); a unit test fails
 // if it's out of date. Usage: node scripts/build.js
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { THEMES } from '../extension/themes/index.js';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
@@ -47,19 +48,22 @@ export function buildTo(outDir, { profile, manifest = profile }) {
 }
 
 // Each context's entry module bundled into one plain script, so a page
-// injects one file (and the background and the new-tab page load one each).
+// injects Margin's core and the active theme as one file each (and the
+// background and the new-tab page load one each, plus the theme's).
 // Minified, but with names kept so errors stay readable. extension/ holds
 // ES modules, which content scripts and Safari's service worker can't load:
 // dist/ is what browsers run. The sources stay in dist/ too: Safari keeps
 // script registrations across launches and drops all of them if a file one
 // lists is missing (DECISIONS.md, 2026-10-25), and earlier versions
-// registered these two for the fitted layout.
+// registered these two for the fitted layout (and content/docked/w-*.css,
+// scripts/build-styles.js).
 const BUNDLES = { content: 'content/content.bundle.js', background: 'background.bundle.js', shell: 'content/shell.bundle.js', newtab: 'newtab/newtab.bundle.js' };
 export const LEGACY_SHELL_FILES = ['shared/shell-logic.js', 'content/shell.js'];
 
 function bundle(out, manifest) {
   const write = (file, entries, { format = 'iife' } = {}) => buildSync({
-    stdin: { contents: entries.map((f) => `import './${f}';`).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
+    // A module keeps its entry's exports (a theme's new-tab mount()).
+    stdin: { contents: entries.map((f) => (format === 'esm' ? `export * from './${f}';` : `import './${f}';`)).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
     bundle: true,
     format,
     target: 'esnext',
@@ -71,7 +75,7 @@ function bundle(out, manifest) {
     logLevel: 'warning',
   });
 
-  // Content scripts (the sidebar and palette).
+  // Margin's content script (its core on web pages; the theme is separate).
   const [sidebar] = manifest.content_scripts;
   write(BUNDLES.content, sidebar.js);
   sidebar.js = [BUNDLES.content];
@@ -88,6 +92,13 @@ function bundle(out, manifest) {
   if (!tag) throw new Error('newtab.html: module script not found');
   write(BUNDLES.newtab, [`newtab/${tag[1]}`], { format: 'esm' });
   writeFileSync(`${out}/newtab/newtab.html`, html.replace(tag[0], `<script src="${BUNDLES.newtab.split('/').pop()}" type="module"></script>`));
+
+  // Each theme: its part on web pages (registered by the background while
+  // it's the active theme) and its new-tab page (imported by newtab.js).
+  for (const theme of Object.values(THEMES)) {
+    write(theme.content, [`themes/${theme.id}/content.js`]);
+    write(theme.newtab, [`themes/${theme.id}/newtab.js`], { format: 'esm' });
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

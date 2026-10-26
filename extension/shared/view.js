@@ -142,14 +142,4 @@ function iconFor(state, item) {
   return (origin && state?.favicons?.[origin]?.data) || '';
 }
 
-// ---- sidebar width ---------------------------------------------------------
-// Resizable by dragging its right edge. Range measured from Arc (Tirth's
-// screenshots): 160–500 CSS px. Stored widths snap to 10px so the first-paint
-// placeholder (content/docked/w-<width>.css) has a file for every width.
-const WIDTH = { min: 160, max: 500, default: 260, step: 10 };
-const clampWidth = (w) => Math.min(WIDTH.max, Math.max(WIDTH.min, Number.isFinite(w) ? w : WIDTH.default));
-const snapWidth = (w) => clampWidth(Math.round(clampWidth(w) / WIDTH.step) * WIDTH.step);
-// The width to use for a state (missing or odd values fall back safely).
-const sidebarWidth = (state) => snapWidth(Number(state?.settings?.sidebarWidth ?? WIDTH.default));
-
-export { WIDTH, clampWidth, snapWidth, sidebarWidth, normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };
+export { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };

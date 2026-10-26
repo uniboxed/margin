@@ -21,7 +21,9 @@ export async function load() {
   // Saved under another build's default shortcuts (normalizeShortcuts moved
   // them): save, so pages, which read storage directly, use the new ones.
   if (raw.settings && raw.settings.shortcutDefaults !== cache.settings.shortcutDefaults) missing.push('settings');
-  else if (raw.settings && 'searchEngine' in raw.settings) missing.push('settings'); // drop the removed setting
+  // Removed settings to drop, or theme settings to fill in or move (a saved
+  // top-level sidebarWidth became Arcadium's): save, for the same reason.
+  else if (raw.settings && ('searchEngine' in raw.settings || 'sidebarWidth' in raw.settings || !raw.settings.themes || raw.settings.theme !== cache.settings.theme)) missing.push('settings');
   if (missing.length) await api.storage.local.set(Object.fromEntries(missing.map((key) => [key, cache[key]])));
   return cache;
 }

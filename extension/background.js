@@ -9,7 +9,7 @@ import { api, load, mutate, now, resync } from './background/store.js';
 import { injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers } from './background/handlers.js';
-import { queueDockedSync } from './background/registered.js';
+import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
 
@@ -89,11 +89,11 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// The docked placeholder and the fitted layout follow the settings.
+// The theme, its placeholder and the fitted layout follow the settings.
 api.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.settings) queueDockedSync();
+  if (area === 'local' && changes.settings) queueRegistrations();
 });
-queueDockedSync();
+queueRegistrations();
 
 // ---- auto-archive -----------------------------------------------------------
 
@@ -106,7 +106,7 @@ if (api.alarms) {
 }
 
 // Debug hook for Web Inspector and tests: `margin.archiveNow()`.
-globalThis.margin = { archiveNow: archiveStale, syncDockedCss: queueDockedSync, navigate };
+globalThis.margin = { archiveNow: archiveStale, syncRegistrations: queueRegistrations, navigate };
 
 // ---- commands -------------------------------------------------------------
 

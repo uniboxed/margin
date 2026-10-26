@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, launcherUrl } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -104,7 +104,7 @@ test('pin a tab; clicking the pin focuses the existing tab, or opens it if close
 test('switching space filters tabs; new tabs join the active space', async () => {
   const page = await openPage('space-a');
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const res = await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Work', emoji: '💼' }), windowId);
   assert.equal(res.ok, true);
@@ -138,7 +138,7 @@ test('one sidebar color: the same gray on every site, in every space, in Light a
 
   // A space with a different color doesn't tint it.
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Red', color: '#d63031' }), windowId);
   await waitFor(async () => (await sidebarSnapshot(lightSite)).chips.length >= 2);
@@ -159,7 +159,7 @@ test('one sidebar color: the same gray on every site, in every space, in Light a
 test('new-tab page renders the sidebar itself and gets no injected overlay', async () => {
   await openPage('nt-check');
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .margin-sidebar.newtab .tab');
   assert.equal(await nt.locator('margin-sidebar-host').count(), 0);
   // "+ New tab" opens the command palette (Arc-style), here and on web pages.
@@ -300,7 +300,7 @@ test('Keep open registers the first-paint placeholder for the current width; Mar
     }));
 
   await setKeepOpen(true);
-  await waitFor(async () => (await registered())?.endsWith('content/docked/w-260.css'));
+  await waitFor(async () => (await registered())?.endsWith('themes/arcadium/docked/w-260.css'));
   const page = await openPage('placeholder');
   // The placeholder pushed the first paint; Margin's live push now holds the
   // same width and the placeholder is switched off on this page.
@@ -338,7 +338,7 @@ test('exactly one highlighted tab, the current one, after opening and switching 
 
 test('right-click menu on tabs: pin, move to another space, close; no hover pin button', async () => {
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   const send = (message) => nt.evaluate((m) => chrome.runtime.sendMessage(m).then((r) => r?.result), message);
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const { spaceId: work } = await send({ type: 'createSpace', name: 'Menu test', emoji: '🧪', color: '#e17055' }); // windowId omitted: stays on the current space

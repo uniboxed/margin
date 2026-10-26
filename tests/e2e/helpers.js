@@ -135,3 +135,9 @@ export function paletteSnapshot(page) {
 // Margin's launcher page opened on purpose (not as a fresh ⌘T tab, which
 // hands off to the palette and closes itself).
 export const launcherUrl = (ctx) => `chrome-extension://${ctx.extensionId}/newtab/newtab.html#launcher`;
+// Opens the launcher and waits until the active theme has drawn it (the
+// new-tab page loads the theme's module, then mounts it).
+export async function gotoLauncher(page, ctx) {
+  await page.goto(launcherUrl(ctx));
+  await page.waitForSelector('#launcher');
+}

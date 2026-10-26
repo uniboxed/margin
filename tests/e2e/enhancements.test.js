@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, evalInShadow, waitFor, launcherUrl, buildSafariProfile, paletteSnapshot } from './helpers.js';
+import { launch, evalInShadow, waitFor, buildSafariProfile, paletteSnapshot, gotoLauncher } from './helpers.js';
 
 // Progressive enhancements (DECISIONS.md "Arc-closer with newer Safari
 // features"): each is used only where supported; otherwise Margin behaves as
@@ -31,7 +31,7 @@ before(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
   control = await ctx.context.newPage();
-  await control.goto(launcherUrl(ctx));
+  await gotoLauncher(control, ctx);
 });
 after(async () => {
   await ctx?.context.close();

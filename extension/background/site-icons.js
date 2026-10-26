@@ -3,7 +3,7 @@ import * as I from '../shared/icons.js';
 import { load, mutate, now } from './store.js';
 
 // Safari gives extensions no tab.favIconUrl. Each page reports its best icon
-// link (content/sidebar.js → pageIcon); the background fetches it once per
+// link (content/core.js → pageIcon); the background fetches it once per
 // site — no cookies, no third-party service — shrinks it to 32×32 where the
 // browser can, and stores a data: URL in state.favicons[origin]. Showing it
 // later makes no network request.

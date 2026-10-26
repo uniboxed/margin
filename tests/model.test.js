@@ -360,18 +360,6 @@ test('new window (⌘N) starts in the space of the most recently used window', (
   assert.equal(s.tabSpace[4], 'personal');
 });
 
-test('sidebar width: default 260, clamped to 160–500, snapped to 10px', () => {
-  assert.equal(M.defaultState().settings.sidebarWidth, 260);
-  assert.equal(view.sidebarWidth(M.defaultState()), 260);
-  assert.equal(view.sidebarWidth({ settings: {} }), 260);
-  assert.equal(view.sidebarWidth({ settings: { sidebarWidth: 'nonsense' } }), 260);
-  assert.equal(view.snapWidth(333), 330);
-  assert.equal(view.snapWidth(336), 340);
-  assert.equal(view.snapWidth(40), 160);
-  assert.equal(view.snapWidth(9000), 500);
-  assert.equal(view.clampWidth(171.5), 171.5, 'live dragging is not snapped');
-});
-
 test('navigation shortcut defaults match shared/shortcuts.js; stored values merge with defaults', async () => {
   await import('../extension/shared/shortcuts.js');
   assert.deepEqual(M.DEFAULT_SETTINGS.shortcuts, shortcuts.NAVIGATION);

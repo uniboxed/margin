@@ -28,6 +28,7 @@ declare var Margin: {
   platform?: import('../extension/shared/platform.js').Platform;
   content?: any;
   shell?: any;
+  theme?: any; // the active theme's content part (themes/register.js)
   [key: string]: any;
 };
 

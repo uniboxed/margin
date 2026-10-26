@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, tabsInBrowser, waitFor, launcherUrl } from './helpers.js';
+import { launch, startServer, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -18,7 +18,7 @@ after(async () => {
 
 async function newTab() {
   const page = await ctx.context.newPage();
-  await page.goto(launcherUrl(ctx));
+  await gotoLauncher(page, ctx);
   await page.waitForSelector('#sidebar .margin-sidebar');
   return page;
 }

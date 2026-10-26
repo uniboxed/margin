@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, evalInShadow, sidebarSnapshot, waitFor, launcherUrl } from './helpers.js';
+import { launch, startServer, evalInShadow, sidebarSnapshot, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -19,9 +19,12 @@ let control;
 const setSettings = async (patch) => {
   if (!control || control.isClosed()) {
     control = await ctx.context.newPage();
-    await control.goto(launcherUrl(ctx));
+    await gotoLauncher(control, ctx);
   }
-  await control.evaluate((p) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: p }), patch);
+  // The width is Arcadium's own setting (settings.themes.arcadium).
+  const { sidebarWidth, ...rest } = patch;
+  if (Object.keys(rest).length) await control.evaluate((p) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: p }), rest);
+  if (sidebarWidth != null) await control.evaluate((w) => chrome.runtime.sendMessage({ type: 'updateThemeSettings', themeId: 'arcadium', patch: { sidebarWidth: w } }), sidebarWidth);
 };
 const registered = () =>
   ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r[0]?.css?.[0] ?? null));
@@ -61,7 +64,7 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
   await page.mouse.move(334, 400, { steps: 3 });
   await page.mouse.up();
 
-  await waitFor(async () => (await settings()).sidebarWidth === 330, { timeout: 2000 });
+  await waitFor(async () => (await settings()).themes.arcadium.sidebarWidth === 330, { timeout: 2000 });
   assert.equal(await panelWidth(page), 330, 'snapped to 10px');
   assert.equal(await htmlLeft(page), 330);
   const hole = await evalInShadow(page, 'margin-sidebar-host', function () {
@@ -74,7 +77,7 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
     return { left: e.getBoundingClientRect().left, open: e.classList.contains('open'), radius: s.borderTopLeftRadius, shadow: s.boxShadow !== 'none', opacity: s.opacity };
   });
   assert.deepEqual(edge, { left: 330, open: true, radius: '6.25px', shadow: true, opacity: '1' }, 'card shadow follows');
-  await waitFor(async () => (await registered())?.endsWith('content/docked/w-330.css'));
+  await waitFor(async () => (await registered())?.endsWith('themes/arcadium/docked/w-330.css'));
 
   // Other tabs pick the width up.
   const other = await openPage('resize-other');
@@ -83,13 +86,13 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
 
   // Clamped to 160–500.
   await drag(page, 330, 20);
-  await waitFor(async () => (await settings()).sidebarWidth === 160);
+  await waitFor(async () => (await settings()).themes.arcadium.sidebarWidth === 160);
   await drag(page, 160, 1100);
-  await waitFor(async () => (await settings()).sidebarWidth === 500);
+  await waitFor(async () => (await settings()).themes.arcadium.sidebarWidth === 500);
 
   // Double-click resets to 260.
   await page.mouse.dblclick(500, 400);
-  await waitFor(async () => (await settings()).sidebarWidth === 260);
+  await waitFor(async () => (await settings()).themes.arcadium.sidebarWidth === 260);
   assert.equal(await htmlLeft(page), 260);
   await setSettings({ sidebarPinnedOpen: false });
   await page.close();
@@ -132,7 +135,7 @@ test('hover mode: resizing keeps the sidebar open and never moves the page', asy
   await page.waitForTimeout(250);
   // Floating card: left 8, so its edge is at 268.
   await drag(page, 268, 408);
-  await waitFor(async () => (await settings()).sidebarWidth === 400);
+  await waitFor(async () => (await settings()).themes.arcadium.sidebarWidth === 400);
   assert.equal((await sidebarSnapshot(page)).open, true, 'stayed open through the drag');
   assert.equal(await htmlLeft(page), 0);
   await page.mouse.move(900, 300);
@@ -146,11 +149,11 @@ test('hover mode: resizing keeps the sidebar open and never moves the page', asy
 
 test('the new-tab sidebar resizes too', async () => {
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .resizer');
   const box = await nt.locator('#sidebar .margin-sidebar').boundingBox();
   await drag(nt, box.x + box.width - 1, box.x + box.width + 99);
-  await waitFor(async () => (await settings()).sidebarWidth === 360);
+  await waitFor(async () => (await settings()).themes.arcadium.sidebarWidth === 360);
   assert.equal(Math.round((await nt.locator('#sidebar .margin-sidebar').boundingBox()).width), 360);
   await setSettings({ sidebarWidth: 260 });
   await nt.close();

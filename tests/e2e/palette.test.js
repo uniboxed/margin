@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, paletteSnapshot, sidebarSnapshot, tabsInBrowser, waitFor, launcherUrl } from './helpers.js';
+import { launch, startServer, paletteSnapshot, sidebarSnapshot, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -97,7 +97,7 @@ test('commands fallback: a background "open-palette" command toggles the palette
 
 test('the shortcut is a setting; the new tab has the palette and navigates in place', async () => {
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .margin-sidebar');
   await nt.click('#settings summary');
   assert.equal(await nt.inputValue('#shortcut'), '⌥K');

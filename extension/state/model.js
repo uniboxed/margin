@@ -3,6 +3,7 @@
 // their input; untouched top-level keys keep their identity so the
 // background can write only the keys that changed.
 import { platform, PROFILES } from '../shared/platform.js';
+import { THEMES, DEFAULT_THEME } from '../themes/index.js';
 /** @import { State } from '../../types/margin' */
 
 const ARCHIVE_CAP = 200;
@@ -23,11 +24,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   // Searches use the browser's engine (shared/search.js). Safari: the one
   // learned from Safari's own address-bar searches, { id, name, template, at }.
   safariSearch: null,
-  sidebarWidth: 260, // px, resizable 160–500 in 10px steps (shared/view.js)
   blockGestures: true, // Safari: no swipe back/forward, pinch for all tabs, or page bounce (shared/gestures.js)
   pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.js)
   swipeNavigation: true, // Safari: Margin's two-finger swipe back/forward (shared/pull.js)
-  sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (content/sidebar.js page listener)
+  sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (content/core.js page listener)
   // Safari, with "Keep open": pages go in a frame beside the sidebar, laid
   // out as in a narrower window (content/shell.js). Origins listed in
   // fitPagesExcept keep the push layout.
@@ -39,6 +39,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   shortcuts: Object.freeze({ ...(platform?.navigation ?? LEGACY_SHORTCUTS) }),
   // Which profile's defaults `shortcuts` started from (see normalizeShortcuts).
   shortcutDefaults: platform?.name ?? 'chrome',
+  // What Margin looks like (themes/index.js), and each theme's own settings
+  // ({ [themeId]: {...} }; Arcadium: sidebarWidth).
+  theme: DEFAULT_THEME,
+  themes: Object.freeze(Object.fromEntries(Object.values(THEMES).map((t) => [t.id, t.defaults]))),
 });
 
 const DEFAULT_SPACE = Object.freeze({
@@ -59,7 +63,11 @@ function defaultState() {
     tabSpace: {},
     pins: [],
     archive: [],
-    settings: { ...DEFAULT_SETTINGS, shortcuts: { ...DEFAULT_SETTINGS.shortcuts } },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      shortcuts: { ...DEFAULT_SETTINGS.shortcuts },
+      themes: Object.fromEntries(Object.entries(DEFAULT_SETTINGS.themes).map(([id, own]) => [id, { ...own }])),
+    },
     // Snapshot of open tabs, written by the background so content scripts
     // (which have no `tabs` API) can render from storage alone.
     tabs: {},
@@ -84,6 +92,8 @@ function normalizeState(raw = {}) {
       ...withoutKeys(raw.settings, REMOVED_SETTINGS),
       shortcuts: normalizeShortcuts(raw.settings, base.settings),
       shortcutDefaults: base.settings.shortcutDefaults,
+      theme: THEMES[raw.settings?.theme] ? raw.settings.theme : DEFAULT_THEME,
+      themes: normalizeThemes(raw.settings),
     },
     tabs: { ...raw.tabs },
     favicons: { ...raw.favicons },
@@ -91,9 +101,20 @@ function normalizeState(raw = {}) {
 }
 
 // Settings that no longer exist: `searchEngine` (Margin's own engine
-// choice, replaced by the browser's).
-const REMOVED_SETTINGS = ['searchEngine'];
+// choice, replaced by the browser's); `sidebarWidth` (now Arcadium's own,
+// settings.themes.arcadium; normalizeThemes moves a saved one there).
+const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth'];
 const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
+
+// Each theme's settings, filled in by the theme (which also takes over what
+// it used to keep among the top-level settings). Themes this build doesn't
+// have keep what's saved.
+function normalizeThemes(rawSettings) {
+  const saved = rawSettings?.themes && typeof rawSettings.themes === 'object' ? rawSettings.themes : {};
+  const themes = { ...saved };
+  for (const theme of Object.values(THEMES)) themes[theme.id] = theme.settingsOf(rawSettings);
+  return themes;
+}
 
 // Saved shortcuts include the defaults of the build that saved them. When
 // the defaults change (another build, e.g. Safari's ⌥⌘↓/↑ for tabs after
@@ -360,6 +381,7 @@ export {
   defaultState,
   normalizeState,
   normalizeShortcuts,
+  normalizeThemes,
   normalizeUrl,
   activeSpaceId,
   pinForUrl,

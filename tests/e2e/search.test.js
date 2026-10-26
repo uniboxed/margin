@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, startServer, paletteSnapshot, waitFor, launcherUrl, buildSafariProfile } from './helpers.js';
+import { launch, startServer, paletteSnapshot, waitFor, buildSafariProfile, gotoLauncher } from './helpers.js';
 
 // Safari build: no search API, so Margin follows the engine Safari itself
 // searches with, learned from Safari's address-bar search URLs (shared/search.js).
@@ -23,7 +23,7 @@ after(async () => {
 const settings = () => ctx.worker.evaluate(() => chrome.storage.local.get('settings').then((s) => s.settings));
 async function launcherSearch(text) {
   const page = await ctx.context.newPage();
-  await page.goto(launcherUrl(ctx));
+  await gotoLauncher(page, ctx);
   await page.fill('#query', text);
   await page.press('#query', 'Enter');
   return page;
@@ -72,7 +72,7 @@ test('a search on an engine\'s own site doesn\'t change it; Safari\'s own search
 
   // Settings shows which engine it follows; there's nothing to pick.
   const nt = await ctx.context.newPage();
-  await nt.goto(launcherUrl(ctx));
+  await gotoLauncher(nt, ctx);
   await nt.click('#settings summary');
   assert.match(await nt.textContent('#engine-info'), /Safari’s search engine: DuckDuckGo/);
   assert.equal(await nt.locator('#engine').count(), 0);

@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, launcherUrl } from './helpers.js';
+import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -49,7 +49,7 @@ test('⌘T: the new tab closes and the palette opens over the page you were on',
 test('⌘N: a new window starts in the same space, with the palette open on the new-tab page', async () => {
   const page = await openPage('cmd-n-origin');
   const launcher = await ctx.context.newPage();
-  await launcher.goto(launcherUrl(ctx));
+  await gotoLauncher(launcher, ctx);
   const windowId = await launcher.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const { result } = await launcher.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Work' }), windowId);
   await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === result.spaceId);
@@ -71,7 +71,7 @@ test('⌘N: a new window starts in the same space, with the palette open on the 
 test('the launcher page opened on purpose (#launcher) stays', async () => {
   const page = await openPage('launcher-stays');
   const launcher = await ctx.context.newPage();
-  await launcher.goto(launcherUrl(ctx));
+  await gotoLauncher(launcher, ctx);
   await launcher.waitForSelector('#query');
   await launcher.waitForTimeout(800);
   assert.equal(launcher.isClosed(), false);

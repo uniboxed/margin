@@ -20,7 +20,7 @@
 //     content/shell-main.js (page world) keeps the page's own history
 //     entries (pushState) on the top window.
 // Skipped loads (popups, non-HTML, other encodings, late injection, …) keep
-// the push layout (content/sidebar.js).
+// the push layout (content/core.js).
 import * as L from '../shared/shell-logic.js';
 import { platform } from '../shared/platform.js';
 
@@ -83,7 +83,6 @@ import { platform } from '../shared/platform.js';
 
   // ---- the shell ------------------------------------------------------------
 
-  const FRAME_PX = 8; // the frame around the card (sidebar.css .frame .hole)
   const shell = document.createElement('html');
   shell.setAttribute('data-margin-shell', '');
   const head = shell.appendChild(document.createElement('head'));
@@ -147,17 +146,21 @@ import { platform } from '../shared/platform.js';
   (globalThis.browser ?? globalThis.chrome)?.runtime?.sendMessage({ type: 'restoringTab', url: location.href })
     .then((res) => { if (res?.ok && res.result) release('tab being restored'); }, () => {});
 
-  // Card geometry: inset in the frame while docked, the whole window
+  // Card geometry: inset in the theme's frame while docked, the whole window
   // otherwise (Keep open turned off on this page: the sidebar floats over it).
-  let layout = { docked: true, width: 260 };
+  // The theme reports its width, inset and corner radius through
+  // content/core.js; until then, the default theme's (Arcadium: 260px
+  // sidebar, 8px frame, 6.25px corners), which its first-paint placeholder
+  // draws around this card.
+  let layout = { docked: true, width: 260, inset: 8, radius: '6.25px' };
   function applyLayout() {
-    const { docked, width } = layout;
+    const { docked, width, inset, radius } = layout;
     const set = (prop, value) => frame.style.setProperty(prop, value, 'important');
-    set('top', docked ? `${FRAME_PX}px` : '0');
+    set('top', docked ? `${inset}px` : '0');
     set('left', docked ? `${width}px` : '0');
-    set('width', docked ? `calc(100% - ${width + FRAME_PX}px)` : '100%');
-    set('height', docked ? `calc(100% - ${2 * FRAME_PX}px)` : '100%');
-    set('border-radius', docked ? '6.25px' : '0'); // sidebar.css .card-edge
+    set('width', docked ? `calc(100% - ${width + inset}px)` : '100%');
+    set('height', docked ? `calc(100% - ${2 * inset}px)` : '100%');
+    set('border-radius', docked ? radius : '0');
   }
   applyLayout();
 
@@ -781,13 +784,14 @@ import { platform } from '../shared/platform.js';
     get card() {
       return card;
     },
-    // Called by content/sidebar.js on every layout change.
+    // Called by content/core.js on every layout change: { docked, width,
+    // inset, radius } (any of them).
     setLayout(next) {
-      layout = { ...layout, ...next };
+      for (const [key, value] of Object.entries(next)) if (value != null) layout[key] = value;
       applyLayout();
     },
     cardLeft: () => (layout.docked ? layout.width : 0),
-    cardTop: () => (layout.docked ? FRAME_PX : 0),
+    cardTop: () => (layout.docked ? layout.inset : 0),
     focusCard: () => card?.focus(),
   };
   log('taking over');

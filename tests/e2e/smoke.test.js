@@ -13,7 +13,7 @@ after(async () => {
 });
 
 test('background service worker starts', () => {
-  assert.match(ctx.worker.url(), /^chrome-extension:\/\/[a-p]{32}\/background\.js$/);
+  assert.match(ctx.worker.url(), /^chrome-extension:\/\/[a-p]{32}\/background\.bundle\.js$/);
 });
 
 test('content script injects a closed shadow host on a web page', async () => {
