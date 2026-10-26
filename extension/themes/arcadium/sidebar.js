@@ -35,10 +35,12 @@ const TAB_MIME = 'application/x-margin-tab';
 // without it, a new tab is opened.
 // `onWidth(px, { done })`: called while the sidebar is resized (live) and
 // once more with done: true when the drag ends.
+// `onScroll(px)`: the tab list was scrolled by the user (every page's sidebar
+// opens at the window's last position; update(…, { scroll }) applies it).
 /**
- * @param {{ document: Document, send: import('../../../types/margin').Send, mode: 'overlay' | 'newtab', onNewTab?: () => void, onWidth?: (px: number, info: { done: boolean }) => void }} options
+ * @param {{ document: Document, send: import('../../../types/margin').Send, mode: 'overlay' | 'newtab', onNewTab?: () => void, onWidth?: (px: number, info: { done: boolean }) => void, onScroll?: (px: number) => void }} options
  */
-function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
+function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll }) {
   const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
   const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
   const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
@@ -55,6 +57,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
       el(doc, 'button', { type: 'submit', class: 'primary', text: 'Save' })));
   const pins = el(doc, 'ul', { class: 'pins', 'aria-label': 'Pinned' });
   const tabs = el(doc, 'ul', { class: 'tabs', 'aria-label': 'Tabs' });
+  const tabsSection = el(doc, 'section', { class: 'tabs-section' }, tabs);
   const keepOpen = el(doc, 'button', { class: 'keep-open', 'data-action': 'keep-open', title: 'Keep the sidebar open' });
   // With Keep open: this site fitted beside the sidebar, or shown normally
   // (the palette has the same switch). Only where it applies.
@@ -71,13 +74,19 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
     editor,
     el(doc, 'section', { class: 'pins-section' }, pins),
     el(doc, 'div', { class: 'divider' }),
-    el(doc, 'section', { class: 'tabs-section' }, tabs),
+    tabsSection,
     footer,
   );
 
   // Scrolling over the sidebar moves only its tab list (when it has more
   // than fits), never the page behind it.
   containScroll(root);
+  // The window's shared position (not when Margin set it itself).
+  let settingScroll = false;
+  tabsSection.addEventListener('scroll', () => {
+    if (settingScroll) settingScroll = false;
+    else onScroll?.(tabsSection.scrollTop);
+  }, { passive: true });
 
   // ---- resize: drag the right edge (160–500px), double-click to reset ----
   const resizer = el(doc, 'div', { class: 'resizer', title: 'Drag to resize · double-click to reset', 'aria-hidden': 'true' });
@@ -195,6 +204,11 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
     fitSite.setAttribute('aria-label', fitSite.title);
   }
 
+  // Open over the page (hovered, toggled, or the rail expanded): a switch
+  // made from it keeps it open on the next page (content/core.js fills in
+  // how it was opened; background handlers.js carryOpen).
+  const openOverPage = () => mode === 'overlay' && root.classList.contains('open') && (!root.classList.contains('docked') || root.classList.contains('rail-expanded'));
+
   root.addEventListener('click', (event) => {
     const target = event.target.closest('[data-action]');
     if (!target || !root.contains(target)) return;
@@ -202,10 +216,11 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
     if (event.ctrlKey && target.closest('.tab, .pin')) return; // ⌃-click is the Mac's right-click: the menu
     const tabId = Number(target.dataset.tabId);
     const { pinId, spaceId } = target.dataset;
+    const show = openOverPage();
     switch (target.dataset.action) {
-      case 'activate': return send('activateTab', { tabId });
-      case 'close': return send('closeTab', { tabId });
-      case 'open-pin': return send('openPin', { pinId, windowId });
+      case 'activate': return send('activateTab', { tabId, ...(show ? { show } : {}) });
+      case 'close': return send('closeTab', { tabId, ...(show ? { show } : {}) });
+      case 'open-pin': return send('openPin', { pinId, windowId, ...(show ? { show } : {}) });
       case 'unpin': return send('unpin', { pinId });
       case 'set-space': return send('setSpace', { windowId, spaceId });
       case 'new-tab': return onNewTab ? onNewTab() : send('newTab', { windowId });
@@ -371,7 +386,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
       case 'pin': return send('pinTab', { tabId: target.tabId });
       case 'unpin': return send('unpin', { pinId: target.pinId });
       case 'move': return send('moveTabToSpace', { tabId: target.tabId, spaceId: item.dataset.spaceId });
-      case 'close': return send('closeTab', { tabId: Number(item.dataset.tabId) });
+      case 'close': return send('closeTab', { tabId: Number(item.dataset.tabId), ...(openOverPage() ? { show: true } : {}) });
     }
   });
   // Hover and ↓/↑ move one highlight (the focused item), like macOS menus.
@@ -451,6 +466,14 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
       if (context?.windowId != null) windowId = context.windowId;
       if (context?.tabId != null) currentTabId = context.tabId;
       render();
+      // The window's scroll position, after the list is drawn (a page shown
+      // again, or a new one).
+      if (Number.isFinite(context?.scroll)) {
+        const before = tabsSection.scrollTop;
+        settingScroll = true;
+        tabsSection.scrollTop = context.scroll;
+        if (tabsSection.scrollTop === before) settingScroll = false; // didn't move: no scroll event comes
+      }
       if (pendingEdit && state.spaces.some((s) => s.id === pendingEdit)) {
         openEditor(pendingEdit);
         pendingEdit = null;

@@ -99,7 +99,7 @@ export function startCore({ onTheme } = {}) {
   function mountTheme() {
     if (view || !Margin.theme) return;
     try {
-      view = Margin.theme.mount({ shadow, document, send, onNewTab, onWidth: layout.onWidth });
+      view = Margin.theme.mount({ shadow, document, send: themeSend, onNewTab, onWidth: layout.onWidth, onScroll: saveScroll });
       theme = Margin.theme;
     } catch (err) {
       return console.error('[margin] theme', Margin.theme.id, 'failed to start:', err);
@@ -195,7 +195,6 @@ export function startCore({ onTheme } = {}) {
     recheck = setTimeout(() => send('windowState').then((res) => res && setFullscreen(res.fullscreen)), 200);
   };
   addEventListener('resize', checkFullscreen);
-  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && checkFullscreen());
   const layout = startLayout(page, { loader });
   Margin.content.sidebar = { show: layout.show, hide: layout.hide, toggle: layout.toggle };
   Margin.content.peek = layout.peek;
@@ -215,13 +214,84 @@ export function startCore({ onTheme } = {}) {
     return { origin, fitted: !!Margin.shell, fittable: !!platform?.shell && !!origin && !frameAware(location.href) };
   }
 
+  // ---- one sidebar for the window ---------------------------------------------
+  // Every page draws its own sidebar; these keep them showing the same:
+  // the state is read again whenever the page is shown (Safari suspends tabs
+  // it isn't showing, and they miss storage events meanwhile; a page from
+  // the back/forward cache missed them too), and the tab list's scroll
+  // position is the window's (background/scroll.js), not each page's.
+  let pendingScroll = null; // applied by the next render
+  let scrollGen = 0; // bumped by every scroll of the user's: theirs wins over a late reply
+  // Once `drawn` (the state read started with it) has rendered, so the
+  // position isn't applied to the old, shorter list and clamped there.
+  function restoreScroll(drawn) {
+    const gen = scrollGen;
+    Promise.all([send('sidebarScroll', {}, false), drawn]).then(([top]) => {
+      if (!Number.isFinite(top) || gen !== scrollGen) return;
+      pendingScroll = top;
+      render();
+    });
+  }
+  let scrollTimer = null;
+  let scrollTop = 0;
+  function saveScroll(top) {
+    scrollGen++;
+    scrollTop = top;
+    scrollTimer ??= setTimeout(flushScroll, 150);
+  }
+  // Now: before a switch (the next page asks for it at once) and when the
+  // page is left (its timers may not run once hidden).
+  function flushScroll() {
+    if (scrollTimer == null) return;
+    clearTimeout(scrollTimer);
+    scrollTimer = null;
+    send('setSidebarScroll', { top: scrollTop }, false);
+  }
+  function shown() {
+    restoreScroll(refresh());
+    // Switched by keyboard or the browser's tab bar right after scrolling:
+    // the page left saves its position as it's hidden, which can land just
+    // after this one asked. Asked once more (not if the user scrolls here).
+    setTimeout(() => restoreScroll(Promise.resolve()), 400);
+    checkFullscreen();
+  }
+  function left() {
+    flushScroll();
+    layout.leave();
+  }
+  document.addEventListener('visibilitychange', () => (document.visibilityState === 'visible' ? shown() : left()));
+  addEventListener('pageshow', (event) => event.persisted && shown());
+  addEventListener('pagehide', flushScroll);
+
+  // What the theme sends. A switch made from the sidebar while it's open
+  // over the page says how it was opened (the next page opens it the same
+  // way: carry-open below), after saving the tab list's position.
+  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab']);
+  /** @type {import('../../types/margin').Send} */
+  const themeSend = (type, payload, ...rest) => {
+    if (!SWITCHES.has(type)) return send(type, payload, ...rest);
+    flushScroll();
+    const how = layout.reason() === 'toggle' ? 'toggle' : 'hover';
+    return send(type, /** @type {any} */ (payload)?.show ? { ...payload, show: how } : payload, ...rest);
+  };
+  // Opened here because the previous page's sidebar was open (background
+  // carryOpen, or with hello): at once, without sliding in again. Before
+  // Chrome's full-screen answer, kept until hello brings it.
+  let carriedWhy = null;
+  function carryOpen(why) {
+    if (platform?.marginFullscreen && fullscreen === null) return void (carriedWhy = why);
+    view?.instantOnce?.();
+    layout.show(why === 'toggle' ? 'toggle' : 'hover');
+  }
+
   function render() {
     if (!state || !view) return;
     if (fullscreenOnly() && fullscreen === null) return; // until the background says (above)
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
-    view.update(state, { windowId, tabId, fit: fitState() });
+    view.update(state, { windowId, tabId, fit: fitState(), ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    pendingScroll = null;
     Margin.content.onState?.(state, { tabId, windowId });
     wasActive = active();
     layout.settle();
@@ -266,7 +336,7 @@ export function startCore({ onTheme } = {}) {
   }
   if (document.readyState === 'complete') setTimeout(logTiming);
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
-  refresh();
+  restoreScroll(refresh());
   send('hello').then((ctx) => {
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
     tabId = ctx.tabId;
@@ -274,6 +344,9 @@ export function startCore({ onTheme } = {}) {
     helloWindowId = ctx.windowId;
     fullscreen = ctx.fullscreen;
     render();
+    const carry = ctx.carry ?? carriedWhy;
+    carriedWhy = null;
+    if (carry) carryOpen(carry);
   });
 
   // Safari gives extensions no favicons: tell the background which icon this
@@ -307,6 +380,9 @@ export function startCore({ onTheme } = {}) {
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
     else if (message.command === 'peek') Margin.content.peek?.();
+    // Switched here from the sidebar while it was open over the page: open
+    // here too (background handlers.js carryOpen).
+    else if (message.command === 'carry-open') carryOpen(message.why);
     else Margin.content.onCommand?.(message.command);
   });
   mountTheme(); // if the theme's script ran first

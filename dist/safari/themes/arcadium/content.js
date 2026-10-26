@@ -16,8 +16,8 @@ registerTheme({
   // the narrow icon sidebar's width, for pages that are pushed.
   geometry: { inset: 8, radius: '6.25px', rail: RAIL },
   createPalette,
-  mount({ shadow, document, send, onNewTab, onWidth }) {
-    const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth });
+  mount({ shadow, document, send, onNewTab, onWidth, onScroll }) {
+    const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth, onScroll });
     const chrome = createChrome(document);
     shadow.append(chrome.frame, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice);
     // Styles are bundled (assets.js) and applied synchronously, so the panel
@@ -35,6 +35,12 @@ registerTheme({
         requestAnimationFrame(() => requestAnimationFrame(() => {
           for (const node of instant) node.classList.remove('instant');
         }));
+      },
+      // The next change shows at once (a sidebar carried open from the
+      // previous page doesn't slide in again).
+      instantOnce() {
+        for (const node of instant) node.classList.add('instant');
+        this.ready();
       },
       setColorScheme(scheme) {
         sidebar.setColorScheme(scheme);

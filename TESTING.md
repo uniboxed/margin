@@ -364,3 +364,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Clicking a tab icon in the rail switches tabs; resting the pointer on the rail opens the full sidebar over the page; moving away folds it back.
 - [ ] Fitted sites (YouTube, GitHub, Figma) keep the full sidebar.
 - [ ] Settings → "show a narrow sidebar of icons" off: those sites are pushed by the full sidebar again.
+
+## One sidebar across pages (2026-10-26)
+
+- [ ] Leave a tab alone for a while (or for hours), open several tabs elsewhere, go back to it: its sidebar lists them all at once, no reload needed.
+- [ ] Scroll the sidebar's tab list on one page, switch tabs: the next page's sidebar is at the same position; a new page too.
+- [ ] Hover the left edge, click a tab in the sidebar: the next page shows the sidebar still open (it closes when the pointer moves away); going back, the first page's sidebar isn't left open.
