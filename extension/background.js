@@ -142,6 +142,7 @@ const TRACKED_CHANGES = ['title', 'url', 'favIconUrl'];
 
 api.tabs.onCreated.addListener((tab) => mutate((s) => M.upsertTab(s, tab, now())));
 const shownAt = new Map(); // tabId → when it was last activated
+const shownUrl = new Map(); // tabId → its URL then (restoringTab)
 api.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
@@ -158,9 +159,12 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
 api.tabs.onRemoved.addListener((tabId) => {
   mutate((s) => M.removeTab(s, tabId));
   shownAt.delete(tabId);
+  shownUrl.delete(tabId);
 });
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
   shownAt.set(tabId, Date.now());
+  shownUrl.delete(tabId);
+  api.tabs.get(tabId).then((tab) => shownUrl.set(tabId, tab.url), () => {});
   // The user switched tabs themselves: shortcut chaining restarts from here.
   if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
   mutate((s) => M.activateTab(s, tabId, windowId, now()));
@@ -182,7 +186,30 @@ api.windows?.onRemoved.addListener((windowId) =>
 
 // Activate a tab, and focus its window only if it isn't already: re-focusing
 // the current window can move keyboard focus out of the page in Safari.
+// ---- switching tabs without a black frame -----------------------------------
+// When a tab is shown, WebKit keeps the previous frame on screen until the tab
+// has painted, but only while the tab's drawn layers are attached. Safari
+// suspends a hidden tab's process within seconds, and that detaches them
+// (WebProcessProxy::sendPrepareToSuspend → hideContentUntilPendingUpdate),
+// so the switch showed black (Safari's empty view) until the tab painted.
+// Waking the process reattaches them at once (processDidResume →
+// unfreezeAllLayerTrees runs the pending redraw on a 0s timer; seen in
+// Safari's log: every black switch went to a suspended process). So before
+// Margin shows a tab, a script there keeps its process awake (Safari
+// suspends it again as soon as nothing needs it), and after WAKE_MS the
+// switch goes ahead. A tab Safari unloaded has no page: the script fails at
+// once and the switch doesn't wait (Safari loads the page as it's shown).
+const WAKE_MS = 70;
+async function wakeBeforeShowing(tabId) {
+  const tab = await api.tabs.get(tabId).catch(() => null);
+  if (!tab || tab.active || !api.scripting?.executeScript || !(await mayAccess(tab.url))) return;
+  const noPage = api.scripting.executeScript({ target: { tabId }, func: () => new Promise((resolve) => setTimeout(resolve, 500)) })
+    .then(() => new Promise(() => {}), () => true);
+  await Promise.race([noPage, new Promise((resolve) => setTimeout(resolve, WAKE_MS))]);
+}
+
 async function focusTab(tabId) {
+  await wakeBeforeShowing(tabId);
   const tab = await api.tabs.update(tabId, { active: true });
   if (!tab || !api.windows) return;
   const win = await api.windows.get(tab.windowId).catch(() => null);
@@ -238,6 +265,17 @@ const handlers = {
   },
   async activateTab({ tabId }) {
     await focusTab(tabId);
+  },
+  // content/shell.js, as a page starts: is this Safari loading, as it's shown,
+  // a tab it had unloaded (shown in the last few seconds, same URL)? Then
+  // nothing of the tab was on screen before, and holding the page back only
+  // kept Safari's empty view up.
+  async restoringTab({ url }, sender) {
+    const id = sender.tab?.id;
+    const at = shownAt.get(id);
+    if (id == null || !at || Date.now() - at > 3000) return false;
+    const before = shownUrl.get(id);
+    return !before || before.split('#')[0] === String(url).split('#')[0];
   },
   // A page that still had the previous copy of Margin (content/sidebar.js
   // reloadWhenSafe): its URL loaded again once the content scripts a page
@@ -667,6 +705,7 @@ async function runNavigation(action, windowId) {
     const next = V.cycleTab(s, windowId, current, action === 'next-tab' ? 1 : -1);
     if (next == null) return;
     navTarget.set(windowId, { tabId: next, at: now() });
+    await wakeBeforeShowing(next);
     await api.tabs.update(next, { active: true });
     await mutate((st) => M.activateTab(st, next, windowId, now()));
   } else if (action === 'next-space' || action === 'prev-space') {

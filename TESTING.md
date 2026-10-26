@@ -282,6 +282,7 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 
 ## Switching tabs and Margin updates
 
-- [ ] Clicking a tab in the sidebar switches at once. A tab Safari unloaded (or hid long ago) shows Safari's empty view for a moment, as it does without Margin; the page area then appears in the page's color, not gray.
+- [ ] Clicking a tab in the sidebar (or the palette, a pin, ⌃⌘↓/↑) switches without a black frame, including to tabs you left minutes ago: the previous tab stays until the new one is drawn.
+- [ ] A tab Safari unloaded (after quitting and reopening Safari, or one unused for a long time): the sidebar and frame appear right away and the page fills in, with at most a brief empty moment while Safari fetches it.
 - [ ] After reinstalling or updating Margin, the tab you're on has one working sidebar right away (clicking tabs in it switches at once), and reloads by itself once you leave it; the other open tabs reload by themselves within a few seconds; each comes back fitted (with Keep open) and doesn't reload again. A tab with text typed into a field isn't reloaded.
 - [ ] Allowing or denying Margin on a site in Safari's settings doesn't reload any tab.

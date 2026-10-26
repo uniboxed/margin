@@ -138,6 +138,12 @@
   }
   const HOLD_MAX_MS = 2500;
   setTimeout(() => release('hold timeout'), HOLD_MAX_MS);
+  // Unless Safari is loading, as it's shown, a tab it had unloaded (after a
+  // relaunch, or one unused for a while): then there's no previous page on
+  // screen to keep, only Safari's empty view, so the shell shows at once (the
+  // sidebar and the frame, the card filling in as the page arrives).
+  (globalThis.browser ?? globalThis.chrome)?.runtime?.sendMessage({ type: 'restoringTab', url: location.href })
+    .then((res) => { if (res?.ok && res.result) release('tab being restored'); }, () => {});
 
   // Card geometry: inset in the frame while docked, the whole window
   // otherwise (Keep open turned off on this page: the sidebar floats over it).
