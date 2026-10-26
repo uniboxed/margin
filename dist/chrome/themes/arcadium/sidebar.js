@@ -60,7 +60,9 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
   // (the palette has the same switch). Only where it applies.
   const fitSite = el(doc, 'button', { class: 'fit-site', 'data-action': 'fit-site', hidden: true });
   const footer = el(doc, 'footer', {},
-    el(doc, 'button', { class: 'new-tab', 'data-action': 'new-tab', text: '+ New tab' }),
+    el(doc, 'button', { class: 'new-tab', 'data-action': 'new-tab', title: 'New tab', 'aria-label': 'New tab' },
+      el(doc, 'span', { class: 'icon-only', text: '+' }),
+      el(doc, 'span', { class: 'label', text: ' New tab' })),
     mode === 'overlay' ? fitSite : null,
     mode === 'overlay' ? keepOpen : null,
   );
@@ -183,6 +185,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
       el(doc, 'span', { class: 'label', text: pinned ? ' Auto-hide' : ' Keep open' }),
     );
     keepOpen.title = pinned ? 'Auto-hide the sidebar' : 'Keep the sidebar open';
+    keepOpen.setAttribute('aria-label', keepOpen.title); // its label is hidden in the narrow rail
     keepOpen.setAttribute('aria-pressed', String(pinned));
 
     const excepted = !!fit?.origin && (state.settings?.fitPagesExcept ?? []).includes(fit.origin);
@@ -225,6 +228,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
 
   let editing = null; // { spaceId, color, confirmDelete }
   function openEditor(spaceId) {
+    // Not in the narrow rail, which can't show it (content.js setLayout).
+    if (root.classList.contains('rail')) return;
     const space = state?.spaces.find((s) => s.id === spaceId);
     if (!space) return;
     editing = { spaceId, color: space.color, confirmDelete: false };
@@ -276,7 +281,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
   });
   chips.addEventListener('contextmenu', (event) => {
     const chip = event.target.closest('.chip[data-space-id]');
-    if (!chip) return;
+    if (!chip || root.classList.contains('rail')) return;
     event.preventDefault();
     openEditor(chip.dataset.spaceId);
   });

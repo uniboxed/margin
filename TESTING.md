@@ -355,3 +355,12 @@ Reload Margin in chrome://extensions after pulling. Keep open on, in Margin full
 - [ ] Signed in: Gmail, Notion, Figma work normally. Teams, Outlook, Docs stay in the normal (pushed) layout.
 - [ ] The sidebar footer's ▢ "Show this site normally" reloads the site unfitted; ▣ fits it again.
 - [ ] Leaving full screen: newly loaded pages are normal; with one window in full screen and another not, pages in the other window aren't fitted.
+
+## The narrow rail (2026-10-26)
+
+Keep open on (Safari, and Chrome in Margin full screen), signed in:
+
+- [ ] Teams, Outlook, Google Docs: a narrow icon rail on the left, the page pushed by it only. Are their left app bars and top-right buttons (profile, settings) usable?
+- [ ] Clicking a tab icon in the rail switches tabs; resting the pointer on the rail opens the full sidebar over the page; moving away folds it back.
+- [ ] Fitted sites (YouTube, GitHub, Figma) keep the full sidebar.
+- [ ] Settings → "show a narrow sidebar of icons" off: those sites are pushed by the full sidebar again.

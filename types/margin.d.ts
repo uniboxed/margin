@@ -36,6 +36,7 @@ export interface Settings {
   pullToRefresh: boolean;
   swipeNavigation: boolean;
   fitPages: boolean;
+  compactWhenPushed: boolean;
   marginFullscreenAuto: boolean;
   fullscreenOnly: boolean;
   fitPagesExcept: string[];

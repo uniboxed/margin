@@ -3,10 +3,11 @@
 // either may run first: the theme is kept on Margin.theme until core picks
 // it up, or handed over at once if core is already waiting.
 //
-// A content theme is { id, geometry: { inset, radius }, createPalette,
+// A content theme is { id, geometry: { inset, radius, rail? }, createPalette,
 // mount({ shadow, document, send, onNewTab, onWidth }) → view }, where view
 // is { isBusy(), width(), update(state, ctx), ready(), setColorScheme(s),
-// setLayout({ open, docked, width }), setWidth(px), setLoading(on, { instant }),
+// setLayout({ open, docked, width, rail: { width, expanded } | null }),
+// setWidth(px), setLoading(on, { instant }),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),
 // setZoom(level | null), showNotice({ text, actions: [{ label, run }] } | null) }
 // (themes/arcadium/content.js is the reference).

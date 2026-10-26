@@ -34,19 +34,40 @@ async function syncTheme() {
 // applies it before the page's first paint, ahead of content scripts, so the
 // docked layout is there from the first frame. Feature-detected; without the
 // scripting API the sidebar simply appears when the content script runs.
+// Pages known to be pushed with the narrow rail (content/layout.js) get the
+// rail's instead, so they don't start at the full width (placeholderPlan).
 const DOCKED_ID = 'margin-docked';
+const DOCKED_RAIL_ID = 'margin-docked-rail';
+
+// What to register: [{ id, css, matches, excludeMatches }], from the
+// settings. Pushed pages known in advance: the never-fit sites and the ones
+// turned off by hand, or every page when fitting is off (or unavailable).
+// Pages the shell skips for other reasons start full and narrow to the rail.
+export function placeholderPlan(settings, { fits = !!platform?.shell, theme = themeFor(settings) } = {}) {
+  if (!settings?.sidebarPinnedOpen) return [];
+  const full = theme.placeholder?.(settings);
+  const rail = settings.compactWhenPushed !== false ? theme.railPlaceholder : null;
+  const plan = (id, css, matches, excludeMatches = []) => ({ id, css: [css], matches, excludeMatches });
+  if (!rail) return full ? [plan(DOCKED_ID, full, ['<all_urls>'])] : [];
+  if (!fits || settings.fitPages === false) return [plan(DOCKED_RAIL_ID, rail, ['<all_urls>'])];
+  const pushed = [...excludePatterns(settings.fitPagesExcept), ...FRAME_AWARE_PATTERNS];
+  return [...(full ? [plan(DOCKED_ID, full, ['<all_urls>'], pushed)] : []), plan(DOCKED_RAIL_ID, rail, pushed)];
+}
+
 async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
-  const want = settings?.sidebarPinnedOpen ? themeFor(settings).placeholder?.(settings) ?? null : null;
-  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
-  const have = current?.css?.[0] ?? null;
-  if (want === have) return;
-  if (current) await api.scripting.unregisterContentScripts({ ids: [DOCKED_ID] });
-  if (want) {
-    await api.scripting.registerContentScripts([
-      { id: DOCKED_ID, css: [want], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
-    ]);
+  const want = placeholderPlan(settings);
+  const current = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID, DOCKED_RAIL_ID] });
+  // Chrome returns the patterns sorted.
+  const sorted = (a) => [...(a ?? [])].sort();
+  const key = (list) => JSON.stringify(list.map((s) => [s.id, s.css ?? [], sorted(s.matches), sorted(s.excludeMatches)]).sort());
+  if (key(want) === key(current)) return;
+  if (current.length) await api.scripting.unregisterContentScripts({ ids: current.map((s) => s.id) });
+  if (want.length) {
+    await api.scripting.registerContentScripts(want.map(({ id, css, matches, excludeMatches }) => ({
+      id, css, matches, ...(excludeMatches.length ? { excludeMatches } : {}), runAt: 'document_start', allFrames: false,
+    })));
   }
 }
 
@@ -91,7 +112,8 @@ async function syncShell() {
   const want = on ? { js: [...(fullscreenOnly ? [FULLSCREEN_ONLY_JS] : []), ...SHELL_JS], excludeMatches } : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [SHELL_ID] });
   const have = current ? { js: current.js ?? [], excludeMatches: current.excludeMatches ?? [] } : null;
-  if (JSON.stringify(want) === JSON.stringify(have)) return;
+  const key = (r) => r && JSON.stringify({ js: r.js, excludeMatches: [...r.excludeMatches].sort() }); // Chrome returns them sorted
+  if (key(want) === key(have)) return;
   if (current) await api.scripting.unregisterContentScripts({ ids: [SHELL_ID] });
   if (want) {
     await api.scripting.registerContentScripts([{
