@@ -35,6 +35,8 @@ test('each build loads one bundled script per context', () => {
     const dir = join(root, 'dist', target);
     const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
     assert.deepEqual(manifest.content_scripts[0].js, ['content/content.bundle.js'], target);
+    // background/tabs.js injectIntoOpenTabs finds the sidebar's entry this way.
+    assert.deepEqual(manifest.content_scripts.find((c) => c.world !== 'MAIN').js, ['content/content.bundle.js'], target);
     assert.equal(manifest.background.service_worker, 'background.bundle.js', target);
     const background = readFileSync(join(dir, 'background.bundle.js'), 'utf8');
     assert.match(background, /\["content\/shell\.bundle\.js"\]/, `${target}: the background registers the shell bundle`);

@@ -90,8 +90,11 @@ In Xcode, choose the **Margin (macOS)** scheme and Run (⌘R). Safari picks up t
 extension/              The one shared source, as ES modules (browsers load the bundles in dist/)
   manifest.json         MV3: tabs, storage, alarms, scripting; <all_urls>; newtab override; commands
   shared/platform.js    Per-browser profiles (favicon fetching, default shortcuts); stamped by the build
-  background.js         State owner (bundled into a classic service worker). Tab events → pure model → storage.local.
-                        Message router for the UI. Auto-archive scheduler.
+  background.js         State owner (bundled into a classic service worker): registers every listener.
+                        Tab events → pure model → storage.local; routes the UI's messages.
+  background/           Its parts: store (load/mutate), handlers (the message protocol), tabs,
+                        search-engine, site-icons, registered (docked placeholder, fitted layout),
+                        archive, navigation (next/previous tab and space).
   state/model.js        Pure state functions (no browser APIs), unit tested.
   shared/view.js        Pure "what does the sidebar show for window W" derivation.
   shared/search.js      URL-vs-search, fuzzy scoring, palette ranking.

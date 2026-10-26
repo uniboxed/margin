@@ -1,9 +1,9 @@
 // Margin's message protocol, derived from the background's handlers
-// (extension/background.js `handlers`): a page's `send(type, payload)` is
+// (extension/background/handlers.js `handlers`): a page's `send(type, payload)` is
 // checked against the handler of that name, and gets its result type.
 // Used by `npm run typecheck` only.
 
-type Handlers = typeof import('../extension/background.js').handlers;
+type Handlers = typeof import('../extension/background/handlers.js').handlers;
 
 export type MessageType = keyof Handlers;
 export type Request<K extends MessageType> = Parameters<Handlers[K]>[0];
