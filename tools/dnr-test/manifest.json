@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "DNR header test",
+  "version": "1.0",
+  "description": "Does Safari apply declarativeNetRequest response-header rules? (Margin diagnostic)",
+  "permissions": ["declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "DNR header test" },
+  "content_scripts": [{ "matches": ["https://example.com/*"], "js": ["grid.js", "web-page.js"] }],
+  "web_accessible_resources": [{ "resources": ["grid.css"], "matches": ["https://example.com/*"] }],
+  "declarative_net_request": { "rule_resources": [{ "id": "rules", "enabled": true, "path": "rules.json" }] }
+}
