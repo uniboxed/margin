@@ -12,6 +12,7 @@ import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
+import { toggleMarginFullscreen } from './fullscreen.js';
 
 export const handlers = {
   async hello(_, sender) {
@@ -237,6 +238,13 @@ export const handlers = {
   async updateSettings({ patch }) {
     if ('theme' in patch && !THEMES[patch.theme]) return; // not a theme Margin has
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
+  },
+  // "Margin full screen" on or off for this window (Chrome; background/fullscreen.js).
+  /** @param {{ windowId?: number }} message */
+  async toggleFullscreen({ windowId }, sender) {
+    const id = windowId ?? sender.tab?.windowId;
+    if (id == null || !platform?.marginFullscreen) return null;
+    return toggleMarginFullscreen(id);
   },
   // A theme's own settings (settings.themes[themeId]), merged into what's
   // there (updateSettings replaces whole top-level keys).

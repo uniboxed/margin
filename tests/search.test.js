@@ -169,3 +169,12 @@ test('palette: "New window" is always offered', () => {
   assert.deepEqual(rankPalette(s, 'new window', ctx)[0].action, { type: 'newWindow' });
   assert.ok(rankPalette(s, '', { ...ctx, inNewTab: true }).some((i) => i.id === 'action:new-window'));
 });
+
+test('palette: "Margin full screen" only where the browser has it (Chrome)', () => {
+  const state = M.normalizeState({ tabs: { 1: { id: 1, windowId: 1, url: 'https://a.com/', title: 'A' } }, tabSpace: { 1: 'personal' } });
+  const has = (ctx) => rankPalette(state, 'full screen', ctx).some((i) => i.id === 'action:fullscreen');
+  assert.equal(has({ windowId: 1, tabId: 1, canFullscreen: true }), true);
+  assert.equal(has({ windowId: 1, tabId: 1 }), false);
+  const item = rankPalette(state, 'full screen', { windowId: 1, tabId: 1, canFullscreen: true }).find((i) => i.id === 'action:fullscreen');
+  assert.deepEqual(item.action, { type: 'toggleFullscreen', windowId: 1 });
+});

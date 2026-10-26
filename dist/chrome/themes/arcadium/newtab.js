@@ -137,7 +137,7 @@ export function mount({ api, self, send }) {
   const palette = createPalette({
     send,
     getState: () => state,
-    getContext: () => ({ windowId: windowId(), tabId: self?.id, inNewTab: true, canToggleSidebar: false }),
+    getContext: () => ({ windowId: windowId(), tabId: self?.id, inNewTab: true, canToggleSidebar: false, canFullscreen: !!platform?.marginFullscreen }),
     onLocal: (action) => {
       if (action.local === 'navigate') go(action.url);
       if (action.local === 'search') send('search', { query: action.query, tabId: self.id });

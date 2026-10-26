@@ -26,7 +26,7 @@ export function wirePalette(c, createPalette) {
   const palette = createPalette({
     send: c.send,
     getState: () => c.getState().state,
-    getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFit: !!platform?.shell, fitted: !!globalThis.Margin.shell }),
+    getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen, canFit: !!platform?.shell, fitted: !!globalThis.Margin.shell }),
     onLocal: (action) => action.local === 'toggleSidebar' && c.sidebar.toggle(),
     colorScheme: c.colorScheme,
   });

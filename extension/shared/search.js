@@ -146,7 +146,7 @@ function matchScore(query, item) {
 const isWebUrl = (url) => /^https?:/i.test(url ?? '');
 
 // Everything the palette can offer for this window. `ctx`:
-// { windowId, tabId, inNewTab, canToggleSidebar }.
+// { windowId, tabId, inNewTab, canToggleSidebar, canFullscreen }.
 function paletteItems(state, ctx) {
   const view = V;
   const spaceId = view.activeSpaceId(state, ctx.windowId);
@@ -211,6 +211,8 @@ function paletteItems(state, ctx) {
   action('new-window', 'New window', { type: 'newWindow' }, { emoji: '⧉' });
   if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
   if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
+  // Chrome: full screen with no toolbar (background/fullscreen.js).
+  if (ctx.canFullscreen) action('fullscreen', 'Margin full screen (no toolbar) on/off', { type: 'toggleFullscreen', windowId: ctx.windowId }, { emoji: '⛶' });
   // Fitted layout (content/shell.js) off or back on for this site.
   const origin = current && isWebUrl(current.url) && !frameAware(current.url) ? view.originOf(current.url) : null;
   if (origin && ctx.canFit && state.settings?.sidebarPinnedOpen && state.settings?.fitPages !== false) {

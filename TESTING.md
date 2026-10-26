@@ -321,3 +321,13 @@ With Keep open on:
 - [ ] YouTube: the address bar follows videos you open; ⌘R reloads the video you're on.
 - [ ] On a fitted site, the sidebar footer shows ▢; clicking it reloads the site in the normal layout and shows ▣; clicking ▣ fits it again.
 - [ ] Known (WebKit): after switching away from a fitted tab and back, its scrollbar may not draw until the next load; scrolling still works.
+
+## Chrome: Margin full screen (2026-10-26)
+
+Reload Margin in chrome://extensions after pulling.
+
+- [ ] Open the palette, type "full screen", Enter: the window goes full screen with no toolbar.
+- [ ] Switching tabs from Margin's sidebar, opening a tab from the palette, ⌘-clicking a link: the toolbar never shows.
+- [ ] Moving the pointer to the top of the screen: what happens (expected: nothing)?
+- [ ] Esc, and the palette action again: which ones leave Margin full screen, and the window comes back as it was?
+- [ ] Starting from Chrome's own full screen (green button): the action leaves it and enters Margin full screen.

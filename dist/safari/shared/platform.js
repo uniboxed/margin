@@ -17,6 +17,7 @@ const PROFILES = {
     // "Keep open" fits pages beside the sidebar (content/shell.js), using
     // Safari's early content scripts and Navigation API (26.2+).
     shell: true,
+    marginFullscreen: false,
     // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
     // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
     // both builds: verified working in Safari, while ⌥⌘↓/↑ as a manifest
@@ -41,6 +42,11 @@ const PROFILES = {
     // Push layout only: Chrome runs a document.write from a content script
     // under the extension's CSP, so the page's scripts wouldn't run.
     shell: false,
+    // "Margin full screen": full screen with no toolbar at all. In its own
+    // full screen Chrome shows the toolbar for a second on every tab change
+    // (BrowserView::RevealTopContainerIfNeeded); in full screen an extension
+    // starts it shows none (background/fullscreen.js).
+    marginFullscreen: true,
     // Same as the manifest commands (⌃⌘ + arrows; Chrome refuses ⌘⌥ there
     // and then won't load the extension at all).
     navigation: {
