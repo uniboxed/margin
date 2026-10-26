@@ -101,8 +101,12 @@ extension/              The one shared source, as ES modules (browsers load the 
   shared/shortcuts.js   Shortcut strings ("Alt+KeyK") ↔ key events.
   shared/dom.js         DOM helpers for core and themes (el, closed-shadow hosts, adoptStyles).
   content/main.js       Content-script entry: core, then the palette's wiring once the theme is there.
-  content/core.js       Margin on web pages, behavior only: show/hide/dock, push, gestures, shortcuts,
-                        loader timing; drives the active theme's view.
+  content/core.js       Margin on web pages, behavior only: startup, the theme, state and rendering,
+                        icons, messages; drives the active theme's view. Its parts by job:
+  content/layout.js     Show/hide/dock, the push, the placeholder hand-over, hover, the toggle key.
+  content/trackpad.js   Gesture guard, pull-to-refresh, swipe back/forward, pinch zoom (Safari).
+  content/loader.js     The page-load pill's timing.
+  content/takeover.js   Taking over from a copy of Margin left in the page by an install/update.
   content/palette.js    The palette's shortcut and wiring (the palette itself is the theme's).
   content/shell.js      The fitted layout (registered by the background while "Keep open" is on).
   content/docked/       Arcadium's placeholders at their old path, kept for Safari's stored

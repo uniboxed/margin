@@ -45,7 +45,8 @@ margin/
       model.js
     content/
       main.js              # content-script entry: core, then the palette's wiring
-      core.js              # Margin on web pages: behavior only (show/dock/push, gestures, shortcuts)
+      core.js              # Margin on web pages: behavior only; parts in layout.js, trackpad.js,
+                           # loader.js, takeover.js
       palette.js           # palette shortcut and wiring (the palette's look is the theme's)
       shell.js             # fitted layout (registered at runtime)
     newtab/
