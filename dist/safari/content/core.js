@@ -322,7 +322,9 @@ export function startCore({ onTheme } = {}) {
   // Not while hidden: every open tab redrew its sidebar for every change
   // (a tab switch makes two), which costs CPU and battery for nothing
   // anyone sees. A hidden page catches up when it's shown (shown() above).
-  api.storage.onChanged.addListener((_, area) => area === 'local' && !document.hidden && refresh());
+  // Until its first drawing, a page takes every change (one loaded in the
+  // background before the background had any state waits for it).
+  api.storage.onChanged.addListener((_, area) => area === 'local' && (!document.hidden || firstRender) && refresh());
 
   // One debug-level line per page (hidden unless the console shows Debug
   // messages), once it has loaded: where the time before the sidebar
