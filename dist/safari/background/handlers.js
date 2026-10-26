@@ -6,7 +6,7 @@ import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now } from './store.js';
-import { focusTab, instanceId, openTab, openedFrom, shownAt, shownUrl } from './tabs.js';
+import { focusTab, instanceId, openTab, openedFrom, shownAt, shownUrl, showWhenStarted } from './tabs.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
@@ -83,7 +83,13 @@ export const handlers = {
     const text = String(query ?? '').trim();
     if (!text) return;
     if (platform?.search === 'browser' && api.search?.query) {
-      await (tabId != null ? api.search.query({ text, tabId }) : api.search.query({ text, disposition: 'NEW_TAB' }));
+      if (tabId != null) await api.search.query({ text, tabId });
+      else if (platform.openTabsBehind) {
+        // Behind first, then shown (background/tabs.js showWhenStarted).
+        const tab = await api.tabs.create({ windowId, url: 'about:blank', active: false });
+        await api.search.query({ text, tabId: tab.id });
+        await showWhenStarted(tab);
+      } else await api.search.query({ text, disposition: 'NEW_TAB' });
       return;
     }
     const { settings } = await load();

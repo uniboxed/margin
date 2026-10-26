@@ -321,3 +321,11 @@ With Keep open on:
 - [ ] YouTube: the address bar follows videos you open; ⌘R reloads the video you're on.
 - [ ] On a fitted site, the sidebar footer shows ▢; clicking it reloads the site in the normal layout and shows ▣; clicking ▣ fits it again.
 - [ ] Known (WebKit): after switching away from a fitted tab and back, its scrollbar may not draw until the next load; scrolling still works.
+
+## Chrome: palette Enter without the toolbar (2026-10-26)
+
+Chrome in full screen with View → Always Show Toolbar in Full Screen off; reload Margin in chrome://extensions after pulling.
+
+- [ ] Option+K, type a URL, Enter: the page opens in a new tab and Chrome's toolbar stays hidden.
+- [ ] Option+K, type a search, Enter: the results open in a new tab, toolbar hidden.
+- [ ] The new tab is in the current space and the sidebar highlights it.

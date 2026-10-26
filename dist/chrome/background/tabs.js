@@ -1,5 +1,6 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
+import { platform } from '../shared/platform.js';
 import { api, mutate, now } from './store.js';
 
 // When each tab was last shown, and its URL then (restoringTab; a
@@ -75,9 +76,34 @@ export async function inPage(tabId, url, func, args = [], ms = 300) {
 
 /** @param {{ windowId?: number, url?: string, spaceId?: string }} options */
 export async function openTab({ windowId, url, spaceId }) {
-  const tab = await api.tabs.create({ windowId, url, active: true });
+  // A tab with a page to load opens behind first where that keeps the
+  // browser's toolbar hidden (platform.openTabsBehind: Chrome).
+  const behind = !!platform?.openTabsBehind && !!url;
+  const tab = await api.tabs.create({ windowId, url, active: !behind });
   if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));
+  if (behind) await showWhenStarted(tab);
   return tab;
+}
+
+// In full screen Chrome shows its toolbar while focus is in the address bar,
+// and a tab opened in front has it there until its page loads; a tab opened
+// behind and then switched to gets its page focused instead (like a
+// ⌘-clicked tab), so the toolbar stays hidden. Switch once its page has
+// started (its URL is set), or after at most a moment.
+export async function showWhenStarted(tab) {
+  await new Promise((resolve) => {
+    const done = () => {
+      api.tabs.onUpdated.removeListener(listener);
+      clearTimeout(timer);
+      resolve(undefined);
+    };
+    const listener = (id, change) => {
+      if (id === tab.id && ((change.url && change.url !== 'about:blank') || change.status === 'complete')) done();
+    };
+    api.tabs.onUpdated.addListener(listener);
+    const timer = setTimeout(done, 800);
+  });
+  await api.tabs.update(tab.id, { active: true }).catch(() => {}); // closed meanwhile
 }
 
 // Tabs opened from a page by openLink, so the next one goes after them.

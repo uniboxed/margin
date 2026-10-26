@@ -17,6 +17,7 @@ const PROFILES = {
     // "Keep open" fits pages beside the sidebar (content/shell.js), using
     // Safari's early content scripts and Navigation API (26.2+).
     shell: true,
+    openTabsBehind: false,
     // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
     // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
     // both builds: verified working in Safari, while ⌥⌘↓/↑ as a manifest
@@ -41,6 +42,11 @@ const PROFILES = {
     // Push layout only: Chrome runs a document.write from a content script
     // under the extension's CSP, so the page's scripts wouldn't run.
     shell: false,
+    // New tabs Margin opens (palette URLs and searches) open behind and are
+    // switched to once their page has started: in full screen Chrome shows
+    // its toolbar while the address bar has focus, which a tab opened in
+    // front gets until its page loads (background/tabs.js showWhenStarted).
+    openTabsBehind: true,
     // Same as the manifest commands (⌃⌘ + arrows; Chrome refuses ⌘⌥ there
     // and then won't load the extension at all).
     navigation: {
