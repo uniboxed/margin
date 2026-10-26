@@ -2,3 +2,4 @@ node_modules/
 xcode/
 test-results/
 .DS_Store
+_metadata/
