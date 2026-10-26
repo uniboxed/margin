@@ -319,7 +319,10 @@ export function startCore({ onTheme } = {}) {
   }
 
   Margin.content.getState = () => ({ state, tabId, windowId });
-  api.storage.onChanged.addListener((_, area) => area === 'local' && refresh());
+  // Not while hidden: every open tab redrew its sidebar for every change
+  // (a tab switch makes two), which costs CPU and battery for nothing
+  // anyone sees. A hidden page catches up when it's shown (shown() above).
+  api.storage.onChanged.addListener((_, area) => area === 'local' && !document.hidden && refresh());
 
   // One debug-level line per page (hidden unless the console shows Debug
   // messages), once it has loaded: where the time before the sidebar
