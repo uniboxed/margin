@@ -1,7 +1,8 @@
 // Fitted layout: the page beside the sidebar, laid out exactly as in a
 // narrower window. Registered by the background (scripting.
 // registerContentScripts, id margin-shell) only while "Keep open" and the
-// "Fit pages beside the sidebar" setting are on; Safari builds only.
+// "Fit pages beside the sidebar" setting are on (in Chrome, while a window
+// is in full screen, where Margin works there).
 //
 // How (research/viewport on branch docs/viewport-research; DECISIONS.md):
 //  1. Safari runs this at document_start, right after the parser creates
@@ -17,8 +18,11 @@
 //  3. Every link, form or script navigation in the card is cancelled
 //     (Navigation API) and redone as a normal top-level navigation, so the
 //     address bar, Back/Forward and Safari's loading bar stay native.
-//     content/shell-main.js (page world) keeps the page's own history
+//     content/shell-card.js (page world) keeps the page's own history
 //     entries (pushState) on the top window.
+// Chrome: the same, except that the write in step 2 is done by a page-world
+// script (content/shell-writer.js), and the card is switched to about:blank
+// with location.replace (see below).
 // Skipped loads (popups, non-HTML, other encodings, late injection, …) keep
 // the push layout (content/core.js).
 import * as L from '../shared/shell-logic.js';
@@ -81,12 +85,33 @@ import { platform } from '../shared/platform.js';
     compatMode: document.compatMode,
     doctype: document.doctype && { publicId: document.doctype.publicId, systemId: document.doctype.systemId },
     frameAware: L.frameAware(location.href),
-    optedOut: (readJson(NO_FIT) ?? []).some((key) => key === page || key === href) || loop.tooMany,
+    optedOut: (readJson(NO_FIT) ?? []).some((key) => key === page || key === href || key === `origin:${self.origin}`) || loop.tooMany,
   });
   if (loop.tooMany) optOut(); // for the rest of this tab's session
   if (skip) {
     log('skipped:', skip);
     return;
+  }
+  // Chrome, where Margin works only in full screen (background/registered.js
+  // sets the flag): not in a window that shows Chrome's toolbar (Margin full
+  // screen has none). innerHeight is in the page's zoomed pixels.
+  if (Margin.shellFullscreenOnly && outerHeight - innerHeight * (outerWidth / innerWidth || 1) > 40) {
+    log('skipped: a window with the toolbar (Margin works only in full screen)');
+    return;
+  }
+  // Chrome: only with the page-world writer there and able to write here.
+  // Asked now, before the page is taken over, so a page it can't write needs
+  // no reload: one that requires Trusted Types and lists its policies
+  // refuses Margin's (then the whole site, for this tab).
+  if (platform?.shellPageWrite) {
+    dispatchEvent(new CustomEvent('margin-shell-probe'));
+    const writable = old.getAttribute('data-margin-writable');
+    old.removeAttribute('data-margin-writable');
+    if (writable !== 'yes') {
+      if (writable === 'no') optOut(`origin:${self.origin}`);
+      log('skipped:', writable === 'no' ? "the page's Trusted Types policy refuses Margin's" : 'no page-world writer');
+      return;
+    }
   }
   writeJson(LOOP_KEY, { url: page, times: loop.times });
 
@@ -111,7 +136,8 @@ import { platform } from '../shared/platform.js';
   // and follows it, but a frame's first about:blank document has the
   // Navigation API switched off, which the card's router needs; a later one
   // has it (checked in WebKit). Both loads happen while the top is still
-  // loading, so the frame gets no history entry of its own.
+  // loading, so the frame gets no history entry of its own in WebKit; Chrome
+  // gives the second one an entry unless it replaces the first.
   frame.srcdoc = '<!doctype html><title></title>';
   let frameReady = false; // the card's empty about:blank document has loaded
   const frameLoaded = new Promise((/** @type {(value?: void) => void} */ resolve) => frame.addEventListener('load', () => {
@@ -119,8 +145,11 @@ import { platform } from '../shared/platform.js';
       frameReady = true;
       resolve();
     }, { once: true });
-    frame.removeAttribute('srcdoc');
-    frame.src = 'about:blank';
+    if (platform?.shellPageWrite) frame.contentWindow.location.replace('about:blank');
+    else {
+      frame.removeAttribute('srcdoc');
+      frame.src = 'about:blank';
+    }
   }, { once: true }));
   frame.allowFullscreen = true;
   frame.setAttribute('allow', [
@@ -293,6 +322,11 @@ import { platform } from '../shared/platform.js';
    * @param {{ url: string, type: string, fields?: any[] | null, method?: string, enctype?: string | null, link?: { rel?: string, referrerPolicy?: string } | null, anchor?: boolean }} navigation
    */
   function goTop({ url, type, fields, method = 'post', enctype, link, anchor = true }) {
+    // The card's window.name, for the next page: the card's own pagehide
+    // (content/shell-card.js) comes too late in Chrome.
+    try {
+      if (card) window.name = card.name;
+    } catch {}
     saveScroll();
     ownNavigation = true;
     if (type === 'reload') return location.reload();
@@ -344,10 +378,10 @@ import { platform } from '../shared/platform.js';
   }
 
   function routeCard(win) {
-    // The card's URL changed without content/shell-main.js seeing it (a page
+    // The card's URL changed without content/shell-card.js seeing it (a page
     // calling a pushState it took from another frame of its own: YouTube):
     // keep the address bar, and ⌘R, on the page's real URL.
-    // After the page's own call: shell-main's wrappers update the top right
+    // After the page's own call: shell-card.js's wrappers update the top right
     // after the card's entry changes (checking at once rewrote the entry
     // being left, so Back stopped working).
     win.navigation.addEventListener('currententrychange', () => queueMicrotask(() => {
@@ -602,17 +636,30 @@ import { platform } from '../shared/platform.js';
 
   let transplanted = false;
 
+  // Chrome: content/shell-writer.js writes it (and sets the card up), in this
+  // same task; it says how that went on <html>.
+  function writeFromPage(html) {
+    dispatchEvent(new CustomEvent('margin-shell-write', { detail: html }));
+    const result = shell.getAttribute('data-margin-written');
+    shell.removeAttribute('data-margin-written');
+    if (result !== 'ok') throw new Error(`page-world write: ${result ?? 'no writer'}`);
+  }
+
   function fail(why) {
     log('could not fit this page, reloading it without:', why);
     release('failed');
     optOut(href);
+    // A Trusted Types policy the probe couldn't see (a <meta> CSP): the
+    // whole site, so it reloads once, not on every page.
+    if (/TrustedHTML/.test(String(why))) optOut(`origin:${self.origin}`);
     ownNavigation = true;
     location.reload();
   }
 
   // Null when there's nothing to wait for.
   function waitForStyles(doc, maxMs) {
-    const links = [...doc.querySelectorAll('link[rel~="stylesheet"]')].filter((l) => !l.sheet && !l.disabled);
+    // Not links without an href (GitHub's lazy ones): they never load or fail.
+    const links = [...doc.querySelectorAll('link[rel~="stylesheet"][href]:not([href=""])')].filter((l) => !l.sheet && !l.disabled);
     if (!links.length) return null;
     // A stylesheet the page's CSP blocks fires neither event in WebKit; its
     // violation says it's settled (blockedURI is just the origin for some).
@@ -756,8 +803,11 @@ import { platform } from '../shared/platform.js';
       win.addEventListener('margin-page-ready', () => log('page-side script active in the card'), { once: true });
       watchPrintKey(win);
       Margin.content?.cardReady?.(win, frame);
-      doc.write(html);
-      doc.close();
+      if (platform?.shellPageWrite) writeFromPage(html);
+      else {
+        doc.write(html);
+        doc.close();
+      }
     } catch (err) {
       return fail(err);
     }
@@ -765,7 +815,8 @@ import { platform } from '../shared/platform.js';
     old.replaceChildren();
 
     // Scroll to the fragment the normal way (same URL: no hashchange).
-    if (location.hash) win.location.replace(location.href);
+    // (Chrome: the writer did, without the popstate that fires there.)
+    if (location.hash && !platform?.shellPageWrite) win.location.replace(location.href);
     // Keys go to the page (Space, arrows), as they would without the shell,
     // unless the user is typing in Margin's palette or sidebar meanwhile.
     // This only picks the frame that gets keys inside the page; it doesn't

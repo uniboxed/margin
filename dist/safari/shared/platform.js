@@ -17,6 +17,8 @@ const PROFILES = {
     // "Keep open" fits pages beside the sidebar (content/shell.js), using
     // Safari's early content scripts and Navigation API (26.2+).
     shell: true,
+    // The content script writes the page into the card itself.
+    shellPageWrite: false,
     marginFullscreen: false,
     // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
     // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
@@ -39,9 +41,12 @@ const PROFILES = {
     blockGestures: false,
     // chrome.search.query: Chrome's default engine.
     search: 'browser',
-    // Push layout only: Chrome runs a document.write from a content script
-    // under the extension's CSP, so the page's scripts wouldn't run.
-    shell: false,
+    // "Keep open" fits pages beside the sidebar too (content/shell.js).
+    shell: true,
+    // Chrome runs a document.write from a content script under the
+    // extension's CSP, so the page's scripts wouldn't run in the card: a
+    // page-world script writes it instead (content/shell-writer.js).
+    shellPageWrite: true,
     // "Margin full screen": full screen with no toolbar at all. In its own
     // full screen Chrome shows the toolbar for a second on every tab change
     // (BrowserView::RevealTopContainerIfNeeded); in full screen an extension

@@ -344,3 +344,14 @@ Reload Margin in chrome://extensions after pulling.
 - [ ] Leaving full screen (Esc): the sidebar goes away again.
 - [ ] ⌘T in a normal window: the new tab shows the "Margin works in full screen" card; ⌘T in full screen: the palette as before.
 - [ ] "Use in windows too" (toast or card): Margin works in normal windows; Settings → "Use Margin only in full screen" turns it back on.
+
+## Chrome: fitted layout (2026-10-26)
+
+Reload Margin in chrome://extensions after pulling. Keep open on, in Margin full screen.
+
+- [ ] YouTube, GitHub, Figma, Google Maps, BBC, Stack Overflow: the page fits beside the sidebar, nothing under the sidebar or cut at the right.
+- [ ] Links, Back/Forward, the address bar and ⌘R behave as without Margin (GitHub: open a file, then its commit, then Back).
+- [ ] Your password manager fills a login on a fitted page (e.g. GitHub sign-in). If not, say which one.
+- [ ] Signed in: Gmail, Notion, Figma work normally. Teams, Outlook, Docs stay in the normal (pushed) layout.
+- [ ] The sidebar footer's ▢ "Show this site normally" reloads the site unfitted; ▣ fits it again.
+- [ ] Leaving full screen: newly loaded pages are normal; with one window in full screen and another not, pages in the other window aren't fitted.

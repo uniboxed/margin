@@ -67,19 +67,28 @@ export const whenRegistered = () => registrations;
 
 // ---- fitted layout ----------------------------------------------------------
 
-// The fitted layout (content/shell.js; Safari builds): registered while "Keep
-// open" and the fitPages setting are on, except on the sites listed in
-// fitPagesExcept. Registered scripts run right after the manifest's, in the
-// same world, still before the parser adds anything to <html>.
+// The fitted layout (content/shell.js): registered while "Keep open" and the
+// fitPages setting are on, except on the sites listed in fitPagesExcept.
+// Registered scripts run right after the manifest's, in the same world,
+// still before the parser adds anything to <html>. In Chrome also its
+// page-world writer (content/shell-writer.js), and only while a window is in
+// full screen when Margin works only there (content/core.js): elsewhere it
+// would put pages in a card for nothing.
+// With full screen only, the shell also gets a flag that makes it skip
+// windows still showing the toolbar (content/shell-fullscreen-only.js). Its
+// page-world writer in Chrome comes with the manifest (scripts/build.js):
+// registered scripts in the page's world run after the shell.
 const SHELL_ID = 'margin-shell';
 const SHELL_JS = ['content/shell.bundle.js']; // built by scripts/build.js
+const FULLSCREEN_ONLY_JS = 'content/shell-fullscreen-only.js';
 async function syncShell() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
-  const on = !!platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
-  const want = on
-    ? { js: SHELL_JS, excludeMatches: [...excludePatterns(settings.fitPagesExcept), ...FRAME_AWARE_PATTERNS] }
-    : null;
+  let on = !!platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
+  const fullscreenOnly = !!platform?.marginFullscreen && settings?.fullscreenOnly !== false;
+  if (on && fullscreenOnly) on = (await api.windows.getAll().catch(() => [])).some((win) => win.state === 'fullscreen');
+  const excludeMatches = on ? [...excludePatterns(settings.fitPagesExcept), ...FRAME_AWARE_PATTERNS] : [];
+  const want = on ? { js: [...(fullscreenOnly ? [FULLSCREEN_ONLY_JS] : []), ...SHELL_JS], excludeMatches } : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [SHELL_ID] });
   const have = current ? { js: current.js ?? [], excludeMatches: current.excludeMatches ?? [] } : null;
   if (JSON.stringify(want) === JSON.stringify(have)) return;
