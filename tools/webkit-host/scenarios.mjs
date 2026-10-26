@@ -16,9 +16,13 @@
 // The id of the tab showing /p/<name>, from Margin's own tab snapshot.
 const ID = 'const { tabs } = await browser.storage.local.get("tabs"); const id = (n) => Object.values(tabs).find((t) => t.url.endsWith("/p/" + n))?.id;';
 const switchTo = (from, to) => ({ op: 'eval', in: from, js: `${ID} return JSON.stringify(await Margin.content.send("activateTab", { tabId: id("${to}") }) ?? null)` });
-const check = (tab, label, js, timeout) => ({ op: 'check', in: tab, label, js: `return ${js}`, ...(timeout ? { timeout } : {}) });
-const checkPage = (tab, label, js, timeout) => ({ op: 'checkPage', in: tab, label, js: `return ${js}`, ...(timeout ? { timeout } : {}) });
+// `js`: an expression, or statements ending in `return …`.
+const body = (js) => (/\breturn\b/.test(js) ? js : `return ${js}`);
+const check = (tab, label, js, timeout) => ({ op: 'check', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
+const checkPage = (tab, label, js, timeout) => ({ op: 'checkPage', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
 const wait = (ms) => ({ op: 'wait', ms });
+// In a checkPage/page step: the card's window and document (fitted layout).
+const CARD = "const f = document.querySelector('iframe[name^=margin-]'); const w = f.contentWindow; const d = f.contentDocument;";
 
 // Margin drew its sidebar here (the core sets data-open once the theme is mounted).
 const drawn = (tab) => checkPage(tab, `${tab}: Margin's sidebar is there`, `document.querySelector('margin-sidebar-host')?.dataset.open !== undefined`, 5000);
@@ -57,6 +61,19 @@ export const SCENARIOS = {
     wait(800), { op: 'install' }, drawn('A'), keepOpen, wait(800), reload('A'),
     fitted('A'), drawn('A'),
     switchTo('A', 'D'), shown('D'), fitted('D'), themed('D'),
+  ],
+  // A fitted page's own history: pushState entries, Back through them, and a
+  // pushState that bypasses Margin (YouTube calls one from another frame).
+  history: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), keepOpen, wait(800), reload('A'), fitted('A'),
+    { op: 'page', in: 'A', js: `${CARD} w.history.pushState({ n: 1 }, '', '/p/A/one'); w.history.pushState({ n: 2 }, '', '/p/A/two'); return 'pushed'` },
+    checkPage('A', 'after two pushes, the top and the card are on /p/A/two', `${CARD} return location.pathname === '/p/A/two' && w.location.pathname === '/p/A/two'`),
+    { op: 'page', in: 'A', js: 'history.back(); return "back"' },
+    checkPage('A', 'Back: both on /p/A/one with its state', `${CARD} return location.pathname === '/p/A/one' && w.location.pathname === '/p/A/one' && w.history.state?.n === 1`),
+    { op: 'page', in: 'A', js: 'history.back(); return "back"' },
+    checkPage('A', 'Back again: both on /p/A', `${CARD} return location.pathname === '/p/A' && w.location.pathname === '/p/A'`),
+    { op: 'page', in: 'A', js: `${CARD} const i = d.createElement('iframe'); d.body.append(i); i.contentWindow.History.prototype.pushState.call(w.history, {}, '', '/p/A/yt'); return 'bypassed'` },
+    checkPage('A', 'a pushState past Margin still updates the address bar', `${CARD} return w.location.pathname === '/p/A/yt' && location.pathname === '/p/A/yt'`),
   ],
   // The new-tab page loads the active theme's module.
   newtab: [

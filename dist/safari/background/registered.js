@@ -4,7 +4,7 @@
 // is missing, so a path registered once must stay in the build (see
 // scripts/build.js LEGACY_FILES).
 import { platform } from '../shared/platform.js';
-import { excludePatterns } from '../shared/shell-logic.js';
+import { excludePatterns, FRAME_AWARE_PATTERNS } from '../shared/shell-logic.js';
 import { themeFor } from '../themes/index.js';
 import { api } from './store.js';
 
@@ -78,7 +78,7 @@ async function syncShell() {
   const { settings } = await api.storage.local.get('settings');
   const on = !!platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
   const want = on
-    ? { js: SHELL_JS, excludeMatches: excludePatterns(settings.fitPagesExcept) }
+    ? { js: SHELL_JS, excludeMatches: [...excludePatterns(settings.fitPagesExcept), ...FRAME_AWARE_PATTERNS] }
     : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [SHELL_ID] });
   const have = current ? { js: current.js ?? [], excludeMatches: current.excludeMatches ?? [] } : null;

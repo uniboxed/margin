@@ -310,3 +310,14 @@ Files were added and moved under `dist/safari/`: re-run `scripts/make-xcode.sh`,
 - [ ] The new-tab page looks the same; Settings has a new "Theme" row showing Arcadium.
 - [ ] ⌘T still hands off to the palette over the previous tab (the new tab now closes without drawing the launcher first); ⌘N's first tab opens the palette over the launcher.
 - [ ] Loader pill, pull-to-refresh, swipe badge and pinch-zoom readout look and behave as before.
+
+## Sites that don't want a frame (2026-10-26)
+
+With Keep open on:
+
+- [ ] Outlook (outlook.office.com) and its sign-in page load once and stay; no reloading.
+- [ ] docs.new creates one document and opens it; no loop. Docs, Teams, Outlook and claude.ai show in the normal (pushed) layout, Teams with its top bar.
+- [ ] GitHub: open a commit through in-page navigation (repo → file → its latest commit), then click files in the commit's file tree: it scrolls to that file's diff and stays on the commit.
+- [ ] YouTube: the address bar follows videos you open; ⌘R reloads the video you're on.
+- [ ] On a fitted site, the sidebar footer shows ▢; clicking it reloads the site in the normal layout and shows ▣; clicking ▣ fits it again.
+- [ ] Known (WebKit): after switching away from a fitted tab and back, its scrollbar may not draw until the next load; scrolling still works.

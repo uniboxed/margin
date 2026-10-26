@@ -90,6 +90,17 @@ test('frame busting is a script navigation of the top to the same page', () => {
   assert.equal(isBust({ destination: 'https://a.com/y', current: 'https://a.com/x', type: 'push' }), false);
   assert.equal(isBust({ destination: 'https://a.com/x', current: 'https://a.com/x', type: 'reload' }), false);
   assert.equal(isBust({ destination: 'https://a.com/x', current: 'https://a.com/x', type: 'traverse' }), false);
+  // The same page with another query (Microsoft's sign-in adds a new iframe-request-id each time).
+  assert.equal(isBust({ destination: 'https://login.example/authorize?a=1&iframe-request-id=2', current: 'https://login.example/authorize?a=1', type: 'push' }), true);
+  assert.equal(isBust({ destination: 'https://b.com/x', current: 'https://a.com/x', type: 'push' }), false, 'another site');
+});
+
+test('a page, for opt-outs and the loop breaker, is its origin and path', () => {
+  const { pageKey } = shellLogic;
+  assert.equal(pageKey('https://a.com/p/q?x=1#y'), 'https://a.com/p/q');
+  assert.equal(pageKey('https://a.com/p/q?x=2'), pageKey('https://a.com/p/q?x=1'));
+  assert.notEqual(pageKey('https://a.com/p/r'), pageKey('https://a.com/p/q'));
+  assert.equal(pageKey('not a url?x'), 'not a url');
 });
 
 test('only web links are redone at the top', () => {
@@ -130,4 +141,14 @@ test('GET submissions replace the query with the form data', () => {
   assert.equal(getSubmissionUrl('https://a.com/s', [['t', 'one\ntwo\r\nthree\rfour']]), 'https://a.com/s?t=one%0D%0Atwo%0D%0Athree%0D%0Afour');
   assert.equal(topOnly('data:text/html,x'), true);
   assert.equal(topOnly('https://a.com'), false);
+});
+
+test('apps that change when they\'re in a frame are never fitted (built-in list)', () => {
+  const { frameAware, FRAME_AWARE_PATTERNS } = shellLogic;
+  for (const url of ['https://teams.microsoft.com/v2/', 'https://login.microsoftonline.com/common/oauth2', 'https://contoso.sharepoint.com/sites/x', 'https://www.office.com/', 'https://docs.google.com/document/d/1/edit', 'https://claude.ai/new']) {
+    assert.equal(frameAware(url), true, url);
+  }
+  for (const url of ['https://github.com/', 'https://notclaude.ai/', 'https://www.youtube.com/', 'not a url']) assert.equal(frameAware(url), false, url);
+  assert.match(skipReason({ ...fresh, frameAware: true }) ?? '', /frame/);
+  assert.ok(FRAME_AWARE_PATTERNS.includes('*://teams.microsoft.com/*') && FRAME_AWARE_PATTERNS.includes('*://*.sharepoint.com/*'));
 });

@@ -27,6 +27,10 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 | `newtab` | The new-tab page loads the active theme's module and draws the launcher |
 | `screenshot` | A fitted page, saved to `build/screenshot.png` to look at |
 
+## Real websites
+
+`open` also takes a full URL (`https://…`). The host logs every navigation (`nav <tab> top go <url>`, `committed`, `loaded`), so redirects and reload loops show. Each page's own console errors, warnings, uncaught errors and CSP violations are kept in `window.__pageLog` (read with a `page` step); Margin's log lines in the content-script world in `globalThis.__marginLog` (a `check`/`eval` step), since a site's CSP can block sending them to the server. Run a one-off scenario file with `./run.sh path/to/scenario.json`. Several runs can go at once with their own `MARGIN_HOST_PORT` and `MARGIN_HOST_BUILD` (a folder); `MARGIN_HOST_TIMEOUT` sets the time limit in seconds. The host has no signed-in accounts.
+
 ## Limits
 
 - It isn't Safari. Everything around the engine is this program's: tabs, the window, sleeping tabs, launching and relaunching. That's where it can differ from Safari (it once loaded a hidden tab on `tabs.reload`, which Safari never does), so confirm tab and window behavior in Safari's own log (`/usr/bin/log show`, passively) or in Safari itself.

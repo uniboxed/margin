@@ -1,11 +1,12 @@
 // Test pages for the WebKit host, and the log sink the test copy of Margin
-// posts its console output to (run.sh adds that hook). Port 47811.
+// posts its console output to (run.sh adds that hook). Port 47811, or
+// MARGIN_HOST_PORT.
 //   /p/<Name>  a plain page titled <Name> ("F…": with a textarea; "P…": with a POST form)
 //   /posted    where the POST form goes
 //   POST /log  one log line, printed with a timestamp
 import { createServer } from 'node:http';
 
-const PORT = 47811;
+const PORT = Number(process.env.MARGIN_HOST_PORT) || 47811;
 const t0 = Date.now();
 const stamp = () => `[${String(Date.now() - t0).padStart(6)}]`;
 

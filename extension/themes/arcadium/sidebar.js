@@ -56,8 +56,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
   const pins = el(doc, 'ul', { class: 'pins', 'aria-label': 'Pinned' });
   const tabs = el(doc, 'ul', { class: 'tabs', 'aria-label': 'Tabs' });
   const keepOpen = el(doc, 'button', { class: 'keep-open', 'data-action': 'keep-open', title: 'Keep the sidebar open' });
+  // With Keep open: this site fitted beside the sidebar, or shown normally
+  // (the palette has the same switch). Only where it applies.
+  const fitSite = el(doc, 'button', { class: 'fit-site', 'data-action': 'fit-site', hidden: true });
   const footer = el(doc, 'footer', {},
     el(doc, 'button', { class: 'new-tab', 'data-action': 'new-tab', text: '+ New tab' }),
+    mode === 'overlay' ? fitSite : null,
     mode === 'overlay' ? keepOpen : null,
   );
   const root = el(doc, 'aside', { class: `margin-sidebar ${mode}`, 'aria-label': 'Margin' },
@@ -120,6 +124,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
   let windowId = null;
   let currentTabId = null;
   let pendingEdit = null; // a just-created space opens in the editor once it arrives
+  let fit = null; // { origin, fitted, fittable }: the page's fitted layout (content/core.js)
 
   function render() {
     if (!state || windowId == null) return;
@@ -179,6 +184,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
     );
     keepOpen.title = pinned ? 'Auto-hide the sidebar' : 'Keep the sidebar open';
     keepOpen.setAttribute('aria-pressed', String(pinned));
+
+    const excepted = !!fit?.origin && (state.settings?.fitPagesExcept ?? []).includes(fit.origin);
+    fitSite.hidden = !(pinned && fit?.fittable && state.settings?.fitPages !== false && (fit.fitted || excepted));
+    fitSite.textContent = fit?.fitted ? '▢' : '▣';
+    fitSite.title = fit?.fitted ? 'Show this site normally (not fitted beside the sidebar)' : 'Fit this site beside the sidebar again';
+    fitSite.setAttribute('aria-label', fitSite.title);
   }
 
   root.addEventListener('click', (event) => {
@@ -203,6 +214,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
           if (state?.spaces.some((s) => s.id === res.spaceId)) openEditor(res.spaceId);
           else pendingEdit = res.spaceId;
         });
+      case 'fit-site':
+        return fit?.origin && send('setFitSite', { origin: fit.origin, fit: !fit.fitted });
       case 'keep-open':
         return send('updateSettings', { patch: { sidebarPinnedOpen: !state?.settings?.sidebarPinnedOpen } });
     }
@@ -426,6 +439,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
     isBusy: () => editing != null || draggingTabId != null || resizing != null || !menu.hidden,
     width: () => (resizing ? resizing.width : sidebarWidth(state?.settings)),
     update(nextState, context) {
+      if (context?.fit) fit = context.fit;
       state = nextState;
       if (menuFor?.tabId != null && !state.tabs?.[menuFor.tabId]) closeMenu(); // its tab is gone
       if (menuFor?.pinId && !state.pins?.some((p) => p.id === menuFor.pinId)) closeMenu();

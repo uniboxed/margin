@@ -1,5 +1,6 @@
 // Pure input/search helpers shared by the new-tab launcher and the palette.
 import * as P from './platform.js';
+import { frameAware } from './shell-logic.js';
 import * as V from './view.js';
 
 
@@ -211,7 +212,7 @@ function paletteItems(state, ctx) {
   if (!ctx.inNewTab) action('launcher', 'Margin start page & settings', { type: 'openLauncher', windowId: ctx.windowId }, { emoji: '⚙︎' });
   if (ctx.canToggleSidebar) action('toggle-sidebar', 'Toggle sidebar', { local: 'toggleSidebar' }, { emoji: '◧' });
   // Fitted layout (content/shell.js) off or back on for this site.
-  const origin = current && isWebUrl(current.url) ? view.originOf(current.url) : null;
+  const origin = current && isWebUrl(current.url) && !frameAware(current.url) ? view.originOf(current.url) : null;
   if (origin && ctx.canFit && state.settings?.sidebarPinnedOpen && state.settings?.fitPages !== false) {
     if ((state.settings.fitPagesExcept ?? []).includes(origin)) {
       action('fit-site', 'Fit this site beside the sidebar again', { type: 'setFitSite', origin, fit: true }, { emoji: '▣' });

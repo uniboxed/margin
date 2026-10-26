@@ -15,7 +15,18 @@ func log(_ s: String) { print(String(format: "[%6.0f] ", Date().timeIntervalSinc
 var failures = 0
 func fail(_ label: String, _ why: String) { failures += 1; log("FAIL \(label): \(why)") }
 
-@MainActor final class Tab: NSObject, WKWebExtensionTab {
+// A page-world recorder in every frame: the page's own console errors and warnings, uncaught
+// errors and CSP violations, kept in window.__pageLog (read with a "page" step).
+let pageRecorder = """
+  (() => { if (window.__pageLog) return; const log = window.__pageLog = []; const add = (kind, text) => { if (log.length < 300) log.push(kind + ' ' + String(text).slice(0, 300)); };
+    for (const level of ['error', 'warn']) { const original = console[level]; console[level] = function (...a) { add(level, a.map((x) => { try { return typeof x === 'object' ? JSON.stringify(x) : String(x); } catch { return String(x); } }).join(' ')); return original.apply(this, a); }; }
+    addEventListener('error', (e) => add('uncaught', e.message));
+    addEventListener('unhandledrejection', (e) => add('unhandled', e.reason && e.reason.message || e.reason));
+    addEventListener('securitypolicyviolation', (e) => add('csp', e.effectiveDirective + ' ' + e.blockedURI));
+  })();
+  """
+
+@MainActor final class Tab: NSObject, WKWebExtensionTab, WKNavigationDelegate {
   let name: String
   var url: URL
   var webView: WKWebView?
@@ -34,8 +45,10 @@ func fail(_ label: String, _ why: String) { failures += 1; log("FAIL \(label): \
         if (!document.hidden) { let n = 0; const tick = () => { window.__vis.push(['frame', Math.round(performance.timeOrigin + performance.now())]); if (++n < 10) requestAnimationFrame(tick); }; requestAnimationFrame(tick); } };
         note(); document.addEventListener('visibilitychange', note); })();
       """, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+    cfg.userContentController.addUserScript(WKUserScript(source: pageRecorder, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     let wv = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800), configuration: cfg)
     wv.isInspectable = true
+    wv.navigationDelegate = self
     webView = wv
     loadingObs = [
       wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controller.didChangeTabProperties([.loading], for: self) } },
@@ -44,6 +57,16 @@ func fail(_ label: String, _ why: String) { failures += 1; log("FAIL \(label): \
     ]
     wv.load(URLRequest(url: url))
   }
+  // Every navigation, so reload loops and redirects show in the log.
+  func webView(_ wv: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+    let frame = action.targetFrame.map { $0.isMainFrame ? "top" : "frame" } ?? "new window"
+    log("nav \(name) \(frame) \(action.navigationType.rawValue == 3 ? "reload" : "go") \(action.request.url?.absoluteString.prefix(1200) ?? "?")")
+    decisionHandler(.allow)
+  }
+  func webView(_ wv: WKWebView, didCommit navigation: WKNavigation!) { log("nav \(name) committed \(wv.url?.absoluteString.prefix(1200) ?? "?")") }
+  func webView(_ wv: WKWebView, didFinish navigation: WKNavigation!) { log("nav \(name) loaded \(wv.url?.absoluteString.prefix(1200) ?? "?")") }
+  func webView(_ wv: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { log("nav \(name) failed \(error.localizedDescription)") }
+  func webView(_ wv: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { log("nav \(name) failed early \(error.localizedDescription)") }
   func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { window }
   func indexInWindow(for context: WKWebExtensionContext) -> Int { window?.tabs.firstIndex(of: self) ?? 0 }
   func webView(for context: WKWebExtensionContext) -> WKWebView? { webView }
@@ -137,8 +160,10 @@ Task { @MainActor in
     switch op {
     case "open":
       let path = step["url"] as! String
-      // "ext:<path>": a page of the installed extension (e.g. its new-tab page).
-      let url = path.hasPrefix("ext:") ? URL(string: String(path.dropFirst(4)), relativeTo: host.context!.baseURL)!.absoluteURL : URL(string: base + path)!
+      // "ext:<path>": a page of the installed extension (e.g. its new-tab page); a full URL
+      // (a real website); else a test page of server.mjs.
+      let url = path.hasPrefix("ext:") ? URL(string: String(path.dropFirst(4)), relativeTo: host.context!.baseURL)!.absoluteURL
+        : path.contains("://") ? URL(string: path)! : URL(string: base + path)!
       let t = Tab(name: step["name"] as! String, url: url)
       t.window = host.window
       host.window.tabs.append(t)
@@ -211,5 +236,7 @@ Task { @MainActor in
   log(failures == 0 ? "all checks passed" : "\(failures) check(s) failed")
   exit(failures == 0 ? 0 : 1)
 }
-DispatchQueue.main.asyncAfter(deadline: .now() + 120) { log("TIMEOUT"); exit(1) }
+// A whole run's time limit in seconds (MARGIN_HOST_TIMEOUT, default 120).
+let limit = Double(ProcessInfo.processInfo.environment["MARGIN_HOST_TIMEOUT"] ?? "") ?? 120
+DispatchQueue.main.asyncAfter(deadline: .now() + limit) { log("TIMEOUT"); exit(1) }
 app.run()

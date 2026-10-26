@@ -7,6 +7,7 @@ import * as V from '../shared/view.js';
 import { createHost } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
+import { frameAware } from '../shared/shell-logic.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
@@ -156,12 +157,19 @@ export function startCore({ onTheme } = {}) {
   let helloWindowId = null;
   let windowId = null;
 
+  // Whether this page is fitted beside the sidebar (content/shell.js) and
+  // whether it could be: the theme offers "Show normally" / "Fit this site".
+  function fitState() {
+    const origin = /^https?:$/.test(location.protocol) ? location.origin : null;
+    return { origin, fitted: !!Margin.shell, fittable: !!platform?.shell && !!origin && !frameAware(location.href) };
+  }
+
   function render() {
     if (!state || !view) return;
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
-    view.update(state, { windowId, tabId });
+    view.update(state, { windowId, tabId, fit: fitState() });
     Margin.content.onState?.(state, { tabId, windowId });
     layout.settle();
     trackpad.update();

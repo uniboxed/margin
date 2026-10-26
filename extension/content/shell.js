@@ -31,9 +31,11 @@ import { platform } from '../shared/platform.js';
 
   const log = (...args) => console.debug('[margin] fitted layout:', ...args);
   const old = document.documentElement;
-  const href = location.href.split('#')[0];
+  // This page (origin and path: a page busting out of the frame may change its
+  // query each time; shell-logic.js pageKey).
+  const page = L.pageKey(location.href);
 
-  // sessionStorage (this tab, this site): loads Margin shouldn't fit again.
+  // sessionStorage (this tab, this site): pages Margin shouldn't fit again.
   const NO_FIT = 'margin:nofit';
   const LOOP_KEY = 'margin:fitloop';
   const readJson = (key) => {
@@ -48,16 +50,22 @@ import { platform } from '../shared/platform.js';
       sessionStorage.setItem(key, JSON.stringify(value));
     } catch {}
   };
-  const optOut = () => {
+  // `key`: this page (pageKey: busting and loops, whose query may change
+  // every time) or just this URL (a failed fit).
+  const optOut = (key = page) => {
     const urls = readJson(NO_FIT) ?? [];
-    if (!urls.includes(href)) writeJson(NO_FIT, [...urls, href].slice(-50));
+    if (!urls.includes(key)) writeJson(NO_FIT, [...urls, key].slice(-50));
   };
+  const href = location.href.split('#')[0];
 
-  // A page that reloads itself out of the frame never stays in the card for
-  // SETTLED_MS; one that does clears its count.
-  const SETTLED_MS = 1000;
+  // A page that keeps reloading itself in the card (out of the frame, or
+  // after an error it hits there) never settles; one the user works with,
+  // or that stays SETTLED_MS, clears its count. Short enough that pages
+  // refreshing themselves every few seconds, or quick searches one after
+  // another, aren't taken for a loop.
+  const SETTLED_MS = 3000;
   const loops = readJson(LOOP_KEY);
-  const loop = L.loopCheck(loops?.url === href ? loops.times : [], Date.now());
+  const loop = L.loopCheck(loops?.url === page ? loops.times : [], Date.now());
   const skip = L.skipReason({
     enabled: !!platform?.shell,
     isTop: true,
@@ -72,14 +80,15 @@ import { platform } from '../shared/platform.js';
     crossOriginIsolated: !!self.crossOriginIsolated,
     compatMode: document.compatMode,
     doctype: document.doctype && { publicId: document.doctype.publicId, systemId: document.doctype.systemId },
-    optedOut: (readJson(NO_FIT) ?? []).includes(href) || loop.tooMany,
+    frameAware: L.frameAware(location.href),
+    optedOut: (readJson(NO_FIT) ?? []).some((key) => key === page || key === href) || loop.tooMany,
   });
   if (loop.tooMany) optOut(); // for the rest of this tab's session
   if (skip) {
     log('skipped:', skip);
     return;
   }
-  writeJson(LOOP_KEY, { url: href, times: loop.times });
+  writeJson(LOOP_KEY, { url: page, times: loop.times });
 
   // ---- the shell ------------------------------------------------------------
 
@@ -93,7 +102,26 @@ import { platform } from '../shared/platform.js';
   // A unique name: without one, WebKit restores the frame's own history item
   // on Back (without the page cache) and fetches the page as a frame.
   frame.name = `margin-${Math.random().toString(36).slice(2)}`;
+  // The card's empty document: first a srcdoc, then about:blank, and the page
+  // is written into that. WebKit gives a srcdoc document a fixed base URL (the
+  // tab's first URL, even after document.open and pushState), so once a site
+  // moved on in the page its relative URLs pointed back at the first page
+  // (links, requests; GitHub's commit file tree took the tab to the
+  // repository). An about:blank document takes the page's URL as its base
+  // and follows it, but a frame's first about:blank document has the
+  // Navigation API switched off, which the card's router needs; a later one
+  // has it (checked in WebKit). Both loads happen while the top is still
+  // loading, so the frame gets no history entry of its own.
   frame.srcdoc = '<!doctype html><title></title>';
+  let frameReady = false; // the card's empty about:blank document has loaded
+  const frameLoaded = new Promise((/** @type {(value?: void) => void} */ resolve) => frame.addEventListener('load', () => {
+    frame.addEventListener('load', () => {
+      frameReady = true;
+      resolve();
+    }, { once: true });
+    frame.removeAttribute('srcdoc');
+    frame.src = 'about:blank';
+  }, { once: true }));
   frame.allowFullscreen = true;
   frame.setAttribute('allow', [
     'fullscreen', 'payment', 'publickey-credentials-get', 'publickey-credentials-create', 'clipboard-read', 'clipboard-write',
@@ -316,6 +344,16 @@ import { platform } from '../shared/platform.js';
   }
 
   function routeCard(win) {
+    // The card's URL changed without content/shell-main.js seeing it (a page
+    // calling a pushState it took from another frame of its own: YouTube):
+    // keep the address bar, and ⌘R, on the page's real URL.
+    // After the page's own call: shell-main's wrappers update the top right
+    // after the card's entry changes (checking at once rewrote the entry
+    // being left, so Back stopped working).
+    win.navigation.addEventListener('currententrychange', () => queueMicrotask(() => {
+      const url = win.location.href;
+      if (url !== location.href && new URL(url).origin === location.origin) history.replaceState(history.state, '', url);
+    }));
     win.navigation.addEventListener('navigate', (event) => {
       const url = event.destination.url;
       if (event.destination.sameDocument) {
@@ -458,21 +496,25 @@ import { platform } from '../shared/platform.js';
     });
   }, true);
 
-  // Frame busting ("if (top !== self) top.location = self.location") would
-  // reload the page forever: cancel script navigations of the top window to
-  // the page it's already on, unless Margin started them.
+  // Frame busting ("if (top !== self) top.location = self.location"): the
+  // page wants to be the top document, not in Margin's frame. Never stop it
+  // (that blocked pages from working, and a page that changes its URL each
+  // time looped: Microsoft's sign-in): let it navigate, and don't fit this
+  // page again in this tab, so it loads as the site intends.
   navigation.addEventListener('navigate', (event) => {
-    if (ownNavigation || event.destination.sameDocument || !event.cancelable) return;
+    if (ownNavigation || event.destination.sameDocument || event.userInitiated) return;
+    // Not right after the user did something in the page (a script
+    // paginating or filtering to the same path with another query).
+    if (card?.navigator?.userActivation?.isActive) return;
     if (L.isBust({ destination: event.destination.url, current: location.href, type: event.navigationType })) {
-      event.preventDefault();
-      log('stopped the page from reloading itself out of the frame');
+      optOut();
+      log('the page navigated itself out of the frame: not fitting it again in this tab');
     }
   });
 
   // Stylesheets the page puts into the shell (code made to also run in a
-  // frame may use window.parent.document; content/shell-main.js makes parent
-  // the page itself, this catches what gets past it): moved into the card's
-  // <head>, where they apply.
+  // frame puts them into window.parent.document, which here is the shell:
+  // Google's AI Mode does): moved into the card's <head>, where they apply.
   const strayObserver = new MutationObserver((records) => {
     for (const record of records) {
       for (const node of record.addedNodes) {
@@ -558,17 +600,12 @@ import { platform } from '../shared/platform.js';
     goTop({ url: reported, type: reported === card.location.href.split('#')[0] ? 'reload' : 'push', anchor: false });
   }
 
-  let frameReady = false; // the card's empty srcdoc has loaded
-  const frameLoaded = new Promise((/** @type {(value?: void) => void} */ resolve) => frame.addEventListener('load', () => {
-    frameReady = true;
-    resolve();
-  }, { once: true }));
   let transplanted = false;
 
   function fail(why) {
     log('could not fit this page, reloading it without:', why);
     release('failed');
-    optOut();
+    optOut(href);
     ownNavigation = true;
     location.reload();
   }
@@ -623,7 +660,7 @@ import { platform } from '../shared/platform.js';
   // Load hold. Safari keeps showing the previous page until the new one is
   // visually non-empty (the hidden shell never is) or has finished loading.
   // The shell's own load is done once its parser is (the card's requests
-  // aren't counted: the card's frame had finished loading its empty srcdoc
+  // aren't counted: the card's frame had finished loading its empty document
   // before the page was written into it), so without this Safari showed the
   // still-hidden shell, blank, while the page's stylesheets loaded. The same
   // stylesheets linked from the shell too, for no media, keep its load going
@@ -757,10 +794,13 @@ import { platform } from '../shared/platform.js';
     // Right away, not in a frame callback: WebKit doesn't render a hidden
     // document until its load event, so one would wait for every image.
     release('page ready');
-    // Stayed in the card: not a reload loop (see loopCheck).
-    setTimeout(() => {
-      if (readJson(LOOP_KEY)?.url === href) writeJson(LOOP_KEY, null);
-    }, SETTLED_MS);
+    // Settled in the card (used, or stayed): not a reload loop (see loopCheck).
+    // A ⌘R or a click counts as used, so reloading a page by hand never trips it.
+    const settled = () => {
+      if (readJson(LOOP_KEY)?.url === page) writeJson(LOOP_KEY, null);
+    };
+    setTimeout(settled, SETTLED_MS);
+    for (const type of ['pointerdown', 'keydown']) win.addEventListener(type, settled, { capture: true, once: true });
 
     // Scroll back to where the page was, after a reload or a Back without
     // the page cache.

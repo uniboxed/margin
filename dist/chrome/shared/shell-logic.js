@@ -25,7 +25,8 @@ function skipReason(p) {
   // A srcdoc frame is always in standards mode (WebKit
   // HTMLConstructionSite), whatever doctype is written into it.
   if (p.compatMode === 'BackCompat' || limitedQuirks(p.doctype)) return 'quirks-mode page';
-  if (p.optedOut) return 'turned off for this page (loop breaker or a failed fit)';
+  if (p.frameAware) return 'an app that changes when it\'s in a frame (built-in list)';
+  if (p.optedOut) return 'turned off for this page in this tab (it left the frame, kept reloading, or failed to fit)';
   return null;
 }
 
@@ -38,11 +39,12 @@ function limitedQuirks(doctype) {
   return !!sys && (pub.startsWith('-//w3c//dtd html 4.01 transitional//') || pub.startsWith('-//w3c//dtd html 4.01 frameset//'));
 }
 
-// Loop breaker: building the shell this often for one URL, without the page
-// ever settling in the card in between (content/shell.js clears the count
-// once it has), means something keeps reloading it (e.g. a frame-busting
-// script Margin can't stop).
-const LOOP = { count: 3, windowMs: 5000 };
+// Loop breaker: building the shell this often for one page (pageKey), without
+// it ever settling in the card in between (content/shell.js clears the count
+// once the user used it or it stayed 3s), means something keeps reloading
+// it: a script getting out of the frame, or an error the page hits there and
+// reloads for, often with a new query each time.
+const LOOP = { count: 3, windowMs: 20000 };
 // `times`: earlier build times for this URL. Returns the list to store
 // (including now) and whether to stop fitting it.
 function loopCheck(times, now) {
@@ -93,12 +95,50 @@ function postFields(entries, typeOf = () => 'hidden') {
   return fields;
 }
 
-// Frame busting ("top.location = self.location"): a script navigation of
-// the top window to the page it's already on.
+// Apps that change what they show when they're in a frame, which no one
+// can hide from a page (window.top): never fitted, they keep the push layout.
+// Teams drops its top bar (search, profile, settings) in its "embedded"
+// mode; Microsoft's sign-in and Office reload themselves out of a frame;
+// Google Docs and claude.ai change views or routes. A domain covers its
+// subdomains. Other sites: the automatic fallbacks below, and the
+// "Show normally" switch (settings.fitPagesExcept).
+const FRAME_AWARE = [
+  'teams.microsoft.com', 'teams.cloud.microsoft', 'teams.live.com',
+  'outlook.office.com', 'outlook.office365.com', 'outlook.cloud.microsoft', 'outlook.live.com',
+  'office.com', 'm365.cloud.microsoft', 'sharepoint.com',
+  'login.microsoftonline.com', 'login.live.com', 'login.microsoft.com',
+  'accounts.google.com', 'docs.google.com', 'claude.ai',
+];
+function frameAware(url) {
+  let host;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return FRAME_AWARE.some((d) => host === d || host.endsWith(`.${d}`));
+}
+// The same as match patterns, to exclude them from the fitted layout's registration.
+const FRAME_AWARE_PATTERNS = FRAME_AWARE.flatMap((d) => [`*://${d}/*`, `*://*.${d}/*`]);
+
+// One page, for the loop breaker, opt-outs and frame busting: its origin and
+// path, without the query and fragment. Pages that reload themselves out of
+// a frame often change the query each time (Microsoft's sign-in adds a new
+// iframe-request-id), so a full URL never repeats.
+function pageKey(url) {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return String(url).split(/[?#]/)[0];
+  }
+}
+
+// Frame busting ("if (top !== self) top.location = self.location"): a script
+// navigation of the top window to the page it's already on (same pageKey).
 function isBust({ destination, current, type }) {
   if (type !== 'push' && type !== 'replace') return false;
-  const strip = (u) => String(u).split('#')[0];
-  return strip(destination) === strip(current);
+  return pageKey(destination) === pageKey(current);
 }
 
 // Which links and forms Margin redoes at the top: web pages only (mailto:,
@@ -162,4 +202,4 @@ function excludePatterns(origins) {
   return [...new Set(out)];
 }
 
-export { PARSED, LOOP, skipReason, loopCheck, doctypeString, serialize, postFields, isBust, routable, topOnly, cardNavigatingClick, reportKey, getSubmissionUrl, excludePatterns, TEXT_TYPES };
+export { PARSED, LOOP, FRAME_AWARE, FRAME_AWARE_PATTERNS, frameAware, pageKey, skipReason, loopCheck, doctypeString, serialize, postFields, isBust, routable, topOnly, cardNavigatingClick, reportKey, getSubmissionUrl, excludePatterns, TEXT_TYPES };
