@@ -32,6 +32,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   // out as in a narrower window (content/shell.js). Origins listed in
   // fitPagesExcept keep the push layout.
   fitPages: true,
+  // With "Keep open", pages that aren't fitted are pushed only by a narrow
+  // rail of icons, which expands over the page on hover (content/layout.js);
+  // off: by the whole sidebar.
+  compactWhenPushed: true,
   // Chrome: whenever a window goes full screen, Margin full screen instead
   // (no toolbar; background/fullscreen.js).
   marginFullscreenAuto: true,

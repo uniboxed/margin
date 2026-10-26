@@ -11,6 +11,9 @@ import * as shortcuts from '../shared/shortcuts.js';
 const edgePx = () =>
   V.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
 const HIDE_DELAY_MS = 300;
+// How long the pointer rests on the narrow rail before the full sidebar
+// opens over the page (a pass on the way to an icon doesn't).
+const RAIL_EXPAND_MS = 350;
 
 // `page`: see content/core.js. `loader`: content/loader.js.
 export function startLayout(page, { loader }) {
@@ -30,7 +33,7 @@ export function startLayout(page, { loader }) {
   function applyLiveWidth() {
     widthFrame = null;
     page.view()?.setWidth(liveWidth);
-    if (pushed) setPushed(true, liveWidth);
+    if (pushed && !railWidth()) setPushed(true, liveWidth); // with the rail, the page stays at the rail
     globalThis.Margin?.shell?.setLayout({ width: liveWidth });
   }
 
@@ -38,6 +41,17 @@ export function startLayout(page, { loader }) {
   let hideTimer = null;
 
   const pinnedOpen = () => !!page.state()?.settings?.sidebarPinnedOpen;
+  // A page that isn't fitted (content/shell.js skipped it, or fitting is off)
+  // is pushed. With compactWhenPushed (on by default) only by the theme's
+  // narrow icon rail (geometry.rail), which expands over the page when the
+  // pointer rests on it: pushing by the full sidebar puts more of such a
+  // page under it or off the right edge. Null: the full sidebar.
+  const railWidth = () => {
+    const rail = page.theme()?.geometry?.rail;
+    return rail && !globalThis.Margin?.shell && page.state()?.settings?.compactWhenPushed !== false ? rail : null;
+  };
+  // The rail's width while it shows folded (docked, not hovered or toggled).
+  const onRail = () => (reason == null && pinnedOpen() && page.active() ? railWidth() : null);
   // Hover: floating over the page. Keep open: docked, with the page pushed
   // right (or, in the fitted layout, its card placed beside the sidebar).
   let isOpen = false;
@@ -47,10 +61,13 @@ export function startLayout(page, { loader }) {
     if (!page.active()) open = false; // out of the way (content/core.js): no sidebar, no push
     const docked = open && pinnedOpen();
     const width = view.width();
+    const rail = docked ? railWidth() : null;
     isOpen = open;
-    view.setLayout({ open, docked, width });
+    // Hovered or toggled over the rail: the full sidebar, over the page.
+    view.setLayout({ open, docked, width, rail: rail && { width: rail, expanded: reason != null } });
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
-    setPushed(docked, width);
+    host.dataset.rail = rail ? (reason != null ? 'expanded' : 'rail') : 'off';
+    setPushed(docked, rail ?? width);
     globalThis.Margin?.shell?.setLayout({ docked, width, inset: inset(), radius: page.theme().geometry?.radius });
     if (page.state()) syncPlaceholder();
   }
@@ -109,15 +126,25 @@ export function startLayout(page, { loader }) {
     }
   }
 
+  // Resting on the rail: where the pointer stopped, and the pending expand.
+  let railTimer = null;
+  let railRest = null;
+  const cancelRail = () => {
+    clearTimeout(railTimer);
+    railTimer = null;
+    railRest = null;
+  };
   function show(why) {
     clearTimeout(hideTimer);
     hideTimer = null;
+    cancelRail();
     if (!reason || reason === 'peek' || why === 'toggle') reason = why;
     setOpen(true);
   }
   function hide() {
     clearTimeout(hideTimer);
     hideTimer = null;
+    cancelRail();
     reason = null;
     setOpen(pinnedOpen());
   }
@@ -131,6 +158,7 @@ export function startLayout(page, { loader }) {
   // press; collapse them.
   let lastToggle = 0;
   function toggle() {
+    cancelRail();
     if (!page.active()) return page.offerFullscreen();
     const now = Date.now();
     if (now - lastToggle < 200) return;
@@ -176,6 +204,23 @@ export function startLayout(page, { loader }) {
       'mousemove',
       (e) => {
         const x = e.clientX + offsetX();
+        // On the narrow rail (Keep open, a pushed page): its icons work at
+        // once; resting on it opens the full sidebar over the page.
+        const rail = onRail();
+        if (rail != null) {
+          if (x > rail) return cancelRail();
+          // Restarted whenever the pointer moves on (a few px of a resting
+          // hand don't count), so only a rest expands it.
+          if (railRest && Math.hypot(x - railRest.x, e.clientY - railRest.y) <= 4) return;
+          clearTimeout(railTimer);
+          railRest = { x, y: e.clientY };
+          railTimer = setTimeout(() => {
+            railTimer = null;
+            railRest = null;
+            if (onRail() != null) show('hover'); // still on the rail, still docked, nothing else open
+          }, RAIL_EXPAND_MS);
+          return;
+        }
         if (x <= edgePx()) return page.active() ? show('hover') : page.offerFullscreen();
         else if (!page.view()) return;
         else if (x > page.view().width() + inset()) scheduleHide();
@@ -188,7 +233,9 @@ export function startLayout(page, { loader }) {
     );
     // Cursor left the window: keep open if it left through the left edge.
     target.addEventListener('mouseout', (e) => {
-      if (!e.relatedTarget && e.clientX + offsetX() > edgePx()) scheduleHide();
+      if (e.relatedTarget) return;
+      cancelRail(); // left the window
+      if (e.clientX + offsetX() > edgePx()) scheduleHide();
     });
     target.addEventListener(
       'keydown',
@@ -197,11 +244,15 @@ export function startLayout(page, { loader }) {
       },
       true,
     );
-    // Clicking the page closes a toggled sidebar (clicks inside are retargeted to the host).
+    // Clicking the page closes a toggled sidebar (clicks inside are retargeted
+    // to the host). A click (on the rail's icons too) means no rest.
     target.addEventListener('mousedown', (e) => {
+      cancelRail();
       if (reason === 'toggle' && e.target !== host) hide();
     }, true);
   }
+  // Another tab now: nothing pending here.
+  document.addEventListener('visibilitychange', () => document.hidden && cancelRail());
   watchPointer(document);
   onCard((win) => watchPointer(win, () => globalThis.Margin?.shell?.cardLeft() ?? 0));
 

@@ -7,13 +7,14 @@ import { createSidebar } from './sidebar.js';
 import { createChrome } from './chrome.js';
 import { createPalette } from './palette.js';
 import { sidebarCss } from './assets.js';
-import theme from './theme.js';
+import theme, { RAIL } from './theme.js';
 
 registerTheme({
   id: theme.id,
   // The frame around the page card (px) and the card's corner radius: core
-  // pushes the page and places the fitted layout's card to match.
-  geometry: { inset: 8, radius: '6.25px' },
+  // pushes the page and places the fitted layout's card to match. `rail`:
+  // the narrow icon sidebar's width, for pages that are pushed.
+  geometry: { inset: 8, radius: '6.25px', rail: RAIL },
   createPalette,
   mount({ shadow, document, send, onNewTab, onWidth }) {
     const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth });
@@ -40,11 +41,16 @@ registerTheme({
         chrome.setColorScheme(scheme);
       },
       // Hover: a floating card over the page. Keep open: docked, with the
-      // frame around the page.
-      setLayout({ open, docked, width }) {
+      // frame around the page. `rail` ({ width, expanded }): docked as the
+      // narrow icon rail on a pushed page, or expanded from it over the page
+      // (the frame stays at the rail).
+      setLayout({ open, docked, width, rail = null }) {
         sidebar.el.classList.toggle('open', open);
         sidebar.el.classList.toggle('docked', docked);
-        chrome.setLayout({ docked, width });
+        sidebar.el.classList.toggle('rail', !!rail && !rail.expanded);
+        sidebar.el.classList.toggle('rail-expanded', !!rail?.expanded);
+        if (rail) sidebar.el.style.setProperty('--rail', `${rail.width}px`);
+        chrome.setLayout({ docked, width: rail ? rail.width : width });
       },
       setWidth: chrome.setWidth,
       setLoading: chrome.setLoading,

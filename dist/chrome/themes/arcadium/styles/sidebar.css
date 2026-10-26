@@ -60,6 +60,33 @@
   box-shadow: none;
 }
 
+/* Keep open on a page Margin can't fit (pushed; content/layout.js): a narrow
+   rail of icons, the page pushed only by its width. Resting the pointer on it
+   expands the full sidebar over the page (.rail-expanded), which doesn't
+   move; it folds back when the pointer leaves. Titles show as tooltips. */
+.margin-sidebar.overlay.rail { width: var(--rail, 52px); padding: 10px 8px; }
+.rail .title, .rail .icon, .rail .chip.add, .rail .editor, .rail .resizer, .rail .label, .rail .tab-menu:not(.top-layer) { display: none; }
+.rail .chip { min-width: 0; width: 36px; padding: 0; }
+.rail .tab, .rail .pin { justify-content: center; gap: 0; padding: 0; }
+.rail .new-tab, .rail .keep-open { flex: none; width: 36px; padding: 0; text-align: center; }
+/* Rail and expanded rail stack everything the same way, so expanding only
+   widens the rows: nothing moves from under the pointer. Spaces and pins
+   scroll on their own in a short window; the footer always shows. */
+.rail .spaces, .rail-expanded .spaces { flex-direction: column; flex-wrap: nowrap; align-items: center; padding: 2px 0 6px; }
+.rail-expanded .spaces { align-items: flex-start; }
+.rail-expanded .chip.add { display: none; }
+.rail .spaces, .rail .pins-section, .rail-expanded .spaces, .rail-expanded .pins-section { flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; overscroll-behavior: none; }
+.rail .divider, .rail-expanded .divider { margin: 2px 4px; }
+.rail footer, .rail-expanded footer { flex: none; flex-direction: column; }
+.rail footer { align-items: center; }
+.rail-expanded footer { align-items: stretch; }
+.rail-expanded .new-tab { flex: none; } /* as tall as in the rail (flex: 1 is for the row) */
+.rail .tabs-section, .rail-expanded .tabs-section { min-height: 64px; } /* a few tabs always show */
+/* Above the page card's edge (.card-edge, drawn over the docked sidebar),
+   which stays at the rail. */
+.margin-sidebar.overlay.rail-expanded { z-index: 1; box-shadow: 0 0 0 1px var(--border), 0 12px 40px rgba(0, 0, 0, 0.22); }
+.rail-expanded .resizer { display: none; } /* its width is the setting; the page stays at the rail */
+
 /* First render after page load: appear without animating. */
 .instant, .instant * { transition: none !important; }
 

@@ -141,6 +141,10 @@ export function mount({ api, self, send, windowed = false }) {
     fitPages.addEventListener('change', () => send('updateSettings', { patch: { fitPages: fitPages.checked } }));
   }
 
+  // The narrow icon rail on pages that are pushed (content/layout.js).
+  const compactPushed = $('compact-pushed');
+  compactPushed.addEventListener('change', () => send('updateSettings', { patch: { compactWhenPushed: compactPushed.checked } }));
+
   // Navigation shortcuts from Settings (next/previous tab and space; the
   // sidebar is always visible here, so no peek).
   shortcuts.installNavigation({ send, getSettings: () => (recording ? null : state?.settings) });
@@ -260,6 +264,7 @@ export function mount({ api, self, send, windowed = false }) {
     swipeNavigation.checked = state.settings.swipeNavigation !== false;
     swipeNavigation.disabled = !blockGestures.checked;
     fitPages.checked = state.settings.fitPages !== false;
+    compactPushed.checked = state.settings.compactWhenPushed !== false;
     marginFullscreen.checked = state.settings.marginFullscreenAuto !== false;
     fullscreenOnly.checked = state.settings.fullscreenOnly !== false;
     if (document.activeElement !== themeSelect) themeSelect.value = themeFor(state.settings).id;

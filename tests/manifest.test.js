@@ -5,7 +5,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { buildAssets, buildDocked, buildLegacyDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
 import { THEMES } from '../extension/themes/index.js';
-import { WIDTH } from '../extension/themes/arcadium/theme.js';
+import { WIDTH, RAIL } from '../extension/themes/arcadium/theme.js';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
@@ -88,9 +88,11 @@ test('first-paint placeholders: one up-to-date file per sidebar width, nothing e
   for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
   assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match Arcadium\'s theme.js');
   const names = expected.map((w) => `w-${w}.css`).sort();
-  assert.deepEqual(readdirSync(new URL('themes/arcadium/docked/', root)).sort(), names);
+  assert.deepEqual(readdirSync(new URL('themes/arcadium/docked/', root)).sort(), [...names, 'rail.css'].sort());
   // The old path stays for Safari's stored registrations (same content).
   assert.deepEqual(readdirSync(new URL('content/docked/', root)).sort(), names);
+  // The narrow rail's (pages pushed with "Keep open", theme.js RAIL).
+  assert.equal(readFileSync(new URL('themes/arcadium/docked/rail.css', root), 'utf8'), buildDocked('arcadium', RAIL), 'rail.css is stale: run npm run styles');
   for (const w of expected) {
     const css = readFileSync(new URL(`themes/arcadium/docked/w-${w}.css`, root), 'utf8');
     assert.equal(css, buildDocked('arcadium', w), `w-${w}.css is stale: run npm run styles`);
@@ -127,7 +129,7 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   assert.equal(decl(newtab, '#page-card {\n', 'box-shadow'), shadow);
   // The fitted layout's card (content/shell.js) and the theme's geometry
   // (content.js) agree with the CSS.
-  assert.match(read('themes/arcadium/content.js'), new RegExp(`geometry: \\{ inset: 8, radius: '${radius}' \\}`));
+  assert.match(read('themes/arcadium/content.js'), new RegExp(`geometry: \\{ inset: 8, radius: '${radius}', rail: RAIL \\}`));
   assert.match(read('content/shell.js'), new RegExp(`let layout = \\{ docked: true, width: 260, inset: 8, radius: '${radius}' \\};`));
   // Plain CSS only: nothing for the browser to load (no images, no url()).
   for (const css of [sidebar, docked, newtab]) assert.doesNotMatch(css, /border-image|url\(/);
