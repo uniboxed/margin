@@ -69,6 +69,8 @@ export function takeOver(api) {
       } catch {}
       document.removeEventListener('visibilitychange', go);
       clearTimeout(retry);
+      // Updated again meanwhile: this copy is cut off (the newer one reloads).
+      if (!api.runtime?.id) return;
       console.info('[margin] Margin was updated while this page was open: loading it again');
       api.runtime.sendMessage({ type: 'reloadForUpdate' }).catch(() => {});
     };

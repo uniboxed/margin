@@ -620,7 +620,8 @@ import { platform } from '../shared/platform.js';
       const { href, button, metaKey, shiftKey, altKey } = match;
       if (metaKey || button === 1) {
         log('opening as Safari would a ⌘-clicked link the page\'s CSP refused in the card:', href);
-        return void api?.runtime.sendMessage({ type: 'openLink', url: href, window: metaKey && altKey, active: shiftKey }).catch(() => {});
+        if (!api?.runtime?.id) return; // Margin was reloaded since this page loaded
+        return void api.runtime.sendMessage({ type: 'openLink', url: href, window: metaKey && altKey, active: shiftKey }).catch(() => {});
       }
       if (altKey) return L.topOnly(href) || new URL(href).origin === origin ? saveFrom(href, '') : undefined;
       if (shiftKey) return; // Reading List: extensions can't add to it; at least don't navigate
