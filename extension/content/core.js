@@ -69,6 +69,10 @@ export function startCore({ onTheme } = {}) {
    * @returns {Promise<Result<K> | undefined>} undefined when it failed
    */
   async function send(type, payload = {}, retry = true) {
+    // Margin was reloaded or removed since this copy started (Chrome takes its
+    // id away, and sendMessage throws "Extension context invalidated"): a
+    // new copy has the page now, this one stays quiet.
+    if (!api.runtime?.id) return;
     try {
       const res = await api.runtime.sendMessage({ type, ...payload });
       if (res?.ok) return res.result;
