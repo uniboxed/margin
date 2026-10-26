@@ -42,7 +42,7 @@
         "<all_urls>"
       ],
       "js": [
-        "content/shell-main.js"
+        "content/shell-main.bundle.js"
       ],
       "run_at": "document_start",
       "all_frames": true,

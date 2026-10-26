@@ -45,6 +45,12 @@ test('each build loads one bundled script per context', () => {
     const scripts = [...readFileSync(join(dir, 'newtab/newtab.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(scripts, ['newtab.bundle.js'], target);
     for (const file of ['content/content.bundle.js', 'content/shell.bundle.js', 'newtab/newtab.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
+    // The fitted layout's page-world part: the card's setup, and only in
+    // Chrome the writer (Safari never has it listening).
+    assert.deepEqual(manifest.content_scripts.find((c) => c.world === 'MAIN').js, ['content/shell-main.bundle.js'], target);
+    const main = readFileSync(join(dir, 'content/shell-main.bundle.js'), 'utf8');
+    assert.match(main, /margin-page-ready/, `${target}: the card setup`);
+    assert.equal(/margin-shell-write/.test(main), target === 'chrome', `${target}: the writer only in Chrome`);
     // Each theme: a content bundle the background registers ('margin-theme',
     // the path from theme.js) and a new-tab module exporting mount().
     assert.match(background, /margin-theme/, `${target}: the background registers the theme`);

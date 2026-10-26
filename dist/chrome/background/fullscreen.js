@@ -7,6 +7,7 @@
 // palette stand in for it. It has to start from a window that isn't in full
 // screen already.
 import { platform } from '../shared/platform.js';
+import { queueRegistrations } from './registered.js';
 import { api } from './store.js';
 
 const KEY = 'marginFullscreen'; // storage.session: { [windowId]: the state to go back to }
@@ -100,8 +101,14 @@ export async function isFullscreen(windowId) {
   return win?.state === 'fullscreen';
 }
 
-// Tells the window's pages when that changes.
+// Tells the window's pages when that changes. The fitted layout follows
+// whether any window is in full screen (background/registered.js syncShell).
+const known = new Map(); // window id → last told full screen or not
 async function tellTabs(windowId, fullscreen) {
+  if (known.get(windowId) !== fullscreen) {
+    known.set(windowId, fullscreen);
+    queueRegistrations();
+  }
   const tabs = await api.tabs.query({ windowId }).catch(() => []);
   for (const tab of tabs) api.tabs.sendMessage(tab.id, { type: 'windowState', fullscreen }).catch(() => {});
 }
