@@ -1,14 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { PROFILES } from '../extension/shared/platform.js';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHELL_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
-import '../extension/shared/platform.js';
+import { LEGACY_SHELL_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const { platformProfiles: PROFILES } = globalThis.Margin;
 
 const listFiles = (dir, prefix = '') => readdirSync(dir).flatMap((name) => {
   const path = join(dir, name);
@@ -38,14 +37,14 @@ test('each build loads one bundled script per context', () => {
     assert.deepEqual(manifest.content_scripts[0].js, ['content/content.bundle.js'], target);
     assert.equal(manifest.background.service_worker, 'background.bundle.js', target);
     const background = readFileSync(join(dir, 'background.bundle.js'), 'utf8');
-    assert.ok(background.startsWith('globalThis.MARGIN_BUNDLED = true;'), `${target}: the background registers the shell bundle`);
+    assert.match(background, /\["content\/shell\.bundle\.js"\]/, `${target}: the background registers the shell bundle`);
     assert.doesNotMatch(background, /importScripts\(/, `${target}: nothing left to import`);
     const scripts = [...readFileSync(join(dir, 'newtab/newtab.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(scripts, ['newtab.bundle.js'], target);
     for (const file of ['content/content.bundle.js', 'content/shell.bundle.js', 'newtab/newtab.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
     // Safari drops every registered script if a file one lists is missing, so
     // the sources an earlier version registered must still be there.
-    for (const file of SHELL_FILES) assert.ok(statSync(join(dir, file)).isFile(), `${target}/${file}`);
+    for (const file of LEGACY_SHELL_FILES) assert.ok(statSync(join(dir, file)).isFile(), `${target}/${file}`);
   }
 });
 

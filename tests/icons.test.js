@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/icons.js';
+import * as icons from '../extension/shared/icons.js';
 
-const { sniffType, toBase64, dataUrl } = globalThis.Margin.icons;
+const { sniffType, toBase64, dataUrl } = icons;
 const bytes = (...v) => new Uint8Array(v);
 const text = (s) => new TextEncoder().encode(s);
 

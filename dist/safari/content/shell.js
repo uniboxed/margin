@@ -21,10 +21,12 @@
 //     entries (pushState) on the top window.
 // Skipped loads (popups, non-HTML, other encodings, late injection, …) keep
 // the push layout (content/sidebar.js).
+import * as L from '../shared/shell-logic.js';
+import { platform } from '../shared/platform.js';
+
 (() => {
-  const Margin = globalThis.Margin;
-  const L = Margin?.shellLogic;
-  if (!L || window !== top || Margin.shell !== undefined) return;
+  const Margin = (globalThis.Margin ??= {});
+  if (window !== top || Margin.shell !== undefined) return;
   Margin.shell = null; // ran once; WebKit may run document_start scripts again
 
   const log = (...args) => console.debug('[margin] fitted layout:', ...args);
@@ -57,7 +59,7 @@
   const loops = readJson(LOOP_KEY);
   const loop = L.loopCheck(loops?.url === href ? loops.times : [], Date.now());
   const skip = L.skipReason({
-    enabled: !!Margin.platform?.shell,
+    enabled: !!platform?.shell,
     isTop: true,
     isHtml: old instanceof HTMLHtmlElement,
     contentType: document.contentType,

@@ -31,16 +31,7 @@
         "<all_urls>"
       ],
       "js": [
-        "shared/platform.js",
-        "shared/view.js",
-        "shared/search.js",
-        "shared/shortcuts.js",
-        "shared/gestures.js",
-        "shared/pull.js",
-        "content/styles.js",
-        "shared/ui.js",
-        "content/sidebar.js",
-        "content/palette.js"
+        "content/main.js"
       ],
       "run_at": "document_start",
       "all_frames": false

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/gestures.js';
+import * as gestures from '../extension/shared/gestures.js';
 
-const { installGestureGuard } = globalThis.Margin.gestures;
+const { installGestureGuard } = gestures;
 
 // A stand-in window: records listeners; pinch events are plain objects.
 function fakeWindow({ zoom = 1 } = {}) {
@@ -54,7 +54,7 @@ test('pinch at normal zoom: the whole pinch is Margin\'s (cancelled for Safari, 
 });
 
 test('pinch → Safari\'s zoom levels: nearest to start × scale, 100%–300%', () => {
-  const { zoomForPinch } = globalThis.Margin.gestures;
+  const { zoomForPinch } = gestures;
   assert.equal(zoomForPinch(1, 1), 1);
   assert.equal(zoomForPinch(1, 1.2), 1.25);
   assert.equal(zoomForPinch(1, 1.5), 1.5);

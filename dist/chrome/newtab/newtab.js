@@ -1,6 +1,12 @@
+import { el, avatar, createSidebar } from '../shared/ui.js';
+import * as S from '../shared/search.js';
+import * as V from '../shared/view.js';
+import * as shortcuts from '../shared/shortcuts.js';
+import { installGestureGuard } from '../shared/gestures.js';
+import { platform } from '../shared/platform.js';
+import { createPalette, installPaletteShortcut } from '../content/palette.js';
+
 const api = globalThis.browser ?? globalThis.chrome;
-const { Margin } = globalThis;
-const { el, avatar } = Margin.ui;
 const $ = (id) => document.getElementById(id);
 
 async function send(type, payload = {}) {
@@ -10,7 +16,7 @@ async function send(type, payload = {}) {
 }
 
 const dark = matchMedia('(prefers-color-scheme: dark)');
-const sidebar = Margin.ui.createSidebar({ document, send, mode: 'newtab', onNewTab: () => palette.open() });
+const sidebar = createSidebar({ document, send, mode: 'newtab', onNewTab: () => palette.open() });
 const applyTheme = () => sidebar.setTheme(dark.matches ? 'dark' : 'light');
 applyTheme();
 dark.addEventListener('change', applyTheme);
@@ -26,11 +32,11 @@ const go = (url) => api.tabs.update(self.id, { url });
 // Which engine searches use: always the browser's (shared/search.js).
 function renderSearchEngine() {
   const learned = state?.settings?.safariSearch;
-  const text = Margin.platform?.search === 'browser'
+  const text = platform?.search === 'browser'
     ? 'Searches use Chrome’s search engine (Chrome Settings → Search engine).'
     : learned
       ? `Searches use Safari’s search engine: ${learned.name} (seen in Safari’s address bar ${new Date(learned.at).toLocaleString()}). Margin follows it: after changing it in Safari → Settings → Search, search once from Safari’s address bar.`
-      : `Searches use Safari’s default search engine (${Margin.search.SAFARI_DEFAULT.name}) until you search once from Safari’s address bar; from then on, whatever Safari uses (Safari → Settings → Search).`;
+      : `Searches use Safari’s default search engine (${S.SAFARI_DEFAULT.name}) until you search once from Safari’s address bar; from then on, whatever Safari uses (Safari → Settings → Search).`;
   $('engine-info').textContent = text;
 }
 
@@ -38,7 +44,7 @@ function renderSearchEngine() {
 
 $('search').addEventListener('submit', (event) => {
   event.preventDefault();
-  const target = Margin.search.resolveInput($('query').value);
+  const target = S.resolveInput($('query').value);
   if (target?.kind === 'url') go(target.url);
   else if (target) send('search', { query: target.query, tabId: self.id }); // the browser's engine
 });
@@ -49,8 +55,8 @@ $('pin-tiles').addEventListener('click', (event) => {
   const tile = event.target.closest('[data-pin-id]');
   const pin = state?.pins.find((p) => p.id === tile?.dataset.pinId);
   if (!pin) return;
-  const key = Margin.view.normalizeUrl(pin.url);
-  const open = Object.values(state.tabs).find((t) => t.id !== self.id && Margin.view.normalizeUrl(t.url) === key);
+  const key = V.normalizeUrl(pin.url);
+  const open = Object.values(state.tabs).find((t) => t.id !== self.id && V.normalizeUrl(t.url) === key);
   if (open) send('activateTab', { tabId: open.id });
   else go(pin.url);
 });
@@ -78,11 +84,11 @@ const blockGestures = $('block-gestures');
 const pullToRefresh = $('pull-to-refresh');
 const swipeNavigation = $('swipe-navigation');
 let gestureGuard = null;
-if (Margin.platform?.blockGestures) {
+if (platform?.blockGestures) {
   $('gestures-setting').hidden = false;
   $('pull-setting').hidden = false;
   $('swipe-setting').hidden = false;
-  gestureGuard = Margin.gestures.installGestureGuard({ getSettings: () => state?.settings });
+  gestureGuard = installGestureGuard({ getSettings: () => state?.settings });
   blockGestures.addEventListener('change', () => send('updateSettings', { patch: { blockGestures: blockGestures.checked } }));
   pullToRefresh.addEventListener('change', () => send('updateSettings', { patch: { pullToRefresh: pullToRefresh.checked } }));
   swipeNavigation.addEventListener('change', () => send('updateSettings', { patch: { swipeNavigation: swipeNavigation.checked } }));
@@ -90,18 +96,18 @@ if (Margin.platform?.blockGestures) {
 
 // Fitted layout with "Keep open" (content/shell.js; Safari builds only).
 const fitPages = $('fit-pages');
-if (Margin.platform?.shell) {
+if (platform?.shell) {
   $('fit-setting').hidden = false;
   fitPages.addEventListener('change', () => send('updateSettings', { patch: { fitPages: fitPages.checked } }));
 }
 
 // Navigation shortcuts from Settings (next/previous tab and space; the
 // sidebar is always visible here, so no peek).
-Margin.shortcuts.installNavigation({ send, getSettings: () => (recording ? null : state?.settings) });
+shortcuts.installNavigation({ send, getSettings: () => (recording ? null : state?.settings) });
 
 // ---- palette ----------------------------------------------------------------
 
-const palette = Margin.createPalette({
+const palette = createPalette({
   send,
   getState: () => state,
   getContext: () => ({ windowId: windowId(), tabId: self?.id, inNewTab: true, canToggleSidebar: false }),
@@ -111,7 +117,7 @@ const palette = Margin.createPalette({
   },
   theme: () => (dark.matches ? 'dark' : 'light'),
 });
-Margin.installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
+installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
 api.runtime.onMessage.addListener((message) => {
   if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
 });
@@ -130,12 +136,12 @@ function currentShortcuts() {
   return {
     paletteShortcut: state?.settings?.paletteShortcut ?? 'Alt+KeyK',
     sidebarShortcut: state?.settings?.sidebarShortcut ?? 'Alt+KeyS',
-    ...Margin.shortcuts.navigationFor(state?.settings),
+    ...shortcuts.navigationFor(state?.settings),
   };
 }
 function saveShortcut(name, combo) {
   if (name === 'paletteShortcut' || name === 'sidebarShortcut') return send('updateSettings', { patch: { [name]: combo } });
-  return send('updateSettings', { patch: { shortcuts: { ...Margin.shortcuts.navigationFor(state?.settings), [name]: combo } } });
+  return send('updateSettings', { patch: { shortcuts: { ...shortcuts.navigationFor(state?.settings), [name]: combo } } });
 }
 function showHelp(text, error = false) {
   shortcutHelp.textContent = text;
@@ -161,18 +167,18 @@ addEventListener('keydown', (event) => {
   event.preventDefault();
   event.stopImmediatePropagation();
   if (event.key === 'Escape') return input.blur();
-  const combo = Margin.shortcuts.fromEvent(event);
-  if (!combo || !Margin.shortcuts.parse(combo)) return;
+  const combo = shortcuts.fromEvent(event);
+  if (!combo || !shortcuts.parse(combo)) return;
   const name = input.dataset.shortcut;
   const taken = Object.entries(currentShortcuts()).find(([other, value]) => other !== name && value === combo);
-  if (taken) return showHelp(`${Margin.shortcuts.format(combo)} is already used for “${SHORTCUT_NAMES[taken[0]]}”.`, true);
+  if (taken) return showHelp(`${shortcuts.format(combo)} is already used for “${SHORTCUT_NAMES[taken[0]]}”.`, true);
   showHelp(defaultHelp);
   saveShortcut(name, combo);
   input.blur();
 }, true);
 $('shortcuts-reset').addEventListener('click', () => {
   showHelp(defaultHelp);
-  send('updateSettings', { patch: { paletteShortcut: 'Alt+KeyK', sidebarShortcut: 'Alt+KeyS', shortcuts: { ...Margin.shortcuts.NAVIGATION } } });
+  send('updateSettings', { patch: { paletteShortcut: 'Alt+KeyK', sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } });
 });
 
 function ago(ts) {
@@ -184,11 +190,11 @@ function ago(ts) {
 }
 
 function renderLauncher() {
-  const view = Margin.view.sidebar(state, windowId());
+  const view = V.sidebar(state, windowId());
   $('pins-section').hidden = view.pins.length === 0;
   $('pin-tiles').replaceChildren(
     ...view.pins.map((p) =>
-      el(document, 'li', { class: 'tile', 'data-pin-id': p.id, title: p.url }, avatar(document, { ...p, favIconUrl: Margin.view.iconFor(state, p) }), el(document, 'span', { class: 'title', text: p.title })),
+      el(document, 'li', { class: 'tile', 'data-pin-id': p.id, title: p.url }, avatar(document, { ...p, favIconUrl: V.iconFor(state, p) }), el(document, 'span', { class: 'title', text: p.title })),
     ),
   );
 
@@ -200,7 +206,7 @@ function renderLauncher() {
   $('archive-list').replaceChildren(
     ...archive.map((a) =>
       el(document, 'li', { 'data-archive-id': a.id, title: a.url },
-        avatar(document, { ...a, favIconUrl: Margin.view.iconFor(state, a) }),
+        avatar(document, { ...a, favIconUrl: V.iconFor(state, a) }),
         el(document, 'span', { class: 'title', text: a.title || a.url }),
         el(document, 'span', { class: 'when', text: ago(a.closedAt) })),
     ),
@@ -218,7 +224,7 @@ function renderLauncher() {
   if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
   if (!recording) {
     const values = currentShortcuts();
-    for (const input of shortcutInputs) input.value = Margin.shortcuts.format(values[input.dataset.shortcut]);
+    for (const input of shortcutInputs) input.value = shortcuts.format(values[input.dataset.shortcut]);
   }
 }
 

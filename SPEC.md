@@ -25,7 +25,7 @@ You are running in a **Linux cloud session** with no Xcode, no `xcodebuild`, no 
 
 ## Tech choices (decided)
 
-- Plain **Manifest V3 web extension** in `extension/`, **vanilla JavaScript + CSS, no framework, no runtime dependencies**. `extension/` still loads directly, unbuilt. The build (`npm run build`) bundles each context's scripts into one file with **esbuild** (a dev dependency; Tirth's decision, 2026-10-25), and `dist/<browser>/` is what browsers load. Type checks, if added, run at development time only (JSDoc + `tsc`), never as a build step the extension needs.
+- Plain **Manifest V3 web extension** in `extension/`, **vanilla JavaScript + CSS, no framework, no runtime dependencies**. `extension/` is the source, written as ES modules; the build (`npm run build`) bundles each context (content scripts, background, fitted layout, new-tab page) into one plain script with **esbuild** (a dev dependency; Tirth's decision, 2026-10-25), and `dist/<browser>/` is what browsers load. Type checks, if added, run at development time only (JSDoc + `tsc`), never as a build step the extension needs.
 - **Do not generate the Xcode project.** Tirth will run this locally on his Mac:
   `xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open`
   Put that command, plus how to rebuild after pulling new changes, in `README.md` under "Building for Safari (local, macOS)". Add `xcode/` to `.gitignore` unless Tirth later commits it himself.

@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/platform.js';
+import * as shortcuts from '../extension/shared/shortcuts.js';
+import * as view from '../extension/shared/view.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { buildStyles, buildDocked, DOCKED_WIDTHS } from '../scripts/build-styles.js';
 import { readdirSync } from 'node:fs';
-import '../extension/shared/view.js';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
@@ -68,9 +68,10 @@ test('content/styles.js is up to date with the CSS files (run `npm run styles`)'
   assert.equal(readFileSync(new URL('content/styles.js', root), 'utf8'), buildStyles());
 });
 
-test('content scripts load styles before the UI, without fetching anything', () => {
-  const js = manifest.content_scripts[0].js;
-  assert.ok(js.indexOf('content/styles.js') < js.indexOf('content/sidebar.js'));
+test('content scripts carry their styles, without fetching anything', () => {
+  for (const f of ['content/sidebar.js', 'content/palette.js']) {
+    assert.match(readFileSync(new URL(f, root), 'utf8'), /^import \* as styles from '\.\/styles\.js';$/m, `${f} bundles its CSS`);
+  }
   assert.equal(manifest.web_accessible_resources, undefined, 'nothing exposed to web pages');
   for (const f of ['content/sidebar.js', 'content/palette.js', 'shared/ui.js']) {
     assert.ok(!readFileSync(new URL(f, root), 'utf8').includes('fetch('), `${f} must not fetch`);
@@ -78,7 +79,7 @@ test('content scripts load styles before the UI, without fetching anything', () 
 });
 
 test('first-paint placeholders: one up-to-date file per sidebar width, nothing else', () => {
-  const { WIDTH } = globalThis.Margin.view;
+  const { WIDTH } = view;
   const expected = [];
   for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
   assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match shared/view.js');
@@ -93,7 +94,7 @@ test('first-paint placeholders: one up-to-date file per sidebar width, nothing e
 
 test('manifest command keys are the default navigation shortcuts', async () => {
   await import('../extension/shared/shortcuts.js');
-  const { NAVIGATION, ACTIONS } = globalThis.Margin.shortcuts;
+  const { NAVIGATION, ACTIONS } = shortcuts;
   const toManifest = (s) => s.replace('Ctrl+Meta+', 'MacCtrl+Command+').replace('Arrow', '');
   for (const [name, action] of Object.entries(ACTIONS)) {
     assert.equal(manifest.commands[action].suggested_key.mac, toManifest(NAVIGATION[name]), name);

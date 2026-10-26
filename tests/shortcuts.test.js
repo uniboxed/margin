@@ -1,9 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/platform.js';
-import '../extension/shared/shortcuts.js';
+import * as shortcuts from '../extension/shared/shortcuts.js';
 
-const { parse, matches, fromEvent, format } = globalThis.Margin.shortcuts;
+const { parse, matches, fromEvent, format } = shortcuts;
 const ev = (code, mods = {}) => ({ code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods });
 
 test('parse', () => {
@@ -35,7 +34,7 @@ test('format for display', () => {
 });
 
 test('navigation defaults (Chrome profile, outside a browser): ⌃⌘ + arrows; stored ones override', () => {
-  const { NAVIGATION, navigationFor } = globalThis.Margin.shortcuts;
+  const { NAVIGATION, navigationFor } = shortcuts;
   assert.equal(format(NAVIGATION.nextTab), '⌃⌘↓');
   assert.equal(format(NAVIGATION.prevTab), '⌃⌘↑');
   assert.equal(format(NAVIGATION.nextSpace), '⌃⌘→');

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/shell-logic.js';
+import * as shellLogic from '../extension/shared/shell-logic.js';
 
-const { skipReason, loopCheck, doctypeString, serialize, postFields, isBust, routable, excludePatterns, LOOP } = globalThis.Margin.shellLogic;
+const { skipReason, loopCheck, doctypeString, serialize, postFields, isBust, routable, excludePatterns, LOOP } = shellLogic;
 
 const fresh = {
   enabled: true, isTop: true, isHtml: true, contentType: 'text/html', charset: 'UTF-8', ready: 'loading', kids: [],
@@ -103,7 +103,7 @@ test('per-site opt-outs become exclude patterns', () => {
   assert.deepEqual(excludePatterns(undefined), []);
 });
 
-const { cardNavigatingClick, reportKey, getSubmissionUrl, topOnly } = globalThis.Margin.shellLogic;
+const { cardNavigatingClick, reportKey, getSubmissionUrl, topOnly } = shellLogic;
 
 test('only plain clicks that navigate the card itself are redone at the top', () => {
   const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, download: false, target: '' };

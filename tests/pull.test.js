@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/pull.js';
+import * as pull from '../extension/shared/pull.js';
 
-const { createPullTracker } = globalThis.Margin.pull;
+const { createPullTracker } = pull;
 
 // Feed a series of deltaY values, 16ms apart from `t0`; returns the states.
 function feed(tracker, deltas, { t0 = 1000, atTop = true } = {}) {
@@ -83,7 +83,7 @@ test('a new gesture after a pause starts fresh', () => {
 
 // ---- swipe back/forward (axis x) ---------------------------------------------
 
-const { createSwipeTracker } = globalThis.Margin.pull;
+const { createSwipeTracker } = pull;
 function feedX(tracker, deltas, { t0 = 1000, eligible = true } = {}) {
   return deltas.map((deltaX, i) => tracker.wheel({ deltaX, deltaY: 0.5, time: t0 + i * 16, eligible }));
 }

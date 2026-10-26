@@ -87,17 +87,19 @@ In Xcode, choose the **Margin (macOS)** scheme and Run (⌘R). Safari picks up t
 ## Architecture
 
 ```
-extension/              The one shared source (loads unbuilt too: it detects the browser)
+extension/              The one shared source, as ES modules (browsers load the bundles in dist/)
   manifest.json         MV3: tabs, storage, alarms, scripting; <all_urls>; newtab override; commands
   shared/platform.js    Per-browser profiles (favicon fetching, default shortcuts); stamped by the build
-  background.js         State owner (classic service worker; loads state/model.js via importScripts). Tab events → pure model → storage.local.
+  background.js         State owner (bundled into a classic service worker). Tab events → pure model → storage.local.
                         Message router for the UI. Auto-archive scheduler.
-  state/model.js        Pure state functions (no browser APIs), unit tested. Classic script.
+  state/model.js        Pure state functions (no browser APIs), unit tested.
   shared/view.js        Pure "what does the sidebar show for window W" derivation.
   shared/search.js      URL-vs-search, fuzzy scoring, palette ranking.
   shared/shortcuts.js   Shortcut strings ("Alt+KeyK") ↔ key events.
   shared/ui.js          Sidebar renderer used by both the overlay and the new tab.
-  content/sidebar.js    Content script: closed-shadow-DOM overlay, hover reveal, theme.
+  content/main.js       Content-script entry: starts the sidebar, then the palette.
+  content/sidebar.js    Closed-shadow-DOM overlay, hover reveal, theme.
+  content/shell.js      The fitted layout (registered by the background while "Keep open" is on).
   content/palette.js    Command palette (own closed shadow root), used by content + new tab.
   content/docked/       Generated per sidebar width from docked.template.css; registered only
                         while "Keep open" is on; applied before first paint.
@@ -107,7 +109,7 @@ extension/              The one shared source (loads unbuilt too: it detects the
 platform/<browser>/     Manifest overrides per browser (today: the shortcut `commands`)
 dist/safari/, dist/chrome/
                         Ready-to-load builds from `npm run build` (generated, committed; a test checks they're current)
-scripts/build.js        extension/ + platform/<browser>/ → dist/<browser>/
+scripts/build.js        extension/ + platform/<browser>/ → dist/<browser>/, one esbuild bundle per context
 tests/
   *.test.js             node --test unit tests
   e2e/*.test.js         Playwright (headless Chromium) tests that load dist/chrome/ (and a Safari-profile variant) unpacked
@@ -121,7 +123,7 @@ Design decisions and every Safari fallback are in [DECISIONS.md](DECISIONS.md).
 
 ## Development
 
-No runtime dependencies. `npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, then bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `content/shell.bundle.js`, `newtab/newtab.bundle.js`) and points the manifest and `newtab.html` at them. `extension/` itself still loads unbuilt. Run `npm install` once. Node 22+.
+No runtime dependencies. `npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, then bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `content/shell.bundle.js`, `newtab/newtab.bundle.js`) and points the manifest and `newtab.html` at them. `extension/` is ES modules (content scripts and Safari's service worker can't load those), so browsers load `dist/`. Run `npm install` once. Node 22+.
 
 ```sh
 npm run build       # after any change under extension/ or platform/: regenerate dist/ (a test checks it; also runs `styles`)

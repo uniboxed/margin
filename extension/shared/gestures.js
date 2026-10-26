@@ -1,4 +1,4 @@
-// Trackpad behavior. Classic script; attaches to globalThis.Margin.gestures.
+// Trackpad behavior.
 //
 // installGestureGuard (Safari builds, shared/platform.js `blockGestures`;
 // setting `blockGestures`, default on) stops Safari's gestures that leave or
@@ -34,151 +34,148 @@
 // panels (sidebar, palette) scroll only the panel's lists, and only when
 // they have more than fits; they never scroll the page behind.
 
-(() => {
-  const Margin = (globalThis.Margin ??= {});
 
-  const AXES = {
-    x: { size: 'Width', pos: 'scrollLeft', overflow: 'overflowX' },
-    y: { size: 'Height', pos: 'scrollTop', overflow: 'overflowY' },
-  };
+const AXES = {
+  x: { size: 'Width', pos: 'scrollLeft', overflow: 'overflowX' },
+  y: { size: 'Height', pos: 'scrollTop', overflow: 'overflowY' },
+};
 
-  // Could `node` scroll along `axis` ('x' | 'y') by `delta` (sign = direction)?
-  function canScroll(node, axis, delta, scrollingElement) {
-    const a = AXES[axis];
-    const max = node[`scroll${a.size}`] - node[`client${a.size}`];
-    if (max <= 1 || !delta) return false;
-    const style = getComputedStyle(node);
-    const overflow = style[a.overflow];
-    if (node === scrollingElement ? overflow === 'hidden' || overflow === 'clip' : overflow !== 'auto' && overflow !== 'scroll') return false;
-    // scrollLeft runs 0 … max, or -max … 0 in right-to-left content.
-    const [lo, hi] = axis === 'x' && style.direction === 'rtl' ? [-max, 0] : [0, max];
-    return delta < 0 ? node[a.pos] > lo + 0.5 : node[a.pos] < hi - 0.5;
+// Could `node` scroll along `axis` ('x' | 'y') by `delta` (sign = direction)?
+function canScroll(node, axis, delta, scrollingElement) {
+  const a = AXES[axis];
+  const max = node[`scroll${a.size}`] - node[`client${a.size}`];
+  if (max <= 1 || !delta) return false;
+  const style = getComputedStyle(node);
+  const overflow = style[a.overflow];
+  if (node === scrollingElement ? overflow === 'hidden' || overflow === 'clip' : overflow !== 'auto' && overflow !== 'scroll') return false;
+  // scrollLeft runs 0 … max, or -max … 0 in right-to-left content.
+  const [lo, hi] = axis === 'x' && style.direction === 'rtl' ? [-max, 0] : [0, max];
+  return delta < 0 ? node[a.pos] > lo + 0.5 : node[a.pos] < hi - 0.5;
+}
+const canScrollX = (node, dx, scrollingElement) => canScroll(node, 'x', dx, scrollingElement);
+
+// Does anything the event passes through (up to `stopAt`, else including
+// the page itself) scroll along `axis` in the event's direction?
+function somethingScrolls(event, axis, { doc, stopAt = null } = {}) {
+  const delta = axis === 'x' ? event.deltaX : event.deltaY;
+  const scrollingElement = doc ? doc.scrollingElement ?? doc.documentElement : null;
+  for (const node of event.composedPath()) {
+    if (node.nodeType === 1 && canScroll(node, axis, delta, scrollingElement)) return true;
+    if (node === stopAt) return false;
   }
-  const canScrollX = (node, dx, scrollingElement) => canScroll(node, 'x', dx, scrollingElement);
+  return !!scrollingElement && canScroll(scrollingElement, axis, delta, scrollingElement);
+}
 
-  // Does anything the event passes through (up to `stopAt`, else including
-  // the page itself) scroll along `axis` in the event's direction?
-  function somethingScrolls(event, axis, { doc, stopAt = null } = {}) {
-    const delta = axis === 'x' ? event.deltaX : event.deltaY;
-    const scrollingElement = doc ? doc.scrollingElement ?? doc.documentElement : null;
-    for (const node of event.composedPath()) {
-      if (node.nodeType === 1 && canScroll(node, axis, delta, scrollingElement)) return true;
-      if (node === stopAt) return false;
+// Keep wheel events over `el` (a panel in a shadow root) from scrolling the
+// page: let them scroll a list inside `el` that can move that way, else
+// cancel them. Pinches (⌃+wheel) are left to the page-wide guard.
+function containScroll(el) {
+  el.addEventListener('wheel', (event) => {
+    if (!event.cancelable || event.ctrlKey) return;
+    const axis = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'x' : 'y';
+    if (!somethingScrolls(event, axis, { stopAt: el })) event.preventDefault();
+  }, { passive: false });
+}
+
+// For pull-to-refresh: is this upward scroll at the very top of the page,
+// and not over anything else that scrolls vertically (a list, an editor;
+// those keep their own top)?
+function atPageTop(event, doc) {
+  const scrollingElement = doc.scrollingElement ?? doc.documentElement;
+  if (scrollingElement.scrollTop > 0) return false;
+  for (const node of event.composedPath()) {
+    if (node.nodeType !== 1 || node === scrollingElement || node === doc.body) continue;
+    const overflow = getComputedStyle(node).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight - node.clientHeight > 1) return false;
+  }
+  return true;
+}
+
+const NO_BOUNCE_CSS = ':root { overscroll-behavior-y: none !important; }';
+
+// Pinch → page zoom: the nearest of Safari's zoom levels to where the pinch
+// has taken it (start × scale), never below 100% (or below where it
+// started, if already zoomed out with ⌘−), at most 300%.
+const ZOOM_LEVELS = [0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2, 2.5, 3];
+function zoomForPinch(start, scale) {
+  const target = start * scale;
+  const floor = Math.min(start, 1) - 1e-9;
+  return ZOOM_LEVELS.filter((z) => z >= floor)
+    .reduce((best, z) => (Math.abs(Math.log(z / target)) < Math.abs(Math.log(best / target)) ? z : best));
+}
+
+// `getSettings()` returns the current settings (or null while unknown).
+// `onPinch({ phase: 'start' | 'change' | 'end', scale })` gets the pinches
+// taken from Safari. Returns { update() }: call it when settings change
+// (adds or removes the no-bounce rule).
+function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis.window }) {
+  if (!win) return { update() {} };
+  const doc = win.document;
+  const enabled = () => getSettings()?.blockGestures !== false;
+
+  // Safari's pinch events (macOS); `scale` < 1 means pinching in.
+  const zoomedIn = () => (win.visualViewport?.scale ?? 1) > 1.01;
+
+  win.addEventListener('wheel', (event) => {
+    if (!enabled() || !event.cancelable) return;
+    if (event.ctrlKey) { // a pinch reported as wheel: deltaY > 0 is pinching in
+      if (event.deltaY > 0 && !zoomedIn()) event.preventDefault();
+      return;
     }
-    return !!scrollingElement && canScroll(scrollingElement, axis, delta, scrollingElement);
-  }
+    if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+    if (somethingScrolls(event, 'x', { doc })) return;
+    event.preventDefault();
+  }, { capture: true, passive: false });
 
-  // Keep wheel events over `el` (a panel in a shadow root) from scrolling the
-  // page: let them scroll a list inside `el` that can move that way, else
-  // cancel them. Pinches (⌃+wheel) are left to the page-wide guard.
-  function containScroll(el) {
-    el.addEventListener('wheel', (event) => {
-      if (!event.cancelable || event.ctrlKey) return;
-      const axis = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'x' : 'y';
-      if (!somethingScrolls(event, axis, { stopAt: el })) event.preventDefault();
-    }, { passive: false });
-  }
+  // A pinch is Margin's if it started at normal (unmagnified) zoom.
+  let ours = false;
+  const options = { capture: true, passive: false };
+  win.addEventListener('gesturestart', (event) => {
+    ours = enabled() && !zoomedIn();
+    if (!ours) return;
+    event.preventDefault();
+    onPinch({ phase: 'start', scale: 1 });
+  }, options);
+  win.addEventListener('gesturechange', (event) => {
+    if (!ours) return;
+    event.preventDefault();
+    if (Number.isFinite(event.scale)) onPinch({ phase: 'change', scale: event.scale });
+  }, options);
+  win.addEventListener('gestureend', (event) => {
+    if (!ours) return;
+    ours = false;
+    event.preventDefault();
+    onPinch({ phase: 'end', scale: event.scale });
+  }, options);
 
-  // For pull-to-refresh: is this upward scroll at the very top of the page,
-  // and not over anything else that scrolls vertically (a list, an editor;
-  // those keep their own top)?
-  function atPageTop(event, doc) {
-    const scrollingElement = doc.scrollingElement ?? doc.documentElement;
-    if (scrollingElement.scrollTop > 0) return false;
-    for (const node of event.composedPath()) {
-      if (node.nodeType !== 1 || node === scrollingElement || node === doc.body) continue;
-      const overflow = getComputedStyle(node).overflowY;
-      if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight - node.clientHeight > 1) return false;
-    }
-    return true;
-  }
-
-  const NO_BOUNCE_CSS = ':root { overscroll-behavior-y: none !important; }';
-
-  // Pinch → page zoom: the nearest of Safari's zoom levels to where the pinch
-  // has taken it (start × scale), never below 100% (or below where it
-  // started, if already zoomed out with ⌘−), at most 300%.
-  const ZOOM_LEVELS = [0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2, 2.5, 3];
-  function zoomForPinch(start, scale) {
-    const target = start * scale;
-    const floor = Math.min(start, 1) - 1e-9;
-    return ZOOM_LEVELS.filter((z) => z >= floor)
-      .reduce((best, z) => (Math.abs(Math.log(z / target)) < Math.abs(Math.log(best / target)) ? z : best));
-  }
-
-  // `getSettings()` returns the current settings (or null while unknown).
-  // `onPinch({ phase: 'start' | 'change' | 'end', scale })` gets the pinches
-  // taken from Safari. Returns { update() }: call it when settings change
-  // (adds or removes the no-bounce rule).
-  function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis.window }) {
-    if (!win) return { update() {} };
-    const doc = win.document;
-    const enabled = () => getSettings()?.blockGestures !== false;
-
-    // Safari's pinch events (macOS); `scale` < 1 means pinching in.
-    const zoomedIn = () => (win.visualViewport?.scale ?? 1) > 1.01;
-
-    win.addEventListener('wheel', (event) => {
-      if (!enabled() || !event.cancelable) return;
-      if (event.ctrlKey) { // a pinch reported as wheel: deltaY > 0 is pinching in
-        if (event.deltaY > 0 && !zoomedIn()) event.preventDefault();
-        return;
+  // No bounce at the top/bottom (and so no Safari pull-to-refresh).
+  let sheet = null;
+  let style = null;
+  function update() {
+    const on = enabled();
+    if (doc?.adoptedStyleSheets && typeof win.CSSStyleSheet?.prototype.replaceSync === 'function') {
+      if (!sheet) {
+        sheet = new win.CSSStyleSheet();
+        sheet.replaceSync(NO_BOUNCE_CSS);
       }
-      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
-      if (somethingScrolls(event, 'x', { doc })) return;
-      event.preventDefault();
-    }, { capture: true, passive: false });
-
-    // A pinch is Margin's if it started at normal (unmagnified) zoom.
-    let ours = false;
-    const options = { capture: true, passive: false };
-    win.addEventListener('gesturestart', (event) => {
-      ours = enabled() && !zoomedIn();
-      if (!ours) return;
-      event.preventDefault();
-      onPinch({ phase: 'start', scale: 1 });
-    }, options);
-    win.addEventListener('gesturechange', (event) => {
-      if (!ours) return;
-      event.preventDefault();
-      if (Number.isFinite(event.scale)) onPinch({ phase: 'change', scale: event.scale });
-    }, options);
-    win.addEventListener('gestureend', (event) => {
-      if (!ours) return;
-      ours = false;
-      event.preventDefault();
-      onPinch({ phase: 'end', scale: event.scale });
-    }, options);
-
-    // No bounce at the top/bottom (and so no Safari pull-to-refresh).
-    let sheet = null;
-    let style = null;
-    function update() {
-      const on = enabled();
-      if (doc?.adoptedStyleSheets && typeof win.CSSStyleSheet?.prototype.replaceSync === 'function') {
-        if (!sheet) {
-          sheet = new win.CSSStyleSheet();
-          sheet.replaceSync(NO_BOUNCE_CSS);
-        }
-        const others = doc.adoptedStyleSheets.filter((s) => s !== sheet);
-        const has = others.length !== doc.adoptedStyleSheets.length;
-        if (on !== has) doc.adoptedStyleSheets = on ? [...others, sheet] : others;
-      } else if (doc?.documentElement) {
-        if (on && !style?.isConnected) {
-          style ??= Object.assign(doc.createElement('style'), { textContent: NO_BOUNCE_CSS });
-          doc.documentElement.appendChild(style);
-        } else if (!on) {
-          style?.remove();
-        }
+      const others = doc.adoptedStyleSheets.filter((s) => s !== sheet);
+      const has = others.length !== doc.adoptedStyleSheets.length;
+      if (on !== has) doc.adoptedStyleSheets = on ? [...others, sheet] : others;
+    } else if (doc?.documentElement) {
+      if (on && !style?.isConnected) {
+        style ??= Object.assign(doc.createElement('style'), { textContent: NO_BOUNCE_CSS });
+        doc.documentElement.appendChild(style);
+      } else if (!on) {
+        style?.remove();
       }
     }
-    update();
-    return { update };
   }
+  update();
+  return { update };
+}
 
-  // For swipe navigation: does nothing under the pointer scroll sideways in
-  // this event's direction (so the swipe is the page's to go back/forward)?
-  const canSwipe = (event, doc) => !somethingScrolls(event, 'x', { doc });
+// For swipe navigation: does nothing under the pointer scroll sideways in
+// this event's direction (so the swipe is the page's to go back/forward)?
+const canSwipe = (event, doc) => !somethingScrolls(event, 'x', { doc });
 
-  Margin.gestures = { installGestureGuard, containScroll, atPageTop, canSwipe, zoomForPinch, ZOOM_LEVELS, canScroll, canScrollX };
-})();
+export { installGestureGuard, containScroll, atPageTop, canSwipe, zoomForPinch, ZOOM_LEVELS, canScroll, canScrollX };

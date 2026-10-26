@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/platform.js';
-import '../extension/state/model.js';
-import '../extension/shared/view.js';
+import * as model from '../extension/state/model.js';
+import { PROFILES } from '../extension/shared/platform.js';
+import * as shortcuts from '../extension/shared/shortcuts.js';
+import * as view from '../extension/shared/view.js';
 
-const { view, model: M } = globalThis.Margin;
+const M = model;
 const tab = (id, windowId, url, extra = {}) => ({ id, windowId, url, title: `t${id}`, index: id, active: false, ...extra });
 
 test('default state has one Personal space and default settings', () => {
@@ -373,7 +374,7 @@ test('sidebar width: default 260, clamped to 160–500, snapped to 10px', () => 
 
 test('navigation shortcut defaults match shared/shortcuts.js; stored values merge with defaults', async () => {
   await import('../extension/shared/shortcuts.js');
-  assert.deepEqual(M.DEFAULT_SETTINGS.shortcuts, globalThis.Margin.shortcuts.NAVIGATION);
+  assert.deepEqual(M.DEFAULT_SETTINGS.shortcuts, shortcuts.NAVIGATION);
   const s = M.normalizeState({ settings: { shortcuts: { nextSpace: 'Alt+Shift+KeyL' } } });
   assert.equal(s.settings.shortcuts.nextSpace, 'Alt+Shift+KeyL');
   assert.equal(s.settings.shortcuts.nextTab, 'Ctrl+Meta+ArrowDown');
@@ -383,7 +384,7 @@ test('navigation shortcut defaults match shared/shortcuts.js; stored values merg
 });
 
 test('saved default shortcuts follow the build; customized ones stay', () => {
-  const { platformProfiles: P } = globalThis.Margin;
+  const P = PROFILES;
   const safari = { shortcuts: { ...P.safari.navigation }, shortcutDefaults: 'safari' };
   // Saved by a version before per-browser builds (no marker): all ⌃⌘ defaults, one customized.
   const legacy = { shortcuts: { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Alt+Shift+KeyL', prevSpace: 'Ctrl+Meta+ArrowLeft' } };

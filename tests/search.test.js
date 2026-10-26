@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import '../extension/shared/platform.js';
-import '../extension/shared/search.js';
-import '../extension/state/model.js';
+import * as model from '../extension/state/model.js';
+import * as search from '../extension/shared/search.js';
+import * as view from '../extension/shared/view.js';
 
-const { DEFAULT_SETTINGS, normalizeState } = globalThis.Margin.model;
+const { DEFAULT_SETTINGS, normalizeState } = model;
 
-const { resolveInput, detectSafariSearch, searchUrl, safariEngine, engineLabel, SAFARI_DEFAULT } = globalThis.Margin.search;
+const { resolveInput, detectSafariSearch, searchUrl, safariEngine, engineLabel, SAFARI_DEFAULT } = search;
 
 test('URLs pass through or get a scheme', () => {
   assert.deepEqual(resolveInput('https://a.com/x'), { kind: 'url', url: 'https://a.com/x' });
@@ -71,7 +71,7 @@ test('other searches and look-alikes are not Safari\'s engine', () => {
 });
 
 test('which engine\'s site a URL is on, Safari\'s parameters or not (for diagnostics)', () => {
-  const { searchEngineOf } = globalThis.Margin.search;
+  const { searchEngineOf } = search;
   assert.equal(searchEngineOf('https://search.yahoo.com/search;_ylt=x?p=monkey'), 'Yahoo');
   assert.equal(searchEngineOf('https://www.google.com/search?q=x'), 'Google');
   assert.equal(searchEngineOf('https://example.com/search?q=x'), null);
@@ -90,10 +90,9 @@ test('searches in Safari use the learned engine, else Safari\'s default (Google)
 
 // ---- fuzzy + palette --------------------------------------------------------
 
-import '../extension/shared/view.js';
 
-const { fuzzyScore, rankPalette } = globalThis.Margin.search;
-const M = globalThis.Margin.model;
+const { fuzzyScore, rankPalette } = search;
+const M = model;
 
 test('fuzzyScore: substring > word-start subsequence > scattered; misses are -Infinity', () => {
   const sub = fuzzyScore('hub', 'GitHub');

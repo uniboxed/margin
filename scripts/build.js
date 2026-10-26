@@ -46,18 +46,20 @@ export function buildTo(outDir, { profile, manifest = profile }) {
   return out;
 }
 
-// Each context's scripts as one file, in the order they load today, so a
-// page injects one script instead of ten (and the background and the new-tab
-// page load one each). Plain scripts, minified but with their names kept, so
-// errors stay readable. The individual files stay in dist/ too: Safari keeps
+// Each context's entry module bundled into one plain script, so a page
+// injects one file (and the background and the new-tab page load one each).
+// Minified, but with names kept so errors stay readable. extension/ holds
+// ES modules, which content scripts and Safari's service worker can't load:
+// dist/ is what browsers run. The sources stay in dist/ too: Safari keeps
 // script registrations across launches and drops all of them if a file one
-// lists is missing (DECISIONS.md, 2026-10-25).
+// lists is missing (DECISIONS.md, 2026-10-25), and earlier versions
+// registered these two for the fitted layout.
 const BUNDLES = { content: 'content/content.bundle.js', background: 'background.bundle.js', shell: 'content/shell.bundle.js', newtab: 'newtab/newtab.bundle.js' };
-export const SHELL_FILES = ['shared/shell-logic.js', 'content/shell.js'];
+export const LEGACY_SHELL_FILES = ['shared/shell-logic.js', 'content/shell.js'];
 
 function bundle(out, manifest) {
-  const write = (file, files, { format = 'iife', banner } = {}) => buildSync({
-    stdin: { contents: files.map((f) => `import './${f}';`).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
+  const write = (file, entries, { format = 'iife' } = {}) => buildSync({
+    stdin: { contents: entries.map((f) => `import './${f}';`).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
     bundle: true,
     format,
     target: 'esnext',
@@ -65,39 +67,27 @@ function bundle(out, manifest) {
     minifySyntax: true,
     legalComments: 'none',
     charset: 'utf8',
-    banner: banner ? { js: banner } : undefined,
     outfile: `${out}/${file}`,
     logLevel: 'warning',
   });
 
-  // Content scripts (the sidebar and palette): the manifest's list.
+  // Content scripts (the sidebar and palette).
   const [sidebar] = manifest.content_scripts;
   write(BUNDLES.content, sidebar.js);
   sidebar.js = [BUNDLES.content];
 
-  // The background: what it imports with importScripts, then its own code.
-  const background = readFileSync(`${out}/background.js`, 'utf8');
-  const imports = /^importScripts\(([^)]*)\);\n/m.exec(background);
-  if (!imports) throw new Error('background.js: importScripts(...) line not found');
-  const tmp = `${out}/.bundle`;
-  mkdirSync(tmp, { recursive: true });
-  writeFileSync(`${tmp}/background.js`, background.replace(imports[0], ''));
-  // MARGIN_BUNDLED: background.js registers the bundled fitted-layout script.
-  write(BUNDLES.background, [...[...imports[1].matchAll(/'([^']+)'/g)].map((m) => m[1]), '.bundle/background.js'], { banner: 'globalThis.MARGIN_BUNDLED = true;' });
-  rmSync(tmp, { recursive: true, force: true });
+  write(BUNDLES.background, [manifest.background.service_worker]);
   manifest.background.service_worker = BUNDLES.background;
 
   // The fitted layout (registered by background.js).
-  write(BUNDLES.shell, SHELL_FILES);
+  write(BUNDLES.shell, ['content/shell.js']);
 
-  // The new-tab page: its scripts in page order (the last one is a module).
+  // The new-tab page (a module: it awaits at the top level).
   const html = readFileSync(`${out}/newtab/newtab.html`, 'utf8');
-  const tags = [...html.matchAll(/^\s*<script src="([^"]+)"( type="module")?><\/script>\n/gm)];
-  if (!tags.length) throw new Error('newtab.html: no scripts found');
-  write(BUNDLES.newtab, tags.map((t) => `newtab/${t[1]}`.replace('newtab/../', '')), { format: 'esm' });
-  let page = html.replace(tags[0][0], `  <script src="${BUNDLES.newtab.split('/').pop()}" type="module"></script>\n`);
-  for (const t of tags.slice(1)) page = page.replace(t[0], '');
-  writeFileSync(`${out}/newtab/newtab.html`, page);
+  const tag = /<script src="([^"]+)" type="module"><\/script>/.exec(html);
+  if (!tag) throw new Error('newtab.html: module script not found');
+  write(BUNDLES.newtab, [`newtab/${tag[1]}`], { format: 'esm' });
+  writeFileSync(`${out}/newtab/newtab.html`, html.replace(tag[0], `<script src="${BUNDLES.newtab.split('/').pop()}" type="module"></script>`));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

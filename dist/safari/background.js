@@ -1,10 +1,13 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
-// Classic service worker: Safari ignores "type": "module" for backgrounds.
-importScripts('shared/platform.js', 'state/model.js', 'shared/icons.js', 'shared/view.js', 'shared/search.js', 'shared/shell-logic.js');
-const M = globalThis.Margin.model;
-const S = globalThis.Margin.search;
-const I = globalThis.Margin.icons;
+// Bundled by scripts/build.js into a classic service worker
+// (background.bundle.js): Safari ignores "type": "module" for backgrounds.
+import { platform } from './shared/platform.js';
+import * as M from './state/model.js';
+import * as I from './shared/icons.js';
+import * as V from './shared/view.js';
+import * as S from './shared/search.js';
+import { excludePatterns } from './shared/shell-logic.js';
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -121,7 +124,7 @@ function isOwnSearch(tabId, found) {
   return !!own && now() - own.at < OWN_SEARCH_MS && own.template === found.template;
 }
 function learnSearchEngine(urls, { tabId } = {}) {
-  if (globalThis.Margin.platform?.search !== 'learn') return;
+  if (platform?.search !== 'learn') return;
   const found = urls.map(S.detectSafariSearch).find(Boolean);
   if (!found) {
     // On an engine's site but without Safari's parameters: not an address-bar
@@ -322,7 +325,7 @@ const handlers = {
   async search({ query, windowId, tabId }) {
     const text = String(query ?? '').trim();
     if (!text) return;
-    if (globalThis.Margin.platform?.search === 'browser' && api.search?.query) {
+    if (platform?.search === 'browser' && api.search?.query) {
       await (tabId != null ? api.search.query({ text, tabId }) : api.search.query({ text, disposition: 'NEW_TAB' }));
       return;
     }
@@ -367,7 +370,7 @@ const handlers = {
     let result = 'pinned';
     await mutate((st) => {
       // A tab Margin hasn't placed in a space yet goes to its window's space.
-      const spaceId = st.tabSpace[tabId] ?? globalThis.Margin.view.activeSpaceId(st, tab.windowId);
+      const spaceId = st.tabSpace[tabId] ?? V.activeSpaceId(st, tab.windowId);
       const next = M.addPin(st, { id: newId(), spaceId, url: tab.url, title: tab.title });
       if (next === st) result = 'not pinned (already pinned in that space, or no space)';
       return next;
@@ -408,7 +411,7 @@ const handlers = {
     await mutate((s) => M.moveTab(s, tabId, spaceId));
   },
   async pageIcon({ href }, sender) {
-    if (!globalThis.Margin.platform?.fetchFavicons) return; // the browser provides icons
+    if (!platform?.fetchFavicons) return; // the browser provides icons
     const pageUrl = sender.tab?.url ?? sender.url;
     let origin;
     try {
@@ -569,7 +572,7 @@ async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
   const want = settings?.sidebarPinnedOpen
-    ? `content/docked/w-${globalThis.Margin.view.sidebarWidth({ settings })}.css`
+    ? `content/docked/w-${V.sidebarWidth({ settings })}.css`
     : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
   const have = current?.css?.[0] ?? null;
@@ -601,14 +604,13 @@ queueDockedSync();
 // fitPagesExcept. Registered scripts run right after the manifest's, in the
 // same world, still before the parser adds anything to <html>.
 const SHELL_ID = 'margin-shell';
-// One bundled file in builds (scripts/build.js), the two sources otherwise.
-const SHELL_JS = globalThis.MARGIN_BUNDLED ? ['content/shell.bundle.js'] : ['shared/shell-logic.js', 'content/shell.js'];
+const SHELL_JS = ['content/shell.bundle.js']; // built by scripts/build.js
 async function syncShell() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
-  const on = !!globalThis.Margin.platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
+  const on = !!platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
   const want = on
-    ? { js: SHELL_JS, excludeMatches: globalThis.Margin.shellLogic.excludePatterns(settings.fitPagesExcept) }
+    ? { js: SHELL_JS, excludeMatches: excludePatterns(settings.fitPagesExcept) }
     : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [SHELL_ID] });
   const have = current ? { js: current.js ?? [], excludeMatches: current.excludeMatches ?? [] } : null;
@@ -698,7 +700,6 @@ function navigate(action, source, windowId) {
 async function runNavigation(action, windowId) {
   if (windowId == null) return;
   const s = await load();
-  const V = globalThis.Margin.view;
   if (action === 'next-tab' || action === 'prev-tab') {
     const chained = navTarget.get(windowId);
     const current = chained && now() - chained.at < NAV_CHAIN_MS && s.tabs[chained.tabId]

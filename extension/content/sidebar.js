@@ -1,14 +1,23 @@
 // Injected overlay. Renders from storage.local, never pushes the page.
-(() => {
+import * as V from '../shared/view.js';
+import { el, createHost, adoptStyles, createSidebar } from '../shared/ui.js';
+import { installGestureGuard, atPageTop, canSwipe, zoomForPinch } from '../shared/gestures.js';
+import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.js';
+import * as shortcuts from '../shared/shortcuts.js';
+import { platform } from '../shared/platform.js';
+import * as styles from './styles.js';
+
+// Starts Margin in this page; false when it shouldn't (or already did).
+export function startSidebar() {
   const api = globalThis.browser ?? globalThis.chrome;
   // Load timing, in ms since navigation start (see logTiming below).
   const timing = { injected: Math.round(performance.now()) };
-  if (location.href.startsWith(api.runtime.getURL(''))) return;
+  if (location.href.startsWith(api.runtime.getURL(''))) return false;
 
-  const Margin = globalThis.Margin;
+  const Margin = (globalThis.Margin ??= {});
   // Already running in this page: WebKit runs the content scripts again in
   // open pages, in the same world, when Margin's site permissions change.
-  if (Margin.content) return;
+  if (Margin.content) return false;
   Margin.content = { api, startedAt: Date.now() }; // see background.js injectIntoOpenTabs
   // A sidebar that isn't this world's was left by an earlier copy of Margin:
   // it was installed or updated while the page was open (WebKit adds this
@@ -99,12 +108,12 @@
   // Reveal zone: 10px, or 24px in a full-screen window, where Safari's own
   // sidebar opens if the cursor rests at the very edge (see view.revealZone).
   const edgePx = () =>
-    Margin.view.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
+    V.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
   const HIDE_DELAY_MS = 300;
   const FRAME_PX = 8; // keep in sync with sidebar.css (.frame .hole inset, floating inset)
   // The sidebar width is a setting (resizable 160–500px): see sidebar.width().
 
-  const host = Margin.ui.createHost(document, 'margin-sidebar-host');
+  const host = createHost(document, 'margin-sidebar-host');
   const shadow = host.attachShadow({ mode: 'closed' });
 
   // Some pages replace <html>'s children; put the host back if it's removed.
@@ -134,7 +143,7 @@
   }
   Margin.content.send = send;
 
-  const sidebar = Margin.ui.createSidebar({
+  const sidebar = createSidebar({
     document,
     send,
     mode: 'overlay',
@@ -163,13 +172,13 @@
   }
   // Arc-style frame: sidebar-colored strips around the page card with its
   // corners, shown while the sidebar is open. Never takes clicks.
-  const frame = Margin.ui.el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'hole' }));
+  const frame = el(document, 'div', { class: 'frame', 'aria-hidden': 'true' }, el(document, 'div', { class: 'hole' }));
   // The page card's continuous corners and soft shadow, above the sidebar so
   // the shadow also falls on its edge (sidebar.css .card-edge).
-  const cardEdge = Margin.ui.el(document, 'div', { class: 'card-edge', 'aria-hidden': 'true' });
+  const cardEdge = el(document, 'div', { class: 'card-edge', 'aria-hidden': 'true' });
   // Arc-style page-load indicator: a small dark pill, centered over the page
   // (in the frame's top strip when docked), shown while the page loads.
-  const loader = Margin.ui.el(document, 'div', { class: 'loader', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'bar' }));
+  const loader = el(document, 'div', { class: 'loader', 'aria-hidden': 'true' }, el(document, 'div', { class: 'bar' }));
   // Pull-to-refresh indicator (Safari; shared/pull.js): a dark round badge
   // that slides down with the pull, its ring filling to the threshold, then
   // spins while the page reloads. Built with DOM calls (no innerHTML: some
@@ -184,20 +193,20 @@
   const pullArrow = svg('path', { class: 'arrow', d: 'M14 8.5v10M9.75 14.5 14 18.75l4.25-4.25' });
   const pullIcon = svg('svg', { viewBox: '0 0 28 28', width: 28, height: 28 });
   pullIcon.append(svg('circle', { class: 'track', cx: 14, cy: 14, r: 10 }), pullRing, pullArrow);
-  const pull = Margin.ui.el(document, 'div', { class: 'pull', 'aria-hidden': 'true' }, pullIcon);
+  const pull = el(document, 'div', { class: 'pull', 'aria-hidden': 'true' }, pullIcon);
   // Swipe back/forward badge (Arc): a dark circle centered on the page's left
   // (back) or right (forward) edge, the arrow in its visible half; it darkens
   // as the swipe goes on.
   const swipeIcon = svg('svg', { viewBox: '0 0 36 36', width: 36, height: 36 });
   swipeIcon.append(svg('path', { d: 'M28 18H8.5M17 9.5 8.5 18l8.5 8.5' }));
-  const swipe = Margin.ui.el(document, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
+  const swipe = el(document, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
   // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
-  const zoomHud = Margin.ui.el(document, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
+  const zoomHud = el(document, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
   shadow.append(frame, sidebar.el, cardEdge, loader, pull, swipe, zoomHud);
 
   // Styles are bundled in content/styles.js and applied synchronously, so the
   // panel is styled from the first frame (no fetch, no unstyled flash).
-  Margin.ui.adoptStyles(shadow, Margin.styles.sidebar);
+  adoptStyles(shadow, styles.sidebar);
   // No slide/fade on the first render: a kept-open sidebar should simply be
   // there when the page appears, not animate in on every navigation.
   sidebar.el.classList.add('instant');
@@ -225,8 +234,8 @@
   let state = null;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
-  const guardWindow = (win) => Margin.gestures.installGestureGuard({ getSettings: () => state?.settings, onPinch: (pinch) => handlePinch(pinch), win });
-  const gestureGuard = Margin.platform?.blockGestures ? guardWindow(window) : null;
+  const guardWindow = (win) => installGestureGuard({ getSettings: () => state?.settings, onPinch: (pinch) => handlePinch(pinch), win });
+  const gestureGuard = platform?.blockGestures ? guardWindow(window) : null;
   const cardGuards = [];
   if (gestureGuard) Margin.content.onCard((win) => cardGuards.push(guardWindow(win)));
   const updateGestureGuards = () => {
@@ -462,8 +471,8 @@
   };
 
   if (gestureGuard) {
-    const pullTracker = Margin.pull.createPullTracker();
-    const swipeTracker = Margin.pull.createSwipeTracker();
+    const pullTracker = createPullTracker();
+    const swipeTracker = createSwipeTracker();
     let endTimer = null;
     // The page's document: this one, or the card's in the fitted layout.
     const watchWheel = (win, doc) => win.addEventListener('wheel', (event) => {
@@ -474,14 +483,14 @@
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
       const pulling = pullEnabled() && !pullRefreshing;
       const swiping = swipeEnabled();
-      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: usable && Margin.gestures.atPageTop(event, doc) }));
-      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && historyAllows(event.deltaX) && Margin.gestures.canSwipe(event, doc) }));
+      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: usable && atPageTop(event, doc) }));
+      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && historyAllows(event.deltaX) && canSwipe(event, doc) }));
       if (!pulling && !swiping) return;
       clearTimeout(endTimer);
       endTimer = setTimeout(() => {
         if (pulling) showPull(pullTracker.end());
         if (swiping) showSwipe(swipeTracker.end());
-      }, Margin.pull.DEFAULTS.GAP_MS + 20);
+      }, PULL_DEFAULTS.GAP_MS + 20);
     }, { capture: true, passive: true });
     watchWheel(window, document);
     Margin.content.onCard((win) => watchWheel(win, win.document));
@@ -514,7 +523,7 @@
       return showZoomHud();
     }
     if (phase === 'change') {
-      const zoom = Margin.gestures.zoomForPinch(pinchStart, scale);
+      const zoom = zoomForPinch(pinchStart, scale);
       if (zoom !== pageZoom) {
         pageZoom = zoom;
         pinchMoved = true;
@@ -625,8 +634,8 @@
   }
 
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space.
-  Margin.shortcuts.installNavigation({ send, getSettings: () => state?.settings });
-  Margin.content.onCard((win) => Margin.shortcuts.installNavigation({ send, getSettings: () => state?.settings, target: win }));
+  shortcuts.installNavigation({ send, getSettings: () => state?.settings });
+  Margin.content.onCard((win) => shortcuts.installNavigation({ send, getSettings: () => state?.settings, target: win }));
   Margin.content.peek = peek;
 
   // Show/hide shortcut (Settings; default Option+S), in the page itself: the
@@ -634,7 +643,7 @@
   // tab and space keys).
   const watchToggleKey = (win) => win.addEventListener('keydown', (e) => {
     // Not a page's synthetic key press: with Keep open on, this changes a setting.
-    if (!e.isTrusted || !Margin.shortcuts.matches(e, state?.settings?.sidebarShortcut ?? 'Alt+KeyS')) return;
+    if (!e.isTrusted || !shortcuts.matches(e, state?.settings?.sidebarShortcut ?? 'Alt+KeyS')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     toggle();
@@ -687,7 +696,7 @@
     if (!state) return;
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
-    windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? Margin.view.guessWindow(state, location.href);
+    windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
     sidebar.update(state, { windowId, tabId });
     Margin.content.onState?.(state, { tabId, windowId });
     if (!reason) setOpen(pinnedOpen());
@@ -749,14 +758,14 @@
   // pages that add their icon from script.
   let reportedIcon = null;
   function reportIcon() {
-    if (!Margin.platform?.fetchFavicons) return; // the browser provides icons (Chrome)
+    if (!platform?.fetchFavicons) return; // the browser provides icons (Chrome)
     const links = [...document.querySelectorAll('link[rel]')].map((l) => ({
       rel: l.rel,
       href: l.href,
       sizes: l.getAttribute('sizes') ?? '',
       type: l.type,
     }));
-    const href = Margin.view.pickIconHref(links, location.href);
+    const href = V.pickIconHref(links, location.href);
     if (!href || href === reportedIcon) return;
     reportedIcon = href;
     send('pageIcon', { href });
@@ -774,4 +783,5 @@
     else if (message.command === 'peek') Margin.content.peek?.();
     else Margin.content.onCommand?.(message.command);
   });
-})();
+  return true;
+}
