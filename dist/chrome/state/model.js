@@ -35,6 +35,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   // Chrome: whenever a window goes full screen, Margin full screen instead
   // (no toolbar; background/fullscreen.js).
   marginFullscreenAuto: true,
+  // Chrome: Margin only in full screen; in a window that isn't, it stays out
+  // of the way and offers full screen when reached for (content/core.js).
+  fullscreenOnly: true,
   fitPagesExcept: [],
   // Defaults from the build's platform profile (shared/platform.js; loaded
   // before this file in the background). Editable in Settings. Fallback:

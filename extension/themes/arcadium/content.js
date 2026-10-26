@@ -18,7 +18,7 @@ registerTheme({
   mount({ shadow, document, send, onNewTab, onWidth }) {
     const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth });
     const chrome = createChrome(document);
-    shadow.append(chrome.frame, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud);
+    shadow.append(chrome.frame, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice);
     // Styles are bundled (assets.js) and applied synchronously, so the panel
     // is styled from the first frame (no fetch, no unstyled flash).
     adoptStyles(shadow, sidebarCss);
@@ -51,6 +51,7 @@ registerTheme({
       setPull: chrome.setPull,
       setSwipe: chrome.setSwipe,
       setZoom: chrome.setZoom,
+      showNotice: chrome.showNotice,
     };
   },
 });

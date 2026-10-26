@@ -17,12 +17,15 @@ import { sidebarCss, newtabCss, newtabHtml } from './assets.js';
 // Typed loosely as an input: most lookups are form controls.
 const $ = (id) => /** @type {HTMLInputElement} */ (document.getElementById(id));
 
-// `self`: this tab; `send`: a message to the background. Returns
-// { openPalette() } (newtab/newtab.js calls it for ⌘N's first tab).
+// `self`: this tab; `send`: a message to the background; `windowed`: Margin
+// is out of the way here (Chrome, not in full screen), so just a note
+// offering full screen. Returns { openPalette() } (newtab/newtab.js calls it
+// for ⌘N's first tab).
 /**
- * @param {{ api: any, self: any, send: import('../../../types/margin').Send }} context
+ * @param {{ api: any, self: any, send: import('../../../types/margin').Send, windowed?: boolean }} context
  */
-export function mount({ api, self, send }) {
+export function mount({ api, self, send, windowed = false }) {
+  if (windowed) return mountNote({ self, send });
   // Styles first (bundled, applied synchronously: no unstyled flash), then the
   // page.
   const sheet = (css) => {
@@ -123,9 +126,12 @@ export function mount({ api, self, send }) {
 
   // Margin full screen whenever the window goes full screen (Chrome builds only).
   const marginFullscreen = $('margin-fullscreen');
+  const fullscreenOnly = $('fullscreen-only');
   if (platform?.marginFullscreen) {
     $('fullscreen-setting').hidden = false;
     marginFullscreen.addEventListener('change', () => send('updateSettings', { patch: { marginFullscreenAuto: marginFullscreen.checked } }));
+    $('fullscreen-only-setting').hidden = false;
+    fullscreenOnly.addEventListener('change', () => send('updateSettings', { patch: { fullscreenOnly: fullscreenOnly.checked } }));
   }
 
   // Fitted layout with "Keep open" (content/shell.js; Safari builds only).
@@ -255,6 +261,7 @@ export function mount({ api, self, send }) {
     swipeNavigation.disabled = !blockGestures.checked;
     fitPages.checked = state.settings.fitPages !== false;
     marginFullscreen.checked = state.settings.marginFullscreenAuto !== false;
+    fullscreenOnly.checked = state.settings.fullscreenOnly !== false;
     if (document.activeElement !== themeSelect) themeSelect.value = themeFor(state.settings).id;
     gestureGuard?.update();
     if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
@@ -287,4 +294,24 @@ export function mount({ api, self, send }) {
   // A fresh new tab the background didn't hand to the previous tab (⌘N's first
   // tab): the palette opens over this page, once the state is in.
   return { openPalette: () => firstState.then(() => palette.open()) };
+}
+
+// Outside full screen, when Margin is used only there (Chrome): a card
+// saying so, with the way in.
+function mountNote({ self, send }) {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(newtabCss);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  const go = el(document, 'button', { type: 'button', class: 'primary', text: 'Go full screen' });
+  const always = el(document, 'button', { type: 'button', text: 'Use in windows too' });
+  go.addEventListener('click', () => send('toggleFullscreen', { windowId: self?.windowId }));
+  always.addEventListener('click', async () => {
+    await send('updateSettings', { patch: { fullscreenOnly: false } });
+    location.reload();
+  });
+  document.body.replaceChildren(el(document, 'main', { id: 'fullscreen-note' },
+    el(document, 'h1', { text: 'Margin works in full screen' }),
+    el(document, 'p', { text: 'There Chrome’s toolbar stays out of the way: Margin’s sidebar and palette take its place.' }),
+    el(document, 'div', { class: 'actions' }, go, always)));
+  return { openPalette() {} };
 }

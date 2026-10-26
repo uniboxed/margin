@@ -8,7 +8,8 @@
 // is { isBusy(), width(), update(state, ctx), ready(), setColorScheme(s),
 // setLayout({ open, docked, width }), setWidth(px), setLoading(on, { instant }),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),
-// setZoom(level | null) } (themes/arcadium/content.js is the reference).
+// setZoom(level | null), showNotice({ text, actions: [{ label, run }] } | null) }
+// (themes/arcadium/content.js is the reference).
 export function registerTheme(theme) {
   const Margin = (globalThis.Margin ??= {});
   // Already there: WebKit runs content scripts again in open pages when

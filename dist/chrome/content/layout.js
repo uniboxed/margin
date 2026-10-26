@@ -44,6 +44,7 @@ export function startLayout(page, { loader }) {
   function setOpen(open) {
     const view = page.view();
     if (!view) return;
+    if (!page.active()) open = false; // out of the way (content/core.js): no sidebar, no push
     const docked = open && pinnedOpen();
     const width = view.width();
     isOpen = open;
@@ -130,6 +131,7 @@ export function startLayout(page, { loader }) {
   // press; collapse them.
   let lastToggle = 0;
   function toggle() {
+    if (!page.active()) return page.offerFullscreen();
     const now = Date.now();
     if (now - lastToggle < 200) return;
     lastToggle = now;
@@ -146,6 +148,7 @@ export function startLayout(page, { loader }) {
   // in auto-hide mode. Hovering or toggling during the peek keeps it open.
   let peekTimer = null;
   function peek() {
+    if (!page.active()) return;
     if (pinnedOpen() || (reason && reason !== 'peek')) return;
     show('peek');
     clearTimeout(peekTimer);
@@ -173,7 +176,7 @@ export function startLayout(page, { loader }) {
       'mousemove',
       (e) => {
         const x = e.clientX + offsetX();
-        if (x <= edgePx()) show('hover');
+        if (x <= edgePx()) return page.active() ? show('hover') : page.offerFullscreen();
         else if (!page.view()) return;
         else if (x > page.view().width() + inset()) scheduleHide();
         else if (hideTimer && isOpen) {

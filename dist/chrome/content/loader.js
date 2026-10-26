@@ -17,6 +17,7 @@ export function startLoader(page, { pullRefreshing }) {
   let loaderHideTimer = null;
   let placeholderTookOver = false; // the placeholder's pill was showing until Margin ran
   const showPill = (instant = false) => {
+    if (!page.active()) return; // Margin is out of the way (content/core.js)
     clearTimeout(loaderHideTimer);
     page.view()?.setLoading(true, { instant });
     host.dataset.loading = 'true'; // test/debug hook

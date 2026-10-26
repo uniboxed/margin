@@ -39,11 +39,36 @@ export function createChrome(doc) {
   // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
   const zoomHud = el(doc, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
 
+  // A small notice near the left edge, where the sidebar would be (e.g.
+  // "Margin works in full screen" with buttons); hides itself after a while.
+  const notice = el(doc, 'div', { class: 'notice', role: 'status', hidden: true });
+  let noticeTimer = null;
+
   const sized = [frame, cardEdge, loader, pull, swipe, zoomHud];
   const inFrame = [loader, pull, swipe, zoomHud];
 
   return {
-    frame, cardEdge, loader, pull, swipe, zoomHud,
+    frame, cardEdge, loader, pull, swipe, zoomHud, notice,
+    // { text, actions: [{ label, run }] }, or null to hide it.
+    showNotice(message) {
+      clearTimeout(noticeTimer);
+      if (!message) {
+        notice.hidden = true;
+        return;
+      }
+      const buttons = (message.actions ?? []).map(({ label, run }, i) => {
+        const button = el(doc, 'button', { type: 'button', class: i === 0 ? 'primary' : '', text: label });
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          notice.hidden = true;
+          run();
+        });
+        return button;
+      });
+      notice.replaceChildren(el(doc, 'span', { class: 'text', text: message.text }), ...buttons);
+      notice.hidden = false;
+      noticeTimer = setTimeout(() => { notice.hidden = true; }, 6000);
+    },
     // While docked, the frame shows and the indicators sit over the card.
     setLayout({ docked, width }) {
       frame.classList.toggle('open', docked);

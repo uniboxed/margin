@@ -130,6 +130,28 @@ export function startCore({ onTheme } = {}) {
 
   /** @type {import('../../types/margin').State | null} */
   let state = null;
+  // Chrome, "only in full screen" (setting fullscreenOnly, on by default):
+  // in a window that isn't full screen Margin shows nothing, and when it's
+  // reached for (the left edge, its shortcuts) it offers full screen, which
+  // is where it works without Chrome's toolbar (background/fullscreen.js).
+  const fullscreenOnly = () => !!platform?.marginFullscreen && state?.settings?.fullscreenOnly !== false;
+  const inFullscreen = () => V.isFullscreenWindow({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
+  const active = () => !fullscreenOnly() || inFullscreen();
+  let lastOffer = 0;
+  function offerFullscreen() {
+    if (Date.now() - lastOffer < 1500) return;
+    lastOffer = Date.now();
+    view?.showNotice?.({
+      text: 'Margin works in full screen.',
+      actions: [
+        { label: 'Go full screen', run: () => send('toggleFullscreen', {}) },
+        { label: 'Use in windows too', run: () => send('updateSettings', { patch: { fullscreenOnly: false } }) },
+      ],
+    });
+  }
+  Margin.content.active = active;
+  Margin.content.offerFullscreen = offerFullscreen;
+
   const page = {
     api, host, send,
     onCard: Margin.content.onCard,
@@ -138,13 +160,24 @@ export function startCore({ onTheme } = {}) {
     state: () => state,
     setState: (next) => { state = next; },
     firstRender: () => firstRender,
+    active,
+    offerFullscreen,
   };
   const trackpad = startTrackpad(page, { replacing });
   const loader = startLoader(page, { pullRefreshing: trackpad.pullRefreshing });
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space. Before the layout's
   // show/hide key: on a key both match, navigating wins (as it always has).
-  shortcuts.installNavigation({ send, getSettings: () => state?.settings });
-  Margin.content.onCard((win) => shortcuts.installNavigation({ send, getSettings: () => state?.settings, target: win }));
+  const navSettings = () => (active() ? state?.settings : null); // none while Margin is out of the way
+  shortcuts.installNavigation({ send, getSettings: navSettings });
+  Margin.content.onCard((win) => shortcuts.installNavigation({ send, getSettings: navSettings, target: win }));
+  // Going in or out of full screen: Margin shows up, or gets out of the way.
+  let wasActive = null;
+  addEventListener('resize', () => {
+    if (active() === wasActive) return;
+    wasActive = active();
+    if (wasActive) view?.showNotice?.(null);
+    render();
+  });
   const layout = startLayout(page, { loader });
   Margin.content.sidebar = { show: layout.show, hide: layout.hide, toggle: layout.toggle };
   Margin.content.peek = layout.peek;
@@ -171,6 +204,7 @@ export function startCore({ onTheme } = {}) {
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
     view.update(state, { windowId, tabId, fit: fitState() });
     Margin.content.onState?.(state, { tabId, windowId });
+    wasActive = active();
     layout.settle();
     trackpad.update();
     if (firstRender) {
@@ -248,7 +282,7 @@ export function startCore({ onTheme } = {}) {
   api.runtime.onMessage.addListener((message, _, sendResponse) => {
     // Background (⌘T hand-off): can Margin open its palette here? Not until
     // the theme is mounted (then the new-tab page opens its own instead).
-    if (message?.type === 'ping') return sendResponse(Margin.content.openPalette ? 'pong' : 'starting');
+    if (message?.type === 'ping') return sendResponse(Margin.content.openPalette && active() ? 'pong' : 'starting');
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
     else if (message.command === 'peek') Margin.content.peek?.();

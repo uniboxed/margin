@@ -272,6 +272,13 @@ test('view.sidebar: the tab the sidebar is drawn in is the highlighted one', () 
   assert.deepEqual(active(view.sidebar(s, 1, 99)), [1], 'unknown current tab: snapshot decides');
 });
 
+test('view.isFullscreenWindow: the window covers the whole screen (a maximized one leaves the menu bar)', () => {
+  const screen = { screenWidth: 1512, screenHeight: 982 };
+  assert.equal(view.isFullscreenWindow({ outerWidth: 1512, outerHeight: 982, ...screen }), true);
+  assert.equal(view.isFullscreenWindow({ outerWidth: 1512, outerHeight: 949, ...screen }), false, 'Window → Fill / maximized');
+  assert.equal(view.isFullscreenWindow({ outerWidth: 1200, outerHeight: 800, ...screen }), false);
+});
+
 test('view.revealZone: wider in a full-screen window, where Safari reveals its own sidebar at the edge', () => {
   const screen = { screenWidth: 1512, screenHeight: 982 };
   assert.equal(view.revealZone({ outerWidth: 1512, outerHeight: 982, ...screen }), 24, 'full screen');

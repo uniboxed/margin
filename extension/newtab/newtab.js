@@ -3,6 +3,8 @@
 // (themes/<id>/newtab.bundle.js) and calls its mount(). Only that theme's
 // code loads.
 import { themeFor } from '../themes/index.js';
+import { platform } from '../shared/platform.js';
+import { isFullscreenWindow } from '../shared/view.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -20,7 +22,14 @@ async function send(type, payload = {}) {
 }
 
 // The theme loads right away, alongside the ⌘T check below.
-const theme = api.storage.local.get('settings').then(({ settings }) => import(api.runtime.getURL(themeFor(settings).newtab)));
+const { settings } = await api.storage.local.get('settings');
+const theme = import(api.runtime.getURL(themeFor(settings).newtab));
+// Chrome, "only in full screen" (content/core.js): outside full screen the
+// theme shows just a note offering it; the page redraws when that changes.
+const inFullscreen = () => isFullscreenWindow({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
+const outOfTheWay = () => !!platform?.marginFullscreen && settings?.fullscreenOnly !== false && !inFullscreen();
+const windowed = outOfTheWay();
+addEventListener('resize', () => { if (outOfTheWay() !== windowed) location.reload(); });
 const self = await api.tabs.getCurrent();
 
 // ---- ⌘T / ⌘N ----------------------------------------------------------------
@@ -39,5 +48,5 @@ const handoff = fresh ? send('newTabPage').catch(() => null) : Promise.resolve(n
 const HANDOFF_WAIT_MS = 300;
 const early = await Promise.race([handoff, new Promise((resolve) => setTimeout(() => resolve('late'), HANDOFF_WAIT_MS))]);
 if (typeof early === 'object' && early?.handled) await new Promise((resolve) => setTimeout(resolve, 1000));
-const page = (await theme).mount({ api, self, send });
+const page = (await theme).mount({ api, self, send, windowed });
 handoff.then((res) => res?.openPalette && page.openPalette());

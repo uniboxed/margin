@@ -68,9 +68,13 @@ function guessWindow(state, url) {
 // opens from further out there and the cursor rarely needs to reach it.
 const EDGE_PX = 10;
 const FULLSCREEN_EDGE_PX = 24;
-function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }) {
-  const fullScreen = outerWidth >= screenWidth && outerHeight >= screenHeight;
-  return fullScreen ? FULLSCREEN_EDGE_PX : EDGE_PX;
+function revealZone(dims) {
+  return isFullscreenWindow(dims) ? FULLSCREEN_EDGE_PX : EDGE_PX;
+}
+// A window in full screen covers the whole screen; a maximized one leaves
+// the menu bar (and the Dock, if shown).
+function isFullscreenWindow({ outerWidth, outerHeight, screenWidth, screenHeight }) {
+  return outerWidth >= screenWidth && outerHeight >= screenHeight;
 }
 
 // ⌘⌥↓ / ⌘⌥↑: the next/previous tab in the order the sidebar shows them
@@ -142,4 +146,4 @@ function iconFor(state, item) {
   return (origin && state?.favicons?.[origin]?.data) || '';
 }
 
-export { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };
+export { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, isFullscreenWindow, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };

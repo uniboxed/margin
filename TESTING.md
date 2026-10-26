@@ -334,3 +334,13 @@ Reload Margin in chrome://extensions after pulling.
 - [ ] Going full screen with the green button, Globe-F (Fn-F) or ⌃⌘F: after a short extra animation, the window is in Margin full screen (no toolbar on tab changes).
 - [ ] A YouTube video's full-screen button: the video goes full screen as usual (Margin leaves it alone), and Esc brings it back.
 - [ ] Settings → "In full screen, hide Chrome's toolbar" off: the green button gives Chrome's own full screen again.
+
+## Chrome: Margin only in full screen (2026-10-26)
+
+Reload Margin in chrome://extensions after pulling.
+
+- [ ] In a normal window: no sidebar. Moving the pointer to the left edge, ⌥K or ⌥S shows "Margin works in full screen." at the top left.
+- [ ] Its "Go full screen": the window enters Margin full screen and the sidebar works.
+- [ ] Leaving full screen (Esc): the sidebar goes away again.
+- [ ] ⌘T in a normal window: the new tab shows the "Margin works in full screen" card; ⌘T in full screen: the palette as before.
+- [ ] "Use in windows too" (toast or card): Margin works in normal windows; Settings → "Use Margin only in full screen" turns it back on.

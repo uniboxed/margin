@@ -31,13 +31,18 @@ export function wirePalette(c, createPalette) {
     colorScheme: c.colorScheme,
   });
   const paletteKey = () => c.getState().state?.settings?.paletteShortcut ?? 'Alt+KeyK';
-  installShortcut(palette, paletteKey);
-  c.onCard?.((win) => installShortcut(palette, paletteKey, win));
+  // While Margin is out of the way (content/core.js active()), reaching for
+  // the palette offers full screen instead.
+  const ready = () => !c.active || c.active() || void c.offerFullscreen();
+  const guarded = { toggle: () => ready() && palette.toggle() };
+  installShortcut(guarded, paletteKey);
+  c.onCard?.((win) => installShortcut(guarded, paletteKey, win));
   c.onCommand = (command) => {
+    if (!ready()) return;
     if (command === 'open-palette') palette.toggle();
     if (command === 'show-palette') palette.open(); // ⌘T, via the new-tab page
   };
-  c.openPalette = () => palette.open();
+  c.openPalette = () => ready() && palette.open();
   c.paletteOpen = () => palette.isOpen();
   const prev = c.onState;
   c.onState = (...args) => {
