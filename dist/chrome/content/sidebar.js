@@ -6,16 +6,81 @@
   if (location.href.startsWith(api.runtime.getURL(''))) return;
 
   const Margin = globalThis.Margin;
-  if (Margin.content) return; // already running in this page
-  // A sidebar and palette left by an earlier copy of Margin (reinstalled or
-  // updated: Safari leaves its page changes, and they no longer work; the
-  // background adds this copy to open pages, see injectIntoOpenTabs) are
-  // hidden and removed, and this copy takes over.
-  for (const stale of document.querySelectorAll('margin-sidebar-host, margin-palette-host')) {
-    stale.style.setProperty('display', 'none', 'important');
-    stale.remove();
+  // Already running in this page: WebKit runs the content scripts again in
+  // open pages, in the same world, when Margin's site permissions change.
+  if (Margin.content) return;
+  Margin.content = { api, startedAt: Date.now() }; // see background.js injectIntoOpenTabs
+  // A sidebar that isn't this world's was left by an earlier copy of Margin:
+  // it was installed or updated while the page was open (WebKit adds this
+  // copy to open pages in a world of its own; so does background.js
+  // injectIntoOpenTabs elsewhere). It no longer works, but its scripts stay:
+  // this copy takes over now, leaves swipe and pull-to-refresh to it (they act
+  // on the page directly, so both would go back twice), and the page reloads
+  // to start clean once that can't lose anything (reloadWhenSafe).
+  const replacing = !!document.querySelector('margin-sidebar-host');
+  if (replacing) {
+    for (const stale of document.querySelectorAll('margin-sidebar-host, margin-palette-host')) {
+      stale.style.setProperty('display', 'none', 'important');
+      stale.remove();
+    }
+    reloadWhenSafe();
   }
-  Margin.content = { api };
+  // Hidden (not the tab in front, or once the user leaves it), nothing
+  // typed into it (judged generously: any text in a field or editor, in any
+  // same-origin frame, counts), no media playing or call going, and not done
+  // in the last 30s (then it tries again after). Hidden tabs a few at a time.
+  // The background loads the page's URL again once it has registered what a
+  // page load needs (the fitted layout): a GET, not a reload, which would send
+  // a form again; WebKit doesn't add a history entry for the same URL.
+  function reloadWhenSafe() {
+    const inUse = (doc, depth = 0) => {
+      if (!doc || depth > 4) return false;
+      const active = doc.activeElement;
+      if (active && (active.isContentEditable || active.matches?.('textarea, select, input:not([type=hidden], [type=checkbox], [type=radio], [type=button], [type=submit], [type=reset], [type=image])'))) return true;
+      for (const el of doc.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=search], input[type=email], input[type=url], input[type=tel], input[type=number], input[type=password]')) if (el.value.trim()) return true;
+      for (const el of doc.querySelectorAll('[contenteditable]:not([contenteditable=false])')) if (el.isContentEditable && el.textContent.trim()) return true;
+      for (const el of doc.querySelectorAll('select')) if ([...el.options].some((o) => o.selected !== o.defaultSelected)) return true;
+      for (const el of doc.querySelectorAll('input[type=checkbox], input[type=radio]')) if (el.checked !== el.defaultChecked) return true;
+      for (const el of doc.querySelectorAll('audio, video')) if ((!el.paused && !el.ended) || (typeof MediaStream !== 'undefined' && el.srcObject instanceof MediaStream)) return true;
+      for (const frame of doc.querySelectorAll('iframe, frame')) {
+        let inner;
+        try {
+          inner = frame.contentDocument;
+        } catch {
+          continue; // another origin: its own business
+        }
+        if (inUse(inner, depth + 1)) return true;
+      }
+      return false;
+    };
+    const busy = () => {
+      try {
+        return navigator.mediaSession?.playbackState === 'playing' || inUse(document);
+      } catch {
+        return true;
+      }
+    };
+    let retry = null;
+    const go = () => {
+      if (!document.hidden || busy()) return;
+      const KEY = 'margin-reloaded-for-update';
+      try {
+        const wait = 30000 - (Date.now() - (Number(sessionStorage.getItem(KEY)) || 0));
+        if (wait > 0) {
+          clearTimeout(retry);
+          retry = setTimeout(go, wait + 100);
+          return;
+        }
+        sessionStorage.setItem(KEY, String(Date.now()));
+      } catch {}
+      document.removeEventListener('visibilitychange', go);
+      clearTimeout(retry);
+      console.info('[margin] Margin was updated while this page was open: loading it again');
+      api.runtime.sendMessage({ type: 'reloadForUpdate' }).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', go);
+    setTimeout(go, 500 + Math.random() * 3000);
+  }
 
   // Fitted layout (content/shell.js, registered while "Keep open" is on; it
   // runs right after this script): the page moves into a frame, the "card",
@@ -67,6 +132,14 @@
       return send(type, payload, false);
     }
   }
+  // A switch to a sleeping tab answers before it's done (background.js
+  // switchTo): this page veils itself meanwhile.
+  const sendMessage = send;
+  send = async (type, payload, retry) => {
+    const result = await sendMessage(type, payload, retry);
+    if ((type === 'activateTab' || type === 'openPin') && result?.waking != null) showSwitching(result.waking);
+    return result;
+  };
   Margin.content.send = send;
 
   const sidebar = Margin.ui.createSidebar({
@@ -322,7 +395,7 @@
   // threshold and let go to reload. The gesture logic is shared/pull.js.
   let pullRefreshing = false;
   let pullStuckTimer = null;
-  const pullEnabled = () => state?.settings?.blockGestures !== false && state?.settings?.pullToRefresh !== false;
+  const pullEnabled = () => !replacing && state?.settings?.blockGestures !== false && state?.settings?.pullToRefresh !== false;
   function showPull({ state: phase, progress }) {
     if (pullRefreshing) return;
     if (phase === 'trigger') return refreshFromPull();
@@ -367,7 +440,7 @@
   // Margin's, with Arc's edge badge: swipe sideways where nothing scrolls
   // sideways, past the threshold, and let go to go back (fingers moving
   // right) or forward. The gesture logic is shared/pull.js (axis x).
-  const swipeEnabled = () => state?.settings?.blockGestures !== false && state?.settings?.swipeNavigation !== false;
+  const swipeEnabled = () => !replacing && state?.settings?.blockGestures !== false && state?.settings?.swipeNavigation !== false;
   let swipeHideTimer = null;
   function showSwipe({ state: phase, progress, direction }) {
     if (phase === 'trigger') return navigateBySwipe(direction);
@@ -621,12 +694,16 @@
 
   // ---- switching to a sleeping tab -------------------------------------------
   // background.js switchTo loads a tab Safari put to sleep before switching
-  // to it; meanwhile this page stays, veiled, with the pill and the target
-  // row spinning. At most SWITCH_MAX_MS, in case the background goes away.
+  // to it, and says so in its reply (see send above); meanwhile this page
+  // stays, veiled, with the pill and the target row spinning, asking the
+  // background until the switch is over. At most SWITCH_MAX_MS.
   const SWITCH_MAX_MS = 10000;
+  const SWITCH_POLL_MS = 300;
   let switchTimer = null;
+  let switchPoll = null;
   function showSwitching(tabId) {
     clearTimeout(switchTimer);
+    clearInterval(switchPoll);
     const on = tabId != null;
     if (!on && !veil.classList.contains('on')) return;
     veil.classList.toggle('on', on);
@@ -635,10 +712,16 @@
     if (on) {
       showPill();
       switchTimer = setTimeout(() => showSwitching(null), SWITCH_MAX_MS);
+      switchPoll = setInterval(async () => {
+        const status = await send('switchStatus', {}, false);
+        if (status?.pending !== tabId && Number(host.dataset.switching) === tabId) showSwitching(null);
+      }, SWITCH_POLL_MS);
     } else if (!leaving) {
       hidePill();
     }
   }
+  // Switched away: nothing to show when the user comes back.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) showSwitching(null); });
   const cancelSwitch = () => {
     if (!veil.classList.contains('on')) return;
     showSwitching(null);
@@ -754,6 +837,7 @@
   send('hello').then((ctx) => {
     if (!ctx) return;
     tabId = ctx.tabId;
+    Margin.content.instanceId = ctx.instanceId; // see background.js injectIntoOpenTabs
     helloWindowId = ctx.windowId;
     render();
   });
@@ -783,7 +867,6 @@
 
   api.runtime.onMessage.addListener((message, _, sendResponse) => {
     if (message?.type === 'ping') return sendResponse('pong'); // background: is Margin running here?
-    if (message?.type === 'switching') return showSwitching(message.tabId ?? null);
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
     else if (message.command === 'peek') Margin.content.peek?.();

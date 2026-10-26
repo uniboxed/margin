@@ -6,6 +6,9 @@ const $ = (id) => document.getElementById(id);
 async function send(type, payload = {}) {
   const res = await api.runtime.sendMessage({ type, ...payload });
   if (res && !res.ok) console.warn('[margin]', type, res.error);
+  // A switch to a sleeping tab answers before it's done (background.js
+  // switchTo): show it meanwhile.
+  if ((type === 'activateTab' || type === 'openPin') && res?.result?.waking != null) showSwitching(res.result.waking);
   return res?.result;
 }
 
@@ -113,14 +116,25 @@ const palette = Margin.createPalette({
 });
 Margin.installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
 // Switching to a sleeping tab from here (background.js switchTo): its row
-// spins and the launcher dims until Margin switches (at most 10s).
+// spins and the launcher dims until Margin switches (asked every 300ms; at
+// most 10s).
 let switchTimer = null;
+let switchPoll = null;
+let switchingTab = null;
 function showSwitching(tabId) {
   clearTimeout(switchTimer);
+  clearInterval(switchPoll);
+  switchingTab = tabId ?? null;
   sidebar.setPending(tabId);
   document.body.classList.toggle('switching', tabId != null);
-  if (tabId != null) switchTimer = setTimeout(() => showSwitching(null), 10000);
+  if (tabId == null) return;
+  switchTimer = setTimeout(() => showSwitching(null), 10000);
+  switchPoll = setInterval(async () => {
+    const status = await send('switchStatus');
+    if (status?.pending !== tabId && switchingTab === tabId) showSwitching(null);
+  }, 300);
 }
+document.addEventListener('visibilitychange', () => { if (document.hidden) showSwitching(null); });
 function cancelSwitch() {
   if (!document.body.classList.contains('switching')) return;
   showSwitching(null);
@@ -132,7 +146,6 @@ addEventListener('keydown', (event) => {
 // Left for another page meanwhile: no switching away from it.
 addEventListener('pagehide', cancelSwitch);
 api.runtime.onMessage.addListener((message) => {
-  if (message?.type === 'switching' && message.inTab === self?.id) return showSwitching(message.tabId ?? null);
   if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
 });
 
