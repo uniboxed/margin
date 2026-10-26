@@ -121,7 +121,7 @@ Design decisions and every Safari fallback are in [DECISIONS.md](DECISIONS.md).
 
 ## Development
 
-No runtime dependencies and no bundler. `npm run build` only copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile. Node 22+.
+No runtime dependencies. `npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, then bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `content/shell.bundle.js`, `newtab/newtab.bundle.js`) and points the manifest and `newtab.html` at them. `extension/` itself still loads unbuilt. Run `npm install` once. Node 22+.
 
 ```sh
 npm run build       # after any change under extension/ or platform/: regenerate dist/ (a test checks it; also runs `styles`)

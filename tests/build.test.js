@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TARGETS, buildTo, manifestFor } from '../scripts/build.js';
+import { SHELL_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
 import '../extension/shared/platform.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -28,6 +28,24 @@ test('dist/ is up to date with extension/ and platform/ (run `npm run build`)', 
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('each build loads one bundled script per context', () => {
+  for (const target of TARGETS) {
+    const dir = join(root, 'dist', target);
+    const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+    assert.deepEqual(manifest.content_scripts[0].js, ['content/content.bundle.js'], target);
+    assert.equal(manifest.background.service_worker, 'background.bundle.js', target);
+    const background = readFileSync(join(dir, 'background.bundle.js'), 'utf8');
+    assert.ok(background.startsWith('globalThis.MARGIN_BUNDLED = true;'), `${target}: the background registers the shell bundle`);
+    assert.doesNotMatch(background, /importScripts\(/, `${target}: nothing left to import`);
+    const scripts = [...readFileSync(join(dir, 'newtab/newtab.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(scripts, ['newtab.bundle.js'], target);
+    for (const file of ['content/content.bundle.js', 'content/shell.bundle.js', 'newtab/newtab.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
+    // Safari drops every registered script if a file one lists is missing, so
+    // the sources an earlier version registered must still be there.
+    for (const file of SHELL_FILES) assert.ok(statSync(join(dir, file)).isFile(), `${target}/${file}`);
   }
 });
 

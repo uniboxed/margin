@@ -24,7 +24,7 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.bundle.js"
   },
   "content_scripts": [
     {
@@ -32,16 +32,7 @@
         "<all_urls>"
       ],
       "js": [
-        "shared/platform.js",
-        "shared/view.js",
-        "shared/search.js",
-        "shared/shortcuts.js",
-        "shared/gestures.js",
-        "shared/pull.js",
-        "content/styles.js",
-        "shared/ui.js",
-        "content/sidebar.js",
-        "content/palette.js"
+        "content/content.bundle.js"
       ],
       "run_at": "document_start",
       "all_frames": false

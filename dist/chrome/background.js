@@ -601,12 +601,14 @@ queueDockedSync();
 // fitPagesExcept. Registered scripts run right after the manifest's, in the
 // same world, still before the parser adds anything to <html>.
 const SHELL_ID = 'margin-shell';
+// One bundled file in builds (scripts/build.js), the two sources otherwise.
+const SHELL_JS = globalThis.MARGIN_BUNDLED ? ['content/shell.bundle.js'] : ['shared/shell-logic.js', 'content/shell.js'];
 async function syncShell() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
   const on = !!globalThis.Margin.platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
   const want = on
-    ? { js: ['shared/shell-logic.js', 'content/shell.js'], excludeMatches: globalThis.Margin.shellLogic.excludePatterns(settings.fitPagesExcept) }
+    ? { js: SHELL_JS, excludeMatches: globalThis.Margin.shellLogic.excludePatterns(settings.fitPagesExcept) }
     : null;
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [SHELL_ID] });
   const have = current ? { js: current.js ?? [], excludeMatches: current.excludeMatches ?? [] } : null;

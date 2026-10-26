@@ -5,6 +5,7 @@
 // dist/ is committed (no Node needed on the Mac to use it); a unit test fails
 // if it's out of date. Usage: node scripts/build.js
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
@@ -38,9 +39,65 @@ export function buildTo(outDir, { profile, manifest = profile }) {
   mkdirSync(out, { recursive: true });
   // Skip Finder's .DS_Store files (git-ignored) so a Mac build matches CI.
   cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
-  writeFileSync(`${out}/manifest.json`, `${JSON.stringify(manifestFor(manifest), null, 2)}\n`);
   writeFileSync(`${out}/shared/platform.js`, platformFileFor(profile));
+  const built = manifestFor(manifest);
+  bundle(out, built);
+  writeFileSync(`${out}/manifest.json`, `${JSON.stringify(built, null, 2)}\n`);
   return out;
+}
+
+// Each context's scripts as one file, in the order they load today, so a
+// page injects one script instead of ten (and the background and the new-tab
+// page load one each). Plain scripts, minified but with their names kept, so
+// errors stay readable. The individual files stay in dist/ too: Safari keeps
+// script registrations across launches and drops all of them if a file one
+// lists is missing (DECISIONS.md, 2026-10-25).
+const BUNDLES = { content: 'content/content.bundle.js', background: 'background.bundle.js', shell: 'content/shell.bundle.js', newtab: 'newtab/newtab.bundle.js' };
+export const SHELL_FILES = ['shared/shell-logic.js', 'content/shell.js'];
+
+function bundle(out, manifest) {
+  const write = (file, files, { format = 'iife', banner } = {}) => buildSync({
+    stdin: { contents: files.map((f) => `import './${f}';`).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
+    bundle: true,
+    format,
+    target: 'esnext',
+    minifyWhitespace: true,
+    minifySyntax: true,
+    legalComments: 'none',
+    charset: 'utf8',
+    banner: banner ? { js: banner } : undefined,
+    outfile: `${out}/${file}`,
+    logLevel: 'warning',
+  });
+
+  // Content scripts (the sidebar and palette): the manifest's list.
+  const [sidebar] = manifest.content_scripts;
+  write(BUNDLES.content, sidebar.js);
+  sidebar.js = [BUNDLES.content];
+
+  // The background: what it imports with importScripts, then its own code.
+  const background = readFileSync(`${out}/background.js`, 'utf8');
+  const imports = /^importScripts\(([^)]*)\);\n/m.exec(background);
+  if (!imports) throw new Error('background.js: importScripts(...) line not found');
+  const tmp = `${out}/.bundle`;
+  mkdirSync(tmp, { recursive: true });
+  writeFileSync(`${tmp}/background.js`, background.replace(imports[0], ''));
+  // MARGIN_BUNDLED: background.js registers the bundled fitted-layout script.
+  write(BUNDLES.background, [...[...imports[1].matchAll(/'([^']+)'/g)].map((m) => m[1]), '.bundle/background.js'], { banner: 'globalThis.MARGIN_BUNDLED = true;' });
+  rmSync(tmp, { recursive: true, force: true });
+  manifest.background.service_worker = BUNDLES.background;
+
+  // The fitted layout (registered by background.js).
+  write(BUNDLES.shell, SHELL_FILES);
+
+  // The new-tab page: its scripts in page order (the last one is a module).
+  const html = readFileSync(`${out}/newtab/newtab.html`, 'utf8');
+  const tags = [...html.matchAll(/^\s*<script src="([^"]+)"( type="module")?><\/script>\n/gm)];
+  if (!tags.length) throw new Error('newtab.html: no scripts found');
+  write(BUNDLES.newtab, tags.map((t) => `newtab/${t[1]}`.replace('newtab/../', '')), { format: 'esm' });
+  let page = html.replace(tags[0][0], `  <script src="${BUNDLES.newtab.split('/').pop()}" type="module"></script>\n`);
+  for (const t of tags.slice(1)) page = page.replace(t[0], '');
+  writeFileSync(`${out}/newtab/newtab.html`, page);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
