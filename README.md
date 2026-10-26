@@ -143,6 +143,7 @@ No runtime dependencies. `npm run build` copies `extension/` into `dist/<browser
 npm run build       # after any change under extension/ or platform/: regenerate dist/ (a test checks it; also runs `styles`)
 npm test            # type check (tsc --checkJs, JSDoc types; types/*.d.ts), then unit tests (node --test)
 npm run test:e2e    # builds, then Playwright + headless Chromium (uses an installed Chromium; run `npx playwright install chromium` locally if needed)
+npm run test:webkit # macOS: Margin's Safari build on WebKit's own extension engine, off screen (tools/webkit-host/README.md)
 npm run styles      # after editing a theme's CSS, newtab.html or placeholder template: regenerate its assets.js and docked/ (a test checks it)
 npm run icons       # regenerate extension/icons
 ```
