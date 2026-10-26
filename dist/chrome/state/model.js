@@ -32,6 +32,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   // out as in a narrower window (content/shell.js). Origins listed in
   // fitPagesExcept keep the push layout.
   fitPages: true,
+  // Chrome: whenever a window goes full screen, Margin full screen instead
+  // (no toolbar; background/fullscreen.js).
+  marginFullscreenAuto: true,
   fitPagesExcept: [],
   // Defaults from the build's platform profile (shared/platform.js; loaded
   // before this file in the background). Editable in Settings. Fallback:

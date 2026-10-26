@@ -6,6 +6,7 @@
 // starts, Chrome shows no toolbar, so it never comes up; Margin's sidebar and
 // palette stand in for it. It has to start from a window that isn't in full
 // screen already.
+import { platform } from '../shared/platform.js';
 import { api } from './store.js';
 
 const KEY = 'marginFullscreen'; // storage.session: { [windowId]: the state to go back to }
@@ -45,4 +46,45 @@ export async function toggleMarginFullscreen(windowId) {
   await api.storage.session.set({ [KEY]: { ...states, [windowId]: back } });
   await api.windows.update(windowId, { state: 'fullscreen' });
   return { on: true };
+}
+
+// When the window goes full screen some other way (the green button,
+// Globe-F, View → Enter Full Screen, ⌃⌘F), switch it to Margin full screen,
+// unless the setting is off (marginFullscreenAuto) or a page or video in it
+// went full screen (the Fullscreen API also puts the window in full screen;
+// leaving it would end the video's). Called on windows.onBoundsChanged.
+const switching = new Set(); // window ids Margin is switching right now
+export async function followFullscreen(windowId) {
+  if (!platform?.marginFullscreen || switching.has(windowId)) return;
+  const win = await api.windows.get(windowId).catch(() => null);
+  if (!win) return;
+  const states = await entered();
+  if (win.state !== 'fullscreen') {
+    // Left Margin full screen another way (Esc, the menu): forget it.
+    if (states[windowId]) {
+      delete states[windowId];
+      await api.storage.session.set({ [KEY]: states });
+    }
+    return;
+  }
+  if (states[windowId]) return; // Margin's already
+  const { settings } = await api.storage.local.get('settings');
+  if (settings?.marginFullscreenAuto === false || (await pageFullscreen(windowId))) return;
+  switching.add(windowId);
+  try {
+    await toggleMarginFullscreen(windowId);
+  } finally {
+    switching.delete(windowId);
+  }
+}
+
+async function pageFullscreen(windowId) {
+  const [tab] = await api.tabs.query({ active: true, windowId }).catch(() => []);
+  if (!tab?.id || !api.scripting?.executeScript) return false;
+  try {
+    const [res] = await api.scripting.executeScript({ target: { tabId: tab.id }, func: () => !!document.fullscreenElement });
+    return !!res?.result;
+  } catch {
+    return false; // no access (a browser page): the window's own full screen
+  }
 }

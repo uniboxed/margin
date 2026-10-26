@@ -331,3 +331,6 @@ Reload Margin in chrome://extensions after pulling.
 - [ ] Moving the pointer to the top of the screen: what happens (expected: nothing)?
 - [ ] Esc, and the palette action again: which ones leave Margin full screen, and the window comes back as it was?
 - [ ] Starting from Chrome's own full screen (green button): the action leaves it and enters Margin full screen.
+- [ ] Going full screen with the green button, Globe-F (Fn-F) or ⌃⌘F: after a short extra animation, the window is in Margin full screen (no toolbar on tab changes).
+- [ ] A YouTube video's full-screen button: the video goes full screen as usual (Margin leaves it alone), and Esc brings it back.
+- [ ] Settings → "In full screen, hide Chrome's toolbar" off: the green button gives Chrome's own full screen again.

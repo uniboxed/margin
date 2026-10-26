@@ -36,6 +36,7 @@ export interface Settings {
   pullToRefresh: boolean;
   swipeNavigation: boolean;
   fitPages: boolean;
+  marginFullscreenAuto: boolean;
   fitPagesExcept: string[];
   shortcuts: Shortcuts;
   shortcutDefaults: string;

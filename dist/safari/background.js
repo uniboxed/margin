@@ -12,6 +12,7 @@ import { handlers } from './background/handlers.js';
 import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
+import { followFullscreen } from './background/fullscreen.js';
 
 // ---- lifecycle ------------------------------------------------------------
 
@@ -69,6 +70,8 @@ api.tabs.onActivated.addListener(({ tabId, windowId }) => {
 api.tabs.onMoved.addListener(() => resync({ fresh: false }));
 api.tabs.onAttached.addListener(() => resync({ fresh: false }));
 api.tabs.onDetached?.addListener(() => resync({ fresh: false }));
+// Chrome: a window going full screen becomes Margin full screen.
+api.windows?.onBoundsChanged?.addListener((win) => followFullscreen(win.id));
 api.windows?.onRemoved.addListener((windowId) =>
   mutate((s) => {
     if (!(windowId in s.activeSpaceByWindow)) return s;

@@ -121,6 +121,13 @@ export function mount({ api, self, send }) {
     location.reload();
   });
 
+  // Margin full screen whenever the window goes full screen (Chrome builds only).
+  const marginFullscreen = $('margin-fullscreen');
+  if (platform?.marginFullscreen) {
+    $('fullscreen-setting').hidden = false;
+    marginFullscreen.addEventListener('change', () => send('updateSettings', { patch: { marginFullscreenAuto: marginFullscreen.checked } }));
+  }
+
   // Fitted layout with "Keep open" (content/shell.js; Safari builds only).
   const fitPages = $('fit-pages');
   if (platform?.shell) {
@@ -247,6 +254,7 @@ export function mount({ api, self, send }) {
     swipeNavigation.checked = state.settings.swipeNavigation !== false;
     swipeNavigation.disabled = !blockGestures.checked;
     fitPages.checked = state.settings.fitPages !== false;
+    marginFullscreen.checked = state.settings.marginFullscreenAuto !== false;
     if (document.activeElement !== themeSelect) themeSelect.value = themeFor(state.settings).id;
     gestureGuard?.update();
     if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
