@@ -286,3 +286,17 @@ Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margi
 - [ ] A tab Safari unloaded (after quitting and reopening Safari, or one unused for a long time): the sidebar and frame appear right away and the page fills in, with at most a brief empty moment while Safari fetches it.
 - [ ] After reinstalling or updating Margin, the tab you're on has one working sidebar right away (clicking tabs in it switches at once), and reloads by itself once you leave it; the other open tabs reload by themselves within a few seconds; each comes back fitted (with Keep open) and doesn't reload again. A tab with text typed into a field isn't reloaded.
 - [ ] Allowing or denying Margin on a site in Safari's settings doesn't reload any tab.
+
+## After the restructuring (bundles, modules, background split; 2026-10-25)
+
+Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then Run in Xcode.
+
+- [ ] Sidebar appears on a fresh page; tabs, pins and spaces render; drag-resize works.
+- [ ] Option+K opens the palette on a web page and on the new-tab page; ⌘T hands off to the palette over the previous tab.
+- [ ] Switching tabs from the sidebar, palette and ⌃⌘↓/↑ (and ⌥⌘↓/↑); spaces with ⌃⌘→/←.
+- [ ] "Keep open" with fitted pages: pages load fitted, links and forms work, no blank flash.
+- [ ] Pin, close (archives), restore from the archive, create/rename/delete a space, move a tab to a space.
+- [ ] Settings on the new-tab page save (shortcuts, gestures, archive hours, fit pages).
+- [ ] Pull-to-refresh and two-finger swipe back/forward; pinch zoom.
+- [ ] Site icons appear for new sites.
+- [ ] After changing Margin's website access in Safari's settings, Option+K still opens the palette once (not open-then-close).
