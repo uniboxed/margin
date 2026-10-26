@@ -23,7 +23,7 @@ document.getElementById('grant').addEventListener('click', async () => {
   await tryLine('access: <all_urls>', () => api.permissions.contains({ origins: ['<all_urls>'] }));
   for (const o of ORIGINS) await tryLine(`access: ${o}`, () => api.permissions.contains({ origins: [o] }));
   await tryLine('enabled rulesets', () => dnr.getEnabledRulesets());
-  await tryLine('available static rule count', () => dnr.getAvailableStaticRuleCount?.());
+  await tryLine('available static rule count (Chrome only)', async () => (dnr.getAvailableStaticRuleCount ? dnr.getAvailableStaticRuleCount() : 'not in this browser'));
   await tryLine('rule 3 (fetch: content-language set to xx-DNR-WORKS if response rules work)', async () => {
     const res = await fetch('https://httpbin.org/response-headers?Content-Language=en', { cache: 'no-store' });
     return res.headers.get('content-language');
