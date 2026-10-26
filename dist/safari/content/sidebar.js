@@ -6,6 +6,7 @@ import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
 import * as styles from './styles.js';
+/** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
 export function startSidebar() {
@@ -28,7 +29,7 @@ export function startSidebar() {
   // to start clean once that can't lose anything (reloadWhenSafe).
   const replacing = !!document.querySelector('margin-sidebar-host');
   if (replacing) {
-    for (const stale of document.querySelectorAll('margin-sidebar-host, margin-palette-host')) {
+    for (const stale of /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('margin-sidebar-host, margin-palette-host'))) {
       stale.style.setProperty('display', 'none', 'important');
       stale.remove();
     }
@@ -128,13 +129,20 @@ export function startSidebar() {
 
   // If the background was unloaded and the first message doesn't wake it in
   // time, retry once.
+  /**
+   * @template {MessageType} K
+   * @param {K} type a handler in background.js
+   * @param {Request<K>} [payload]
+   * @param {boolean} [retry]
+   * @returns {Promise<Result<K> | undefined>} undefined when it failed
+   */
   async function send(type, payload = {}, retry = true) {
     try {
       const res = await api.runtime.sendMessage({ type, ...payload });
       if (res?.ok) return res.result;
-      if (res) return console.warn('[margin]', type, res.error);
+      if (res) return void console.warn('[margin]', type, res.error);
     } catch (err) {
-      if (!retry) return console.warn('[margin]', type, err);
+      if (!retry) return void console.warn('[margin]', type, err);
     }
     if (retry) {
       await new Promise((r) => setTimeout(r, 250));
@@ -231,6 +239,7 @@ export function startSidebar() {
 
   // ---- visibility ---------------------------------------------------------
 
+  /** @type {import('../../types/margin').State | null} */
   let state = null;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
@@ -390,6 +399,7 @@ export function startSidebar() {
   let pullRefreshing = false;
   let pullStuckTimer = null;
   const pullEnabled = () => !replacing && state?.settings?.blockGestures !== false && state?.settings?.pullToRefresh !== false;
+  /** @param {{ state: string, progress?: number }} pull */
   function showPull({ state: phase, progress }) {
     if (pullRefreshing) return;
     if (phase === 'trigger') return refreshFromPull();
@@ -436,6 +446,7 @@ export function startSidebar() {
   // right) or forward. The gesture logic is shared/pull.js (axis x).
   const swipeEnabled = () => !replacing && state?.settings?.blockGestures !== false && state?.settings?.swipeNavigation !== false;
   let swipeHideTimer = null;
+  /** @param {{ state: string, progress?: number, direction?: number }} swipe */
   function showSwipe({ state: phase, progress, direction }) {
     if (phase === 'trigger') return navigateBySwipe(direction);
     if (phase === 'idle' || !direction) {
@@ -735,7 +746,7 @@ export function startSidebar() {
   // Safari ran the content script late; if "storage" is late, the
   // storage.local read was slow; "rendered" is when the sidebar appeared.
   function logTiming() {
-    const nav = performance.getEntriesByType?.('navigation')?.[0];
+    const nav = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0]);
     const fmt = (n) => (n == null ? '–' : `${Math.round(n)}`);
     console.debug(
       `[margin] timing (ms) injected=${fmt(timing.injected)} storage=${fmt(timing.storage)} rendered=${fmt(timing.rendered)}` +
@@ -759,7 +770,7 @@ export function startSidebar() {
   let reportedIcon = null;
   function reportIcon() {
     if (!platform?.fetchFavicons) return; // the browser provides icons (Chrome)
-    const links = [...document.querySelectorAll('link[rel]')].map((l) => ({
+    const links = [.../** @type {NodeListOf<HTMLLinkElement>} */ (document.querySelectorAll('link[rel]'))].map((l) => ({
       rel: l.rel,
       href: l.href,
       sizes: l.getAttribute('sizes') ?? '',

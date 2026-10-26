@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable",
+      "webworker.importscripts"
+    ],
+    "strict": false,
+    "skipLibCheck": true
+  },
+  "include": [
+    "extension/**/*.js",
+    "types/*.d.ts"
+  ]
+}

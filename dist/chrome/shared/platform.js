@@ -62,6 +62,8 @@ const detect = () => {
   }
 };
 
+/** @typedef {typeof PROFILES.safari} Platform */
+/** @type {Platform} */
 export const platform = PROFILES[BUILD_TARGET ?? detect()];
 export { PROFILES };
 // Also on the global, for the console and the E2E tests.

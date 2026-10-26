@@ -62,6 +62,7 @@ function createTracker(axis, options) {
     // One wheel event. `eligible` (`atTop` for a pull): the gesture applies
     // here. Returns { state: 'idle' | 'pulling' | 'armed' | 'trigger',
     // progress, direction }.
+    /** @param {{ deltaY?: number, deltaX?: number, time: number, eligible?: boolean, atTop?: boolean }} event */
     wheel({ deltaY = 0, deltaX = 0, time, eligible, atTop }) {
       const ok = eligible ?? atTop;
       const primary = axis === 'y' ? deltaY : deltaX;

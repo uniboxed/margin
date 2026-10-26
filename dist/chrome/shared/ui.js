@@ -91,6 +91,9 @@ const TAB_MIME = 'application/x-margin-tab';
 // without it, a new tab is opened.
 // `onWidth(px, { done })`: called while the sidebar is resized (live) and
 // once more with done: true when the drag ends.
+/**
+ * @param {{ document: Document, send: import('../../types/margin').Send, mode: 'overlay' | 'newtab', onNewTab?: () => void, onWidth?: (px: number, info: { done: boolean }) => void }} options
+ */
 function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
   const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
   const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
@@ -166,6 +169,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth }) {
     send('updateSettings', { patch: { sidebarWidth: width } });
   });
 
+  /** @type {import('../../types/margin').State | null} */
   let state = null;
   let windowId = null;
   let currentTabId = null;

@@ -1,5 +1,6 @@
 // Pure view derivation shared by the content script and the new-tab page.
 // No browser APIs: also importable from node for tests.
+/** @import { State } from '../../types/margin' */
 
 // Keep in sync with state/model.js normalizeUrl.
 function normalizeUrl(url) {
@@ -12,6 +13,7 @@ function normalizeUrl(url) {
   }
 }
 
+/** @param {State} state */
 function activeSpaceId(state, windowId) {
   const id = state.activeSpaceByWindow?.[windowId];
   return state.spaces.some((s) => s.id === id) ? id : state.spaces[0].id;
@@ -20,6 +22,7 @@ function activeSpaceId(state, windowId) {
 // What the sidebar shows for one window. `currentTabId` is the tab the
 // sidebar is drawn in: the page being looked at is by definition the active
 // tab of its window, so it wins over a possibly stale `active` flag.
+/** @param {State} state */
 function sidebar(state, windowId, currentTabId = null) {
   const spaceId = activeSpaceId(state, windowId);
   const known = currentTabId != null && state.tabs?.[currentTabId]?.windowId === windowId;
@@ -48,6 +51,7 @@ function sidebar(state, windowId, currentTabId = null) {
 // content script its tab id (that needs the background awake, which can
 // take a while in Safari). Single window → that one; otherwise a tab with
 // this URL, preferring active and most recently used.
+/** @param {State} state */
 function guessWindow(state, url) {
   const tabs = Object.values(state.tabs ?? {});
   const windows = new Set(tabs.map((t) => t.windowId));
@@ -73,6 +77,7 @@ function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }) {
 // (open pinned tabs, then the space's tabs), wrapping around. From a tab
 // that isn't in the list, ↓ goes to the first and ↑ to the last. null if
 // there's nowhere to go.
+/** @param {State} state */
 function cycleTab(state, windowId, currentTabId, dir) {
   const v = sidebar(state, windowId, currentTabId);
   const order = [...v.pins.filter((p) => p.tabId != null).map((p) => p.tabId), ...v.tabs.map((t) => t.id)];
@@ -84,6 +89,7 @@ function cycleTab(state, windowId, currentTabId, dir) {
 }
 
 // ⌘⌥→ / ⌘⌥←: the next/previous space for this window, wrapping around.
+/** @param {State} state */
 function cycleSpace(state, windowId, dir) {
   if (state.spaces.length < 2) return null;
   const at = state.spaces.findIndex((s) => s.id === activeSpaceId(state, windowId));
@@ -129,6 +135,7 @@ function pickIconHref(links, pageUrl) {
 
 // What to show for a tab/pin/archive entry: the browser's icon if it gave
 // one (Chrome does), else the icon Margin fetched for that site.
+/** @param {State} state */
 function iconFor(state, item) {
   if (/^(https?|data):/.test(item?.favIconUrl ?? '')) return item.favIconUrl;
   const origin = originOf(item?.url);

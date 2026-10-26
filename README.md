@@ -127,7 +127,7 @@ No runtime dependencies. `npm run build` copies `extension/` into `dist/<browser
 
 ```sh
 npm run build       # after any change under extension/ or platform/: regenerate dist/ (a test checks it; also runs `styles`)
-npm test            # unit tests (node --test)
+npm test            # type check (tsc --checkJs, JSDoc types; types/*.d.ts), then unit tests (node --test)
 npm run test:e2e    # builds, then Playwright + headless Chromium (uses an installed Chromium; run `npx playwright install chromium` locally if needed)
 npm run styles      # after editing content/*.css: regenerate content/styles.js (a test checks it)
 npm run icons       # regenerate extension/icons

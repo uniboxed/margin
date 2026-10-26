@@ -18,7 +18,7 @@
   let shelled = false;
   try {
     shelled = parent === top && location.ancestorOrigins?.[0] === location.origin
-      && String(frameElement?.name).startsWith('margin-')
+      && String(/** @type {HTMLIFrameElement | null} */ (frameElement)?.name).startsWith('margin-')
       && top.document.documentElement.hasAttribute('data-margin-shell');
   } catch {}
   if (!shelled) return;

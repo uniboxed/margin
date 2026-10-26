@@ -76,6 +76,10 @@ const TEXT_TYPES = new Set(['text', 'password', 'email', 'search', 'tel', 'url',
 // A POST from the frame, redone as a top-level form: [{ name, value, type }],
 // and { name, file, type: 'file' } for file entries (content/shell.js puts
 // the File back with a DataTransfer).
+/**
+ * @param {Iterable<[string, FormDataEntryValue]>} entries
+ * @param {(name: string) => string | undefined} [typeOf] a field's input type
+ */
 function postFields(entries, typeOf = () => 'hidden') {
   const fields = [];
   for (const [name, value] of entries) {
@@ -108,6 +112,7 @@ const topOnly = (url) => /^(data|blob):/i.test(String(url));
 // a new tab, window or download), so Margin must redo it at the top before
 // the page's frame-src CSP refuses it. `target` is the link's (or the
 // page's <base target>).
+/** @param {{ button: number, metaKey?: boolean, ctrlKey?: boolean, shiftKey?: boolean, altKey?: boolean, download?: boolean, target?: string | null }} click */
 function cardNavigatingClick({ button, metaKey, ctrlKey, shiftKey, altKey, download, target }) {
   if (button !== 0 || metaKey || ctrlKey || shiftKey || altKey || download) return false;
   const t = String(target ?? '').toLowerCase();

@@ -3,6 +3,7 @@
 // their input; untouched top-level keys keep their identity so the
 // background can write only the keys that changed.
 import { platform, PROFILES } from '../shared/platform.js';
+/** @import { State } from '../../types/margin' */
 
 const ARCHIVE_CAP = 200;
 
@@ -50,6 +51,7 @@ const DEFAULT_SPACE = Object.freeze({
 const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'archive', 'settings', 'tabs', 'favicons'];
 const FAVICON_CAP = 150;
 
+/** @returns {State} */
 function defaultState() {
   return {
     spaces: [{ ...DEFAULT_SPACE }],
@@ -67,6 +69,7 @@ function defaultState() {
 }
 
 // Fill in anything missing from what storage.local returned.
+/** @param {any} [raw] @returns {State} */
 function normalizeState(raw = {}) {
   const base = defaultState();
   const spaces = Array.isArray(raw.spaces) && raw.spaces.length ? raw.spaces : base.spaces;
@@ -120,11 +123,13 @@ function normalizeUrl(url) {
 
 const hasSpace = (state, spaceId) => state.spaces.some((s) => s.id === spaceId);
 
+/** @param {State} state */
 function activeSpaceId(state, windowId) {
   const id = state.activeSpaceByWindow[windowId];
   return hasSpace(state, id) ? id : state.spaces[0].id;
 }
 
+/** @param {State} state @param {string} url @param {string} [spaceId] */
 function pinForUrl(state, url, spaceId) {
   const key = normalizeUrl(url);
   return state.pins.find((p) => normalizeUrl(p.url) === key && (spaceId == null || p.spaceId === spaceId));
@@ -146,6 +151,7 @@ function tabRecord(tab, prev, now) {
 }
 
 // New tabs join their window's active space; existing assignments stick.
+/** @param {State} state */
 function assignTab(state, tabId, windowId) {
   if (hasSpace(state, state.tabSpace[tabId])) return state;
   return { ...state, tabSpace: { ...state.tabSpace, [tabId]: activeSpaceId(state, windowId) } };
@@ -153,6 +159,7 @@ function assignTab(state, tabId, windowId) {
 
 // A window Margin hasn't seen yet (e.g. ⌘N) starts in the space of the
 // window used most recently, instead of the first space.
+/** @param {State} state */
 function inheritSpace(state, windowId) {
   if (state.activeSpaceByWindow[windowId] != null) return state;
   const others = Object.values(state.tabs).filter((t) => t.windowId !== windowId);
@@ -166,6 +173,7 @@ function inheritSpace(state, windowId) {
 // known tabs it's owned by activateTab(), because Safari can deliver an
 // update for a page that finished loading *after* the user switched away,
 // still saying active: true, which left two tabs highlighted.
+/** @param {State} state */
 function upsertTab(state, tab, now) {
   const prev = state.tabs[tab.id];
   const record = tabRecord(tab, prev, now);
@@ -184,6 +192,7 @@ function upsertTab(state, tab, now) {
   return assignTab(next, tab.id, tab.windowId);
 }
 
+/** @param {State} state */
 function removeTab(state, tabId) {
   const tabs = { ...state.tabs };
   const tabSpace = { ...state.tabSpace };
@@ -194,6 +203,7 @@ function removeTab(state, tabId) {
 
 // Exactly one active tab per window. `windowId` may be missing from the
 // event; fall back to the tab's own window.
+/** @param {State} state */
 function activateTab(state, tabId, windowId, now) {
   windowId ??= state.tabs[tabId]?.windowId;
   if (windowId == null) return state;
@@ -209,6 +219,7 @@ function activateTab(state, tabId, windowId, now) {
 // Reconcile with `tabs.query({})`. When `fresh` (browser restart), tab and
 // window ids are new, so old assignments are meaningless: tabs that match a
 // pin by URL go to that pin's space, the rest to their window's active space.
+/** @param {State} state */
 function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
   let next = {
     ...state,
@@ -230,6 +241,7 @@ function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
   return next;
 }
 
+/** @param {State} state */
 function moveTab(state, tabId, spaceId) {
   if (!hasSpace(state, spaceId) || !state.tabs[tabId]) return state;
   return { ...state, tabSpace: { ...state.tabSpace, [tabId]: spaceId } };
@@ -237,11 +249,13 @@ function moveTab(state, tabId, spaceId) {
 
 // ---- spaces ---------------------------------------------------------------
 
+/** @param {State} state */
 function setActiveSpace(state, windowId, spaceId) {
   if (!hasSpace(state, spaceId)) return state;
   return { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId]: spaceId } };
 }
 
+/** @param {State} state */
 function createSpace(state, { id, name, emoji, color }) {
   const space = {
     id,
@@ -253,6 +267,7 @@ function createSpace(state, { id, name, emoji, color }) {
 }
 
 // Rename, re-emoji or recolor.
+/** @param {State} state */
 function updateSpace(state, spaceId, patch) {
   const allowed = {};
   for (const key of ['name', 'emoji', 'color']) {
@@ -264,17 +279,20 @@ function updateSpace(state, spaceId, patch) {
 
 // ---- pins -----------------------------------------------------------------
 
+/** @param {State} state */
 function addPin(state, { id, spaceId, url, title }) {
   if (!url || !hasSpace(state, spaceId) || pinForUrl(state, url, spaceId)) return state;
   return { ...state, pins: [...state.pins, { id, spaceId, url, title: title || url }] };
 }
 
+/** @param {State} state */
 function removePin(state, pinId) {
   return { ...state, pins: state.pins.filter((p) => p.id !== pinId) };
 }
 
 // Delete a space; its tabs, pins and archive entries move to the first
 // remaining space. The last space can't be deleted.
+/** @param {State} state */
 function deleteSpace(state, spaceId) {
   if (state.spaces.length < 2 || !hasSpace(state, spaceId)) return state;
   const spaces = state.spaces.filter((s) => s.id !== spaceId);
@@ -292,6 +310,7 @@ function deleteSpace(state, spaceId) {
 // ---- archive --------------------------------------------------------------
 
 // Newest first, one entry per URL, capped.
+/** @param {State} state */
 function archiveTab(state, { id, url, title, spaceId, favIconUrl, closedAt }, cap = ARCHIVE_CAP) {
   if (!url) return state;
   const key = normalizeUrl(url);
@@ -301,6 +320,7 @@ function archiveTab(state, { id, url, title, spaceId, favIconUrl, closedAt }, ca
 }
 
 // Remember a site's icon; keeps the most recently fetched FAVICON_CAP sites.
+/** @param {State} state */
 function rememberFavicon(state, origin, { data, href, at }, cap = FAVICON_CAP) {
   if (!origin || !data) return state;
   const entries = Object.entries({ ...state.favicons, [origin]: { data, href, at } })
@@ -309,6 +329,7 @@ function rememberFavicon(state, origin, { data, href, at }, cap = FAVICON_CAP) {
   return { ...state, favicons: Object.fromEntries(entries) };
 }
 
+/** @param {State} state */
 function removeArchived(state, archiveId) {
   return { ...state, archive: state.archive.filter((a) => a.id !== archiveId) };
 }
@@ -316,6 +337,7 @@ function removeArchived(state, archiveId) {
 // Tabs due for auto-archive: web pages that aren't pinned in their space,
 // aren't the active tab of their window, and haven't been active for
 // `settings.archiveAfterHours` (0 or less disables it).
+/** @param {State} state */
 function staleTabs(state, now) {
   const hours = Number(state.settings.archiveAfterHours);
   if (!(hours > 0)) return [];
@@ -325,6 +347,7 @@ function staleTabs(state, now) {
   );
 }
 
+/** @param {State} state */
 function archiveEntryForTab(state, tab, { id, closedAt }) {
   return { id, url: tab.url, title: tab.title, favIconUrl: tab.favIconUrl, spaceId: state.tabSpace[tab.id] ?? state.spaces[0].id, closedAt };
 }

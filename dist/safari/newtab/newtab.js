@@ -5,10 +5,18 @@ import * as shortcuts from '../shared/shortcuts.js';
 import { installGestureGuard } from '../shared/gestures.js';
 import { platform } from '../shared/platform.js';
 import { createPalette, installPaletteShortcut } from '../content/palette.js';
+/** @import { MessageType, Request, Result } from '../../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
-const $ = (id) => document.getElementById(id);
+// Typed loosely as an input: most lookups are form controls.
+const $ = (id) => /** @type {HTMLInputElement} */ (document.getElementById(id));
 
+/**
+ * @template {MessageType} K
+ * @param {K} type a handler in background.js
+ * @param {Request<K>} [payload]
+ * @returns {Promise<Result<K>>}
+ */
 async function send(type, payload = {}) {
   const res = await api.runtime.sendMessage({ type, ...payload });
   if (res && !res.ok) console.warn('[margin]', type, res.error);
@@ -23,6 +31,7 @@ dark.addEventListener('change', applyTheme);
 $('sidebar').append(sidebar.el);
 
 const self = await api.tabs.getCurrent();
+/** @type {import('../../types/margin').State | null} */
 let state = null;
 const windowId = () => state?.tabs?.[self?.id]?.windowId ?? self?.windowId;
 
@@ -52,7 +61,7 @@ $('search').addEventListener('submit', (event) => {
 $('query').focus();
 
 $('pin-tiles').addEventListener('click', (event) => {
-  const tile = event.target.closest('[data-pin-id]');
+  const tile = /** @type {HTMLElement} */ (/** @type {Element} */ (event.target).closest('[data-pin-id]'));
   const pin = state?.pins.find((p) => p.id === tile?.dataset.pinId);
   if (!pin) return;
   const key = V.normalizeUrl(pin.url);
@@ -62,7 +71,7 @@ $('pin-tiles').addEventListener('click', (event) => {
 });
 
 $('archive-list').addEventListener('click', (event) => {
-  const row = event.target.closest('[data-archive-id]');
+  const row = /** @type {HTMLElement} */ (/** @type {Element} */ (event.target).closest('[data-archive-id]'));
   if (row) send('restoreArchive', { archiveId: row.dataset.archiveId, replaceTabId: self.id });
 });
 
@@ -126,7 +135,7 @@ api.runtime.onMessage.addListener((message) => {
 // Click a field, press a combination: it's saved. While recording, Margin's own
 // shortcuts are paused. A combination Safari/macOS keeps never arrives here,
 // which doubles as a test of what's usable.
-const shortcutInputs = [...document.querySelectorAll('.shortcut-input')];
+const shortcutInputs = [.../** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('.shortcut-input'))];
 const shortcutHelp = $('shortcut-help');
 const defaultHelp = shortcutHelp.textContent;
 const SHORTCUT_NAMES = { paletteShortcut: 'Command palette', sidebarShortcut: 'Show or hide the sidebar', nextTab: 'Next tab', prevTab: 'Previous tab', nextSpace: 'Next space', prevSpace: 'Previous space' };
@@ -249,7 +258,7 @@ refresh();
 // On a fresh new tab (not Back, not a reload), ask the background: for ⌘T it
 // returns to the previous tab and opens the palette there, closing this tab;
 // otherwise (⌘N's first tab) the palette opens over this page.
-const nav = performance.getEntriesByType?.('navigation')?.[0];
+const nav = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0]);
 // `newtab.html#launcher` opens the launcher on purpose and never redirects.
 const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && location.hash !== '#launcher';
 if (fresh) {

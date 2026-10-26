@@ -103,7 +103,7 @@ import { platform } from '../shared/platform.js';
   ].join('; '));
   body.append(frame);
   // Margin's own hosts (its content scripts ran before this one) move along.
-  for (const node of [...old.childNodes]) if (node.nodeType === 1 && node.localName.startsWith('margin-')) shell.append(node);
+  for (const node of [...old.childNodes]) if (node.nodeType === 1 && /** @type {Element} */ (node).localName.startsWith('margin-')) shell.append(node);
 
   // Styles through adopted sheets and the CSSOM: a page's style-src blocks
   // <style> elements and style attributes from content scripts in WebKit.
@@ -258,6 +258,9 @@ import { platform } from '../shared/platform.js';
   addEventListener('pagehide', saveScroll);
 
   // Top-level redo of a navigation the card started.
+  /**
+   * @param {{ url: string, type: string, fields?: any[] | null, method?: string, enctype?: string | null, link?: { rel?: string, referrerPolicy?: string } | null, anchor?: boolean }} navigation
+   */
   function goTop({ url, type, fields, method = 'post', enctype, link, anchor = true }) {
     saveScroll();
     ownNavigation = true;
@@ -471,7 +474,8 @@ import { platform } from '../shared/platform.js';
     for (const record of records) {
       for (const node of record.addedNodes) {
         if (!card || ours.has(node) || node.nodeType !== 1) continue;
-        if (node.localName === 'style' || (node.localName === 'link' && /\bstylesheet\b/i.test(node.rel))) {
+        const el = /** @type {HTMLLinkElement} */ (node);
+        if (el.localName === 'style' || (el.localName === 'link' && /\bstylesheet\b/i.test(el.rel))) {
           card.document.head?.append(node);
           log('moved a stylesheet the page put in the shell into the page');
         }
@@ -513,7 +517,7 @@ import { platform } from '../shared/platform.js';
     if (!event.isTrusted || !card || !/^(frame-src|child-src|default-src)$/.test(event.effectiveDirective) || !reported) return;
     const origin = card.location.origin;
     const key = (url) => L.reportKey(url, origin);
-    if ([...document.querySelectorAll('iframe, frame, object, embed')].some((el) => el !== frame && key(el.src || el.data || '') === reported)) return;
+    if ([...document.querySelectorAll('iframe, frame, object, embed')].some((el) => el !== frame && key(/** @type {HTMLIFrameElement & HTMLObjectElement} */ (el).src || /** @type {HTMLObjectElement} */ (el).data || '') === reported)) return;
     if (lastRedo && lastRedo.reported === reported && performance.now() - lastRedo.at < 1000) return; // WebKit can report it twice
     lastRedo = { reported, at: performance.now() };
     const now = performance.now();
@@ -552,7 +556,7 @@ import { platform } from '../shared/platform.js';
   }
 
   let frameReady = false; // the card's empty srcdoc has loaded
-  const frameLoaded = new Promise((resolve) => frame.addEventListener('load', () => {
+  const frameLoaded = new Promise((/** @type {(value?: void) => void} */ resolve) => frame.addEventListener('load', () => {
     frameReady = true;
     resolve();
   }, { once: true }));
@@ -604,7 +608,7 @@ import { platform } from '../shared/platform.js';
       if (!/^(table|tbody|thead|tfoot|tr)$/.test(scope?.localName ?? '') || scope.closest('form')) continue;
       const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
       walker.currentNode = form;
-      for (let el = walker.nextNode(); el; el = walker.nextNode()) {
+      for (let el = /** @type {Element} */ (walker.nextNode()); el; el = /** @type {Element} */ (walker.nextNode())) {
         if (el.localName === 'form') break;
         if (!el.matches(FORM_CONTROLS) || el.closest('form') || el.hasAttribute('form')) continue;
         if (!form.id) form.id = `margin-form-${++n}`;
@@ -662,7 +666,7 @@ import { platform } from '../shared/platform.js';
     if (!frameReady) {
       const base = old.querySelector('base[href]')?.getAttribute('href');
       const baseUrl = base ? new URL(base, location.href).href : location.href;
-      const metaCsp = [...old.querySelectorAll('meta[http-equiv]')].some((meta) => meta.httpEquiv.toLowerCase() === 'content-security-policy');
+      const metaCsp = [.../** @type {NodeListOf<HTMLMetaElement>} */ (old.querySelectorAll('meta[http-equiv]'))].some((meta) => meta.httpEquiv.toLowerCase() === 'content-security-policy');
       if (!metaCsp) holdLoad(old.querySelectorAll('link[rel~="stylesheet"][href]'), (link) => new URL(link.getAttribute('href'), baseUrl).href);
       await frameLoaded;
       // One task later: written straight from the frame's load handler, the
@@ -757,7 +761,7 @@ import { platform } from '../shared/platform.js';
 
     // Scroll back to where the page was, after a reload or a Back without
     // the page cache.
-    const type = performance.getEntriesByType?.('navigation')?.[0]?.type;
+    const type = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0])?.type;
     const saved = history.state?.__marginScroll;
     if ((type === 'reload' || type === 'back_forward') && Array.isArray(saved) && !location.hash) {
       const restore = () => win.scrollTo(saved[0], saved[1]);

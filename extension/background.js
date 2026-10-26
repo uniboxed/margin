@@ -8,12 +8,16 @@ import * as I from './shared/icons.js';
 import * as V from './shared/view.js';
 import * as S from './shared/search.js';
 import { excludePatterns } from './shared/shell-logic.js';
+/** @import { State } from '../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
 
+/** @type {State | null} */
 let cache = null;
+/** @type {Promise<unknown>} */
 let queue = Promise.resolve();
 
+/** @returns {Promise<State>} */
 async function load() {
   if (cache) return cache;
   const raw = await api.storage.local.get(M.STATE_KEYS);
@@ -30,10 +34,11 @@ async function load() {
 
 // Serialize every read-modify-write so concurrent tab events can't clobber
 // each other, and persist only the keys that changed.
+/** @param {(state: State) => State | void | Promise<State | void>} fn @returns {Promise<State>} */
 function mutate(fn) {
   const run = queue.then(async () => {
     const prev = await load();
-    const next = (await fn(prev)) ?? prev;
+    const next = /** @type {State} */ ((await fn(prev)) ?? prev);
     const changes = {};
     for (const key of M.STATE_KEYS) if (next[key] !== prev[key]) changes[key] = next[key];
     cache = next;
@@ -58,6 +63,7 @@ async function isFreshSession() {
   return true;
 }
 
+/** @param {{ fresh?: boolean }} [options] */
 function resync({ fresh } = {}) {
   return mutate(async (s) => {
     const tabs = await api.tabs.query({});
@@ -123,6 +129,7 @@ function isOwnSearch(tabId, found) {
   const own = ownSearchTabs.get(tabId);
   return !!own && now() - own.at < OWN_SEARCH_MS && own.template === found.template;
 }
+/** @param {string[]} urls @param {{ tabId?: number }} [options] */
 function learnSearchEngine(urls, { tabId } = {}) {
   if (platform?.search !== 'learn') return;
   const found = urls.map(S.detectSafariSearch).find(Boolean);
@@ -253,6 +260,7 @@ async function inPage(tabId, url, func, args = [], ms = 300) {
   ]);
 }
 
+/** @param {{ windowId?: number, url?: string, spaceId?: string }} options */
 async function openTab({ windowId, url, spaceId }) {
   const tab = await api.tabs.create({ windowId, url, active: true });
   if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));
@@ -262,10 +270,13 @@ async function openTab({ windowId, url, spaceId }) {
 // Tabs opened from a page by openLink, so the next one goes after them.
 const openedFrom = new Map(); // opener tab id → { index, at }
 
-const handlers = {
+// Exported for the type check only (types/margin.d.ts derives the message
+// protocol from it); the bundle doesn't export anything.
+export const handlers = {
   async hello(_, sender) {
     return { tabId: sender.tab?.id ?? null, windowId: sender.tab?.windowId ?? null, instanceId };
   },
+  /** @param {{ tabId: number }} message */
   async activateTab({ tabId }) {
     await focusTab(tabId);
   },
@@ -273,6 +284,7 @@ const handlers = {
   // a tab it had unloaded (shown in the last few seconds, same URL)? Then
   // nothing of the tab was on screen before, and holding the page back only
   // kept Safari's empty view up.
+  /** @param {{ url: string }} message */
   async restoringTab({ url }, sender) {
     const id = sender.tab?.id;
     const at = shownAt.get(id);
@@ -293,6 +305,7 @@ const handlers = {
     await api.tabs.update(id, { url });
   },
   // Closing from Margin archives the tab, like Arc.
+  /** @param {{ tabId: number }} message */
   async closeTab({ tabId }) {
     await mutate((s) => {
       const tab = s.tabs[tabId];
@@ -300,6 +313,7 @@ const handlers = {
     });
     await api.tabs.remove(tabId);
   },
+  /** @param {{ archiveId: string, windowId?: number, replaceTabId?: number }} message */
   async restoreArchive({ archiveId, windowId, replaceTabId }) {
     const s = await load();
     const entry = s.archive.find((a) => a.id === archiveId);
@@ -317,11 +331,13 @@ const handlers = {
   async getZoom(_, sender) {
     return sender.tab ? api.tabs.getZoom(sender.tab.id) : null;
   },
+  /** @param {{ factor: number }} message */
   async setZoom({ factor }, sender) {
     if (!sender.tab || !Number.isFinite(factor)) return;
     await api.tabs.setZoom(sender.tab.id, Math.min(3, Math.max(0.25, factor)));
   },
   // Search with the browser's engine: in `tabId`, else in a new tab.
+  /** @param {{ query: string, windowId?: number, tabId?: number }} message */
   async search({ query, windowId, tabId }) {
     const text = String(query ?? '').trim();
     if (!text) return;
@@ -343,6 +359,7 @@ const handlers = {
     }
     for (const [id, entry] of ownSearchTabs) if (now() - entry.at > OWN_SEARCH_MS) ownSearchTabs.delete(id);
   },
+  /** @param {{ windowId?: number, url?: string, spaceId?: string }} message */
   async newTab({ windowId, url, spaceId }) {
     const tab = await openTab({ windowId, url, spaceId });
     return { tabId: tab.id };
@@ -352,6 +369,7 @@ const handlers = {
   // would, in a tab after the page (later ones after earlier ones, so they
   // keep the click order), in the background unless ⇧ was held; ⌘⌥ opens a
   // window.
+  /** @param {{ url: string, window?: boolean, active?: boolean }} message */
   async openLink({ url, window: inWindow, active }, sender) {
     if (!/^https?:/i.test(url ?? '')) return;
     if (inWindow && api.windows?.create) return void (await api.windows.create({ url, focused: !!active }));
@@ -363,6 +381,7 @@ const handlers = {
       .catch(() => api.tabs.create({ url, active: !!active }));
     openedFrom.set(opener.id, { index: tab?.index ?? index, at: now() });
   },
+  /** @param {{ tabId: number }} message */
   async pinTab({ tabId }) {
     const s = await load();
     const tab = s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
@@ -377,9 +396,11 @@ const handlers = {
     });
     console.info(`[margin] pin tab ${tabId}: ${result}`);
   },
+  /** @param {{ pinId: string }} message */
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
   },
+  /** @param {{ pinId: string, windowId?: number }} message */
   async openPin({ pinId, windowId }) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
@@ -390,9 +411,11 @@ const handlers = {
     if (existing) await focusTab(existing.id);
     else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
   },
+  /** @param {{ windowId: number, spaceId: string }} message */
   async setSpace({ windowId, spaceId }) {
     await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
   },
+  /** @param {{ windowId?: number, name?: string, emoji?: string, color?: string }} message */
   async createSpace({ windowId, name, emoji, color }) {
     const id = newId();
     await mutate((s) => {
@@ -401,15 +424,19 @@ const handlers = {
     });
     return { spaceId: id };
   },
+  /** @param {{ spaceId: string, name?: string, emoji?: string, color?: string }} message */
   async renameSpace({ spaceId, name, emoji, color }) {
     await mutate((s) => M.updateSpace(s, spaceId, { name, emoji, color }));
   },
+  /** @param {{ spaceId: string }} message */
   async deleteSpace({ spaceId }) {
     await mutate((s) => M.deleteSpace(s, spaceId));
   },
+  /** @param {{ tabId: number, spaceId: string }} message */
   async moveTabToSpace({ tabId, spaceId }) {
     await mutate((s) => M.moveTab(s, tabId, spaceId));
   },
+  /** @param {{ href: string }} message */
   async pageIcon({ href }, sender) {
     if (!platform?.fetchFavicons) return; // the browser provides icons
     const pageUrl = sender.tab?.url ?? sender.url;
@@ -431,6 +458,7 @@ const handlers = {
   // empty page). Otherwise (⌘N's first tab, or a previous tab without
   // Margin's content script) the new-tab page opens its own palette.
   // The launcher on purpose (#launcher: it doesn't hand off to the palette).
+  /** @param {{ windowId?: number }} message */
   async openLauncher({ windowId }) {
     await openTab({ windowId, url: api.runtime.getURL('newtab/newtab.html#launcher') });
   },
@@ -458,16 +486,19 @@ const handlers = {
     await api.tabs.sendMessage(prev.id, { type: 'command', command: 'show-palette' }).catch(() => {});
     return { handled: true };
   },
+  /** @param {{ action: string }} message */
   async navigate({ action }, sender) {
     if (!NAV_ACTIONS.has(action)) return;
     const windowId = sender.tab?.windowId ?? (await api.windows?.getLastFocused())?.id;
     await navigate(action, 'page', windowId);
   },
+  /** @param {{ patch: object }} message */
   async updateSettings({ patch }) {
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
   // Fitted layout on or off for one site (the palette), then reload the
   // page in the new layout once the registered script matches.
+  /** @param {{ origin: string, fit: boolean }} message */
   async setFitSite({ origin, fit }, sender) {
     if (!/^https?:\/\/[^/]+$/.test(origin ?? '')) return;
     await mutate((s) => {

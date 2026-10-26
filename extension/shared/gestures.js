@@ -56,10 +56,15 @@ const canScrollX = (node, dx, scrollingElement) => canScroll(node, 'x', dx, scro
 
 // Does anything the event passes through (up to `stopAt`, else including
 // the page itself) scroll along `axis` in the event's direction?
+/**
+ * @param {WheelEvent} event
+ * @param {'x' | 'y'} axis
+ * @param {{ doc?: Document, stopAt?: Element | null }} [options]
+ */
 function somethingScrolls(event, axis, { doc, stopAt = null } = {}) {
   const delta = axis === 'x' ? event.deltaX : event.deltaY;
   const scrollingElement = doc ? doc.scrollingElement ?? doc.documentElement : null;
-  for (const node of event.composedPath()) {
+  for (const node of /** @type {Element[]} */ (event.composedPath())) {
     if (node.nodeType === 1 && canScroll(node, axis, delta, scrollingElement)) return true;
     if (node === stopAt) return false;
   }
@@ -108,6 +113,9 @@ function zoomForPinch(start, scale) {
 // `onPinch({ phase: 'start' | 'change' | 'end', scale })` gets the pinches
 // taken from Safari. Returns { update() }: call it when settings change
 // (adds or removes the no-bounce rule).
+/**
+ * @param {{ getSettings: () => any, onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number }) => void, win?: Window & typeof globalThis }} options
+ */
 function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis.window }) {
   if (!win) return { update() {} };
   const doc = win.document;
