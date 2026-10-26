@@ -742,9 +742,6 @@
     // Right away, not in a frame callback: WebKit doesn't render a hidden
     // document until its load event, so one would wait for every image.
     release('page ready');
-    // Ready for a tab switch (content/sidebar.js announceReady): the page is
-    // in the card and showing, also when the hold already timed out.
-    Margin.content?.shellShown?.();
     // Stayed in the card: not a reload loop (see loopCheck).
     setTimeout(() => {
       if (readJson(LOOP_KEY)?.url === href) writeJson(LOOP_KEY, null);

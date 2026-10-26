@@ -170,7 +170,6 @@
     let state = null;
     let windowId = null;
     let currentTabId = null;
-    let pendingTabId = null; // a sleeping tab being loaded before Margin switches to it
     let pendingEdit = null; // a just-created space opens in the editor once it arrives
 
     function render() {
@@ -197,7 +196,7 @@
       pins.replaceChildren(
         ...view.pins.map((p) =>
           el(doc, 'li', {
-            class: `pin${p.active ? ' active' : ''}${p.tabId ? ' open' : ''}${p.tabId != null && p.tabId === pendingTabId ? ' pending' : ''}`,
+            class: `pin${p.active ? ' active' : ''}${p.tabId ? ' open' : ''}`,
             'data-action': 'open-pin',
             'data-pin-id': p.id,
             title: p.title,
@@ -211,7 +210,7 @@
       tabs.replaceChildren(
         ...view.tabs.map((t) =>
           el(doc, 'li', {
-            class: `tab${t.active ? ' active' : ''}${t.id === pendingTabId ? ' pending' : ''}`,
+            class: `tab${t.active ? ' active' : ''}`,
             'data-action': 'activate',
             'data-tab-id': String(t.id),
             title: t.title || t.url,
@@ -493,11 +492,6 @@
       },
       setTheme(theme) {
         root.dataset.theme = theme;
-      },
-      setPending(tabId) {
-        if (pendingTabId === tabId) return;
-        pendingTabId = tabId;
-        if (state) render();
       },
     };
   }

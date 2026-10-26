@@ -132,19 +132,6 @@
       return send(type, payload, false);
     }
   }
-  // A switch to a sleeping tab answers before it's done (background.js
-  // switchTo): this page veils itself meanwhile.
-  // The clicked row spins from the click on (a check comes first); the veil
-  // only once the reply says the tab is being woken.
-  const sendMessage = send;
-  send = async (type, payload, retry) => {
-    const switchingRow = type === 'activateTab' && payload?.tabId != null && !veil.classList.contains('on');
-    if (switchingRow) sidebar.setPending(payload.tabId);
-    const result = await sendMessage(type, payload, retry);
-    if ((type === 'activateTab' || type === 'openPin') && result?.waking != null) showSwitching(result.waking);
-    else if (switchingRow && !veil.classList.contains('on')) sidebar.setPending(null);
-    return result;
-  };
   Margin.content.send = send;
 
   const sidebar = Margin.ui.createSidebar({
@@ -171,7 +158,6 @@
     pull.style.setProperty('--width', `${liveWidth}px`);
     swipe.style.setProperty('--width', `${liveWidth}px`);
     zoomHud.style.setProperty('--width', `${liveWidth}px`);
-    veil.style.setProperty('--width', `${liveWidth}px`);
     if (pushed) setPushed(true, liveWidth);
     Margin.shell?.setLayout({ width: liveWidth });
   }
@@ -207,10 +193,7 @@
   const swipe = Margin.ui.el(document, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
   // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
   const zoomHud = Margin.ui.el(document, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
-  // Veil over this page while Margin loads a sleeping tab before switching
-  // to it (background.js switchTo).
-  const veil = Margin.ui.el(document, 'div', { class: 'switch-veil', 'aria-hidden': 'true' }, Margin.ui.el(document, 'div', { class: 'spinner' }));
-  shadow.append(frame, veil, sidebar.el, cardEdge, loader, pull, swipe, zoomHud);
+  shadow.append(frame, sidebar.el, cardEdge, loader, pull, swipe, zoomHud);
 
   // Styles are bundled in content/styles.js and applied synchronously, so the
   // panel is styled from the first frame (no fetch, no unstyled flash).
@@ -233,7 +216,6 @@
     const theme = pageTheme();
     sidebar.setTheme(theme);
     frame.dataset.theme = theme;
-    veil.dataset.theme = theme;
   };
   applyTheme();
   systemDark.addEventListener?.('change', applyTheme);
@@ -267,7 +249,6 @@
     pull.classList.toggle('in-frame', docked);
     swipe.classList.toggle('in-frame', docked);
     zoomHud.classList.toggle('in-frame', docked);
-    veil.classList.toggle('in-frame', docked);
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     setPushed(docked);
     Margin.shell?.setLayout({ docked, width: sidebar.width() });
@@ -278,7 +259,6 @@
     pull.style.setProperty('--width', `${sidebar.width()}px`);
     swipe.style.setProperty('--width', `${sidebar.width()}px`);
     zoomHud.style.setProperty('--width', `${sidebar.width()}px`);
-    veil.style.setProperty('--width', `${sidebar.width()}px`);
   }
 
   // ---- page-load indicator --------------------------------------------------
@@ -697,88 +677,6 @@
   watchPointer(document);
   Margin.content.onCard((win) => watchPointer(win, () => Margin.shell?.cardLeft() ?? 0));
 
-  // ---- switching to a sleeping tab -------------------------------------------
-  // background.js switchTo loads a tab Safari put to sleep before switching
-  // to it, and says so in its reply (see send above); meanwhile this page
-  // stays, veiled, with the pill and the target row spinning, asking the
-  // background until the switch is over. At most SWITCH_MAX_MS.
-  const SWITCH_MAX_MS = 10000;
-  const SWITCH_POLL_MS = 300;
-  let switchTimer = null;
-  let switchPoll = null;
-  function showSwitching(tabId) {
-    clearTimeout(switchTimer);
-    clearInterval(switchPoll);
-    const on = tabId != null;
-    if (!on && !veil.classList.contains('on')) return;
-    veil.classList.toggle('on', on);
-    sidebar.setPending(on ? tabId : null);
-    host.dataset.switching = on ? String(tabId) : ''; // test/debug hook
-    if (on) {
-      showPill();
-      switchTimer = setTimeout(() => showSwitching(null), SWITCH_MAX_MS);
-      switchPoll = setInterval(async () => {
-        const status = await send('switchStatus', {}, false);
-        if (status?.pending !== tabId && Number(host.dataset.switching) === tabId) showSwitching(null);
-      }, SWITCH_POLL_MS);
-    } else if (!leaving) {
-      hidePill();
-    }
-  }
-  // Switched away: nothing to show when the user comes back.
-  document.addEventListener('visibilitychange', () => { if (document.hidden) showSwitching(null); });
-  const cancelSwitch = () => {
-    if (!veil.classList.contains('on')) return;
-    showSwitching(null);
-    send('cancelSwitch', {}, false);
-  };
-  veil.addEventListener('click', cancelSwitch);
-  const watchSwitchEscape = (target) => target.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && veil.classList.contains('on')) cancelSwitch();
-  }, true);
-  watchSwitchEscape(window);
-  Margin.content.onCard(watchSwitchEscape);
-  addEventListener('pageshow', (event) => { if (event.persisted) showSwitching(null); });
-  // This page is being left (the user typed an address, say): no switching
-  // them away from wherever they're going.
-  // As soon as it's clearly going (no "Leave page?" asked), not only once
-  // the next page arrives.
-  addEventListener('beforeunload', (event) => setTimeout(() => {
-    if (!event.defaultPrevented && !(typeof event.returnValue === 'string' && event.returnValue)) cancelSwitch();
-  }));
-  addEventListener('pagehide', cancelSwitch);
-
-  // Ready: the sidebar has drawn and the page has content (in the fitted
-  // layout: it's in the card and showing; otherwise: parsed, and a frame or
-  // two later, or a moment in a tab that isn't shown and so draws nothing).
-  // The background waits for this before switching to a tab it woke up.
-  let shellShown = false;
-  let pageDrawn = false;
-  let announced = false;
-  function announceReady() {
-    if (announced || firstRender || !(Margin.shell ? shellShown : pageDrawn)) return;
-    announced = true;
-    send('pageReady', {}, false);
-  }
-  // (Margin.shell, if the page is fitted, is only set up after this script.)
-  const drawn = () => {
-    let done = false;
-    const ready = () => {
-      if (done) return;
-      done = true;
-      pageDrawn = true;
-      announceReady();
-    };
-    requestAnimationFrame(() => requestAnimationFrame(ready));
-    setTimeout(ready, 150);
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', drawn, { once: true });
-  else drawn();
-  Margin.content.shellShown = () => {
-    shellShown = true;
-    announceReady();
-  };
-
   // ---- data ---------------------------------------------------------------
 
   let tabId = null;
@@ -796,7 +694,6 @@
     updateGestureGuards();
     if (firstRender) {
       firstRender = false;
-      announceReady();
       startLoader(); // now its position (docked or not) is known
       // performance.now() counts from navigation start: how long the page
       // went without its sidebar (see TESTING.md).
