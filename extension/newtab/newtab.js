@@ -4,7 +4,6 @@
 // code loads.
 import { themeFor } from '../themes/index.js';
 import { platform } from '../shared/platform.js';
-import { isFullscreenWindow } from '../shared/view.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -24,13 +23,22 @@ async function send(type, payload = {}) {
 // The theme loads right away, alongside the ⌘T check below.
 const { settings } = await api.storage.local.get('settings');
 const theme = import(api.runtime.getURL(themeFor(settings).newtab));
+const self = await api.tabs.getCurrent();
 // Chrome, "only in full screen" (content/core.js): outside full screen the
 // theme shows just a note offering it; the page redraws when that changes.
-const inFullscreen = () => isFullscreenWindow({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
-const outOfTheWay = () => !!platform?.marginFullscreen && settings?.fullscreenOnly !== false && !inFullscreen();
-const windowed = outOfTheWay();
-addEventListener('resize', () => { if (outOfTheWay() !== windowed) location.reload(); });
-const self = await api.tabs.getCurrent();
+// The background says which (background/fullscreen.js isFullscreen).
+const outOfTheWay = async () =>
+  !!platform?.marginFullscreen && settings?.fullscreenOnly !== false && !(await send('windowState').catch(() => null))?.fullscreen;
+const windowed = await outOfTheWay();
+if (platform?.marginFullscreen) {
+  let recheck = null;
+  const check = () => {
+    clearTimeout(recheck);
+    recheck = setTimeout(async () => { if ((await outOfTheWay()) !== windowed) location.reload(); }, 300);
+  };
+  addEventListener('resize', check);
+  api.windows.onBoundsChanged?.addListener((win) => win.id === self?.windowId && check());
+}
 
 // ---- ⌘T / ⌘N ----------------------------------------------------------------
 // Safari never lets extensions intercept ⌘T/⌘N; it opens this page instead.

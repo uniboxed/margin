@@ -134,12 +134,16 @@ export function startCore({ onTheme } = {}) {
   // in a window that isn't full screen Margin shows nothing, and when it's
   // reached for (the left edge, its shortcuts) it offers full screen, which
   // is where it works without Chrome's toolbar (background/fullscreen.js).
+  // Whether the window is in full screen comes from the background (`hello`,
+  // `windowState`), not the page's size (background/fullscreen.js
+  // isFullscreen); null until it says, and Margin doesn't draw until then.
   const fullscreenOnly = () => !!platform?.marginFullscreen && state?.settings?.fullscreenOnly !== false;
-  const inFullscreen = () => V.isFullscreenWindow({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
-  const active = () => !fullscreenOnly() || inFullscreen();
+  /** @type {boolean | null} */
+  let fullscreen = null;
+  const active = () => !fullscreenOnly() || fullscreen === true;
   let lastOffer = 0;
   function offerFullscreen() {
-    if (Date.now() - lastOffer < 1500) return;
+    if (fullscreen === null || Date.now() - lastOffer < 1500) return;
     lastOffer = Date.now();
     view?.showNotice?.({
       text: 'Margin works in full screen.',
@@ -171,13 +175,23 @@ export function startCore({ onTheme } = {}) {
   shortcuts.installNavigation({ send, getSettings: navSettings });
   Margin.content.onCard((win) => shortcuts.installNavigation({ send, getSettings: navSettings, target: win }));
   // Going in or out of full screen: Margin shows up, or gets out of the way.
+  // The background tells the window's pages; a resize, or coming back to a
+  // tab (moved to another window meanwhile), asks again.
   let wasActive = null;
-  addEventListener('resize', () => {
+  function setFullscreen(value) {
+    fullscreen = value;
     if (active() === wasActive) return;
-    wasActive = active();
-    if (wasActive) view?.showNotice?.(null);
+    if (active()) view?.showNotice?.(null);
     render();
-  });
+  }
+  let recheck = null;
+  const checkFullscreen = () => {
+    if (!platform?.marginFullscreen) return;
+    clearTimeout(recheck);
+    recheck = setTimeout(() => send('windowState').then((res) => res && setFullscreen(res.fullscreen)), 200);
+  };
+  addEventListener('resize', checkFullscreen);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && checkFullscreen());
   const layout = startLayout(page, { loader });
   Margin.content.sidebar = { show: layout.show, hide: layout.hide, toggle: layout.toggle };
   Margin.content.peek = layout.peek;
@@ -199,6 +213,7 @@ export function startCore({ onTheme } = {}) {
 
   function render() {
     if (!state || !view) return;
+    if (fullscreenOnly() && fullscreen === null) return; // until the background says (above)
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
@@ -249,10 +264,11 @@ export function startCore({ onTheme } = {}) {
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
   refresh();
   send('hello').then((ctx) => {
-    if (!ctx) return;
+    if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
     tabId = ctx.tabId;
     Margin.content.instanceId = ctx.instanceId; // see background.js injectIntoOpenTabs
     helloWindowId = ctx.windowId;
+    fullscreen = ctx.fullscreen;
     render();
   });
 
@@ -283,6 +299,7 @@ export function startCore({ onTheme } = {}) {
     // Background (⌘T hand-off): can Margin open its palette here? Not until
     // the theme is mounted (then the new-tab page opens its own instead).
     if (message?.type === 'ping') return sendResponse(Margin.content.openPalette && active() ? 'pong' : 'starting');
+    if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
     else if (message.command === 'peek') Margin.content.peek?.();

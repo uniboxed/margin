@@ -12,11 +12,13 @@ import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
-import { toggleMarginFullscreen } from './fullscreen.js';
+import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 
 export const handlers = {
   async hello(_, sender) {
-    return { tabId: sender.tab?.id ?? null, windowId: sender.tab?.windowId ?? null, instanceId };
+    const windowId = sender.tab?.windowId ?? null;
+    const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen };
   },
   /** @param {{ tabId: number }} message */
   async activateTab({ tabId }) {
@@ -245,6 +247,11 @@ export const handlers = {
     const id = windowId ?? sender.tab?.windowId;
     if (id == null || !platform?.marginFullscreen) return null;
     return toggleMarginFullscreen(id);
+  },
+  // Whether this page's window is in full screen (Chrome, "only in full screen").
+  async windowState(_, sender) {
+    const id = sender.tab?.windowId;
+    return { fullscreen: id != null && platform?.marginFullscreen ? await isFullscreen(id) : false };
   },
   // A theme's own settings (settings.themes[themeId]), merged into what's
   // there (updateSettings replaces whole top-level keys).

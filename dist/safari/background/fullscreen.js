@@ -10,6 +10,7 @@ import { platform } from '../shared/platform.js';
 import { api } from './store.js';
 
 const KEY = 'marginFullscreen'; // storage.session: { [windowId]: the state to go back to }
+const switching = new Map(); // window id → going full screen or not, while Margin switches it
 
 async function entered() {
   return (await api.storage.session.get(KEY))[KEY] ?? {};
@@ -27,6 +28,21 @@ async function waitForState(windowId, state, ms = 3000) {
 
 // On, or off again if Margin put this window there. Returns { on }.
 export async function toggleMarginFullscreen(windowId) {
+  if (switching.has(windowId)) return null;
+  switching.set(windowId, null); // taken (null: where it's going isn't known yet)
+  let on = null;
+  try {
+    const win = await api.windows.get(windowId);
+    on = !(win.state === 'fullscreen' && (await entered())[windowId]);
+    switching.set(windowId, on);
+    return await toggle(windowId);
+  } finally {
+    switching.delete(windowId);
+    if (on !== null) tellTabs(windowId, on);
+  }
+}
+
+async function toggle(windowId) {
   const win = await api.windows.get(windowId);
   const states = await entered();
   if (win.state === 'fullscreen' && states[windowId]) {
@@ -53,11 +69,11 @@ export async function toggleMarginFullscreen(windowId) {
 // unless the setting is off (marginFullscreenAuto) or a page or video in it
 // went full screen (the Fullscreen API also puts the window in full screen;
 // leaving it would end the video's). Called on windows.onBoundsChanged.
-const switching = new Set(); // window ids Margin is switching right now
 export async function followFullscreen(windowId) {
   if (!platform?.marginFullscreen || switching.has(windowId)) return;
   const win = await api.windows.get(windowId).catch(() => null);
   if (!win) return;
+  tellTabs(windowId, win.state === 'fullscreen');
   const states = await entered();
   if (win.state !== 'fullscreen') {
     // Left Margin full screen another way (Esc, the menu): forget it.
@@ -70,12 +86,24 @@ export async function followFullscreen(windowId) {
   if (states[windowId]) return; // Margin's already
   const { settings } = await api.storage.local.get('settings');
   if (settings?.marginFullscreenAuto === false || (await pageFullscreen(windowId))) return;
-  switching.add(windowId);
-  try {
-    await toggleMarginFullscreen(windowId);
-  } finally {
-    switching.delete(windowId);
-  }
+  await toggleMarginFullscreen(windowId);
+}
+
+// Whether a window is in full screen (any kind), for pages that show Margin
+// only there (content/core.js): a page can't tell from its size, as a window
+// in full screen on a Mac with a notch stays below it, as tall as a window
+// filling the screen under the menu bar. While Margin switches a window,
+// where it's going.
+export async function isFullscreen(windowId) {
+  if (switching.get(windowId) != null) return switching.get(windowId);
+  const win = await api.windows.get(windowId).catch(() => null);
+  return win?.state === 'fullscreen';
+}
+
+// Tells the window's pages when that changes.
+async function tellTabs(windowId, fullscreen) {
+  const tabs = await api.tabs.query({ windowId }).catch(() => []);
+  for (const tab of tabs) api.tabs.sendMessage(tab.id, { type: 'windowState', fullscreen }).catch(() => {});
 }
 
 async function pageFullscreen(windowId) {
