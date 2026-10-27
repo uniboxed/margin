@@ -246,6 +246,16 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
     }
   });
 
+  // A press on a tab or an open pin: its process starts waking now, before
+  // the click lands (background/tabs.js wakeTab), so the switch doesn't wait.
+  root.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.ctrlKey || event.target.closest('.icon')) return;
+    const row = event.target.closest('.tab, .pin');
+    if (!row || !root.contains(row) || row.classList.contains('active')) return;
+    if (row.dataset.tabId) send('prewake', { tabId: Number(row.dataset.tabId) });
+    else if (row.dataset.pinId && row.classList.contains('open')) send('prewake', { pinId: row.dataset.pinId, windowId });
+  });
+
   // ---- space editor ------------------------------------------------------
 
   let editing = null; // { spaceId, color, confirmDelete }

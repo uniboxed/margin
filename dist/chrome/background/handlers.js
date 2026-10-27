@@ -6,7 +6,9 @@ import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now } from './store.js';
-import { focusTab, handingOff, instanceId, openTab, openedFrom, shownAt, shownUrl } from './tabs.js';
+import { focusTab, handingOff, instanceId, markMarginOpening, openTab, openedFrom, shownAt, shownUrl, wakeTab } from './tabs.js';
+import { clearLog, readLog, recordShown } from './diagnostics.js';
+import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
@@ -87,7 +89,7 @@ async function handOff(tab) {
     return log('kept', 'the new tab was used or left meanwhile'), false;
   }
   log(`palette over tab ${prev.id}, new tab closed`, 'web page in this window: ⌘T (or ⌘N made into a tab by macOS)');
-  await Promise.all([mutate((st) => M.removeTab(st, tab.id)), focusTab(prev.id, { wake: false })]);
+  await Promise.all([mutate((st) => M.removeTab(st, tab.id)), focusTab(prev.id, { wake: false, source: 'new tab hand-off' })]);
   await api.tabs.remove(tab.id).catch(() => {});
   return true;
 }
@@ -108,8 +110,38 @@ export const handlers = {
   },
   /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle' }} message `show`: keep the sidebar open there */
   async activateTab({ tabId, show }, sender) {
-    await focusTab(tabId);
+    await focusTab(tabId, { source: 'activateTab' });
     if (show) await carryIfSameWindow(tabId, show, sender.tab?.windowId);
+  },
+  // About to be shown, probably (a press on a sidebar row, the palette
+  // resting on a row): its process is woken now, so the switch that follows
+  // doesn't wait for it (background/tabs.js wakeTab). A pin wakes its open tab.
+  /** @param {{ tabId?: number, pinId?: string, windowId?: number }} message */
+  async prewake({ tabId, pinId, windowId }) {
+    let id = tabId;
+    if (id == null && pinId) {
+      const s = await load();
+      const pin = s.pins.find((p) => p.id === pinId);
+      const key = pin && M.normalizeUrl(pin.url);
+      const matches = key ? Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key) : [];
+      id = (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id;
+    }
+    if (Number.isInteger(id)) void wakeTab(id);
+  },
+  // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): how a page that was
+  // just shown came on screen (content/shell.js), and the log itself for the
+  // start page's "Switch log" button.
+  /** @param {{ why: string, ms: number, restoring?: boolean }} message */
+  async shellShown({ why, ms, restoring }, sender) {
+    const id = sender.tab?.id;
+    const at = shownAt.get(id);
+    if (id == null || !at || Date.now() - at > 5000) return; // not a page that was just shown
+    recordShown({ tabId: id, why: String(why).slice(0, 40), sinceStart: Math.round(ms), sinceShown: Date.now() - at, restoring: !!restoring });
+  },
+  /** @param {{ clear?: boolean }} message */
+  async switchLog({ clear } = {}) {
+    if (clear) return void (await clearLog());
+    return readLog();
   },
   // The sidebar's scroll position in this page's window (background/scroll.js).
   /** @param {{ windowId?: number }} message */
@@ -220,6 +252,7 @@ export const handlers = {
   /** @param {{ url: string, window?: boolean, active?: boolean }} message */
   async openLink({ url, window: inWindow, active }, sender) {
     if (!/^https?:/i.test(url ?? '')) return;
+    markMarginOpening();
     if (inWindow && api.windows?.create) return void (await api.windows.create({ url, focused: !!active }));
     const opener = sender.tab;
     if (!opener) return void (await api.tabs.create({ url, active: !!active }));
@@ -257,7 +290,7 @@ export const handlers = {
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
-      await focusTab(existing.id);
+      await focusTab(existing.id, { source: 'openPin' });
       if (show) await carryIfSameWindow(existing.id, show, windowId);
     } else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
   },
@@ -315,11 +348,13 @@ export const handlers = {
   // A real new window (the palette's "New window"): its new-tab page opens
   // the palette, and the window inherits the space (model.inheritSpace).
   async newWindow() {
+    markMarginOpening();
     await api.windows?.create({ focused: true });
   },
   // ⌘T: Margin's new-tab page asks (newTabHandOff below), unless the
   // background already handed the tab off as it was created.
   async newTabPage(_, sender) {
+    void newTabPageSeen();
     if (!sender.tab) return { openPalette: true };
     return (await newTabHandOff(sender.tab)) ? { handled: true } : { openPalette: true };
   },
@@ -331,7 +366,7 @@ export const handlers = {
     if (!tab) return;
     const prev = previousTab(await load(), tab);
     if (!prev) return;
-    await focusTab(prev.id);
+    await focusTab(prev.id, { source: 'cancelNewTab' });
     await api.tabs.remove(tab.id).catch(() => {});
   },
   /** @param {{ action: string }} message */

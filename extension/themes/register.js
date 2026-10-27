@@ -9,7 +9,7 @@
 // setLayout({ open, docked, width, rail: { width, expanded } | null }),
 // setWidth(px), setLoading(on, { instant }),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),
-// setZoom(level | null), showNotice({ text, actions: [{ label, run }] } | null) }
+// setZoom(level | null), showNotice({ text, actions: [{ label, run }], duration? } | null) }
 // (themes/arcadium/content.js is the reference).
 export function registerTheme(theme) {
   const Margin = (globalThis.Margin ??= {});

@@ -49,7 +49,7 @@ export function createChrome(doc) {
 
   return {
     frame, cardEdge, loader, pull, swipe, zoomHud, notice,
-    // { text, actions: [{ label, run }] }, or null to hide it.
+    // { text, actions: [{ label, run }], duration? (ms, 6s by default) }, or null to hide it.
     showNotice(message) {
       clearTimeout(noticeTimer);
       if (!message) {
@@ -67,7 +67,7 @@ export function createChrome(doc) {
       });
       notice.replaceChildren(el(doc, 'span', { class: 'text', text: message.text }), ...buttons);
       notice.hidden = false;
-      noticeTimer = setTimeout(() => { notice.hidden = true; }, 6000);
+      noticeTimer = setTimeout(() => { notice.hidden = true; }, message.duration ?? 6000);
     },
     // While docked, the frame shows and the indicators sit over the card.
     setLayout({ docked, width }) {

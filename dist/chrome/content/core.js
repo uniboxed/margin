@@ -397,6 +397,22 @@ export function startCore({ onTheme } = {}) {
     }
     // The hand-off didn't happen after all (its new tab stays).
     if (message?.type === 'hide-palette') return Margin.content.closePalette?.();
+    // ⌘T seems to open Safari's homepage instead of Margin (background/newtab-hint.js):
+    // only on a page opened from nothing (a link leaves a referrer), and
+    // says whether it showed.
+    if (message?.type === 'newtab-hint') {
+      const fromNothing = !document.referrer && history.length === 1;
+      if (!fromNothing || !view?.showNotice) return sendResponse(false);
+      view.showNotice({
+        text: 'If ⌘T opened this page: for Margin’s palette, choose Margin in Safari Settings → General → “New tabs open with”. Safari resets it when it turns Margin off.',
+        actions: [
+          { label: 'OK', run: () => {} },
+          { label: 'Don’t show again', run: () => send('updateSettings', { patch: { newTabHint: false } }) },
+        ],
+        duration: 20000,
+      });
+      return sendResponse(true);
+    }
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();

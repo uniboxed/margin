@@ -28,6 +28,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.js)
   swipeNavigation: true, // Safari: Margin's two-finger swipe back/forward (shared/pull.js)
   sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (content/core.js page listener)
+  // Safari: a note when ⌘T seems to open Safari's homepage instead of Margin
+  // (background/newtab-hint.js); turned off from the note.
+  newTabHint: true,
   // Safari, with "Keep open": pages go in a frame beside the sidebar, laid
   // out as in a narrower window (content/shell.js). Origins listed in
   // fitPagesExcept keep the push layout.

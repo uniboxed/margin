@@ -8,6 +8,12 @@ const PROFILES = {
     name: 'safari',
     // Safari gives extensions no tab.favIconUrl: fetch each site's own icon.
     fetchFavicons: true,
+    // ⌘T reaches Margin only while Safari's "New tabs open with" is Margin,
+    // which Safari resets: note it when that looks lost (background/newtab-hint.js).
+    newTabHint: true,
+    // Wake a hidden tab's process before showing it (background/tabs.js
+    // wakeTab): Safari blanks a suspended tab until it has drawn again.
+    wakeTabs: true,
     // Trackpad swipe back/forward and pinch-for-all-tabs can be blocked
     // (shared/gestures.js; setting `blockGestures`).
     blockGestures: true,
@@ -36,6 +42,9 @@ const PROFILES = {
     name: 'chrome',
     // Chrome provides tab.favIconUrl: no extra requests.
     fetchFavicons: false,
+    // Chrome always gives ⌘T to the extension's new-tab page.
+    newTabHint: false,
+    wakeTabs: false,
     // Not needed (and a page-wide non-passive wheel listener costs scroll
     // performance in Chrome).
     blockGestures: false,

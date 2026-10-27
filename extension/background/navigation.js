@@ -1,7 +1,8 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load, mutate, now } from './store.js';
-import { wakeBeforeShowing } from './tabs.js';
+import { wakeTab } from './tabs.js';
+import { recordSwitch } from './diagnostics.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
 // `commands` (⌃⌘ + arrows; Safari matches them in the app, so they work
@@ -15,15 +16,21 @@ import { wakeBeforeShowing } from './tabs.js';
 //    focus out of the page), and the sidebar highlight updates immediately.
 const NAV_DEDUPE_MS = 150;
 const NAV_CHAIN_MS = 1500;
+const PASS_THROUGH_MS = 70;
 const lastNav = { action: null, source: null, at: 0 };
 export const navTarget = new Map(); // windowId → { tabId, at }
 let navQueue = Promise.resolve();
+let queued = 0; // presses waiting their turn
 
 export function navigate(action, source, windowId) {
   const t = now();
   if (action === lastNav.action && source !== lastNav.source && t - lastNav.at < NAV_DEDUPE_MS) return navQueue;
   Object.assign(lastNav, { action, source, at: t });
-  navQueue = navQueue.then(() => runNavigation(action, windowId)).catch((err) => console.warn('[margin] navigate', err));
+  queued++;
+  navQueue = navQueue.then(() => {
+    queued--;
+    return runNavigation(action, windowId);
+  }).catch((err) => console.warn('[margin] navigate', err));
   return navQueue;
 }
 
@@ -38,9 +45,17 @@ async function runNavigation(action, windowId) {
     const next = V.cycleTab(s, windowId, current, action === 'next-tab' ? 1 : -1);
     if (next == null) return;
     navTarget.set(windowId, { tabId: next, at: now() });
-    await wakeBeforeShowing(next);
+    const asked = Date.now();
+    // A tab only passed through (more presses waiting: a held key) isn't
+    // waited for long, so the switching stops when the key does.
+    const wake = queued > 0 ? await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]) : await wakeTab(next);
     await api.tabs.update(next, { active: true });
+    recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
     await mutate((st) => M.activateTab(st, next, windowId, now()));
+    // Presses come in runs: the tab after this one is woken now, so the
+    // next press doesn't wait for it (background/tabs.js wakeTab).
+    const after = V.cycleTab(await load(), windowId, next, action === 'next-tab' ? 1 : -1);
+    if (after != null && after !== current) void wakeTab(after);
   } else if (action === 'next-space' || action === 'prev-space') {
     const spaceId = V.cycleSpace(s, windowId, action === 'next-space' ? 1 : -1);
     if (spaceId == null) return;
