@@ -53,6 +53,60 @@ export function wakeTab(tabId) {
   setTimeout(() => wakes.get(tabId)?.at === at && wakes.delete(tabId), WAKE_REUSE_MS + WAKE_MAX_MS);
   return done;
 }
+// The keep-awake script. WebKit keeps the tab's process awake until it
+// finishes, so it must always finish: run in Margin's own world, its timer
+// died with the page when the page navigated away (Margin reloads hidden
+// pages after an update), and WebKit then waited for a garbage collection
+// that may not come for many minutes (a tab held awake 11 minutes in
+// Safari's log; reproduced in the WebKit host). So it runs in the page's own
+// world (it isn't cleared with Margin's either) and finishes on its timer,
+// when the page goes away (pagehide, pageswap), or once it's shown (awake
+// then anyway). The page's code shares that world, so nothing here may
+// depend on it: a second clock (AbortSignal.timeout, the engine's own) ends
+// it if the page broke setTimeout, every page call is guarded, and the
+// promise is the engine's (an async function's), whatever window.Promise is.
+// Left open only if the page both cancels pagehide and blocks pageswap
+// before navigating away. Self-contained: executeScript sends its source.
+/** @param {number} ms */
+export async function keepAwake(ms) {
+  await {
+    then(/** @type {() => void} */ resolve) {
+      /** @type {(() => void)[]} */
+      const undo = [];
+      const done = () => {
+        for (const step of undo) try { step(); } catch {}
+        resolve();
+      };
+      const shown = () => {
+        try { if (document.visibilityState === 'visible') done(); } catch {}
+      };
+      let timed = false;
+      try {
+        const timer = setTimeout(done, ms);
+        undo.push(() => clearTimeout(timer));
+        timed = true;
+      } catch {}
+      try {
+        const signal = AbortSignal.timeout(ms + 500);
+        signal.onabort = done;
+        undo.push(() => { signal.onabort = null; });
+        timed = true;
+      } catch {}
+      if (!timed) return resolve(); // no clock at all: no hold
+      for (const type of ['pagehide', 'pageswap']) {
+        try {
+          addEventListener(type, done);
+          undo.push(() => removeEventListener(type, done));
+        } catch {}
+      }
+      try {
+        document.addEventListener('visibilitychange', shown);
+        undo.push(() => document.removeEventListener('visibilitychange', shown));
+      } catch {}
+    },
+  };
+}
+
 /** @returns {Promise<Wake>} */
 async function startWake(tabId, at) {
   const result = (/** @type {Wake['outcome']} */ outcome) => ({ outcome, ms: Date.now() - at, startedAt: at });
@@ -64,7 +118,7 @@ async function startWake(tabId, at) {
   // Right away, not once the page has loaded (Chrome's default; WebKit
   // ignores the key and runs it right away anyway).
   const target = { tabId };
-  api.scripting.executeScript({ target, injectImmediately: true, func: (ms) => new Promise((resolve) => setTimeout(resolve, ms)), args: [KEEP_AWAKE_MS] }).catch(() => {});
+  api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [KEEP_AWAKE_MS] }).catch(() => {});
   const ran = api.scripting.executeScript({ target, injectImmediately: true, func: () => true }).then(() => 'awake', () => 'no page');
   let timer;
   const outcome = await Promise.race([ran, new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), WAKE_MAX_MS); })]);
