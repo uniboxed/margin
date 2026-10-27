@@ -65,7 +65,7 @@ const DEFAULT_SPACE = Object.freeze({
   color: '#6c5ce7',
 });
 
-const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'archive', 'settings', 'tabs', 'favicons'];
+const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'settings', 'tabs', 'favicons'];
 const FAVICON_CAP = 150;
 
 /** @returns {State} */
@@ -75,6 +75,8 @@ function defaultState() {
     activeSpaceByWindow: {},
     tabSpace: {},
     pins: [],
+    // Folders of pins, per space (Arc): { id, spaceId, name, open, pos }.
+    folders: [],
     archive: [],
     settings: {
       ...DEFAULT_SETTINGS,
@@ -99,6 +101,7 @@ function normalizeState(raw = {}) {
     activeSpaceByWindow: { ...raw.activeSpaceByWindow },
     tabSpace: { ...raw.tabSpace },
     pins: Array.isArray(raw.pins) ? raw.pins : [],
+    folders: Array.isArray(raw.folders) ? raw.folders.filter((f) => f && typeof f.id === 'string' && typeof f.spaceId === 'string') : [],
     archive: Array.isArray(raw.archive) ? raw.archive : [],
     settings: {
       ...base.settings,
@@ -313,15 +316,155 @@ function updateSpace(state, spaceId, patch) {
 
 // ---- pins -----------------------------------------------------------------
 
+// Pins and folders are ordered per space by `pos`: the space's top level
+// mixes folders and the pins in none, and each folder orders its own pins.
+// Pins saved before folders existed have no `pos`: their order in the list
+// stands in (shared/view.js does the same). Every change renumbers the
+// lists it touches 0, 1, 2…
+const posOf = (/** @type {any} */ item, /** @type {number} */ i) => (Number.isFinite(item?.pos) ? item.pos : i);
+const folderIn = (state, folderId, spaceId) => (state.folders ?? []).find((f) => f.id === folderId && f.spaceId === spaceId) ?? null;
+// A pin's folder, if that folder exists in the pin's space (else it's loose).
+const folderOfPin = (state, pin) => (pin.folderId ? folderIn(state, pin.folderId, pin.spaceId) : null);
+
+// One list, in order: [{ kind: 'folder' | 'pin', id }]. `folderId` null: the
+// space's top level.
 /** @param {State} state */
-function addPin(state, { id, spaceId, url, title }) {
+function pinOrder(state, spaceId, folderId = null) {
+  const items = [];
+  // Folders first, so equal positions sort as shared/view.js shows them.
+  if (folderId == null) {
+    (state.folders ?? []).forEach((f, i) => f.spaceId === spaceId && items.push({ kind: 'folder', id: f.id, pos: posOf(f, i) }));
+  }
+  state.pins.forEach((p, i) => {
+    if (p.spaceId !== spaceId) return;
+    const inFolder = folderOfPin(state, p)?.id ?? null;
+    if (inFolder === folderId) items.push({ kind: 'pin', id: p.id, pos: posOf(p, i) });
+  });
+  return items.sort((a, b) => a.pos - b.pos).map(({ kind, id }) => ({ kind, id }));
+}
+
+// Write `list` (pinOrder's shape) as the order of that level, putting its
+// pins in `folderId` (null: none).
+/** @param {State} state */
+function writeOrder(state, folderId, list) {
+  const pos = new Map(list.map((item, i) => [item.id, i]));
+  // Unchanged items, and lists, stay as they are (the background saves only
+  // what changed, and every page redraws for each save).
+  let pinsChanged = false;
+  const pins = state.pins.map((p) => {
+    if (!pos.has(p.id) || (p.pos === pos.get(p.id) && (p.folderId ?? null) === (folderId ?? null))) return p;
+    pinsChanged = true;
+    const { folderId: _old, ...rest } = p;
+    return { ...rest, ...(folderId ? { folderId } : {}), pos: pos.get(p.id) };
+  });
+  let foldersChanged = false;
+  const folders = (state.folders ?? []).map((f) => {
+    if (!pos.has(f.id) || f.pos === pos.get(f.id)) return f;
+    foldersChanged = true;
+    return { ...f, pos: pos.get(f.id) };
+  });
+  if (!pinsChanged && !foldersChanged) return state;
+  return { ...state, ...(pinsChanged ? { pins } : {}), ...(foldersChanged ? { folders } : {}) };
+}
+
+// `list` with `item` moved before the entry with id `beforeId` (the end if
+// there's none).
+function placed(list, item, beforeId) {
+  if (beforeId != null && beforeId === item.id) return list.some((x) => x.id === item.id) ? list : [...list, item]; // before itself: where it is
+  const rest = list.filter((x) => x.id !== item.id);
+  const at = beforeId == null ? -1 : rest.findIndex((x) => x.id === beforeId);
+  if (at < 0) return [...rest, item];
+  return [...rest.slice(0, at), item, ...rest.slice(at)];
+}
+
+const FOLDER_NAME_MAX = 40;
+const folderName = (name) => String(name ?? '').trim().slice(0, FOLDER_NAME_MAX);
+// "New Folder", "New Folder 2"…: menus name folders, so a space's are distinct.
+function uniqueName(state, spaceId, name) {
+  const taken = new Set((state.folders ?? []).filter((f) => f.spaceId === spaceId).map((f) => f.name));
+  if (!taken.has(name)) return name;
+  let n = 2;
+  while (taken.has(`${name} ${n}`)) n++;
+  return `${name} ${n}`;
+}
+
+// `folderId`/`beforeId`: where it goes (a folder of its space, before a pin
+// or folder at that level); the end of the space's top level by default.
+/** @param {State} state */
+function addPin(state, { id, spaceId, url, title, folderId = null, beforeId = null }) {
   if (!url || !hasSpace(state, spaceId) || pinForUrl(state, url, spaceId)) return state;
-  return { ...state, pins: [...state.pins, { id, spaceId, url, title: title || url }] };
+  const next = { ...state, pins: [...state.pins, { id, spaceId, url, title: title || url }] };
+  const folder = folderId ? folderIn(state, folderId, spaceId) : null;
+  return movePin(next, id, { folderId: folder?.id ?? null, beforeId });
 }
 
 /** @param {State} state */
 function removePin(state, pinId) {
   return { ...state, pins: state.pins.filter((p) => p.id !== pinId) };
+}
+
+// A pin into a folder of its space (or out of folders: null), before the pin
+// or folder `beforeId` there (the end by default).
+/** @param {State} state */
+function movePin(state, pinId, { folderId = null, beforeId = null } = {}) {
+  const pin = state.pins.find((p) => p.id === pinId);
+  if (!pin) return state;
+  const folder = folderId ? folderIn(state, folderId, pin.spaceId) : null;
+  if (folderId && !folder) return state;
+  const from = folderOfPin(state, pin)?.id ?? null;
+  const to = folder?.id ?? null;
+  let next = state;
+  if (from !== to) next = writeOrder(next, from, pinOrder(next, pin.spaceId, from).filter((x) => x.id !== pinId));
+  return writeOrder(next, to, placed(pinOrder(next, pin.spaceId, to), { kind: 'pin', id: pinId }, beforeId));
+}
+
+// ---- folders --------------------------------------------------------------
+
+// A folder in a space (open), at the space's top level before `beforeId`
+// (the end by default), holding `pinIds` (of that space) in that order.
+/** @param {State} state */
+function createFolder(state, { id, spaceId, name = 'New Folder', pinIds = [], beforeId = null }) {
+  if (!hasSpace(state, spaceId) || (state.folders ?? []).some((f) => f.id === id)) return state;
+  let next = { ...state, folders: [...(state.folders ?? []), { id, spaceId, name: uniqueName(state, spaceId, folderName(name) || 'New Folder'), open: true }] };
+  next = writeOrder(next, null, placed(pinOrder(next, spaceId), { kind: 'folder', id }, beforeId));
+  for (const pinId of pinIds) {
+    if (next.pins.some((p) => p.id === pinId && p.spaceId === spaceId)) next = movePin(next, pinId, { folderId: id });
+  }
+  return next;
+}
+
+/** @param {State} state */
+function renameFolder(state, folderId, name) {
+  const clean = folderName(name);
+  const folder = (state.folders ?? []).find((f) => f.id === folderId);
+  if (!clean || !folder || folder.name === clean) return state;
+  return { ...state, folders: (state.folders ?? []).map((f) => (f.id === folderId ? { ...f, name: clean } : f)) };
+}
+
+/** @param {State} state */
+function setFolderOpen(state, folderId, open) {
+  const folder = (state.folders ?? []).find((f) => f.id === folderId);
+  if (!folder || (folder.open !== false) === !!open) return state;
+  return { ...state, folders: (state.folders ?? []).map((f) => (f.id === folderId ? { ...f, open: !!open } : f)) };
+}
+
+// A folder at its space's top level before `beforeId` (the end by default).
+/** @param {State} state */
+function moveFolder(state, folderId, { beforeId = null } = {}) {
+  const folder = (state.folders ?? []).find((f) => f.id === folderId);
+  if (!folder) return state;
+  return writeOrder(state, null, placed(pinOrder(state, folder.spaceId), { kind: 'folder', id: folderId }, beforeId));
+}
+
+// Delete a folder; its pins stay, in its place at the top level.
+/** @param {State} state */
+function deleteFolder(state, folderId) {
+  const folder = (state.folders ?? []).find((f) => f.id === folderId);
+  if (!folder) return state;
+  const inside = pinOrder(state, folder.spaceId, folderId);
+  const top = pinOrder(state, folder.spaceId).flatMap((x) => (x.id === folderId ? inside : [x]));
+  const next = { ...state, folders: state.folders.filter((f) => f.id !== folderId) };
+  return writeOrder(next, null, top);
 }
 
 // Delete a space; its tabs, pins and archive entries move to the first
@@ -335,8 +478,18 @@ function deleteSpace(state, spaceId) {
   for (const [tabId, sid] of Object.entries(state.tabSpace)) tabSpace[tabId] = sid === spaceId ? target : sid;
   const activeSpaceByWindow = {};
   for (const [w, sid] of Object.entries(state.activeSpaceByWindow)) activeSpaceByWindow[w] = sid === spaceId ? target : sid;
-  let next = { ...state, spaces, tabSpace, activeSpaceByWindow, pins: state.pins.filter((p) => p.spaceId !== spaceId) };
-  for (const pin of state.pins.filter((p) => p.spaceId === spaceId)) next = addPin(next, { ...pin, spaceId: target });
+  // Its folders go along (after the first space's own items), and its pins
+  // with them, unless that space already has their URL.
+  const movedTop = pinOrder(state, spaceId);
+  const folders = (state.folders ?? []).map((f) => (f.spaceId === spaceId ? { ...f, spaceId: target } : f));
+  const pins = state.pins.filter((p) => p.spaceId !== spaceId);
+  for (const pin of state.pins.filter((p) => p.spaceId === spaceId)) {
+    if (!pinForUrl({ ...state, pins }, pin.url, target)) pins.push({ ...pin, spaceId: target });
+  }
+  let next = { ...state, spaces, tabSpace, activeSpaceByWindow, pins, folders };
+  const kept = new Set(pins.map((p) => p.id));
+  const targetTop = pinOrder(state, target);
+  next = writeOrder(next, null, [...targetTop, ...movedTop.filter((x) => x.kind === 'folder' || kept.has(x.id))]);
   next.archive = state.archive.map((a) => (a.spaceId === spaceId ? { ...a, spaceId: target } : a));
   return next;
 }
@@ -409,6 +562,14 @@ export {
   updateSpace,
   addPin,
   removePin,
+  movePin,
+  pinOrder,
+  createFolder,
+  renameFolder,
+  setFolderOpen,
+  moveFolder,
+  deleteFolder,
+  FOLDER_NAME_MAX,
   deleteSpace,
   archiveTab,
   removeArchived,

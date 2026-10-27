@@ -151,9 +151,18 @@ export function startLayout(page, { loader }) {
     reason = null;
     setOpen(pinnedOpen());
   }
+  // While Margin is busy there (renaming, dragging, a menu), it waits, and
+  // hides once that's done if the pointer is still away (show() cancels).
   function scheduleHide() {
-    if (reason !== 'hover' || hideTimer || page.view()?.isBusy()) return;
-    hideTimer = setTimeout(hide, HIDE_DELAY_MS);
+    if (reason !== 'hover' || hideTimer) return;
+    hideTimer = setTimeout(function tryHide() {
+      if (page.view()?.isBusy()) {
+        hideTimer = setTimeout(tryHide, HIDE_DELAY_MS);
+        return;
+      }
+      hideTimer = null;
+      hide();
+    }, HIDE_DELAY_MS);
   }
   // With "Keep open" on, the shortcut switches back to auto-hide (hide()
   // alone would leave it pinned open).

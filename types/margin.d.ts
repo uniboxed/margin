@@ -15,7 +15,14 @@ export type Send = <K extends MessageType>(type: K, payload?: Request<K>) => Pro
 // ---- stored state (storage.local; state/model.js) ---------------------------
 
 export interface Space { id: string; name: string; emoji: string; color: string }
-export interface Pin { id: string; spaceId: string; url: string; title: string }
+export interface Pin {
+  id: string; spaceId: string; url: string; title: string;
+  /** a folder of its space (state/model.js); none or unknown: at the top level */
+  folderId?: string;
+  /** order within its level (folder, or the space's top level); missing: its place in the list */
+  pos?: number;
+}
+export interface Folder { id: string; spaceId: string; name: string; open: boolean; pos?: number }
 // Snapshot of an open tab (state/model.js tabRecord).
 export interface TabRecord {
   id: number; windowId: number; index: number; title: string; url: string;
@@ -53,6 +60,7 @@ export interface State {
   activeSpaceByWindow: Record<number, string>;
   tabSpace: Record<number, string>;
   pins: Pin[];
+  folders: Folder[];
   archive: ArchiveEntry[];
   settings: Settings;
   tabs: Record<number, TabRecord>;

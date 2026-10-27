@@ -406,3 +406,11 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 ## Narrow rail off (2026-10-27)
 
 - [ ] With Keep open, a page Margin can't fit (Teams, Outlook, Docs, or "Show normally" on a site): the full sidebar beside it, no narrow icon rail; the start page's Settings has no rail switch.
+
+## Arc's sidebar and folders (2026-10-27)
+
+- [ ] The sidebar looks like Arc's: toggle at the top left, the space's name, folders and pins, "+ New Tab" and tabs in one list, the bottom bar (archive, spaces, +).
+- [ ] "+" → New Folder: type a name, Enter. Right-click a tab → Pin to 📁 that folder; drag another tab onto the folder; drag a pin out; drag pins to reorder; drag a pin onto the tabs to unpin it.
+- [ ] Click a folder to close it; with one of its tabs shown, that pin still shows under it. Double-click renames.
+- [ ] An open pinned tab's × closes the tab, the pin stays. Right-click → Unpin.
+- [ ] Bottom bar: click a space's emoji to switch; right-click or double-click the space name to edit it; the archive button opens "Recently archived".

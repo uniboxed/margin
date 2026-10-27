@@ -105,7 +105,15 @@ export function mount({ api, self, send, windowed = false }) {
     }
     palette.open();
   };
-  const sidebar = createSidebar({ document, send: sidebarSend, mode: 'newtab', onNewTab, onScroll, onSwitch });
+  // The archive button: this page's own "Recently archived".
+  // Shown even while empty once asked for ("Nothing archived yet").
+  let archiveAsked = false;
+  const onArchive = () => {
+    archiveAsked = true;
+    if (state) renderLauncher();
+    $('archive-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const sidebar = createSidebar({ document, send: sidebarSend, mode: 'newtab', onNewTab, onArchive, onScroll, onSwitch });
   const applyColorScheme = () => sidebar.setColorScheme(dark.matches ? 'dark' : 'light');
   applyColorScheme();
   dark.addEventListener('change', applyColorScheme);
@@ -371,10 +379,11 @@ export function mount({ api, self, send, windowed = false }) {
 
     const all = state.archive ?? [];
     const archive = showAllArchived ? all : all.slice(0, 12);
-    $('archive-section').hidden = all.length === 0;
+    $('archive-section').hidden = all.length === 0 && !archiveAsked;
     $('archive-more').hidden = all.length <= 12;
     $('archive-more').textContent = showAllArchived ? 'Show fewer' : `Show all ${all.length}`;
     $('archive-list').replaceChildren(
+      ...(all.length ? [] : [el(document, 'li', { class: 'empty', text: 'Nothing archived yet' })]),
       ...archive.map((a) =>
         el(document, 'li', { 'data-archive-id': a.id, title: a.url },
           avatar(document, { ...a, favIconUrl: V.iconFor(state, a) }),

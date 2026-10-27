@@ -30,20 +30,73 @@ function avatar(doc, { title, url, favIconUrl }) {
 
 const SPACE_COLORS = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72'];
 const TAB_MIME = 'application/x-margin-tab';
+const PIN_MIME = 'application/x-margin-pin';
+const FOLDER_MIME = 'application/x-margin-folder';
+
+// Arc's line icons (stroked, currentColor) and its two-tone folder.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svg(doc, viewBox, children, cls) {
+  const node = doc.createElementNS(SVG_NS, 'svg');
+  node.setAttribute('viewBox', viewBox);
+  node.setAttribute('class', cls);
+  node.setAttribute('aria-hidden', 'true');
+  for (const [tag, attrs] of children) {
+    const child = doc.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) child.setAttribute(k, v);
+    node.append(child);
+  }
+  return node;
+}
+const ICONS = {
+  // The sidebar: a window with a panel at the left (three short lines in it).
+  toggle: (doc) => svg(doc, '0 0 19 15', [
+    ['rect', { x: '0.75', y: '0.75', width: '17.5', height: '13.5', rx: '3' }],
+    ['path', { d: 'M6.25 0.75v13.5M2.75 4h1.5M2.75 6.5h1.5M2.75 9h1.5' }],
+  ], 'line-icon toggle-icon'),
+  // Arc's archive: a filled box with a slot, its lid and pieces above.
+  archive: (doc) => svg(doc, '0 0 14 16.5', [
+    ['path', { 'fill-rule': 'evenodd', d: 'M2 7.5H13Q13.5 7.5 13.5 8V13.5Q13.5 16.5 10.5 16.5H4.5Q1.5 16.5 1.5 13.5V8Q1.5 7.5 2 7.5ZM6.5 8.5H8.5A1 1 0 0 1 8.5 10.5H6.5A1 1 0 0 1 6.5 8.5Z' }],
+    ['path', { d: 'M.9 6.1Q.4 6 .2 5.3L0 4.7Q0 4 .7 3.9L2.8 3.6L4 1.4Q4.35.85 4.75 1.4L5.95 3.1L8.6 3.2Q9.25 3.25 9.05 3.85L8.4 5.7Q8.25 6.1 7.8 6.1Z' }],
+    ['path', { d: 'M11.4 2.9Q11.8 2.3 12.2 2.9L14 5.2Q14.3 5.7 13.8 5.9L11.3 6.4Q10.6 6.5 10.6 5.8Z' }],
+    ['circle', { cx: '9.5', cy: '1', r: '1' }],
+  ], 'fill-icon archive-icon'),
+  plus: (doc) => svg(doc, '0 0 14 14', [['path', { d: 'M7 1v12M1 7h12' }]], 'line-icon plus-icon'),
+  close: (doc) => svg(doc, '0 0 11 11', [['path', { d: 'M1 1l9 9M10 1l-9 9' }]], 'line-icon close-icon'),
+  // Open: the back panel leaning out to the upper left, the front leaning
+  // under it (Arc's shape); closed: both upright.
+  folder: (doc, open) => svg(doc, '0 0 22.5 16.5', open ? [
+    ['path', { class: 'folder-back', d: 'M5.2 15.9Q4.4 15.9 4.2 15.1L.75 2.2Q.4.6 2 .6H5.6Q6.3.6 6.8 1.1L8.2 2.6Q8.6 3 9.2 3.05L20.6 4.1Q21.6 4.2 21.4 5.2L17.9 15.9Z' }],
+    ['path', { class: 'folder-front', d: 'M8.7 5.2H21.1Q22 5.2 21.7 6.1L18.6 15.3Q18.4 15.9 17.7 15.9H5Q4.15 15.9 4.4 15.1L7.4 6.3Q7.75 5.2 8.7 5.2Z' }],
+  ] : [
+    ['path', { class: 'folder-back', d: 'M1 2.1Q1 .6 2.5 .6H6.6Q7.2.6 7.6 1.1L8.9 2.6H20Q21.5 2.6 21.5 4.1V14.4Q21.5 15.9 20 15.9H2.5Q1 15.9 1 14.4Z' }],
+    ['path', { class: 'folder-front', d: 'M1 6.3Q1 4.8 2.5 4.8H20Q21.5 4.8 21.5 6.3V14.4Q21.5 15.9 20 15.9H2.5Q1 15.9 1 14.4Z' }],
+  ], `folder-icon${open ? ' open' : ''}`),
+};
 
 // `onNewTab`: what "+ New tab" does (the command palette, Arc-style);
 // without it, a new tab is opened.
+// `onArchive`: what the archive button does (the new-tab page shows its own
+// "Recently archived"); without it, Margin's start page opens.
 // `onWidth(px, { done })`: called while the sidebar is resized (live) and
 // once more with done: true when the drag ends.
-// `onScroll(px)`: the tab list was scrolled by the user (every page's sidebar
+// `onScroll(px)`: the list was scrolled by the user (every page's sidebar
 // opens at the window's last position; update(…, { scroll }) applies it).
 // `onSwitch(tabId, request)`: a click here switches to that tab (the page
 // highlights it at once: shared/switching.js, update(…, { switchingTo })).
 /**
- * @param {{ document: Document, send: import('../../../types/margin').Send, mode: 'overlay' | 'newtab', onNewTab?: () => void, onWidth?: (px: number, info: { done: boolean }) => void, onScroll?: (px: number) => void, onSwitch?: (tabId: number, request: Promise<unknown>) => void }} options
+ * @param {{ document: Document, send: import('../../../types/margin').Send, mode: 'overlay' | 'newtab', onNewTab?: () => void, onArchive?: () => void, onWidth?: (px: number, info: { done: boolean }) => void, onScroll?: (px: number) => void, onSwitch?: (tabId: number, request: Promise<unknown>) => void }} options
  */
-function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll, onSwitch }) {
-  const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
+function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth, onScroll, onSwitch }) {
+  // Arc's layout: the sidebar toggle (Keep open / Auto-hide) at the top, the
+  // space's name, then one list (the pinned area with its folders, then
+  // "+ New Tab" and the tabs), and at the bottom the archive, the spaces and
+  // "+" (a new folder or space).
+  const keepOpen = el(doc, 'button', { type: 'button', class: 'keep-open', 'data-action': 'keep-open' }, ICONS.toggle(doc));
+  // With Keep open: this site fitted beside the sidebar, or shown normally
+  // (the palette has the same switch). Only where it applies.
+  const fitSite = el(doc, 'button', { type: 'button', class: 'fit-site', 'data-action': 'fit-site', hidden: true });
+  const top = el(doc, 'header', { class: 'top' }, mode === 'overlay' ? keepOpen : null, el(doc, 'span', { class: 'spacer' }), fitSite);
+  const spaceTitle = el(doc, 'div', { class: 'space-title', title: 'Double-click or right-click to edit the space' });
   const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
   const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
   const swatches = el(doc, 'div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Space color' },
@@ -58,19 +111,20 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
       el(doc, 'button', { type: 'button', 'data-editor': 'cancel', text: 'Cancel' }),
       el(doc, 'button', { type: 'submit', class: 'primary', text: 'Save' })));
   const pins = el(doc, 'ul', { class: 'pins', 'aria-label': 'Pinned' });
+  const listDivider = el(doc, 'div', { class: 'divider' });
   const tabs = el(doc, 'ul', { class: 'tabs', 'aria-label': 'Tabs' });
-  const tabsSection = el(doc, 'section', { class: 'tabs-section' }, tabs);
-  const keepOpen = el(doc, 'button', { class: 'keep-open', 'data-action': 'keep-open', title: 'Keep the sidebar open' });
-  // With Keep open: this site fitted beside the sidebar, or shown normally
-  // (the palette has the same switch). Only where it applies.
-  const fitSite = el(doc, 'button', { class: 'fit-site', 'data-action': 'fit-site', hidden: true });
-  // "+ New Tab" is the first row of the tab list (render).
-  const footer = mode === 'overlay' ? el(doc, 'footer', {}, el(doc, 'span', { class: 'spacer' }), fitSite, keepOpen) : null;
-  const root = el(doc, 'aside', { class: `margin-sidebar ${mode}`, 'aria-label': 'Margin' },
+  // One scroller for the pinned area and the tabs (Arc): many folders never
+  // push the tabs out of reach.
+  const tabsSection = el(doc, 'section', { class: 'tabs-section' }, el(doc, 'div', { class: 'pins-section' }, pins), listDivider, tabs);
+  const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
+  const footer = el(doc, 'footer', { class: 'bar' },
+    el(doc, 'button', { type: 'button', class: 'bar-button archive', 'data-action': 'archive', title: 'Archived tabs', 'aria-label': 'Archived tabs' }, ICONS.archive(doc)),
     chips,
+    el(doc, 'button', { type: 'button', class: 'bar-button add', 'data-action': 'add-menu', title: 'New folder or space', 'aria-label': 'New folder or space' }, ICONS.plus(doc)));
+  const root = el(doc, 'aside', { class: `margin-sidebar ${mode}`, 'aria-label': 'Margin' },
+    top,
+    spaceTitle,
     editor,
-    el(doc, 'section', { class: 'pins-section' }, pins),
-    el(doc, 'div', { class: 'divider' }),
     tabsSection,
     footer,
   );
@@ -135,16 +189,136 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
   let fit = null; // { origin, fitted, fittable }: the page's fitted layout (content/core.js)
   let newTabPending = false; // a new tab being chosen in the palette: "+ New Tab" highlighted
   let switchingTo = null; // a tab being switched to: highlighted already
+  // A folder's name being edited in place ({ folderId, draft }), and a just-
+  // created folder to edit once it arrives (as pendingEdit).
+  let renaming = null;
+  let pendingRename = null;
+  let rendering = false; // the rename field leaves the DOM while redrawing: not a blur
 
+  const closeButton = (tabId, label) => el(doc, 'button', { type: 'button', class: 'icon close', 'data-action': 'close', 'data-tab-id': String(tabId), title: label, 'aria-label': label }, ICONS.close(doc));
+  function pinRow(p, nested) {
+    return el(doc, 'li', {
+      class: `pin${nested ? ' nested' : ''}${p.active ? ' active' : ''}${p.behind ? ' behind' : ''}${p.tabId ? ' open' : ''}`,
+      'data-action': 'open-pin',
+      'data-pin-id': p.id,
+      'data-folder-id': p.folderId ?? null,
+      title: p.title,
+      draggable: 'true',
+    },
+    avatar(doc, { ...p, favIconUrl: V.iconFor(state, p) }),
+    el(doc, 'span', { class: 'title', text: p.title }),
+    // An open pinned tab closes, the pin stays (Arc); Unpin is in its menu.
+    p.tabId != null ? closeButton(p.tabId, 'Close tab (stays pinned)') : null);
+  }
+  // A folder: the row is a list item; its toggle (a button, Enter/Space too)
+  // holds the icon and the name, or the field renaming it.
+  function folderRow(f) {
+    const editingThis = renaming?.folderId === f.id;
+    const name = editingThis ? renameField(f) : el(doc, 'span', { class: 'title', text: f.name });
+    return el(doc, 'li', {
+      class: `folder${f.open ? ' open' : ''}`,
+      'data-action': editingThis ? null : 'toggle-folder', // its padding too
+      'data-folder-id': f.id,
+      draggable: editingThis ? null : 'true',
+    }, el(doc, 'div', {
+      class: 'folder-toggle',
+      'data-action': editingThis ? null : 'toggle-folder',
+      'data-folder-id': f.id,
+      role: editingThis ? null : 'button',
+      tabindex: editingThis ? null : '0',
+      'aria-expanded': editingThis ? null : String(f.open),
+      title: editingThis ? null : `${f.name} (double-click to rename)`,
+    }, ICONS.folder(doc, f.open), name));
+  }
+
+  // ---- renaming a folder in place -------------------------------------------
+  let renameInput = null;
+  function renameField(f) {
+    if (!renameInput) {
+      renameInput = el(doc, 'input', { type: 'text', class: 'folder-name', 'aria-label': 'Folder name', maxlength: '40', spellcheck: 'false' });
+      renameInput.addEventListener('input', () => { if (renaming) renaming.draft = renameInput.value; });
+      renameInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') commitRename();
+        else if (event.key === 'Escape') cancelRename();
+      });
+      renameInput.addEventListener('blur', () => { if (!rendering) commitRename(); });
+      renameInput.addEventListener('click', (event) => event.stopPropagation());
+      renameInput.addEventListener('dblclick', (event) => event.stopPropagation());
+    }
+    if (renameInput.dataset.folderId !== f.id) {
+      renameInput.dataset.folderId = f.id;
+      renameInput.value = renaming.draft;
+      renameInput.dataset.fresh = 'true'; // select all once it's in the page
+    }
+    return renameInput;
+  }
+  function startRename(folderId) {
+    const folder = state?.folders?.find((f) => f.id === folderId);
+    if (!folder || root.classList.contains('rail')) return;
+    renaming = { folderId, draft: folder.name };
+    if (renameInput) delete renameInput.dataset.folderId;
+    render();
+  }
+  function commitRename() {
+    if (!renaming) return;
+    const { folderId, draft } = renaming;
+    renaming = null;
+    const name = draft.trim().slice(0, 40);
+    const folder = state?.folders?.find((f) => f.id === folderId);
+    if (name && folder && name !== folder.name) {
+      send('renameFolder', { folderId, name });
+      // Shown at once, not the old name until storage comes back.
+      state = { ...state, folders: state.folders.map((f) => (f.id === folderId ? { ...f, name } : f)) };
+    }
+    render();
+  }
+  function cancelRename() {
+    renaming = null;
+    render();
+  }
+
+  let lastView = null; // the view last drawn (menus and drag and drop read it)
   function render() {
     if (!state || windowId == null) return;
-    const view = V.sidebar(state, windowId, currentTabId, { newTabPending, switchingTo });
+    rendering = true;
+    try {
+      draw();
+    } finally {
+      rendering = false;
+    }
+    // The field being typed in keeps its focus and caret through a redraw.
+    if (renaming && renameInput?.isConnected) {
+      if (renameInput.dataset.fresh === 'true') {
+        delete renameInput.dataset.fresh;
+        renameInput.focus({ preventScroll: true });
+        renameInput.select();
+      } else if (renameSelection) {
+        renameInput.focus({ preventScroll: true });
+        renameInput.setSelectionRange(...renameSelection);
+      }
+    }
+  }
+  let renameSelection = null;
+  let shownSpaceId = null;
+  function draw() {
+    const view = lastView = V.sidebar(state, windowId, currentTabId, { newTabPending, switchingTo });
     root.style.setProperty('--space-color', view.spaces.find((s) => s.id === view.spaceId)?.color ?? '');
     if (!resizing) setWidth(sidebarWidth(state.settings));
+    if (renaming && !view.pinned.some((item) => item.kind === 'folder' && item.id === renaming.folderId)) renaming = null; // gone
+    const focused = renaming && renameInput && renameInput.getRootNode().activeElement === renameInput;
+    renameSelection = focused ? [renameInput.selectionStart, renameInput.selectionEnd] : null;
+
+    const space = view.spaces.find((s) => s.id === view.spaceId);
+    spaceTitle.dataset.spaceId = space?.id ?? '';
+    spaceTitle.replaceChildren(
+      el(doc, 'span', { class: 'emoji', 'aria-hidden': 'true', text: space?.emoji ?? '' }),
+      el(doc, 'span', { class: 'title', text: space?.name ?? '' }),
+    );
 
     chips.replaceChildren(
       ...view.spaces.map((s) =>
         el(doc, 'button', {
+          type: 'button',
           class: `chip${s.id === view.spaceId ? ' active' : ''}`,
           'data-action': 'set-space',
           'data-space-id': s.id,
@@ -154,22 +328,17 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
           text: s.emoji,
         }),
       ),
-      el(doc, 'button', { class: 'chip add', 'data-action': 'add-space', title: 'New space', text: '+' }),
     );
 
+    // The pinned area: folders (their pins beneath, indented, while open;
+    // a closed one shows only the pin of the tab being shown) and loose pins.
     pins.replaceChildren(
-      ...view.pins.map((p) =>
-        el(doc, 'li', {
-          class: `pin${p.active ? ' active' : ''}${p.behind ? ' behind' : ''}${p.tabId ? ' open' : ''}`,
-          'data-action': 'open-pin',
-          'data-pin-id': p.id,
-          title: p.title,
-        },
-        avatar(doc, { ...p, favIconUrl: V.iconFor(state, p) }),
-        el(doc, 'span', { class: 'title', text: p.title }),
-        el(doc, 'button', { class: 'icon unpin', 'data-action': 'unpin', 'data-pin-id': p.id, title: 'Unpin', text: '×' })),
-      ),
+      ...view.pinned.flatMap((item) => {
+        if (item.kind !== 'folder') return [pinRow(item, false)];
+        return [folderRow(item), ...(item.open ? item.pins : item.peek).map((p) => pinRow(p, true))];
+      }),
     );
+    listDivider.hidden = !view.pinned.length;
 
     // Arc: "+ New Tab" above the tabs, highlighted like a tab while the
     // new-tab page is shown (⌘T); it opens the palette.
@@ -180,7 +349,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
       role: 'button',
       'aria-label': 'New Tab',
       'aria-current': view.newTab.active ? 'page' : null,
-    }, el(doc, 'span', { class: 'plus', 'aria-hidden': 'true', text: '+' }), el(doc, 'span', { class: 'title', text: 'New Tab' }));
+    }, el(doc, 'span', { class: 'plus', 'aria-hidden': 'true' }, ICONS.plus(doc)), el(doc, 'span', { class: 'title', text: 'New Tab' }));
     tabs.replaceChildren(
       newTabRow,
       ...view.tabs.map((t) =>
@@ -193,18 +362,13 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
         },
         avatar(doc, { ...t, favIconUrl: V.iconFor(state, t) }),
         el(doc, 'span', { class: 'title', text: t.title || t.url || 'New Tab' }),
-        el(doc, 'button', { class: 'icon close', 'data-action': 'close', 'data-tab-id': String(t.id), title: 'Close tab', text: '×' })),
+        closeButton(t.id, 'Close tab')),
       ),
     );
 
     const pinned = !!state.settings?.sidebarPinnedOpen;
-    // Icon + label; narrow sidebars show only the icon (see sidebar.css).
-    keepOpen.replaceChildren(
-      el(doc, 'span', { class: 'icon-only', text: pinned ? '⇤' : '⇥' }),
-      el(doc, 'span', { class: 'label', text: pinned ? ' Auto-hide' : ' Keep open' }),
-    );
     keepOpen.title = pinned ? 'Auto-hide the sidebar' : 'Keep the sidebar open';
-    keepOpen.setAttribute('aria-label', keepOpen.title); // its label is hidden in the narrow rail
+    keepOpen.setAttribute('aria-label', keepOpen.title);
     keepOpen.setAttribute('aria-pressed', String(pinned));
 
     const excepted = !!fit?.origin && (state.settings?.fitPagesExcept ?? []).includes(fit.origin);
@@ -212,6 +376,19 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
     fitSite.textContent = fit?.fitted ? '▢' : '▣';
     fitSite.title = fit?.fitted ? 'Show this site normally (not fitted beside the sidebar)' : 'Fit this site beside the sidebar again';
     fitSite.setAttribute('aria-label', fitSite.title);
+
+    // A space switched to: its icon in the bottom bar in view (many spaces in
+    // a narrow sidebar scroll sideways). Not scrollIntoView: it can scroll the page.
+    if (view.spaceId !== shownSpaceId) {
+      shownSpaceId = view.spaceId;
+      const chip = chips.querySelector('.chip.active');
+      if (chip) {
+        const bar = chips.getBoundingClientRect();
+        const box = chip.getBoundingClientRect();
+        if (box.left < bar.left) chips.scrollLeft -= bar.left - box.left;
+        else if (box.right > bar.right) chips.scrollLeft += box.right - bar.right;
+      }
+    }
   }
 
   // Open over the page (hovered, toggled, or the rail expanded): a switch
@@ -223,9 +400,9 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
     const target = event.target.closest('[data-action]');
     if (!target || !root.contains(target)) return;
     event.stopPropagation();
-    if (event.ctrlKey && target.closest('.tab, .pin')) return; // ⌃-click is the Mac's right-click: the menu
+    if (event.ctrlKey && target.closest('.tab, .pin, .folder')) return; // ⌃-click is the Mac's right-click: the menu
     const tabId = Number(target.dataset.tabId);
-    const { pinId, spaceId } = target.dataset;
+    const { pinId, spaceId, folderId } = target.dataset;
     const show = openOverPage();
     switch (target.dataset.action) {
       case 'activate': {
@@ -241,23 +418,69 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
         if (pinTab != null) onSwitch?.(pinTab, request);
         return request;
       }
-      case 'unpin': return send('unpin', { pinId });
+      case 'toggle-folder': {
+        if (event.detail > 1) return; // the second click of a double-click (renames)
+        const folder = state?.folders?.find((f) => f.id === folderId);
+        if (!folder) return;
+        lastToggle = { folderId, wasOpen: folder.open !== false, at: Date.now() };
+        return send('setFolderOpen', { folderId, open: folder.open === false });
+      }
       case 'set-space': return send('setSpace', { windowId, spaceId });
       case 'new-tab': return onNewTab ? onNewTab() : send('newTab', { windowId });
-      case 'add-space':
-        // The new space can reach us (via storage) before the reply does,
-        // so open it now if it's already here, else when it arrives.
-        return send('createSpace', { windowId }).then((res) => {
-          if (!res?.spaceId) return;
-          if (state?.spaces.some((s) => s.id === res.spaceId)) openEditor(res.spaceId);
-          else pendingEdit = res.spaceId;
-        });
+      case 'archive': return onArchive ? onArchive() : send('openLauncher', { windowId });
+      case 'add-menu': {
+        const box = target.getBoundingClientRect();
+        return openAddMenu(box.left, box.top);
+      }
       case 'fit-site':
         return fit?.origin && send('setFitSite', { origin: fit.origin, fit: !fit.fitted });
       case 'keep-open':
         return send('updateSettings', { patch: { sidebarPinnedOpen: !state?.settings?.sidebarPinnedOpen } });
     }
   });
+  // Double-click renames a folder; its first click toggled it, so that's undone.
+  let lastToggle = null;
+  pins.addEventListener('dblclick', (event) => {
+    const row = event.target.closest('.folder');
+    if (!row || event.target.closest('.folder-name')) return;
+    event.stopPropagation();
+    if (lastToggle?.folderId === row.dataset.folderId && Date.now() - lastToggle.at < 800) {
+      send('setFolderOpen', { folderId: lastToggle.folderId, open: lastToggle.wasOpen });
+    }
+    lastToggle = null;
+    startRename(row.dataset.folderId);
+  });
+  // A folder's toggle with the keyboard.
+  pins.addEventListener('keydown', (event) => {
+    const toggle = event.target.closest?.('.folder-toggle[data-action]');
+    if (!toggle || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    const folder = state?.folders?.find((f) => f.id === toggle.dataset.folderId);
+    if (folder) send('setFolderOpen', { folderId: folder.id, open: folder.open === false });
+  });
+  // Many spaces in a narrow sidebar: a mouse wheel scrolls them sideways.
+  chips.addEventListener('wheel', (event) => {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || chips.scrollWidth <= chips.clientWidth) return;
+    chips.scrollLeft += event.deltaY;
+    event.preventDefault();
+  }, { passive: false });
+
+  // A new space (opened in the editor) or folder (its name being edited).
+  function newSpace() {
+    // The new space can reach us (via storage) before the reply does,
+    // so open it now if it's already here, else when it arrives.
+    return send('createSpace', { windowId }).then((res) => {
+      if (!res?.spaceId) return;
+      if (state?.spaces.some((s) => s.id === res.spaceId)) openEditor(res.spaceId);
+      else pendingEdit = res.spaceId;
+    });
+  }
+  function folderCreated(folderId) {
+    if (!folderId) return;
+    if (state?.folders?.some((f) => f.id === folderId)) startRename(folderId);
+    else pendingRename = folderId;
+  }
+  const newFolder = (payload = {}) => send('createFolder', { windowId, ...payload }).then(folderCreated);
 
   // A press on a tab or an open pin: its process starts waking now, before
   // the click lands (background/tabs.js wakeTab), so the switch doesn't wait.
@@ -324,16 +547,22 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
   editor.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeEditor();
   });
-  chips.addEventListener('contextmenu', (event) => {
-    const chip = event.target.closest('.chip[data-space-id]');
-    if (!chip || root.classList.contains('rail')) return;
-    event.preventDefault();
-    openEditor(chip.dataset.spaceId);
-  });
-  chips.addEventListener('dblclick', (event) => {
-    const chip = event.target.closest('.chip[data-space-id]');
-    if (chip) openEditor(chip.dataset.spaceId);
-  });
+  // The space's title row and its icon in the bottom bar: right-click or
+  // double-click edits it.
+  for (const where of [chips, spaceTitle]) {
+    const spaceOf = (event) => event.target.closest('.chip[data-space-id], .space-title')?.dataset.spaceId;
+    where.addEventListener('contextmenu', (event) => {
+      const spaceId = spaceOf(event);
+      if (!spaceId || root.classList.contains('rail')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openEditor(spaceId);
+    });
+    where.addEventListener('dblclick', (event) => {
+      const spaceId = spaceOf(event);
+      if (spaceId) openEditor(spaceId);
+    });
+  }
 
   // ---- right-click menu on tabs and pins -----------------------------------
   // Replaces the hover pin button: Pin/Unpin, move to another space, close.
@@ -346,30 +575,47 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
   const menuPopover = typeof menu.showPopover === 'function';
   // (Not while the site has a modal dialog open: see siteModalOpen.)
   if (menuPopover) menu.setAttribute('popover', 'manual');
-  let menuFor = null; // { tabId } | { pinId }
+  let menuFor = null; // { tabId } | { pinId } | { folderId } | { add: true }
   const menuItem = (label, action, data = {}) =>
     el(doc, 'button', { class: 'menu-item', role: 'menuitem', 'data-menu': action, ...data, text: label });
-  function openMenu(row, x, y) {
-    const tabId = row.dataset.tabId ? Number(row.dataset.tabId) : null;
+  const separator = () => el(doc, 'div', { class: 'menu-separator', role: 'separator' });
+  // The folders of the space shown (to move a pin or tab into).
+  const spaceFolders = () => (lastView?.pinned ?? []).filter((item) => item.kind === 'folder');
+  function menuItems(row) {
+    const tabId = row.dataset.tabId && row.classList.contains('tab') ? Number(row.dataset.tabId) : null;
     const pin = row.dataset.pinId ? state?.pins.find((p) => p.id === row.dataset.pinId) : null;
-    if (tabId == null && !pin) return;
-    const items = [];
+    const folder = row.classList.contains('folder') ? state?.folders?.find((f) => f.id === row.dataset.folderId) : null;
+    if (folder) {
+      menuFor = { folderId: folder.id };
+      return [menuItem('Rename Folder', 'rename-folder'), menuItem(folder.open === false ? 'Open Folder' : 'Close Folder', 'toggle-folder'), separator(), menuItem('Delete Folder (pins stay)', 'delete-folder')];
+    }
     if (pin) {
       menuFor = { pinId: pin.id };
-      items.push(menuItem('Unpin', 'unpin'));
-      const openTab = V.sidebar(state, windowId, currentTabId).pins.find((p) => p.id === pin.id)?.tabId;
-      if (openTab != null) items.push(el(doc, 'div', { class: 'menu-separator', role: 'separator' }), menuItem('Close Tab', 'close', { 'data-tab-id': String(openTab) }));
-    } else {
-      menuFor = { tabId };
-      items.push(menuItem('Pin Tab', 'pin'));
-      const spaceId = state?.tabSpace?.[tabId];
-      const others = (state?.spaces ?? []).filter((sp) => sp.id !== spaceId);
-      if (others.length) {
-        items.push(el(doc, 'div', { class: 'menu-separator', role: 'separator' }));
-        for (const sp of others) items.push(menuItem(`Move to ${sp.emoji} ${sp.name}`, 'move', { 'data-space-id': sp.id }));
-      }
-      items.push(el(doc, 'div', { class: 'menu-separator', role: 'separator' }), menuItem('Close Tab', 'close', { 'data-tab-id': String(tabId) }));
+      const items = [menuItem('Unpin', 'unpin'), separator()];
+      const shown = lastView?.pins.find((p) => p.id === pin.id);
+      for (const f of spaceFolders()) if (f.id !== shown?.folderId) items.push(menuItem(`Move to 📁 ${f.name}`, 'move-pin', { 'data-folder-id': f.id }));
+      if (shown?.folderId) items.push(menuItem('Remove from Folder', 'move-pin'));
+      items.push(menuItem('New Folder with Pin', 'new-folder-pin'));
+      if (shown?.tabId != null) items.push(separator(), menuItem('Close Tab', 'close', { 'data-tab-id': String(shown.tabId) }));
+      return items;
     }
+    if (tabId == null) return [];
+    menuFor = { tabId };
+    const items = [menuItem('Pin Tab', 'pin')];
+    for (const f of spaceFolders()) items.push(menuItem(`Pin to 📁 ${f.name}`, 'pin', { 'data-folder-id': f.id }));
+    items.push(menuItem('New Folder with Tab', 'new-folder-tab'));
+    const spaceId = state?.tabSpace?.[tabId];
+    const others = (state?.spaces ?? []).filter((sp) => sp.id !== spaceId);
+    if (others.length) {
+      items.push(separator());
+      for (const sp of others) items.push(menuItem(`Move to ${sp.emoji} ${sp.name}`, 'move', { 'data-space-id': sp.id }));
+    }
+    items.push(separator(), menuItem('Close Tab', 'close', { 'data-tab-id': String(tabId) }));
+    return items;
+  }
+  // `above`: its bottom at `y` (the "+" in the bottom bar).
+  function showMenu(items, x, y, { above = false } = {}) {
+    if (!items.length) return;
     menu.replaceChildren(...items);
     menu.hidden = false;
     let inTopLayer = false;
@@ -380,6 +626,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
       } catch {}
     }
     menu.classList.toggle('top-layer', inTopLayer);
+    if (above) y -= menu.offsetHeight + 6;
     if (inTopLayer) { // at the pointer, kept inside the window
       const view = doc.defaultView;
       menu.style.left = `${Math.max(4, Math.min(x, view.innerWidth - menu.offsetWidth - 4))}px`;
@@ -391,6 +638,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
     }
     menu.focus({ preventScroll: true }); // keys work; nothing highlighted until hover or ↓/↑
   }
+  const openMenu = (row, x, y) => showMenu(menuItems(row), x, y);
+  // "+" in the bottom bar: above it.
+  function openAddMenu(x, y) {
+    menuFor = { add: true };
+    showMenu([menuItem('New Folder', 'new-folder'), menuItem('New Space', 'new-space')], x, y, { above: true });
+  }
   function closeMenu() {
     if (menu.hidden) return;
     try {
@@ -400,8 +653,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
     menuFor = null;
   }
   root.addEventListener('contextmenu', (event) => {
-    const row = event.target.closest('.tab, .pin');
-    if (!row || !root.contains(row)) return closeMenu();
+    const row = event.target.closest('.tab, .pin, .folder');
+    if (!row || !root.contains(row) || event.target.closest('.folder-name')) return closeMenu();
     event.preventDefault();
     event.stopPropagation();
     openMenu(row, event.clientX, event.clientY);
@@ -412,10 +665,22 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
     if (!item || !menuFor) return;
     const target = menuFor;
     closeMenu();
+    const { folderId } = item.dataset;
     switch (item.dataset.menu) {
-      case 'pin': return send('pinTab', { tabId: target.tabId });
+      case 'pin': return send('pinTab', { tabId: target.tabId, folderId: folderId ?? null });
       case 'unpin': return send('unpin', { pinId: target.pinId });
       case 'move': return send('moveTabToSpace', { tabId: target.tabId, spaceId: item.dataset.spaceId });
+      case 'move-pin': return send('movePin', { pinId: target.pinId, folderId: folderId ?? null });
+      case 'new-folder-pin': return newFolder({ pinIds: [target.pinId] });
+      case 'new-folder-tab': return newFolder({ tabId: target.tabId });
+      case 'new-folder': return newFolder();
+      case 'new-space': return newSpace();
+      case 'rename-folder': return startRename(target.folderId);
+      case 'toggle-folder': {
+        const folder = state?.folders?.find((f) => f.id === target.folderId);
+        return folder && send('setFolderOpen', { folderId: folder.id, open: folder.open === false });
+      }
+      case 'delete-folder': return send('deleteFolder', { folderId: target.folderId });
       case 'close': return send('closeTab', { tabId: Number(item.dataset.tabId), ...(openOverPage() ? { show: true } : {}) });
     }
   });
@@ -451,42 +716,120 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
   // Keep our keystrokes away from the page's own shortcuts.
   for (const type of ['keydown', 'keyup', 'keypress']) root.addEventListener(type, (e) => e.stopPropagation());
 
-  // ---- drag a tab onto a space chip ---------------------------------------
+  // ---- drag and drop ----------------------------------------------------------
+  // Tabs, pins and folders drag. A tab dropped on a space in the bottom bar
+  // moves there. In the list: a pin or tab dropped on a folder goes into it
+  // (a tab gets pinned there); between rows, before or after that row (a tab
+  // gets pinned in that place; folders stay at the top level); a pin dropped
+  // on the tabs is unpinned (its tab stays open, as a tab).
 
-  let draggingTabId = null;
-  tabs.addEventListener('dragstart', (event) => {
-    const row = event.target.closest('.tab');
-    if (!row) return;
-    draggingTabId = Number(row.dataset.tabId);
-    event.dataTransfer.setData(TAB_MIME, row.dataset.tabId);
+  let dragging = null; // { kind: 'tab' | 'pin' | 'folder', id }
+  const MARKS = ['drop-before', 'drop-after', 'drop-into', 'drop-target', 'drop-end', 'drop-unpin'];
+  const clearDrop = () => {
+    for (const node of root.querySelectorAll(MARKS.map((m) => `.${m}`).join(', '))) node.classList.remove(...MARKS);
+  };
+  root.addEventListener('dragstart', (event) => {
+    const row = event.target.closest?.('.tab, .pin, .folder');
+    if (!row || !root.contains(row)) return;
+    if (renaming) return event.preventDefault();
+    if (row.classList.contains('tab')) dragging = { kind: 'tab', id: Number(row.dataset.tabId) };
+    else if (row.classList.contains('pin')) dragging = { kind: 'pin', id: row.dataset.pinId };
+    else dragging = { kind: 'folder', id: row.dataset.folderId };
+    event.dataTransfer.setData({ tab: TAB_MIME, pin: PIN_MIME, folder: FOLDER_MIME }[dragging.kind], String(dragging.id));
     event.dataTransfer.effectAllowed = 'move';
+    root.dataset.dragging = dragging.kind; // an empty pinned area shows where a tab can go
+    // A redraw mid-drag (a tab's title changing) replaces the row: its
+    // dragend then never reaches the sidebar, so it's listened for here too.
+    row.addEventListener('dragend', endDrag, { once: true });
   });
-  tabs.addEventListener('dragend', () => {
-    draggingTabId = null;
-    for (const c of chips.querySelectorAll('.drop-target')) c.classList.remove('drop-target');
-  });
-  const chipFor = (event) => (draggingTabId == null ? null : event.target.closest?.('.chip[data-space-id]'));
-  chips.addEventListener('dragover', (event) => {
-    const chip = chipFor(event);
-    if (!chip) return;
+  const endDrag = () => {
+    dragging = null;
+    delete root.dataset.dragging;
+    clearDrop();
+  };
+  root.addEventListener('dragend', endDrag);
+
+  // The ids at a level of the pinned area, in order (null: the top level).
+  function levelIds(folderId) {
+    const pinned = lastView?.pinned ?? [];
+    if (!folderId) return pinned.map((item) => item.id);
+    return pinned.find((item) => item.id === folderId)?.pins.map((p) => p.id) ?? [];
+  }
+  // The id after `id` at its level, not counting what's being dragged.
+  const after = (folderId, id) => {
+    const ids = levelIds(folderId).filter((x) => x !== dragging?.id);
+    return ids[ids.indexOf(id) + 1] ?? null;
+  };
+  // Where a drop at this point would go: { chip } | { unpin } |
+  // { into: folderId, row } | { folderId, beforeId, row, side } (row null:
+  // the end of the top level), or null.
+  function dropTarget(event) {
+    if (!dragging || !state) return null;
+    const target = /** @type {HTMLElement} */ (event.target);
+    const chip = /** @type {HTMLElement | null} */ (target.closest?.('.chip[data-space-id]'));
+    if (chip) return dragging.kind === 'tab' ? { chip } : null;
+    if (target.closest?.('.tabs') || target === listDivider) return dragging.kind === 'pin' ? { unpin: true } : null;
+    if (!target.closest?.('.pins-section')) return null;
+    let row = /** @type {HTMLElement | null} */ (target.closest('.pin, .folder'));
+    // The gap between rows, or a nested row's indent: the row below (so
+    // before it); below the last row, the end of the top level.
+    if (!row) row = /** @type {HTMLElement | null} */ ([...pins.children].find((r) => event.clientY <= r.getBoundingClientRect().bottom + 2.5) ?? null);
+    if (!row) return { folderId: null, beforeId: null, row: null };
+    const box = row.getBoundingClientRect();
+    const y = (event.clientY - box.top) / box.height;
+    if (row.classList.contains('folder')) {
+      const folderId = row.dataset.folderId;
+      if (dragging.kind === 'folder') {
+        if (folderId === dragging.id) return null;
+        if (y < 0.5) return { folderId: null, beforeId: folderId, row, side: 'before' };
+        // After an open folder: after its pins (the line under its last one).
+        const last = /** @type {HTMLElement | undefined} */ ([...pins.querySelectorAll(`.pin.nested[data-folder-id="${folderId}"]`)].at(-1));
+        return { folderId: null, beforeId: after(null, folderId), row: last ?? row, side: 'after' };
+      }
+      // Its top edge: before it; the rest: into it (Arc).
+      if (y < 0.25) return { folderId: null, beforeId: folderId, row, side: 'before' };
+      return { into: folderId, row };
+    }
+    const pinId = row.dataset.pinId;
+    const level = row.dataset.folderId || null;
+    if (dragging.kind === 'folder' && level) return null; // folders stay at the top level
+    if (dragging.kind === 'pin' && pinId === dragging.id) return null;
+    return y < 0.5 ? { folderId: level, beforeId: pinId, row, side: 'before' } : { folderId: level, beforeId: after(level, pinId), row, side: 'after' };
+  }
+  root.addEventListener('dragover', (event) => {
+    const where = dropTarget(event);
+    clearDrop();
+    if (!where) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
-    chip.classList.add('drop-target');
+    if (where.chip) where.chip.classList.add('drop-target');
+    else if (where.unpin) tabs.classList.add('drop-unpin');
+    else if (where.into) where.row.classList.add('drop-into');
+    else if (where.row) where.row.classList.add(where.side === 'before' ? 'drop-before' : 'drop-after');
+    else pins.classList.add('drop-end');
   });
-  chips.addEventListener('dragleave', (event) => chipFor(event)?.classList.remove('drop-target'));
-  chips.addEventListener('drop', (event) => {
-    const chip = chipFor(event);
-    if (!chip) return;
+  root.addEventListener('dragleave', (event) => {
+    if (!root.contains(/** @type {Node | null} */ (event.relatedTarget))) clearDrop();
+  });
+  root.addEventListener('drop', (event) => {
+    const where = dropTarget(event);
+    const what = dragging;
+    endDrag();
+    if (!where || !what) return;
     event.preventDefault();
-    chip.classList.remove('drop-target');
-    send('moveTabToSpace', { tabId: draggingTabId, spaceId: chip.dataset.spaceId });
-    draggingTabId = null;
+    if (where.chip) return send('moveTabToSpace', { tabId: what.id, spaceId: where.chip.dataset.spaceId });
+    if (where.unpin) return send('unpin', { pinId: what.id });
+    const folderId = where.into ?? where.folderId ?? null;
+    const beforeId = where.into ? null : where.beforeId ?? null;
+    if (what.kind === 'tab') return send('pinTab', { tabId: what.id, folderId, beforeId });
+    if (what.kind === 'pin') return send('movePin', { pinId: what.id, folderId, beforeId });
+    return send('moveFolder', { folderId: what.id, beforeId });
   });
 
   return {
     el: root,
-    // While editing or dragging, the overlay shouldn't auto-hide.
-    isBusy: () => editing != null || draggingTabId != null || resizing != null || !menu.hidden,
+    // While editing, renaming or dragging, the overlay shouldn't auto-hide.
+    isBusy: () => editing != null || renaming != null || pendingRename != null || dragging != null || resizing != null || !menu.hidden,
     width: () => (resizing ? resizing.width : sidebarWidth(state?.settings)),
     update(nextState, context) {
       if (context?.fit) fit = context.fit;
@@ -495,6 +838,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
       state = nextState;
       if (menuFor?.tabId != null && !state.tabs?.[menuFor.tabId]) closeMenu(); // its tab is gone
       if (menuFor?.pinId && !state.pins?.some((p) => p.id === menuFor.pinId)) closeMenu();
+      if (menuFor?.folderId && !state.folders?.some((f) => f.id === menuFor.folderId)) closeMenu();
       if (context?.windowId != null) windowId = context.windowId;
       if (context?.tabId != null) currentTabId = context.tabId;
       render();
@@ -505,6 +849,11 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll,
         settingScroll = true;
         tabsSection.scrollTop = context.scroll;
         if (tabsSection.scrollTop === before) settingScroll = false; // didn't move: no scroll event comes
+      }
+      if (pendingRename && state.folders?.some((f) => f.id === pendingRename)) {
+        const folderId = pendingRename;
+        pendingRename = null;
+        startRename(folderId);
       }
       if (pendingEdit && state.spaces.some((s) => s.id === pendingEdit)) {
         openEditor(pendingEdit);

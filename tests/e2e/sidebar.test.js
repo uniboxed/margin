@@ -95,7 +95,13 @@ test('pin a tab; clicking the pin focuses the existing tab, or opens it if close
   await reopened.waitForLoadState();
   assert.equal(new URL(reopened.url()).pathname, '/pinme');
 
-  await clickInShadow(other, '.pin .unpin', 'pinme');
+  // Unpin is in the pin's menu (Arc: its × closes the tab, the pin stays).
+  await evalInShadow(other, 'margin-sidebar-host', function () {
+    const row = [...this.querySelectorAll('.pin')].find((n) => n.textContent.includes('pinme'));
+    const r = row.getBoundingClientRect();
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, clientX: r.x + 10, clientY: r.y + 10 }));
+  });
+  await clickInShadow(other, '.menu-item', 'Unpin');
   await waitFor(async () => (await sidebarSnapshot(other)).pins.length === 0);
   await reopened.close();
   await other.close();
