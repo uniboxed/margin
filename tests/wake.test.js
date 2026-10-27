@@ -37,8 +37,8 @@ globalThis.chrome = {
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return fake.reply; },
   },
   scripting: {
-    executeScript: ({ target }) => {
-      fake.scripts.push({ tabId: target.tabId, at: Date.now() });
+    executeScript: ({ target, world, func }) => {
+      fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func });
       const delay = fake.scriptDelay(target.tabId);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
       return sleep(delay).then(() => [{ result: true }]);
@@ -56,7 +56,7 @@ globalThis.chrome = {
   },
 };
 
-const { wakeTab, focusTab, markMarginOpening } = await import('../extension/background/tabs.js');
+const { wakeTab, focusTab, markMarginOpening, keepAwake } = await import('../extension/background/tabs.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate } = await import('../extension/background/store.js');
 
@@ -75,6 +75,91 @@ test('wake: a running page answers at once and the switch goes ahead then', asyn
   const waited = fake.updates[0].at - started;
   assert.ok(waited < 60, `switched after ${waited}ms`);
   assert.equal(fake.scripts.filter((s) => s.tabId === 2).length, 2, 'the keep-awake script and the answering one');
+});
+
+test('wake: the keep-awake runs in the page\'s own world (Margin\'s is cleared when it reloads)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 9, url: 'https://i.test/' }]);
+  fake.scriptDelay = () => 5;
+  await wakeTab(9);
+  const held = fake.scripts.find((s) => s.func === keepAwake);
+  assert.equal(held?.world, 'MAIN');
+});
+
+// keepAwake in a fake page: it must always finish (WebKit keeps the tab
+// awake until it does).
+function fakePage() {
+  const listeners = { window: {}, document: {} };
+  const on = (where) => (type, fn) => { (listeners[where][type] ??= new Set()).add(fn); };
+  const off = (where) => (type, fn) => listeners[where][type]?.delete(fn);
+  globalThis.addEventListener = on('window');
+  globalThis.removeEventListener = off('window');
+  globalThis.document = { visibilityState: 'hidden', addEventListener: on('document'), removeEventListener: off('document') };
+  const fire = (where, type) => [...(listeners[where][type] ?? [])].forEach((fn) => fn());
+  const count = () => Object.values(listeners).flatMap((l) => Object.values(l)).reduce((n, set) => n + set.size, 0);
+  return { fire, count, show() { globalThis.document.visibilityState = 'visible'; fire('document', 'visibilitychange'); } };
+}
+
+test('keepAwake: finishes after its time, when the page goes away, or once it\'s shown, and cleans up', async (t) => {
+  t.after(() => {
+    delete globalThis.addEventListener;
+    delete globalThis.removeEventListener;
+    delete globalThis.document;
+  });
+  let page = fakePage();
+  let started = Date.now();
+  await keepAwake(60);
+  assert.ok(Date.now() - started >= 55);
+  assert.equal(page.count(), 0, 'no listeners left in the page');
+  for (const type of ['pagehide', 'pageswap']) {
+    page = fakePage();
+    started = Date.now();
+    const held = keepAwake(5000);
+    await sleep(0); // its listeners go on a moment later (awaiting the thenable)
+    page.fire('window', type);
+    await held;
+    assert.ok(Date.now() - started < 100, `${type} ends it`);
+    assert.equal(page.count(), 0);
+  }
+  page = fakePage();
+  const held = keepAwake(5000);
+  await sleep(0);
+  page.fire('document', 'visibilitychange'); // still hidden: keeps holding
+  let settled = false;
+  held.then(() => { settled = true; });
+  await sleep(10);
+  assert.equal(settled, false);
+  page.show();
+  await held;
+  assert.equal(page.count(), 0);
+});
+
+test('keepAwake: still finishes when the page broke setTimeout, Promise or addEventListener', async (t) => {
+  const real = { setTimeout: globalThis.setTimeout, Promise: globalThis.Promise };
+  t.after(() => {
+    Object.assign(globalThis, real);
+    delete globalThis.addEventListener;
+    delete globalThis.removeEventListener;
+    delete globalThis.document;
+  });
+  fakePage();
+  globalThis.setTimeout = () => 0; // a page's no-op
+  const started = Date.now();
+  await keepAwake(100);
+  const took = Date.now() - started;
+  globalThis.setTimeout = real.setTimeout;
+  assert.ok(took >= 550 && took < 1500, `the engine's own clock ended it after ${took}ms`);
+  fakePage();
+  globalThis.Promise = function NotAPromise() {};
+  globalThis.addEventListener = () => { throw new Error('page wrapper'); };
+  await keepAwake(30);
+  globalThis.Promise = real.Promise;
+});
+
+test('keepAwake: self-contained (executeScript sends only its source)', async () => {
+  const vm = await import('node:vm');
+  const noop = () => {};
+  const context = vm.createContext({ setTimeout, clearTimeout, AbortSignal, addEventListener: noop, removeEventListener: noop, document: { visibilityState: 'hidden', addEventListener: noop, removeEventListener: noop } });
+  await vm.runInContext(`(${keepAwake})(30)`, context);
 });
 
 test('wake: a page slow to come back is waited for, up to the cap', async () => {
