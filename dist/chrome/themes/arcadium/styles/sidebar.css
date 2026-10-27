@@ -1,4 +1,4 @@
-.margin-sidebar, .frame {
+.margin-sidebar, .frame, .switch-cover {
   /* One sidebar background for now (Arc-like neutral gray), the same in
      Light and Dark Mode; not tinted by the space or taken from the page.
      Keep in sync with newtab.css and docked.css. */
@@ -554,6 +554,38 @@ ul { list-style: none; margin: 0; padding: 0; }
 .zoom-hud.show { opacity: 1; transition-duration: 80ms; }
 @media (prefers-reduced-motion: reduce) {
   .swipe, .zoom-hud { transition: opacity 120ms linear; }
+}
+
+/* While switching to another tab (shared/switching.js, chrome.js): an empty
+   screen over the page, as Arc shows a tab not drawn yet (the card while
+   docked; the whole page under a hovered sidebar), with a spinner in the
+   middle once the switch takes a moment. On at once with the highlight;
+   gone when the new tab is in front (without a fade on the hidden page; a
+   short one if the switch failed and this page stays).
+   It takes the clicks meant for the page being left. */
+.switch-cover {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--frame) 92%, #fff);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 90ms ease-out, visibility 0s linear 90ms;
+}
+.switch-cover.in-frame { top: 8px; right: 8px; bottom: 8px; left: var(--width, 260px); border-radius: 6.25px; }
+.switch-cover.on { opacity: 1; visibility: visible; pointer-events: auto; transition: none; }
+.switch-cover.instant { transition: none; }
+.switch-cover .spinner { overflow: visible; opacity: 0; }
+.switch-cover.on .spinner { animation: margin-cover-spin 0.8s linear infinite, margin-cover-show 1ms linear 160ms forwards; }
+.switch-cover .spinner circle { fill: none; stroke-width: 2.5; }
+.switch-cover .spinner .track { stroke: rgba(0, 0, 0, 0.12); }
+.switch-cover .spinner .arc { stroke: rgba(0, 0, 0, 0.45); stroke-linecap: round; stroke-dasharray: 28 72; }
+@keyframes margin-cover-spin { to { transform: rotate(360deg); } }
+@keyframes margin-cover-show { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .switch-cover.on .spinner { animation: margin-cover-show 1ms linear 160ms forwards, margin-loader-pulse 1.2s ease-in-out 160ms infinite; }
 }
 
 /* Page-load indicator (Arc): a small dark pill centered over the page. With

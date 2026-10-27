@@ -3,7 +3,8 @@
 // itself can take a moment (the background first wakes a hidden tab:
 // background/tabs.js wakeTab), so the sidebar highlights the tab at once,
 // this page's own tab softly (shared/view.js sidebar `switchingTo`), and if it
-// takes longer than SLOW_MS the loading pill shows. It ends when this page is
+// takes longer than SLOW_MS the loading pill shows (a theme may cover the
+// page instead: content/core.js). It ends when this page is
 // hidden (the switch landed), GRACE_MS after the switch request is done if
 // this page is still showing (it failed: Margin's send resolves either way;
 // the pill goes as soon as the request is done), at once if the send itself
@@ -69,4 +70,33 @@ export function createSwitching({ onChange, onSlow, doc = document }) {
   doc.addEventListener('visibilitychange', () => doc.hidden && end());
   doc.defaultView?.addEventListener('pagehide', end);
   return { start, end, target: () => target };
+}
+
+// A switch the background makes from this page (next/previous key): it says
+// when it's done or failed (background/navigation.js 'switch-done',
+// 'switch-failed'), which stands in for the request of a switch this page
+// makes itself: failed ends it at once, done shortly after if this page is
+// still showing (Chrome's split view keeps it on screen).
+export function backgroundSwitches() {
+  /** @type {{ tabId: number, resolve: () => void, reject: () => void } | null} */
+  let pending = null;
+  return {
+    /** @param {number} tabId @returns {Promise<void>} the request to pass to start() */
+    begin(tabId) {
+      pending?.resolve(); // a newer one takes over (start() ignores the old)
+      /** @type {(value?: void) => void} */ let resolve = () => {};
+      /** @type {(reason: Error) => void} */ let reject = () => {};
+      /** @type {Promise<void>} */
+      const request = new Promise((res, rej) => { resolve = res; reject = rej; });
+      request.catch(() => {}); // a switch that never started
+      pending = { tabId, resolve: () => resolve(), reject: () => reject(new Error('switch failed')) };
+      return request;
+    },
+    /** @param {{ type: string, tabId?: number }} message 'switch-done' or 'switch-failed' */
+    settle({ type, tabId }) {
+      if (!pending || pending.tabId !== tabId) return;
+      (type === 'switch-done' ? pending.resolve : pending.reject)();
+      pending = null;
+    },
+  };
 }

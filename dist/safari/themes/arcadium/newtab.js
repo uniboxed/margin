@@ -9,10 +9,11 @@ import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
 import { el } from '../../shared/dom.js';
 import { installPaletteShortcut, newTabCloser, reportingSwitches } from '../../content/palette.js';
-import { createSwitching } from '../../shared/switching.js';
+import { createSwitching, backgroundSwitches } from '../../shared/switching.js';
 import { THEMES, themeFor } from '../index.js';
 import { avatar, createSidebar } from './sidebar.js';
 import { createPalette } from './palette.js';
+import { createSwitchCover } from './chrome.js';
 import { sidebarCss, newtabCss, newtabHtml } from './assets.js';
 
 // Typed loosely as an input: most lookups are form controls.
@@ -73,29 +74,28 @@ export function mount({ api, self, send, windowed = false }) {
   };
   const closer = newTabCloser(setNewTabPending);
   // A switch to another tab from here (shared/switching.js): highlighted at
-  // once, the pill over this page if it takes a while.
+  // once, and the empty screen over this page until the other tab is in
+  // front (chrome.js createSwitchCover), as over web pages.
+  // As on web pages (content/core.js): `when` is 'now' (a click here),
+  // 'slow' (a next/previous key) or 'none' (a held key passing through).
   let switchingTo = null;
-  const pill = el(document, 'div', { class: 'loader', 'aria-hidden': 'true' }, el(document, 'div', { class: 'bar' }));
-  $('page-card').append(pill);
+  let when = 'now';
+  const cover = createSwitchCover(document);
+  $('page-card').append(cover.el);
   const switching = createSwitching({
     onChange: (id) => {
       switchingTo = id;
+      if (id == null || when === 'now') cover.set(id != null, { instant: document.hidden });
       if (state) sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo });
     },
-    onSlow: (slow) => {
-      // Gone from a hidden page at once, not with a fade that would play
-      // when the page is shown again.
-      if (!slow && document.hidden) pill.classList.add('instant');
-      pill.classList.toggle('on', slow);
-    },
+    onSlow: (slow) => slow && when === 'slow' && cover.set(true), // its spinner shows by itself
   });
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) requestAnimationFrame(() => requestAnimationFrame(() => pill.classList.remove('instant')));
-  });
+  const fromBackground = backgroundSwitches();
   // Back to this tab: over; a tab in another window: nothing to highlight here.
-  const onSwitch = (/** @type {number} */ id, /** @type {Promise<unknown> | null} */ request) => {
+  const onSwitch = (/** @type {number} */ id, /** @type {Promise<unknown> | null} */ request, { cover: mode = 'now' } = {}) => {
     if (id === self?.id) return switching.end();
     if (state?.tabs?.[id]?.windowId !== windowId()) return;
+    when = mode;
     switching.start(id, request);
   };
   const onNewTab = () => {
@@ -274,7 +274,8 @@ export function mount({ api, self, send, windowed = false }) {
   api.runtime.onMessage.addListener((message) => {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
     // The background switching from this tab (next/previous tab; shared/switching.js).
-    if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) onSwitch(message.tabId, null);
+    if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) onSwitch(message.tabId, fromBackground.begin(message.tabId), { cover: message.passing ? 'none' : 'slow' });
+    if ((message?.type === 'switch-done' || message?.type === 'switch-failed') && message.from === self?.id) fromBackground.settle(message);
   });
 
   // ---- keyboard shortcut settings -----------------------------------------------
