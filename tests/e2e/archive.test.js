@@ -84,7 +84,7 @@ test('archived tabs are restorable from the palette, into their space', async ()
   const victimId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'archived-in-old').id;
   await send(nt, { type: 'closeTab', tabId: victimId });
   await waitFor(async () => victim.isClosed());
-  await send(nt, { type: 'setSpace', windowId, spaceId: 'personal' });
+  await send(nt, { type: 'setSpace', windowId, spaceId: 'personal', bringTab: false });
   await nt.close();
 
   await page.bringToFront();

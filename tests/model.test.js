@@ -171,7 +171,7 @@ test('view.sidebar: the new-tab page being shown is the "+ New Tab" row, not a t
   assert.equal(view.isNewTabPage('https://example.com/newtab/newtab.html'), false);
 });
 
-test('view.sidebar: a tab being switched to is highlighted already, the shown one softly', () => {
+test('view.sidebar: a tab being switched to is highlighted already, the shown one plain (Arc)', () => {
   let s = twoSpaces();
   s = M.upsertTab(s, tab(1, 1, 'https://mail.com/', { index: 0 }), 0);
   s = M.upsertTab(s, tab(2, 1, 'https://a.com', { index: 1, active: true }), 0);
@@ -180,7 +180,7 @@ test('view.sidebar: a tab being switched to is highlighted already, the shown on
   s = M.addPin(s, { id: 'p', url: 'https://mail.com/', title: 'Mail', spaceId: 'personal' });
   let v = view.sidebar(s, 1, 2, { switchingTo: 3 });
   assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [3]);
-  assert.deepEqual(v.tabs.filter((t) => t.behind).map((t) => t.id), [2]);
+  assert.deepEqual(v.tabs.filter((t) => t.behind), []);
   v = view.sidebar(s, 1, 2, { switchingTo: 1 });
   assert.equal(v.pins[0].active, true, 'a pin\'s tab: the pin');
   assert.deepEqual(v.tabs.filter((t) => t.active), []);
@@ -195,7 +195,7 @@ test('view.sidebar: a tab being switched to is highlighted already, the shown on
   s = M.upsertTab(s, tab(5, 1, 'chrome://newtab/', { index: 3, active: true }), 0);
   v = view.sidebar(s, 1, 5, { switchingTo: 3 });
   assert.equal(v.newTab.active, false);
-  assert.equal(v.newTab.behind, true, 'from the new-tab page: its row softly');
+  assert.equal(v.newTab.behind, false, 'from the new-tab page: its row plain');
   assert.equal(view.pinTabId(s, 'p', 1), 1);
   assert.equal(view.pinTabId(s, 'missing', 1), null);
 });

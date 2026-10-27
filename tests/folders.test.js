@@ -162,3 +162,17 @@ test('view: next/previous skips the tabs of a closed folder unless one is shown;
   const tie = { ...s, folders: [{ ...s.folders[0], pos: 1 }], pins: s.pins.map((p) => (p.id === 'y' ? { ...p, pos: 1 } : p)) };
   assert.deepEqual(M.pinOrder(tie, 'personal').map((x) => x.id), view.sidebar(tie, 1).pinned.map((item) => item.id));
 });
+
+test('spaces: a tab of another space brought to the front switches the window to that space (Arc)', () => {
+  let s = M.defaultState();
+  s = M.createSpace(s, { id: 'work', name: 'Work', emoji: '💼', color: '#0984e3' });
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com/', { active: true }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://b.com/'), 0);
+  s = M.moveTab(s, 2, 'work');
+  assert.equal(M.activeSpaceId(s, 1), 'personal');
+  s = M.followTab(M.activateTab(s, 2, 1, 1), 2, 1);
+  assert.equal(M.activeSpaceId(s, 1), 'work');
+  assert.equal(M.followTab(s, 2, 1), s, 'already there: nothing changes');
+  assert.equal(M.followTab(s, 99, 1), s, 'a tab Margin hasn\'t placed yet: nothing changes');
+  assert.equal(M.activeSpaceId(M.followTab(s, 1, 2), 2), 'personal', 'per window');
+});

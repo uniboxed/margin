@@ -7,7 +7,7 @@
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
 import { api, load, mutate, now, resync } from './background/store.js';
-import { handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
+import { focusTab, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -82,10 +82,37 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
 api.tabs.onRemoved.addListener((tabId) => {
   handingOff.delete(tabId);
   newTabHint.tabGone(tabId);
-  mutate((s) => M.removeTab(s, tabId));
+  mutate((s) => {
+    const closed = s.tabs[tabId];
+    const followed = closed && lastFollow.get(closed.windowId);
+    if (followed?.prevTabId === tabId && Date.now() - followed.at < STAY_MS) {
+      // The browser already brought a tab of another space to the front (its
+      // activation came first) and the window followed it: back.
+      lastFollow.delete(closed.windowId);
+      stayInSpace(closed.windowId, followed.from, tabId);
+    } else if (closed?.active) {
+      closedShown.set(closed.windowId, { spaceId: s.tabSpace[tabId], at: Date.now(), tabId });
+    }
+    return M.removeTab(s, tabId);
+  });
   shownAt.delete(tabId);
   shownUrl.delete(tabId);
 });
+// The tab in front closed (⌘W, Safari's close button): the browser picks the
+// next one, maybe of another space. The window stays in the closed tab's
+// space when that has other tabs here (Arc), whichever of the two events
+// comes first. (The sidebar's × picks the next tab itself: handlers.js closeTab.)
+const STAY_MS = 1500;
+const closedShown = new Map(); // windowId → { spaceId, at, tabId }: removed while in front
+const lastFollow = new Map(); // windowId → { from, at, prevTabId }: the space followTab just left, and the tab in front then
+function stayInSpace(windowId, spaceId, closedId) {
+  mutate((s) => {
+    const stay = M.recentTabOfSpace(s, windowId, spaceId, closedId);
+    if (!stay) return s; // nothing left there: the window follows the browser's pick
+    focusTab(stay.id, { source: 'close' }).catch(() => {});
+    return M.setActiveSpace(s, windowId, spaceId);
+  });
+}
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
   if (handingOff.has(tabId)) return;
   shownAt.set(tabId, Date.now());
@@ -93,7 +120,21 @@ api.tabs.onActivated.addListener(({ tabId, windowId }) => {
   api.tabs.get(tabId).then((tab) => shownUrl.set(tabId, tab.url), () => {});
   // The user switched tabs themselves: shortcut chaining restarts from here.
   if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
-  mutate((s) => M.activateTab(s, tabId, windowId, now()));
+  const closed = closedShown.get(windowId);
+  closedShown.delete(windowId);
+  mutate((s) => {
+    const next = M.activateTab(s, tabId, windowId, now());
+    if (closed && Date.now() - closed.at < STAY_MS && next.tabSpace[tabId] !== closed.spaceId) {
+      stayInSpace(windowId, closed.spaceId, closed.tabId);
+      return next;
+    }
+    const followed = M.followTab(next, tabId, windowId);
+    if (followed !== next) {
+      const prev = Object.values(s.tabs).find((t) => t.windowId === windowId && t.active && t.id !== tabId);
+      lastFollow.set(windowId, { from: V.activeSpaceId(next, windowId), at: Date.now(), prevTabId: prev?.id ?? null });
+    }
+    return followed;
+  });
   if (!api.alarms) archiveStaleThrottled();
 });
 api.tabs.onMoved.addListener(() => resync({ fresh: false }));

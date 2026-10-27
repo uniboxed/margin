@@ -1,6 +1,6 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
-import { api, mutate, now } from './store.js';
+import { api, cached, mutate, now } from './store.js';
 import { recordSwitch } from './diagnostics.js';
 import { platform } from '../shared/platform.js';
 
@@ -30,7 +30,9 @@ export const shownUrl = new Map(); // tabId → its URL then
 // a sidebar row, the palette resting on a row: handlers.js prewake); the
 // switch then picks up the same wake, already under way or done.
 const WAKE_MAX_MS = 400;
-const WAKE_REUSE_MS = 400; // a wake started this recently still counts
+// A wake started this recently still counts: the sidebar renews one every
+// 500ms while the pointer rests on a row (sidebar.js), so a click finds one.
+const WAKE_REUSE_MS = 600;
 // Long enough for a reused wake, the wait and tabs.update (~110ms in Safari)
 // to land while the process is still kept awake.
 const KEEP_AWAKE_MS = WAKE_REUSE_MS + WAKE_MAX_MS + 200;
@@ -43,10 +45,13 @@ export const handingOff = new Set();
 /** @typedef {{ outcome: 'awake' | 'no page' | 'timeout' | 'shown' | 'gone' | 'no access', ms: number, startedAt: number }} Wake */
 /** @type {Map<number, { at: number, done: Promise<Wake> }>} */
 const wakes = new Map();
+// `renew`: a fresh wake even if one is recent (the sidebar's renewals while
+// the pointer rests on a row, so the one a click finds is never older than
+// the renewal interval).
 /** @returns {Promise<Wake>} */
-export function wakeTab(tabId) {
+export function wakeTab(tabId, { renew = false } = {}) {
   const recent = wakes.get(tabId);
-  if (recent && Date.now() - recent.at < WAKE_REUSE_MS) return recent.done;
+  if (recent && !renew && Date.now() - recent.at < WAKE_REUSE_MS) return recent.done;
   const at = Date.now();
   const done = startWake(tabId, at);
   wakes.set(tabId, { at, done });
@@ -110,11 +115,20 @@ export async function keepAwake(ms) {
 /** @returns {Promise<Wake>} */
 async function startWake(tabId, at) {
   const result = (/** @type {Wake['outcome']} */ outcome) => ({ outcome, ms: Date.now() - at, startedAt: at });
-  const tab = await api.tabs.get(tabId).catch(() => null);
-  if (!tab) return result('gone');
-  if (tab.active) return result('shown');
   // Only Safari blanks a suspended tab (Chrome keeps its last frame).
-  if (!platform?.wakeTabs || !api.scripting?.executeScript || !(await mayAccess(tab.url))) return result('no access');
+  if (!platform?.wakeTabs || !api.scripting?.executeScript) return result('no access');
+  // What Margin knows of the tab, if its state is loaded (no round trip to
+  // the browser before the wake: every one delays the switch); the
+  // browser's answer otherwise. 'shown' (nothing to do) only as the browser
+  // says: Margin's flag can be a moment behind.
+  const tab = cached()?.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
+  if (!tab) return result('gone');
+  if (tab.active) {
+    const live = await api.tabs.get(tabId).catch(() => null);
+    if (!live) return result('gone');
+    if (live.active) return result('shown');
+  }
+  if (!(await mayAccessCached(tab.url))) return result('no access');
   // Right away, not once the page has loaded (Chrome's default; WebKit
   // ignores the key and runs it right away anyway).
   const target = { tabId };
@@ -163,6 +177,26 @@ export const instanceId = globalThis.crypto?.randomUUID?.() ?? String(Math.rando
 export const startedAt = Date.now();
 // Whether Margin may run scripts on this page (asks, never prompts). Match
 // patterns have no port.
+// mayAccess, remembered per site until Margin's permissions change. Only a
+// yes: a site granted from Safari's own controls may come with no event.
+const access = new Map(); // origin pattern → Promise<boolean>
+api.permissions?.onAdded?.addListener(() => access.clear());
+api.permissions?.onRemoved?.addListener(() => access.clear());
+async function mayAccessCached(url) {
+  let key;
+  try {
+    const { protocol, hostname } = new URL(url);
+    key = `${protocol}//${hostname}`;
+  } catch {
+    return false;
+  }
+  if (!access.has(key)) {
+    const answer = mayAccess(url);
+    access.set(key, answer);
+    answer.then((ok) => { if (!ok && access.get(key) === answer) access.delete(key); });
+  }
+  return access.get(key);
+}
 export async function mayAccess(url) {
   let pattern;
   try {
@@ -191,6 +225,7 @@ export async function inPage(tabId, url, func, args = [], ms = 300) {
 
 /** @param {{ windowId?: number, url?: string, spaceId?: string }} options */
 export async function openTab({ windowId, url, spaceId }) {
+  focusGen++; // a switch still waiting for its wake doesn't land after this
   markMarginOpening();
   const tab = await api.tabs.create({ windowId, url, active: true });
   if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));

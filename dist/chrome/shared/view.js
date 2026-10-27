@@ -33,8 +33,8 @@ function activeSpaceId(state, windowId) {
 // its page is still on screen, under the palette); or when the tab being
 // shown is a new-tab page (then it's that row instead of a row of its own).
 // `switchingTo`: a tab being switched to (shared/switching.js), highlighted
-// already, the shown one softly (`behind`) until the switch lands; it wins
-// over `newTabPending` (the palette chose a tab).
+// already (the shown one plain, as Arc) until the switch lands; it wins over
+// `newTabPending` (the palette chose a tab).
 function sidebar(state, windowId, currentTabId = null, { newTabPending = false, switchingTo = null } = {}) {
   const spaceId = activeSpaceId(state, windowId);
   const known = currentTabId != null && state.tabs?.[currentTabId]?.windowId === windowId;
@@ -45,7 +45,9 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
   const shownNewTab = shown.find((t) => t.active && isNewTabPage(t.url));
   const windowTabs = shown
     .map((t) => {
-      if (target != null) return t.id === target ? { ...t, active: true } : t.active ? { ...t, active: false, behind: true } : t;
+      // Switching: the highlight moves at once and whole (Arc), the tab still
+      // on screen plain; the new page's sidebar then looks the same.
+      if (target != null) return t.id === target ? { ...t, active: true } : t.active ? { ...t, active: false } : t;
       return newTabPending && t.active ? { ...t, active: false, behind: true } : t;
     })
     .sort((a, b) => a.index - b.index);
@@ -89,21 +91,21 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
     pins,
     pinned,
     // The new-tab page being shown is this row: softly while switching away.
-    newTab: { active: targetIsNewTab || (target == null && (newTabPending || !!shownNewTab)), behind: target != null && !!shownNewTab },
+    newTab: { active: targetIsNewTab || (target == null && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
     // Reversed here, not sorted that way above: a pin binds to the oldest tab
     // with its URL (unless another is shown or being switched to).
     tabs: spaceTabs.filter((t) => !pinnedUrls.has(normalizeUrl(t.url)) && t.id !== shownNewTab?.id && !(targetIsNewTab && t.id === target)).reverse(),
   };
 }
 
-// The tab a pin opens: one with its URL, in this window first (as the
-// background's openPin), or null (the pin opens a new tab).
+// The tab a pin opens: one of its space with its URL, in this window first
+// (as the background's openPin), or null (the pin opens a new tab).
 /** @param {State} state */
 function pinTabId(state, pinId, windowId) {
   const pin = state.pins?.find((p) => p.id === pinId);
   if (!pin) return null;
   const key = normalizeUrl(pin.url);
-  const matches = Object.values(state.tabs ?? {}).filter((t) => normalizeUrl(t.url) === key);
+  const matches = Object.values(state.tabs ?? {}).filter((t) => normalizeUrl(t.url) === key && state.tabSpace?.[t.id] === pin.spaceId);
   return (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id ?? null;
 }
 

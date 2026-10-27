@@ -149,7 +149,7 @@ test('one sidebar color: the same gray on every site, in every space, in Light a
   await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Red', color: '#d63031' }), windowId);
   await waitFor(async () => (await sidebarSnapshot(lightSite)).chips.length >= 2);
   assert.equal((await bg(lightSite)).bg, 'rgb(156, 157, 161)');
-  await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: 'personal' }), windowId);
+  await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: 'personal', bringTab: false }), windowId);
   await nt.close();
 
   // Dark Mode keeps the same gray.

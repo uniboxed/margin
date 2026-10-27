@@ -11,6 +11,9 @@ let cache = null;
 /** @type {Promise<unknown>} */
 let queue = Promise.resolve();
 
+// The state if it's loaded already (no wait), else null.
+export const cached = () => cache;
+
 /** @returns {Promise<State>} */
 export async function load() {
   if (cache) return cache;
