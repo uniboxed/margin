@@ -56,7 +56,7 @@ export function mount({ api, self, send, windowed = false }) {
     scrollTimer ??= setTimeout(flushScroll, 150);
   };
   // Saved before a switch from the sidebar, so the next page asks for the right one.
-  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab']);
+  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab', 'setSpace']);
   /** @type {import('../../../types/margin').Send} */
   const sidebarSend = (type, ...rest) => {
     if (SWITCHES.has(type)) flushScroll();

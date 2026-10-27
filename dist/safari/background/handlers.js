@@ -347,8 +347,13 @@ export const handlers = {
   /** @param {{ windowId: number, spaceId: string }} message */
   // `bringTab: false`: only the sidebar's space, the page in front stays.
   /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean }} message */
-  async setSpace({ windowId, spaceId, bringTab = true }, sender) {
-    await showSpace(windowId ?? sender?.tab?.windowId, spaceId, { bringTab });
+  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean, show?: boolean | 'hover' | 'toggle' }} message `show`: keep the sidebar open on the tab that comes to the front */
+  async setSpace({ windowId, spaceId, bringTab = true, show }, sender) {
+    const win = windowId ?? sender?.tab?.windowId;
+    await showSpace(win, spaceId, { bringTab });
+    if (!show || win == null) return;
+    const [front] = await api.tabs.query({ active: true, windowId: win });
+    if (front && front.id !== sender?.tab?.id) await carryIfSameWindow(front.id, show, sender?.tab?.windowId);
   },
   /** @param {{ windowId?: number, name?: string, emoji?: string, color?: string }} message */
   async createSpace({ windowId, name, emoji, color }) {

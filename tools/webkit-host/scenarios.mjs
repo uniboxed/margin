@@ -24,6 +24,9 @@ const wait = (ms) => ({ op: 'wait', ms });
 // In a checkPage/page step: the card's window and document (fitted layout).
 const CARD = "const f = document.querySelector('iframe[name^=margin-]'); const w = f.contentWindow; const d = f.contentDocument;";
 
+// In a page step: wheel events with these deltaX, 10ms apart, over the
+// new-tab page's sidebar list (as a trackpad sends them); waits for the last.
+const SWIPE = (deltas) => `await new Promise((resolve) => { const target = document.querySelector('#sidebar .tabs-section'); const d = ${JSON.stringify(deltas)}; let i = 0; const tick = () => { if (i >= d.length) return resolve(); target.dispatchEvent(new WheelEvent('wheel', { deltaX: d[i++], bubbles: true, cancelable: true, composed: true })); setTimeout(tick, 10); }; tick(); });`;
 // Margin drew its sidebar here (the core sets data-open once the theme is mounted).
 const drawn = (tab) => checkPage(tab, `${tab}: Margin's sidebar is there`, `document.querySelector('margin-sidebar-host')?.dataset.open !== undefined`, 5000);
 const themed = (tab) => check(tab, `${tab}: the Arcadium theme is mounted`, `globalThis.Margin?.theme?.id === 'arcadium'`, 5000);
@@ -91,6 +94,24 @@ export const SCENARIOS = {
     checkPage('N', 'N: Arcadium\'s launcher is drawn', `!!document.querySelector('#launcher')`, 5000),
     checkPage('N', 'N: its sidebar lists the tabs', `document.querySelectorAll('#sidebar .tab').length >= 2`),
     checkPage('N', 'N: Settings shows the theme', `document.querySelector('#theme')?.value === 'arcadium'`),
+  ],
+  // Swiping between spaces in the sidebar (the new-tab page's: the same code
+  // as on pages, whose sidebar is in a closed shadow root): a trackpad-like
+  // run of wheel events with momentum (released on its decay, the rest landing
+  // while it slides) switches to the next space and brings its tab to the
+  // front; a short slow one doesn't.
+  spaces: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install' }, wait(2000),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
+    checkPage('N', 'N: its sidebar is drawn', `!!document.querySelector('#sidebar .space-pane')`, 5000),
+    { op: 'page', in: 'N', js: `${ID} const work = (await browser.runtime.sendMessage({ type: 'createSpace', name: 'Work', emoji: '💼' })).result.spaceId; await browser.runtime.sendMessage({ type: 'moveTabToSpace', tabId: id('B'), spaceId: work }); return work` },
+    wait(800),
+    { op: 'page', in: 'N', js: `${SWIPE([3, 2, 3, 2])} return 'short'` }, wait(800),
+    checkPage('N', 'a short slow swipe stays in the space', `document.querySelector('#sidebar .space-title .title')?.textContent === 'Personal' && !document.querySelector('.ghost')`),
+    { op: 'page', in: 'N', js: `${SWIPE([6, 14, 22, 19, 17, 15, 13, 11.5, 10, 9, 8, 7, 6, 5.2, 4.5, 3.9, 3.4])} return 'flick'` },
+    checkPage('N', 'a flick shows the next space at once', `document.querySelector('#sidebar .space-title .title')?.textContent === 'Work'`, 2000),
+    shown('B'),
+    check('B', 'B: the window is on Work', `const s = await browser.storage.local.get(['spaces', 'activeSpaceByWindow']); return Object.values(s.activeSpaceByWindow ?? {}).some((id) => s.spaces.find((x) => x.id === id)?.name === 'Work')`),
   ],
   // A picture of a fitted page, for a look (build/screenshot.png).
   screenshot: [
