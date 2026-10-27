@@ -8,7 +8,8 @@ import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
 import { el } from '../../shared/dom.js';
-import { installPaletteShortcut, newTabCloser } from '../../content/palette.js';
+import { installPaletteShortcut, newTabCloser, reportingSwitches } from '../../content/palette.js';
+import { createSwitching } from '../../shared/switching.js';
 import { THEMES, themeFor } from '../index.js';
 import { avatar, createSidebar } from './sidebar.js';
 import { createPalette } from './palette.js';
@@ -68,9 +69,35 @@ export function mount({ api, self, send, windowed = false }) {
   const setNewTabPending = (/** @type {boolean} */ on) => {
     if (newTabPending === on) return;
     newTabPending = on;
-    if (state) sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending });
+    if (state) sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo });
   };
   const closer = newTabCloser(setNewTabPending);
+  // A switch to another tab from here (shared/switching.js): highlighted at
+  // once, the pill over this page if it takes a while.
+  let switchingTo = null;
+  const pill = el(document, 'div', { class: 'loader', 'aria-hidden': 'true' }, el(document, 'div', { class: 'bar' }));
+  $('page-card').append(pill);
+  const switching = createSwitching({
+    onChange: (id) => {
+      switchingTo = id;
+      if (state) sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo });
+    },
+    onSlow: (slow) => {
+      // Gone from a hidden page at once, not with a fade that would play
+      // when the page is shown again.
+      if (!slow && document.hidden) pill.classList.add('instant');
+      pill.classList.toggle('on', slow);
+    },
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) requestAnimationFrame(() => requestAnimationFrame(() => pill.classList.remove('instant')));
+  });
+  // Back to this tab: over; a tab in another window: nothing to highlight here.
+  const onSwitch = (/** @type {number} */ id, /** @type {Promise<unknown> | null} */ request) => {
+    if (id === self?.id) return switching.end();
+    if (state?.tabs?.[id]?.windowId !== windowId()) return;
+    switching.start(id, request);
+  };
   const onNewTab = () => {
     if (isLauncher) {
       closer.cancel();
@@ -78,7 +105,7 @@ export function mount({ api, self, send, windowed = false }) {
     }
     palette.open();
   };
-  const sidebar = createSidebar({ document, send: sidebarSend, mode: 'newtab', onNewTab, onScroll });
+  const sidebar = createSidebar({ document, send: sidebarSend, mode: 'newtab', onNewTab, onScroll, onSwitch });
   const applyColorScheme = () => sidebar.setColorScheme(dark.matches ? 'dark' : 'light');
   applyColorScheme();
   dark.addEventListener('change', applyColorScheme);
@@ -218,7 +245,7 @@ export function mount({ api, self, send, windowed = false }) {
   };
   addEventListener('pagehide', () => { fresh = false; cancelOnClose = false; });
   const palette = createPalette({
-    send: paletteSend,
+    send: reportingSwitches(paletteSend, () => state, onSwitch),
     onClose: (reason, action) => {
       if (newTabPending) closer.onClose(reason, action);
       if (reason !== 'run' && cancelOnClose) send('cancelNewTab');
@@ -236,6 +263,8 @@ export function mount({ api, self, send, windowed = false }) {
   installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
   api.runtime.onMessage.addListener((message) => {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
+    // The background switching from this tab (next/previous tab; shared/switching.js).
+    if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) onSwitch(message.tabId, null);
   });
 
   // ---- keyboard shortcut settings -----------------------------------------------
@@ -385,7 +414,7 @@ export function mount({ api, self, send, windowed = false }) {
     const next = await api.storage.local.get(null);
     if (mine !== version || !next.spaces?.length) return;
     state = next;
-    sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     renderLauncher();
     palette.refresh();

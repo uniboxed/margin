@@ -171,6 +171,52 @@ test('view.sidebar: the new-tab page being shown is the "+ New Tab" row, not a t
   assert.equal(view.isNewTabPage('https://example.com/newtab/newtab.html'), false);
 });
 
+test('view.sidebar: a tab being switched to is highlighted already, the shown one softly', () => {
+  let s = twoSpaces();
+  s = M.upsertTab(s, tab(1, 1, 'https://mail.com/', { index: 0 }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://a.com', { index: 1, active: true }), 0);
+  s = M.upsertTab(s, tab(3, 1, 'https://b.com', { index: 2 }), 0);
+  s = M.upsertTab(s, tab(4, 2, 'https://other-window.com', { index: 0, active: true }), 0);
+  s = M.addPin(s, { id: 'p', url: 'https://mail.com/', title: 'Mail', spaceId: 'personal' });
+  let v = view.sidebar(s, 1, 2, { switchingTo: 3 });
+  assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [3]);
+  assert.deepEqual(v.tabs.filter((t) => t.behind).map((t) => t.id), [2]);
+  v = view.sidebar(s, 1, 2, { switchingTo: 1 });
+  assert.equal(v.pins[0].active, true, 'a pin\'s tab: the pin');
+  assert.deepEqual(v.tabs.filter((t) => t.active), []);
+  v = view.sidebar(s, 1, 2, { switchingTo: 3, newTabPending: true });
+  assert.equal(v.newTab.active, false, 'chosen in the palette opened for a new tab: the chosen tab wins');
+  assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [3]);
+  for (const other of [2, 4, 99]) {
+    v = view.sidebar(s, 1, 2, { switchingTo: other });
+    assert.deepEqual(v.tabs.filter((t) => t.active).map((t) => t.id), [2], `nothing changes for ${other} (shown, another window, gone)`);
+    assert.deepEqual(v.tabs.filter((t) => t.behind), []);
+  }
+  s = M.upsertTab(s, tab(5, 1, 'chrome://newtab/', { index: 3, active: true }), 0);
+  v = view.sidebar(s, 1, 5, { switchingTo: 3 });
+  assert.equal(v.newTab.active, false);
+  assert.equal(v.newTab.behind, true, 'from the new-tab page: its row softly');
+  assert.equal(view.pinTabId(s, 'p', 1), 1);
+  assert.equal(view.pinTabId(s, 'missing', 1), null);
+});
+
+test('view.sidebar: a pin open in two tabs shows the one shown or being switched to; switching to a new-tab page is its row', () => {
+  let s = twoSpaces();
+  s = M.upsertTab(s, tab(9, 1, 'https://mail.com/', { index: 0 }), 0);
+  s = M.upsertTab(s, tab(5, 1, 'https://mail.com/', { index: 2 }), 0);
+  s = M.upsertTab(s, tab(3, 1, 'https://a.com', { index: 1, active: true }), 0);
+  s = M.addPin(s, { id: 'p', url: 'https://mail.com/', title: 'Mail', spaceId: 'personal' });
+  assert.equal(view.sidebar(s, 1, 3).pins[0].tabId, 9, 'the oldest by default');
+  let v = view.sidebar(s, 1, 3, { switchingTo: 5 });
+  assert.equal(v.pins[0].tabId, 5);
+  assert.equal(v.pins[0].active, true, 'the pin highlights whichever of its tabs it goes to');
+  assert.equal(view.sidebar(s, 1, 5).pins[0].active, true, 'and once it\'s shown');
+  s = M.upsertTab(s, tab(6, 1, 'chrome://newtab/', { index: 3 }), 0);
+  v = view.sidebar(s, 1, 3, { switchingTo: 6 });
+  assert.equal(v.newTab.active, true);
+  assert.ok(!v.tabs.some((t) => t.id === 6), 'not a tab row of its own');
+});
+
 test('delete space: tabs, pins, archive and windows move to the first remaining space', () => {
   let s = twoSpaces();
   s = M.createSpace(s, { id: 'fun', name: 'Fun' });

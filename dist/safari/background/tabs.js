@@ -76,9 +76,14 @@ async function startWake(tabId, at) {
 // the current window can move keyboard focus out of the page in Safari.
 // `wake: false` for a tab that was shown a moment ago (nothing to wake).
 // `source`: what asked, for the switch log (background/diagnostics.js).
+let focusGen = 0;
 export async function focusTab(tabId, { wake = true, source = 'other' } = {}) {
+  const gen = ++focusGen;
   const asked = Date.now();
   const woke = wake ? await wakeTab(tabId) : null;
+  // Another switch was asked for while this one waited (back to the tab in
+  // front, say): the latest wins.
+  if (gen !== focusGen) return recordSwitch({ source, tabId, asked, wake: woke, error: 'superseded' });
   const tab = await api.tabs.update(tabId, { active: true }).catch((err) => {
     recordSwitch({ source, tabId, asked, wake: woke, error: String(err) });
     throw err;

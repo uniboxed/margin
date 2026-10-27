@@ -11,6 +11,7 @@ import { frameAware } from '../shared/shell-logic.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
+import { createSwitching } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
@@ -99,7 +100,7 @@ export function startCore({ onTheme } = {}) {
   function mountTheme() {
     if (view || !Margin.theme) return;
     try {
-      view = Margin.theme.mount({ shadow, document, send: themeSend, onNewTab, onWidth: layout.onWidth, onScroll: saveScroll });
+      view = Margin.theme.mount({ shadow, document, send: themeSend, onNewTab, onWidth: layout.onWidth, onScroll: saveScroll, onSwitch: (id, request) => Margin.content.startSwitching(id, request) });
       theme = Margin.theme;
     } catch (err) {
       return console.error('[margin] theme', Margin.theme.id, 'failed to start:', err);
@@ -223,6 +224,26 @@ export function startCore({ onTheme } = {}) {
     render();
   };
 
+  // A switch to another tab from here (a click in the sidebar or the palette,
+  // a next/previous key; shared/switching.js): the sidebar highlights it at
+  // once, this page's tab softly, and the pill shows if it takes a while.
+  let switchingTo = null;
+  const switching = createSwitching({
+    onChange: (id) => {
+      switchingTo = id;
+      render();
+    },
+    onSlow: (slow) => loader.switching(slow),
+  });
+  // Back to this page's own tab: over. A tab in another window: nothing to
+  // highlight here, and that window comes forward.
+  Margin.content.startSwitching = (id, request = null) => {
+    if (!active()) return;
+    if (id === tabId) return switching.end();
+    if (state?.tabs?.[id]?.windowId !== windowId) return;
+    switching.start(id, request);
+  };
+
   // ---- one sidebar for the window ---------------------------------------------
   // Every page draws its own sidebar; these keep them showing the same:
   // the state is read again whenever the page is shown (Safari suspends tabs
@@ -299,7 +320,7 @@ export function startCore({ onTheme } = {}) {
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
-    view.update(state, { windowId, tabId, fit: fitState(), newTabPending, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    view.update(state, { windowId, tabId, fit: fitState(), newTabPending, switchingTo, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     Margin.content.onState?.(state, { tabId, windowId });
     wasActive = active();
@@ -394,6 +415,13 @@ export function startCore({ onTheme } = {}) {
       const can = !!Margin.content.openPalette && active();
       if (can) Margin.content.openPalette({ newTab: true });
       return sendResponse(can);
+    }
+    // The background is switching from this tab to another (next/previous
+    // tab): highlight it already (content/palette.js and the sidebar start
+    // their own switches themselves).
+    if (message?.type === 'switching') {
+      if (message.from == null || tabId == null || message.from === tabId) Margin.content.startSwitching(message.tabId);
+      return;
     }
     // The hand-off didn't happen after all (its new tab stays).
     if (message?.type === 'hide-palette') return Margin.content.closePalette?.();

@@ -29,33 +29,57 @@ function activeSpaceId(state, windowId) {
 // opened by ⌘T or the row), the tab being shown then only softly (`behind`:
 // its page is still on screen, under the palette); or when the tab being
 // shown is a new-tab page (then it's that row instead of a row of its own).
-function sidebar(state, windowId, currentTabId = null, { newTabPending = false } = {}) {
+// `switchingTo`: a tab being switched to (shared/switching.js), highlighted
+// already, the shown one softly (`behind`) until the switch lands; it wins
+// over `newTabPending` (the palette chose a tab).
+function sidebar(state, windowId, currentTabId = null, { newTabPending = false, switchingTo = null } = {}) {
   const spaceId = activeSpaceId(state, windowId);
   const known = currentTabId != null && state.tabs?.[currentTabId]?.windowId === windowId;
-  const windowTabs = Object.values(state.tabs ?? {})
+  const shown = Object.values(state.tabs ?? {})
     .filter((t) => t.windowId === windowId)
-    .map((t) => (known && t.active !== (t.id === currentTabId) ? { ...t, active: t.id === currentTabId } : t))
-    .map((t) => (newTabPending && t.active ? { ...t, active: false, behind: true } : t))
+    .map((t) => (known && t.active !== (t.id === currentTabId) ? { ...t, active: t.id === currentTabId } : t));
+  const target = switchingTo != null && shown.some((t) => t.id === switchingTo && !t.active) ? switchingTo : null;
+  const shownNewTab = shown.find((t) => t.active && isNewTabPage(t.url));
+  const windowTabs = shown
+    .map((t) => {
+      if (target != null) return t.id === target ? { ...t, active: true } : t.active ? { ...t, active: false, behind: true } : t;
+      return newTabPending && t.active ? { ...t, active: false, behind: true } : t;
+    })
     .sort((a, b) => a.index - b.index);
   const spaceTabs = windowTabs.filter((t) => state.tabSpace[t.id] === spaceId);
   const pins = state.pins
     .filter((p) => p.spaceId === spaceId)
     .map((p) => {
       const key = normalizeUrl(p.url);
-      const tab = spaceTabs.find((t) => normalizeUrl(t.url) === key);
+      // Open in more than one tab: the one shown or being switched to.
+      const matches = spaceTabs.filter((t) => normalizeUrl(t.url) === key);
+      const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches[0];
       return { ...p, tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, favIconUrl: tab?.favIconUrl ?? '' };
     });
   const pinnedUrls = new Set(pins.map((p) => normalizeUrl(p.url)));
-  const shownNewTab = windowTabs.find((t) => t.active && isNewTabPage(t.url));
+  // Switching to a new-tab page: it's the "+ New Tab" row, as once it's shown.
+  const targetIsNewTab = target != null && isNewTabPage(shown.find((t) => t.id === target)?.url);
   return {
     spaceId,
     spaces: state.spaces,
     pins,
-    newTab: { active: newTabPending || !!shownNewTab },
-    // Reversed here, not sorted that way above: pins keep binding to the
-    // oldest tab with their URL, as the background's openPin does.
-    tabs: spaceTabs.filter((t) => !pinnedUrls.has(normalizeUrl(t.url)) && t !== shownNewTab).reverse(),
+    // The new-tab page being shown is this row: softly while switching away.
+    newTab: { active: targetIsNewTab || (target == null && (newTabPending || !!shownNewTab)), behind: target != null && !!shownNewTab },
+    // Reversed here, not sorted that way above: a pin binds to the oldest tab
+    // with its URL (unless another is shown or being switched to).
+    tabs: spaceTabs.filter((t) => !pinnedUrls.has(normalizeUrl(t.url)) && t.id !== shownNewTab?.id && !(targetIsNewTab && t.id === target)).reverse(),
   };
+}
+
+// The tab a pin opens: one with its URL, in this window first (as the
+// background's openPin), or null (the pin opens a new tab).
+/** @param {State} state */
+function pinTabId(state, pinId, windowId) {
+  const pin = state.pins?.find((p) => p.id === pinId);
+  if (!pin) return null;
+  const key = normalizeUrl(pin.url);
+  const matches = Object.values(state.tabs ?? {}).filter((t) => normalizeUrl(t.url) === key);
+  return (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id ?? null;
 }
 
 // The browser's new-tab page, which Margin replaces (⌘T): Chrome reports it
@@ -159,4 +183,4 @@ function iconFor(state, item) {
   return (origin && state?.favicons?.[origin]?.data) || '';
 }
 
-export { normalizeUrl, activeSpaceId, sidebar, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };

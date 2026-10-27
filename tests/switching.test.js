@@ -1,0 +1,108 @@
+// shared/switching.js: the tab being switched to, from a page.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createSwitching } from '../extension/shared/switching.js';
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function fakeDocument() {
+  const listeners = { visibilitychange: [], pagehide: [] };
+  const doc = {
+    hidden: false,
+    addEventListener: (type, fn) => listeners[type]?.push(fn),
+    defaultView: { addEventListener: (type, fn) => listeners[type]?.push(fn) },
+    hide() {
+      doc.hidden = true;
+      listeners.visibilitychange.forEach((fn) => fn());
+    },
+  };
+  return doc;
+}
+
+function setup() {
+  const doc = fakeDocument();
+  const events = [];
+  const switching = createSwitching({
+    doc: /** @type {any} */ (doc),
+    onChange: (id) => events.push(['change', id]),
+    onSlow: (slow) => events.push(['slow', slow]),
+  });
+  return { doc, events, switching };
+}
+
+test('switching: highlighted at once; ends when the page is hidden (the switch landed)', async () => {
+  const { doc, events, switching } = setup();
+  switching.start(7, new Promise(() => {}));
+  assert.deepEqual(events, [['change', 7]]);
+  assert.equal(switching.target(), 7);
+  await sleep(50);
+  doc.hide();
+  assert.deepEqual(events, [['change', 7], ['change', null]], 'no pill for a quick switch');
+});
+
+test('switching: the pill only once it takes longer than 150ms', async () => {
+  const { doc, events, switching } = setup();
+  switching.start(7, new Promise(() => {}));
+  await sleep(200);
+  assert.deepEqual(events, [['change', 7], ['slow', true]]);
+  doc.hide();
+  assert.deepEqual(events.slice(2), [['slow', false], ['change', null]]);
+});
+
+test('switching: still showing after the request is done (it failed): ends shortly after, no pill', async () => {
+  const { events, switching } = setup();
+  let done;
+  switching.start(7, new Promise((resolve) => { done = resolve; }));
+  done();
+  await sleep(100);
+  assert.equal(switching.target(), 7, 'a moment for the page to be hidden');
+  await sleep(400);
+  assert.equal(switching.target(), null);
+  assert.deepEqual(events, [['change', 7], ['change', null]]);
+});
+
+test('switching: the pill goes as soon as the request is done', async () => {
+  const { events, switching } = setup();
+  let done;
+  switching.start(7, new Promise((resolve) => { done = resolve; }));
+  await sleep(200);
+  done();
+  await sleep(10);
+  assert.deepEqual(events, [['change', 7], ['slow', true], ['slow', false]]);
+});
+
+test('switching: an older switch\'s request doesn\'t end a newer one to the same tab', async () => {
+  const { switching } = setup();
+  let first;
+  switching.start(7, new Promise((resolve) => { first = resolve; }));
+  switching.start(8);
+  switching.start(7, new Promise(() => {}));
+  first();
+  await sleep(400);
+  assert.equal(switching.target(), 7);
+});
+
+test('switching: a send that fails ends it at once', async () => {
+  const { switching } = setup();
+  switching.start(7, Promise.reject(new Error('no tab')));
+  await sleep(5);
+  assert.equal(switching.target(), null);
+});
+
+test('switching: without a request (the background\'s next/previous), it ends by itself at the latest', async () => {
+  const { switching } = setup();
+  switching.start(7);
+  await sleep(2600);
+  assert.equal(switching.target(), null);
+});
+
+test('switching: a newer switch takes over (held keys), and a hidden page starts none', async () => {
+  const { doc, events, switching } = setup();
+  switching.start(7);
+  switching.start(8);
+  assert.equal(switching.target(), 8);
+  assert.deepEqual(events, [['change', 7], ['change', 8]]);
+  doc.hide();
+  switching.start(9);
+  assert.equal(switching.target(), null);
+});

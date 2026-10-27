@@ -16,8 +16,8 @@ registerTheme({
   // the narrow icon sidebar's width, for pages that are pushed.
   geometry: { inset: 8, radius: '6.25px', rail: RAIL },
   createPalette,
-  mount({ shadow, document, send, onNewTab, onWidth, onScroll }) {
-    const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth, onScroll });
+  mount({ shadow, document, send, onNewTab, onWidth, onScroll, onSwitch }) {
+    const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth, onScroll, onSwitch });
     const chrome = createChrome(document);
     shadow.append(chrome.frame, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice);
     // Styles are bundled (assets.js) and applied synchronously, so the panel

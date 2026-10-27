@@ -3,6 +3,7 @@
 // createPalette({ send, getState, getContext, onLocal, colorScheme }) →
 // { open, close, toggle, isOpen, refresh }; see themes/arcadium/palette.js.
 import * as shortcuts from '../shared/shortcuts.js';
+import * as V from '../shared/view.js';
 import { platform } from '../shared/platform.js';
 
 // Capture-phase listener so the page can't swallow the shortcut first.
@@ -45,6 +46,19 @@ export function newTabCloser(setPending, doc = document) {
   return { onClose, cancel: () => cancel() };
 }
 
+// A palette's send that also reports switches to another tab (choosing a tab,
+// or a pin that has one open): `onSwitch(tabId, request)` highlights it at
+// once (shared/switching.js).
+export function reportingSwitches(send, getState, onSwitch) {
+  return (/** @type {any} */ type, /** @type {any} */ payload) => {
+    const request = send(type, payload);
+    const tabId = type === 'activateTab' ? payload?.tabId
+      : type === 'openPin' && getState() ? V.pinTabId(getState(), payload?.pinId, payload?.windowId) : null;
+    if (Number.isInteger(tabId)) onSwitch(tabId, request);
+    return request;
+  };
+}
+
 // ---- content-script wiring ----------------------------------------------
 // The new-tab page wires its own. `c` is Margin.content (content/core.js);
 // `createPalette` comes from the active theme.
@@ -54,7 +68,7 @@ export function wirePalette(c, createPalette) {
   // sidebar highlights the page's own tab again, or the new one opens).
   const closer = newTabCloser((on) => c.setNewTabPending?.(on));
   const palette = createPalette({
-    send: c.send,
+    send: reportingSwitches(c.send, () => c.getState().state, (id, request) => c.startSwitching?.(id, request)),
     onClose: closer.onClose,
     getState: () => c.getState().state,
     getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen, canFit: !!platform?.shell, fitted: !!globalThis.Margin.shell }),

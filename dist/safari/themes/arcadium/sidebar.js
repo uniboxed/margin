@@ -37,10 +37,12 @@ const TAB_MIME = 'application/x-margin-tab';
 // once more with done: true when the drag ends.
 // `onScroll(px)`: the tab list was scrolled by the user (every page's sidebar
 // opens at the window's last position; update(…, { scroll }) applies it).
+// `onSwitch(tabId, request)`: a click here switches to that tab (the page
+// highlights it at once: shared/switching.js, update(…, { switchingTo })).
 /**
- * @param {{ document: Document, send: import('../../../types/margin').Send, mode: 'overlay' | 'newtab', onNewTab?: () => void, onWidth?: (px: number, info: { done: boolean }) => void, onScroll?: (px: number) => void }} options
+ * @param {{ document: Document, send: import('../../../types/margin').Send, mode: 'overlay' | 'newtab', onNewTab?: () => void, onWidth?: (px: number, info: { done: boolean }) => void, onScroll?: (px: number) => void, onSwitch?: (tabId: number, request: Promise<unknown>) => void }} options
  */
-function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll }) {
+function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll, onSwitch }) {
   const chips = el(doc, 'nav', { class: 'spaces', 'aria-label': 'Spaces' });
   const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
   const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
@@ -132,10 +134,11 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
   let pendingEdit = null; // a just-created space opens in the editor once it arrives
   let fit = null; // { origin, fitted, fittable }: the page's fitted layout (content/core.js)
   let newTabPending = false; // a new tab being chosen in the palette: "+ New Tab" highlighted
+  let switchingTo = null; // a tab being switched to: highlighted already
 
   function render() {
     if (!state || windowId == null) return;
-    const view = V.sidebar(state, windowId, currentTabId, { newTabPending });
+    const view = V.sidebar(state, windowId, currentTabId, { newTabPending, switchingTo });
     root.style.setProperty('--space-color', view.spaces.find((s) => s.id === view.spaceId)?.color ?? '');
     if (!resizing) setWidth(sidebarWidth(state.settings));
 
@@ -171,7 +174,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
     // Arc: "+ New Tab" above the tabs, highlighted like a tab while the
     // new-tab page is shown (⌘T); it opens the palette.
     const newTabRow = el(doc, 'li', {
-      class: `new-tab-row${view.newTab.active ? ' active' : ''}`,
+      class: `new-tab-row${view.newTab.active ? ' active' : ''}${view.newTab.behind ? ' behind' : ''}`,
       'data-action': 'new-tab',
       title: 'New Tab',
       role: 'button',
@@ -225,9 +228,19 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
     const { pinId, spaceId } = target.dataset;
     const show = openOverPage();
     switch (target.dataset.action) {
-      case 'activate': return send('activateTab', { tabId, ...(show ? { show } : {}) });
+      case 'activate': {
+        const request = send('activateTab', { tabId, ...(show ? { show } : {}) });
+        if (!target.classList.contains('active')) onSwitch?.(tabId, request);
+        return request;
+      }
       case 'close': return send('closeTab', { tabId, ...(show ? { show } : {}) });
-      case 'open-pin': return send('openPin', { pinId, windowId, ...(show ? { show } : {}) });
+      case 'open-pin': {
+        const request = send('openPin', { pinId, windowId, ...(show ? { show } : {}) });
+        // The tab the background will show (in this window first).
+        const pinTab = target.classList.contains('open') && !target.classList.contains('active') && state ? V.pinTabId(state, pinId, windowId) : null;
+        if (pinTab != null) onSwitch?.(pinTab, request);
+        return request;
+      }
       case 'unpin': return send('unpin', { pinId });
       case 'set-space': return send('setSpace', { windowId, spaceId });
       case 'new-tab': return onNewTab ? onNewTab() : send('newTab', { windowId });
@@ -478,6 +491,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
     update(nextState, context) {
       if (context?.fit) fit = context.fit;
       if (context && 'newTabPending' in context) newTabPending = !!context.newTabPending;
+      if (context && 'switchingTo' in context) switchingTo = context.switchingTo ?? null;
       state = nextState;
       if (menuFor?.tabId != null && !state.tabs?.[menuFor.tabId]) closeMenu(); // its tab is gone
       if (menuFor?.pinId && !state.pins?.some((p) => p.id === menuFor.pinId)) closeMenu();
