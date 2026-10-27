@@ -388,3 +388,10 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] In Safari full screen, ⌥K or ⌘T: the palette matches Arc's command bar in size and place (765 wide, centered on the window, about a third of the way down, five rows).
 - [ ] With more than five results, the arrow keys scroll the list and the selected row is never cut off; no scrollbar shows.
 - [ ] On a page zoomed in or out in Safari (⌘+ / ⌘−), note whether the palette grows or shrinks with the page (it's drawn inside the page).
+
+## Switching without black; ⌘T and "New tabs open with" (2026-10-26)
+
+- [ ] Switch through the sidebar, the palette and ⌥⌘↓/↑ to tabs you haven't used for a few minutes: fewer black flashes than before; switching never feels slower than about half a second.
+- [ ] Start page → Settings → Switch log (development) → Copy, after a session of switching, and send it along with any black flash you saw (and roughly when).
+- [ ] Safari Settings → General → "New tabs open with" → Margin, then ⌘T: Margin's palette over the page.
+- [ ] With it on Homepage instead: ⌘T twice (each opening the homepage) shows a note on the second about where to set it; "Don't show again" stops it.

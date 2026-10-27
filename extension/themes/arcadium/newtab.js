@@ -186,6 +186,13 @@ export function mount({ api, self, send, windowed = false }) {
   const compactPushed = $('compact-pushed');
   compactPushed.addEventListener('change', () => send('updateSettings', { patch: { compactWhenPushed: compactPushed.checked } }));
 
+  // The note when ⌘T seems to open Safari's homepage (background/newtab-hint.js; Safari only).
+  const newTabHint = $('newtab-hint');
+  if (platform?.newTabHint) {
+    $('newtab-hint-setting').hidden = false;
+    newTabHint.addEventListener('change', () => send('updateSettings', { patch: { newTabHint: newTabHint.checked } }));
+  }
+
   // Navigation shortcuts from Settings (next/previous tab and space; the
   // sidebar is always visible here, so no peek).
   shortcuts.installNavigation({ send, getSettings: () => (recording ? null : state?.settings) });
@@ -202,7 +209,7 @@ export function mount({ api, self, send, windowed = false }) {
   const LEAVES = new Set(['activateTab', 'openPin', 'newWindow']);
   /** @type {any} */
   const paletteSend = async (/** @type {any} */ type, /** @type {any} */ payload) => {
-    if (!fresh) return send(type, payload);
+    if (!fresh || type === 'prewake') return send(type, payload);
     fresh = false;
     if (type === 'restoreArchive') return send(type, { ...payload, replaceTabId: self?.id });
     const result = await send(type, payload);
@@ -290,6 +297,30 @@ export function mount({ api, self, send, windowed = false }) {
     send('updateSettings', { patch: { paletteShortcut: 'Alt+KeyK', sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } });
   });
 
+  // DEVELOPMENT DIAGNOSTICS: remove before release (background/diagnostics.js).
+  // The switch log as JSON on the clipboard, to send along with a report.
+  const logStatus = $('switch-log-status');
+  // The write starts within the click, the log following as a promise:
+  // Safari refuses a clipboard write that only starts after an await.
+  $('switch-log-copy').addEventListener('click', async () => {
+    let count = 0;
+    const text = send('switchLog', {}).then((entries) => {
+      if (!Array.isArray(entries)) throw new Error('no log');
+      count = entries.length;
+      return new Blob([JSON.stringify({ version: api.runtime.getManifest().version, platform: platform?.name, entries })], { type: 'text/plain' });
+    });
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': text })]);
+      logStatus.textContent = `Copied ${count} entries.`;
+    } catch {
+      logStatus.textContent = (await text.then(() => true, () => false)) ? 'Couldn’t copy.' : 'Couldn’t read the log.';
+    }
+  });
+  $('switch-log-clear').addEventListener('click', async () => {
+    await send('switchLog', { clear: true });
+    logStatus.textContent = 'Cleared.';
+  });
+
   function ago(ts) {
     const minutes = Math.round((Date.now() - ts) / 60000);
     if (minutes < 1) return 'just now';
@@ -330,6 +361,7 @@ export function mount({ api, self, send, windowed = false }) {
     swipeNavigation.disabled = !blockGestures.checked;
     fitPages.checked = state.settings.fitPages !== false;
     compactPushed.checked = state.settings.compactWhenPushed !== false;
+    newTabHint.checked = state.settings.newTabHint !== false;
     marginFullscreen.checked = state.settings.marginFullscreenAuto !== false;
     fullscreenOnly.checked = state.settings.fullscreenOnly !== false;
     if (document.activeElement !== themeSelect) themeSelect.value = themeFor(state.settings).id;

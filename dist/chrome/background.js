@@ -10,6 +10,8 @@ import { api, load, mutate, now, resync } from './background/store.js';
 import { handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff } from './background/handlers.js';
+import * as newTabHint from './background/newtab-hint.js';
+import { recordCreated } from './background/diagnostics.js';
 import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
@@ -45,12 +47,15 @@ api.tabs.onCreated.addListener(async (tab) => {
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.js newTabHandOff); a new tab
   // that stays is tracked as usual.
+  recordCreated(tab);
   if (tab.active && V.isNewTabPage(tab.pendingUrl || tab.url)) {
+    void newTabHint.newTabPageSeen(); // ⌘T reaches Margin: the setting is Margin
     if (await newTabHandOff(tab)) return;
     // As it is now: its events were set aside meanwhile.
     tab = await api.tabs.get(tab.id).catch(() => null);
     if (!tab) return;
   }
+  newTabHint.tabCreated(tab);
   mutate((s) => M.upsertTab(s, tab, now()));
 });
 api.tabs.onUpdated.addListener((tabId, change, tab) => {
@@ -67,6 +72,8 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   // the change without it, or it redirected).
   const url = change.url ?? (change.status === 'complete' ? tab.url : null);
   if (url) learnSearchEngine([url], { tabId });
+  if (change.url) void newTabHint.tabAddress(tabId, change.url);
+  if (change.status === 'complete') newTabHint.tabLoaded(tabId);
   // Safari reloading a tab as it's shown: it had unloaded it (diagnostics).
   if (change.status === 'loading' && !change.url && shownAt.get(tabId) > Date.now() - 1000) {
     console.info(`[margin] tab ${tabId} reloaded as it was shown`);
@@ -74,6 +81,7 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
 });
 api.tabs.onRemoved.addListener((tabId) => {
   handingOff.delete(tabId);
+  newTabHint.tabGone(tabId);
   mutate((s) => M.removeTab(s, tabId));
   shownAt.delete(tabId);
   shownUrl.delete(tabId);

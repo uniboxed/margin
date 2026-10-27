@@ -45,6 +45,9 @@
       <label>With “Keep open”, on pages that can’t be fitted, show a narrow sidebar of icons (it opens fully when you rest the pointer on it)
         <input id="compact-pushed" type="checkbox" switch>
       </label>
+      <label id="newtab-hint-setting" hidden>Tell me when ⌘T seems to open Safari’s homepage instead of Margin (Safari Settings → General → “New tabs open with” should be Margin)
+        <input id="newtab-hint" type="checkbox" switch>
+      </label>
       <fieldset id="shortcuts" aria-describedby="shortcut-help">
         <legend>Keyboard shortcuts</legend>
         <label>Command palette
@@ -68,6 +71,13 @@
         <button id="shortcuts-reset" type="button">Reset shortcuts</button>
       </fieldset>
       <p id="shortcut-help" class="help">Click a field, then press a key with ⌘, ⌥, ⌃ or ⇧. Esc cancels. If a combination shows nothing when you press it, Safari or macOS keeps it for itself (⌘⌥← / ⌘⌥→ switch Safari's tabs), so pick another.</p>
+      <!-- DEVELOPMENT DIAGNOSTICS: remove before release (background/diagnostics.js). -->
+      <div id="switch-log">
+        <span>Switch log (development)</span>
+        <button id="switch-log-copy" type="button">Copy</button>
+        <button id="switch-log-clear" type="button">Clear</button>
+        <span id="switch-log-status" class="help" role="status"></span>
+      </div>
     </details>
   </main>
   <div id="page-card" aria-hidden="true"></div>

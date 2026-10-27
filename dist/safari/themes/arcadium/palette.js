@@ -26,6 +26,7 @@ function icon(paths, cls) {
 }
 const searchIcon = () => icon(['M10.5 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z', 'M15.6 15.6 19.5 19.5'], 'search-icon');
 const arrowIcon = () => icon(['M4.5 12h14.5', 'M12 4.5l7.5 7.5-7.5 7.5'], 'arrow-icon');
+const PREWAKE_DWELL_MS = 120;
 // Rows that go somewhere get Arc's arrow button; plain actions don't.
 const GOES = new Set(['tab', 'pin', 'archive', 'go']);
 
@@ -108,6 +109,26 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
       row.setAttribute('aria-selected', String(on));
       if (on) row.scrollIntoView({ block: 'nearest' });
     }
+    prewakeSelected();
+  }
+
+  // The selection resting on a tab or a pin: its process starts waking
+  // (background/tabs.js wakeTab), so choosing it doesn't wait. Not while the
+  // selection is still moving (a held arrow key, the pointer passing over).
+  let prewakeTimer = null;
+  let prewoken = null; // what was woken since it opened (refreshes repaint the same selection)
+  function prewakeSelected() {
+    clearTimeout(prewakeTimer);
+    const action = items[selected]?.action;
+    if (!open || (action?.type !== 'activateTab' && action?.type !== 'openPin')) return;
+    prewakeTimer = setTimeout(() => {
+      if (!open || items[selected]?.action !== action) return;
+      const key = action.type === 'openPin' ? `pin:${action.pinId}` : `tab:${action.tabId}`;
+      if (key === prewoken) return;
+      prewoken = key;
+      if (action.type === 'openPin') send('prewake', { pinId: action.pinId, windowId: action.windowId });
+      else if (action.tabId !== getContext().tabId) send('prewake', { tabId: action.tabId });
+    }, PREWAKE_DWELL_MS);
   }
 
   function refresh() {
@@ -160,6 +181,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     if (color) panel.style.setProperty('--space-color', color);
     host.dataset.open = 'true';
     open = true;
+    prewoken = null;
     input.value = '';
     selected = 0;
     refresh();
@@ -169,6 +191,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
   function close(reason = undefined, action = undefined) {
     if (!open) return;
     open = false;
+    clearTimeout(prewakeTimer);
     host.dataset.open = 'false';
     try {
       if (host.matches?.(':popover-open')) host.hidePopover();

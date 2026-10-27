@@ -187,12 +187,19 @@ import { platform } from '../shared/platform.js';
   document.replaceChild(shell, old);
 
   let held = true;
+  let restoring = false; // Safari is loading, as it's shown, a tab it had unloaded (below)
   function release(why) {
     if (!held) return;
     held = false;
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== hold);
     for (const link of loadHolds.values()) link.remove();
     log(`showing (${why}) after ${Math.round(performance.now())}ms`);
+    // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): the switch log
+    // keeps how a page that was just shown came on screen.
+    if (!document.hidden) {
+      (globalThis.browser ?? globalThis.chrome)?.runtime?.sendMessage({ type: 'shellShown', why, ms: performance.now(), restoring })
+        .catch(() => {});
+    }
   }
   const HOLD_MAX_MS = 2500;
   setTimeout(() => release('hold timeout'), HOLD_MAX_MS);
@@ -201,7 +208,11 @@ import { platform } from '../shared/platform.js';
   // screen to keep, only Safari's empty view, so the shell shows at once (the
   // sidebar and the frame, the card filling in as the page arrives).
   (globalThis.browser ?? globalThis.chrome)?.runtime?.sendMessage({ type: 'restoringTab', url: location.href })
-    .then((res) => { if (res?.ok && res.result) release('tab being restored'); }, () => {});
+    .then((res) => {
+      if (!res?.ok || !res.result) return;
+      restoring = true;
+      release('tab being restored');
+    }, () => {});
 
   // Card geometry: inset in the theme's frame while docked, the whole window
   // otherwise (Keep open turned off on this page: the sidebar floats over it).
