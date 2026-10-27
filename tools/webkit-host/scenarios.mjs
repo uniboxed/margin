@@ -75,18 +75,14 @@ export const SCENARIOS = {
     { op: 'page', in: 'A', js: `${CARD} const i = d.createElement('iframe'); d.body.append(i); i.contentWindow.History.prototype.pushState.call(w.history, {}, '', '/p/A/yt'); return 'bypassed'` },
     checkPage('A', 'a pushState past Margin still updates the address bar', `${CARD} return w.location.pathname === '/p/A/yt' && location.pathname === '/p/A/yt'`),
   ],
-  // A page Margin doesn't fit (turned off for the site): Keep open shows the
-  // narrow rail and pushes the page by it only; resting on the rail opens
-  // the full sidebar over the page, which doesn't move.
+  // A page Margin doesn't fit (turned off for the site): Keep open pushes it
+  // by the full sidebar. The narrow rail is off for now (platform.compactRail),
+  // whatever the setting says.
   rail: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), keepOpen,
     { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("setFitSite", { origin: location.origin, fit: false }))' },
     wait(800), reload('A'), drawn('A'),
-    checkPage('A', 'A: not fitted, pushed by the rail only', `!document.documentElement.hasAttribute('data-margin-shell') && document.querySelector('margin-sidebar-host').dataset.rail === 'rail' && getComputedStyle(document.documentElement).marginLeft === '52px'`, 5000),
-    { op: 'eval', in: 'A', js: 'Margin.content.sidebar.show("hover"); return "hovered"' },
-    checkPage('A', 'A: the full sidebar over the page, which stays at the rail', `document.querySelector('margin-sidebar-host').dataset.rail === 'expanded' && getComputedStyle(document.documentElement).marginLeft === '52px'`),
-    { op: 'eval', in: 'A', js: 'Margin.content.sidebar.hide(); return "left"' },
-    checkPage('A', 'A: back to the rail', `document.querySelector('margin-sidebar-host').dataset.rail === 'rail'`),
+    checkPage('A', 'A: not fitted, pushed by the full sidebar (no rail)', `!document.documentElement.hasAttribute('data-margin-shell') && document.querySelector('margin-sidebar-host').dataset.rail === 'off' && parseFloat(getComputedStyle(document.documentElement).marginLeft) >= 160`, 5000),
   ],
   // The new-tab page loads the active theme's module.
   newtab: [

@@ -210,7 +210,9 @@ export function mount({ api, self, send, windowed = false }) {
   }
 
   // The narrow icon rail on pages that are pushed (content/layout.js).
+  // Only while the rail is available (platform.compactRail: off for now).
   const compactPushed = $('compact-pushed');
+  compactPushed.closest('label').hidden = !platform?.compactRail;
   compactPushed.addEventListener('change', () => send('updateSettings', { patch: { compactWhenPushed: compactPushed.checked } }));
 
   // The note when ⌘T seems to open Safari's homepage (background/newtab-hint.js; Safari only).

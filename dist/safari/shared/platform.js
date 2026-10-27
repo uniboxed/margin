@@ -14,6 +14,10 @@ const PROFILES = {
     // Wake a hidden tab's process before showing it (background/tabs.js
     // wakeTab): Safari blanks a suspended tab until it has drawn again.
     wakeTabs: true,
+    // The narrow icon rail on pages Margin can't fit (content/layout.js,
+    // setting compactWhenPushed): off for now, per Tirth; such pages are
+    // pushed by the full sidebar. True brings it back.
+    compactRail: false,
     // Trackpad swipe back/forward and pinch-for-all-tabs can be blocked
     // (shared/gestures.js; setting `blockGestures`).
     blockGestures: true,
@@ -45,6 +49,7 @@ const PROFILES = {
     // Chrome always gives ⌘T to the extension's new-tab page.
     newTabHint: false,
     wakeTabs: false,
+    compactRail: false, // as in Safari's profile
     // Not needed (and a page-wide non-passive wheel listener costs scroll
     // performance in Chrome).
     blockGestures: false,

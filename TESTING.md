@@ -402,3 +402,7 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Switching to a tab you haven't used for a while: if it takes a moment, the small loading pill shows at the top; quick switches never show it.
 - [ ] ⌥⌘↓/↑ and the palette: the same.
 - [ ] Clicking your own tab again during a slow switch keeps you where you are.
+
+## Narrow rail off (2026-10-27)
+
+- [ ] With Keep open, a page Margin can't fit (Teams, Outlook, Docs, or "Show normally" on a site): the full sidebar beside it, no narrow icon rail; the start page's Settings has no rail switch.
