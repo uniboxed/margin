@@ -45,20 +45,34 @@ async function runNavigation(action, windowId) {
     const next = V.cycleTab(s, windowId, current, action === 'next-tab' ? 1 : -1);
     if (next == null) return;
     navTarget.set(windowId, { tabId: next, at: now() });
-    // The page on screen highlights it already, and shows the pill if the
-    // wake takes a while (shared/switching.js); not waited for. Margin's own
-    // new-tab page gets it too (Chrome), or only the broadcast (Safari, where
-    // it has no content script); `from` says which page it's for.
-    api.tabs.query({ active: true, windowId }).then(([shown]) => {
-      if (!shown || shown.id === next) return;
-      const message = { type: 'switching', tabId: next, from: shown.id };
-      api.tabs.sendMessage(shown.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
-    }, () => {});
+    // The page on screen highlights it already and covers itself until the
+    // switch lands (shared/switching.js); not waited for. Not covered while
+    // more presses wait (a held key): that page is only passed through and
+    // stays visible. Margin's own new-tab page gets it too (Chrome), or only
+    // the broadcast (Safari, where it has no content script); `from` says
+    // which page it's for.
+    // It's told when the switch is done or failed (closed meanwhile), as a
+    // page's own switch learns from its request (shared/switching.js).
+    const passing = queued > 0;
+    const tell = (shown, message) => api.tabs.sendMessage(shown.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
+    const shownPage = api.tabs.query({ active: true, windowId }).then(([shown]) => {
+      if (!shown || shown.id === next) return null;
+      tell(shown, { type: 'switching', tabId: next, from: shown.id, passing });
+      return shown;
+    }, () => null);
+    const told = (type) => shownPage.then((shown) => shown && tell(shown, { type, tabId: next, from: shown.id }));
     const asked = Date.now();
-    // A tab only passed through (more presses waiting: a held key) isn't
-    // waited for long, so the switching stops when the key does.
-    const wake = queued > 0 ? await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]) : await wakeTab(next);
-    await api.tabs.update(next, { active: true });
+    let wake;
+    try {
+      // A tab only passed through (more presses waiting: a held key) isn't
+      // waited for long, so the switching stops when the key does.
+      wake = passing ? await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]) : await wakeTab(next);
+      await api.tabs.update(next, { active: true });
+    } catch (err) {
+      told('switch-failed');
+      throw err;
+    }
+    told('switch-done');
     recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
     await mutate((st) => M.activateTab(st, next, windowId, now()));
     // Presses come in runs: the tab after this one is woken now, so the

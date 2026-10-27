@@ -1,7 +1,7 @@
 // shared/switching.js: the tab being switched to, from a page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSwitching } from '../extension/shared/switching.js';
+import { createSwitching, backgroundSwitches } from '../extension/shared/switching.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -105,4 +105,31 @@ test('switching: a newer switch takes over (held keys), and a hidden page starts
   doc.hide();
   switching.start(9);
   assert.equal(switching.target(), null);
+});
+
+test('switching from the background: failed ends it at once; done ends it shortly after if this page still shows; others\' answers are ignored', async () => {
+  const { switching } = setup();
+  const background = backgroundSwitches();
+  switching.start(7, background.begin(7));
+  background.settle({ type: 'switch-failed', tabId: 8 });
+  await sleep(5);
+  assert.equal(switching.target(), 7, 'not its tab');
+  background.settle({ type: 'switch-failed', tabId: 7 });
+  await sleep(5);
+  assert.equal(switching.target(), null);
+  switching.start(9, background.begin(9));
+  background.settle({ type: 'switch-done', tabId: 9 });
+  await sleep(100);
+  assert.equal(switching.target(), 9, 'a moment for the page to be hidden');
+  await sleep(300);
+  assert.equal(switching.target(), null, 'still showing (split view): over');
+});
+
+test('switching from the background: done before the pill\'s delay: no pill (it landed)', async () => {
+  const { events, switching } = setup();
+  const background = backgroundSwitches();
+  switching.start(7, background.begin(7));
+  background.settle({ type: 'switch-done', tabId: 7 });
+  await sleep(200);
+  assert.deepEqual(events, [['change', 7]]);
 });

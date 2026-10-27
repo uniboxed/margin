@@ -32,10 +32,9 @@ body {
   overflow-y: auto;
   background: var(--bg);
 }
-/* The loading pill (sidebar.css .loader) over this page while a switch to
-   another tab takes a while (shared/switching.js): in the frame's top strip,
-   centered on the card, as on web pages. */
-#page-card .loader { position: absolute; top: -6px; }
+/* The empty screen over this page while switching to another tab
+   (sidebar.css .switch-cover): over the card, as on web pages. */
+#page-card .switch-cover { position: absolute; inset: 0; border-radius: inherit; }
 #page-card {
   position: relative;
   z-index: 1;

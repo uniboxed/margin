@@ -5,12 +5,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false };
+const fake = { tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false };
 const asTab = (t) => ({ ...t });
 globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/shell-main.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
   permissions: { contains: async () => { fake.calls.contains++; return fake.access; }, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
   tabs: {
+    sendMessage: async (tabId, message) => { fake.messages.push({ tabId, ...message }); },
     get: async (id) => {
       fake.calls.get++;
       const tab = fake.tabs.get(id);
@@ -60,7 +61,7 @@ globalThis.chrome = {
 const M = await import('../extension/state/model.js');
 const V = await import('../extension/shared/view.js');
 const { mutate, load } = await import('../extension/background/store.js');
-const { showSpace } = await import('../extension/background/navigation.js');
+const { showSpace, navigate } = await import('../extension/background/navigation.js');
 const { wakeTab, ensureCurrent, forgetCurrent } = await import('../extension/background/tabs.js');
 
 // Window 1: Personal tabs 1 (in front), 2; Work tabs 3, 4 (4 used last); window 2: Work tab 5.
@@ -191,4 +192,21 @@ test('ensureCurrent: a page that doesn\'t answer (busy, asleep) isn\'t injected,
   fake.probeHangs = false;
   await ensureCurrent(3);
   assert.equal(fake.injected.length, 1, 'next time it answered: injected');
+});
+
+test('next/previous: a page a held key only passes through isn\'t covered (the last one is); the page is told when it\'s done or failed', async () => {
+  await setup();
+  await showSpace(1, 'personal');
+  fake.messages = [];
+  navigate('next-tab', 'key', 1);
+  await navigate('next-tab', 'key', 1); // pressed while the first waits: tab 1 → 2 → back to 1
+  await sleep(10);
+  const switching = fake.messages.filter((m) => m.type === 'switching');
+  assert.deepEqual(switching.map((m) => [m.from, m.tabId, m.passing]), [[1, 2, true], [2, 1, false]]);
+  assert.deepEqual(fake.messages.filter((m) => m.type === 'switch-done').map((m) => [m.from, m.tabId]), [[1, 2], [2, 1]], 'each page told it landed');
+  fake.messages = [];
+  fake.tabs.delete(2); // closed, Margin's state still lists it
+  await navigate('next-tab', 'key', 1);
+  await sleep(10);
+  assert.deepEqual(fake.messages.map((m) => [m.type, m.from, m.tabId]), [['switching', 1, 2], ['switch-failed', 1, 2]]);
 });

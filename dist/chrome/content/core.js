@@ -11,7 +11,7 @@ import { frameAware } from '../shared/shell-logic.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
-import { createSwitching } from '../shared/switching.js';
+import { createSwitching, backgroundSwitches } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
@@ -286,21 +286,32 @@ export function startCore({ onTheme } = {}) {
 
   // A switch to another tab from here (a click in the sidebar or the palette,
   // a next/previous key; shared/switching.js): the sidebar highlights it at
-  // once, this page's tab softly, and the pill shows if it takes a while.
+  // once, and the theme covers this page with an empty screen until the
+  // switch lands (its own spinner); a theme without one shows the loading
+  // pill if it takes a while. `cover`: 'now' (a click here), 'slow' (only
+  // if it takes a while: a next/previous key, so a page a held key passes
+  // through stays visible), 'none'.
   let switchingTo = null;
+  let cover = 'now';
   const switching = createSwitching({
     onChange: (id) => {
       switchingTo = id;
+      if (id == null || cover === 'now') view?.setCover?.(id != null, { instant: document.hidden });
       render();
     },
-    onSlow: (slow) => loader.switching(slow),
+    onSlow: (slow) => {
+      if (!view?.setCover) loader.switching(slow);
+      else if (slow && cover === 'slow') view.setCover(true);
+    },
   });
+  const fromBackground = backgroundSwitches();
   // Back to this page's own tab: over. A tab in another window: nothing to
   // highlight here, and that window comes forward.
-  Margin.content.startSwitching = (id, request = null) => {
+  Margin.content.startSwitching = (id, request = null, { cover: when = 'now' } = {}) => {
     if (!active()) return;
     if (id === tabId) return switching.end();
     if (state?.tabs?.[id]?.windowId !== windowId) return;
+    cover = when;
     switching.start(id, request);
   };
 
@@ -479,8 +490,14 @@ export function startCore({ onTheme } = {}) {
     // The background is switching from this tab to another (next/previous
     // tab): highlight it already (content/palette.js and the sidebar start
     // their own switches themselves).
+    const forThisPage = message?.from == null || tabId == null || message.from === tabId;
     if (message?.type === 'switching') {
-      if (message.from == null || tabId == null || message.from === tabId) Margin.content.startSwitching(message.tabId);
+      if (forThisPage) Margin.content.startSwitching(message.tabId, fromBackground.begin(message.tabId), { cover: message.passing ? 'none' : 'slow' });
+      return;
+    }
+    // That switch is done, or failed (the tab closed meanwhile).
+    if (message?.type === 'switch-done' || message?.type === 'switch-failed') {
+      if (forThisPage) fromBackground.settle(message);
       return;
     }
     // The hand-off didn't happen after all (its new tab stays).

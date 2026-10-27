@@ -7,7 +7,7 @@
 // mount({ shadow, document, send, onNewTab, onWidth, onScroll, onSwitch }) → view }, where view
 // is { isBusy(), width(), update(state, ctx: { windowId, tabId, fit, newTabPending, switchingTo, scroll? }), ready(), instantOnce?(), setColorScheme(s),
 // setLayout({ open, docked, width, rail: { width, expanded } | null }),
-// setWidth(px), setLoading(on, { instant }),
+// setWidth(px), setLoading(on, { instant }), setCover?(on, { instant }) (the empty screen while switching tabs),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),
 // setZoom(level | null), showNotice({ text, actions: [{ label, run }], duration? } | null) }
 // (themes/arcadium/content.js is the reference).

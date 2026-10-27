@@ -6,13 +6,34 @@ import { el } from '../../shared/dom.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-export function createChrome(doc) {
-  // Built with DOM calls (no innerHTML: some pages enforce Trusted Types).
-  const svg = (tag, attrs) => {
-    const node = doc.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
-    return node;
+// Built with DOM calls (no innerHTML: some pages enforce Trusted Types).
+const svgIn = (doc) => (tag, attrs) => {
+  const node = doc.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+  return node;
+};
+
+// While switching to another tab (shared/switching.js): an empty screen over
+// the page (the card while docked), as Arc shows a tab not drawn yet, with a
+// spinner in the middle once it takes a moment. Also on the new-tab page.
+export function createSwitchCover(doc) {
+  const svg = svgIn(doc);
+  const spinner = svg('svg', { class: 'spinner', viewBox: '0 0 28 28', width: 28, height: 28 });
+  spinner.append(svg('circle', { class: 'track', cx: 14, cy: 14, r: 11 }), svg('circle', { class: 'arc', cx: 14, cy: 14, r: 11, pathLength: 100 }));
+  const cover = el(doc, 'div', { class: 'switch-cover', 'aria-hidden': 'true' }, spinner);
+  return {
+    el: cover,
+    // On at once; off without a fade on a hidden page (the switch landed),
+    // so it never plays when the page is shown again.
+    set(on, { instant = false } = {}) {
+      cover.classList.toggle('instant', instant);
+      cover.classList.toggle('on', on);
+    },
   };
+}
+
+export function createChrome(doc) {
+  const svg = svgIn(doc);
   // Arc-style frame: sidebar-colored strips around the page card with its
   // corners, shown while the sidebar is open. Never takes clicks.
   const frame = el(doc, 'div', { class: 'frame', 'aria-hidden': 'true' }, el(doc, 'div', { class: 'hole' }));
@@ -38,17 +59,20 @@ export function createChrome(doc) {
   const swipe = el(doc, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
   // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
   const zoomHud = el(doc, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
+  const switchCover = createSwitchCover(doc);
+  const cover = switchCover.el;
 
   // A small notice near the left edge, where the sidebar would be (e.g.
   // "Margin works in full screen" with buttons); hides itself after a while.
   const notice = el(doc, 'div', { class: 'notice', role: 'status', hidden: true });
   let noticeTimer = null;
 
-  const sized = [frame, cardEdge, loader, pull, swipe, zoomHud];
-  const inFrame = [loader, pull, swipe, zoomHud];
+  const sized = [frame, cardEdge, loader, pull, swipe, zoomHud, cover];
+  const inFrame = [loader, pull, swipe, zoomHud, cover];
 
   return {
-    frame, cardEdge, loader, pull, swipe, zoomHud, notice,
+    frame, cardEdge, loader, pull, swipe, zoomHud, notice, cover,
+    setCover: switchCover.set,
     // { text, actions: [{ label, run }], duration? (ms, 6s by default) }, or null to hide it.
     showNotice(message) {
       clearTimeout(noticeTimer);

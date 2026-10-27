@@ -426,3 +426,12 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 - [ ] Rebuild Margin with a few tabs open, leave one unused (asleep) during the rebuild, then switch to it: its sidebar works (switching from it lands), no stuck highlight or pill.
 - [ ] If Margin ever stops responding on a page, a note offers Reload after a few seconds; Reload fixes it.
+
+## An empty screen while switching (2026-10-27)
+
+- [ ] Click another tab in the sidebar: the page you're leaving turns into a plain gray card at once (no flash of its content), a spinner shows in the middle if it takes a moment, then the other tab appears.
+- [ ] Switch back and forth quickly: coming back to a tab never shows the gray card or a spinner before its page.
+- [ ] Same from Margin's new-tab page, from the palette, with the sidebar on auto-hide (the whole page goes gray), and on a fitted site.
+- [ ] ⌘T and "+ New Tab" show no gray card.
+- [ ] Hold ⌃⌘↓: the tabs go by with their content (no gray cards); one press to a slow tab shows the gray card after a moment.
+- [ ] Tab overview: tabs you left through the sidebar may look gray there (accepted); say if that bothers you.
