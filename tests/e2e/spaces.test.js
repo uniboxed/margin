@@ -18,8 +18,9 @@ after(async () => {
 const storage = (key) => ctx.worker.evaluate((k) => chrome.storage.local.get(k).then((s) => s[k]), key);
 const chips = () => nt.$$eval('#sidebar .chip[data-space-id]', (cs) => cs.map((c) => ({ id: c.dataset.spaceId, emoji: c.textContent, active: c.classList.contains('active') })));
 
-test('create a space with "+", then rename, re-emoji and recolor it', async () => {
-  await nt.click('#sidebar .chip.add');
+test('create a space with "+" → New Space, then rename, re-emoji and recolor it', async () => {
+  await nt.click('#sidebar .bar .add'); // "+": New Folder / New Space
+  await nt.click('#sidebar .tab-menu .menu-item >> text=New Space');
   await nt.waitForSelector('#sidebar .editor:not([hidden])');
   assert.equal(await nt.evaluate(() => document.activeElement?.className), 'name');
   const created = await waitFor(async () => (await chips()).find((c) => c.active && c.id !== 'personal'));
@@ -107,7 +108,8 @@ test('"+" opens the editor even when the new space arrives before the reply', as
     };
   });
   const before = (await storage('spaces')).length;
-  await nt.click('#sidebar .chip.add');
+  await nt.click('#sidebar .bar .add'); // "+": New Folder / New Space
+  await nt.click('#sidebar .tab-menu .menu-item >> text=New Space');
   await waitFor(async () => (await storage('spaces')).length === before + 1);
   await nt.waitForSelector('#sidebar .editor:not([hidden])', { timeout: 3000 });
   await nt.click('#sidebar .editor [data-editor="cancel"]');

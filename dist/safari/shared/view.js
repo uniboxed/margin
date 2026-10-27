@@ -2,6 +2,9 @@
 // No browser APIs: also importable from node for tests.
 /** @import { State } from '../../types/margin' */
 
+// A pin's or folder's order (state/model.js): saved, or its place in the list.
+const posOf = (item, i) => (Number.isFinite(item?.pos) ? item.pos : i);
+
 // Keep in sync with state/model.js normalizeUrl.
 function normalizeUrl(url) {
   try {
@@ -47,15 +50,36 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
     })
     .sort((a, b) => a.index - b.index);
   const spaceTabs = windowTabs.filter((t) => state.tabSpace[t.id] === spaceId);
-  const pins = state.pins
-    .filter((p) => p.spaceId === spaceId)
-    .map((p) => {
-      const key = normalizeUrl(p.url);
-      // Open in more than one tab: the one shown or being switched to.
-      const matches = spaceTabs.filter((t) => normalizeUrl(t.url) === key);
-      const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches[0];
-      return { ...p, tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, favIconUrl: tab?.favIconUrl ?? '' };
+  const folders = (state.folders ?? []).filter((f) => f.spaceId === spaceId);
+  const folderIds = new Set(folders.map((f) => f.id));
+  const bound = new Map(); // pin id → the pin as shown
+  state.pins.forEach((p, i) => {
+    if (p.spaceId !== spaceId) return;
+    const key = normalizeUrl(p.url);
+    // Open in more than one tab: the one shown or being switched to.
+    const matches = spaceTabs.filter((t) => normalizeUrl(t.url) === key);
+    const tab = matches.find((t) => t.active) ?? matches.find((t) => t.behind) ?? matches[0];
+    bound.set(p.id, {
+      ...p,
+      folderId: p.folderId && folderIds.has(p.folderId) ? p.folderId : null, // its folder gone: loose
+      pos: posOf(p, i),
+      tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, favIconUrl: tab?.favIconUrl ?? '',
     });
+  });
+  const byPos = (a, b) => a.pos - b.pos;
+  const loose = [...bound.values()].filter((p) => !p.folderId);
+  // The pinned area, in order (state/model.js pinOrder): folders, with their
+  // pins, and the pins in none. A closed folder still shows the pin of the
+  // tab shown or being switched to (`peek`), so the highlight stays visible.
+  const pinned = [
+    ...folders.map((f, i) => {
+      const inside = [...bound.values()].filter((p) => p.folderId === f.id).sort(byPos);
+      return { kind: 'folder', id: f.id, name: f.name, open: f.open !== false, pos: posOf(f, i), pins: inside, peek: f.open === false ? inside.filter((p) => p.active || p.behind) : [] };
+    }),
+    ...loose.map((p) => ({ kind: 'pin', ...p })),
+  ].sort(byPos);
+  // Every pin of the space, flat, in the order shown.
+  const pins = pinned.flatMap((item) => (item.kind === 'folder' ? item.pins : [item]));
   const pinnedUrls = new Set(pins.map((p) => normalizeUrl(p.url)));
   // Switching to a new-tab page: it's the "+ New Tab" row, as once it's shown.
   const targetIsNewTab = target != null && isNewTabPage(shown.find((t) => t.id === target)?.url);
@@ -63,6 +87,7 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
     spaceId,
     spaces: state.spaces,
     pins,
+    pinned,
     // The new-tab page being shown is this row: softly while switching away.
     newTab: { active: targetIsNewTab || (target == null && (newTabPending || !!shownNewTab)), behind: target != null && !!shownNewTab },
     // Reversed here, not sorted that way above: a pin binds to the oldest tab
@@ -115,13 +140,15 @@ function revealZone({ outerWidth, outerHeight, screenWidth, screenHeight }) {
 }
 
 // ⌘⌥↓ / ⌘⌥↑: the next/previous tab in the order the sidebar shows them
-// (open pinned tabs, then the space's tabs), wrapping around. From a tab
+// (open pinned tabs in the rows shown, then the space's tabs), wrapping around. From a tab
 // that isn't in the list, ↓ goes to the first and ↑ to the last. null if
 // there's nowhere to go.
 /** @param {State} state */
 function cycleTab(state, windowId, currentTabId, dir) {
   const v = sidebar(state, windowId, currentTabId);
-  const order = [...v.pins.filter((p) => p.tabId != null).map((p) => p.tabId), ...v.tabs.map((t) => t.id)];
+  // The rows shown: a closed folder's pins only while one is the tab shown.
+  const rows = v.pinned.flatMap((item) => (item.kind !== 'folder' ? [item] : item.open ? item.pins : item.peek));
+  const order = [...rows.filter((p) => p.tabId != null).map((p) => p.tabId), ...v.tabs.map((t) => t.id)];
   if (!order.length) return null;
   const at = order.indexOf(currentTabId);
   if (at < 0) return dir > 0 ? order[0] : order[order.length - 1];

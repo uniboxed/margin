@@ -112,7 +112,7 @@ test('scrolling over the sidebar never scrolls the page; its tab list scrolls wh
   for (let i = 0; i < 5; i++) await page.mouse.wheel(0, 40);
   await waitFor(async () => (await list()).top > 0);
   for (let i = 0; i < 20; i++) await page.mouse.wheel(0, 80); // past the list's end
-  await page.mouse.move(100, 30); // over the space chips (nothing scrolls there)
+  await page.mouse.move(100, 30); // over the top row (nothing scrolls there)
   for (let i = 0; i < 5; i++) await page.mouse.wheel(0, -60);
   await page.waitForTimeout(300);
   assert.equal(await page.evaluate(() => window.scrollY), 200, 'the page never moved');

@@ -255,20 +255,66 @@ export const handlers = {
       .catch(() => api.tabs.create({ url, active: !!active }));
     openedFrom.set(opener.id, { index: tab?.index ?? index, at: now() });
   },
-  /** @param {{ tabId: number }} message */
-  async pinTab({ tabId }) {
+  // `folderId`/`beforeId`: where the pin goes (a folder of the tab's space,
+  // before a pin or folder there; dragged in the sidebar); the end of the
+  // pinned area by default. Returns the new pin's id.
+  /** @param {{ tabId: number, folderId?: string | null, beforeId?: string | null }} message */
+  async pinTab({ tabId, folderId = null, beforeId = null }) {
     const s = await load();
     const tab = s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
     if (!tab?.url) return console.warn('[margin] pin: unknown tab', tabId);
     let result = 'pinned';
+    const id = newId();
     await mutate((st) => {
       // A tab Margin hasn't placed in a space yet goes to its window's space.
       const spaceId = st.tabSpace[tabId] ?? V.activeSpaceId(st, tab.windowId);
-      const next = M.addPin(st, { id: newId(), spaceId, url: tab.url, title: tab.title });
+      const next = M.addPin(st, { id, spaceId, url: tab.url, title: tab.title, folderId, beforeId });
       if (next === st) result = 'not pinned (already pinned in that space, or no space)';
       return next;
     });
     console.info(`[margin] pin tab ${tabId}: ${result}`);
+    return result === 'pinned' ? id : null;
+  },
+  // ---- folders of pins (state/model.js) ----
+  // A folder in this window's space (or `spaceId`), holding the pins
+  // `pinIds`, or the tab `tabId` pinned into it; at the top level before
+  // `beforeId` (else in the place of the first pin it takes, else the end).
+  // Returns its id.
+  /** @param {{ windowId?: number, spaceId?: string, name?: string, pinIds?: string[], tabId?: number, beforeId?: string | null }} message */
+  async createFolder({ windowId, spaceId, name, pinIds = [], tabId, beforeId = null }, sender) {
+    const id = newId();
+    const pinFromTab = Number.isInteger(tabId) ? newId() : null;
+    const tab = pinFromTab ? ((await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null))) : null;
+    await mutate((st) => {
+      const space = spaceId ?? (tab ? st.tabSpace[tab.id] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
+      const firstPin = st.pins.find((p) => p.id === pinIds[0] && p.spaceId === space);
+      // In the place of the first pin it takes, if that's at the top level.
+      const before = beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
+      let next = M.createFolder(st, { id, spaceId: space, name, pinIds, beforeId: before });
+      if (tab?.url) next = M.addPin(next, { id: pinFromTab, spaceId: space, url: tab.url, title: tab.title, folderId: id });
+      return next;
+    });
+    return id;
+  },
+  /** @param {{ folderId: string, name: string }} message */
+  async renameFolder({ folderId, name }) {
+    await mutate((s) => M.renameFolder(s, folderId, name));
+  },
+  /** @param {{ folderId: string, open: boolean }} message */
+  async setFolderOpen({ folderId, open }) {
+    await mutate((s) => M.setFolderOpen(s, folderId, open));
+  },
+  /** @param {{ folderId: string }} message the folder goes; its pins stay */
+  async deleteFolder({ folderId }) {
+    await mutate((s) => M.deleteFolder(s, folderId));
+  },
+  /** @param {{ pinId: string, folderId?: string | null, beforeId?: string | null }} message */
+  async movePin({ pinId, folderId = null, beforeId = null }) {
+    await mutate((s) => M.movePin(s, pinId, { folderId, beforeId }));
+  },
+  /** @param {{ folderId: string, beforeId?: string | null }} message */
+  async moveFolder({ folderId, beforeId = null }) {
+    await mutate((s) => M.moveFolder(s, folderId, { beforeId }));
   },
   /** @param {{ pinId: string }} message */
   async unpin({ pinId }) {

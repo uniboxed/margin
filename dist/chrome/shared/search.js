@@ -170,6 +170,7 @@ function paletteItems(state, ctx) {
   }
   for (const p of state.pins ?? []) {
     const space = spaceOf(p.spaceId);
+    const folder = p.folderId ? (state.folders ?? []).find((f) => f.id === p.folderId && f.spaceId === p.spaceId) : null;
     items.push({
       id: `pin:${p.id}`,
       kind: 'pin',
@@ -177,7 +178,7 @@ function paletteItems(state, ctx) {
       subtitle: p.url,
       url: p.url,
       favIconUrl: V.iconFor(state, p),
-      badge: space?.name ?? 'Pinned',
+      badge: folder ? `${folder.name} · ${space?.name ?? 'Pinned'}` : space?.name ?? 'Pinned',
       boost: p.spaceId === spaceId ? 20 : 8,
       action: { type: 'openPin', pinId: p.id, windowId: ctx.windowId },
     });
