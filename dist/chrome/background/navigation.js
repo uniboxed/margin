@@ -1,7 +1,7 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load, mutate, now } from './store.js';
-import { wakeTab } from './tabs.js';
+import { focusTab, openTab, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
@@ -68,7 +68,7 @@ async function runNavigation(action, windowId) {
   } else if (action === 'next-space' || action === 'prev-space') {
     const spaceId = V.cycleSpace(s, windowId, action === 'next-space' ? 1 : -1);
     if (spaceId == null) return;
-    await mutate((st) => M.setActiveSpace(st, windowId, spaceId));
+    await showSpace(windowId, spaceId, { bringTab: queued === 0 });
     // Show where you landed (auto-hide mode); Margin's own pages ignore it.
     const [tab] = await api.tabs.query({ active: true, windowId });
     if (tab) api.tabs.sendMessage(tab.id, { type: 'command', command: 'peek' }).catch(() => {});
@@ -76,3 +76,30 @@ async function runNavigation(action, windowId) {
 }
 
 export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-space']);
+
+// A space shown in a window (Arc): the window's sidebar shows it, and its
+// most recent tab in that window comes to the front (the tab shown stays if
+// it's already one of the space's); with none there, Margin's start page
+// opens in it, or the untouched start or new-tab page in front moves to it
+// (no pile of empty pages). `bringTab: false`: only the sidebar's space
+// (held keys pass spaces; the last press brings the tab).
+export async function showSpace(windowId, spaceId, { bringTab = true } = {}) {
+  if (windowId == null) return;
+  const s = await mutate((st) => M.setActiveSpace(st, windowId, spaceId));
+  if (V.activeSpaceId(s, windowId) !== spaceId || !bringTab) return; // no such space, or only the sidebar
+  const [shown] = await api.tabs.query({ active: true, windowId });
+  if (shown && s.tabSpace[shown.id] === spaceId) return;
+  const candidates = Object.values(s.tabs)
+    .filter((t) => t.windowId === windowId && s.tabSpace[t.id] === spaceId && t.id !== shown?.id)
+    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
+  for (const tab of candidates) {
+    try {
+      await focusTab(tab.id, { source: 'space' });
+      return;
+    } catch {} // closed meanwhile: the next one
+  }
+  const startPage = api.runtime.getURL('newtab/newtab.html#launcher');
+  const untouched = shown && (shown.url === startPage || V.isNewTabPage(shown.url || shown.pendingUrl));
+  if (untouched) await mutate((st) => M.moveTab(st, shown.id, spaceId));
+  else await openTab({ windowId, url: startPage, spaceId });
+}

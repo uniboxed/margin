@@ -96,7 +96,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // (the palette has the same switch). Only where it applies.
   const fitSite = el(doc, 'button', { type: 'button', class: 'fit-site', 'data-action': 'fit-site', hidden: true });
   const top = el(doc, 'header', { class: 'top' }, mode === 'overlay' ? keepOpen : null, el(doc, 'span', { class: 'spacer' }), fitSite);
-  const spaceTitle = el(doc, 'div', { class: 'space-title', title: 'Double-click or right-click to edit the space' });
+  const spaceTitle = el(doc, 'div', { class: 'space-title' });
   const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
   const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
   const swatches = el(doc, 'div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Space color' },
@@ -195,14 +195,14 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   let pendingRename = null;
   let rendering = false; // the rename field leaves the DOM while redrawing: not a blur
 
-  const closeButton = (tabId, label) => el(doc, 'button', { type: 'button', class: 'icon close', 'data-action': 'close', 'data-tab-id': String(tabId), title: label, 'aria-label': label }, ICONS.close(doc));
+  const closeButton = (tabId, label) => el(doc, 'button', { type: 'button', class: 'icon close', 'data-action': 'close', 'data-tab-id': String(tabId), 'aria-label': label }, ICONS.close(doc));
   function pinRow(p, nested) {
     return el(doc, 'li', {
       class: `pin${nested ? ' nested' : ''}${p.active ? ' active' : ''}${p.behind ? ' behind' : ''}${p.tabId ? ' open' : ''}`,
       'data-action': 'open-pin',
       'data-pin-id': p.id,
       'data-folder-id': p.folderId ?? null,
-      title: p.title,
+      'aria-label': p.title, // no tooltip (Arc); the rail hides the title
       draggable: 'true',
     },
     avatar(doc, { ...p, favIconUrl: V.iconFor(state, p) }),
@@ -227,7 +227,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       role: editingThis ? null : 'button',
       tabindex: editingThis ? null : '0',
       'aria-expanded': editingThis ? null : String(f.open),
-      title: editingThis ? null : `${f.name} (double-click to rename)`,
     }, ICONS.folder(doc, f.open), name));
   }
 
@@ -345,7 +344,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     const newTabRow = el(doc, 'li', {
       class: `new-tab-row${view.newTab.active ? ' active' : ''}${view.newTab.behind ? ' behind' : ''}`,
       'data-action': 'new-tab',
-      title: 'New Tab',
       role: 'button',
       'aria-label': 'New Tab',
       'aria-current': view.newTab.active ? 'page' : null,
@@ -357,7 +355,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
           class: `tab${t.active ? ' active' : ''}${t.behind ? ' behind' : ''}`,
           'data-action': 'activate',
           'data-tab-id': String(t.id),
-          title: t.title || t.url,
+          'aria-label': t.title || t.url || 'New Tab',
           draggable: 'true',
         },
         avatar(doc, { ...t, favIconUrl: V.iconFor(state, t) }),
@@ -471,10 +469,15 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     // so open it now if it's already here, else when it arrives.
     return send('createSpace', { windowId }).then((res) => {
       if (!res?.spaceId) return;
+      freshSpace = res.spaceId;
       if (state?.spaces.some((s) => s.id === res.spaceId)) openEditor(res.spaceId);
       else pendingEdit = res.spaceId;
     });
   }
+  // A space just created: once its editor closes, it's shown (its start page
+  // opens, as Arc shows a new space); not while being named, which happens
+  // in this page's sidebar.
+  let freshSpace = null;
   function folderCreated(folderId) {
     if (!folderId) return;
     if (state?.folders?.some((f) => f.id === folderId)) startRename(folderId);
@@ -482,15 +485,70 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   }
   const newFolder = (payload = {}) => send('createFolder', { windowId, ...payload }).then(folderCreated);
 
-  // A press on a tab or an open pin: its process starts waking now, before
-  // the click lands (background/tabs.js wakeTab), so the switch doesn't wait.
+  // A tab or open pin under the pointer, or pressed: its process is woken
+  // and kept awake (background/tabs.js wakeTab), so a click switches with
+  // nothing left to wait for. Resting HOVER_WAKE_MS on a row starts it; it's
+  // renewed every HOVER_RENEW_MS while the pointer stays (each wake keeps the
+  // process awake a little longer than that).
+  const HOVER_WAKE_MS = 80;
+  const HOVER_RENEW_MS = 500;
+  const HOVER_IDLE_MS = 10000; // the pointer resting longer without moving: stop
+  let hoverWake = null; // { key, selector, timer, until }
+  const prewakeRow = (row, renew = false) => {
+    if (!row?.isConnected || row.classList.contains('active')) return;
+    if (row.dataset.tabId) send('prewake', { tabId: Number(row.dataset.tabId), renew });
+    else if (row.dataset.pinId && row.classList.contains('open')) send('prewake', { pinId: row.dataset.pinId, windowId, renew });
+  };
+  const stopHoverWake = () => {
+    if (hoverWake) clearTimeout(hoverWake.timer);
+    hoverWake = null;
+  };
+  root.addEventListener('pointerover', (event) => {
+    const row = event.target.closest?.('.tab, .pin');
+    const key = row && root.contains(row) ? (row.dataset.tabId ? `tab:${row.dataset.tabId}` : `pin:${row.dataset.pinId}`) : null;
+    if (key && hoverWake?.key === key) return;
+    stopHoverWake();
+    if (!key || dragging) return;
+    // Found again by its id on each renewal: a redraw (another tab's title
+    // changing) replaces the row.
+    const selector = row.dataset.tabId ? `.tab[data-tab-id="${row.dataset.tabId}"]` : `.pin[data-pin-id="${CSS.escape(row.dataset.pinId)}"]`;
+    const wake = { key, selector, timer: null, until: Date.now() + HOVER_IDLE_MS };
+    let first = true;
+    const tick = () => {
+      if (hoverWake !== wake) return;
+      if (doc.hidden || Date.now() > wake.until) return stopHoverWake();
+      prewakeRow(root.querySelector(selector), !first); // renewals: a fresh wake
+      first = false;
+      wake.timer = setTimeout(tick, HOVER_RENEW_MS);
+    };
+    hoverWake = wake;
+    wake.timer = setTimeout(tick, HOVER_WAKE_MS);
+  });
+  root.addEventListener('pointermove', () => {
+    freshHover();
+    if (hoverWake) hoverWake.until = Date.now() + HOVER_IDLE_MS;
+  }, { passive: true });
+  root.addEventListener('pointerleave', stopHoverWake);
+  root.addEventListener('dragstart', stopHoverWake, true);
+  root.addEventListener('click', stopHoverWake, true); // a switch: the page goes
   root.addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || event.ctrlKey || event.target.closest('.icon')) return;
     const row = event.target.closest('.tab, .pin');
-    if (!row || !root.contains(row) || row.classList.contains('active')) return;
-    if (row.dataset.tabId) send('prewake', { tabId: Number(row.dataset.tabId) });
-    else if (row.dataset.pinId && row.classList.contains('open')) send('prewake', { pinId: row.dataset.pinId, windowId });
+    if (row && root.contains(row)) prewakeRow(row);
   });
+  // A page shown again: the browser still applies :hover where the pointer
+  // was when it was last in front, which drew a hover and × on the wrong
+  // row for a frame. Hover styles wait for the pointer to move.
+  function staleHover() {
+    stopHoverWake();
+    root.classList.add('hover-stale');
+  }
+  function freshHover() {
+    root.classList.remove('hover-stale');
+  }
+  if (doc.hidden) staleHover();
+  doc.addEventListener('visibilitychange', () => { if (doc.hidden) staleHover(); });
+  doc.defaultView?.addEventListener('pagehide', staleHover);
 
   // ---- space editor ------------------------------------------------------
 
@@ -508,9 +566,15 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     nameInput.focus();
     nameInput.select();
   }
-  function closeEditor() {
+  // `deleted`: the space is gone (no showing it).
+  function closeEditor({ deleted = false } = {}) {
+    const spaceId = editing?.spaceId;
     editing = null;
     editor.hidden = true;
+    if (spaceId && spaceId === freshSpace) {
+      freshSpace = null;
+      if (!deleted) send('setSpace', { windowId, spaceId });
+    }
   }
   function renderEditor() {
     if (!editing) return;
@@ -541,7 +605,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
         return renderEditor();
       }
       send('deleteSpace', { spaceId: editing.spaceId });
-      closeEditor();
+      closeEditor({ deleted: true });
     }
   });
   editor.addEventListener('keydown', (event) => {

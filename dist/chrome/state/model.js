@@ -292,6 +292,24 @@ function setActiveSpace(state, windowId, spaceId) {
   return { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId]: spaceId } };
 }
 
+// The window shows the space of the tab it shows (Arc): a tab of another
+// space brought to the front (from the palette, Safari's own tab bar)
+// switches the window to that space.
+/** @param {State} state */
+function followTab(state, tabId, windowId) {
+  const spaceId = state.tabSpace[tabId];
+  if (!spaceId || !hasSpace(state, spaceId) || activeSpaceId(state, windowId) === spaceId) return state;
+  return setActiveSpace(state, windowId, spaceId);
+}
+
+// The most recently shown tab of a space in a window (not `exceptId`).
+/** @param {State} state */
+function recentTabOfSpace(state, windowId, spaceId, exceptId = null) {
+  if (!spaceId) return null;
+  return Object.values(state.tabs).filter((t) => t.windowId === windowId && t.id !== exceptId && state.tabSpace[t.id] === spaceId)
+    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
+}
+
 /** @param {State} state */
 function createSpace(state, { id, name, emoji, color }) {
   const space = {
@@ -558,6 +576,8 @@ export {
   syncTabs,
   moveTab,
   setActiveSpace,
+  followTab,
+  recentTabOfSpace,
   createSpace,
   updateSpace,
   addPin,

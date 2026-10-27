@@ -88,7 +88,7 @@ test('active space is per window', async () => {
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const other = await ctx.worker.evaluate(() => chrome.windows.create({ url: 'about:blank' }).then((w) => w.id));
   const fun = (await storage('spaces')).find((s) => s.name === 'Fun').id;
-  await nt.evaluate(([w, s]) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: s }), [other, fun]);
+  await nt.evaluate(([w, s]) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: s, bringTab: false }), [other, fun]);
   await nt.click('#sidebar .chip[data-space-id="personal"]');
   await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === 'personal');
   assert.equal((await storage('activeSpaceByWindow'))[other], fun);

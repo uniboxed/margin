@@ -12,7 +12,7 @@ import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
-import { navigate, NAV_ACTIONS } from './navigation.js';
+import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
@@ -117,9 +117,10 @@ export const handlers = {
   // resting on a row): its process is woken now, so the switch that follows
   // doesn't wait for it (background/tabs.js wakeTab). A pin wakes its open tab.
   /** @param {{ tabId?: number, pinId?: string, windowId?: number }} message */
-  async prewake({ tabId, pinId, windowId }) {
+  /** @param {{ tabId?: number, pinId?: string, windowId?: number, renew?: boolean }} message `renew`: a fresh wake (a hover renewal) */
+  async prewake({ tabId, pinId, windowId, renew = false }) {
     const id = tabId ?? (pinId ? V.pinTabId(await load(), pinId, windowId) : null);
-    if (Number.isInteger(id)) void wakeTab(id);
+    if (Number.isInteger(id)) void wakeTab(id, { renew });
   },
   // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): how a page that was
   // just shown came on screen (content/shell.js), and the log itself for the
@@ -179,9 +180,17 @@ export const handlers = {
       const tab = s.tabs[tabId];
       return tab && /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
     });
-    const closing = show ? await api.tabs.get(tabId).catch(() => null) : null;
-    await api.tabs.remove(tabId);
+    const closing = await api.tabs.get(tabId).catch(() => null);
+    // The tab in front: the space's most recent other tab comes to the front
+    // first (Arc stays in the space; the browser would pick a neighbour,
+    // maybe of another space).
     if (closing?.active) {
+      const s = await load();
+      const stay = M.recentTabOfSpace(s, closing.windowId, s.tabSpace[tabId], tabId);
+      if (stay) await focusTab(stay.id, { source: 'closeTab' }).catch(() => {});
+    }
+    await api.tabs.remove(tabId);
+    if (show && closing?.active) {
       const [next] = await api.tabs.query({ active: true, windowId: closing.windowId }).catch(() => []);
       if (next?.id != null) carryOpen(next.id, show);
     }
@@ -325,8 +334,10 @@ export const handlers = {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
+    // Only a tab of the pin's space (as the sidebar shows it): one elsewhere
+    // would switch the window to that space.
     const key = M.normalizeUrl(pin.url);
-    const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key);
+    const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
       await focusTab(existing.id, { source: 'openPin' });
@@ -334,8 +345,10 @@ export const handlers = {
     } else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
   },
   /** @param {{ windowId: number, spaceId: string }} message */
-  async setSpace({ windowId, spaceId }) {
-    await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
+  // `bringTab: false`: only the sidebar's space, the page in front stays.
+  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean }} message */
+  async setSpace({ windowId, spaceId, bringTab = true }, sender) {
+    await showSpace(windowId ?? sender?.tab?.windowId, spaceId, { bringTab });
   },
   /** @param {{ windowId?: number, name?: string, emoji?: string, color?: string }} message */
   async createSpace({ windowId, name, emoji, color }) {

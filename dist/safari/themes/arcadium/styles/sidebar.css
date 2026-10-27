@@ -202,10 +202,14 @@ ul { list-style: none; margin: 0; padding: 0; }
   background: linear-gradient(#efefef, rgba(239, 239, 239, 0) 2px), var(--active);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
-/* While a new tab is being chosen (⌘T, "+ New Tab") or a tab is being
-   switched to (shared/switching.js): the tab whose page is still on screen,
-   softly; the one it goes to fully. */
+/* While a new tab is being chosen (⌘T, "+ New Tab"): the tab whose page is
+   still on screen under the palette, softly; "+ New Tab" fully. */
 .tab.behind, .pin.behind, .new-tab-row.behind { background: rgba(255, 255, 255, 0.4); }
+/* A page shown again: no hover until the pointer moves (sidebar.js). */
+.margin-sidebar.hover-stale :is(.tab, .pin, .new-tab-row, .folder):not(.active):not(.behind):not(.drop-into):hover { background: none; }
+.margin-sidebar.hover-stale :is(.tab, .pin):hover .icon { visibility: hidden; }
+.margin-sidebar.hover-stale :is(.chip, .bar-button, .keep-open, .fit-site):hover { background: none; }
+.margin-sidebar.hover-stale .chip:not(.active):hover { opacity: 0.55; }
 /* A folder: its icon, then its name in semibold; its pins indented beneath. */
 .margin-sidebar .folder { padding-left: 8px; font-weight: 600; }
 .margin-sidebar .folder-toggle { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; border-radius: 10px; outline: none; }

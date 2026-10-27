@@ -211,7 +211,7 @@ test('wake: an early wake long past doesn\'t count; a fresh one starts', async (
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 8, url: 'https://h.test/' }]);
   fake.scriptDelay = () => 5;
   await wakeTab(8);
-  await sleep(450);
+  await sleep(650); // past the 600ms a wake counts for
   await wakeTab(8);
   assert.equal(fake.scripts.length, 4);
 });

@@ -414,3 +414,10 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Click a folder to close it; with one of its tabs shown, that pin still shows under it. Double-click renames.
 - [ ] An open pinned tab's × closes the tab, the pin stays. Right-click → Unpin.
 - [ ] Bottom bar: click a space's emoji to switch; right-click or double-click the space name to edit it; the archive button opens "Recently archived".
+
+## Instant switching; spaces show their last tab (2026-10-27)
+
+- [ ] Switch between two tabs in the sidebar: the highlight jumps in one go (no soft step), no tooltip pops up, and the page follows almost at once.
+- [ ] Rest the pointer on a row, switch away with the keyboard, switch back without moving the mouse: no hover or × on that row until you move.
+- [ ] Click another space's emoji: that space's last tab comes to the front; an empty space opens the start page; ⌃⌘←/→ the same.
+- [ ] Close the tab you're on (× or ⌘W): you stay in the same space, on its last used tab.
