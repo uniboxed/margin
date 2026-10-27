@@ -12,6 +12,7 @@
 //   { op: 'state' }            log which tab is shown, hidden or asleep
 //   { op: 'snapshot', file }   PNG of the shown tab
 //   { op: 'deny', pattern }    take a site permission away (as in Safari's settings)
+//   { op: 'zoom', factor }     the shown tab's page zoom (as ⌘+ / ⌘−)
 
 // The id of the tab showing /p/<name>, from Margin's own tab snapshot.
 const ID = 'const { tabs } = await browser.storage.local.get("tabs"); const id = (n) => Object.values(tabs).find((t) => t.url.endsWith("/p/" + n))?.id;';
@@ -112,6 +113,30 @@ export const SCENARIOS = {
     checkPage('N', 'a flick shows the next space at once', `document.querySelector('#sidebar .space-title .title')?.textContent === 'Work'`, 2000),
     shown('B'),
     check('B', 'B: the window is on Work', `const s = await browser.storage.local.get(['spaces', 'activeSpaceByWindow']); return Object.values(s.activeSpaceByWindow ?? {}).some((id) => s.spaces.find((x) => x.id === id)?.name === 'Work')`),
+  ],
+  // Page zoom (⌘+): Margin's UI keeps its size (its host scaled back), and
+  // the page is pushed, or its card placed, by the sidebar's width in the
+  // page's zoomed pixels; the new-tab page's sidebar too.
+  zoom: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), keepOpen, wait(1000),
+    { op: 'snapshot', file: new URL('build/zoom-100.png', import.meta.url).pathname },
+    { op: 'zoom', factor: 1.5 },
+    checkPage('A', 'pushed: Margin scaled back, the page pushed by 260/1.5', `const h = document.querySelector('margin-sidebar-host'); return Math.abs(parseFloat(h.style.zoom) - 1 / 1.5) < 0.001 && Math.abs(parseFloat(getComputedStyle(document.documentElement).marginLeft) - 260 / 1.5) < 0.5`, 3000),
+    { op: 'snapshot', file: new URL('build/zoom-150.png', import.meta.url).pathname },
+    { op: 'zoom', factor: 1 },
+    checkPage('A', 'back to 100%: no scaling, pushed by 260', `const h = document.querySelector('margin-sidebar-host'); return !h.style.zoom && parseFloat(getComputedStyle(document.documentElement).marginLeft) === 260`, 3000),
+    reload('A'), fitted('A'), { op: 'zoom', factor: 1.5 },
+    checkPage('A', 'fitted: the card placed by 260/1.5', `const f = document.querySelector('iframe[name^=margin-]'); return Math.abs(parseFloat(f.style.left) - 260 / 1.5) < 0.5`, 3000),
+    { op: 'snapshot', file: new URL('build/zoom-150-fitted.png', import.meta.url).pathname },
+    // Reloaded at 150%: the site's zoom is remembered, so Margin is drawn at
+    // its size from its first render (before the browser has answered).
+    reload('A'), drawn('A'),
+    checkPage('A', 'reloaded at 150%: scaled back as soon as drawn', `Math.abs(parseFloat(document.querySelector('margin-sidebar-host').style.zoom) - 1 / 1.5) < 0.001`, 100),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
+    checkPage('N', 'N: drawn', `!!document.querySelector('#sidebar .space-pane')`, 5000),
+    { op: 'zoom', factor: 1.5 },
+    checkPage('N', 'N: its sidebar scaled back', `Math.abs(parseFloat(document.getElementById('sidebar').style.zoom) - 1 / 1.5) < 0.001`, 3000),
+    { op: 'snapshot', file: new URL('build/zoom-150-newtab.png', import.meta.url).pathname },
   ],
   // A picture of a fitted page, for a look (build/screenshot.png).
   screenshot: [

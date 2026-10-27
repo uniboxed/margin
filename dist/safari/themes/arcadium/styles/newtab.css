@@ -24,9 +24,12 @@ body {
   color: var(--fg);
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
-#sidebar { grid-area: 1 / 1; height: 100vh; }
-#launcher, #page-card { grid-area: 1 / 2; margin: 8px 8px 8px 0; }
+/* Zoomed (⌘+), the sidebar and the frame keep their size (newtab.js: the
+   sidebar is scaled back by 1/zoom, --page-zoom); the launcher grows. */
+#sidebar { grid-area: 1 / 1; height: calc(100vh * var(--page-zoom, 1)); }
+#launcher, #page-card { grid-area: 1 / 2; margin: calc(8px / var(--page-zoom, 1)) calc(8px / var(--page-zoom, 1)) calc(8px / var(--page-zoom, 1)) 0; }
 #launcher, #page-card { border-radius: 6.25px; }
+#launcher, #page-card { border-radius: calc(6.25px / var(--page-zoom, 1)); } /* the same, at any zoom */
 #launcher {
   min-width: 0;
   overflow-y: auto;

@@ -1,7 +1,7 @@
 // Arcadium's command palette: Arc's dark command bar in its own closed
 // shadow root. Used on web pages (content.js; content/palette.js wires it to
 // the page) and on the new-tab page (newtab.js).
-import { el, createHost, adoptStyles, siteModalOpen } from '../../shared/dom.js';
+import { el, createHost, adoptStyles, asBrowserUi, unzoom, siteModalOpen } from '../../shared/dom.js';
 import { containScroll } from '../../shared/gestures.js';
 import { rankPalette } from '../../shared/search.js';
 import * as V from '../../shared/view.js';
@@ -44,6 +44,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     host = createHost(document, 'margin-palette-host');
     const shadow = host.attachShadow({ mode: 'closed' });
     adoptStyles(shadow, paletteCss);
+    asBrowserUi(shadow); // no page context menu or selection (but the field)
     input = el(document, 'input', {
       type: 'text',
       class: 'query',
@@ -157,8 +158,20 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     send(type, payload);
   }
 
+  function fitWindow() {
+    const zoom = /** @type {any} */ (globalThis).marginPageZoom ?? 1;
+    unzoom(host, zoom);
+    const tall = innerHeight * zoom;
+    host.dataset.short = tall <= 357 ? '3' : tall <= 418 ? '2' : tall <= 507 ? '1' : '';
+  }
+  // The window resized while it's open (as the media queries this replaces did).
+  addEventListener('resize', () => { if (open && host) fitWindow(); });
   function show() {
     if (!host) build();
+    // The page's zoom now (it may have changed while the palette was away),
+    // and how tall the window is in Margin's px, which its short-window
+    // layouts use (a media query would see the page's zoomed px).
+    fitWindow();
     if (!host.isConnected) document.documentElement.appendChild(host);
     // In the top layer (popover) where supported, so a site's own popovers
     // or full-screen elements can't cover it; otherwise the max z-index, as

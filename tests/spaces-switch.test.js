@@ -5,13 +5,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false };
+const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false };
 const asTab = (t) => ({ ...t });
 globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/shell-main.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
   permissions: { contains: async () => { fake.calls.contains++; return fake.access; }, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
   tabs: {
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, ...message }); },
+    getZoom: async (id) => fake.zoom[id] ?? 1,
+    setZoom: async (id, zoom) => { fake.zoom[id] = zoom; },
     get: async (id) => {
       fake.calls.get++;
       const tab = fake.tabs.get(id);
@@ -209,4 +211,38 @@ test('next/previous: a page a held key only passes through isn\'t covered (the l
   await navigate('next-tab', 'key', 1);
   await sleep(10);
   assert.deepEqual(fake.messages.map((m) => [m.type, m.from, m.tabId]), [['switching', 1, 2], ['switch-failed', 1, 2]]);
+});
+
+test('page zoom: remembered per site (only away from the default), capped, so its pages draw Margin at its size at once', async () => {
+  const { handlers } = await import('../extension/background/handlers.js');
+  const at = (url) => ({ tab: { id: 1, url }, url });
+  const zooms = () => Object.fromEntries(Object.entries(fake.local.pageZoom ?? {}).map(([k, v]) => [k, v[0]]));
+  fake.zoom[1] = 1.5;
+  assert.equal(await handlers.getZoom({}, at('https://p1.com/a')), 1.5);
+  await sleep(10);
+  assert.deepEqual(zooms(), { 'https://p1.com': 1.5 });
+  await handlers.setZoom({ factor: 1.25 }, at('https://p1.com/b'));
+  await sleep(10);
+  assert.deepEqual(zooms(), { 'https://p1.com': 1.25 }, 'the same site, from Margin\'s pinch');
+  fake.zoom[1] = 1;
+  await handlers.getZoom({}, at('https://p1.com/a'));
+  await sleep(10);
+  assert.deepEqual(zooms(), {}, 'back to 100%: forgotten');
+  // A default zoom (Chrome's setting): kept once, not per site.
+  chrome.tabs.getZoomSettings = async () => ({ defaultZoomFactor: 1.1 });
+  fake.zoom[1] = 1.1;
+  for (const n of [1, 2, 3]) await handlers.getZoom({}, at(`https://site${n}.com/`));
+  await sleep(10);
+  assert.deepEqual(zooms(), { '*': 1.1 });
+  delete chrome.tabs.getZoomSettings;
+  // At most 150 sites, the oldest changes dropped.
+  for (let n = 0; n < 160; n++) {
+    fake.zoom[1] = 1.5;
+    await handlers.getZoom({}, at(`https://z${n}.com/`));
+    await sleep(1);
+  }
+  await sleep(20);
+  const kept = Object.keys(zooms()).filter((k) => k !== '*');
+  assert.equal(kept.length, 150);
+  assert.ok(!kept.includes('https://z0.com') && kept.includes('https://z159.com'));
 });

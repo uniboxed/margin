@@ -22,6 +22,11 @@ export function startLayout(page, { loader }) {
   // The theme's frame around the page card (px): the push and the hover hit
   // area end there.
   const inset = () => page.theme()?.geometry?.inset ?? 0;
+  // Margin's sizes (the sidebar's width, the frame) stay the same on screen
+  // whatever the page's zoom (shared/dom.js setPageZoom); in the page's own
+  // (zoomed) pixels, which the push, the fitted card and the pointer use,
+  // they're this.
+  const pagePx = (px) => px / (page.zoom?.() ?? 1);
   // While resizing: move the frame edge and, with "Keep open", the pushed
   // page along with it (at most once per animation frame).
   let liveWidth = null;
@@ -34,8 +39,8 @@ export function startLayout(page, { loader }) {
   function applyLiveWidth() {
     widthFrame = null;
     page.view()?.setWidth(liveWidth);
-    if (pushed && !railWidth()) setPushed(true, liveWidth); // with the rail, the page stays at the rail
-    globalThis.Margin?.shell?.setLayout({ width: liveWidth });
+    if (pushed && !railWidth()) setPushed(true, pagePx(liveWidth)); // with the rail, the page stays at the rail
+    globalThis.Margin?.shell?.setLayout({ width: pagePx(liveWidth) });
   }
 
   let reason = null; // 'hover' | 'toggle' | null
@@ -69,8 +74,9 @@ export function startLayout(page, { loader }) {
     view.setLayout({ open, docked, width, rail: rail && { width: rail, expanded: reason != null } });
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     host.dataset.rail = rail ? (reason != null ? 'expanded' : 'rail') : 'off';
-    setPushed(docked, rail ?? width);
-    globalThis.Margin?.shell?.setLayout({ docked, width, inset: inset(), radius: page.theme().geometry?.radius });
+    setPushed(docked, pagePx(rail ?? width));
+    const radius = page.theme().geometry?.radius;
+    globalThis.Margin?.shell?.setLayout({ docked, width: pagePx(width), inset: pagePx(inset()), radius: radius && `${pagePx(parseFloat(radius))}px` });
     if (page.state()) syncPlaceholder();
   }
 
@@ -84,7 +90,7 @@ export function startLayout(page, { loader }) {
   const pushCss = (width) => `@media screen {
     html {
       margin-left: ${width}px !important;
-      margin-right: ${inset()}px !important;
+      margin-right: ${pagePx(inset())}px !important;
       width: auto !important;
       overflow-x: hidden !important;
     }
@@ -220,7 +226,7 @@ export function startLayout(page, { loader }) {
         // once; resting on it opens the full sidebar over the page.
         const rail = onRail();
         if (rail != null) {
-          if (x > rail) return cancelRail();
+          if (x > pagePx(rail)) return cancelRail();
           // Restarted whenever the pointer moves on (a few px of a resting
           // hand don't count), so only a rest expands it.
           if (railRest && Math.hypot(x - railRest.x, e.clientY - railRest.y) <= 4) return;
@@ -233,9 +239,9 @@ export function startLayout(page, { loader }) {
           }, RAIL_EXPAND_MS);
           return;
         }
-        if (x <= edgePx()) return page.active() ? show('hover') : page.offerFullscreen();
+        if (x <= pagePx(edgePx())) return page.active() ? show('hover') : page.offerFullscreen();
         else if (!page.view()) return;
-        else if (x > page.view().width() + inset()) scheduleHide();
+        else if (x > pagePx(page.view().width() + inset())) scheduleHide();
         else if (hideTimer && isOpen) {
           clearTimeout(hideTimer);
           hideTimer = null;
@@ -247,7 +253,7 @@ export function startLayout(page, { loader }) {
     target.addEventListener('mouseout', (e) => {
       if (e.relatedTarget) return;
       cancelRail(); // left the window
-      if (e.clientX + offsetX() > edgePx()) scheduleHide();
+      if (e.clientX + offsetX() > pagePx(edgePx())) scheduleHide();
     });
     target.addEventListener(
       'keydown',
@@ -270,6 +276,8 @@ export function startLayout(page, { loader }) {
 
   return {
     show, hide, toggle, peek, onWidth,
+    // The page's zoom changed: the push and the card follow.
+    rezoom: () => setOpen(isOpen),
     // After a render: back to the resting layout, unless hovered or toggled.
     settle: () => { if (!reason) setOpen(pinnedOpen()); },
     // Once the theme is mounted: open if it was hovered or toggled before.

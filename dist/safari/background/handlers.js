@@ -45,6 +45,43 @@ function takeCarried(tabId) {
 // it can't (a new window, a previous tab that isn't a web page or has no
 // Margin): the palette then opens on the new-tab page.
 const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
+
+// The zoom each site was last seen at, so its pages draw Margin at its size
+// before they've asked (content/core.js, shared/dom.js setPageZoom); Safari
+// and Chrome keep a site's zoom across its pages. Storage `pageZoom`:
+// origin → [zoom, when], only sites zoomed away from the browser's default
+// zoom (Chrome's setting; 100% where unknown), which is kept once as '*';
+// the ZOOM_CAP most recently changed. Written only when it changes (every
+// write redraws Margin's pages); one at a time.
+const ZOOM_CAP = 150;
+let zoomWrites = Promise.resolve();
+function rememberZoom(tab, url, zoom) {
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return;
+  }
+  if (!Number.isFinite(zoom) || zoom <= 0 || origin === 'null') return;
+  zoomWrites = zoomWrites.then(async () => {
+    const settings = await api.tabs.getZoomSettings?.(tab.id).catch(() => null);
+    const base = Number.isFinite(settings?.defaultZoomFactor) && settings.defaultZoomFactor > 0 ? settings.defaultZoomFactor : 1;
+    const { pageZoom = {} } = await api.storage.local.get('pageZoom');
+    const known = (pageZoom[origin] ?? pageZoom['*'])?.[0] ?? 1;
+    if (known === zoom && (pageZoom['*']?.[0] ?? 1) === base) return;
+    const next = { ...pageZoom };
+    if (base === 1) delete next['*'];
+    else next['*'] = [base, Date.now()];
+    if (zoom === base) delete next[origin];
+    else next[origin] = [zoom, Date.now()];
+    const sites = Object.keys(next).filter((key) => key !== '*');
+    if (sites.length > ZOOM_CAP) {
+      sites.sort((a, b) => next[a][1] - next[b][1]);
+      for (const old of sites.slice(0, sites.length - ZOOM_CAP)) delete next[old];
+    }
+    await api.storage.local.set({ pageZoom: next });
+  }).catch(() => {});
+}
 const SHOW_PALETTE_MS = 1000;
 // The tab the user was on: the window's active one (Chrome reports the new
 // tab before activating it), else the one most recently left. Not by
@@ -209,14 +246,20 @@ export const handlers = {
       await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
     }
   },
-  // Page zoom for Margin's pinch-to-zoom (Safari's own zoom, like ⌘+).
+  // Page zoom (the browser's own, like ⌘+): for Margin's pinch, and so
+  // Margin's UI keeps its size on a zoomed page; remembered per site.
   async getZoom(_, sender) {
-    return sender.tab ? api.tabs.getZoom(sender.tab.id) : null;
+    if (!sender.tab) return null;
+    const zoom = await api.tabs.getZoom(sender.tab.id);
+    rememberZoom(sender.tab, sender.url ?? sender.tab.url, zoom);
+    return zoom;
   },
   /** @param {{ factor: number }} message */
   async setZoom({ factor }, sender) {
     if (!sender.tab || !Number.isFinite(factor)) return;
-    await api.tabs.setZoom(sender.tab.id, Math.min(3, Math.max(0.25, factor)));
+    const zoom = Math.min(3, Math.max(0.25, factor));
+    await api.tabs.setZoom(sender.tab.id, zoom);
+    rememberZoom(sender.tab, sender.url ?? sender.tab.url, zoom);
   },
   // Search with the browser's engine: in `tabId`, else in a new tab.
   /** @param {{ query: string, windowId?: number, tabId?: number }} message */

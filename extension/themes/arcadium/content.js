@@ -1,7 +1,7 @@
 // Arcadium on web pages (bundled into themes/arcadium/content.bundle.js, which
 // the background registers while Arcadium is the active theme). It runs right
 // after Margin's own content script and hands content/core.js what it draws.
-import { adoptStyles } from '../../shared/dom.js';
+import { adoptStyles, asBrowserUi } from '../../shared/dom.js';
 import { registerTheme } from '../register.js';
 import { createSidebar } from './sidebar.js';
 import { createChrome } from './chrome.js';
@@ -24,6 +24,9 @@ registerTheme({
     // Styles are bundled (assets.js) and applied synchronously, so the panel
     // is styled from the first frame (no fetch, no unstyled flash).
     adoptStyles(shadow, sidebarCss);
+    asBrowserUi(shadow); // no page context menu, selection or zoom here
+    // A press on the frame (its strips take the pointer) is outside the sidebar.
+    chrome.frame.addEventListener('pointerdown', () => sidebar.closeMenu());
     // No slide/fade on the first render: a kept-open sidebar should simply be
     // there when the page appears, not animate in on every navigation.
     const instant = [sidebar.el, chrome.frame, chrome.cardEdge];
