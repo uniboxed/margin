@@ -162,15 +162,15 @@ test('new-tab page renders the sidebar itself and gets no injected overlay', asy
   await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .margin-sidebar.newtab .tab');
   assert.equal(await nt.locator('margin-sidebar-host').count(), 0);
-  // "+ New tab" opens the command palette (Arc-style), here and on web pages.
+  // "+ New Tab" (the first row of the tab list) opens the command palette (Arc-style), here and on web pages.
   const tabsBefore = (await tabsInBrowser(ctx.worker)).length;
-  await nt.locator('#sidebar .new-tab').click();
+  await nt.locator('#sidebar .new-tab-row').click();
   await waitFor(async () => (await paletteSnapshot(nt))?.open);
   const web = await openPage('nt-plus');
   await web.mouse.move(400, 200);
   await web.mouse.move(5, 200);
   await waitFor(async () => (await sidebarSnapshot(web)).open);
-  await clickInShadow(web, '.new-tab');
+  await clickInShadow(web, '.new-tab-row');
   await waitFor(async () => (await paletteSnapshot(web))?.open);
   assert.equal((await tabsInBrowser(ctx.worker)).length, tabsBefore + 1, 'only the page opened above, no extra tab');
   await web.close();

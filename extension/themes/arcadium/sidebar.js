@@ -62,13 +62,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
   // With Keep open: this site fitted beside the sidebar, or shown normally
   // (the palette has the same switch). Only where it applies.
   const fitSite = el(doc, 'button', { class: 'fit-site', 'data-action': 'fit-site', hidden: true });
-  const footer = el(doc, 'footer', {},
-    el(doc, 'button', { class: 'new-tab', 'data-action': 'new-tab', title: 'New tab', 'aria-label': 'New tab' },
-      el(doc, 'span', { class: 'icon-only', text: '+' }),
-      el(doc, 'span', { class: 'label', text: ' New tab' })),
-    mode === 'overlay' ? fitSite : null,
-    mode === 'overlay' ? keepOpen : null,
-  );
+  // "+ New Tab" is the first row of the tab list (render).
+  const footer = mode === 'overlay' ? el(doc, 'footer', {}, el(doc, 'span', { class: 'spacer' }), fitSite, keepOpen) : null;
   const root = el(doc, 'aside', { class: `margin-sidebar ${mode}`, 'aria-label': 'Margin' },
     chips,
     editor,
@@ -136,10 +131,11 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
   let currentTabId = null;
   let pendingEdit = null; // a just-created space opens in the editor once it arrives
   let fit = null; // { origin, fitted, fittable }: the page's fitted layout (content/core.js)
+  let newTabPending = false; // a new tab being chosen in the palette: "+ New Tab" highlighted
 
   function render() {
     if (!state || windowId == null) return;
-    const view = V.sidebar(state, windowId, currentTabId);
+    const view = V.sidebar(state, windowId, currentTabId, { newTabPending });
     root.style.setProperty('--space-color', view.spaces.find((s) => s.id === view.spaceId)?.color ?? '');
     if (!resizing) setWidth(sidebarWidth(state.settings));
 
@@ -161,7 +157,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
     pins.replaceChildren(
       ...view.pins.map((p) =>
         el(doc, 'li', {
-          class: `pin${p.active ? ' active' : ''}${p.tabId ? ' open' : ''}`,
+          class: `pin${p.active ? ' active' : ''}${p.behind ? ' behind' : ''}${p.tabId ? ' open' : ''}`,
           'data-action': 'open-pin',
           'data-pin-id': p.id,
           title: p.title,
@@ -172,10 +168,21 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
       ),
     );
 
+    // Arc: "+ New Tab" above the tabs, highlighted like a tab while the
+    // new-tab page is shown (⌘T); it opens the palette.
+    const newTabRow = el(doc, 'li', {
+      class: `new-tab-row${view.newTab.active ? ' active' : ''}`,
+      'data-action': 'new-tab',
+      title: 'New Tab',
+      role: 'button',
+      'aria-label': 'New Tab',
+      'aria-current': view.newTab.active ? 'page' : null,
+    }, el(doc, 'span', { class: 'plus', 'aria-hidden': 'true', text: '+' }), el(doc, 'span', { class: 'title', text: 'New Tab' }));
     tabs.replaceChildren(
+      newTabRow,
       ...view.tabs.map((t) =>
         el(doc, 'li', {
-          class: `tab${t.active ? ' active' : ''}`,
+          class: `tab${t.active ? ' active' : ''}${t.behind ? ' behind' : ''}`,
           'data-action': 'activate',
           'data-tab-id': String(t.id),
           title: t.title || t.url,
@@ -460,6 +467,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onWidth, onScroll 
     width: () => (resizing ? resizing.width : sidebarWidth(state?.settings)),
     update(nextState, context) {
       if (context?.fit) fit = context.fit;
+      if (context && 'newTabPending' in context) newTabPending = !!context.newTabPending;
       state = nextState;
       if (menuFor?.tabId != null && !state.tabs?.[menuFor.tabId]) closeMenu(); // its tab is gone
       if (menuFor?.pinId && !state.pins?.some((p) => p.id === menuFor.pinId)) closeMenu();

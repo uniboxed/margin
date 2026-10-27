@@ -370,3 +370,15 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Leave a tab alone for a while (or for hours), open several tabs elsewhere, go back to it: its sidebar lists them all at once, no reload needed.
 - [ ] Scroll the sidebar's tab list on one page, switch tabs: the next page's sidebar is at the same position; a new page too.
 - [ ] Hover the left edge, click a tab in the sidebar: the next page shows the sidebar still open (it closes when the pointer moves away); going back, the first page's sidebar isn't left open.
+
+## ⌘T and "+ New Tab", Arc-style (2026-10-26)
+
+- [ ] ⌘T: the palette opens over the page you're on (no new tab left in the tab bar); the sidebar highlights "+ New Tab" fully and your tab softly (lighter than "+ New Tab"). Typing works at once (keyboard not stuck in the address bar).
+- [ ] Escape, or clicking outside the palette: your tab is fully highlighted again.
+- [ ] Typing a URL and Enter: it opens in a new tab; the highlight goes straight from "+ New Tab" to the new tab (never back to your tab in between).
+- [ ] ⌘T on a non-web page (Settings, a PDF, Margin's start page): the palette opens on the new tab instead; clicking outside closes that tab and you're back.
+- [ ] Margin's start page: its "+ New Tab" row highlights, and a typed address opens in a new tab (the start page stays).
+- [ ] Safari: close a tab, ⌘T then Escape, then ⌘⇧T (Reopen Last Closed Tab): the tab you closed comes back, not an empty new tab.
+- [ ] The sidebar's "+ New Tab" row does the same, with no flicker at all.
+- [ ] Tabs are newest first, pins on top, "+ New Tab" right below them.
+- [ ] How much of a flash do you still see on ⌘T (first one after launching vs later ones)?
