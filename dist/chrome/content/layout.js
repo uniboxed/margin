@@ -5,6 +5,7 @@
 // Called by content/core.js.
 import * as V from '../shared/view.js';
 import * as shortcuts from '../shared/shortcuts.js';
+import { platform } from '../shared/platform.js';
 
 // Reveal zone: 10px, or 24px in a full-screen window, where Safari's own
 // sidebar opens if the cursor rests at the very edge (see view.revealZone).
@@ -42,13 +43,14 @@ export function startLayout(page, { loader }) {
 
   const pinnedOpen = () => !!page.state()?.settings?.sidebarPinnedOpen;
   // A page that isn't fitted (content/shell.js skipped it, or fitting is off)
-  // is pushed. With compactWhenPushed (on by default) only by the theme's
+  // is pushed. With the rail available (platform.compactRail, off for now)
+  // and compactWhenPushed (on by default) only by the theme's
   // narrow icon rail (geometry.rail), which expands over the page when the
   // pointer rests on it: pushing by the full sidebar puts more of such a
   // page under it or off the right edge. Null: the full sidebar.
   const railWidth = () => {
     const rail = page.theme()?.geometry?.rail;
-    return rail && !globalThis.Margin?.shell && page.state()?.settings?.compactWhenPushed !== false ? rail : null;
+    return rail && platform?.compactRail && !globalThis.Margin?.shell && page.state()?.settings?.compactWhenPushed !== false ? rail : null;
   };
   // The rail's width while it shows folded (docked, not hovered or toggled).
   const onRail = () => (reason == null && pinnedOpen() && page.active() ? railWidth() : null);

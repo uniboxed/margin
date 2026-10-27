@@ -43,10 +43,11 @@ const DOCKED_RAIL_ID = 'margin-docked-rail';
 // settings. Pushed pages known in advance: the never-fit sites and the ones
 // turned off by hand, or every page when fitting is off (or unavailable).
 // Pages the shell skips for other reasons start full and narrow to the rail.
-export function placeholderPlan(settings, { fits = !!platform?.shell, theme = themeFor(settings) } = {}) {
+// `railAvailable`: platform.compactRail (the rail is off for now).
+export function placeholderPlan(settings, { fits = !!platform?.shell, theme = themeFor(settings), railAvailable = !!platform?.compactRail } = {}) {
   if (!settings?.sidebarPinnedOpen) return [];
   const full = theme.placeholder?.(settings);
-  const rail = settings.compactWhenPushed !== false ? theme.railPlaceholder : null;
+  const rail = railAvailable && settings.compactWhenPushed !== false ? theme.railPlaceholder : null;
   const plan = (id, css, matches, excludeMatches = []) => ({ id, css: [css], matches, excludeMatches });
   if (!rail) return full ? [plan(DOCKED_ID, full, ['<all_urls>'])] : [];
   if (!fits || settings.fitPages === false) return [plan(DOCKED_RAIL_ID, rail, ['<all_urls>'])];
