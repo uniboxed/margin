@@ -452,3 +452,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] On Margin's new-tab page, ⌘+ zooms the launcher only.
 - [ ] Try to select or drag text/icons in the sidebar, palette or new-tab page: nothing. Typing and selecting in the space name, rename fields, the palette and Settings fields still works.
 - [ ] Right-click: on a tab, pin or folder, Margin's menu; anywhere else on the sidebar, the frame strips or the new-tab page, nothing; in a text field, the usual Cut/Copy/Paste.
+
+## Tabs keep their spaces (2026-10-27)
+
+- [ ] Put tabs in two or three spaces, rebuild Margin in Xcode: every tab is still in its space.
+- [ ] Quit Safari with tabs in several spaces and reopen it (tabs restored): every tab is back in its space, and clicking a space brings its last-used tab.
+- [ ] If Safari opens with a new window: History › Reopen All Windows from Last Session: the reopened tabs go back to their spaces.

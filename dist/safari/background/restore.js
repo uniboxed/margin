@@ -1,0 +1,71 @@
+// Tabs that may be coming back from before the tab ids changed (Margin
+// updated, the browser restarted), whose old tabs wait in lostTabs: a
+// session reopened later (History › Reopen All Windows from Last Session,
+// ⌘⇧T: a window new to Margin), and the tabs of a window that was still
+// being restored, or had no address yet, when the ids changed. Only those
+// tabs (never ones the user had before; never one placed in a space on
+// purpose, M.moveTab) are offered, for RESTORE_MS after their window was
+// first watched; tabs created in it count for ARRIVE_MS (a window is restored
+// in one burst), new-tab pages never (a tab coming back has its address).
+// Once they stop arriving or changing (QUIET_MS), they take back their old
+// tabs' spaces (state/model.js reclaimTabs). Kept in the worker's memory: a
+// worker unloaded within that minute loses what's left to take back.
+import * as M from '../state/model.js';
+import * as V from '../shared/view.js';
+import { mutate, now } from './store.js';
+
+const RESTORE_MS = 60_000;
+const ARRIVE_MS = 10_000;
+const QUIET_MS = 1500;
+/** @type {Map<number, { since: number, tabs: Set<number> }>} window id → its candidate tabs */
+const watched = new Map();
+let timer = null;
+
+function schedule() {
+  clearTimeout(timer);
+  timer = setTimeout(run, QUIET_MS);
+}
+function expire(t) {
+  for (const [windowId, w] of watched) if (t - w.since > RESTORE_MS) watched.delete(windowId);
+}
+async function run() {
+  const t = now();
+  expire(t);
+  const tabIds = [...watched.values()].flatMap((w) => [...w.tabs]);
+  if (tabIds.length) await mutate((s) => (s.lostTabs ? M.reclaimTabs(s, tabIds, t) : s));
+}
+const watch = (windowId, tabIds) => {
+  const w = watched.get(windowId) ?? { since: now(), tabs: new Set() };
+  for (const id of tabIds) w.tabs.add(id);
+  watched.set(windowId, w);
+};
+
+// After a sync that renumbered the tabs, with old tabs left waiting: every
+// window's tabs not matched yet, and its tabs to come (see tabCreated).
+/** @param {{ state: import('../../types/margin').State, renumbered: boolean }} sync */
+export function synced({ state, renumbered }) {
+  if (!renumbered || !state.lostTabs) return;
+  const byWindow = new Map();
+  for (const t of Object.values(state.tabs)) byWindow.set(t.windowId, [...(byWindow.get(t.windowId) ?? []), ...(t.restored ? [] : [t.id])]);
+  for (const [windowId, tabIds] of byWindow) watch(windowId, tabIds);
+  schedule();
+}
+
+// A tab created (called in the queue, before it's recorded): a candidate in a
+// watched window, or in a window Margin has no tab in yet.
+/** @param {import('../../types/margin').State} state */
+export function tabCreated(state, tab) {
+  if (!state.lostTabs || V.isNewTabPage(tab.pendingUrl || tab.url)) return;
+  const t = now();
+  expire(t);
+  const w = watched.get(tab.windowId);
+  const fresh = !Object.values(state.tabs).some((x) => x.windowId === tab.windowId);
+  if (w ? t - w.since > ARRIVE_MS : !fresh) return;
+  watch(tab.windowId, [tab.id]);
+  schedule();
+}
+
+// A candidate's address changed: it may match now.
+export function tabChanged(tab) {
+  if (watched.get(tab.windowId)?.tabs.has(tab.id)) schedule();
+}
