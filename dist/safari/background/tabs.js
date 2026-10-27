@@ -235,6 +235,36 @@ export async function openTab({ windowId, url, spaceId }) {
 // Tabs opened from a page by openLink, so the next one goes after them.
 export const openedFrom = new Map(); // opener tab id → { index, at }
 
+// A tab brought to the front runs this copy of Margin, or gets it now. A
+// tab asleep when Margin was updated (or reinstalled, as in development)
+// isn't given the new copy (injectIntoOpenTabs skips sleeping tabs), and
+// when it wakes it may still run the previous one, whose messages go
+// nowhere and never fail in WebKit: every click in its sidebar hung (seen in
+// Safari's log: nothing reached the background from that tab). A copy in
+// Margin's own content-script world is this one (an earlier install's lives
+// in a world of its own); without one, the scripts go in, and the new copy
+// takes the page over from the stale sidebar (content/core.js). Each tab is
+// checked once per run of the background.
+const checkedCurrent = new Set();
+const checking = new Map(); // tabId → the check in flight (one at a time)
+export function ensureCurrent(tabId) {
+  if (!checking.has(tabId)) checking.set(tabId, checkCurrent(tabId).finally(() => checking.delete(tabId)));
+  return checking.get(tabId);
+}
+async function checkCurrent(tabId) {
+  if (checkedCurrent.has(tabId) || !api.scripting?.executeScript) return;
+  const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
+  const tab = await api.tabs.get(tabId).catch(() => null);
+  if (!files?.length || !tab?.url || tab.discarded) return;
+  const here = await inPage(tabId, tab.url, () => !!globalThis.Margin?.content, [], 1000);
+  if (typeof here === 'string') return; // asleep, no access or busy: next time
+  checkedCurrent.add(tabId);
+  if (here.result === true) return;
+  console.info(`[margin] tab ${tabId} had no current copy of Margin: added`);
+  await api.scripting.executeScript({ target: { tabId }, files }).catch(() => {});
+}
+export const forgetCurrent = (tabId) => checkedCurrent.delete(tabId);
+
 // Pages already open when Margin is installed or updated: WebKit adds the
 // content scripts to them itself; where a browser doesn't, this does, once
 // it had time to (only where Margin has access: permissions.contains doesn't
@@ -249,7 +279,7 @@ export async function injectIntoOpenTabs() {
   await new Promise((resolve) => setTimeout(resolve, 2000));
   const tabs = await api.tabs.query({}).catch(() => []);
   await Promise.all(tabs.map(async (tab) => {
-    if (tab.discarded) return;
+    if (tab.discarded || checkedCurrent.has(tab.id) || checking.has(tab.id)) return; // ensureCurrent has it
     const current = await inPage(tab.id, tab.url, (id, since) => {
       const content = globalThis.Margin?.content;
       return !!content && (content.instanceId === id || content.startedAt >= since);

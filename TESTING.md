@@ -421,3 +421,8 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Rest the pointer on a row, switch away with the keyboard, switch back without moving the mouse: no hover or × on that row until you move.
 - [ ] Click another space's emoji: that space's last tab comes to the front; an empty space opens the start page; ⌃⌘←/→ the same.
 - [ ] Close the tab you're on (× or ⌘W): you stay in the same space, on its last used tab.
+
+## A tab that slept through an update (2026-10-27)
+
+- [ ] Rebuild Margin with a few tabs open, leave one unused (asleep) during the rebuild, then switch to it: its sidebar works (switching from it lands), no stuck highlight or pill.
+- [ ] If Margin ever stops responding on a page, a note offers Reload after a few seconds; Reload fixes it.
