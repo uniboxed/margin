@@ -395,3 +395,10 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Start page → Settings → Switch log (development) → Copy, after a session of switching, and send it along with any black flash you saw (and roughly when).
 - [ ] Safari Settings → General → "New tabs open with" → Margin, then ⌘T: Margin's palette over the page.
 - [ ] With it on Homepage instead: ⌘T twice (each opening the homepage) shows a note on the second about where to set it; "Don't show again" stops it.
+
+## Instant feedback on switching (2026-10-26)
+
+- [ ] Click a tab in the sidebar: it's highlighted at once (your page's tab softly) before the page changes.
+- [ ] Switching to a tab you haven't used for a while: if it takes a moment, the small loading pill shows at the top; quick switches never show it.
+- [ ] ⌥⌘↓/↑ and the palette: the same.
+- [ ] Clicking your own tab again during a slow switch keeps you where you are.

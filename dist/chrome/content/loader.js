@@ -25,10 +25,14 @@ export function startLoader(page, { pullRefreshing }) {
   const hidePill = (delay = 0) => {
     clearTimeout(loaderHideTimer);
     loaderHideTimer = setTimeout(() => {
+      loadPill = false;
+      if (switchingPill) return; // a switch to another tab still shows it (below)
       page.view()?.setLoading(false);
       host.dataset.loading = 'false';
     }, delay);
   };
+  let loadPill = false; // the page-load or a navigation's pill is up (or fading out)
+  let switchingPill = false;
   // Taking over from the placeholder's pill (content/docked/w-*.css), the
   // pill shows at once (no fade-in dip) and fades out normally, even if the
   // page has already finished loading.
@@ -39,6 +43,7 @@ export function startLoader(page, { pullRefreshing }) {
     const complete = pageComplete();
     if (loaderShownAt != null || (complete && !placeholderTookOver)) return;
     loaderShownAt = performance.now();
+    loadPill = true;
     showPill(placeholderTookOver);
     if (complete) return stopLoader();
     if (!globalThis.Margin?.shell) addEventListener('load', stopLoader, { once: true });
@@ -72,6 +77,7 @@ export function startLoader(page, { pullRefreshing }) {
   addEventListener('beforeunload', (event) => {
     if (page.firstRender() || pullRefreshing()) return; // nothing drawn yet / the pull spinner shows it
     leaving = true;
+    loadPill = true;
     showPill();
     clearTimeout(leavingTimer);
     leavingTimer = setTimeout(stayed, LEAVING_MAX_MS);
@@ -100,6 +106,7 @@ export function startLoader(page, { pullRefreshing }) {
       const timer = setTimeout(() => {
         if (done || leaving) return;
         shownAt = performance.now();
+        loadPill = true;
         showPill();
       }, TRANSITION_PILL_MS);
       const finish = () => {
@@ -113,8 +120,29 @@ export function startLoader(page, { pullRefreshing }) {
   watchTransitions(globalThis.navigation);
   onCard((win) => watchTransitions(win.navigation));
 
+  // A switch to another tab taking a moment (shared/switching.js): the pill
+  // until it's over. On a page that's hidden by then (the switch landed) it
+  // goes at once, not with a fade that would play when the page is shown again.
+  function switching(on) {
+    if (on === switchingPill) return;
+    switchingPill = on;
+    if (on) {
+      // Not through showPill: a fade-out the page's own pill has pending
+      // must still end it (it then leaves the pill to this).
+      if (!page.active()) return;
+      page.view()?.setLoading(true);
+      host.dataset.loading = 'true';
+      return;
+    }
+    if (loadPill) return; // the page's own pill was up too: it hides as before
+    clearTimeout(loaderHideTimer);
+    page.view()?.setLoading(false, { instant: document.hidden });
+    host.dataset.loading = 'false';
+  }
+
   return {
     start: startLoader, // at the first render, once its position is known
+    switching,
     // The first-paint placeholder's pill was showing until Margin ran.
     tookOverPlaceholder: () => { placeholderTookOver = true; },
   };

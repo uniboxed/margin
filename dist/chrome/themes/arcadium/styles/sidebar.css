@@ -168,7 +168,9 @@ ul { list-style: none; margin: 0; padding: 0; }
 .tab.active, .pin.active, .new-tab-row.active { background: var(--active); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 /* While a new tab is being chosen (⌘T, "+ New Tab"): the tab whose page is
    still on screen under the palette, softly; "+ New Tab" fully. */
-.tab.behind, .pin.behind { background: rgba(255, 255, 255, 0.28); }
+/* While a tab is being switched to (a click, a key: shared/switching.js), the
+   same: the page still on screen softly, the tab it goes to fully. */
+.tab.behind, .pin.behind, .new-tab-row.behind { background: rgba(255, 255, 255, 0.28); }
 /* "+ New Tab", the first row of the tab list (Arc). */
 .new-tab-row { color: var(--muted); }
 .new-tab-row.active { color: var(--fg); }

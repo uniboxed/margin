@@ -83,8 +83,9 @@ export function createChrome(doc) {
       frame.dataset.theme = scheme;
     },
     setLoading(on, { instant = false } = {}) {
-      if (on && instant) {
-        // Taking over from the placeholder's pill: no fade-in dip.
+      if (instant) {
+        // Taking over from the placeholder's pill: no fade-in dip; or gone
+        // from a hidden page without a fade.
         loader.classList.add('instant');
         requestAnimationFrame(() => requestAnimationFrame(() => loader.classList.remove('instant')));
       }

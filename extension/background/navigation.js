@@ -45,6 +45,15 @@ async function runNavigation(action, windowId) {
     const next = V.cycleTab(s, windowId, current, action === 'next-tab' ? 1 : -1);
     if (next == null) return;
     navTarget.set(windowId, { tabId: next, at: now() });
+    // The page on screen highlights it already, and shows the pill if the
+    // wake takes a while (shared/switching.js); not waited for. Margin's own
+    // new-tab page gets it too (Chrome), or only the broadcast (Safari, where
+    // it has no content script); `from` says which page it's for.
+    api.tabs.query({ active: true, windowId }).then(([shown]) => {
+      if (!shown || shown.id === next) return;
+      const message = { type: 'switching', tabId: next, from: shown.id };
+      api.tabs.sendMessage(shown.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
+    }, () => {});
     const asked = Date.now();
     // A tab only passed through (more presses waiting: a held key) isn't
     // waited for long, so the switching stops when the key does.

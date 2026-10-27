@@ -118,14 +118,7 @@ export const handlers = {
   // doesn't wait for it (background/tabs.js wakeTab). A pin wakes its open tab.
   /** @param {{ tabId?: number, pinId?: string, windowId?: number }} message */
   async prewake({ tabId, pinId, windowId }) {
-    let id = tabId;
-    if (id == null && pinId) {
-      const s = await load();
-      const pin = s.pins.find((p) => p.id === pinId);
-      const key = pin && M.normalizeUrl(pin.url);
-      const matches = key ? Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key) : [];
-      id = (matches.find((t) => t.windowId === windowId) ?? matches[0])?.id;
-    }
+    const id = tabId ?? (pinId ? V.pinTabId(await load(), pinId, windowId) : null);
     if (Number.isInteger(id)) void wakeTab(id);
   },
   // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): how a page that was
