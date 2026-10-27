@@ -5,10 +5,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, access: true, local: {} };
+const fake = { tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false };
 const asTab = (t) => ({ ...t });
 globalThis.chrome = {
-  runtime: { getURL: (path) => `safari-web-extension://test/${path}` },
+  runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/shell-main.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
   permissions: { contains: async () => { fake.calls.contains++; return fake.access; }, onAdded: { addListener() {} }, onRemoved: { addListener() {} } },
   tabs: {
     get: async (id) => {
@@ -33,7 +33,22 @@ globalThis.chrome = {
     },
   },
   windows: { get: async (id) => ({ id, focused: true }), update: async () => ({}) },
-  scripting: { executeScript: () => sleep(2).then(() => [{ result: true }]) },
+  scripting: {
+    executeScript: ({ target, func, files }) => {
+      if (files) {
+        fake.injected.push({ tabId: target.tabId, files });
+        fake.current.add(target.tabId);
+        return Promise.resolve([]);
+      }
+      // ensureCurrent's question: is Margin's current copy there?
+      if (String(func).includes('Margin?.content')) {
+        fake.probes++;
+        if (fake.probeHangs) return new Promise(() => {});
+        return sleep(2).then(() => [{ result: fake.current.has(target.tabId) }]);
+      }
+      return sleep(2).then(() => [{ result: true }]);
+    },
+  },
   storage: {
     local: {
       get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
@@ -46,7 +61,7 @@ const M = await import('../extension/state/model.js');
 const V = await import('../extension/shared/view.js');
 const { mutate, load } = await import('../extension/background/store.js');
 const { showSpace } = await import('../extension/background/navigation.js');
-const { wakeTab } = await import('../extension/background/tabs.js');
+const { wakeTab, ensureCurrent, forgetCurrent } = await import('../extension/background/tabs.js');
 
 // Window 1: Personal tabs 1 (in front), 2; Work tabs 3, 4 (4 used last); window 2: Work tab 5.
 async function setup() {
@@ -145,4 +160,35 @@ test('pins: only a tab of the pin\'s own space is the pin\'s (no jump to another
   assert.equal(M.recentTabOfSpace(s, 1, 'work')?.id, 4);
   assert.equal(M.recentTabOfSpace(s, 1, 'work', 4)?.id, 3);
   assert.equal(M.recentTabOfSpace(s, 1, 'empty'), null);
+});
+
+test('ensureCurrent: a tab without the current copy gets it once; one that has it, nothing; once per run, again after it closes', async () => {
+  await setup();
+  fake.current = new Set([1]);
+  fake.injected = [];
+  fake.probes = 0;
+  await ensureCurrent(1);
+  assert.deepEqual(fake.injected, [], 'it has the current copy');
+  await Promise.all([ensureCurrent(2), ensureCurrent(2)]); // two activations at once
+  assert.deepEqual(fake.injected, [{ tabId: 2, files: ['content/content.bundle.js'] }], 'the sidebar\'s scripts (not the page-world one), once');
+  const probes = fake.probes;
+  await ensureCurrent(2);
+  await ensureCurrent(1);
+  assert.equal(fake.probes, probes, 'checked once per run');
+  forgetCurrent(2); // closed
+  fake.current.delete(2);
+  await ensureCurrent(2);
+  assert.equal(fake.injected.length, 2, 'checked again');
+});
+
+test('ensureCurrent: a page that doesn\'t answer (busy, asleep) isn\'t injected, and is checked again next time', async () => {
+  await setup();
+  fake.current = new Set();
+  fake.injected = [];
+  fake.probeHangs = true;
+  await ensureCurrent(3);
+  assert.deepEqual(fake.injected, []);
+  fake.probeHangs = false;
+  await ensureCurrent(3);
+  assert.equal(fake.injected.length, 1, 'next time it answered: injected');
 });

@@ -62,6 +62,11 @@ export function startCore({ onTheme } = {}) {
 
   // If the background was unloaded and the first message doesn't wake it in
   // time, retry once.
+  // A switch should land at once (the background answers in well under a
+  // second, waking a tab at most 0.4s); anything else gets a cold start's time.
+  const NO_ANSWER = 'no answer';
+  /** @type {Record<string, number>} */
+  const SEND_TIMEOUT_MS = { activateTab: 1500, openPin: 1500, default: 8000 };
   /**
    * @template {MessageType} K
    * @param {K} type a handler in background.js
@@ -74,12 +79,24 @@ export function startCore({ onTheme } = {}) {
     // id away, and sendMessage throws "Extension context invalidated"): a
     // new copy has the page now, this one stays quiet.
     if (!api.runtime?.id) return;
+    let timer;
+    let reply;
     try {
-      const res = await api.runtime.sendMessage({ type, ...payload });
+      // Never waited on forever: in WebKit a copy left from before Margin
+      // was updated sends into nothing, and the message neither arrives nor
+      // fails (a switch then hung, highlighted, until it gave up).
+      reply = api.runtime.sendMessage({ type, ...payload });
+      const res = await Promise.race([
+        reply,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(NO_ANSWER)), SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default); }),
+      ]);
       if (res?.ok) return res.result;
       if (res) return void console.warn('[margin]', type, res.error);
     } catch (err) {
+      if (err?.message === NO_ANSWER) return void noAnswer(type, reply);
       if (!retry) return void console.warn('[margin]', type, err);
+    } finally {
+      clearTimeout(timer);
     }
     if (retry) {
       await new Promise((r) => setTimeout(r, 250));
@@ -87,6 +104,42 @@ export function startCore({ onTheme } = {}) {
     }
   }
   Margin.content.send = send;
+  // The background didn't answer this page in time: the request is given up
+  // (a switch stops waiting), and if there's still no answer after
+  // STALE_MS (a slow cold start answers well before), and the page is the
+  // one in front with Margin on it, the page says how to fix it (once), and
+  // takes that back if the answer comes after all. The background also puts
+  // the current copy into a tab brought to the front (background/tabs.js
+  // ensureCurrent), so this is the rare case left.
+  const STALE_MS = 8000;
+  let toldNoAnswer = false;
+  let noticeUp = false;
+  function noAnswer(type, reply) {
+    console.warn('[margin]', type, 'no answer from the background (yet)');
+    let answered = false;
+    reply?.then(() => {
+      answered = true;
+      if (noticeUp) {
+        noticeUp = false;
+        toldNoAnswer = false;
+        view?.showNotice?.(null);
+      }
+    }, () => {});
+    setTimeout(() => {
+      if (answered || toldNoAnswer || document.hidden || !view?.showNotice || !active()) return;
+      offerReload('Margin isn’t responding on this page (it was probably updated). Reload the page to fix it.');
+    }, STALE_MS - (SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default));
+  }
+  function offerReload(text) {
+    toldNoAnswer = true;
+    noticeUp = true;
+    view?.showNotice?.({
+      text,
+      // Loaded again with a GET (a reload could send a form again).
+      actions: [{ label: 'Reload', run: () => location.replace(location.href) }, { label: 'Not now', run: () => { noticeUp = false; } }],
+      duration: 20000,
+    });
+  }
 
   // ---- the theme -------------------------------------------------------------
   // What Margin looks like: the theme's view, mounted into the closed shadow
@@ -109,6 +162,13 @@ export function startCore({ onTheme } = {}) {
     onTheme?.(theme);
     if (state) render();
     layout.reopen(); // hovered or toggled before it was there
+    // Taking over from a copy left from before Margin was updated, on a page
+    // that copy fitted beside the sidebar: its layout (and the page's keys
+    // and gestures in it) stay with the old copy until the page loads again
+    // (content/takeover.js does that once it's hidden; offered now too).
+    if (replacing && document.documentElement.hasAttribute('data-margin-shell') && !document.hidden) {
+      offerReload('Margin was updated. Reload this page to fit it beside the sidebar again.');
+    }
   }
   Margin.content.themeArrived = mountTheme;
   // The theme's registered script didn't run on this page (Safari loads

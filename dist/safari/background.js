@@ -7,7 +7,7 @@
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
 import { api, load, mutate, now, resync } from './background/store.js';
-import { focusTab, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -82,6 +82,7 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
 api.tabs.onRemoved.addListener((tabId) => {
   handingOff.delete(tabId);
   newTabHint.tabGone(tabId);
+  forgetCurrent(tabId);
   mutate((s) => {
     const closed = s.tabs[tabId];
     const followed = closed && lastFollow.get(closed.windowId);
@@ -136,6 +137,14 @@ api.tabs.onActivated.addListener(({ tabId, windowId }) => {
     return followed;
   });
   if (!api.alarms) archiveStaleThrottled();
+  // After the switch has landed (not in its way).
+  setTimeout(() => ensureCurrent(tabId), 300);
+});
+// Coming back to a window (or to Safari) shows its tab without onActivated:
+// that tab is checked too (a stale copy there: tabs.js ensureCurrent).
+api.windows?.onFocusChanged?.addListener((windowId) => {
+  if (windowId == null || windowId < 0) return;
+  api.tabs.query({ active: true, windowId }).then(([tab]) => tab && setTimeout(() => ensureCurrent(tab.id), 300), () => {});
 });
 api.tabs.onMoved.addListener(() => resync({ fresh: false }));
 api.tabs.onAttached.addListener(() => resync({ fresh: false }));
