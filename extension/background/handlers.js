@@ -6,7 +6,7 @@ import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now } from './store.js';
-import { focusTab, instanceId, openTab, openedFrom, shownAt, shownUrl } from './tabs.js';
+import { focusTab, handingOff, instanceId, openTab, openedFrom, shownAt, shownUrl } from './tabs.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
@@ -31,6 +31,67 @@ function takeCarried(tabId) {
   carried.delete(tabId);
   return entry && entry.until > now() ? entry.why : null;
 }
+// ⌘T: the browser opened a new tab (extensions can't stop it) with Margin's
+// new-tab page. Arc keeps the page and opens its palette over it: so the
+// palette opens on the tab the user was on (its sidebar highlights "+ New
+// Tab" until it closes; content/palette.js), that tab is shown again, and
+// the new one closes. Started as soon as the tab is created when the browser
+// says what it shows (background.js onCreated; Chrome does), else when the
+// page asks (newTabPage): every moment the new tab is in front shows. In the
+// order that shows least of it: out of the sidebar first, the palette ready
+// before its page is back, no wake (it was shown a moment ago). False when
+// it can't (a new window, a previous tab that isn't a web page or has no
+// Margin): the palette then opens on the new-tab page.
+const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
+const SHOW_PALETTE_MS = 1000;
+// The tab the user was on: the window's active one (Chrome reports the new
+// tab before activating it), else the one most recently left. Not by
+// lastActive alone: a switch gives both its tabs the same one.
+function previousTab(s, tab) {
+  return Object.values(s.tabs)
+    .filter((t) => t.windowId === tab.windowId && t.id !== tab.id)
+    .sort((a, b) => Number(!!b.active) - Number(!!a.active) || (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
+}
+export function newTabHandOff(tab) {
+  if (!handOffs.has(tab.id)) handOffs.set(tab.id, handOff(tab).finally(() => setTimeout(() => handOffs.delete(tab.id), 30000)));
+  return handOffs.get(tab.id);
+}
+async function handOff(tab) {
+  // One line per new tab, so what Safari did (⌘T vs ⌘N, a new window or a
+  // tab — macOS can turn ⌘N into a tab) is visible in the background console.
+  const log = (decision, why) => console.info(`[margin] new tab ${tab.id} in window ${tab.windowId}: ${decision} (${why})`);
+  const prev = previousTab(await load(), tab);
+  if (!prev) return log('palette on the new-tab page', 'no other tab in this window: a new window'), false;
+  if (!/^https?:/.test(prev.url)) return log('palette on the new-tab page', `tab ${prev.id} isn't a web page`), false;
+  handingOff.add(tab.id);
+  // One message: the page opens its palette if it can, and says so. Not
+  // waited on for long: a page Safari stopped delivering to (tabs.js) would
+  // otherwise leave this tab untracked and the new-tab page without one.
+  const opened = await Promise.race([
+    api.tabs.sendMessage(prev.id, { type: 'show-palette' }).then((r) => r === true, () => false),
+    new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
+  ]);
+  if (!opened) {
+    handingOff.delete(tab.id);
+    // In case it answers after all, later.
+    api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
+    return log('palette on the new-tab page', `previous tab ${prev.id} has no Margin palette (yet)`), false;
+  }
+  // Still the untouched new tab in front? The user may have typed an address
+  // meanwhile, switched away, or another extension opened it to navigate it
+  // (background.js onUpdated then lets it go): it stays, and the palette closes.
+  const cur = handingOff.has(tab.id) ? await api.tabs.get(tab.id).catch(() => null) : null;
+  if (!cur?.active || !V.isNewTabPage(cur.pendingUrl || cur.url)) {
+    handingOff.delete(tab.id);
+    api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
+    return log('kept', 'the new tab was used or left meanwhile'), false;
+  }
+  log(`palette over tab ${prev.id}, new tab closed`, 'web page in this window: ⌘T (or ⌘N made into a tab by macOS)');
+  await Promise.all([mutate((st) => M.removeTab(st, tab.id)), focusTab(prev.id, { wake: false })]);
+  await api.tabs.remove(tab.id).catch(() => {});
+  return true;
+}
+
 // Only within the window the switch was made from (another window's page
 // stays visible, so its own sidebar stays open there).
 async function carryIfSameWindow(tabId, why, windowId) {
@@ -256,24 +317,22 @@ export const handlers = {
   async newWindow() {
     await api.windows?.create({ focused: true });
   },
+  // ⌘T: Margin's new-tab page asks (newTabHandOff below), unless the
+  // background already handed the tab off as it was created.
   async newTabPage(_, sender) {
+    if (!sender.tab) return { openPalette: true };
+    return (await newTabHandOff(sender.tab)) ? { handled: true } : { openPalette: true };
+  },
+  // Escape in the palette of a fresh new tab (⌘T; themes/arcadium/newtab.js):
+  // back to the tab the user was on, and this one closes, as if no tab had
+  // been opened. The window's only tab (⌘N) stays, with the start page.
+  async cancelNewTab(_, sender) {
     const tab = sender.tab;
-    // One line per new tab, so what Safari did (⌘T vs ⌘N, a new window or a
-    // tab — macOS can turn ⌘N into a tab) is visible in the background console.
-    const log = (decision, why) => console.info(`[margin] new tab ${tab?.id} in window ${tab?.windowId}: ${decision} (${why})`);
-    if (!tab) return log('palette on the new-tab page', 'no sender tab'), { openPalette: true };
-    const s = await load();
-    const prev = Object.values(s.tabs)
-      .filter((t) => t.windowId === tab.windowId && t.id !== tab.id && /^https?:/.test(t.url))
-      .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
-    if (!prev) return log('palette on the new-tab page', 'no web page in this window: a new window'), { openPalette: true };
-    const alive = await api.tabs.sendMessage(prev.id, { type: 'ping' }).then((r) => r === 'pong').catch(() => false);
-    if (!alive) return log('palette on the new-tab page', `previous tab ${prev.id} has no Margin palette (yet)`), { openPalette: true };
-    log(`palette over tab ${prev.id}, new tab closed`, 'web page in this window: ⌘T (or ⌘N made into a tab by macOS)');
+    if (!tab) return;
+    const prev = previousTab(await load(), tab);
+    if (!prev) return;
     await focusTab(prev.id);
     await api.tabs.remove(tab.id).catch(() => {});
-    await api.tabs.sendMessage(prev.id, { type: 'command', command: 'show-palette' }).catch(() => {});
-    return { handled: true };
   },
   /** @param {{ action: string }} message */
   async navigate({ action }, sender) {

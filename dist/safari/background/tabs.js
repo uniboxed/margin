@@ -21,6 +21,11 @@ export const shownUrl = new Map(); // tabId → its URL then
 // switch goes ahead. A tab Safari unloaded has no page: the script fails at
 // once and the switch doesn't wait (Safari loads the page as it's shown).
 const WAKE_MS = 70;
+
+// New tabs being handed back (⌘T, handlers.js newTabPage): gone again in a
+// moment, so the tab events leave them out of the state (no "New Tab" row
+// flashing in the sidebar).
+export const handingOff = new Set();
 export async function wakeBeforeShowing(tabId) {
   const tab = await api.tabs.get(tabId).catch(() => null);
   if (!tab || tab.active || !api.scripting?.executeScript || !(await mayAccess(tab.url))) return;
@@ -31,8 +36,9 @@ export async function wakeBeforeShowing(tabId) {
 
 // Activate a tab, and focus its window only if it isn't already: re-focusing
 // the current window can move keyboard focus out of the page in Safari.
-export async function focusTab(tabId) {
-  await wakeBeforeShowing(tabId);
+// `wake: false` for a tab that was shown a moment ago (nothing to wake).
+export async function focusTab(tabId, { wake = true } = {}) {
+  if (wake) await wakeBeforeShowing(tabId);
   const tab = await api.tabs.update(tabId, { active: true });
   if (!tab || !api.windows) return;
   const win = await api.windows.get(tab.windowId).catch(() => null);

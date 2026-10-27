@@ -8,7 +8,7 @@ import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
 import { el } from '../../shared/dom.js';
-import { installPaletteShortcut } from '../../content/palette.js';
+import { installPaletteShortcut, newTabCloser } from '../../content/palette.js';
 import { THEMES, themeFor } from '../index.js';
 import { avatar, createSidebar } from './sidebar.js';
 import { createPalette } from './palette.js';
@@ -19,7 +19,7 @@ const $ = (id) => /** @type {HTMLInputElement} */ (document.getElementById(id));
 
 // `self`: this tab; `send`: a message to the background; `windowed`: Margin
 // is out of the way here (Chrome, not in full screen), so just a note
-// offering full screen. Returns { openPalette() } (newtab/newtab.js calls it
+// offering full screen. Returns { openPalette({ fresh }) } (newtab/newtab.js calls it
 // for ⌘N's first tab).
 /**
  * @param {{ api: any, self: any, send: import('../../../types/margin').Send, windowed?: boolean }} context
@@ -60,7 +60,25 @@ export function mount({ api, self, send, windowed = false }) {
     if (SWITCHES.has(type)) flushScroll();
     return send(type, ...rest);
   };
-  const sidebar = createSidebar({ document, send: sidebarSend, mode: 'newtab', onNewTab: () => palette.open(), onScroll });
+  // On Margin's start page (#launcher), "+ New Tab" chooses a new tab as on a
+  // web page: highlighted until the palette closes, and what's chosen opens
+  // in a new tab. On a new-tab page it's this tab: the palette opens over it.
+  const isLauncher = location.hash === '#launcher';
+  let newTabPending = false;
+  const setNewTabPending = (/** @type {boolean} */ on) => {
+    if (newTabPending === on) return;
+    newTabPending = on;
+    if (state) sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending });
+  };
+  const closer = newTabCloser(setNewTabPending);
+  const onNewTab = () => {
+    if (isLauncher) {
+      closer.cancel();
+      setNewTabPending(true);
+    }
+    palette.open();
+  };
+  const sidebar = createSidebar({ document, send: sidebarSend, mode: 'newtab', onNewTab, onScroll });
   const applyColorScheme = () => sidebar.setColorScheme(dark.matches ? 'dark' : 'light');
   applyColorScheme();
   dark.addEventListener('change', applyColorScheme);
@@ -174,10 +192,34 @@ export function mount({ api, self, send, windowed = false }) {
 
   // ---- palette ----------------------------------------------------------------
 
+  // A fresh tab whose palette opened here (a new window, or a previous tab
+  // without Margin; newtab/newtab.js): closing it without choosing (Escape,
+  // clicking away) closes the tab again, back to the tab the user was on
+  // (the window's only tab stays, as the start page); choosing another tab,
+  // a pin or an archived tab doesn't leave it behind, empty.
+  let fresh = false;
+  let cancelOnClose = false;
+  const LEAVES = new Set(['activateTab', 'openPin', 'newWindow']);
+  /** @type {any} */
+  const paletteSend = async (/** @type {any} */ type, /** @type {any} */ payload) => {
+    if (!fresh) return send(type, payload);
+    fresh = false;
+    if (type === 'restoreArchive') return send(type, { ...payload, replaceTabId: self?.id });
+    const result = await send(type, payload);
+    if (LEAVES.has(type) && self?.id != null) api.tabs.remove(self.id).catch(() => {});
+    return result;
+  };
+  addEventListener('pagehide', () => { fresh = false; cancelOnClose = false; });
   const palette = createPalette({
-    send,
+    send: paletteSend,
+    onClose: (reason, action) => {
+      if (newTabPending) closer.onClose(reason, action);
+      if (reason !== 'run' && cancelOnClose) send('cancelNewTab');
+      if (reason !== 'run') fresh = false;
+      cancelOnClose = false;
+    },
     getState: () => state,
-    getContext: () => ({ windowId: windowId(), tabId: self?.id, inNewTab: true, canToggleSidebar: false, canFullscreen: !!platform?.marginFullscreen }),
+    getContext: () => ({ windowId: windowId(), tabId: self?.id, inNewTab: !newTabPending, canToggleSidebar: false, canFullscreen: !!platform?.marginFullscreen }),
     onLocal: (action) => {
       if (action.local === 'navigate') go(action.url);
       if (action.local === 'search') send('search', { query: action.query, tabId: self.id });
@@ -311,7 +353,7 @@ export function mount({ api, self, send, windowed = false }) {
     const next = await api.storage.local.get(null);
     if (mine !== version || !next.spaces?.length) return;
     state = next;
-    sidebar.update(state, { windowId: windowId(), tabId: self?.id, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     renderLauncher();
     palette.refresh();
@@ -336,9 +378,15 @@ export function mount({ api, self, send, windowed = false }) {
   addEventListener('pageshow', (event) => event.persisted && shown());
   shown();
 
-  // A fresh new tab the background didn't hand to the previous tab (⌘N's first
-  // tab): the palette opens over this page, once the state is in.
-  return { openPalette: () => firstState.then(() => palette.open()) };
+  // A fresh new tab (⌘T, ⌘N): the palette opens over this page once the
+  // state is in (the sidebar's "+ New Tab" row is highlighted meanwhile).
+  return {
+    openPalette: ({ fresh: isFresh = false } = {}) => firstState.then(() => {
+      fresh = isFresh;
+      cancelOnClose = isFresh;
+      palette.open();
+    }),
+  };
 }
 
 // Outside full screen, when Margin is used only there (Chrome): a card

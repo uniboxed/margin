@@ -20,7 +20,20 @@ async function send(type, payload = {}) {
   return res?.result;
 }
 
-// The theme loads right away, alongside the ⌘T check below.
+// ---- ⌘T / ⌘N ----------------------------------------------------------------
+// Safari and Chrome never let extensions intercept ⌘T/⌘N; they open this
+// page instead. On a fresh new tab (not Back, not a reload), ask the
+// background at once, before anything else here (every moment this tab is in
+// front shows): for ⌘T it opens the palette over the tab the user was on and
+// shows that again, closing this one (Arc keeps the page; the keyboard is
+// also in the address bar on a new tab, not here); otherwise (⌘N's first
+// tab) the palette opens over this page.
+const nav = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0]);
+// `newtab.html#launcher` opens the launcher on purpose and never redirects.
+const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && location.hash !== '#launcher';
+const handoff = fresh ? send('newTabPage').catch(() => null) : Promise.resolve(null);
+
+// The theme loads right away, alongside the ⌘T answer.
 const { settings } = await api.storage.local.get('settings');
 const theme = import(api.runtime.getURL(themeFor(settings).newtab));
 const self = await api.tabs.getCurrent();
@@ -40,16 +53,6 @@ if (platform?.marginFullscreen) {
   api.windows.onBoundsChanged?.addListener((win) => win.id === self?.windowId && check());
 }
 
-// ---- ⌘T / ⌘N ----------------------------------------------------------------
-// Safari never lets extensions intercept ⌘T/⌘N; it opens this page instead.
-// On a fresh new tab (not Back, not a reload), ask the background: for ⌘T it
-// returns to the previous tab and opens the palette there, closing this tab;
-// otherwise (⌘N's first tab) the palette opens over this page.
-const nav = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0]);
-// `newtab.html#launcher` opens the launcher on purpose and never redirects.
-const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && location.hash !== '#launcher';
-const handoff = fresh ? send('newTabPage').catch(() => null) : Promise.resolve(null);
-
 // Draw the page unless this tab is being closed for the hand-off: wait a
 // moment for the answer (the background may be waking up), never longer, so
 // the page can't stay blank. A tab that was to close but didn't gets drawn too.
@@ -57,4 +60,4 @@ const HANDOFF_WAIT_MS = 300;
 const early = await Promise.race([handoff, new Promise((resolve) => setTimeout(() => resolve('late'), HANDOFF_WAIT_MS))]);
 if (typeof early === 'object' && early?.handled) await new Promise((resolve) => setTimeout(resolve, 1000));
 const page = (await theme).mount({ api, self, send, windowed });
-handoff.then((res) => res?.openPalette && page.openPalette());
+handoff.then((res) => res?.openPalette && page.openPalette({ fresh: true }));

@@ -18,13 +18,44 @@ function installShortcut(palette, getShortcut, target = globalThis) {
 
 export { installShortcut as installPaletteShortcut };
 
+// The palette opened to choose a new tab is closing: the sidebar's "+ New
+// Tab" highlight goes (`setPending(false)`). Right away, unless what was
+// chosen shows another tab: then once this page is hidden (or a moment
+// later, if it never is), so the highlight doesn't come back to this page's
+// tab first. Returns the onClose handler, and `cancel` for a new opening.
+const SHOWS_ANOTHER_TAB = new Set(['activateTab', 'newTab', 'openPin', 'restoreArchive', 'search', 'openLauncher']);
+export function newTabCloser(setPending, doc = document) {
+  let cancel = () => {};
+  const onClose = (/** @type {string | undefined} */ reason, /** @type {any} */ action) => {
+    cancel();
+    if (reason !== 'run' || !action || action.local || !SHOWS_ANOTHER_TAB.has(action.type)) return setPending(false);
+    const done = () => {
+      cancel();
+      setPending(false);
+    };
+    const onHidden = () => doc.hidden && done();
+    const timer = setTimeout(done, 1500);
+    doc.addEventListener('visibilitychange', onHidden);
+    cancel = () => {
+      clearTimeout(timer);
+      doc.removeEventListener('visibilitychange', onHidden);
+      cancel = () => {};
+    };
+  };
+  return { onClose, cancel: () => cancel() };
+}
+
 // ---- content-script wiring ----------------------------------------------
 // The new-tab page wires its own. `c` is Margin.content (content/core.js);
 // `createPalette` comes from the active theme.
 
 export function wirePalette(c, createPalette) {
+  // A new tab being chosen ends with the palette, chosen or not (the
+  // sidebar highlights the page's own tab again, or the new one opens).
+  const closer = newTabCloser((on) => c.setNewTabPending?.(on));
   const palette = createPalette({
     send: c.send,
+    onClose: closer.onClose,
     getState: () => c.getState().state,
     getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen, canFit: !!platform?.shell, fitted: !!globalThis.Margin.shell }),
     onLocal: (action) => action.local === 'toggleSidebar' && c.sidebar.toggle(),
@@ -37,13 +68,21 @@ export function wirePalette(c, createPalette) {
   const guarded = { toggle: () => ready() && palette.toggle() };
   installShortcut(guarded, paletteKey);
   c.onCard?.((win) => installShortcut(guarded, paletteKey, win));
+  // `newTab`: opened to choose a new tab (⌘T, handed here from the new-tab
+  // page by the background; the sidebar's "+ New Tab"): the page stays, the
+  // sidebar highlights "+ New Tab" instead of this tab until it closes.
+  const open = ({ newTab = false } = {}) => {
+    closer.cancel();
+    c.setNewTabPending?.(newTab);
+    palette.open();
+  };
   c.onCommand = (command) => {
     if (!ready()) return;
     if (command === 'open-palette') palette.toggle();
-    if (command === 'show-palette') palette.open(); // ⌘T, via the new-tab page
   };
-  c.openPalette = () => ready() && palette.open();
+  c.openPalette = (options) => ready() && open(options);
   c.paletteOpen = () => palette.isOpen();
+  c.closePalette = () => palette.isOpen() && palette.close();
   const prev = c.onState;
   c.onState = (...args) => {
     prev?.(...args);

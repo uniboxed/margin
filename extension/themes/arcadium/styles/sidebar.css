@@ -67,8 +67,9 @@
 .margin-sidebar.overlay.rail { width: var(--rail, 52px); padding: 10px 8px; }
 .rail .title, .rail .icon, .rail .chip.add, .rail .editor, .rail .resizer, .rail .label, .rail .tab-menu:not(.top-layer) { display: none; }
 .rail .chip { min-width: 0; width: 36px; padding: 0; }
-.rail .tab, .rail .pin { justify-content: center; gap: 0; padding: 0; }
-.rail .new-tab, .rail .keep-open { flex: none; width: 36px; padding: 0; text-align: center; }
+.rail .tab, .rail .pin, .rail .new-tab-row { justify-content: center; gap: 0; padding: 0; }
+.rail .keep-open { flex: none; width: 36px; padding: 0; text-align: center; }
+.rail footer .spacer { display: none; }
 /* Rail and expanded rail stack everything the same way, so expanding only
    widens the rows: nothing moves from under the pointer. Spaces and pins
    scroll on their own in a short window; the footer always shows. */
@@ -80,7 +81,6 @@
 .rail footer, .rail-expanded footer { flex: none; flex-direction: column; }
 .rail footer { align-items: center; }
 .rail-expanded footer { align-items: stretch; }
-.rail-expanded .new-tab { flex: none; } /* as tall as in the rail (flex: 1 is for the row) */
 .rail .tabs-section, .rail-expanded .tabs-section { min-height: 64px; } /* a few tabs always show */
 /* Above the page card's edge (.card-edge, drawn over the docked sidebar),
    which stays at the rail. */
@@ -155,7 +155,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .tabs-section { flex: 1; overflow-y: auto; min-height: 0; overscroll-behavior: none; } /* never scrolls the page; no bounce */
 .divider { height: 1px; background: var(--border); margin: 2px 6px; }
 
-.tab, .pin {
+.tab, .pin, .new-tab-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -164,8 +164,15 @@ ul { list-style: none; margin: 0; padding: 0; }
   border-radius: 8px;
   cursor: default;
 }
-.tab:hover, .pin:hover { background: var(--hover); }
-.tab.active, .pin.active { background: var(--active); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.tab:hover, .pin:hover, .new-tab-row:hover { background: var(--hover); }
+.tab.active, .pin.active, .new-tab-row.active { background: var(--active); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+/* While a new tab is being chosen (⌘T, "+ New Tab"): the tab whose page is
+   still on screen under the palette, softly; "+ New Tab" fully. */
+.tab.behind, .pin.behind { background: rgba(255, 255, 255, 0.28); }
+/* "+ New Tab", the first row of the tab list (Arc). */
+.new-tab-row { color: var(--muted); }
+.new-tab-row.active { color: var(--fg); }
+.new-tab-row .plus { flex: none; width: 16px; text-align: center; font-size: 16px; line-height: 16px; }
 .pin:not(.open) .title { color: var(--muted); }
 .title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .avatar {
@@ -235,12 +242,11 @@ ul { list-style: none; margin: 0; padding: 0; }
 .menu-separator { height: 1px; margin: 5px 10px; background: rgba(0, 0, 0, 0.12); }
 
 footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
-.new-tab, .keep-open { height: 30px; padding: 0 8px; border-radius: 8px; color: var(--muted); text-align: left; }
-.new-tab { flex: 1; }
+.keep-open { height: 30px; padding: 0 8px; border-radius: 8px; color: var(--muted); text-align: left; }
 /* Narrow sidebars (down to 160px): one line, never wrap; below 230px the
    Keep open / Auto-hide button shows only its icon (full label on hover). */
 .margin-sidebar { container-type: inline-size; }
-.new-tab, .keep-open { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.keep-open { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .keep-open { flex: none; }
 .fit-site { flex: none; width: 30px; height: 30px; border-radius: 8px; color: var(--muted); font-size: 15px; }
 .fit-site[hidden] { display: none; }
@@ -248,7 +254,7 @@ footer { display: flex; gap: 4px; padding-top: 4px; border-top: 1px solid var(--
 @container (max-width: 229px) {
   .keep-open .label { display: none; }
 }
-.new-tab:hover, .keep-open:hover { background: var(--hover); color: var(--fg); }
+.keep-open:hover { background: var(--hover); color: var(--fg); }
 
 .chip.add { font-size: 16px; color: var(--muted); }
 

@@ -23,12 +23,19 @@ function activeSpaceId(state, windowId) {
 // sidebar is drawn in: the page being looked at is by definition the active
 // tab of its window, so it wins over a possibly stale `active` flag.
 /** @param {State} state */
-function sidebar(state, windowId, currentTabId = null) {
+// Tabs newest first (Arc), below the pins and the "+ New Tab" row: the
+// browser's own order, reversed (a new tab goes at its end). "+ New Tab" is
+// highlighted while a new tab is being chosen (`newTabPending`: the palette
+// opened by ⌘T or the row), the tab being shown then only softly (`behind`:
+// its page is still on screen, under the palette); or when the tab being
+// shown is a new-tab page (then it's that row instead of a row of its own).
+function sidebar(state, windowId, currentTabId = null, { newTabPending = false } = {}) {
   const spaceId = activeSpaceId(state, windowId);
   const known = currentTabId != null && state.tabs?.[currentTabId]?.windowId === windowId;
   const windowTabs = Object.values(state.tabs ?? {})
     .filter((t) => t.windowId === windowId)
     .map((t) => (known && t.active !== (t.id === currentTabId) ? { ...t, active: t.id === currentTabId } : t))
+    .map((t) => (newTabPending && t.active ? { ...t, active: false, behind: true } : t))
     .sort((a, b) => a.index - b.index);
   const spaceTabs = windowTabs.filter((t) => state.tabSpace[t.id] === spaceId);
   const pins = state.pins
@@ -36,16 +43,26 @@ function sidebar(state, windowId, currentTabId = null) {
     .map((p) => {
       const key = normalizeUrl(p.url);
       const tab = spaceTabs.find((t) => normalizeUrl(t.url) === key);
-      return { ...p, tabId: tab?.id ?? null, active: !!tab?.active, favIconUrl: tab?.favIconUrl ?? '' };
+      return { ...p, tabId: tab?.id ?? null, active: !!tab?.active, behind: !!tab?.behind, favIconUrl: tab?.favIconUrl ?? '' };
     });
   const pinnedUrls = new Set(pins.map((p) => normalizeUrl(p.url)));
+  const shownNewTab = windowTabs.find((t) => t.active && isNewTabPage(t.url));
   return {
     spaceId,
     spaces: state.spaces,
     pins,
-    tabs: spaceTabs.filter((t) => !pinnedUrls.has(normalizeUrl(t.url))),
+    newTab: { active: newTabPending || !!shownNewTab },
+    // Reversed here, not sorted that way above: pins keep binding to the
+    // oldest tab with their URL, as the background's openPin does.
+    tabs: spaceTabs.filter((t) => !pinnedUrls.has(normalizeUrl(t.url)) && t !== shownNewTab).reverse(),
   };
 }
+
+// The browser's new-tab page, which Margin replaces (⌘T): Chrome reports it
+// as chrome://newtab, Safari as Margin's own page. Not Margin's start page
+// opened on purpose (#launcher).
+const NEW_TAB_PAGE = /^(chrome:\/\/newtab\/?|[a-z-]+-extension:\/\/[^/]+\/newtab\/newtab\.html)(\?[^#]*)?$/i;
+const isNewTabPage = (url) => NEW_TAB_PAGE.test(String(url ?? ''));
 
 // Best guess at the window a page is in, before the background has told the
 // content script its tab id (that needs the background awake, which can
@@ -142,4 +159,4 @@ function iconFor(state, item) {
   return (origin && state?.favicons?.[origin]?.data) || '';
 }
 
-export { normalizeUrl, activeSpaceId, sidebar, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };
+export { normalizeUrl, activeSpaceId, sidebar, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };

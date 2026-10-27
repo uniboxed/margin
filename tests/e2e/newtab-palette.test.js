@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, evalInShadow } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -22,7 +22,7 @@ async function openPage(name) {
   return page;
 }
 
-test('⌘T: the new tab closes and the palette opens over the page you were on', async () => {
+test('⌘T: the new tab closes and the palette opens over the page you were on, "+ New Tab" highlighted', async () => {
   const page = await openPage('cmd-t-origin');
   await page.bringToFront();
   const before = (await tabsInBrowser(ctx.worker)).length;
@@ -35,6 +35,10 @@ test('⌘T: the new tab closes and the palette opens over the page you were on',
   await waitFor(async () => !(await tabsInBrowser(ctx.worker)).some((t) => t.id === newTabId));
   assert.equal((await tabsInBrowser(ctx.worker)).length, before, 'no extra tab left behind');
   assert.equal((await tabsInBrowser(ctx.worker)).find((t) => t.active)?.title, 'cmd-t-origin');
+  const highlighted = () => evalInShadow(page, 'margin-sidebar-host', function () {
+    return { newTab: !!this.querySelector('.new-tab-row.active'), tab: !!this.querySelector('.tab.active'), behind: !!this.querySelector('.tab.behind') };
+  });
+  assert.deepEqual(await highlighted(), { newTab: true, tab: false, behind: true }, '"+ New Tab" highlighted, the page\'s tab only softly');
 
   // Typing a URL opens it in a new tab.
   await page.keyboard.type(`${new URL(server.base).host}/from-cmd-t`);
@@ -43,6 +47,22 @@ test('⌘T: the new tab closes and the palette opens over the page you were on',
   const tab = await opened;
   await tab.waitForURL(`${server.base}/from-cmd-t`);
   await tab.close();
+  await page.close();
+});
+
+test('⌘T then Escape: back to the page, its tab highlighted again', async () => {
+  const page = await openPage('cmd-t-escape');
+  await page.bringToFront();
+  const before = (await tabsInBrowser(ctx.worker)).length;
+  await ctx.worker.evaluate(() => chrome.tabs.create({}));
+  await waitFor(async () => (await paletteSnapshot(page))?.open);
+  await page.keyboard.press('Escape');
+  await waitFor(async () => !(await paletteSnapshot(page))?.open);
+  assert.equal((await tabsInBrowser(ctx.worker)).length, before, 'no tab opened');
+  const highlighted = await evalInShadow(page, 'margin-sidebar-host', function () {
+    return { newTab: !!this.querySelector('.new-tab-row.active'), tab: !!this.querySelector('.tab.active'), behind: !!this.querySelector('.tab.behind') };
+  });
+  assert.deepEqual(highlighted, { newTab: false, tab: true, behind: false });
   await page.close();
 });
 

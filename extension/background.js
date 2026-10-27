@@ -5,10 +5,11 @@
 // The parts live in background/; every listener is registered here, at the
 // top level, as a service worker must.
 import * as M from './state/model.js';
+import * as V from './shared/view.js';
 import { api, load, mutate, now, resync } from './background/store.js';
-import { injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
+import { handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
-import { handlers } from './background/handlers.js';
+import { handlers, newTabHandOff } from './background/handlers.js';
 import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
@@ -40,8 +41,25 @@ resync().then(async () => {
 
 const TRACKED_CHANGES = ['title', 'url', 'favIconUrl'];
 
-api.tabs.onCreated.addListener((tab) => mutate((s) => M.upsertTab(s, tab, now())));
+api.tabs.onCreated.addListener(async (tab) => {
+  // ⌘T (a new tab showing the new-tab page, in front): handed back to the
+  // page the user was on at once (handlers.js newTabHandOff); a new tab
+  // that stays is tracked as usual.
+  if (tab.active && V.isNewTabPage(tab.pendingUrl || tab.url)) {
+    if (await newTabHandOff(tab)) return;
+    // As it is now: its events were set aside meanwhile.
+    tab = await api.tabs.get(tab.id).catch(() => null);
+    if (!tab) return;
+  }
+  mutate((s) => M.upsertTab(s, tab, now()));
+});
 api.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (handingOff.has(tabId)) {
+    // A ⌘T tab about to close (handlers.js newTabHandOff), unless it goes
+    // somewhere else first: then it stays, and is tracked from here.
+    if (!change.url || V.isNewTabPage(change.url)) return;
+    handingOff.delete(tabId);
+  }
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
   }
@@ -55,11 +73,13 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   }
 });
 api.tabs.onRemoved.addListener((tabId) => {
+  handingOff.delete(tabId);
   mutate((s) => M.removeTab(s, tabId));
   shownAt.delete(tabId);
   shownUrl.delete(tabId);
 });
 api.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  if (handingOff.has(tabId)) return;
   shownAt.set(tabId, Date.now());
   shownUrl.delete(tabId);
   api.tabs.get(tabId).then((tab) => shownUrl.set(tabId, tab.url), () => {});

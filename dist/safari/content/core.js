@@ -95,7 +95,7 @@ export function startCore({ onTheme } = {}) {
   let view = null;
   let firstRender = true; // until the first render, nothing has been drawn
   // "+ New tab" opens the command palette here (content/palette.js sets openPalette).
-  const onNewTab = () => (Margin.content.openPalette ? Margin.content.openPalette() : send('newTab', { windowId }));
+  const onNewTab = () => (Margin.content.openPalette ? Margin.content.openPalette({ newTab: true }) : send('newTab', { windowId }));
   function mountTheme() {
     if (view || !Margin.theme) return;
     try {
@@ -214,6 +214,15 @@ export function startCore({ onTheme } = {}) {
     return { origin, fitted: !!Margin.shell, fittable: !!platform?.shell && !!origin && !frameAware(location.href) };
   }
 
+  // A new tab being chosen in the palette (content/palette.js): the sidebar
+  // highlights "+ New Tab", not this page's tab, until the palette closes.
+  let newTabPending = false;
+  Margin.content.setNewTabPending = (value) => {
+    if (newTabPending === !!value) return;
+    newTabPending = !!value;
+    render();
+  };
+
   // ---- one sidebar for the window ---------------------------------------------
   // Every page draws its own sidebar; these keep them showing the same:
   // the state is read again whenever the page is shown (Safari suspends tabs
@@ -290,7 +299,7 @@ export function startCore({ onTheme } = {}) {
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
-    view.update(state, { windowId, tabId, fit: fitState(), ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    view.update(state, { windowId, tabId, fit: fitState(), newTabPending, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     Margin.content.onState?.(state, { tabId, windowId });
     wasActive = active();
@@ -378,9 +387,16 @@ export function startCore({ onTheme } = {}) {
   Margin.content.onCard((win) => win.addEventListener('load', () => setTimeout(reportIcon), { once: true }));
 
   api.runtime.onMessage.addListener((message, _, sendResponse) => {
-    // Background (⌘T hand-off): can Margin open its palette here? Not until
-    // the theme is mounted (then the new-tab page opens its own instead).
-    if (message?.type === 'ping') return sendResponse(Margin.content.openPalette && active() ? 'pong' : 'starting');
+    // Background (⌘T hand-off): open the palette here to choose a new tab, and
+    // say whether it could (not before the theme is mounted, or while Margin
+    // is out of the way; then the new-tab page opens its own instead).
+    if (message?.type === 'show-palette') {
+      const can = !!Margin.content.openPalette && active();
+      if (can) Margin.content.openPalette({ newTab: true });
+      return sendResponse(can);
+    }
+    // The hand-off didn't happen after all (its new tab stays).
+    if (message?.type === 'hide-palette') return Margin.content.closePalette?.();
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();

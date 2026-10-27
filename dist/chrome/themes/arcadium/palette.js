@@ -29,7 +29,9 @@ const arrowIcon = () => icon(['M5 12h13', 'M13 6l6 6-6 6'], 'arrow-icon');
 // Rows that go somewhere get Arc's arrow button; plain actions don't.
 const GOES = new Set(['tab', 'pin', 'archive', 'go']);
 
-function createPalette({ send, getState, getContext, onLocal, colorScheme }) {
+// `onClose(reason, action)`: after it closes ('escape': Escape pressed;
+// 'run': an item was chosen, `action` its action; undefined otherwise).
+function createPalette({ send, getState, getContext, onLocal, colorScheme, onClose = undefined }) {
   let host = null;
   let panel, input, list;
   let items = [];
@@ -76,7 +78,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme }) {
       if (e.key === 'ArrowDown' || (e.key === 'n' && e.ctrlKey)) move(1);
       else if (e.key === 'ArrowUp' || (e.key === 'p' && e.ctrlKey)) move(-1);
       else if (e.key === 'Enter') run(items[selected]);
-      else if (e.key === 'Escape') close();
+      else if (e.key === 'Escape') close('escape');
       else return;
       e.preventDefault();
     });
@@ -128,7 +130,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme }) {
 
   function run(item) {
     if (!item) return;
-    close();
+    close('run', item.action);
     if (item.action.local) return onLocal?.(item.action);
     const { type, ...payload } = item.action;
     send(type, payload);
@@ -164,7 +166,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme }) {
     input.focus();
   }
 
-  function close() {
+  function close(reason = undefined, action = undefined) {
     if (!open) return;
     open = false;
     host.dataset.open = 'false';
@@ -176,6 +178,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme }) {
     const shell = globalThis.Margin?.shell;
     if (shell?.card && (!restoreFocus?.isConnected || restoreFocus === document.body)) shell.focusCard();
     else if (restoreFocus?.isConnected) restoreFocus.focus?.({ preventScroll: true });
+    onClose?.(reason, action);
   }
 
   // The content keydown listener and the `commands` fallback can both fire

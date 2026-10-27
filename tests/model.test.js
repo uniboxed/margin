@@ -128,7 +128,7 @@ test('spaces: create and update (rename / emoji / recolor), blanks ignored', () 
   assert.equal(M.createSpace(s, { id: 'x', name: '  ' }).spaces[2].name, 'New space');
 });
 
-test('view.sidebar: shows the window\'s active space, pins separately, ordered by index', () => {
+test('view.sidebar: shows the window\'s active space, pins separately, newest tabs first', () => {
   let s = twoSpaces();
   s = M.addPin(s, { id: 'p1', spaceId: 'personal', url: 'https://mail.com', title: 'Mail' });
   s = M.upsertTab(s, tab(3, 1, 'https://c.com', { index: 2 }), 0);
@@ -142,6 +142,33 @@ test('view.sidebar: shows the window\'s active space, pins separately, ordered b
   assert.equal(v.pins[0].tabId, 1);
   assert.equal(v.pins[0].active, true);
   assert.deepEqual(view.sidebar(M.setActiveSpace(s, 1, 'work'), 1).tabs.map((t) => t.id), [2]);
+  s = M.upsertTab(s, tab(7, 1, 'https://mail.com/', { index: 9 }), 0);
+  assert.equal(view.sidebar(s, 1).pins[0].tabId, 1, 'a pin binds to the oldest tab with its URL (as openPin), not the newest');
+  s = M.removeTab(s, 7);
+  s = M.upsertTab(s, tab(5, 1, 'https://e.com', { index: 5 }), 0);
+  s = M.upsertTab(s, tab(6, 1, 'https://f.com', { index: 4 }), 0);
+  assert.deepEqual(view.sidebar(s, 1).tabs.map((t) => t.id), [5, 6, 3], 'the browser\'s order reversed: the newest at the top');
+});
+
+test('view.sidebar: the new-tab page being shown is the "+ New Tab" row, not a tab', () => {
+  let s = twoSpaces();
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { index: 0 }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'chrome://newtab/', { index: 1, active: true }), 0);
+  s = M.upsertTab(s, tab(3, 1, 'safari-web-extension://abc/newtab/newtab.html', { index: 2 }), 0);
+  let v = view.sidebar(s, 1, 2);
+  assert.equal(v.newTab.active, true);
+  assert.deepEqual(v.tabs.map((t) => t.id), [3, 1], 'another new-tab page stays a row');
+  v = view.sidebar(s, 1, 1);
+  assert.equal(v.newTab.active, false, 'a web page shown: the row isn\'t highlighted');
+  assert.deepEqual(v.tabs.map((t) => t.id), [3, 2, 1]);
+  v = view.sidebar(s, 1, 1, { newTabPending: true });
+  assert.equal(v.newTab.active, true, 'choosing a new tab (⌘T, the row): "+ New Tab" highlighted');
+  assert.deepEqual(v.tabs.filter((t) => t.active), [], '…no tab fully');
+  assert.deepEqual(v.tabs.filter((t) => t.behind).map((t) => t.id), [1], '…the tab still on screen only softly');
+  assert.deepEqual(view.sidebar(s, 1, 1).tabs.filter((t) => t.behind), [], 'chosen or not, back to normal after');
+  assert.equal(view.isNewTabPage('chrome-extension://abc/newtab/newtab.html'), true);
+  assert.equal(view.isNewTabPage('safari-web-extension://abc/newtab/newtab.html#launcher'), false, 'Margin\'s start page opened on purpose');
+  assert.equal(view.isNewTabPage('https://example.com/newtab/newtab.html'), false);
 });
 
 test('delete space: tabs, pins, archive and windows move to the first remaining space', () => {
@@ -289,13 +316,13 @@ test('view.cycleTab: sidebar order (open pins, then tabs), wrapping', () => {
   s = M.upsertTab(s, tab(3, 1, 'https://c.com', { index: 3 }), 0);
   s = M.upsertTab(s, tab(4, 1, 'https://work.com', { index: 0 }), 0);
   s = M.moveTab(s, 4, 'work');
-  // Order: pin tab 2, then tabs 1, 3 (tab 4 is in another space).
-  assert.equal(view.cycleTab(s, 1, 2, 1), 1);
-  assert.equal(view.cycleTab(s, 1, 1, 1), 3);
-  assert.equal(view.cycleTab(s, 1, 3, 1), 2, 'wraps to the top');
-  assert.equal(view.cycleTab(s, 1, 2, -1), 3, 'wraps to the bottom');
+  // Order: pin tab 2, then tabs 3, 1 (newest first; tab 4 is in another space).
+  assert.equal(view.cycleTab(s, 1, 2, 1), 3);
+  assert.equal(view.cycleTab(s, 1, 3, 1), 1);
+  assert.equal(view.cycleTab(s, 1, 1, 1), 2, 'wraps to the top');
+  assert.equal(view.cycleTab(s, 1, 2, -1), 1, 'wraps to the bottom');
   assert.equal(view.cycleTab(s, 1, 4, 1), 2, 'from outside the list: first');
-  assert.equal(view.cycleTab(s, 1, 4, -1), 3, 'from outside the list: last');
+  assert.equal(view.cycleTab(s, 1, 4, -1), 1, 'from outside the list: last');
   const lone = M.removeTab(M.removeTab(s, 1), 3);
   assert.equal(view.cycleTab(lone, 1, 2, 1), null, 'only one tab: stay');
 });

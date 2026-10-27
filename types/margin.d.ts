@@ -20,6 +20,8 @@ export interface Pin { id: string; spaceId: string; url: string; title: string }
 export interface TabRecord {
   id: number; windowId: number; index: number; title: string; url: string;
   favIconUrl: string; active: boolean; lastActive: number;
+  /** view.sidebar only: its page is on screen under the palette while a new tab is chosen */
+  behind?: boolean;
 }
 export interface ArchiveEntry {
   id: string; url: string; title: string; spaceId: string; favIconUrl: string; closedAt: number;
