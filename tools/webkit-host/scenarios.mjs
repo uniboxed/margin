@@ -138,6 +138,22 @@ export const SCENARIOS = {
     checkPage('N', 'N: its sidebar scaled back', `Math.abs(parseFloat(document.getElementById('sidebar').style.zoom) - 1 / 1.5) < 0.001`, 3000),
     { op: 'snapshot', file: new URL('build/zoom-150-newtab.png', import.meta.url).pathname },
   ],
+  // Tab ids: the same while a tab sleeps and wakes or reloads; all new when
+  // Margin is updated (a new copy). Tabs keep their spaces either way
+  // (state/model.js syncTabs matches them by address).
+  tabids: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'eval', in: 'A', js: `${ID} const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('B'), spaceId: work }); return 'B moved to Work'` }, wait(500),
+    { op: 'eval', in: 'A', js: `${ID} globalThis.__ids = [id('A'), id('B')]; return 'ids ' + __ids` },
+    { op: 'sleep', name: 'B' }, wait(500), switchTo('A', 'B'), wait(1500), reload('B'), wait(1500),
+    check('A', 'B: the same id after sleeping, waking and a reload (A too)', `${ID} return id('A') === __ids[0] && id('B') === __ids[1]`, 3000),
+    check('B', 'B: still in Work', `const s = await browser.storage.local.get(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`),
+    { op: 'uninstall' }, wait(800), { op: 'install', sameId: true }, wait(3000),
+    // Read from Margin's own page (the pages' old content-script world belongs to the copy before).
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: false }, wait(1500),
+    checkPage('N', 'after the update: B still in Work, A in Personal', `const s = await browser.storage.local.get(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`, 5000),
+    checkPage('N', 'and their ids are new', `const s = await browser.storage.local.get('tabs'); return Object.values(s.tabs).filter((t) => /\\/p\\/[AB]$/.test(t.url)).every((t) => t.id > 50)`),
+  ],
   // A picture of a fitted page, for a look (build/screenshot.png).
   screenshot: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'),

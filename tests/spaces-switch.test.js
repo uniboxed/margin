@@ -246,3 +246,41 @@ test('page zoom: remembered per site (only away from the default), capped, so it
   assert.equal(kept.length, 150);
   assert.ok(!kept.includes('https://z0.com') && kept.includes('https://z159.com'));
 });
+
+test('a window reopened after the ids changed takes its old tabs\' spaces once its tabs stop arriving (background/restore.js)', async () => {
+  const restore = await import('../extension/background/restore.js');
+  await setup();
+  // Old tabs waiting: a Work window with a.com and b.com.
+  await mutate((s) => ({ ...s, lostTabs: { windows: [{ at: Date.now(), size: 2, tabs: [
+    { url: 'https://a.com/', spaceId: 'work', lastActive: 1, windowId: 77, index: 0 },
+    { url: 'https://b.com/', spaceId: 'work', lastActive: 2, windowId: 77, index: 1 },
+  ] }] } }));
+  for (const [id, url, index] of [[300, 'https://a.com/', 0], [301, 'https://b.com/', 1]]) {
+    const t = { id, windowId: 30, url, index, active: index === 1, title: '' };
+    await mutate((s) => {
+      restore.tabCreated(s, t);
+      return M.upsertTab(s, t, Date.now());
+    });
+  }
+  assert.equal((await load()).tabSpace[300], 'personal', 'meanwhile: the window\'s space');
+  await sleep(1700);
+  const s = await load();
+  assert.deepEqual([s.tabSpace[300], s.tabSpace[301]], ['work', 'work']);
+  assert.equal(V.activeSpaceId(s, 30), 'work');
+  assert.equal(s.lostTabs, null, 'taken back');
+});
+
+test('restore: a new-tab page opened in a window never counts as a tab coming back', async () => {
+  const restore = await import('../extension/background/restore.js');
+  await setup();
+  await mutate((s) => ({ ...s, lostTabs: { windows: [{ key: 'k', at: Date.now(), size: 1, tabs: [{ url: 'https://a.com/', spaceId: 'work', lastActive: 1, windowId: 77, index: 0 }] }] } }));
+  const t = { id: 400, windowId: 40, url: 'safari-web-extension://test/newtab/newtab.html', index: 0, active: true, title: '' };
+  await mutate((s) => {
+    restore.tabCreated(s, t);
+    return M.upsertTab(s, t, Date.now());
+  });
+  await mutate((s) => M.upsertTab(s, { ...t, url: 'https://a.com/' }, Date.now())); // then typed a.com
+  restore.tabChanged({ ...t, url: 'https://a.com/' });
+  await sleep(1700);
+  assert.equal((await load()).tabSpace[400], 'personal');
+});

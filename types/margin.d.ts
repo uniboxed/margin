@@ -29,7 +29,15 @@ export interface TabRecord {
   favIconUrl: string; active: boolean; lastActive: number;
   /** view.sidebar only: its page is on screen under the palette while a new tab is chosen */
   behind?: boolean;
+  /** its space and record came from before its id changed (state/model.js syncTabs, reclaimWindows) */
+  restored?: boolean;
+  /** the old window it came back from (restored), as of that renumbering */
+  restoredFrom?: string;
+  /** put in its space on purpose (the user, or Margin opening it there) */
+  placed?: boolean;
 }
+/** A tab from before ids changed that no open tab matched yet (state/model.js lostTabs). */
+export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }
 export interface ArchiveEntry {
   id: string; url: string; title: string; spaceId: string; favIconUrl: string; closedAt: number;
 }
@@ -65,4 +73,5 @@ export interface State {
   settings: Settings;
   tabs: Record<number, TabRecord>;
   favicons: Record<string, Favicon>;
+  lostTabs: { windows: { key: string; at: number; size: number; tabs: LostTab[] }[] } | null;
 }

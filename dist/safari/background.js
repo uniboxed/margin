@@ -7,6 +7,7 @@
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
 import { api, load, mutate, now, resync } from './background/store.js';
+import * as restore from './background/restore.js';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff } from './background/handlers.js';
@@ -26,10 +27,10 @@ api.runtime.onInstalled.addListener((details) => {
 });
 
 if (!api.storage.session) {
-  api.runtime.onStartup.addListener(() => resync({ fresh: true }));
+  api.runtime.onStartup.addListener(() => resync({ fresh: true, onSync: restore.synced }));
 }
 
-resync().then(async () => {
+resync({ onSync: restore.synced }).then(async () => {
   // Safari's search engine from tabs already open, if none is known yet (a
   // stale tab mustn't override one learned since).
   const s = await load();
@@ -56,7 +57,10 @@ api.tabs.onCreated.addListener(async (tab) => {
     if (!tab) return;
   }
   newTabHint.tabCreated(tab);
-  mutate((s) => M.upsertTab(s, tab, now()));
+  mutate((s) => {
+    restore.tabCreated(s, tab); // back from before the ids changed?
+    return M.upsertTab(s, tab, now());
+  });
 });
 api.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (handingOff.has(tabId)) {
@@ -68,6 +72,7 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
   }
+  if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
   // The URL when it changes, and again once loaded (in case Safari reported
   // the change without it, or it redirected).
   const url = change.url ?? (change.status === 'complete' ? tab.url : null);

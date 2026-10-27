@@ -65,7 +65,7 @@ const DEFAULT_SPACE = Object.freeze({
   color: '#6c5ce7',
 });
 
-const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'settings', 'tabs', 'favicons'];
+const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'settings', 'tabs', 'favicons', 'lostTabs'];
 const FAVICON_CAP = 150;
 
 /** @returns {State} */
@@ -88,6 +88,8 @@ function defaultState() {
     tabs: {},
     // Site icons Margin fetched itself (Safari gives none): { [origin]: { data, href, at } }.
     favicons: {},
+    // Tabs from before ids changed that no open tab matched yet (syncTabs).
+    lostTabs: null,
   };
 }
 
@@ -113,6 +115,7 @@ function normalizeState(raw = {}) {
     },
     tabs: { ...raw.tabs },
     favicons: { ...raw.favicons },
+    lostTabs: raw.lostTabs && Array.isArray(raw.lostTabs.windows) ? raw.lostTabs : null,
   };
 }
 
@@ -180,10 +183,12 @@ function tabRecord(tab, prev, now) {
     windowId: tab.windowId,
     index: tab.index ?? prev?.index ?? 0,
     title: tab.title ?? prev?.title ?? '',
-    url: tab.url ?? tab.pendingUrl ?? prev?.url ?? '',
+    url: tab.url || tab.pendingUrl || prev?.url || '',
     favIconUrl: tab.favIconUrl ?? prev?.favIconUrl ?? '',
     active: !!tab.active,
     lastActive: prev?.lastActive ?? tab.lastAccessed ?? now,
+    ...(prev?.restored ? { restored: true, restoredFrom: prev.restoredFrom } : {}),
+    ...(prev?.placed ? { placed: true } : {}),
   };
 }
 
@@ -253,35 +258,228 @@ function activateTab(state, tabId, windowId, now) {
   return { ...state, tabs };
 }
 
-// Reconcile with `tabs.query({})`. When `fresh` (browser restart), tab and
-// window ids are new, so old assignments are meaningless: tabs that match a
-// pin by URL go to that pin's space, the rest to their window's active space.
+// The same tabs under new ids. A browser restart, and Margin being updated
+// (a new copy gets new ids for every tab: checked in WebKit), renumber every
+// tab and window, so Margin's records (space, last use) are matched to the
+// open tabs: by address, window by window (each open window paired with the
+// old one it shares most web addresses with), duplicates in tab order; then
+// by web address in any window. New-tab pages, blank and empty addresses
+// only match within paired windows, in order (one in a new window isn't the
+// old one). Returns open tab id → old record.
+// A web page's address (a new-tab page, about:blank or none: '').
+const webKey = (t) => {
+  const url = t.url || t.pendingUrl || '';
+  return /^(https?|file):/i.test(url) ? normalizeUrl(url) : '';
+};
+const anyKey = (t) => normalizeUrl(t.url || t.pendingUrl || '');
+// Options: `minShared(records, tabs)`: web addresses an open window (its
+// `tabs`) must share with an old one (its `records`) to be paired (1);
+// `anyWindow`: also by address in any window (true).
+/** @param {any[]} old @param {any[]} open @param {{ minShared?: (records: any[], tabs: any[]) => number, anyWindow?: boolean }} [options] */
+function matchTabs(old, open, { minShared = () => 1, anyWindow = true } = {}) {
+  const byWindow = (list) => {
+    const map = new Map();
+    for (const t of list) map.set(t.windowId, [...(map.get(t.windowId) ?? []), t]);
+    return map;
+  };
+  const oldWindows = byWindow(old);
+  const openWindows = byWindow(open);
+  // Pair windows by shared web addresses, most first, one to one.
+  const pairs = [];
+  for (const [openId, tabs] of openWindows) {
+    for (const [oldId, records] of oldWindows) {
+      const counts = new Map();
+      for (const r of records) if (webKey(r)) counts.set(webKey(r), (counts.get(webKey(r)) ?? 0) + 1);
+      let shared = 0;
+      for (const t of tabs) {
+        const n = counts.get(webKey(t)) ?? 0;
+        if (n) { shared++; counts.set(webKey(t), n - 1); }
+      }
+      if (shared && shared >= minShared(records, tabs)) pairs.push({ openId, oldId, shared });
+    }
+  }
+  pairs.sort((a, b) => b.shared - a.shared);
+  const paired = new Map(); // open window → old window
+  const usedOld = new Set();
+  for (const { openId, oldId } of pairs) {
+    if (paired.has(openId) || usedOld.has(oldId)) continue;
+    paired.set(openId, oldId);
+    usedOld.add(oldId);
+  }
+  /** @type {Map<number, any>} old record (or lost tab) for each matched open tab */
+  const matched = new Map();
+  const taken = new Set();
+  // Same address (by `key`) within `records` for `tabs`; of several (the
+  // same page open twice), the one nearest its place in the window.
+  const zip = (tabs, records, key) => {
+    const free = new Map();
+    for (const r of records) if (!taken.has(r) && key(r)) free.set(key(r), [...(free.get(key(r)) ?? []), r]);
+    for (const t of [...tabs].sort((a, b) => String(a.windowId).localeCompare(String(b.windowId)) || a.index - b.index)) {
+      if (matched.has(t.id) || !key(t)) continue;
+      const candidates = free.get(key(t));
+      if (!candidates?.length) continue;
+      const r = candidates.reduce((best, c) => (Math.abs(c.index - t.index) < Math.abs(best.index - t.index) ? c : best));
+      candidates.splice(candidates.indexOf(r), 1);
+      matched.set(t.id, r);
+      taken.add(r);
+    }
+  };
+  for (const [openId, oldId] of paired) zip(openWindows.get(openId), oldWindows.get(oldId), anyKey);
+  if (anyWindow) zip(open, old, webKey);
+  return matched;
+}
+
+// Old tabs no open tab matched are kept a day (LOST_MS) as lostTabs, by
+// their old window ({ windows: [{ at, tabs: [{ url, spaceId, lastActive,
+// windowId, index }] }] }, at most LOST_CAP tabs): a window that comes back
+// later (reopened from the last session, a restored tab whose address comes
+// late) takes them back (reclaimTabs).
+const LOST_MS = 24 * 60 * 60 * 1000;
+const LOST_CAP = 300;
+/** @param {State} state */
+const lostWindows = (state, now) => (state.lostTabs?.windows ?? []).filter((w) => now - w.at <= LOST_MS && w.tabs.length);
+// `groups` first, then the kept ones still valid, at most LOST_CAP tabs.
+const keepLost = (state, groups, now) => {
+  let room = LOST_CAP;
+  const windows = [];
+  for (const w of [...groups, ...lostWindows(state, now)]) {
+    if (room <= 0) break;
+    const tabs = w.tabs.slice(0, room);
+    room -= tabs.length;
+    windows.push({ ...w, tabs });
+  }
+  return windows.length ? { windows } : null;
+};
+
+// Reconcile with `tabs.query({})`. Tabs Margin knows keep their records; when
+// `fresh` (the browser restarted: every id is new, and old ones may be reused
+// for other tabs) none are known. When the ids were renumbered (fresh, or no
+// open tab is one Margin knows while some it knew are gone: Margin updated),
+// the tabs are matched to the records of tabs that are gone (matchTabs) and
+// keep their space; after a restart every last use is moved forward so the
+// most recent is now (gaps kept: the space's most recent tab is still right,
+// and nothing is archived just for the time the browser was closed). Unmatched
+// ones go to a pin's space with that address (after a restart), or their
+// window's active space; a window Margin doesn't know shows the space of the
+// tab it shows. Old tabs left over wait in lostTabs; windows Margin didn't
+// know take theirs back (reclaimTabs).
+// An old window, as of one renumbering (window ids repeat across them).
+const groupKey = (at, windowId) => `${at}:${windowId}`;
+
+// Did the browser renumber its tabs (a restart, or Margin updated: no open
+// tab is one Margin knows, while some it knew are gone)?
+/** @param {State} state */
+function isRenumbered(state, openTabs, { fresh = false } = {}) {
+  if (fresh) return true;
+  const open = new Set(openTabs.map((t) => String(t.id)));
+  return openTabs.length > 0 && !openTabs.some((t) => state.tabs[t.id]) && Object.keys(state.tabs).some((id) => !open.has(id));
+}
+
 /** @param {State} state */
 function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
+  const open = new Set(openTabs.map((t) => String(t.id)));
+  const known = (t) => !fresh && !!state.tabs[t.id];
+  const gone = Object.values(state.tabs).filter((r) => fresh || !open.has(String(r.id)));
+  const renumbered = isRenumbered(state, openTabs, { fresh });
+  const matched = renumbered ? matchTabs(gone, openTabs.filter((t) => !known(t))) : new Map();
+  // After a restart: the last tab used before it is used now (all moved by as much).
+  const latest = Math.max(0, ...gone.map((r) => r.lastActive ?? 0));
+  const shift = fresh && gone.length ? now - latest : 0;
+  const knownWindows = new Set(Object.values(state.tabs).map((t) => t.windowId));
   let next = {
     ...state,
     tabs: {},
     tabSpace: {},
     activeSpaceByWindow: fresh ? {} : { ...state.activeSpaceByWindow },
   };
+  const unplaced = [];
   for (const tab of openTabs) {
-    const prev = fresh ? undefined : state.tabs[tab.id];
-    next.tabs[tab.id] = tabRecord(tab, prev, now);
-    const kept = fresh ? undefined : state.tabSpace[tab.id];
+    const same = known(tab) ? state.tabs[tab.id] : undefined;
+    const match = matched.get(tab.id);
+    const prev = same ?? (match && { ...match, lastActive: (match.lastActive ?? now) + shift });
+    const record = tabRecord(tab, prev, now);
+    if (match) Object.assign(record, { restored: true, restoredFrom: groupKey(now, match.windowId) });
+    next.tabs[tab.id] = record;
+    const kept = same ? state.tabSpace[tab.id] : match ? state.tabSpace[match.id] : undefined;
     const pinned = fresh ? pinForUrl(state, tab.url) : undefined;
     const spaceId = hasSpace(state, kept) ? kept : pinned?.spaceId;
     if (spaceId) next.tabSpace[tab.id] = spaceId;
-    else next = assignTab(next, tab.id, tab.windowId);
+    else unplaced.push(tab);
   }
   const windows = new Set(openTabs.map((t) => String(t.windowId)));
   for (const w of Object.keys(next.activeSpaceByWindow)) if (!windows.has(w)) delete next.activeSpaceByWindow[w];
-  return next;
+  for (const tab of openTabs) {
+    if (tab.active && next.activeSpaceByWindow[tab.windowId] == null && next.tabSpace[tab.id]) {
+      next.activeSpaceByWindow = { ...next.activeSpaceByWindow, [tab.windowId]: next.tabSpace[tab.id] };
+    }
+  }
+  for (const tab of unplaced) next = assignTab(next, tab.id, tab.windowId);
+  if (renumbered) {
+    const used = new Set(matched.values());
+    const groups = new Map();
+    for (const r of gone) {
+      if (used.has(r) || !webKey(r) || !hasSpace(state, state.tabSpace[r.id])) continue;
+      const lost = { url: r.url, spaceId: state.tabSpace[r.id], lastActive: (r.lastActive ?? now) + shift, windowId: r.windowId, index: r.index };
+      groups.set(r.windowId, [...(groups.get(r.windowId) ?? []), lost]);
+    }
+    // `size`: how many web pages its window had (it needs two of them back, or one if it had one).
+    const size = (windowId) => gone.filter((r) => r.windowId === windowId && webKey(r)).length;
+    const fresher = [...groups.entries()].map(([windowId, tabs]) => ({ key: groupKey(now, windowId), at: now, size: size(windowId), tabs: tabs.sort((a, b) => a.index - b.index) }));
+    return { ...next, lostTabs: keepLost(state, fresher, now) };
+  }
+  next.lostTabs = keepLost(state, [], now); // expired ones dropped
+  // Windows that are all new to Margin (opened while it wasn't running, not
+  // a tab dragged out of a window it knew): back from before?
+  const withKnown = new Set(openTabs.filter(known).map((t) => t.windowId));
+  const candidates = openTabs.filter((t) => !known(t) && !knownWindows.has(t.windowId) && !withKnown.has(t.windowId)).map((t) => t.id);
+  return candidates.length ? reclaimTabs(next, candidates, now) : next;
+}
+
+// `tabIds` (tabs that may be back from before the ids changed: a window
+// reopened from the last session, tabs of a window still being restored, a
+// tab whose address came late; never ones the user had before or moved)
+// take back old tabs waiting in lostTabs: their space, and their last use
+// moved forward by the time since (the one in front keeps its own). Matched
+// as at a restart (matchTabs), window to old window only, and a window must
+// share two of its old window's web pages (one if it had only one): a page
+// opened anew doesn't take an old tab's place. The window then shows its
+// front tab's space.
+/** @param {State} state @param {number[]} tabIds */
+function reclaimTabs(state, tabIds, now) {
+  const groups = lostWindows(state, now);
+  if (!groups.length) return state;
+  const old = groups.flatMap((g, i) => g.tabs.map((t) => ({ ...t, windowId: `lost${i}`, group: g })));
+  const open = tabIds.map((id) => state.tabs[id]).filter((t) => t && !t.restored && !t.placed); // placed: by the user or Margin
+  // Two of the old window's pages, counting those already back in this window.
+  const minShared = (records, tabs) => {
+    const group = records[0].group;
+    const back = group.key ? Object.values(state.tabs).filter((t) => t.windowId === tabs[0].windowId && t.restored && t.restoredFrom === group.key).length : 0;
+    return Math.max(1, Math.min(2, group.size ?? records.filter(webKey).length) - back);
+  };
+  const matched = matchTabs(old, open, { anyWindow: false, minShared });
+  if (!matched.size) return state;
+  const tabs = { ...state.tabs };
+  const tabSpace = { ...state.tabSpace };
+  let next = { ...state, tabs, tabSpace };
+  const used = new Set(matched.values());
+  for (const [id, lost] of matched) {
+    const record = tabs[id];
+    const lastActive = record.active ? record.lastActive : Math.min(now, lost.lastActive + (now - lost.group.at));
+    tabs[id] = { ...record, lastActive, restored: true, restoredFrom: lost.group.key };
+    if (hasSpace(state, lost.spaceId)) tabSpace[id] = lost.spaceId;
+    if (record.active) next = setActiveSpace(next, record.windowId, tabSpace[id]);
+  }
+  const windows = groups.map((g) => ({ ...g, tabs: g.tabs.filter((t) => !old.some((o) => used.has(o) && o.group === g && o.index === t.index && o.url === t.url)) }));
+  return { ...next, lostTabs: keepLost({ ...state, lostTabs: null }, windows.filter((w) => w.tabs.length), now) };
 }
 
 /** @param {State} state */
 function moveTab(state, tabId, spaceId) {
   if (!hasSpace(state, spaceId) || !state.tabs[tabId]) return state;
-  return { ...state, tabSpace: { ...state.tabSpace, [tabId]: spaceId } };
+  // Placed on purpose (the user, or Margin opening it there): never taken
+  // for a tab coming back from before the ids changed (reclaimTabs).
+  const tabs = state.tabs[tabId].placed ? state.tabs : { ...state.tabs, [tabId]: { ...state.tabs[tabId], placed: true } };
+  return { ...state, tabs, tabSpace: { ...state.tabSpace, [tabId]: spaceId } };
 }
 
 // ---- spaces ---------------------------------------------------------------
@@ -509,6 +707,7 @@ function deleteSpace(state, spaceId) {
   const targetTop = pinOrder(state, target);
   next = writeOrder(next, null, [...targetTop, ...movedTop.filter((x) => x.kind === 'folder' || kept.has(x.id))]);
   next.archive = state.archive.map((a) => (a.spaceId === spaceId ? { ...a, spaceId: target } : a));
+  if (state.lostTabs) next.lostTabs = { windows: state.lostTabs.windows.map((w) => ({ ...w, tabs: w.tabs.map((t) => (t.spaceId === spaceId ? { ...t, spaceId: target } : t)) })) };
   return next;
 }
 
@@ -574,6 +773,9 @@ export {
   removeTab,
   activateTab,
   syncTabs,
+  isRenumbered,
+  reclaimTabs,
+  webKey,
   moveTab,
   setActiveSpace,
   followTab,
