@@ -18,6 +18,9 @@ const PROFILES = {
     // setting compactWhenPushed): off for now, per Tirth; such pages are
     // pushed by the full sidebar. True brings it back.
     compactRail: false,
+    // Wheel deltas are in screen points whatever the page's zoom (WebKit's
+    // WheelEvent passes the platform's deltas on as they are).
+    zoomedWheel: false,
     // Trackpad swipe back/forward and pinch-for-all-tabs can be blocked
     // (shared/gestures.js; setting `blockGestures`).
     blockGestures: true,
@@ -50,6 +53,9 @@ const PROFILES = {
     newTabHint: false,
     wakeTabs: false,
     compactRail: false, // as in Safari's profile
+    // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
+    // the page's zoom).
+    zoomedWheel: true,
     // Not needed (and a page-wide non-passive wheel listener costs scroll
     // performance in Chrome).
     blockGestures: false,

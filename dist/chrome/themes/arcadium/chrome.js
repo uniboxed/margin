@@ -35,8 +35,11 @@ export function createSwitchCover(doc) {
 export function createChrome(doc) {
   const svg = svgIn(doc);
   // Arc-style frame: sidebar-colored strips around the page card with its
-  // corners, shown while the sidebar is open. Never takes clicks.
-  const frame = el(doc, 'div', { class: 'frame', 'aria-hidden': 'true' }, el(doc, 'div', { class: 'hole' }));
+  // corners, shown while the sidebar is open. Like a browser's own frame,
+  // its strips take the pointer (invisible .grip strips: no page clicks,
+  // context menu or scrolling there); the card stays the page's.
+  const frame = el(doc, 'div', { class: 'frame', 'aria-hidden': 'true' }, el(doc, 'div', { class: 'hole' }),
+    ...['top', 'right', 'bottom'].map((side) => el(doc, 'div', { class: `grip ${side}` })));
   // The page card's continuous corners and soft shadow, above the sidebar so
   // the shadow also falls on its edge (sidebar.css .card-edge).
   const cardEdge = el(doc, 'div', { class: 'card-edge', 'aria-hidden': 'true' });

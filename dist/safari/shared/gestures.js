@@ -110,11 +110,12 @@ function zoomForPinch(start, scale) {
 }
 
 // `getSettings()` returns the current settings (or null while unknown).
-// `onPinch({ phase: 'start' | 'change' | 'end', scale })` gets the pinches
-// taken from Safari. Returns { update() }: call it when settings change
+// `onPinch({ phase: 'start' | 'change' | 'end', scale, overMargin? })` gets
+// the pinches taken from Safari (`overMargin` on the start: over one of
+// Margin's own hosts). Returns { update() }: call it when settings change
 // (adds or removes the no-bounce rule).
 /**
- * @param {{ getSettings: () => any, onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number }) => void, win?: Window & typeof globalThis }} options
+ * @param {{ getSettings: () => any, onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number, overMargin?: boolean }) => void, win?: Window & typeof globalThis }} options
  */
 function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis.window }) {
   if (!win) return { update() {} };
@@ -142,7 +143,9 @@ function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis
     ours = enabled() && !zoomedIn();
     if (!ours) return;
     event.preventDefault();
-    onPinch({ phase: 'start', scale: 1 });
+    // Over Margin's own UI (one of its hosts): the caller zooms nothing.
+    const overMargin = event.composedPath().some((node) => /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
+    onPinch({ phase: 'start', scale: 1, overMargin });
   }, options);
   win.addEventListener('gesturechange', (event) => {
     if (!ours) return;

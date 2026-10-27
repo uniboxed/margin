@@ -74,6 +74,11 @@ let pageRecorder = """
   func url(for context: WKWebExtensionContext) -> URL? { url }
   func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(webView?.isLoading ?? false) }
   func isSelected(for context: WKWebExtensionContext) -> Bool { window?.active === self }
+  // Page zoom (Safari's ⌘+ / tabs.setZoom): WebKit's pageZoom.
+  func zoomFactor(for context: WKWebExtensionContext) -> Double { Double(webView?.pageZoom ?? 1) }
+  func setZoomFactor(_ zoomFactor: Double, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+    webView?.pageZoom = CGFloat(zoomFactor); completionHandler(nil)
+  }
   func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
     log("delegate: activate \(name) (asleep=\(webView == nil))"); window?.show(self); completionHandler(nil)
   }
@@ -222,6 +227,8 @@ Task { @MainActor in
         if Date() > deadline { fail(label, last); break }
         try? await Task.sleep(nanoseconds: 100_000_000)
       }
+    case "zoom": // { op: 'zoom', factor }: the shown tab's page zoom, as ⌘+ / ⌘− do
+      host.window.active?.webView?.pageZoom = CGFloat(step["factor"] as! Double); log("zoom \(step["factor"]!)")
     case "state":
       log("state: active=\(host.window.active?.name ?? "-") " + host.window.tabs.map { "\($0.name):\($0.webView == nil ? "asleep" : ($0.webView!.superview == nil ? "hidden" : "shown"))" }.joined(separator: " "))
     case "snapshot":

@@ -15,14 +15,14 @@ function fakeWindow({ zoom = 1 } = {}) {
   };
 }
 // Dispatch one pinch event to the guard; returns whether it was cancelled.
-const fire = (win, type, scale = 1) => {
-  const event = { scale, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+const fire = (win, type, scale = 1, path = []) => {
+  const event = { scale, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, composedPath: () => path };
   win.listeners[type].fn(event);
   return event.defaultPrevented;
 };
 // A whole pinch: start, changes at the given scales, end → what was cancelled.
 const pinch = (win, ...scales) => ({
-  start: fire(win, 'gesturestart'),
+  start: fire(win, 'gesturestart', 1, win.under ?? []),
   changes: scales.map((s) => fire(win, 'gesturechange', s)),
   end: fire(win, 'gestureend', scales.at(-1)),
 });
@@ -31,7 +31,7 @@ test('pinch at normal zoom: the whole pinch is Margin\'s (cancelled for Safari, 
   let settings = { blockGestures: true };
   const seen = [];
   const win = fakeWindow();
-  installGestureGuard({ getSettings: () => settings, onPinch: (p) => seen.push(`${p.phase}:${p.scale}`), win });
+  installGestureGuard({ getSettings: () => settings, onPinch: (p) => seen.push(`${p.phase}:${p.scale}${p.overMargin ? ':over' : ''}`), win });
   for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
     assert.deepEqual(win.listeners[type].options, { capture: true, passive: false }, type);
   }
@@ -41,6 +41,11 @@ test('pinch at normal zoom: the whole pinch is Margin\'s (cancelled for Safari, 
   assert.deepEqual(pinch(win, 0.9, 0.7), all, 'pinching in (Safari: all tabs): cancelled');
   assert.deepEqual(pinch(win, 1.2, 1.5), all, 'pinching out: cancelled, Margin zooms');
   assert.deepEqual(seen, ['start:1', 'change:0.9', 'change:0.7', 'end:0.7', 'start:1', 'change:1.2', 'change:1.5', 'end:1.5']);
+  seen.length = 0;
+  win.under = [{ localName: 'div' }, { localName: 'margin-sidebar-host' }, { localName: 'html' }];
+  assert.deepEqual(pinch(win, 1.2), { start: true, changes: [true], end: true }, 'over Margin: still taken from Safari');
+  assert.deepEqual(seen, ['start:1:over', 'change:1.2', 'end:1.2'], 'and said to be over Margin (zooms nothing)');
+  win.under = [];
 
   seen.length = 0;
   win.visualViewport.scale = 2; // Safari magnified the page (smart zoom): its pinch

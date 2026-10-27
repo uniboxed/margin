@@ -7,7 +7,7 @@ import * as V from '../../shared/view.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
-import { el } from '../../shared/dom.js';
+import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
 import { installPaletteShortcut, newTabCloser, reportingSwitches } from '../../content/palette.js';
 import { createSwitching, backgroundSwitches } from '../../shared/switching.js';
 import { THEMES, themeFor } from '../index.js';
@@ -37,6 +37,32 @@ export function mount({ api, self, send, windowed = false }) {
   };
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet(sidebarCss), sheet(newtabCss)];
   document.body.innerHTML = newtabHtml; // the theme's own markup (newtab.html)
+
+  // Browser UI, not a web page: nothing to select or right-click (but text
+  // fields; shared/dom.js asBrowserUi). Zoomed (⌘+ / ⌘−), the launcher grows
+  // and the sidebar, the frame and the palette keep their size, as on web
+  // pages (content/core.js): read at start and after a resize.
+  asBrowserUi(document, { zoomable: (event) => !!/** @type {Element} */ (event.target).closest?.('#launcher, #page-card') });
+  let pageZoom = 1;
+  const applyZoom = (z) => {
+    if (!Number.isFinite(z) || z <= 0 || Math.abs(z - pageZoom) < 0.001) return;
+    pageZoom = z;
+    document.documentElement.style.setProperty('--page-zoom', String(z));
+    $('sidebar').style.setProperty('zoom', String(1 / z));
+    setPageZoom(document, z);
+  };
+  let zoomAnswered = false; // until then, the last zoom seen here (storage pageZoom)
+  const readZoom = () => send('getZoom', {}).then((z) => {
+    if (!Number.isFinite(Number(z))) return;
+    zoomAnswered = true;
+    applyZoom(Number(z));
+  }, () => {});
+  let zoomTimer = null;
+  addEventListener('resize', () => {
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(readZoom, 60);
+  });
+  readZoom();
 
   const dark = matchMedia('(prefers-color-scheme: dark)');
   // The tab list's scroll position is the window's (background/scroll.js),
@@ -426,6 +452,7 @@ export function mount({ api, self, send, windowed = false }) {
     const next = await api.storage.local.get(null);
     if (mine !== version || !next.spaces?.length) return;
     state = next;
+    if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
     sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     renderLauncher();

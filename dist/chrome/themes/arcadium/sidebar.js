@@ -5,6 +5,7 @@ import * as V from '../../shared/view.js';
 import { containScroll, canScrollX } from '../../shared/gestures.js';
 import { createSpaceSwipe, settle, rubberBand, DEFAULTS as SWIPE } from '../../shared/space-swipe.js';
 import { el, hostOf, siteModalOpen } from '../../shared/dom.js';
+import { platform } from '../../shared/platform.js';
 import { WIDTH, clampWidth, snapWidth, sidebarWidth } from './theme.js';
 
 function hue(text) {
@@ -152,22 +153,33 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // ---- resize: drag the right edge (160–500px), double-click to reset ----
   const resizer = el(doc, 'div', { class: 'resizer', title: 'Drag to resize · double-click to reset', 'aria-hidden': 'true' });
   root.append(resizer);
-  let resizing = null; // { startX, startWidth, width }
+  let resizing = null; // { startX, startWidth, width, scale } (sizes in the sidebar's px)
   // The width is one of Arcadium's own settings.
   const saveWidth = (sidebarWidth) => send('updateThemeSettings', { themeId: 'arcadium', patch: { sidebarWidth } });
   const setWidth = (px) => root.style.setProperty('--width', `${px}px`);
+  // The sidebar's own px per px of the page's: Margin keeps its size when
+  // the page is zoomed (shared/dom.js setPageZoom), so pointer positions and
+  // boxes (in the page's pixels) are scaled by this before they're used as
+  // its sizes and positions. 1 when the page isn't zoomed.
+  const hostScale = () => {
+    const width = root.getBoundingClientRect().width;
+    return width && root.offsetWidth ? root.offsetWidth / width : 1;
+  };
+  // Wheel deltas in the sidebar's px: Chromium's are the page's zoomed px,
+  // WebKit's screen points already (platform.zoomedWheel).
+  const wheelScale = () => (platform?.zoomedWheel ? hostScale() : 1);
   resizer.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
     resizer.setPointerCapture?.(event.pointerId);
-    const startWidth = root.getBoundingClientRect().width;
-    resizing = { startX: event.clientX, startWidth, width: startWidth };
+    const startWidth = root.offsetWidth;
+    resizing = { startX: event.clientX, startWidth, width: startWidth, scale: hostScale() };
     root.classList.add('resizing');
   });
   resizer.addEventListener('pointermove', (event) => {
     if (!resizing) return;
-    resizing.width = clampWidth(resizing.startWidth + event.clientX - resizing.startX);
+    resizing.width = clampWidth(resizing.startWidth + (event.clientX - resizing.startX) * resizing.scale);
     setWidth(resizing.width);
     onWidth?.(resizing.width, { done: false });
   });
@@ -410,8 +422,9 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       if (chip) {
         const bar = chips.getBoundingClientRect();
         const box = chip.getBoundingClientRect();
-        if (box.left < bar.left) chips.scrollLeft -= bar.left - box.left;
-        else if (box.right > bar.right) chips.scrollLeft += box.right - bar.right;
+        const k = hostScale();
+        if (box.left < bar.left) chips.scrollLeft -= (bar.left - box.left) * k;
+        else if (box.right > bar.right) chips.scrollLeft += (box.right - bar.right) * k;
       }
     }
   }
@@ -486,7 +499,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // Many spaces in a narrow sidebar: a mouse wheel scrolls them sideways.
   chips.addEventListener('wheel', (event) => {
     if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || chips.scrollWidth <= chips.clientWidth) return;
-    chips.scrollLeft += event.deltaY;
+    chips.scrollLeft += event.deltaY * wheelScale();
     event.preventDefault();
   }, { passive: false });
 
@@ -529,6 +542,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     const neighbours = { [-1]: state.spaces[at - 1]?.id, [1]: state.spaces[at + 1]?.id };
     const box = root.getBoundingClientRect();
     const paneBox = pane.getBoundingClientRect();
+    const k = hostScale(); // boxes are in the page's pixels
     // Still pictures of the neighbours, each drawn as it would show (its
     // most recent tab highlighted, as after the switch), then this one again.
     // Drawing them must not move this list's or the spaces bar's scroll.
@@ -547,7 +561,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
         ghost.classList.add('ghost');
         ghost.inert = true;
         ghost.setAttribute('aria-hidden', 'true');
-        Object.assign(ghost.style, { top: `${paneBox.top - box.top}px`, left: `${paneBox.left - box.left}px`, width: `${paneBox.width}px`, height: `${paneBox.height}px` });
+        Object.assign(ghost.style, { top: `${(paneBox.top - box.top) * k}px`, left: `${(paneBox.left - box.left) * k}px`, width: `${paneBox.width * k}px`, height: `${paneBox.height * k}px` });
         ghosts[dir] = ghost;
       }
     } finally {
@@ -563,7 +577,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     }
     root.append(...Object.values(ghosts));
     root.classList.add('space-swiping');
-    swiping = { neighbours, ghosts, width: box.width, offset: 0, frame: 0, settling: false, committed: false };
+    swiping = { neighbours, ghosts, width: box.width * k, offset: 0, frame: 0, settling: false, committed: false };
   }
   // Where everything sits for `offset` (px; > 0: dragged right).
   function placeSwipe(offset) {
@@ -654,12 +668,13 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // trackpad's; settle() still wants several events.
   const mouseWheel = (event) => {
     const legacy = /** @type {any} */ (event).wheelDeltaX ?? 0;
-    return legacy !== 0 && legacy % 120 === 0 && Math.abs(Math.abs(legacy) - Math.abs(event.deltaX) * 3) > 3;
+    return legacy !== 0 && legacy % 120 === 0 && Math.abs(Math.abs(legacy) - Math.abs(event.deltaX * wheelScale()) * 3) > 3; // the unzoomed delta
   };
   root.addEventListener('wheel', (event) => {
+    const k = wheelScale(); // the swipe is measured in the sidebar's own px
     const busy = editing != null || renaming != null || dragging != null || resizing != null || !menu.hidden;
     const usable = !!state && windowId != null && state.spaces.length > 1 && !busy && swipeUsable() && !scrollsSideways(event);
-    const result = spaceSwipe.wheel({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, mouse: mouseWheel(event), time: event.timeStamp, usable });
+    const result = spaceSwipe.wheel({ deltaX: event.deltaX * k, deltaY: event.deltaY * k, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, mouse: mouseWheel(event), time: event.timeStamp, usable });
     if (spaceSwipe.swiping(event.timeStamp) && event.cancelable) event.preventDefault(); // not the list, not Safari's back/forward
     // While it settles, the momentum after the fingers lifted still counts
     // as that gesture (fed above), so it never starts another swipe.
@@ -668,7 +683,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       clearTimeout(swipeEndTimer);
       if (!swiping) {
         // Before this event (if it counted): 0 for a gesture that starts here.
-        swipeBase = result.counted ? { offset: result.offset + event.deltaX, events: result.events - 1 } : { offset: result.offset, events: result.events };
+        swipeBase = result.counted ? { offset: result.offset + event.deltaX * k, events: result.events - 1 } : { offset: result.offset, events: result.events };
         startSwipe();
       }
       moveSwipe(result.offset - swipeBase.offset);
@@ -916,15 +931,19 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       } catch {}
     }
     menu.classList.toggle('top-layer', inTopLayer);
+    // The pointer is in the page's pixels; the menu is placed in the sidebar's.
+    const k = hostScale();
+    x *= k;
+    y *= k;
     if (above) y -= menu.offsetHeight + 6;
     if (inTopLayer) { // at the pointer, kept inside the window
       const view = doc.defaultView;
-      menu.style.left = `${Math.max(4, Math.min(x, view.innerWidth - menu.offsetWidth - 4))}px`;
-      menu.style.top = `${Math.max(4, Math.min(y, view.innerHeight - menu.offsetHeight - 4))}px`;
+      menu.style.left = `${Math.max(4, Math.min(x, view.innerWidth * k - menu.offsetWidth - 4))}px`;
+      menu.style.top = `${Math.max(4, Math.min(y, view.innerHeight * k - menu.offsetHeight - 4))}px`;
     } else { // at the pointer, kept inside the sidebar
       const box = root.getBoundingClientRect();
-      menu.style.left = `${Math.max(4, Math.min(x - box.left, box.width - menu.offsetWidth - 4))}px`;
-      menu.style.top = `${Math.max(4, Math.min(y - box.top, box.height - menu.offsetHeight - 4))}px`;
+      menu.style.left = `${Math.max(4, Math.min(x - box.left * k, box.width * k - menu.offsetWidth - 4))}px`;
+      menu.style.top = `${Math.max(4, Math.min(y - box.top * k, box.height * k - menu.offsetHeight - 4))}px`;
     }
     menu.focus({ preventScroll: true }); // keys work; nothing highlighted until hover or ↓/↑
   }
@@ -1119,6 +1138,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   return {
     el: root,
     // While editing, renaming or dragging, the overlay shouldn't auto-hide.
+    closeMenu: () => closeMenu(),
     isBusy: () => editing != null || renaming != null || pendingRename != null || dragging != null || resizing != null || swiping != null || !menu.hidden,
     width: () => (resizing ? resizing.width : sidebarWidth(state?.settings)),
     update(nextState, context) {

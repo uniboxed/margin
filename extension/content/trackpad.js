@@ -133,7 +133,12 @@ export function startTrackpad(page, { replacing }) {
     page.view()?.setZoom(pageZoom);
     host.dataset.zoom = String(pageZoom); // test/debug hook
   }
-  function handlePinch({ phase, scale }) {
+  // A pinch that starts over Margin's own UI (the sidebar, the frame, the
+  // palette) zooms nothing, as over a browser's own (still taken from Safari).
+  let pinchOverMargin = false;
+  function handlePinch({ phase, scale, overMargin = false }) {
+    if (phase === 'start') pinchOverMargin = overMargin;
+    if (pinchOverMargin) return;
     if (phase === 'start') {
       pinchStart = pageZoom;
       pinchMoved = false;
@@ -147,7 +152,7 @@ export function startTrackpad(page, { replacing }) {
       if (zoom !== pageZoom) {
         pageZoom = zoom;
         pinchMoved = true;
-        send('setZoom', { factor: zoom }, false);
+        send('setZoom', { factor: zoom }, false).then(() => page.zoomed?.(zoom), () => {});
       }
       return showZoomHud();
     }

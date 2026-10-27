@@ -4,6 +4,10 @@
    from Tirth's Arc screenshot (14" display, 1pt = 1px; DECISIONS.md): 765
    wide, five rows tall, the top 306 below the window's top in a 949-high
    window. English and laid out as Arc's on every page, right-to-left too. */
+/* Not page text (shared/dom.js asBrowserUi; its host isn't selectable): the
+   field only. */
+img { -webkit-user-drag: none; }
+input { -webkit-user-select: text; user-select: text; }
 .backdrop, .palette { display: none; }
 :host([data-open="true"]) .backdrop {
   display: block;
@@ -21,10 +25,10 @@
   --border: rgba(255, 255, 255, 0.1);
 
   position: fixed;
-  top: 32.25vh;
+  top: calc(32.25vh * var(--page-zoom, 1));
   left: 50%;
   transform: translateX(-50%);
-  width: min(765px, calc(100vw - 32px));
+  width: min(765px, calc(100vw * var(--page-zoom, 1) - 32px));
   /* Five rows, as Arc (border, search, list padding, rows and the gaps
      between them); more scroll, the selection followed. */
   --rows: 5;
@@ -45,9 +49,11 @@
 }
 .palette *, .palette *::before, .palette *::after { box-sizing: border-box; }
 /* Short windows: higher up, then fewer whole rows (never half of one). */
-@media (max-height: 507px) { .palette { top: 18vh; } }
-@media (max-height: 418px) { .palette { --rows: 4; } }
-@media (max-height: 357px) { .palette { --rows: 3; } }
+/* Short windows (≤ 507, 418, 357 tall in Margin's px, whatever the page's
+   zoom: palette.js sets data-short). */
+:host(:is([data-short="1"], [data-short="2"], [data-short="3"])) .palette { top: calc(18vh * var(--page-zoom, 1)); }
+:host(:is([data-short="2"], [data-short="3"])) .palette { --rows: 4; }
+:host([data-short="3"]) .palette { --rows: 3; }
 
 /* 62 high above a divider inset from the sides; the magnifier (12 of ink)
    centered on the row icons' column, the text where the titles start. */

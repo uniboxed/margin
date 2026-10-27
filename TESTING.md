@@ -444,3 +444,11 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Scrolling the tab list up and down still works; a sideways swipe on the page itself still goes back/forward.
 - [ ] Same on Margin's new-tab page and with the sidebar on auto-hide: while it's out, swiping keeps it out on the page that comes forward (clicking a space's icon too).
 - [ ] Swipe, then right away swipe again or scroll the list: it responds at once (not after a pause).
+
+## Like the browser's own UI (2026-10-27)
+
+- [ ] ⌘+ / ⌘− on a page: the page zooms, the sidebar and the frame stay the same size; the page still starts right after the sidebar; resizing the sidebar, its menus and swiping still line up.
+- [ ] Pinch over the page zooms it; pinch over the sidebar does nothing.
+- [ ] On Margin's new-tab page, ⌘+ zooms the launcher only.
+- [ ] Try to select or drag text/icons in the sidebar, palette or new-tab page: nothing. Typing and selecting in the space name, rename fields, the palette and Settings fields still works.
+- [ ] Right-click: on a tab, pin or folder, Margin's menu; anywhere else on the sidebar, the frame strips or the new-tab page, nothing; in a text field, the usual Cut/Copy/Paste.

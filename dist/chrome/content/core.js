@@ -4,7 +4,7 @@
 // (themes/<id>/content.js, a separate script that runs right after this
 // one; see themes/register.js for what a theme provides).
 import * as V from '../shared/view.js';
-import { createHost } from '../shared/dom.js';
+import { createHost, setPageZoom } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
 import { frameAware } from '../shared/shell-logic.js';
@@ -231,7 +231,37 @@ export function startCore({ onTheme } = {}) {
     firstRender: () => firstRender,
     active,
     offerFullscreen,
+    // The page's zoom (1 = 100%), and Margin's pinch having changed it.
+    zoom: () => pageZoom,
+    zoomed: (z) => applyZoom(z),
   };
+
+  // ---- page zoom ---------------------------------------------------------------
+  // Margin's UI keeps its size whatever the page's zoom (⌘+ / ⌘−, Margin's
+  // pinch), as a browser's does (shared/dom.js setPageZoom); the push and the
+  // fitted card follow the sidebar in the page's zoomed pixels (layout.js).
+  // Read at start, after a resize (a zoom change resizes the page's
+  // viewport; ⌘+ sends nothing else), when shown again (a site's zoom is
+  // shared by its tabs), and from Margin's own pinch.
+  let pageZoom = 1;
+  let zoomAnswered = false; // until the browser says, the site's last zoom (storage pageZoom)
+  function applyZoom(z) {
+    if (!Number.isFinite(z) || z <= 0 || Math.abs(z - pageZoom) < 0.001) return;
+    pageZoom = z;
+    setPageZoom(document, z);
+    layout.rezoom(); // only from answers and events, after the layout below exists
+  }
+  const readZoom = () => send('getZoom', {}, false).then((z) => {
+    if (!Number.isFinite(Number(z))) return;
+    zoomAnswered = true;
+    applyZoom(Number(z));
+  }, () => {});
+  let zoomTimer = null;
+  addEventListener('resize', () => {
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(readZoom, 60);
+  });
+  readZoom();
   const trackpad = startTrackpad(page, { replacing });
   const loader = startLoader(page, { pullRefreshing: trackpad.pullRefreshing });
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space. Before the layout's
@@ -355,6 +385,7 @@ export function startCore({ onTheme } = {}) {
     // after this one asked. Asked once more (not if the user scrolls here).
     setTimeout(() => restoreScroll(Promise.resolve()), 400);
     checkFullscreen();
+    readZoom();
   }
   function left() {
     flushScroll();
@@ -415,6 +446,7 @@ export function startCore({ onTheme } = {}) {
     timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return; // stale, or background not initialized yet
     state = next;
+    if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1)); // drawn at its size from the start
     render();
     requestTheme(); // only if it isn't here by now
   }
