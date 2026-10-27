@@ -382,3 +382,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] The sidebar's "+ New Tab" row does the same, with no flicker at all.
 - [ ] Tabs are newest first, pins on top, "+ New Tab" right below them.
 - [ ] How much of a flash do you still see on ⌘T (first one after launching vs later ones)?
+
+## Command palette at Arc's size (2026-10-26)
+
+- [ ] In Safari full screen, ⌥K or ⌘T: the palette matches Arc's command bar in size and place (765 wide, centered on the window, about a third of the way down, five rows).
+- [ ] With more than five results, the arrow keys scroll the list and the selected row is never cut off; no scrollbar shows.
+- [ ] On a page zoomed in or out in Safari (⌘+ / ⌘−), note whether the palette grows or shrinks with the page (it's drawn inside the page).
