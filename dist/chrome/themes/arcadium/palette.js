@@ -24,8 +24,8 @@ function icon(paths, cls) {
   }
   return svg;
 }
-const searchIcon = () => icon(['M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z', 'M15.5 15.5 20 20'], 'search-icon');
-const arrowIcon = () => icon(['M5 12h13', 'M13 6l6 6-6 6'], 'arrow-icon');
+const searchIcon = () => icon(['M10.5 3.3a7.2 7.2 0 1 0 0 14.4 7.2 7.2 0 0 0 0-14.4Z', 'M15.6 15.6 19.5 19.5'], 'search-icon');
+const arrowIcon = () => icon(['M4.5 12h14.5', 'M12 4.5l7.5 7.5-7.5 7.5'], 'arrow-icon');
 // Rows that go somewhere get Arc's arrow button; plain actions don't.
 const GOES = new Set(['tab', 'pin', 'archive', 'go']);
 

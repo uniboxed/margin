@@ -1,7 +1,9 @@
-/* Arc-style command bar (measured from Tirth's Arc screenshot): a dark,
-   translucent panel about half the window wide, a third of the way down;
-   one-line rows with the space name and an arrow button; the selected row
-   takes the current space's color. */
+/* Arc-style command bar: a dark, translucent panel centered on the window,
+   a third of the way down; one-line rows with the space name and an arrow
+   button; the selected row takes the current space's color. Sizes measured
+   from Tirth's Arc screenshot (14" display, 1pt = 1px; DECISIONS.md): 765
+   wide, five rows tall, the top 306 below the window's top in a 949-high
+   window. English and laid out as Arc's on every page, right-to-left too. */
 .backdrop, .palette { display: none; }
 :host([data-open="true"]) .backdrop {
   display: block;
@@ -19,11 +21,15 @@
   --border: rgba(255, 255, 255, 0.1);
 
   position: fixed;
-  top: 33vh;
+  top: 32.25vh;
   left: 50%;
   transform: translateX(-50%);
-  width: min(760px, calc(100vw - 32px));
-  max-height: min(62vh, 560px);
+  width: min(765px, calc(100vw - 32px));
+  /* Five rows, as Arc (border, search, list padding, rows and the gaps
+     between them); more scroll, the selection followed. */
+  --rows: 5;
+  max-height: calc(2px + 63px + 6px + var(--rows) * 46px + (var(--rows) - 1) * 4px + 10.4px);
+  direction: ltr;
   flex-direction: column;
   box-sizing: border-box;
   background: rgba(36, 32, 36, 0.86);
@@ -31,28 +37,42 @@
   -webkit-backdrop-filter: blur(28px) saturate(1.5);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.4);
   overflow: hidden;
-  font: 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 .palette *, .palette *::before, .palette *::after { box-sizing: border-box; }
-@media (max-height: 640px) { .palette { top: 18vh; } }
+/* Short windows: higher up, then fewer whole rows (never half of one). */
+@media (max-height: 507px) { .palette { top: 18vh; } }
+@media (max-height: 418px) { .palette { --rows: 4; } }
+@media (max-height: 357px) { .palette { --rows: 3; } }
 
+/* 62 high above a divider inset from the sides; the magnifier (12 of ink)
+   centered on the row icons' column, the text where the titles start. */
 .search {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 60px;
-  padding: 0 22px;
-  border-bottom: 1px solid var(--border);
+  gap: 11.5px;
+  height: 63px;
+  padding: 0 0 2.5px 22.5px; /* content a little above center, as Arc */
+}
+.search::after {
+  content: "";
+  position: absolute;
+  left: 10.7px;
+  right: 10.7px;
+  bottom: 0;
+  height: 1px;
+  background: var(--border);
 }
 .search-icon {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: var(--muted);
   stroke-width: 2;
@@ -67,22 +87,30 @@
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 18px;
+  font-size: 18.5px;
   outline: none;
 }
 .query::placeholder { color: var(--muted); }
 
-.results { list-style: none; margin: 0; padding: 8px; overflow-y: auto; overscroll-behavior: none; }
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8.5px 10.4px;
+  overflow-y: auto;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  scroll-padding: 6px 0 10.4px; /* the selection scrolled into view keeps the padding */
+}
 .results li {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 44px;
-  padding: 0 10px 0 14px;
-  border-radius: 10px;
+  gap: 8px;
+  height: 46px;
+  padding: 0 13px 0 10px;
+  border-radius: 6px;
   cursor: default;
 }
-.results li + li { margin-top: 2px; }
+.results li + li { margin-top: 4px; }
 .results li:hover { background: var(--row-hover); }
 .results li[aria-selected="true"] {
   background: var(--space-color);
@@ -90,11 +118,15 @@
 }
 .results .empty { color: var(--muted); justify-content: center; }
 
-.avatar { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
-.avatar.letter { display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; }
+/* Each icon fills a 24px slot: favicons 14px in it (on a white tile when
+   selected, as Arc), letters on a 16px tile, emoji at 15px. */
+.avatar { flex: none; width: 24px; height: 24px; border-radius: 4px; object-fit: contain; }
+img.avatar { box-sizing: content-box; width: 14px; height: 14px; padding: 5px; }
+[aria-selected="true"] img.avatar { background: #fff; }
+.avatar.letter { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin: 0 4px; color: #fff; font-size: 10px; font-weight: 600; }
 .avatar.emoji { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
 .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; }
-.badge { flex: none; color: var(--muted); font-size: 13px; }
+.badge { flex: none; margin-right: 0.5px; color: var(--muted); font-weight: 500; }
 [aria-selected="true"] .badge { color: rgba(255, 255, 255, 0.92); }
 
 .go-button {
@@ -102,11 +134,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.1);
 }
-.arrow-icon { width: 15px; height: 15px; fill: none; stroke: var(--fg); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.arrow-icon { width: 18px; height: 18px; fill: none; stroke: var(--fg); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 [aria-selected="true"] .go-button { background: #f2f0e8; }
 [aria-selected="true"] .arrow-icon { stroke: #1c1c1e; }
