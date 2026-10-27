@@ -435,3 +435,12 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] ⌘T and "+ New Tab" show no gray card.
 - [ ] Hold ⌃⌘↓: the tabs go by with their content (no gray cards); one press to a slow tab shows the gray card after a moment.
 - [ ] Tab overview: tabs you left through the sidebar may look gray there (accepted); say if that bothers you.
+
+## Swipe between spaces (2026-10-27)
+
+- [ ] With two or more spaces, swipe two fingers left over the sidebar: the list follows your fingers, the next space slides in, and on letting go it's shown with its last tab in front.
+- [ ] Swipe right: the previous space. A short, slow swipe slides back. A quick flick switches.
+- [ ] At the first or last space the list only stretches a little and comes back.
+- [ ] Scrolling the tab list up and down still works; a sideways swipe on the page itself still goes back/forward.
+- [ ] Same on Margin's new-tab page and with the sidebar on auto-hide: while it's out, swiping keeps it out on the page that comes forward (clicking a space's icon too).
+- [ ] Swipe, then right away swipe again or scroll the list: it responds at once (not after a pause).

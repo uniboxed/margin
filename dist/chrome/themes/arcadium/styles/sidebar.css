@@ -177,6 +177,18 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 .margin-sidebar .space-title .emoji { flex: none; position: relative; top: -1px; width: 17px; margin: 0 -0.5px; font-size: 17px; line-height: 17px; text-align: center; color: initial; }
 
+/* The space's part (name, editor, list), which a sideways swipe drags; its
+   neighbours' pictures (.ghost) slide in beside it, clipped to the sidebar
+   (themes/arcadium/sidebar.js "swipe between spaces"). */
+.margin-sidebar .space-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.margin-sidebar .space-pane.ghost { position: absolute; pointer-events: none; }
+.margin-sidebar.space-swiping { overflow: clip; }
+.margin-sidebar.space-swiping .space-pane { will-change: transform; }
+.margin-sidebar .space-pane.settling { transition: transform 220ms cubic-bezier(0.25, 1, 0.5, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .margin-sidebar .space-pane.settling { transition: none; }
+}
+
 /* One list for the pinned area and the tabs; it scrolls under the top and
    the bottom bar, never the page; no bounce. */
 .margin-sidebar .tabs-section { flex: 1; min-height: 0; margin: 0 -8px; padding: 0 8px 8px; overflow-y: auto; overscroll-behavior: none; }

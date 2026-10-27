@@ -367,7 +367,7 @@ export function startCore({ onTheme } = {}) {
   // What the theme sends. A switch made from the sidebar while it's open
   // over the page says how it was opened (the next page opens it the same
   // way: carry-open below), after saving the tab list's position.
-  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab']);
+  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab', 'setSpace']);
   /** @type {import('../../types/margin').Send} */
   const themeSend = (type, payload, ...rest) => {
     if (!SWITCHES.has(type)) return send(type, payload, ...rest);

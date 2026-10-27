@@ -2,7 +2,8 @@
 // right-click menu. Used on web pages (content.js) and on the new-tab page
 // (newtab.js).
 import * as V from '../../shared/view.js';
-import { containScroll } from '../../shared/gestures.js';
+import { containScroll, canScrollX } from '../../shared/gestures.js';
+import { createSpaceSwipe, settle, rubberBand, DEFAULTS as SWIPE } from '../../shared/space-swipe.js';
 import { el, hostOf, siteModalOpen } from '../../shared/dom.js';
 import { WIDTH, clampWidth, snapWidth, sidebarWidth } from './theme.js';
 
@@ -16,16 +17,24 @@ function hue(text) {
 // third-party service for icons.
 function avatar(doc, { title, url, favIconUrl }) {
   const label = hostOf(url) || title || '?';
-  const letter = el(doc, 'span', {
-    class: 'avatar letter',
-    text: label.charAt(0).toUpperCase(),
-    style: `background: hsl(${hue(label)} 55% 48%)`,
-    'aria-hidden': 'true',
-  });
-  if (!favIconUrl || !/^(https?|data):/.test(favIconUrl)) return letter;
-  const img = el(doc, 'img', { class: 'avatar', src: favIconUrl, alt: '', referrerpolicy: 'no-referrer' });
-  img.addEventListener('error', () => img.replaceWith(letter), { once: true });
+  if (!favIconUrl || !/^(https?|data):/.test(favIconUrl)) return letterAvatar(doc, label);
+  const img = el(doc, 'img', { class: 'avatar', src: favIconUrl, alt: '', referrerpolicy: 'no-referrer', 'data-label': label });
+  letterIfBroken(doc, img);
   return img;
+}
+const letterAvatar = (doc, label) => el(doc, 'span', {
+  class: 'avatar letter',
+  text: label.charAt(0).toUpperCase(),
+  style: `background: hsl(${hue(label)} 55% 48%)`,
+  'aria-hidden': 'true',
+});
+// An icon that doesn't load becomes the letter (also in a copy of a row,
+// which doesn't carry the listener).
+/** @param {Document} doc @param {HTMLImageElement} img */
+function letterIfBroken(doc, img) {
+  const swap = () => img.replaceWith(letterAvatar(doc, img.dataset.label || '?'));
+  if (img.complete && img.src && !img.naturalWidth) swap();
+  else img.addEventListener('error', swap, { once: true });
 }
 
 const SPACE_COLORS = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72'];
@@ -121,11 +130,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     el(doc, 'button', { type: 'button', class: 'bar-button archive', 'data-action': 'archive', title: 'Archived tabs', 'aria-label': 'Archived tabs' }, ICONS.archive(doc)),
     chips,
     el(doc, 'button', { type: 'button', class: 'bar-button add', 'data-action': 'add-menu', title: 'New folder or space', 'aria-label': 'New folder or space' }, ICONS.plus(doc)));
+  // The space's own part (its name, the editor, the list): what a sideways
+  // swipe moves (see "swipe between spaces" below).
+  const pane = el(doc, 'div', { class: 'space-pane' }, spaceTitle, editor, tabsSection);
   const root = el(doc, 'aside', { class: `margin-sidebar ${mode}`, 'aria-label': 'Margin' },
     top,
-    spaceTitle,
-    editor,
-    tabsSection,
+    pane,
     footer,
   );
 
@@ -194,6 +204,17 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   let renaming = null;
   let pendingRename = null;
   let rendering = false; // the rename field leaves the DOM while redrawing: not a blur
+  // A space this sidebar shows before the state says so (just swiped to;
+  // the background is switching), and when that started.
+  let shownSpace = null;
+  let shownSince = 0;
+  // A swipe between spaces under way (see "swipe between spaces"):
+  // { neighbours: { -1?: id, 1?: id }, ghosts: { -1?: el, 1?: el }, width, offset, frame, settling, committed }
+  let swiping = null;
+  let drawingGhosts = false; // drawing its pictures: the spaces bar's scroll stays
+  let renderPending = false; // a redraw held back while it settles
+  // The state as this sidebar shows it.
+  const viewState = () => (shownSpace && state ? { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId]: shownSpace } } : state);
 
   const closeButton = (tabId, label) => el(doc, 'button', { type: 'button', class: 'icon close', 'data-action': 'close', 'data-tab-id': String(tabId), 'aria-label': label }, ICONS.close(doc));
   function pinRow(p, nested) {
@@ -279,6 +300,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   let lastView = null; // the view last drawn (menus and drag and drop read it)
   function render() {
     if (!state || windowId == null) return;
+    // Not while a swipe slides into place (it would redraw the space leaving).
+    if (swiping?.settling) {
+      renderPending = true;
+      return;
+    }
+    renderPending = false;
     rendering = true;
     try {
       draw();
@@ -300,7 +327,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   let renameSelection = null;
   let shownSpaceId = null;
   function draw() {
-    const view = lastView = V.sidebar(state, windowId, currentTabId, { newTabPending, switchingTo });
+    const view = lastView = V.sidebar(viewState(), windowId, currentTabId, { newTabPending, switchingTo });
     root.style.setProperty('--space-color', view.spaces.find((s) => s.id === view.spaceId)?.color ?? '');
     if (!resizing) setWidth(sidebarWidth(state.settings));
     if (renaming && !view.pinned.some((item) => item.kind === 'folder' && item.id === renaming.folderId)) renaming = null; // gone
@@ -377,7 +404,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
 
     // A space switched to: its icon in the bottom bar in view (many spaces in
     // a narrow sidebar scroll sideways). Not scrollIntoView: it can scroll the page.
-    if (view.spaceId !== shownSpaceId) {
+    if (view.spaceId !== shownSpaceId && !drawingGhosts) {
       shownSpaceId = view.spaceId;
       const chip = chips.querySelector('.chip.active');
       if (chip) {
@@ -423,7 +450,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
         lastToggle = { folderId, wasOpen: folder.open !== false, at: Date.now() };
         return send('setFolderOpen', { folderId, open: folder.open === false });
       }
-      case 'set-space': return send('setSpace', { windowId, spaceId });
+      case 'set-space': return send('setSpace', { windowId, spaceId, ...(show ? { show } : {}) });
       case 'new-tab': return onNewTab ? onNewTab() : send('newTab', { windowId });
       case 'archive': return onArchive ? onArchive() : send('openLauncher', { windowId });
       case 'add-menu': {
@@ -462,6 +489,205 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     chips.scrollLeft += event.deltaY;
     event.preventDefault();
   }, { passive: false });
+
+  // ---- swipe between spaces (Arc) ----------------------------------------
+  // Two fingers sideways over the sidebar drag the space (its name and list)
+  // with them, the neighbouring space coming in from that side (a still
+  // picture of it, drawn when the swipe starts); let go past a third of the
+  // width, or with a flick, and that space is shown, else it slides back.
+  // No wrapping: past the first or last space it resists (⌃⌘←/→ wrap).
+  // The background then switches the window to it (its most recent tab
+  // comes to the front, as clicking its icon); this sidebar shows it at
+  // once. The gesture logic is shared/space-swipe.js.
+  const SETTLE_MS = 220;
+  const SHOWN_SPACE_MS = 3000;
+  const spaceSwipe = createSpaceSwipe();
+  let swipeEndTimer = null;
+  let shownTimer = null;
+  // Where the drag shown started in the tracker's gesture (one that began
+  // while the last swipe was still sliding into place is shown from here).
+  let swipeBase = { offset: 0, events: 0 };
+  const fromBase = (result) => ({ ...result, offset: result.offset - swipeBase.offset, events: result.events - swipeBase.events });
+  // The most recent tab of a space in this window: the one its switch shows.
+  const recentTabOf = (spaceId) => Object.values(state?.tabs ?? {})
+    .filter((t) => t.windowId === windowId && state.tabSpace[t.id] === spaceId)
+    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
+  // Does anything between the pointer and the sidebar scroll sideways that way
+  // (the spaces bar when they don't fit)? Then the wheel is its.
+  const scrollsSideways = (event) => {
+    for (const node of /** @type {Element[]} */ (event.composedPath())) {
+      if (node === root) return false;
+      if (node.nodeType === 1 && canScrollX(node, event.deltaX, null)) return true;
+    }
+    return false;
+  };
+  // On a page, only while the sidebar is out (not the narrow rail).
+  const swipeUsable = () => mode !== 'overlay' || (root.classList.contains('open') && !root.classList.contains('rail'));
+  function startSwipe() {
+    const shown = V.activeSpaceId(viewState(), windowId);
+    const at = state.spaces.findIndex((s) => s.id === shown);
+    const neighbours = { [-1]: state.spaces[at - 1]?.id, [1]: state.spaces[at + 1]?.id };
+    const box = root.getBoundingClientRect();
+    const paneBox = pane.getBoundingClientRect();
+    // Still pictures of the neighbours, each drawn as it would show (its
+    // most recent tab highlighted, as after the switch), then this one again.
+    // Drawing them must not move this list's or the spaces bar's scroll.
+    const ghosts = {};
+    const keep = { shownSpace, switchingTo, top: tabsSection.scrollTop, left: chips.scrollLeft };
+    rendering = true;
+    drawingGhosts = true;
+    try {
+      for (const dir of [-1, 1]) {
+        if (!neighbours[dir]) continue;
+        shownSpace = neighbours[dir];
+        switchingTo = recentTabOf(shownSpace)?.id ?? null;
+        draw();
+        const ghost = /** @type {HTMLElement} */ (pane.cloneNode(true));
+        for (const img of ghost.querySelectorAll('img.avatar')) letterIfBroken(doc, /** @type {HTMLImageElement} */ (img));
+        ghost.classList.add('ghost');
+        ghost.inert = true;
+        ghost.setAttribute('aria-hidden', 'true');
+        Object.assign(ghost.style, { top: `${paneBox.top - box.top}px`, left: `${paneBox.left - box.left}px`, width: `${paneBox.width}px`, height: `${paneBox.height}px` });
+        ghosts[dir] = ghost;
+      }
+    } finally {
+      ({ shownSpace, switchingTo } = keep);
+      draw();
+      drawingGhosts = false;
+      rendering = false;
+      chips.scrollLeft = keep.left;
+      if (tabsSection.scrollTop !== keep.top) {
+        settingScroll = true; // not a scroll of the user's
+        tabsSection.scrollTop = keep.top;
+      }
+    }
+    root.append(...Object.values(ghosts));
+    root.classList.add('space-swiping');
+    swiping = { neighbours, ghosts, width: box.width, offset: 0, frame: 0, settling: false, committed: false };
+  }
+  // Where everything sits for `offset` (px; > 0: dragged right).
+  function placeSwipe(offset) {
+    const s = swiping;
+    const toward = offset > 0 ? -1 : 1;
+    const shownOffset = s.neighbours[toward] ? Math.max(-s.width, Math.min(s.width, offset)) : rubberBand(offset, s.width * 0.2);
+    pane.style.transform = shownOffset ? `translateX(${shownOffset}px)` : '';
+    for (const dir of [-1, 1]) s.ghosts[dir]?.style.setProperty('transform', `translateX(${shownOffset + dir * s.width}px)`);
+  }
+  function moveSwipe(offset) {
+    swiping.offset = offset;
+    if (swiping.frame) return;
+    swiping.frame = requestAnimationFrame(() => {
+      if (!swiping) return;
+      swiping.frame = 0;
+      placeSwipe(swiping.offset);
+    });
+  }
+  // Done (or the page hidden): the real pane back in place; a space swiped
+  // to is drawn from its top, as its picture was, and anything held back
+  // while settling is drawn now.
+  function endSwipe() {
+    if (!swiping) return;
+    const { committed } = swiping;
+    cancelAnimationFrame(swiping.frame);
+    for (const ghost of Object.values(swiping.ghosts)) ghost.remove();
+    pane.style.transform = '';
+    pane.classList.remove('settling');
+    root.classList.remove('space-swiping');
+    swiping = null;
+    if (committed && tabsSection.scrollTop !== 0) {
+      settingScroll = true;
+      tabsSection.scrollTop = 0;
+    }
+    if (committed || renderPending) render();
+  }
+  // The fingers lifted: on to the neighbour, or back.
+  function releaseSwipe({ offset, speed, events }) {
+    const s = swiping;
+    if (!s || s.settling) return;
+    cancelAnimationFrame(s.frame);
+    s.frame = 0;
+    const dir = settle({ offset, speed, events, width: s.width, has: (d) => !!s.neighbours[d] });
+    s.settling = true;
+    pane.classList.add('settling');
+    for (const ghost of Object.values(s.ghosts)) ghost.classList.add('settling');
+    placeSwipe(dir ? -dir * s.width : 0);
+    if (dir) {
+      const spaceId = s.neighbours[dir];
+      s.committed = true;
+      onScroll?.(0); // the window's list position: the new space from its top (saved with the switch)
+      // Swiped on the sidebar out over the page: it stays out on the page
+      // that comes to the front (as a tab clicked there).
+      const show = openOverPage();
+      const request = send('setSpace', { windowId, spaceId, ...(show ? { show } : {}) });
+      if (state.tabSpace[currentTabId] === spaceId) {
+        // Back to this page's own space: a switch away still pending stops
+        // (as clicking this page's tab does).
+        if (switchingTo != null) send('activateTab', { tabId: currentTabId });
+        onSwitch?.(currentTabId, request);
+      } else {
+        // Its tab comes to the front: highlighted and the page covered at
+        // once (shared/switching.js).
+        const tab = recentTabOf(spaceId);
+        if (tab) onSwitch?.(tab.id, request);
+      }
+      showSpaceNow(spaceId);
+    }
+    setTimeout(() => {
+      if (swiping === s) endSwipe();
+    }, SETTLE_MS);
+  }
+  // This sidebar shows the space until the state does; if it never does
+  // (the switch failed), back to the state's after SHOWN_SPACE_MS.
+  function showSpaceNow(spaceId) {
+    shownSpace = spaceId;
+    shownSince = Date.now();
+    clearTimeout(shownTimer);
+    shownTimer = setTimeout(() => {
+      if (shownSpace !== spaceId) return;
+      shownSpace = null;
+      render();
+    }, SHOWN_SPACE_MS + 50);
+  }
+  // A mouse wheel, not a trackpad: WebKit and Chromium report a wheel's
+  // notches as multiples of 120 in the old wheelDelta, a trackpad's as about
+  // 3× its pixel delta (rounded). A Mac wheel's 40px notch looks like a
+  // trackpad's; settle() still wants several events.
+  const mouseWheel = (event) => {
+    const legacy = /** @type {any} */ (event).wheelDeltaX ?? 0;
+    return legacy !== 0 && legacy % 120 === 0 && Math.abs(Math.abs(legacy) - Math.abs(event.deltaX) * 3) > 3;
+  };
+  root.addEventListener('wheel', (event) => {
+    const busy = editing != null || renaming != null || dragging != null || resizing != null || !menu.hidden;
+    const usable = !!state && windowId != null && state.spaces.length > 1 && !busy && swipeUsable() && !scrollsSideways(event);
+    const result = spaceSwipe.wheel({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, mouse: mouseWheel(event), time: event.timeStamp, usable });
+    if (spaceSwipe.swiping(event.timeStamp) && event.cancelable) event.preventDefault(); // not the list, not Safari's back/forward
+    // While it settles, the momentum after the fingers lifted still counts
+    // as that gesture (fed above), so it never starts another swipe.
+    if (swiping?.settling) return;
+    if (result.phase === 'tracking') {
+      clearTimeout(swipeEndTimer);
+      if (!swiping) {
+        // Before this event (if it counted): 0 for a gesture that starts here.
+        swipeBase = result.counted ? { offset: result.offset + event.deltaX, events: result.events - 1 } : { offset: result.offset, events: result.events };
+        startSwipe();
+      }
+      moveSwipe(result.offset - swipeBase.offset);
+      swipeEndTimer = setTimeout(() => {
+        const end = spaceSwipe.end();
+        releaseSwipe(end.phase === 'release' ? fromBase(end) : end);
+      }, SWIPE.GAP_MS + 20);
+    } else if (result.phase === 'release') {
+      clearTimeout(swipeEndTimer);
+      releaseSwipe(fromBase(result));
+    }
+  }, { passive: false });
+  // The page hidden mid-swipe (another tab came to the front): put it back.
+  doc.addEventListener('visibilitychange', () => {
+    if (!doc.hidden || !swiping) return;
+    clearTimeout(swipeEndTimer);
+    spaceSwipe.reset();
+    endSwipe();
+  });
 
   // A new space (opened in the editor) or folder (its name being edited).
   function newSpace() {
@@ -893,13 +1119,18 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   return {
     el: root,
     // While editing, renaming or dragging, the overlay shouldn't auto-hide.
-    isBusy: () => editing != null || renaming != null || pendingRename != null || dragging != null || resizing != null || !menu.hidden,
+    isBusy: () => editing != null || renaming != null || pendingRename != null || dragging != null || resizing != null || swiping != null || !menu.hidden,
     width: () => (resizing ? resizing.width : sidebarWidth(state?.settings)),
     update(nextState, context) {
       if (context?.fit) fit = context.fit;
       if (context && 'newTabPending' in context) newTabPending = !!context.newTabPending;
       if (context && 'switchingTo' in context) switchingTo = context.switchingTo ?? null;
       state = nextState;
+      // The swiped-to space has arrived (or never will: the switch failed).
+      if (shownSpace && (V.activeSpaceId(state, windowId) === shownSpace || Date.now() - shownSince > SHOWN_SPACE_MS)) {
+        shownSpace = null;
+        clearTimeout(shownTimer);
+      }
       if (menuFor?.tabId != null && !state.tabs?.[menuFor.tabId]) closeMenu(); // its tab is gone
       if (menuFor?.pinId && !state.pins?.some((p) => p.id === menuFor.pinId)) closeMenu();
       if (menuFor?.folderId && !state.folders?.some((f) => f.id === menuFor.folderId)) closeMenu();
