@@ -121,8 +121,9 @@ for (const target of TARGETS) {
     }
     const { navigation } = PROFILES[target];
     assert.deepEqual(Object.keys(navigation).sort(), Object.keys(ACTIONS).sort());
-    // Safari's tab shortcuts are page-only extras (⌥⌘↓/↑, test below).
-    const shared = target === 'safari' ? ['nextSpace', 'prevSpace'] : Object.keys(ACTIONS);
+    // Safari's tab shortcuts are page-only extras (⌥⌘↓/↑, test below), and
+    // its previous space (⌃⌘←) is page-only too: ⌘T has its command slot.
+    const shared = target === 'safari' ? ['nextSpace'] : Object.keys(ACTIONS);
     for (const setting of shared) {
       assert.deepEqual(webkitShortcut(commands[ACTIONS[setting]].suggested_key.mac), fromSetting(navigation[setting]), `${target} ${setting}`);
     }
@@ -134,7 +135,8 @@ test('safari: ⌥⌘↓/↑ page shortcuts for tabs, on top of the ⌃⌘ comman
   assert.equal(navigation.nextTab, 'Alt+Meta+ArrowDown');
   assert.equal(navigation.prevTab, 'Alt+Meta+ArrowUp');
   const { commands } = manifestFor('safari');
-  for (const c of Object.values(ACTIONS)) assert.match(commands[c].suggested_key.mac, /^MacCtrl\+Command\+(Up|Down|Left|Right)$/, c);
+  for (const c of Object.values(ACTIONS).filter((a) => a !== 'prev-space')) assert.match(commands[c].suggested_key.mac, /^MacCtrl\+Command\+(Up|Down|Left|Right)$/, c);
+  assert.equal(commands['prev-space'].suggested_key, undefined, '⌘T took its slot');
 });
 
 test('the validators agree with what was verified by hand', () => {

@@ -463,3 +463,5 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 - [ ] With Safari's "New Tab" moved to another shortcut (System Settings › Keyboard › App Shortcuts): ⌘T on a page opens Margin's palette at once, no tab appears, nothing flickers; Escape leaves you where you were; choosing a page opens one new tab.
 - [ ] ⌘T on Margin's new-tab page and in a fitted site: the same.
+- [ ] ⌘T with the address bar focused, on Safari's own Start Page or a PDF: a new tab with Margin's palette opens (Margin's ⌘T shortcut, app-wide).
+- [ ] ⌃⌘← (previous space) still works on web pages; ⌃⌘→ everywhere.
