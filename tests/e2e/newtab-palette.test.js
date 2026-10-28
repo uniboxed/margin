@@ -103,7 +103,7 @@ test('the launcher page opened on purpose (#launcher) stays', async () => {
 test('the palette can open the start page (with Settings) on purpose', async () => {
   const page = await openPage('to-launcher');
   await page.bringToFront();
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await page.keyboard.type('margin start page');
   await waitFor(async () => (await paletteSnapshot(page))?.ids[0] === 'action:launcher');
   const opened = ctx.context.waitForEvent('page');
@@ -121,7 +121,7 @@ test('palette "New window" opens a real window in the same space, with the palet
   await page.bringToFront();
   const fromWindow = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
   const before = (await ctx.worker.evaluate(() => chrome.windows.getAll())).length;
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await page.keyboard.type('new window');
   await waitFor(async () => (await paletteSnapshot(page))?.ids[0] === 'action:new-window');
   const opened = ctx.context.waitForEvent('page');

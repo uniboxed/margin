@@ -20,7 +20,6 @@ const LEGACY_SHORTCUTS = Object.freeze({
 const DEFAULT_SETTINGS = Object.freeze({
   sidebarPinnedOpen: false,
   archiveAfterHours: 12,
-  paletteShortcut: 'Alt+KeyK',
   // Searches use the browser's engine (shared/search.js). Safari: the one
   // learned from Safari's own address-bar searches, { id, name, template, at }.
   safariSearch: null,
@@ -121,8 +120,9 @@ function normalizeState(raw = {}) {
 
 // Settings that no longer exist: `searchEngine` (Margin's own engine
 // choice, replaced by the browser's); `sidebarWidth` (now Arcadium's own,
-// settings.themes.arcadium; normalizeThemes moves a saved one there).
-const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth'];
+// settings.themes.arcadium; normalizeThemes moves a saved one there);
+// `paletteShortcut` (⌥K: ⌘T opens the same palette, content/palette.js).
+const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
 const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 
 // Each theme's settings, filled in by the theme (which also takes over what

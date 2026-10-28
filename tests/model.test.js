@@ -18,7 +18,8 @@ test('default state has one Personal space and default settings', () => {
 test('normalizeState fills missing keys and keeps stored ones', () => {
   const s = M.normalizeState({ settings: { archiveAfterHours: 3 }, pins: [{ id: 'p' }] });
   assert.equal(s.settings.archiveAfterHours, 3);
-  assert.equal(s.settings.paletteShortcut, 'Alt+KeyK');
+  assert.equal(s.settings.paletteShortcut, undefined, '⌥K is gone: ⌘T opens the palette');
+  assert.equal(M.normalizeState({ spaces: [], settings: { paletteShortcut: 'Alt+KeyK' } }).settings.paletteShortcut, undefined, 'a saved one is dropped');
   assert.equal(s.pins.length, 1);
   assert.equal(s.spaces.length, 1);
   assert.deepEqual(s.tabSpace, {});

@@ -55,7 +55,7 @@ test('a search on an engine\'s own site doesn\'t change it; Safari\'s own search
   const web = await ctx.context.newPage();
   await web.goto(`${server.base}/palette-search`);
   await web.waitForSelector('margin-sidebar-host', { state: 'attached' });
-  await web.keyboard.press('Alt+KeyK');
+  await web.keyboard.press('Meta+KeyT');
   await web.keyboard.type('two words');
   const snap = await waitFor(async () => {
     const s = await paletteSnapshot(web);

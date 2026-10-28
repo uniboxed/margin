@@ -2,37 +2,30 @@
 // Margin.content. The palette itself (what it looks like) is the theme's
 // createPalette({ send, getState, getContext, onLocal, colorScheme }) →
 // { open, close, toggle, isOpen, refresh }; see themes/arcadium/palette.js.
-import * as shortcuts from '../shared/shortcuts.js';
 import * as V from '../shared/view.js';
 import { platform } from '../shared/platform.js';
 
-// Capture-phase listener so the page can't swallow the shortcut first.
-// `target`: the window to listen on (the card's, in the fitted layout).
-function installShortcut(palette, getShortcut, target = globalThis) {
-  target.addEventListener('keydown', (e) => {
-    if (!shortcuts.matches(e, getShortcut())) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    palette.toggle();
-  }, true);
-}
-
-// ⌘T. The browser keeps it for its own File › New Tab, which creates a tab
+// ⌘T, the palette's key (⌥K before it). The browser keeps it for its own
+// File › New Tab, which creates a tab
 // first (Margin then hands it back: a flicker). With that menu item given
 // another shortcut (macOS System Settings › Keyboard › App Shortcuts), ⌘T
 // reaches the page like any key and Margin opens its palette to choose a
-// new tab right away, with no tab created. `run()`: open it.
-/** @param {() => void} run @param {any} [target] */
-function installNewTabKey(run, target = globalThis) {
+// new tab right away, with no tab created (without it, Margin hands the
+// browser's new tab back: background/handlers.js). Capture phase, so the
+// page can't swallow it first. `run()`: open it. `target`: the window to
+// listen on (the card's, in the fitted layout). `skip()`: leave it alone
+// this time (a shortcut being recorded in Settings).
+/** @param {() => void} run @param {any} [target] @param {() => boolean} [skip] */
+function installNewTabKey(run, target = globalThis, skip = () => false) {
   target.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
-    if (!e.isTrusted || e.code !== 'KeyT' || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    if (!e.isTrusted || e.code !== 'KeyT' || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || skip()) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (!e.repeat) run();
   }, true);
 }
 
-export { installShortcut as installPaletteShortcut, installNewTabKey };
+export { installNewTabKey };
 
 // The palette opened to choose a new tab is closing: the sidebar's "+ New
 // Tab" highlight goes (`setPending(false)`). Right away, unless what was
@@ -90,13 +83,9 @@ export function wirePalette(c, createPalette) {
     onLocal: (action) => action.local === 'toggleSidebar' && c.sidebar.toggle(),
     colorScheme: c.colorScheme,
   });
-  const paletteKey = () => c.getState().state?.settings?.paletteShortcut ?? 'Alt+KeyK';
   // While Margin is out of the way (content/core.js active()), reaching for
   // the palette offers full screen instead.
   const ready = () => !c.active || c.active() || void c.offerFullscreen();
-  const guarded = { toggle: () => ready() && palette.toggle() };
-  installShortcut(guarded, paletteKey);
-  c.onCard?.((win) => installShortcut(guarded, paletteKey, win));
   // `newTab`: opened to choose a new tab (⌘T, handed here from the new-tab
   // page by the background; the sidebar's "+ New Tab"): the page stays, the
   // sidebar highlights "+ New Tab" instead of this tab until it closes.

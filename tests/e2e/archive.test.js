@@ -88,7 +88,7 @@ test('archived tabs are restorable from the palette, into their space', async ()
   await nt.close();
 
   await page.bringToFront();
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await page.keyboard.type('archived in old');
   await waitFor(async () => (await paletteSnapshot(page)).ids[0]?.startsWith('archive:'));
   const opened = ctx.context.waitForEvent('page');

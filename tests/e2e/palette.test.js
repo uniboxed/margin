@@ -22,9 +22,9 @@ async function openPage(name) {
   return page;
 }
 
-test('Option+K opens the palette with focus in the field; Esc closes it', async () => {
+test('⌘T opens the palette with focus in the field; Esc closes it', async () => {
   const page = await openPage('palette-home');
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   const snap = await waitFor(async () => {
     const s = await paletteSnapshot(page);
     return s?.open && s;
@@ -39,7 +39,7 @@ test('Option+K opens the palette with focus in the field; Esc closes it', async 
 test('fuzzy search finds a tab; Enter activates it', async () => {
   const target = await openPage('zebra-stripes');
   const page = await openPage('palette-search');
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await page.keyboard.type('zbr strp');
   const snap = await waitFor(async () => {
     const s = await paletteSnapshot(page);
@@ -55,7 +55,7 @@ test('fuzzy search finds a tab; Enter activates it', async () => {
 
 test('arrow keys move the selection; actions run (Toggle sidebar)', async () => {
   const page = await openPage('palette-keys');
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await page.keyboard.type('toggle sidebar');
   await waitFor(async () => (await paletteSnapshot(page)).ids[0] === 'action:toggle-sidebar');
   const before = await paletteSnapshot(page);
@@ -71,7 +71,7 @@ test('arrow keys move the selection; actions run (Toggle sidebar)', async () => 
 
 test('"Search for" opens a new tab, searching with Chrome\'s own search engine', async () => {
   const page = await openPage('palette-go');
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await page.keyboard.type('margin browser');
   const snap = await waitFor(async () => {
     const s = await paletteSnapshot(page);
@@ -95,25 +95,14 @@ test('commands fallback: a background "open-palette" command toggles the palette
   await page.close();
 });
 
-test('the shortcut is a setting; the new tab has the palette and navigates in place', async () => {
+test('⌘T opens the palette on the start page too; the old ⌥K setting is gone', async () => {
   const nt = await ctx.context.newPage();
   await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .margin-sidebar');
   await nt.click('#settings summary');
-  assert.equal(await nt.inputValue('#shortcut'), '⌥K');
-  await nt.click('#shortcut');
-  await nt.keyboard.press('Control+Shift+KeyP');
-  await waitFor(async () => (await nt.inputValue('#shortcut')) === '⌃⇧P');
+  assert.equal(await nt.locator('[data-shortcut="paletteShortcut"]').count(), 0);
   await nt.locator('#query').click();
-  await nt.keyboard.press('Control+Shift+KeyP');
-  await waitFor(async () => (await paletteSnapshot(nt))?.open);
-  await nt.keyboard.type(`${new URL(server.base).host}/from-palette`);
-  await nt.keyboard.press('Enter');
-  await nt.waitForURL(`${server.base}/from-palette`);
-
-  // Content pages pick up the new shortcut too.
-  await nt.waitForSelector('margin-sidebar-host', { state: 'attached' });
-  await nt.keyboard.press('Control+Shift+KeyP');
+  await nt.keyboard.press('Meta+KeyT');
   await waitFor(async () => (await paletteSnapshot(nt))?.open);
   await nt.close();
 });
