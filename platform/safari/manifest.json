@@ -35,7 +35,7 @@
       "description": "Toggle the Margin sidebar (Option+S on web pages)"
     },
     "open-palette": {
-      "description": "Open the Margin command palette (Option+K on web pages)"
+      "description": "Open the Margin command palette (⌘T on web pages)"
     }
   }
 }

@@ -8,7 +8,7 @@ import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
-import { installPaletteShortcut, installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
+import { installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
 import { createSwitching, backgroundSwitches } from '../../shared/switching.js';
 import { THEMES, themeFor } from '../index.js';
 import { avatar, createSidebar } from './sidebar.js';
@@ -296,9 +296,9 @@ export function mount({ api, self, send, windowed = false }) {
     },
     colorScheme: () => (dark.matches ? 'dark' : 'light'),
   });
-  installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
-  // ⌘T once the browser's New Tab has another shortcut: as "+ New Tab" here.
-  installNewTabKey(() => { if (!recording) onNewTab(); });
+  // ⌘T (the palette's key) once the browser's New Tab has another shortcut:
+  // as "+ New Tab" here.
+  installNewTabKey(onNewTab, globalThis, () => recording); // recording: Settings says it's taken
   api.runtime.onMessage.addListener((message) => {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'new-tab' && !recording) onNewTab(); // ⌘T (Safari's shortcut)
@@ -314,18 +314,18 @@ export function mount({ api, self, send, windowed = false }) {
   const shortcutInputs = [.../** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll('.shortcut-input'))];
   const shortcutHelp = $('shortcut-help');
   const defaultHelp = shortcutHelp.textContent;
-  const SHORTCUT_NAMES = { paletteShortcut: 'Command palette', sidebarShortcut: 'Show or hide the sidebar', nextTab: 'Next tab', prevTab: 'Previous tab', nextSpace: 'Next space', prevSpace: 'Previous space' };
+  const SHORTCUT_NAMES = { newTab: 'New tab (the command palette)', sidebarShortcut: 'Show or hide the sidebar', nextTab: 'Next tab', prevTab: 'Previous tab', nextSpace: 'Next space', prevSpace: 'Previous space' };
   let recording = false;
 
   function currentShortcuts() {
     return {
-      paletteShortcut: state?.settings?.paletteShortcut ?? 'Alt+KeyK',
+      newTab: 'Meta+KeyT', // fixed: the palette's key (content/palette.js installNewTabKey)
       sidebarShortcut: state?.settings?.sidebarShortcut ?? 'Alt+KeyS',
       ...shortcuts.navigationFor(state?.settings),
     };
   }
   function saveShortcut(name, combo) {
-    if (name === 'paletteShortcut' || name === 'sidebarShortcut') return send('updateSettings', { patch: { [name]: combo } });
+    if (name === 'sidebarShortcut') return send('updateSettings', { patch: { [name]: combo } });
     return send('updateSettings', { patch: { shortcuts: { ...shortcuts.navigationFor(state?.settings), [name]: combo } } });
   }
   function showHelp(text, error = false) {
@@ -363,7 +363,7 @@ export function mount({ api, self, send, windowed = false }) {
   }, true);
   $('shortcuts-reset').addEventListener('click', () => {
     showHelp(defaultHelp);
-    send('updateSettings', { patch: { paletteShortcut: 'Alt+KeyK', sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } });
+    send('updateSettings', { patch: { sidebarShortcut: 'Alt+KeyS', shortcuts: { ...shortcuts.NAVIGATION } } });
   });
 
   // DEVELOPMENT DIAGNOSTICS: remove before release (background/diagnostics.js).

@@ -74,7 +74,7 @@ test('the palette opens in the top layer, above a site\'s own popover; not while
     document.body.insertAdjacentHTML('beforeend', '<div id="site-popover" popover="manual" style="width:90vw;height:90vh;margin:auto">site popover</div>');
     document.getElementById('site-popover').showPopover();
   });
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await waitFor(async () => (await paletteSnapshot(page))?.open);
   const state = await page.evaluate(() => {
     const host = document.querySelector('margin-palette-host');
@@ -89,7 +89,7 @@ test('the palette opens in the top layer, above a site\'s own popover; not while
     document.body.insertAdjacentHTML('beforeend', '<dialog id="site-modal">modal</dialog>');
     document.getElementById('site-modal').showModal();
   });
-  await page.keyboard.press('Alt+KeyK');
+  await page.keyboard.press('Meta+KeyT');
   await page.waitForTimeout(300);
   assert.equal(await page.evaluate(() => document.querySelector('margin-palette-host')?.matches(':popover-open') ?? false), false, 'falls back to the z-index');
   await page.close();

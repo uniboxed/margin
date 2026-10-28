@@ -82,7 +82,7 @@ margin/
   tabSpace: { [tabId]: spaceId },              // new tabs join the window's active space
   pins: [{ id, spaceId, url, title }],         // URL-based (tab ids don't survive restarts)
   archive: [{ url, title, spaceId, closedAt }],// capped at 200 entries
-  settings: { sidebarPinnedOpen: false, archiveAfterHours: 12, paletteShortcut: "Alt+KeyK", …,
+  settings: { sidebarPinnedOpen: false, archiveAfterHours: 12, …,
               theme: "arcadium", themes: { arcadium: { sidebarWidth: 260 } } } // each theme's own settings
 }
 ```
@@ -118,7 +118,7 @@ On browser restart, tab ids change: rebuild `tabSpace` by matching open tabs to 
 - Unit-test all of `state/model.js` (assign new tab, move tab, delete space, rebuild after restart, archive cap).
 
 ### M5 — Command palette
-- Opens with the configured shortcut (default **Option+K**) via a content-script `keydown` listener, plus a `commands` API fallback. Before finalizing the default, verify in Safari that it isn't swallowed by Safari or macOS; if it is, choose another and record it.
+- Opens with **⌘T** (Arc's: choosing a new tab over the page you're on), via a content-script `keydown` listener once the browser's own File › New Tab has another shortcut (macOS App Shortcuts), Safari's `new-tab` command app-wide, and otherwise by handing the browser's new tab back (DECISIONS.md). Was **Option+K** (a setting); dropped when ⌘T opened the same palette.
 - Fuzzy search across open tabs (all spaces, current space ranked first), pins, archive, and the actions "New tab," "Switch to space …," "Pin current tab," "Toggle sidebar," and "Open URL / Search for …".
 - Keyboard navigation: up/down, Enter, Esc. Rendered in its own shadow root.
 
