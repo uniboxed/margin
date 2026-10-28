@@ -86,9 +86,14 @@ export function mount({ api, self, send, windowed = false }) {
   // Saved before a switch from the sidebar, so the next page asks for the right one.
   const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab', 'setSpace']);
   /** @type {import('../../../types/margin').Send} */
-  const sidebarSend = (type, ...rest) => {
-    if (SWITCHES.has(type)) flushScroll();
-    return send(type, ...rest);
+  const sidebarSend = (type, payload, ...rest) => {
+    if (!SWITCHES.has(type)) return send(type, payload, ...rest);
+    const sidebarTop = scrollTimer == null ? null : scrollTop;
+    flushScroll();
+    return send(type, {
+      .../** @type {any} */ (payload),
+      ...(Number.isFinite(sidebarTop) ? { sidebarTop } : {}),
+    }, ...rest);
   };
   // On Margin's start page (#launcher), "+ New Tab" chooses a new tab as on a
   // web page: highlighted until the palette closes, and what's chosen opens

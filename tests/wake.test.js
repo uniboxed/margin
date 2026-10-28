@@ -37,11 +37,12 @@ globalThis.chrome = {
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return fake.reply; },
   },
   scripting: {
-    executeScript: ({ target, world, func }) => {
-      fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func });
-      const delay = fake.scriptDelay(target.tabId);
+    executeScript: ({ target, world, func, args }) => {
+      fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func, args });
+      const delay = fake.scriptDelay(target.tabId, func);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
-      return sleep(delay).then(() => [{ result: true }]);
+      const result = func.name === 'prepareSidebarInPage' ? { ready: true, token: args?.[0]?.token } : true;
+      return sleep(delay).then(() => [{ result }]);
     },
   },
   storage: {
@@ -71,10 +72,15 @@ test('wake: a running page answers at once and the switch goes ahead then', asyn
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 2, url: 'https://b.test/' }]);
   fake.scriptDelay = () => 5;
   const started = Date.now();
-  await focusTab(2);
+  const focused = await focusTab(2, { carry: 'hover', scroll: 42 });
   const waited = fake.updates[0].at - started;
   assert.ok(waited < 60, `switched after ${waited}ms`);
-  assert.equal(fake.scripts.filter((s) => s.tabId === 2).length, 2, 'the keep-awake script and the answering one');
+  assert.equal(fake.scripts.filter((s) => s.tabId === 2).length, 3, 'the keep-awake, wake answer and sidebar preparation');
+  assert.equal(focused.preparation.outcome, 'ready');
+  const prepared = fake.scripts.find((s) => s.func.name === 'prepareSidebarInPage');
+  assert.equal(prepared.args[0].scroll, 42);
+  assert.equal(prepared.args[0].carry, 'hover');
+  assert.ok(prepared.at <= fake.updates[0].at, 'the hidden page prepares before activation');
 });
 
 test('wake: the keep-awake runs in the page\'s own world (Margin\'s is cleared when it reloads)', async () => {
@@ -176,6 +182,16 @@ test('wake: a page slow to come back is waited for, up to the cap', async () => 
   assert.ok(waited >= 390 && waited < 600, `gave up after ${waited}ms`);
 });
 
+test('sidebar preparation: a timeout is cancelled before the tab is activated', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 13, url: 'https://slow-sidebar.test/' }]);
+  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 350 : 5;
+  const focused = await focusTab(13);
+  assert.equal(focused.preparation.outcome, 'timeout');
+  const cancel = fake.scripts.find((s) => s.func.name === 'cancelSidebarInPage');
+  assert.ok(cancel, 'the late preparation is invalidated');
+  assert.ok(cancel.at <= fake.updates[0].at, 'invalidated before activation');
+});
+
 test('wake: a tab with no page (Safari unloaded it) doesn\'t wait', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 5, url: 'https://e.test/' }]);
   fake.scriptDelay = () => null;
@@ -196,12 +212,13 @@ test('wake: nothing to wake for the tab in front, a page Margin can\'t reach, or
 
 test('wake: a switch right after an early wake (a press, the palette) reuses it', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 7, url: 'https://g.test/' }]);
-  fake.scriptDelay = () => 200;
+  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 5 : 200;
   const early = wakeTab(7);
   await sleep(150);
   const started = Date.now();
-  await focusTab(7);
-  assert.equal(fake.scripts.length, 2, 'no second wake');
+  const focused = await focusTab(7);
+  assert.equal(fake.scripts.length, 3, 'no second wake; only the sidebar preparation is added');
+  assert.equal(focused.preparation.outcome, 'ready');
   const waited = fake.updates[0].at - started;
   assert.ok(waited < 120, `only the rest of the early wake: ${waited}ms`);
   assert.equal((await early).outcome, 'awake');

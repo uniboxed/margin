@@ -24,10 +24,16 @@ import { getScroll, setScroll } from './scroll.js';
 // (content/layout.js). A page that isn't listening yet (loading, or Safari
 // reloading a tab it had unloaded) gets it with `hello` for a few seconds.
 const carried = new Map(); // tab id → { why, until }
-function carryOpen(tabId, why) {
+function rememberCarry(tabId, why) {
   const reason = why === 'toggle' ? 'toggle' : 'hover';
   carried.set(tabId, { why: reason, until: now() + 10000 });
+  return reason;
+}
+function deliverCarry(tabId, reason) {
   api.tabs.sendMessage(tabId, { type: 'command', command: 'carry-open', why: reason }).then(() => carried.delete(tabId), () => {});
+}
+function carryOpen(tabId, why) {
+  deliverCarry(tabId, rememberCarry(tabId, why));
 }
 function takeCarried(tabId) {
   const entry = carried.get(tabId);
@@ -142,6 +148,34 @@ async function carryIfSameWindow(tabId, why, windowId) {
   if (tab && windowId != null && tab.windowId === windowId) carryOpen(tabId, why);
 }
 
+// For a sidebar-driven switch, preserve its open state as part of the hidden
+// destination preparation. The remembered copy is also the cold-tab path:
+// if Safari has discarded the page, its fresh content script receives it in
+// `hello`. An already-running page that could not prepare gets the ordinary
+// command after activation.
+/**
+ * @param {number} tabId
+ * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number }} [options]
+ */
+async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop } = {}) {
+  const target = (await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
+  const reason = show && sourceWindowId != null && target?.windowId === sourceWindowId ? rememberCarry(tabId, show) : null;
+  // Preparation receives the value directly; persistence can finish beside
+  // the switch instead of adding a storage.session round trip in front of it.
+  if (Number.isFinite(sidebarTop) && sourceWindowId != null) void setScroll(sourceWindowId, sidebarTop);
+  try {
+    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null });
+    if (!reason) return result;
+    if (!result?.tab) carried.delete(tabId);
+    else if (result.preparation?.outcome === 'ready') carried.delete(tabId);
+    else deliverCarry(tabId, reason);
+    return result;
+  } catch (error) {
+    if (reason) carried.delete(tabId);
+    throw error;
+  }
+}
+
 // ⌘T as Margin's own shortcut (Safari's manifest `new-tab`, with Safari's
 // File › New Tab moved to another shortcut, DECISIONS.md): Safari matches it
 // in the app, wherever the focus is. The page in front opens its palette to
@@ -175,10 +209,9 @@ export const handlers = {
     const carry = sender.tab?.id != null ? takeCarried(sender.tab.id) : null;
     return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry };
   },
-  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle' }} message `show`: keep the sidebar open there */
-  async activateTab({ tabId, show }, sender) {
-    await focusTab(tabId, { source: 'activateTab' });
-    if (show) await carryIfSameWindow(tabId, show, sender.tab?.windowId);
+  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: keep the sidebar open there */
+  async activateTab({ tabId, show, sidebarTop }, sender) {
+    await focusWithSidebar(tabId, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop });
   },
   // About to be shown, probably (a press on a sidebar row, the palette
   // resting on a row): its process is woken now, so the switch that follows
@@ -241,8 +274,8 @@ export const handlers = {
   },
   // Closing from Margin archives the tab, like Arc.
   /** @param {{ tabId: number }} message */
-  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle' }} message `show`: closing the shown tab from an open sidebar keeps it open on the next one */
-  async closeTab({ tabId, show }) {
+  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: closing the shown tab from an open sidebar keeps it open on the next one */
+  async closeTab({ tabId, show, sidebarTop }) {
     await mutate((s) => {
       const tab = s.tabs[tabId];
       return tab && /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
@@ -251,15 +284,22 @@ export const handlers = {
     // The tab in front: the space's most recent other tab comes to the front
     // first (Arc stays in the space; the browser would pick a neighbour,
     // maybe of another space).
+    let selected = null;
     if (closing?.active) {
       const s = await load();
       const stay = M.recentTabOfSpace(s, closing.windowId, s.tabSpace[tabId], tabId);
-      if (stay) await focusTab(stay.id, { source: 'closeTab' }).catch(() => {});
+      if (stay) {
+        const result = await focusWithSidebar(stay.id, { source: 'closeTab', show, sourceWindowId: closing.windowId, sidebarTop }).catch(() => null);
+        if (result?.tab) selected = stay.id;
+      }
     }
     await api.tabs.remove(tabId);
     if (show && closing?.active) {
       const [next] = await api.tabs.query({ active: true, windowId: closing.windowId }).catch(() => []);
-      if (next?.id != null) carryOpen(next.id, show);
+      // If Margin could not select the space's own next tab above, Safari
+      // selected one while removing the old tab. That browser-chosen path
+      // cannot be prepared, so retain the established post-switch fallback.
+      if (next?.id != null && next.id !== selected) carryOpen(next.id, show);
     }
   },
   /** @param {{ archiveId: string, windowId?: number, replaceTabId?: number }} message */
@@ -406,8 +446,8 @@ export const handlers = {
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
   },
-  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle' }} message `show`: keep the sidebar open there */
-  async openPin({ pinId, windowId, show }) {
+  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: keep the sidebar open there */
+  async openPin({ pinId, windowId, show, sidebarTop }) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
@@ -417,18 +457,20 @@ export const handlers = {
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
-      await focusTab(existing.id, { source: 'openPin' });
-      if (show) await carryIfSameWindow(existing.id, show, windowId);
+      await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop });
     } else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
   },
   /** @param {{ windowId: number, spaceId: string }} message */
   // `bringTab: false`: only the sidebar's space, the page in front stays.
   /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean }} message */
-  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean, show?: boolean | 'hover' | 'toggle' }} message `show`: keep the sidebar open on the tab that comes to the front */
-  async setSpace({ windowId, spaceId, bringTab = true, show }, sender) {
+  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: keep the sidebar open on the tab that comes to the front */
+  async setSpace({ windowId, spaceId, bringTab = true, show, sidebarTop }, sender) {
     const win = windowId ?? sender?.tab?.windowId;
-    await showSpace(win, spaceId, { bringTab });
+    if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop);
+    const reason = show && win != null && win === sender?.tab?.windowId ? (show === 'toggle' ? 'toggle' : 'hover') : null;
+    const result = await showSpace(win, spaceId, { bringTab, carry: reason, scroll: sidebarTop });
     if (!show || win == null) return;
+    if (result?.preparation?.outcome === 'ready') return;
     const [front] = await api.tabs.query({ active: true, windowId: win });
     if (front && front.id !== sender?.tab?.id) await carryIfSameWindow(front.id, show, sender?.tab?.windowId);
   },

@@ -72,6 +72,8 @@ test('each build is stamped with its own profile', () => {
   }
   assert.equal(PROFILES.safari.fetchFavicons, true, 'Safari gives no tab.favIconUrl');
   assert.equal(PROFILES.chrome.fetchFavicons, false, 'Chrome provides tab.favIconUrl');
+  assert.equal(PROFILES.safari.prepareSidebar, true, 'Safari prepares a hidden destination before its web view is swapped in');
+  assert.equal(PROFILES.chrome.prepareSidebar, false, 'Chrome keeps its hidden tab frame without the extra handoff');
 });
 
 // The rules of WebKit's parseCommandShortcut (Safari's command loading): 2–3
