@@ -10,7 +10,7 @@ import { api, load, mutate, now, resync } from './background/store.js';
 import * as restore from './background/restore.js';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
-import { handlers, newTabHandOff } from './background/handlers.js';
+import { handlers, newTabHandOff, newTabKey } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
 import { recordCreated } from './background/diagnostics.js';
 import { queueRegistrations } from './background/registered.js';
@@ -200,6 +200,7 @@ globalThis.margin = { archiveNow: archiveStale, syncRegistrations: queueRegistra
 // ---- commands -------------------------------------------------------------
 
 api.commands?.onCommand.addListener(async (command, tabArg) => {
+  if (command === 'new-tab') return newTabKey(tabArg);
   if (NAV_ACTIONS.has(command)) {
     const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
     return navigate(command, 'command', windowId);

@@ -301,6 +301,7 @@ export function mount({ api, self, send, windowed = false }) {
   installNewTabKey(() => { if (!recording) onNewTab(); });
   api.runtime.onMessage.addListener((message) => {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
+    if (message?.type === 'command' && message.tabId === self?.id && message.command === 'new-tab' && !recording) onNewTab(); // ⌘T (Safari's shortcut)
     // The background switching from this tab (next/previous tab; shared/switching.js).
     if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) onSwitch(message.tabId, fromBackground.begin(message.tabId), { cover: message.passing ? 'none' : 'slow' });
     if ((message?.type === 'switch-done' || message?.type === 'switch-failed') && message.from === self?.id) fromBackground.settle(message);

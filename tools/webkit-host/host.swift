@@ -149,6 +149,11 @@ let pageRecorder = """
     controller.didOpenWindow(window)
     controller.didFocusWindow(window)
     log("installed \(ctx.uniqueIdentifier)")
+    // What WebKit made of the manifest: its errors, and the commands' shortcuts.
+    for error in ext.errors { log("manifest error: \(error.localizedDescription)") }
+    for command in ctx.commands {
+      log("command \(command.id): key=\(command.activationKey ?? "-") modifiers=\(command.modifierFlags.rawValue)")
+    }
   }
   func uninstall() throws { if let ctx = context { try controller.unload(ctx); log("uninstalled"); context = nil } }
   func world() -> WKContentWorld? { context.map { WKContentWorld.world(name: "WebExtension-\($0.uniqueIdentifier)") } }

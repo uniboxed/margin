@@ -147,3 +147,15 @@ test('Settings toggles are switches where supported (checkboxes elsewhere)', () 
   const html = readFileSync(new URL('themes/arcadium/newtab.html', root), 'utf8');
   for (const id of ['block-gestures', 'pull-to-refresh', 'swipe-navigation']) assert.match(html, new RegExp(`id="${id}" type="checkbox" switch`), id);
 });
+
+test('Safari\'s commands: ⌘T takes ⌃⌘←\'s slot (four shortcuts at most); Chrome\'s stay the arrows', async () => {
+  const { manifestFor } = await import('../scripts/build.js');
+  const keyed = (m) => Object.entries(m.commands).filter(([, c]) => c.suggested_key).map(([k]) => k).sort();
+  const safari = manifestFor('safari');
+  assert.deepEqual(keyed(safari), ['new-tab', 'next-space', 'next-tab', 'prev-tab']);
+  assert.equal(safari.commands['new-tab'].suggested_key.mac, 'Command+T');
+  assert.ok(safari.commands['prev-space'], 'still a command (the page\'s ⌃⌘← keeps working)');
+  for (const [, c] of Object.entries(safari.commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
+  for (const name of ['toggle-sidebar', 'open-palette', 'next-tab', 'prev-tab', 'next-space']) assert.deepEqual(safari.commands[name], manifest.commands[name], name);
+  assert.deepEqual(keyed(manifestFor('chrome')), ['next-space', 'next-tab', 'prev-space', 'prev-tab']);
+});

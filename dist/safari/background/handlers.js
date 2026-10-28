@@ -138,6 +138,27 @@ async function carryIfSameWindow(tabId, why, windowId) {
   if (tab && windowId != null && tab.windowId === windowId) carryOpen(tabId, why);
 }
 
+// ⌘T as Margin's own shortcut (Safari's manifest `new-tab`, with Safari's
+// File › New Tab moved to another shortcut, DECISIONS.md): Safari matches it
+// in the app, wherever the focus is. The page in front opens its palette to
+// choose a new tab (no tab created: no flicker); Margin's new-tab page does
+// what its "+ New Tab" does; anything else (Safari's own pages, PDFs, sites
+// Margin can't reach) gets a new tab with Margin's new-tab page, as Safari's
+// ⌘T did (its palette opens there).
+export async function newTabKey(tabArg) {
+  const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
+  const [tab] = await api.tabs.query({ active: true, ...(windowId != null ? { windowId } : { currentWindow: true }) });
+  if (!tab) return;
+  if (V.isNewTabPage(tab.url || tab.pendingUrl)) {
+    return api.runtime.sendMessage({ type: 'command', command: 'new-tab', tabId: tab.id }).catch(() => {});
+  }
+  const opened = await Promise.race([
+    api.tabs.sendMessage(tab.id, { type: 'show-palette' }).then((r) => r === true, () => false),
+    new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
+  ]);
+  if (!opened) await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
+}
+
 export const handlers = {
   async hello(_, sender) {
     const windowId = sender.tab?.windowId ?? null;
