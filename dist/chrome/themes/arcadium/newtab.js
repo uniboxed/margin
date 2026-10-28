@@ -52,7 +52,9 @@ export function mount({ api, self, send, windowed = false }) {
     setPageZoom(document, z);
   };
   let zoomAnswered = false; // until then, the last zoom seen here (storage pageZoom)
-  const readZoom = () => send('getZoom', {}).then((z) => {
+  // From the browser itself (this page has the tabs API; through the
+  // background, an extension page may not count as a tab).
+  const readZoom = () => (self?.id != null ? api.tabs.getZoom(self.id) : Promise.reject()).then((z) => {
     if (!Number.isFinite(Number(z))) return;
     zoomAnswered = true;
     applyZoom(Number(z));
