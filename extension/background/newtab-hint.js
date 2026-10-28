@@ -15,12 +15,11 @@ import { platform } from '../shared/platform.js';
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load } from './store.js';
-import { marginOpenedAt } from './tabs.js';
+import { openedByMargin } from './tabs.js';
 import { reportEvent } from './onboarding.js';
 
 const KEY = 'newTabHint'; // storage.session: { seen: { [url]: count }, shown: boolean }
 const CANDIDATE_MS = 3000; // its first web address must come this soon
-const OWN_TAB_MS = 2000; // a tab created this soon after Margin opened one is Margin's
 
 const candidates = new Map(); // tabId → when it was created
 const pendingNote = new Set(); // tabIds to tell once their page has loaded
@@ -33,7 +32,7 @@ const write = (value) => api.storage.session.set({ [KEY]: value }).catch(() => {
 
 /** tabs.onCreated */
 export function tabCreated(tab) {
-  if (!enabled() || !tab.active || tab.openerTabId != null || tab.index === 0 || Date.now() - marginOpenedAt < OWN_TAB_MS) return;
+  if (!enabled() || !tab.active || tab.openerTabId != null || tab.index === 0 || openedByMargin()) return;
   const url = tab.pendingUrl || tab.url || '';
   if (V.isNewTabPage(url) || /^[a-z-]+-extension:/i.test(url)) return;
   candidates.set(tab.id, Date.now());
@@ -47,7 +46,7 @@ export async function tabAddress(tabId, url) {
   if (Date.now() - at > CANDIDATE_MS) return void candidates.delete(tabId);
   if (!/^https?:/i.test(url)) return; // about:blank first, say: wait for the web address
   candidates.delete(tabId);
-  reportEvent('otherNewTabPage'); // a new tab from nothing opened a web page, not Margin's (Mac app's set-up window)
+  reportEvent('otherNewTabPage'); // the Mac app's set-up window: a new tab from nothing opened a web page, not Margin's
   const hint = await read();
   if (hint.shown) return;
   const key = M.normalizeUrl(url);
@@ -55,6 +54,7 @@ export async function tabAddress(tabId, url) {
   // Only the addresses that came this way: a handful at most.
   const seen = Object.fromEntries([...Object.entries(hint.seen).slice(-9), [key, count]]);
   await write({ ...hint, seen });
+  if (count >= 2) reportEvent('homepageNewTab'); // the same page twice: Safari's homepage, not a link from another app
   if (count < 2 || (await load()).settings?.newTabHint === false) return;
   pendingNote.add(tabId);
   // Already loaded meanwhile: no 'complete' left to wait for.
@@ -77,8 +77,10 @@ export function tabGone(tabId) {
 }
 
 /** Margin's new-tab page showed up for a new tab: the setting is Margin. */
-export async function newTabPageSeen() {
-  reportEvent('marginNewTabPage'); // Mac app's set-up window: new tabs and windows open Margin
+export async function newTabPageSeen(tab) {
+  // The Mac app's set-up window: Safari opened Margin's page for a new window
+  // (its first tab) or tab. Not a tab Margin opened itself.
+  if (tab && !openedByMargin()) reportEvent(tab.index === 0 ? 'marginNewWindowPage' : 'marginNewTabPage');
   if (!enabled()) return;
   candidates.clear();
   pendingNote.clear();

@@ -465,3 +465,18 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] ⌘T on Margin's new-tab page and in a fitted site: the same.
 - [ ] ⌘T with the address bar focused, on Safari's own Start Page or a PDF: a new tab with Margin's palette opens (Margin's ⌘T shortcut, app-wide).
 - [ ] ⌃⌘← (previous space) still works on web pages; ⌃⌘→ everywhere.
+
+## The set-up window (2026-10-28)
+
+Run `scripts/make-xcode.sh`, then Run in Xcode (the reports need the packaged app; turn off a temporary copy of Margin).
+
+- [ ] The window opens titled "Set up Margin", fits the screen, can be resized and minimized, and keeps its place after ⌘H and back.
+- [ ] Turn Margin off and on in Safari's Extensions: the first step follows within a few seconds; "Open Safari Settings" opens Margin's page there.
+- [ ] Load a page in Safari: "every website" turns done or to do to match Edit Websites… (change it, load a page within a minute: it follows).
+- [ ] "Test: ⌘N, then +": with both new-window and new-tab settings on Margin it says "It works." and the step is done; with "New tabs open with" on Homepage, it fails naming the new-tab setting; on Start Page, it times out naming it.
+- [ ] Quit and reopen Safari: the new windows and tabs step is to do again until a new window and tab open Margin's page.
+- [ ] "Test: press ⌘T in Safari": with the App Shortcut set, passes; without it, fails ("Safari opened a new tab…") when new tabs open Margin. Clicking Safari's + afterwards leaves ⌘T done.
+- [ ] Quit the app, use Safari a while, reopen it and run a test at once: it still hears Safari.
+- [ ] "Copy “New Tab”" and "Copy Karabiner rule" put the text on the clipboard; "Open Keyboard Settings" opens Keyboard settings.
+- [ ] Dark mode looks right.
+

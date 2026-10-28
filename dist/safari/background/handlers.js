@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, handingOff, instanceId, markMarginOpening, openTab, openedFrom, shownAt, shownUrl, wakeTab } from './tabs.js';
+import { focusTab, handingOff, instanceId, markMarginOpening, openTab, openedByMargin, openedFrom, shownAt, shownUrl, wakeTab } from './tabs.js';
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
@@ -102,7 +102,9 @@ async function handOff(tab) {
   const log = (decision, why) => console.info(`[margin] new tab ${tab.id} in window ${tab.windowId}: ${decision} (${why})`);
   const prev = previousTab(await load(), tab);
   if (!prev) return log('palette on the new-tab page', 'no other tab in this window: a new window'), false;
-  onboarding.reportEvent('safariNewTab'); // Safari's own New Tab made a tab (its ⌘T, or its + button)
+  // The Mac app's set-up window: Safari's own New Tab made a tab (its ⌘T, its
+  // + button, its File menu). Not a tab Margin opened itself (newTabKey below).
+  if (!openedByMargin()) onboarding.reportEvent('safariNewTab');
   if (!/^https?:/.test(prev.url)) return log('palette on the new-tab page', `tab ${prev.id} isn't a web page`), false;
   handingOff.add(tab.id);
   // One message: the page opens its palette if it can, and says so. Not
@@ -159,7 +161,10 @@ export async function newTabKey(tabArg) {
     api.tabs.sendMessage(tab.id, { type: 'show-palette' }).then((r) => r === true, () => false),
     new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
   ]);
-  if (!opened) await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
+  if (!opened) {
+    markMarginOpening();
+    await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
+  }
 }
 
 export const handlers = {
@@ -483,7 +488,7 @@ export const handlers = {
   // ⌘T: Margin's new-tab page asks (newTabHandOff below), unless the
   // background already handed the tab off as it was created.
   async newTabPage(_, sender) {
-    void newTabPageSeen();
+    void newTabPageSeen(sender.tab);
     if (!sender.tab) return { openPalette: true };
     return (await newTabHandOff(sender.tab)) ? { handled: true } : { openPalette: true };
   },
