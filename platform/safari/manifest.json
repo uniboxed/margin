@@ -1,4 +1,7 @@
 {
+  "add_permissions": [
+    "nativeMessaging"
+  ],
   "commands": {
     "new-tab": {
       "suggested_key": {

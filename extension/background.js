@@ -8,6 +8,7 @@ import * as M from './state/model.js';
 import * as V from './shared/view.js';
 import { api, load, mutate, now, resync } from './background/store.js';
 import * as restore from './background/restore.js';
+import * as onboarding from './background/onboarding.js';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey } from './background/handlers.js';
@@ -31,6 +32,7 @@ if (!api.storage.session) {
 }
 
 resync({ onSync: restore.synced }).then(async () => {
+  void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
   // stale tab mustn't override one learned since).
   const s = await load();
@@ -39,6 +41,10 @@ resync({ onSync: restore.synced }).then(async () => {
   }
   return archiveStale();
 });
+
+// Margin allowed on more or fewer sites: the Mac app's set-up window shows it.
+api.permissions?.onAdded?.addListener(() => void onboarding.reportAccess());
+api.permissions?.onRemoved?.addListener(() => void onboarding.reportAccess());
 
 // ---- tab events -----------------------------------------------------------
 

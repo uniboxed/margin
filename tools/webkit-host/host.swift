@@ -208,6 +208,24 @@ Task { @MainActor in
         let r = try await wv.callAsyncJavaScript(step["js"] as! String, arguments: [:], in: nil, contentWorld: .page)
         log("page \(t.name): \(String(describing: r ?? "nil"))")
       } catch { log("page \(t.name) failed: \(error)") }
+    case "key":
+      // { op: 'key', in, chars, keyCode, mods: ['command','option','control','shift'] }: a real key
+      // press (keyDown, keyUp) into the tab's web view, as the keyboard would send it.
+      let t = host.tab(step["in"] as! String)!
+      guard let wv = t.webView else { log("key: \(t.name) has no web view"); break }
+      var flags: NSEvent.ModifierFlags = []
+      for m in (step["mods"] as? [String] ?? []) {
+        switch m { case "command": flags.insert(.command); case "option": flags.insert(.option); case "control": flags.insert(.control); case "shift": flags.insert(.shift); default: break }
+      }
+      let chars = step["chars"] as! String
+      let code = UInt16(step["keyCode"] as! Int)
+      if [123, 124, 125, 126].contains(code) { flags.insert(.numericPad); flags.insert(.function) }
+      host.window.nsWindow.makeFirstResponder(wv)
+      for type in [NSEvent.EventType.keyDown, .keyUp] {
+        let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: host.window.nsWindow.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        if type == .keyDown { if !wv.performKeyEquivalent(with: e) { wv.keyDown(with: e) } } else { wv.keyUp(with: e) }
+      }
+      log("key \(t.name): \(step["mods"] ?? []) \(code)")
     case "hidewin":
       // Take a tab's web view out of the window without showing another (like Safari hiding it).
       let t = host.tab(step["name"] as! String)!; t.webView?.removeFromSuperview(); log("took \(t.name) out of the window")

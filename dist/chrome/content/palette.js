@@ -101,7 +101,10 @@ export function wirePalette(c, createPalette) {
   c.openPalette = (options) => ready() && open(options);
   // ⌘T (installNewTabKey): the palette for a new tab; while Margin is out of
   // the way (Chrome, not in full screen), a new tab as usual.
-  const newTabKey = () => (!c.active || c.active() ? open({ newTab: true }) : c.send('newTab', { windowId: c.getState().windowId }));
+  const newTabKey = () => {
+    void c.send('newTabKeyUsed', {}, false); // for the Mac app's set-up window (background/onboarding.js)
+    return !c.active || c.active() ? open({ newTab: true }) : c.send('newTab', { windowId: c.getState().windowId });
+  };
   installNewTabKey(newTabKey);
   c.onCard?.((win) => installNewTabKey(newTabKey, win));
   c.paletteOpen = () => palette.isOpen();
