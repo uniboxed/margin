@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, handingOff, instanceId, markMarginOpening, openTab, openedByMargin, openedFrom, shownAt, shownUrl, wakeTab } from './tabs.js';
+import { focusTab, handingOff, instanceId, isFocusing, markMarginOpening, openTab, openedByMargin, openedFrom, shownAt, shownUrl, wakeTab } from './tabs.js';
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
@@ -268,9 +268,18 @@ export const handlers = {
   // that page keeps running as it is.
   async reloadForUpdate(_, sender) {
     const { id, url } = sender.tab ?? {};
-    if (id == null || !/^https?:/i.test(url ?? '') || url.includes('#')) return;
+    if (id == null || !/^https?:/i.test(url ?? '') || url.includes('#')) return false;
     await whenRegistered();
+    // Let an activation message already in WebKit's queue claim the tab
+    // before cleanup commits its navigation.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // The page asked while it was hidden, but registrations (and a cold
+    // background) can take long enough that the user selects it meanwhile.
+    // Never turn that first switch after an update into a visible reload.
+    const current = await api.tabs.get(id).catch(() => null);
+    if (!current || current.active || current.url !== url || isFocusing(id)) return false;
     await api.tabs.update(id, { url });
+    return true;
   },
   // Closing from Margin archives the tab, like Arc.
   /** @param {{ tabId: number }} message */

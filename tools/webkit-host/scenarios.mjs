@@ -55,11 +55,16 @@ export const SCENARIOS = {
     { op: 'open', name: 'F1', url: '/p/F1', active: true }, { op: 'open', name: 'A', url: '/p/A' },
     wait(800), { op: 'install', sameId: true }, drawn('F1'),
     { op: 'page', in: 'F1', js: 'document.getElementById("t").value = "unsaved draft"; return "typed"' },
-    { op: 'uninstall' }, wait(800), { op: 'install', sameId: true }, wait(3000),
+    { op: 'uninstall' }, wait(800), { op: 'install', sameId: true }, themed('F1'),
+    { op: 'page', in: 'A', js: 'window.__marginBeforeSwitchOrigin = performance.timeOrigin; return __marginBeforeSwitchOrigin' },
+    switchTo('F1', 'A', { show: 'hover' }), shown('A'), wait(3200),
     checkPage('F1', 'F1: the draft is still there', `document.getElementById('t').value === 'unsaved draft'`),
     // The old copy's scripts stay alive and may put its host back, hidden.
     checkPage('F1', 'F1: one sidebar shows (the old copy\'s is hidden)', `[...document.querySelectorAll('margin-sidebar-host')].filter((h) => getComputedStyle(h).display !== 'none').length === 1`),
     drawn('F1'),
+    shown('A'),
+    checkPage('A', 'A: the selected tab stays selected beyond the stale copy timeout', `!document.hidden`),
+    checkPage('A', 'A: selecting it cancels the hidden cleanup reload', `window.__marginBeforeSwitchOrigin === performance.timeOrigin`),
   ],
   // "Keep open" with the fitted layout, then a tab Safari unloaded shown.
   fitted: [

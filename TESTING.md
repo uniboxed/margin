@@ -444,6 +444,12 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Leave a tab unused until Safari suspends it, then switch to it. The old page stays under Margin's cover until the destination is ready; no black frame. Repeat after relaunch with a lazily restored tab: Safari may still show its own empty view while it creates the document, but Margin must recover normally and never leave the cover or sidebar stuck.
 - [ ] Start page → Settings → Switch log (development) → Copy. Warm Margin switches should show `preparation.outcome: "ready"` (normally well below 300ms); an unloaded/denied page may show `unavailable`, `not ready`, or `timeout` and must still switch.
 
+## Temporary-extension reinstall recovery (2026-10-28)
+
+- [ ] Keep at least three ordinary web tabs open, quit Safari (so it removes the temporary extension), reopen Safari, allow unsigned extensions, and add `dist/safari/` again. As soon as Margin's sidebar appears, click a different tab. It must switch once and remain there for at least five seconds: no 2–3 second gray cover followed by a snap back to the tab that was active at install time.
+- [ ] Without refreshing any page, switch through every restored tab and all spaces. Each page must have one visible, working sidebar; no tab may require repeated refreshes. A lazily restored/discarded tab may take Safari's normal load time on its first visit, but its first working sidebar must use the correct active tab and space.
+- [ ] Repeat with text typed into a form before quitting. Reinstalling Margin must not erase the draft; that page may postpone its cleanup reload while it is in use.
+
 ## Swipe between spaces (2026-10-27)
 
 - [ ] With two or more spaces, swipe two fingers left over the sidebar: the list follows your fingers, the next space slides in, and on letting go it's shown with its last tab in front.

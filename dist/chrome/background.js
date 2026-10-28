@@ -31,7 +31,14 @@ if (!api.storage.session) {
   api.runtime.onStartup.addListener(() => resync({ fresh: true, onSync: restore.synced }));
 }
 
-resync({ onSync: restore.synced }).then(async () => {
+resync({ onSync: (sync) => {
+  restore.synced(sync);
+  // A Safari relaunch can restore pages before it injects extensions into
+  // them. Repair this session's already-open pages as soon as the background
+  // has reconciled their authoritative ids, without waiting for WebKit's
+  // delayed static-content-script pass.
+  if (sync.fresh) void injectIntoOpenTabs();
+} }).then(async () => {
   void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
   // stale tab mustn't override one learned since).

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false };
+const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], disabled: [], probes: 0, probeHangs: false, };
 const asTab = (t) => ({ ...t });
 globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/shell-main.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
@@ -43,6 +43,10 @@ globalThis.chrome = {
         fake.current.add(target.tabId);
         return Promise.resolve([]);
       }
+      if (func?.name === 'disableStaleSidebarInPage') {
+        fake.disabled.push(target.tabId);
+        return Promise.resolve([{ result: true }]);
+      }
       // ensureCurrent's question: is Margin's current copy there?
       if (String(func).includes('Margin?.content')) {
         fake.probes++;
@@ -64,7 +68,7 @@ const M = await import('../extension/state/model.js');
 const V = await import('../extension/shared/view.js');
 const { mutate, load } = await import('../extension/background/store.js');
 const { showSpace, navigate } = await import('../extension/background/navigation.js');
-const { wakeTab, ensureCurrent, forgetCurrent } = await import('../extension/background/tabs.js');
+const { wakeTab, ensureCurrent, forgetCurrent, injectIntoOpenTabs } = await import('../extension/background/tabs.js');
 
 // Window 1: Personal tabs 1 (in front), 2; Work tabs 3, 4 (4 used last); window 2: Work tab 5.
 async function setup() {
@@ -194,6 +198,20 @@ test('ensureCurrent: a page that doesn\'t answer (busy, asleep) isn\'t injected,
   fake.probeHangs = false;
   await ensureCurrent(3);
   assert.equal(fake.injected.length, 1, 'next time it answered: injected');
+});
+
+test('install repair: replaces stale sidebars immediately and never reinjects a current page', async () => {
+  await setup();
+  fake.tabs.set(6, { id: 6, windowId: 1, url: 'safari://startpage/', active: false, index: 6 });
+  for (const id of fake.tabs.keys()) forgetCurrent(id);
+  fake.current = new Set([1]);
+  fake.injected = [];
+  fake.disabled = [];
+  await injectIntoOpenTabs({ retry: false });
+  assert.deepEqual(fake.disabled, [2, 3, 4, 5], 'stale UI is disabled before those pages are repaired');
+  assert.deepEqual(fake.injected.map((x) => x.tabId), [2, 3, 4, 5]);
+  assert.equal(fake.disabled.includes(1), false, 'the current copy is left visible');
+  assert.equal(fake.disabled.includes(6), false, 'browser-internal pages are not retried');
 });
 
 test('next/previous: a page a held key only passes through isn\'t covered (the last one is); the page is told when it\'s done or failed', async () => {
