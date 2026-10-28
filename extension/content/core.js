@@ -251,13 +251,20 @@ export function startCore({ onTheme } = {}) {
     setPageZoom(document, z);
     layout.rezoom(); // only from answers and events, after the layout below exists
   }
-  const readZoom = () => send('getZoom', {}, false).then((z) => {
-    if (!Number.isFinite(Number(z))) return;
+  // With send's retry: a background asleep when asked answers the second time.
+  // Each answer also gives the screen's own scale (devicePixelRatio is that
+  // times the page's zoom, in WebKit and Chromium), so the next change is
+  // followed at once from the page (the answer, a moment later, confirms).
+  let screenScale = null;
+  const readZoom = () => send('getZoom').then((z) => {
+    if (!Number.isFinite(Number(z)) || Number(z) <= 0) return;
     zoomAnswered = true;
+    screenScale = devicePixelRatio / Number(z);
     applyZoom(Number(z));
   }, () => {});
   let zoomTimer = null;
   addEventListener('resize', () => {
+    if (screenScale) applyZoom(devicePixelRatio / screenScale);
     clearTimeout(zoomTimer);
     zoomTimer = setTimeout(readZoom, 60);
   });
