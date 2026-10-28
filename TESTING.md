@@ -28,6 +28,7 @@ Additional Safari-only checks:
 | A | The background service worker starts (classic worker, `importScripts('state/model.js')`) | Develop → Web Extension Background Content → Margin shows no errors, and the console shows `[margin] installed` and `[margin] auto-archive via …` | Record the error in DECISIONS.md. The likely fallback is concatenating `state/model.js` into `background.js` |
 | B | Sidebar CSS loads inside the shadow root on a strict-CSP site (github.com) | The sidebar is styled, not raw HTML | A constructable stylesheet with `<style>` fallback is already in place. If both fail, record it |
 | C | Restart rebuild | Pin a site into a non-default space, quit Safari with windows restored, relaunch | The pinned site's tab appears under that space, and other tabs under the first space |
+| D | Three-space ownership through restart/update | Create three spaces; put at least two tabs in each (include the same URL in two spaces if practical); switch rapidly, reorder tabs, quit/reopen Safari, then rebuild/reload Margin | All three chips remain; unambiguous tabs stay in their spaces; the active chip follows the tab shown. If identical restored tabs cannot be distinguished, they should remain in the current space rather than swap spaces |
 
 ### Results on Tirth's Mac (2026-10-24)
 

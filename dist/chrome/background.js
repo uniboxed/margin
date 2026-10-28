@@ -117,6 +117,7 @@ api.tabs.onRemoved.addListener((tabId) => {
 const STAY_MS = 1500;
 const closedShown = new Map(); // windowId → { spaceId, at, tabId }: removed while in front
 const lastFollow = new Map(); // windowId → { from, at, prevTabId }: the space followTab just left, and the tab in front then
+const activationGeneration = new Map(); // windowId → newest onActivated callback
 function stayInSpace(windowId, spaceId, closedId) {
   mutate((s) => {
     const stay = M.recentTabOfSpace(s, windowId, spaceId, closedId);
@@ -125,17 +126,27 @@ function stayInSpace(windowId, spaceId, closedId) {
     return M.setActiveSpace(s, windowId, spaceId);
   });
 }
-api.tabs.onActivated.addListener(({ tabId, windowId }) => {
+api.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
+  const generation = (activationGeneration.get(windowId) ?? 0) + 1;
+  activationGeneration.set(windowId, generation);
   if (handingOff.has(tabId)) return;
   shownAt.set(tabId, Date.now());
   shownUrl.delete(tabId);
-  api.tabs.get(tabId).then((tab) => shownUrl.set(tabId, tab.url), () => {});
+  // onActivated can arrive before onCreated/onUpdated (notably while Safari
+  // restores a window). Fetch the authoritative tab and create its record in
+  // the same mutation as activation, instead of deactivating the old tab and
+  // leaving the new one unowned. If another activation wins while this get is
+  // pending, this stale callback must not move the highlight back.
+  const activated = await api.tabs.get(tabId).catch(() => null);
+  if (activationGeneration.get(windowId) !== generation) return;
+  if (activated?.url) shownUrl.set(tabId, activated.url);
   // The user switched tabs themselves: shortcut chaining restarts from here.
   if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
   const closed = closedShown.get(windowId);
   closedShown.delete(windowId);
   mutate((s) => {
-    const next = M.activateTab(s, tabId, windowId, now());
+    const tracked = activated ? M.upsertTab(s, { ...activated, active: true }, now()) : s;
+    const next = M.activateTab(tracked, tabId, windowId, now());
     if (closed && Date.now() - closed.at < STAY_MS && next.tabSpace[tabId] !== closed.spaceId) {
       stayInSpace(windowId, closed.spaceId, closed.tabId);
       return next;

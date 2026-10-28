@@ -4,6 +4,7 @@
 // active theme and calls mount().
 import * as S from '../../shared/search.js';
 import * as V from '../../shared/view.js';
+import * as M from '../../state/model.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
@@ -462,7 +463,8 @@ export function mount({ api, self, send, windowed = false }) {
   let pendingScroll = null; // applied by the next refresh
   async function refresh() {
     const mine = ++version;
-    const next = await api.storage.local.get(null);
+    const raw = await api.storage.local.get(null);
+    const next = { ...raw, ...M.storedState(raw) };
     if (mine !== version || !next.spaces?.length) return;
     state = next;
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));

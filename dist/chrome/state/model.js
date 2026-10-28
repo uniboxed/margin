@@ -65,6 +65,12 @@ const DEFAULT_SPACE = Object.freeze({
 });
 
 const STATE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'settings', 'tabs', 'favicons', 'lostTabs'];
+// The ownership/UI part of the state is also stored as one revisioned value.
+// Pages read this checkpoint instead of assembling a moment from several
+// storage keys (which Safari may deliver/read while a worker is waking).
+// The individual keys remain mirrored for migrations and diagnostics.
+const WORKSPACE_VERSION = 1;
+const WORKSPACE_KEYS = ['spaces', 'activeSpaceByWindow', 'tabSpace', 'pins', 'folders', 'archive', 'tabs', 'lostTabs'];
 const FAVICON_CAP = 150;
 
 /** @returns {State} */
@@ -116,6 +122,39 @@ function normalizeState(raw = {}) {
     favicons: { ...raw.favicons },
     lostTabs: raw.lostTabs && Array.isArray(raw.lostTabs.windows) ? raw.lostTabs : null,
   };
+}
+
+// A complete workspace envelope. A bad or partly written value is never an
+// authority: callers fall back to the previous checkpoint, then the legacy
+// individual keys. `spaces` is the canary because an empty workspace is not a
+// valid Margin state (the first space cannot be deleted).
+function validWorkspace(value) {
+  const data = value?.data;
+  const record = (item) => item && typeof item === 'object' && !Array.isArray(item);
+  return value?.version === WORKSPACE_VERSION && Number.isSafeInteger(value.revision) && value.revision >= 0 && record(data) &&
+    Array.isArray(data.spaces) && data.spaces.length > 0 && data.spaces.every((space) => typeof space?.id === 'string' && space.id) &&
+    record(data.activeSpaceByWindow) && record(data.tabSpace) && record(data.tabs) &&
+    Array.isArray(data.pins) && Array.isArray(data.folders) && Array.isArray(data.archive) &&
+    (data.lostTabs == null || (record(data.lostTabs) && Array.isArray(data.lostTabs.windows)));
+}
+
+/** @param {State} state */
+function workspaceEnvelope(state, revision = 0) {
+  return {
+    version: WORKSPACE_VERSION,
+    revision,
+    data: Object.fromEntries(WORKSPACE_KEYS.map((key) => [key, state[key]])),
+  };
+}
+
+// What a page/background should use after storage.local.get(null). The newest
+// valid checkpoint wins; its backup is the last committed structural
+// checkpoint. Legacy keys are only a migration path for older installs.
+function storedState(raw = {}) {
+  const primary = validWorkspace(raw.workspace) ? raw.workspace : null;
+  const backup = validWorkspace(raw.workspaceBackup) ? raw.workspaceBackup : null;
+  const chosen = primary && backup ? (primary.revision >= backup.revision ? primary : backup) : primary ?? backup;
+  return normalizeState(chosen ? { ...raw, ...chosen.data } : raw);
 }
 
 // Settings that no longer exist: `searchEngine` (Margin's own engine
@@ -303,6 +342,13 @@ function matchTabs(old, open, { minShared = () => 1, anyWindow = true } = {}) {
   const usedOld = new Set();
   for (const { openId, oldId } of pairs) {
     if (paired.has(openId) || usedOld.has(oldId)) continue;
+    // A one-to-one pairing is only identity evidence when this score is the
+    // unique best choice from both sides. Greedy tie-breaking mixed windows
+    // that happened to share a common page (mail, a start page, duplicates).
+    const forOpen = pairs.filter((p) => p.openId === openId);
+    const forOld = pairs.filter((p) => p.oldId === oldId);
+    if (forOpen.filter((p) => p.shared === forOpen[0].shared).length !== 1) continue;
+    if (forOld.filter((p) => p.shared === forOld[0].shared).length !== 1) continue;
     paired.set(openId, oldId);
     usedOld.add(oldId);
   }
@@ -378,10 +424,19 @@ function isRenumbered(state, openTabs, { fresh = false } = {}) {
 /** @param {State} state */
 function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
   const open = new Set(openTabs.map((t) => String(t.id)));
-  const known = (t) => !fresh && !!state.tabs[t.id];
-  const gone = Object.values(state.tabs).filter((r) => fresh || !open.has(String(r.id)));
+  // storage.session disappearing means "possibly a browser restart", not
+  // proof that every id changed (an extension reload also clears contexts).
+  // An id whose address still agrees is strong enough to keep; reused ids
+  // with a different page are treated as new and recovered below.
+  const sameTab = (t) => {
+    const prev = state.tabs[t.id];
+    return !!prev && anyKey(prev) === anyKey(t) && anyKey(t) !== '';
+  };
+  const known = (t) => (!fresh && !!state.tabs[t.id]) || (fresh && sameTab(t));
+  const keptIds = new Set(openTabs.filter(known).map((t) => String(t.id)));
+  const gone = Object.values(state.tabs).filter((r) => !keptIds.has(String(r.id)));
   const renumbered = isRenumbered(state, openTabs, { fresh });
-  const matched = renumbered ? matchTabs(gone, openTabs.filter((t) => !known(t))) : new Map();
+  const matched = renumbered ? matchTabs(gone, openTabs.filter((t) => !known(t)), { anyWindow: false }) : new Map();
   // After a restart: the last tab used before it is used now (all moved by as much).
   const latest = Math.max(0, ...gone.map((r) => r.lastActive ?? 0));
   const shift = fresh && gone.length ? now - latest : 0;
@@ -761,8 +816,13 @@ export {
   DEFAULT_SETTINGS,
   DEFAULT_SPACE,
   STATE_KEYS,
+  WORKSPACE_KEYS,
+  WORKSPACE_VERSION,
   defaultState,
   normalizeState,
+  validWorkspace,
+  workspaceEnvelope,
+  storedState,
   normalizeShortcuts,
   normalizeThemes,
   normalizeUrl,

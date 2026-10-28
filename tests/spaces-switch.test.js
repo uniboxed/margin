@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false };
+const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false, failSet: false };
 const asTab = (t) => ({ ...t });
 globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/shell-main.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
@@ -55,7 +55,10 @@ globalThis.chrome = {
   storage: {
     local: {
       get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
-      set: async (items) => { Object.assign(fake.local, items); },
+      set: async (items) => {
+        if (fake.failSet) { fake.failSet = false; throw new Error('storage unavailable'); }
+        Object.assign(fake.local, items);
+      },
     },
   },
 };
@@ -88,6 +91,21 @@ async function setup() {
     return s;
   });
 }
+
+test('store: workspace ownership is one revisioned checkpoint and a failed write never advances memory', async () => {
+  await setup();
+  const before = await load();
+  const revision = fake.local.workspace.revision;
+  assert.deepEqual(fake.local.workspace.data.spaces, before.spaces);
+  assert.equal(fake.local.workspaceBackup.revision, revision);
+  fake.failSet = true;
+  await assert.rejects(mutate((s) => M.createSpace(s, { id: 'never', name: 'Never' })), /storage unavailable/);
+  assert.equal((await load()).spaces.some((s) => s.id === 'never'), false, 'failed state was not cached');
+  const after = await mutate((s) => M.createSpace(s, { id: 'saved', name: 'Saved' }));
+  assert.equal(after.spaces.some((s) => s.id === 'saved'), true);
+  assert.equal(fake.local.workspace.revision, revision + 1);
+  assert.equal(fake.local.workspaceBackup.revision, revision + 1);
+});
 const front = (windowId = 1) => [...fake.tabs.values()].find((t) => t.windowId === windowId && t.active)?.id;
 
 test('showSpace: the space\'s most recent tab in that window comes to the front', async () => {

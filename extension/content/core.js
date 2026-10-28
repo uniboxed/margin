@@ -4,6 +4,7 @@
 // (themes/<id>/content.js, a separate script that runs right after this
 // one; see themes/register.js for what a theme provides).
 import * as V from '../shared/view.js';
+import * as M from '../state/model.js';
 import { createHost, setPageZoom } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
@@ -488,7 +489,8 @@ export function startCore({ onTheme } = {}) {
   /** @param {{ tabId: number, windowId: number } | null} [show] */
   async function refresh(show = null) {
     const mine = ++version;
-    const next = await api.storage.local.get(null);
+    const raw = await api.storage.local.get(null);
+    const next = { ...raw, ...M.storedState(raw) };
     timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
     state = stateForShow(next, show);

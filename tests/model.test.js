@@ -25,6 +25,17 @@ test('normalizeState fills missing keys and keeps stored ones', () => {
   assert.deepEqual(s.tabSpace, {});
 });
 
+test('workspace checkpoint is atomic, revisioned, and recovers from its previous commit', () => {
+  let s = twoSpaces();
+  s = M.createSpace(s, { id: 'fun', name: 'Fun', emoji: '🎨', color: '#e17055' });
+  const first = M.workspaceEnvelope(s, 7);
+  const changed = M.workspaceEnvelope(M.deleteSpace(s, 'fun'), 8);
+  const raw = { ...M.defaultState(), spaces: [M.DEFAULT_SPACE], workspace: first, workspaceBackup: changed };
+  assert.equal(M.storedState(raw).spaces.length, 2, 'newest valid checkpoint wins, not mixed legacy keys');
+  assert.deepEqual(M.storedState({ ...raw, workspaceBackup: first, workspace: { ...changed, data: { spaces: [] } } }).spaces.map((x) => x.id), ['personal', 'work', 'fun'], 'bad primary recovers the previous commit');
+  assert.deepEqual(M.storedState({ ...raw, workspace: null, workspaceBackup: null }).spaces.map((x) => x.id), ['personal'], 'legacy data remains the migration fallback');
+});
+
 test('normalizeUrl ignores fragment and bare trailing slash, and matches view.js', () => {
   const cases = ['https://a.com/', 'https://a.com', 'https://a.com/x#y', 'https://a.com/x?q=1', 'not a url', ''];
   assert.equal(M.normalizeUrl('https://a.com/'), M.normalizeUrl('https://a.com'));
@@ -135,6 +146,25 @@ test('after a restart (new ids, some reused for other tabs): tabs keep their spa
   assert.deepEqual(next.activeSpaceByWindow, { 7: 'work', 8: 'work' }, 'each window shows its shown tab\'s space');
   assert.deepEqual([20, 21, 22, 1].map((id) => next.tabs[id].lastActive), [9800, 10_000, 9900, 9750], 'the most recent now, gaps kept');
   assert.equal(M.recentTabOfSpace(next, 7, 'work').id, 21);
+});
+
+test('a fresh worker with unchanged tab ids and addresses keeps exact ownership', () => {
+  const s = lastSession();
+  const reopened = Object.values(s.tabs).map((t) => ({ ...t, active: t.id === 2 }));
+  const next = M.syncTabs(s, reopened, { fresh: true, now: 10_000 });
+  assert.deepEqual(next.tabSpace, s.tabSpace, 'an extension context reload is not mistaken for tab renumbering');
+});
+
+test('restart recovery does not arbitrarily pair windows with tied evidence', () => {
+  let s = twoSpaces();
+  s = M.createSpace(s, { id: 'fun', name: 'Fun' });
+  s = M.upsertTab(s, tab(1, 1, 'https://same.example/', { active: true }), 0);
+  s = M.upsertTab(s, tab(2, 2, 'https://same.example/', { active: true }), 0);
+  s = M.moveTab(M.moveTab(s, 1, 'work'), 2, 'fun');
+  const open = [tab(10, 10, 'https://same.example/', { active: true }), tab(20, 20, 'https://same.example/', { active: true })];
+  const next = M.syncTabs(s, open, { fresh: true, now: 100 });
+  assert.deepEqual(next.tabSpace, { 10: 'personal', 20: 'personal' }, 'uncertain duplicates stay in the safe default instead of swapping spaces');
+  assert.equal(next.lostTabs.windows.flatMap((w) => w.tabs).length, 2, 'the old ownership remains available for stronger late restore evidence');
 });
 
 test('Margin updated (new ids for the same tabs, the session not fresh): the same tabs keep their space', () => {
