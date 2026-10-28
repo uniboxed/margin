@@ -22,6 +22,15 @@ APP_ID="$APP_ID" perl -pi -e '
   s/(PRODUCT_BUNDLE_IDENTIFIER = )"?[^;"]*?(\.Extension)?"?;/$1 . $ENV{APP_ID} . ($2 ? ".Extension" : "") . ";"/ie
 ' "$PBXPROJ"
 
+# Margin's own app code over the converter's template (app/safari/): the
+# set-up window (ViewController.swift, SwiftUI in the storyboard's window) and
+# the extension handler that passes the extension's reports on to it. SwiftUI
+# as written needs macOS 14 (Safari 27 needs far newer anyway).
+APP_DIR=$(dirname "$PBXPROJ")/..
+cp app/safari/ViewController.swift "$APP_DIR/Margin/ViewController.swift"
+cp app/safari/SafariWebExtensionHandler.swift "$APP_DIR/Margin Extension/SafariWebExtensionHandler.swift"
+perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET = (?:1[0-3]|[0-9])(?:\.\d+)?;/MACOSX_DEPLOYMENT_TARGET = 14.0;/' "$PBXPROJ"
+
 # The container app looks up the extension by ID (e.g. ViewController.swift).
 grep -rl 'extensionBundleIdentifier' xcode --include='*.swift' | while read -r f; do
   EXT_ID="$EXT_ID" perl -pi -e 's/(extensionBundleIdentifier\s*=\s*")[^"]*(")/$1$ENV{EXT_ID}$2/' "$f"

@@ -6,6 +6,7 @@ import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now } from './store.js';
+import * as onboarding from './onboarding.js';
 import { focusTab, handingOff, instanceId, markMarginOpening, openTab, openedFrom, shownAt, shownUrl, wakeTab } from './tabs.js';
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
@@ -101,6 +102,7 @@ async function handOff(tab) {
   const log = (decision, why) => console.info(`[margin] new tab ${tab.id} in window ${tab.windowId}: ${decision} (${why})`);
   const prev = previousTab(await load(), tab);
   if (!prev) return log('palette on the new-tab page', 'no other tab in this window: a new window'), false;
+  onboarding.reportEvent('safariNewTab'); // Safari's own New Tab made a tab (its ⌘T, or its + button)
   if (!/^https?:/.test(prev.url)) return log('palette on the new-tab page', `tab ${prev.id} isn't a web page`), false;
   handingOff.add(tab.id);
   // One message: the page opens its palette if it can, and says so. Not
@@ -146,6 +148,7 @@ async function carryIfSameWindow(tabId, why, windowId) {
 // Margin can't reach) gets a new tab with Margin's new-tab page, as Safari's
 // ⌘T did (its palette opens there).
 export async function newTabKey(tabArg) {
+  onboarding.reportEvent('cmdTKey');
   const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
   const [tab] = await api.tabs.query({ active: true, ...(windowId != null ? { windowId } : { currentWindow: true }) });
   if (!tab) return;
@@ -161,6 +164,7 @@ export async function newTabKey(tabArg) {
 
 export const handlers = {
   async hello(_, sender) {
+    onboarding.pageLoaded();
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
     const carry = sender.tab?.id != null ? takeCarried(sender.tab.id) : null;
@@ -269,6 +273,10 @@ export const handlers = {
   },
   // Page zoom (the browser's own, like ⌘+): for Margin's pinch, and so
   // Margin's UI keeps its size on a zoomed page; remembered per site.
+  // ⌘T reached Margin on a page (content/palette.js installNewTabKey).
+  async newTabKeyUsed() {
+    onboarding.reportEvent('cmdTKey');
+  },
   async getZoom(_, sender) {
     if (!sender.tab) return null;
     const zoom = await api.tabs.getZoom(sender.tab.id);

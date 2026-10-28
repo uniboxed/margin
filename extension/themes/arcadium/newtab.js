@@ -300,7 +300,10 @@ export function mount({ api, self, send, windowed = false }) {
   });
   // ⌘T (the palette's key) once the browser's New Tab has another shortcut:
   // as "+ New Tab" here.
-  installNewTabKey(onNewTab, globalThis, () => recording); // recording: Settings says it's taken
+  installNewTabKey(() => {
+    void send('newTabKeyUsed'); // for the Mac app's set-up window (background/onboarding.js)
+    onNewTab();
+  }, globalThis, () => recording); // recording: Settings says it's taken
   api.runtime.onMessage.addListener((message) => {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'new-tab' && !recording) onNewTab(); // ⌘T (Safari's shortcut)

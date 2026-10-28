@@ -21,6 +21,9 @@ const PROFILES = {
     // Wheel deltas are in screen points whatever the page's zoom (WebKit's
     // WheelEvent passes the platform's deltas on as they are).
     zoomedWheel: false,
+    // Margin's Mac app (its set-up window) hears from the extension
+    // (background/onboarding.js, native messaging).
+    nativeApp: true,
     // Trackpad swipe back/forward and pinch-for-all-tabs can be blocked
     // (shared/gestures.js; setting `blockGestures`).
     blockGestures: true,
@@ -56,6 +59,7 @@ const PROFILES = {
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
     // the page's zoom).
     zoomedWheel: true,
+    nativeApp: false, // no Mac app for Chrome (yet)
     // Not needed (and a page-wide non-passive wheel listener costs scroll
     // performance in Chrome).
     blockGestures: false,

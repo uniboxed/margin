@@ -16,6 +16,7 @@ import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load } from './store.js';
 import { marginOpenedAt } from './tabs.js';
+import { reportEvent } from './onboarding.js';
 
 const KEY = 'newTabHint'; // storage.session: { seen: { [url]: count }, shown: boolean }
 const CANDIDATE_MS = 3000; // its first web address must come this soon
@@ -46,6 +47,7 @@ export async function tabAddress(tabId, url) {
   if (Date.now() - at > CANDIDATE_MS) return void candidates.delete(tabId);
   if (!/^https?:/i.test(url)) return; // about:blank first, say: wait for the web address
   candidates.delete(tabId);
+  reportEvent('otherNewTabPage'); // a new tab from nothing opened a web page, not Margin's (Mac app's set-up window)
   const hint = await read();
   if (hint.shown) return;
   const key = M.normalizeUrl(url);
@@ -76,6 +78,7 @@ export function tabGone(tabId) {
 
 /** Margin's new-tab page showed up for a new tab: the setting is Margin. */
 export async function newTabPageSeen() {
+  reportEvent('marginNewTabPage'); // Mac app's set-up window: new tabs and windows open Margin
   if (!enabled()) return;
   candidates.clear();
   pendingNote.clear();
