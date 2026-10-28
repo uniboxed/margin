@@ -3,6 +3,7 @@ import * as M from '../state/model.js';
 import { api, cached, mutate, now } from './store.js';
 import { recordSwitch } from './diagnostics.js';
 import { platform } from '../shared/platform.js';
+import { getScroll } from './scroll.js';
 
 // When each tab was last shown, and its URL then (restoringTab; a
 // diagnostic in tabs.onUpdated).
@@ -36,6 +37,10 @@ const WAKE_REUSE_MS = 600;
 // Long enough for a reused wake, the wait and tabs.update (~110ms in Safari)
 // to land while the process is still kept awake.
 const KEEP_AWAKE_MS = WAKE_REUSE_MS + WAKE_MAX_MS + 200;
+// Sidebar preparation is an extra Safari-only round trip. It normally takes
+// a few milliseconds once a hover wake has landed; never make a switch wait
+// indefinitely for storage, a busy page or a broken content script.
+const PREPARE_MAX_MS = 300;
 
 // New tabs being handed back (⌘T, handlers.js newTabPage): gone again in a
 // moment, so the tab events leave them out of the state (no "New Tab" row
@@ -140,26 +145,104 @@ async function startWake(tabId, at) {
   return result(/** @type {Wake['outcome']} */ (outcome));
 }
 
+// Executed in the destination's current isolated extension world. Keeping
+// this self-contained matters: scripting.executeScript serializes only the
+// function and its arguments. An older install's content script lives in a
+// different world, so it cannot accidentally acknowledge this preparation.
+export async function prepareSidebarInPage(context) {
+  try {
+    const prepare = globalThis.Margin?.content?.prepareForShow;
+    if (typeof prepare !== 'function') return { ready: false, reason: 'no current sidebar' };
+    return await prepare(context);
+  } catch (error) {
+    return { ready: false, reason: String(error?.message ?? error) };
+  }
+}
+
+export function cancelSidebarInPage(token) {
+  try {
+    return globalThis.Margin?.content?.cancelPreparedShow?.(token) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** @typedef {{ outcome: 'ready' | 'not ready' | 'unavailable' | 'timeout' | 'skipped', ms: number, reason?: string, token: string | null }} Preparation */
+
+/**
+ * @param {any} tab
+ * @param {{ token?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null }} [options]
+ * @returns {Promise<Preparation>}
+ */
+async function prepareTabForShow(tab, { token, carry = null, scroll = null } = {}) {
+  const at = Date.now();
+  const result = (outcome, reason) => ({ outcome, ms: Date.now() - at, ...(reason ? { reason } : {}), token: token ?? null });
+  if (!platform?.prepareSidebar || !api.scripting?.executeScript || !tab?.id || tab.windowId == null || !token) return result('skipped');
+  let timer;
+  const run = (async () => {
+    const top = Number.isFinite(scroll) ? scroll : await getScroll(tab.windowId).catch(() => 0);
+    return api.scripting.executeScript({
+      target: { tabId: tab.id },
+      injectImmediately: true,
+      func: prepareSidebarInPage,
+      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry }],
+    }).then((rows) => {
+      const answer = rows?.[0]?.result;
+      return answer?.ready ? result('ready') : result('not ready', answer?.reason ?? 'no answer');
+    }, (error) => result('unavailable', String(error?.message ?? error)));
+  })();
+  const answer = await Promise.race([
+    run,
+    new Promise((resolve) => { timer = setTimeout(() => resolve(result('timeout')), PREPARE_MAX_MS); }),
+  ]);
+  clearTimeout(timer);
+  return answer;
+}
+
+function cancelPreparation(tabId, preparation) {
+  if (!preparation?.token || preparation.outcome === 'skipped' || !api.scripting?.executeScript) return;
+  api.scripting.executeScript({ target: { tabId }, injectImmediately: true, func: cancelSidebarInPage, args: [preparation.token] }).catch(() => {});
+}
+
 // Activate a tab, and focus its window only if it isn't already: re-focusing
 // the current window can move keyboard focus out of the page in Safari.
 // `wake: false` for a tab that was shown a moment ago (nothing to wake).
 // `source`: what asked, for the switch log (background/diagnostics.js).
 let focusGen = 0;
-export async function focusTab(tabId, { wake = true, source = 'other' } = {}) {
+/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null }} [options] */
+export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null } = {}) {
   const gen = ++focusGen;
   const asked = Date.now();
-  const woke = wake ? await wakeTab(tabId) : null;
+  const tabBefore = cached()?.tabs?.[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
+  const token = `${instanceId}:${gen}:${tabId}`;
+  // Run these together. Preparation itself wakes the isolated world, while
+  // wakeTab's page-world hold keeps WebKit's layer tree attached through the
+  // subsequent tabs.update.
+  const [woke, preparation] = await Promise.all([
+    wake ? wakeTab(tabId) : null,
+    wake && tabBefore ? prepareTabForShow(tabBefore, { token, carry, scroll }) : /** @type {Promise<Preparation>} */ (Promise.resolve({ outcome: 'skipped', ms: 0, token: null })),
+  ]);
   // Another switch was asked for while this one waited (back to the tab in
   // front, say): the latest wins.
-  if (gen !== focusGen) return recordSwitch({ source, tabId, asked, wake: woke, error: 'superseded' });
+  if (gen !== focusGen) {
+    cancelPreparation(tabId, preparation);
+    recordSwitch({ source, tabId, asked, wake: woke, preparation, error: 'superseded' });
+    return { tab: null, preparation, superseded: true };
+  }
+  // A timeout only bounds how long the old page stays covered. Stop the late
+  // preparation before activating, otherwise it could finish over the live
+  // destination and leave a token for some later switch to consume.
+  if (preparation.outcome === 'timeout') cancelPreparation(tabId, preparation);
   const tab = await api.tabs.update(tabId, { active: true }).catch((err) => {
-    recordSwitch({ source, tabId, asked, wake: woke, error: String(err) });
+    cancelPreparation(tabId, preparation);
+    recordSwitch({ source, tabId, asked, wake: woke, preparation, error: String(err) });
     throw err;
   });
-  recordSwitch({ source, tabId, asked, wake: woke, shownAfter: Date.now() - asked });
-  if (!tab || !api.windows) return;
+  recordSwitch({ source, tabId, asked, wake: woke, preparation, shownAfter: Date.now() - asked });
+  if (!tab || !api.windows) return { tab, preparation };
   const win = await api.windows.get(tab.windowId).catch(() => null);
   if (!win?.focused) await api.windows.update(tab.windowId, { focused: true });
+  return { tab, preparation };
 }
 
 // When Margin last opened a tab or window itself (background/newtab-hint.js

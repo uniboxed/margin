@@ -61,19 +61,29 @@ async function runNavigation(action, windowId) {
       return shown;
     }, () => null);
     const told = (type) => shownPage.then((shown) => shown && tell(shown, { type, tabId: next, from: shown.id }));
-    const asked = Date.now();
-    let wake;
     try {
       // A tab only passed through (more presses waiting: a held key) isn't
       // waited for long, so the switching stops when the key does.
-      wake = passing ? await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]) : await wakeTab(next);
-      await api.tabs.update(next, { active: true });
+      if (passing) {
+        const asked = Date.now();
+        const wake = await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
+        await api.tabs.update(next, { active: true });
+        recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
+      } else {
+        // The last key in a run is the frame the user keeps. Give it the same
+        // hidden render acknowledgement as a click; intermediate held-key
+        // tabs stay on the short pass-through path above.
+        const focused = await focusTab(next, { source: action });
+        if (!focused?.tab) {
+          told('switch-failed');
+          return;
+        }
+      }
     } catch (err) {
       told('switch-failed');
       throw err;
     }
     told('switch-done');
-    recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
     await mutate((st) => M.activateTab(st, next, windowId, now()));
     // Presses come in runs: the tab after this one is woken now, so the
     // next press doesn't wait for it (background/tabs.js wakeTab).
@@ -97,7 +107,8 @@ export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-
 // opens in it, or the untouched start or new-tab page in front moves to it
 // (no pile of empty pages). `bringTab: false`: only the sidebar's space
 // (held keys pass spaces; the last press brings the tab).
-export async function showSpace(windowId, spaceId, { bringTab = true } = {}) {
+/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null }} [options] */
+export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null } = {}) {
   if (windowId == null) return;
   const s = await mutate((st) => M.setActiveSpace(st, windowId, spaceId));
   if (V.activeSpaceId(s, windowId) !== spaceId || !bringTab) return; // no such space, or only the sidebar
@@ -108,8 +119,7 @@ export async function showSpace(windowId, spaceId, { bringTab = true } = {}) {
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
   for (const tab of candidates) {
     try {
-      await focusTab(tab.id, { source: 'space' });
-      return;
+      return await focusTab(tab.id, { source: 'space', carry, scroll });
     } catch {} // closed meanwhile: the next one
   }
   const startPage = api.runtime.getURL('newtab/newtab.html#launcher');

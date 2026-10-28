@@ -436,6 +436,14 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Hold ⌃⌘↓: the tabs go by with their content (no gray cards); one press to a slow tab shows the gray card after a moment.
 - [ ] Tab overview: tabs you left through the sidebar may look gray there (accepted); say if that bothers you.
 
+## Atomic sidebar handoff (2026-10-28)
+
+- [ ] Open the hover sidebar, scroll its list, and switch repeatedly among two warm tabs: the destination appears with the same scroll position, the correct row/space highlighted, and the sidebar already open. There must be no one-frame closed, stale, or wrong-space sidebar.
+- [ ] Repeat with Keep open, a pin, a space icon, the active tab's ×, and one ⌥⌘↓/↑ press. The frame/sidebar geometry must not jump when the page changes.
+- [ ] Rapidly click three different rows, then click back to the page already on screen: only the last request may land; no earlier destination may open later or retain a carried hover sidebar.
+- [ ] Leave a tab unused until Safari suspends it, then switch to it. The old page stays under Margin's cover until the destination is ready; no black frame. Repeat after relaunch with a lazily restored tab: Safari may still show its own empty view while it creates the document, but Margin must recover normally and never leave the cover or sidebar stuck.
+- [ ] Start page → Settings → Switch log (development) → Copy. Warm Margin switches should show `preparation.outcome: "ready"` (normally well below 300ms); an unloaded/denied page may show `unavailable`, `not ready`, or `timeout` and must still switch.
+
 ## Swipe between spaces (2026-10-27)
 
 - [ ] With two or more spaces, swipe two fingers left over the sidebar: the list follows your fingers, the next space slides in, and on letting go it's shown with its last tab in front.

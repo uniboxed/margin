@@ -360,6 +360,12 @@ export function startCore({ onTheme } = {}) {
   // position is the window's (background/scroll.js), not each page's.
   let pendingScroll = null; // applied by the next render
   let scrollGen = 0; // bumped by every scroll of the user's: theirs wins over a late reply
+  // A hidden destination prepared by the background before Safari activates
+  // it. Its sidebar is already current, scrolled and open the same way as the
+  // source; the first visibilitychange must not replace that prepared frame
+  // with another asynchronous storage/scroll round trip.
+  /** @type {{ token: string, at: number, carry: 'hover' | 'toggle' | null } | null} */
+  let preparedShow = null;
   // Once `drawn` (the state read started with it) has rendered, so the
   // position isn't applied to the old, shorter list and clamped there.
   function restoreScroll(drawn) {
@@ -386,11 +392,23 @@ export function startCore({ onTheme } = {}) {
     send('setSidebarScroll', { top: scrollTop }, false);
   }
   function shown() {
-    restoreScroll(refresh());
-    // Switched by keyboard or the browser's tab bar right after scrolling:
-    // the page left saves its position as it's hidden, which can land just
-    // after this one asked. Asked once more (not if the user scrolls here).
-    setTimeout(() => restoreScroll(Promise.resolve()), 400);
+    const prepared = preparedShow;
+    preparedShow = null;
+    const fresh = prepared && Date.now() - prepared.at < 1500;
+    if (fresh) {
+      // onActivated writes the authoritative active tab/space just after the
+      // browser switch. storage.onChanged normally brings it in; this is only
+      // a fallback when that event is late or absent.
+      const atVersion = version;
+      setTimeout(() => document.visibilityState === 'visible' && version === atVersion && refresh(), 250);
+    } else {
+      if (prepared?.carry) layout.hide(); // a prepared switch that never landed
+      restoreScroll(refresh());
+      // Switched by keyboard or Safari's tab bar right after scrolling: the
+      // page left saves its position as it is hidden, which can land just
+      // after this one asked. Asked once more (not if the user scrolls here).
+      setTimeout(() => restoreScroll(Promise.resolve()), 400);
+    }
     checkFullscreen();
     readZoom();
   }
@@ -409,9 +427,15 @@ export function startCore({ onTheme } = {}) {
   /** @type {import('../../types/margin').Send} */
   const themeSend = (type, payload, ...rest) => {
     if (!SWITCHES.has(type)) return send(type, payload, ...rest);
+    const sidebarTop = scrollTimer == null ? null : scrollTop;
     flushScroll();
     const how = layout.reason() === 'toggle' ? 'toggle' : 'hover';
-    return send(type, /** @type {any} */ (payload)?.show ? { ...payload, show: how } : payload, ...rest);
+    const message = {
+      .../** @type {any} */ (payload),
+      ...((/** @type {any} */ (payload))?.show ? { show: how } : {}),
+      ...(Number.isFinite(sidebarTop) ? { sidebarTop } : {}),
+    };
+    return send(type, message, ...rest);
   };
   // Opened here because the previous page's sidebar was open (background
   // carryOpen, or with hello): at once, without sliding in again. Before
@@ -447,16 +471,74 @@ export function startCore({ onTheme } = {}) {
 
   // Storage reads can resolve out of order; only the latest one renders.
   let version = 0;
-  async function refresh() {
+  // Before a programmatic switch, the destination's storage still names the
+  // source tab/space as active. Its own tab id is authoritative for the row
+  // highlight (shared/view.js); this small local override also makes the
+  // destination's space visible before tabs.onActivated catches storage up.
+  /** @param {any} next @param {{ tabId: number, windowId: number } | null} show */
+  function stateForShow(next, show) {
+    const targetId = show?.tabId;
+    const targetWindow = show?.windowId;
+    const spaceId = targetId != null ? next.tabSpace?.[targetId] : null;
+    if (targetWindow == null || !spaceId || !next.spaces?.some((space) => space.id === spaceId)) return next;
+    if (next.activeSpaceByWindow?.[targetWindow] === spaceId) return next;
+    return { ...next, activeSpaceByWindow: { ...next.activeSpaceByWindow, [targetWindow]: spaceId } };
+  }
+
+  /** @param {{ tabId: number, windowId: number } | null} [show] */
+  async function refresh(show = null) {
     const mine = ++version;
     const next = await api.storage.local.get(null);
     timing.storage ??= Math.round(performance.now());
-    if (mine !== version || !next.spaces?.length) return; // stale, or background not initialized yet
-    state = next;
+    if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
+    state = stateForShow(next, show);
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1)); // drawn at its size from the start
     render();
     requestTheme(); // only if it isn't here by now
+    return true;
   }
+
+  // Called through scripting.executeScript in the current isolated extension
+  // world (background/tabs.js), not tabs.sendMessage: Safari can leave an old
+  // content-script listener behind after an update. Everything necessary for
+  // the destination's first frame is committed before this promise answers.
+  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null }} [context] */
+  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry } = {}) => {
+    if (!token || !Number.isInteger(targetId) || targetWindow == null) return { ready: false, reason: 'bad context' };
+    // A newer preparation owns this hidden page. Undo only the transient open
+    // state from the older one; ordinary Keep open is restored by hide().
+    if (preparedShow?.carry) layout.hide();
+    preparedShow = { token, at: Date.now(), carry: null };
+    tabId = targetId;
+    helloWindowId = targetWindow;
+    switching.end();
+    newTabPending = false;
+    if (Number.isFinite(scroll)) pendingScroll = Math.max(0, scroll);
+    const rendered = await refresh({ tabId: targetId, windowId: targetWindow });
+    if (preparedShow?.token !== token) return { ready: false, reason: 'superseded' };
+    if (!rendered || !state || !view || windowId !== targetWindow) {
+      preparedShow = null;
+      return { ready: false, reason: !view ? 'theme not ready' : 'state not ready' };
+    }
+    if (carry === 'hover' || carry === 'toggle') {
+      view.instantOnce?.();
+      layout.show(carry);
+      preparedShow.carry = carry;
+    }
+    // Force style/layout in this WebProcess before the executeScript result
+    // crosses back to Safari's UI process. Hidden pages do not reliably run
+    // requestAnimationFrame, so an animation-frame acknowledgement would hang.
+    host.getBoundingClientRect();
+    return { ready: true, token };
+  };
+  Margin.content.cancelPreparedShow = (token) => {
+    if (!preparedShow || preparedShow.token !== token) return false;
+    const { carry } = preparedShow;
+    preparedShow = null;
+    if (carry && document.visibilityState !== 'visible') layout.hide();
+    void refresh();
+    return true;
+  };
 
   Margin.content.getState = () => ({ state, tabId, windowId });
   // Not while hidden: every open tab redrew its sidebar for every change

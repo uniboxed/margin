@@ -16,7 +16,7 @@
 
 // The id of the tab showing /p/<name>, from Margin's own tab snapshot.
 const ID = 'const { tabs } = await browser.storage.local.get("tabs"); const id = (n) => Object.values(tabs).find((t) => t.url.endsWith("/p/" + n))?.id;';
-const switchTo = (from, to) => ({ op: 'eval', in: from, js: `${ID} return JSON.stringify(await Margin.content.send("activateTab", { tabId: id("${to}") }) ?? null)` });
+const switchTo = (from, to, options = {}) => ({ op: 'eval', in: from, js: `${ID} return JSON.stringify(await Margin.content.send("activateTab", { tabId: id("${to}"), ...${JSON.stringify(options)} }) ?? null)` });
 // `js`: an expression, or statements ending in `return …`.
 const body = (js) => (/\breturn\b/.test(js) ? js : `return ${js}`);
 const check = (tab, label, js, timeout) => ({ op: 'check', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
@@ -43,7 +43,9 @@ export const SCENARIOS = {
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, { op: 'open', name: 'D', url: '/p/D', asleep: true },
     wait(1000), { op: 'install' },
     drawn('A'), themed('A'), drawn('B'),
-    switchTo('A', 'B'), shown('B'),
+    switchTo('A', 'B', { show: 'hover' }), shown('B'),
+    checkPage('B', 'B: the carried sidebar is open on its first shown frame', `document.querySelector('margin-sidebar-host')?.dataset.open === 'true'`),
+    check('B', 'B: hidden sidebar preparation acknowledged before activation', `(await Margin.content.send('switchLog')).some((entry) => entry.source === 'activateTab' && entry.preparation?.outcome === 'ready')`),
     switchTo('B', 'D'), shown('D'), drawn('D'), themed('D'),
     switchTo('D', 'C'), shown('C'), { op: 'state' },
   ],
