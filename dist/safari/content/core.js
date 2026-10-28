@@ -163,13 +163,9 @@ export function startCore({ onTheme } = {}) {
     onTheme?.(theme);
     if (state) render();
     layout.reopen(); // hovered or toggled before it was there
-    // Taking over from a copy left from before Margin was updated, on a page
-    // that copy fitted beside the sidebar: its layout (and the page's keys
-    // and gestures in it) stay with the old copy until the page loads again
-    // (content/takeover.js does that once it's hidden; offered now too).
-    if (replacing && document.documentElement.hasAttribute('data-margin-shell') && !document.hidden) {
-      offerReload('Margin was updated. Reload this page to fit it beside the sidebar again.');
-    }
+    // A page fitted by the previous copy keeps that layout until takeover.js
+    // can reload it safely while hidden. The replacement sidebar is already
+    // usable, so don't interrupt the active page with a reload prompt.
   }
   Margin.content.themeArrived = mountTheme;
   // The theme's registered script didn't run on this page (Safari loads

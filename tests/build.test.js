@@ -76,6 +76,12 @@ test('each build is stamped with its own profile', () => {
   assert.equal(PROFILES.chrome.prepareSidebar, false, 'Chrome keeps its hidden tab frame without the extra handoff');
 });
 
+test('taking over an updated sidebar is silent unless the page stops responding', () => {
+  const core = readFileSync(join(root, 'extension/content/core.js'), 'utf8');
+  assert.doesNotMatch(core, /Margin was updated\. Reload this page/, 'a successful takeover must not ask the user to reload');
+  assert.match(core, /Margin isn’t responding on this page/, 'a genuinely unresponsive page keeps the recovery action');
+});
+
 // The rules of WebKit's parseCommandShortcut (Safari's command loading): 2–3
 // parts, the last one the key; modifiers Command/Ctrl (⌘), Alt (⌥), MacCtrl
 // (⌃), Shift; at most 4 commands with a shortcut. An invalid shortcut drops
