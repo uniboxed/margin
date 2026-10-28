@@ -164,10 +164,12 @@ export async function focusTab(tabId, { wake = true, source = 'other' } = {}) {
 
 // When Margin last opened a tab or window itself (background/newtab-hint.js
 // leaves those out).
-export let marginOpenedAt = 0;
+let marginOpenedAt = 0;
 export function markMarginOpening() {
   marginOpenedAt = Date.now();
 }
+const OWN_TAB_MS = 2000; // a tab created this soon after Margin opened one is Margin's
+export const openedByMargin = () => Date.now() - marginOpenedAt < OWN_TAB_MS;
 
 // ---- pages already open when Margin is installed or updated -----------------
 // This run of the background: content scripts keep it from their hello, so

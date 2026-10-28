@@ -31,14 +31,15 @@ cp app/safari/ViewController.swift "$APP_DIR/Margin/ViewController.swift"
 cp app/safari/SafariWebExtensionHandler.swift "$APP_DIR/Margin Extension/SafariWebExtensionHandler.swift"
 perl -pi -e 's/MACOSX_DEPLOYMENT_TARGET = (?:1[0-3]|[0-9])(?:\.\d+)?;/MACOSX_DEPLOYMENT_TARGET = 14.0;/' "$PBXPROJ"
 
-# The container app looks up the extension by ID (e.g. ViewController.swift).
-grep -rl 'extensionBundleIdentifier' xcode --include='*.swift' | while read -r f; do
-  EXT_ID="$EXT_ID" perl -pi -e 's/(extensionBundleIdentifier\s*=\s*")[^"]*(")/$1$ENV{EXT_ID}$2/' "$f"
+# The container app looks up the extension by ID (e.g. ViewController.swift),
+# the extension handler the app (SafariWebExtensionHandler.swift).
+grep -rl 'extensionBundleIdentifier\|marginAppIdentifier' xcode --include='*.swift' | while read -r f; do
+  EXT_ID="$EXT_ID" APP_ID="$APP_ID" perl -pi -e 's/(extensionBundleIdentifier\s*=\s*")[^"]*(")/$1$ENV{EXT_ID}$2/; s/(marginAppIdentifier\s*=\s*")[^"]*(")/$1$ENV{APP_ID}$2/' "$f"
 done
 
 echo
 echo "Bundle IDs:"
 grep -h 'PRODUCT_BUNDLE_IDENTIFIER' "$PBXPROJ" | sort -u | sed 's/^[[:space:]]*/  /'
-grep -rh 'extensionBundleIdentifier' xcode --include='*.swift' | sed 's/^[[:space:]]*/  /'
+grep -rh 'extensionBundleIdentifier =\|marginAppIdentifier =' xcode --include='*.swift' | sed 's/^[[:space:]]*/  /'
 echo
 echo "Open: open \"$(dirname "$PBXPROJ")\""

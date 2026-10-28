@@ -78,9 +78,11 @@ The script runs Apple's converter:
 xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
 ```
 
-It then fixes the bundle IDs. The converter names the app `io.tirth.Margin` (capitalized from the app name) but the extension `io.tirth.margin.Extension`, and Xcode refuses to build with "Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier." The script sets the app to `io.tirth.margin`, the extension to `io.tirth.margin.Extension`, and `extensionBundleIdentifier` in the app's Swift code to match, then prints all three.
+It then fixes the bundle IDs. The converter names the app `io.tirth.Margin` (capitalized from the app name) but the extension `io.tirth.margin.Extension`, and Xcode refuses to build with "Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier." The script sets the app to `io.tirth.margin`, the extension to `io.tirth.margin.Extension`, and `extensionBundleIdentifier` in the app's Swift code to match, then prints all three (and the app's own ID in the extension handler).
 
 In Xcode, choose the **Margin (macOS)** scheme and Run (⌘R). Safari picks up the extension from the app. If signing complains, set the same Team (your Personal Team, or "Sign to Run Locally") on both targets under Signing & Capabilities.
+
+**The set-up window.** Margin's app opens a window that walks through what Safari needs (Margin on, allowed on every website, new windows and tabs opening Margin, ⌘T freed for Margin) and checks each step as you go, with tests to run in Safari; plus recommended steps and the shortcuts. Its code is in `app/safari/` (SwiftUI in the converter's window, and the extension handler), copied into the generated project by the script. The checks come from the extension through native messaging, so they need this packaged app: a temporary extension can't report to it. Chrome and Edge come later.
 
 **After pulling new changes,** re-run `scripts/make-xcode.sh` and Run again. That's always safe, and needed whenever files under `dist/safari/` are added or removed. For edits to existing files, just Run again in Xcode and reload pages in Safari. If Safari still shows old behavior, regenerate.
 

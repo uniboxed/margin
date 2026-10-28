@@ -56,7 +56,7 @@ api.tabs.onCreated.addListener(async (tab) => {
   // that stays is tracked as usual.
   recordCreated(tab);
   if (tab.active && V.isNewTabPage(tab.pendingUrl || tab.url)) {
-    void newTabHint.newTabPageSeen(); // ⌘T reaches Margin: the setting is Margin
+    void newTabHint.newTabPageSeen(tab); // ⌘T reaches Margin: the setting is Margin
     if (await newTabHandOff(tab)) return;
     // As it is now: its events were set aside meanwhile.
     tab = await api.tabs.get(tab.id).catch(() => null);

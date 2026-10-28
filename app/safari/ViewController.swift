@@ -23,6 +23,7 @@ class ViewController: NSViewController {
     @IBOutlet var webView: WKWebView!
 
     private let model = SetupModel()
+    private var placed = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,13 +40,21 @@ class ViewController: NSViewController {
         model.start()
     }
 
+    // Once: it appears again after the app is hidden and shown, where the
+    // user may have moved or resized it.
     override func viewDidAppear() {
         super.viewDidAppear()
-        guard let window = view.window else { return }
+        guard !placed, let window = view.window else { return }
+        placed = true
         window.title = "Set up Margin"
-        window.styleMask.insert(.resizable)
+        window.styleMask.formUnion([.resizable, .miniaturizable])
         window.minSize = NSSize(width: 640, height: 520)
-        window.setContentSize(NSSize(width: 760, height: 780))
+        var size = NSSize(width: 760, height: 780)
+        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
+            size.width = min(size.width, visible.width - 40)
+            size.height = min(size.height, visible.height - 60) // the title bar, and some room
+        }
+        window.setContentSize(size)
         window.center()
     }
 }
@@ -70,6 +79,13 @@ struct SetupTest: Equatable {
     enum Result: Equatable { case passed, failed(String) }
 }
 
+// What the app saw itself, kept with the extension's events (by when).
+enum Seen {
+    static let safariLaunched = "app.safariLaunched"
+    static let marginOff = "app.marginOff"
+    static func failed(_ check: String) -> String { "app.failed.\(check)" }
+}
+
 @MainActor
 final class SetupModel: ObservableObject {
     @Published var extensionOn: Bool?
@@ -92,20 +108,38 @@ final class SetupModel: ObservableObject {
 
     func start() {
         refreshExtensionState()
+        // On the main run loop and queue, both.
         poll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshExtensionState() }
+            MainActor.assumeIsolated { self?.refreshExtensionState() }
         }
         DistributedNotificationCenter.default().addObserver(forName: setupNotification, object: nil, queue: .main) { [weak self] note in
             let json = note.object as? String
-            Task { @MainActor in self?.receive(json) }
+            MainActor.assumeIsolated { self?.receive(json) }
         }
     }
 
+    // Margin on or off, and when Safari last opened: both can set Safari's
+    // new windows and tabs back to its own page (DECISIONS.md, the unsigned
+    // build), so what was seen before is checked again.
     private func refreshExtensionState() {
         SFSafariExtensionManager.getStateOfSafariExtension(withIdentifier: extensionBundleIdentifier) { [weak self] state, _ in
             let on = state?.isEnabled
-            Task { @MainActor in self?.extensionOn = on }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if on == false, self.extensionOn != false { self.note(Seen.marginOff, Date()) }
+                self.extensionOn = on
+            }
         }
+        if let launched = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").compactMap(\.launchDate).max() {
+            note(Seen.safariLaunched, launched)
+        }
+    }
+
+    // Something seen at `at` (kept if it's later than what was seen before).
+    private func note(_ name: String, _ at: Date) {
+        if let known = events[name], known >= at { return }
+        events[name] = at
+        defaults.set(events.mapValues { $0.timeIntervalSince1970 }, forKey: "setup.events")
     }
 
     // A status or an event from the extension (SafariWebExtensionHandler.swift).
@@ -116,26 +150,32 @@ final class SetupModel: ObservableObject {
         if type == "status", let all = body["allSites"] as? Bool {
             allSites = all
             defaults.set(all, forKey: "setup.allSites")
-        } else if type == "event", let name = body["name"] as? String {
-            events[name] = Date()
-            defaults.set(events.mapValues { $0.timeIntervalSince1970 }, forKey: "setup.events")
+        } else if type == "event", let name = body["name"] as? String, !name.hasPrefix("app.") {
+            note(name, Date())
             judgeTest()
         }
     }
 
-    // Did `good` happen after `bad` (both events), the latest saying how it is.
-    private func latest(_ good: String, over bad: String) -> Bool {
-        guard let g = events[good] else { return false }
-        guard let b = events[bad] else { return true }
-        return g > b
+    // Did `name` happen after all of `others` (the latest saying how it is).
+    private func seen(_ name: String, after others: [String]) -> Bool {
+        guard let at = events[name] else { return false }
+        return others.allSatisfy { (events[$0] ?? .distantPast) < at }
     }
+
+    // Safari opened Margin's page for a new window / tab since it last
+    // opened, Margin was last off, and nothing said otherwise. ⌘T: it reached
+    // Margin, and no test of it failed since (Safari's own New Tab also runs
+    // from its + button and File menu, so that alone says nothing).
+    var newWindowsOpenMargin: Bool { seen("marginNewWindowPage", after: [Seen.safariLaunched, Seen.marginOff, Seen.failed("newWindow")]) }
+    var newTabsOpenMargin: Bool { seen("marginNewTabPage", after: [Seen.safariLaunched, Seen.marginOff, "homepageNewTab", Seen.failed("newTab")]) }
+    var commandTReachesMargin: Bool { seen("cmdTKey", after: [Seen.failed("commandT")]) }
 
     func state(_ step: Step) -> StepState {
         switch step {
         case .turnOn: return extensionOn == nil ? .unknown : (extensionOn! ? .done : .todo)
         case .allSites: return allSites == true ? .done : (allSites == nil ? .unknown : .todo)
-        case .newTabs: return latest("marginNewTabPage", over: "otherNewTabPage") ? .done : .todo
-        case .commandT: return latest("cmdTKey", over: "safariNewTab") ? .done : .todo
+        case .newTabs: return newWindowsOpenMargin && newTabsOpenMargin ? .done : .todo
+        case .commandT: return commandTReachesMargin ? .done : .todo
         case .restore, .tidy: return manual.contains(step.rawValue) ? .done : .optional
         case .shortcuts: return .optional
         }
@@ -151,13 +191,14 @@ final class SetupModel: ObservableObject {
 
     // MARK: Tests
 
+    // Safari opening (and restoring its windows) can take a while.
     func startTest(_ step: Step) {
+        openSafari()
         test = SetupTest(step: step, since: Date())
         testTimer?.invalidate()
-        testTimer = Timer.scheduledTimer(withTimeInterval: 12, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.timeOutTest() }
+        testTimer = Timer.scheduledTimer(withTimeInterval: step == .newTabs ? 30 : 20, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.timeOutTest() }
         }
-        openSafari()
     }
 
     private func happened(_ name: String, since: Date) -> Bool { (events[name] ?? .distantPast) >= since }
@@ -167,10 +208,17 @@ final class SetupModel: ObservableObject {
         switch t.step {
         case .commandT:
             if happened("cmdTKey", since: t.since) { t.result = .passed }
-            else if happened("safariNewTab", since: t.since) { t.result = .failed("Safari opened a new tab, so ⌘T still belongs to Safari's New Tab. Check the App Shortcut: Safari, menu title “New Tab” exactly, any other keys.") }
+            else if happened("safariNewTab", since: t.since) {
+                t.result = .failed("Safari opened a new tab, so ⌘T still belongs to Safari's New Tab. Check the App Shortcut: Safari, menu title “New Tab” exactly, any other keys.")
+                note(Seen.failed("commandT"), Date())
+            }
         case .newTabs:
-            if happened("marginNewTabPage", since: t.since) { t.result = .passed }
-            else if happened("otherNewTabPage", since: t.since) { t.result = .failed("Safari opened another page. In Safari Settings › General, set “New windows open with” and “New tabs open with” to Margin.") }
+            if happened("otherNewTabPage", since: t.since) || happened("homepageNewTab", since: t.since) {
+                t.result = .failed("A new tab opened a web page, not Margin's. In Safari Settings › General, set “New tabs open with” to Margin.")
+                note(Seen.failed("newTab"), Date())
+            } else if happened("marginNewWindowPage", since: t.since), happened("marginNewTabPage", since: t.since) {
+                t.result = .passed
+            }
         default: break
         }
         test = t
@@ -179,8 +227,17 @@ final class SetupModel: ObservableObject {
     private func timeOutTest() {
         guard var t = test, t.result == nil else { return }
         switch t.step {
-        case .commandT: t.result = .failed("Nothing reached Margin. Press ⌘T on a web page in Safari (Margin needs to be on and allowed there), then try again.")
-        case .newTabs: t.result = .failed("Margin's page didn't open. In Safari Settings › General, set “New windows open with” to Margin, then press ⌘N again.")
+        case .commandT:
+            t.result = .failed("Nothing reached Margin. If Safari opened a new tab, ⌘T still belongs to it: check the App Shortcut (Safari, menu title “New Tab” exactly). Otherwise check Margin is on, then try again with a web page in front.")
+        case .newTabs:
+            let missing = [
+                happened("marginNewWindowPage", since: t.since) ? nil : (check: "newWindow", setting: "New windows open with", what: "a new window (⌘N)"),
+                happened("marginNewTabPage", since: t.since) ? nil : (check: "newTab", setting: "New tabs open with", what: "a new tab (+)"),
+            ].compactMap { $0 }
+            // One of the two came: the user did the test, so the other is wrong
+            // (neither: maybe they didn't, so nothing is undone).
+            if missing.count == 1 { note(Seen.failed(missing[0].check), Date()) }
+            t.result = .failed("Margin's page didn't open for \(missing.map(\.what).joined(separator: " or ")). In Safari Settings › General, set \(missing.map { "“\($0.setting)”" }.joined(separator: " and ")) to Margin, then try again.")
         default: break
         }
         test = t
@@ -352,7 +409,9 @@ struct StepCard: View {
         case (.allSites, .done): return "Margin can show its sidebar on every website."
         case (.allSites, _): return "Without this, Safari asks site by site, and Margin's sidebar is missing where it hasn't been allowed."
         case (.newTabs, .done): return "New windows and tabs open Margin's page."
-        case (.newTabs, _): return "So a new window starts in Margin, with its sidebar and palette."
+        case (.newTabs, _) where model.newWindowsOpenMargin: return "New windows open Margin's page; new tabs not yet (or not since Safari last opened)."
+        case (.newTabs, _) where model.newTabsOpenMargin: return "New tabs open Margin's page; new windows not yet (or not since Safari last opened)."
+        case (.newTabs, _): return "So a new window or tab starts in Margin, with its sidebar and palette. While Margin isn't signed, Safari can set these back when it restarts: check again then."
         case (.commandT, .done): return "⌘T opens Margin's palette, with no new tab flashing first."
         case (.commandT, _): return "Safari keeps ⌘T for its own New Tab, which makes a tab before Margin can step in (a flicker). Giving Safari's New Tab another shortcut frees ⌘T for Margin."
         case (.restore, _): return "Margin keeps tabs in their spaces across restarts when Safari reopens them."
@@ -368,6 +427,10 @@ struct StepCard: View {
                 "Click Open Safari Settings.",
                 "In Extensions, tick Margin.",
             ])
+            Text("Margin isn't listed, or it's off again each time Safari opens? Until Margin is signed, Safari also needs Settings › Developer › Allow unsigned extensions (no Developer tab: Settings › Advanced › Show features for web developers), and asks for it again after it quits.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Button("Open Safari Settings") { model.openExtensionSettings() }
         case .allSites:
             Instructions(lines: [
@@ -389,9 +452,9 @@ struct StepCard: View {
             ])
             HStack {
                 Button("Open Safari") { model.openSafari() }
-                Button("Test: press ⌘N in Safari") { model.startTest(.newTabs) }
+                Button("Test: ⌘N, then + in Safari") { model.startTest(.newTabs) }
             }
-            TestLine(test: model.test, step: step, waiting: "Waiting for a new window in Safari… press ⌘N.")
+            TestLine(test: model.test, step: step, waiting: "Waiting… in Safari, press ⌘N, then click + in the new window's tab bar (or File › New Tab).")
         case .commandT:
             Instructions(lines: [
                 "Open System Settings › Keyboard, then Keyboard Shortcuts… › App Shortcuts.",
@@ -426,11 +489,11 @@ struct StepCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 ShortcutRow(keys: "⌘T", action: "Command palette: open or search anything, as a new tab")
                 ShortcutRow(keys: "⌃⌘↓  ⌃⌘↑", action: "Next / previous tab in the space")
-                ShortcutRow(keys: "⌃⌘→  ⌃⌘←", action: "Next / previous space")
+                ShortcutRow(keys: "⌃⌘→  ⌃⌘←", action: "Next / previous space (⌃⌘← with a web page in front: its key went to ⌘T)")
                 ShortcutRow(keys: "⌥S", action: "Show or hide the sidebar")
                 ShortcutRow(keys: "Two-finger swipe", action: "Sideways on the sidebar: switch spaces")
             }
-            Text("⌥⌘ arrows belong to Safari (its own tab switching, before Margin can see them). To use them for Margin anyway, Karabiner-Elements can turn them into ⌃⌘ arrows while Safari is in front.")
+            Text("⌥⌘ arrows belong to Safari (its own tab switching, before Margin can see them). To use them for Margin anyway, Karabiner-Elements can turn them into ⌃⌘ arrows while Safari is in front (the same limits apply).")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
