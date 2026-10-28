@@ -17,7 +17,22 @@ function installShortcut(palette, getShortcut, target = globalThis) {
   }, true);
 }
 
-export { installShortcut as installPaletteShortcut };
+// ⌘T. The browser keeps it for its own File › New Tab, which creates a tab
+// first (Margin then hands it back: a flicker). With that menu item given
+// another shortcut (macOS System Settings › Keyboard › App Shortcuts), ⌘T
+// reaches the page like any key and Margin opens its palette to choose a
+// new tab right away, with no tab created. `run()`: open it.
+/** @param {() => void} run @param {any} [target] */
+function installNewTabKey(run, target = globalThis) {
+  target.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
+    if (!e.isTrusted || e.code !== 'KeyT' || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!e.repeat) run();
+  }, true);
+}
+
+export { installShortcut as installPaletteShortcut, installNewTabKey };
 
 // The palette opened to choose a new tab is closing: the sidebar's "+ New
 // Tab" highlight goes (`setPending(false)`). Right away, unless what was
@@ -95,6 +110,11 @@ export function wirePalette(c, createPalette) {
     if (command === 'open-palette') palette.toggle();
   };
   c.openPalette = (options) => ready() && open(options);
+  // ⌘T (installNewTabKey): the palette for a new tab; while Margin is out of
+  // the way (Chrome, not in full screen), a new tab as usual.
+  const newTabKey = () => (!c.active || c.active() ? open({ newTab: true }) : c.send('newTab', { windowId: c.getState().windowId }));
+  installNewTabKey(newTabKey);
+  c.onCard?.((win) => installNewTabKey(newTabKey, win));
   c.paletteOpen = () => palette.isOpen();
   c.closePalette = () => palette.isOpen() && palette.close();
   const prev = c.onState;
