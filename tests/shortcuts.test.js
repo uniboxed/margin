@@ -50,3 +50,28 @@ test('navigation defaults (Chrome profile, outside a browser): ⌃⌘ + arrows; 
   // A shortcut recorded from a real key press round-trips.
   assert.equal(fromEvent(ev('ArrowRight', { ctrlKey: true, metaKey: true })), NAVIGATION.nextSpace);
 });
+
+test('⌘T (the browser\'s New Tab moved to another shortcut): Margin\'s new tab, not the page\'s; only plain ⌘T, once per press', async () => {
+  const { installNewTabKey } = await import('../extension/content/palette.js');
+  let listener = null;
+  const target = { addEventListener: (type, fn, capture) => { if (type === 'keydown' && capture) listener = fn; } };
+  let runs = 0;
+  installNewTabKey(() => runs++, target);
+  const press = (init) => {
+    const e = { isTrusted: true, code: 'KeyT', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, repeat: false, prevented: false, stopped: false, ...init };
+    e.preventDefault = () => { e.prevented = true; };
+    e.stopImmediatePropagation = () => { e.stopped = true; };
+    listener(e);
+    return e;
+  };
+  const plain = press({});
+  assert.equal(runs, 1);
+  assert.ok(plain.prevented && plain.stopped, 'the page never sees it');
+  press({ repeat: true });
+  assert.equal(runs, 1, 'held: once');
+  assert.ok(press({ repeat: true }).prevented, 'but still not the page\'s');
+  for (const other of [{ shiftKey: true }, { altKey: true }, { ctrlKey: true }, { metaKey: false }, { code: 'KeyN' }, { isTrusted: false }]) {
+    assert.equal(press(other).prevented, false, JSON.stringify(other));
+  }
+  assert.equal(runs, 1);
+});

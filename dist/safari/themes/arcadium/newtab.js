@@ -8,7 +8,7 @@ import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
-import { installPaletteShortcut, newTabCloser, reportingSwitches } from '../../content/palette.js';
+import { installPaletteShortcut, installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
 import { createSwitching, backgroundSwitches } from '../../shared/switching.js';
 import { THEMES, themeFor } from '../index.js';
 import { avatar, createSidebar } from './sidebar.js';
@@ -297,6 +297,8 @@ export function mount({ api, self, send, windowed = false }) {
     colorScheme: () => (dark.matches ? 'dark' : 'light'),
   });
   installPaletteShortcut(palette, () => (recording ? null : state?.settings?.paletteShortcut ?? 'Alt+KeyK'));
+  // ⌘T once the browser's New Tab has another shortcut: as "+ New Tab" here.
+  installNewTabKey(() => { if (!recording) onNewTab(); });
   api.runtime.onMessage.addListener((message) => {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
     // The background switching from this tab (next/previous tab; shared/switching.js).

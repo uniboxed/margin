@@ -458,3 +458,8 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Put tabs in two or three spaces, rebuild Margin in Xcode: every tab is still in its space.
 - [ ] Quit Safari with tabs in several spaces and reopen it (tabs restored): every tab is back in its space, and clicking a space brings its last-used tab.
 - [ ] If Safari opens with a new window: History › Reopen All Windows from Last Session: the reopened tabs go back to their spaces.
+
+## ⌘T with no flicker (2026-10-27)
+
+- [ ] With Safari's "New Tab" moved to another shortcut (System Settings › Keyboard › App Shortcuts): ⌘T on a page opens Margin's palette at once, no tab appears, nothing flickers; Escape leaves you where you were; choosing a page opens one new tab.
+- [ ] ⌘T on Margin's new-tab page and in a fitted site: the same.
