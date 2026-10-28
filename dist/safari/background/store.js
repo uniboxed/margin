@@ -104,14 +104,14 @@ async function isFreshSession() {
   return true;
 }
 
-// `onSync({ state, renumbered })`: told after the sync (in the queue).
-/** @param {{ fresh?: boolean, onSync?: (sync: { state: State, renumbered: boolean }) => void }} [options] */
+// `onSync({ state, renumbered, fresh })`: told after the sync (in the queue).
+/** @param {{ fresh?: boolean, onSync?: (sync: { state: State, renumbered: boolean, fresh: boolean }) => void }} [options] */
 export function resync({ fresh, onSync } = {}) {
   return mutate(async (s) => {
     const tabs = await api.tabs.query({});
     const isFresh = fresh ?? (await isFreshSession());
     const next = M.syncTabs(s, tabs, { fresh: isFresh, now: now() });
-    onSync?.({ state: next, renumbered: M.isRenumbered(s, tabs, { fresh: isFresh }) });
+    onSync?.({ state: next, renumbered: M.isRenumbered(s, tabs, { fresh: isFresh }), fresh: isFresh });
     return next;
   });
 }

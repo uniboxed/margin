@@ -55,27 +55,45 @@ export function takeOver(api) {
       }
     };
     let retry = null;
+    let asking = false;
+    const arm = (delay = 500 + Math.random() * 3000) => {
+      document.addEventListener('visibilitychange', go);
+      clearTimeout(retry);
+      retry = setTimeout(go, delay);
+    };
     const go = () => {
-      if (!document.hidden || busy()) return;
+      if (asking || !document.hidden || busy()) return;
       const KEY = 'margin-reloaded-for-update';
+      let stamp = Date.now();
       try {
-        const wait = 30000 - (Date.now() - (Number(sessionStorage.getItem(KEY)) || 0));
+        const wait = 30000 - (stamp - (Number(sessionStorage.getItem(KEY)) || 0));
         if (wait > 0) {
           clearTimeout(retry);
           retry = setTimeout(go, wait + 100);
           return;
         }
-        sessionStorage.setItem(KEY, String(Date.now()));
+        sessionStorage.setItem(KEY, String(stamp));
       } catch {}
       document.removeEventListener('visibilitychange', go);
       clearTimeout(retry);
       // Updated again meanwhile: this copy is cut off (the newer one reloads).
       if (!api.runtime?.id) return;
       console.info('[margin] Margin was updated while this page was open: loading it again');
-      api.runtime.sendMessage({ type: 'reloadForUpdate' }).catch(() => {});
+      asking = true;
+      api.runtime.sendMessage({ type: 'reloadForUpdate' }).then((reply) => {
+        // It became visible while the background was getting ready. Remove
+        // this attempt's throttle and try again after the page is hidden;
+        // typed fields/media are checked again then too.
+        if (reply?.ok && reply.result === false && api.runtime?.id) {
+          try {
+            if (Number(sessionStorage.getItem(KEY)) === stamp) sessionStorage.removeItem(KEY);
+          } catch {}
+          asking = false;
+          arm(500);
+        }
+      }, () => {});
     };
-    document.addEventListener('visibilitychange', go);
-    setTimeout(go, 500 + Math.random() * 3000);
+    arm();
   }
   return replacing;
 }

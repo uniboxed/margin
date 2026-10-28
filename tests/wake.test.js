@@ -57,7 +57,7 @@ globalThis.chrome = {
   },
 };
 
-const { wakeTab, focusTab, markMarginOpening, keepAwake } = await import('../extension/background/tabs.js');
+const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake } = await import('../extension/background/tabs.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate } = await import('../extension/background/store.js');
 
@@ -81,6 +81,15 @@ test('wake: a running page answers at once and the switch goes ahead then', asyn
   assert.equal(prepared.args[0].scroll, 42);
   assert.equal(prepared.args[0].carry, 'hover');
   assert.ok(prepared.at <= fake.updates[0].at, 'the hidden page prepares before activation');
+});
+
+test('focus intent: a destination is protected from cleanup until activation finishes', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 12, url: 'https://protected.test/' }]);
+  fake.scriptDelay = () => 40;
+  const focusing = focusTab(12);
+  assert.equal(isFocusing(12), true);
+  await focusing;
+  assert.equal(isFocusing(12), false);
 });
 
 test('wake: the keep-awake runs in the page\'s own world (Margin\'s is cleared when it reloads)', async () => {

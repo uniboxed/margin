@@ -209,8 +209,21 @@ function cancelPreparation(tabId, preparation) {
 // `wake: false` for a tab that was shown a moment ago (nothing to wake).
 // `source`: what asked, for the switch log (background/diagnostics.js).
 let focusGen = 0;
+const focusing = new Map(); // tabId → overlapping Margin focus requests
+export const isFocusing = (tabId) => (focusing.get(tabId) ?? 0) > 0;
 /** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null }} [options] */
 export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null } = {}) {
+  focusing.set(tabId, (focusing.get(tabId) ?? 0) + 1);
+  try {
+    return await focusTabNow(tabId, { wake, source, carry, scroll });
+  } finally {
+    const left = (focusing.get(tabId) ?? 1) - 1;
+    if (left > 0) focusing.set(tabId, left);
+    else focusing.delete(tabId);
+  }
+}
+
+async function focusTabNow(tabId, { wake, source, carry, scroll }) {
   const gen = ++focusGen;
   const asked = Date.now();
   const tabBefore = cached()?.tabs?.[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
@@ -348,26 +361,66 @@ async function checkCurrent(tabId) {
 }
 export const forgetCurrent = (tabId) => checkedCurrent.delete(tabId);
 
-// Pages already open when Margin is installed or updated: WebKit adds the
-// content scripts to them itself; where a browser doesn't, this does, once
-// it had time to (only where Margin has access: permissions.contains doesn't
-// prompt, executeScript could; and only in loaded pages: a sleeping tab gets
-// them when it loads). A page that still has the previous copy reloads
-// itself (content/core.js).
-export async function injectIntoOpenTabs() {
+// Executed in this install's isolated world before its content bundle is put
+// into an already-open page. A previous temporary install can leave a fully
+// drawn, clickable sidebar in the DOM even though its background is gone.
+// Disable that UI before the new bundle starts: otherwise its optimistic tab
+// highlight waits for a message that WebKit never resolves, then snaps back
+// when the old copy's 2.5s switch timer expires.
+export function disableStaleSidebarInPage() {
+  if (globalThis.Margin?.content) return false;
+  let disabled = false;
+  for (const node of /** @type {HTMLElement[]} */ ([...(document.documentElement?.children ?? [])])) {
+    if (!/^margin-.*-host$/.test(node.localName)) continue;
+    node.style.setProperty('display', 'none', 'important');
+    node.style.setProperty('pointer-events', 'none', 'important');
+    node.setAttribute('aria-hidden', 'true');
+    disabled = true;
+  }
+  return disabled;
+}
+
+// Pages already open when Margin is installed, updated, or Safari starts a
+// fresh session. WebKit normally adds the content scripts itself, but may do
+// so seconds late on a cold launch. Repair immediately from the background,
+// then retry pages that were busy or whose permission was not ready yet.
+// Sleeping tabs are deliberately skipped; ensureCurrent repairs one when it
+// is first shown. A page with a previous copy reloads later, when safe
+// (content/core.js), to remove that copy's remaining page-world hooks.
+const REPAIR_RETRY_MS = [350, 1200, 3000];
+let repairOpenTabs = null;
+/** @param {{ retry?: boolean }} [options] */
+export function injectIntoOpenTabs({ retry = true } = {}) {
+  if (!repairOpenTabs) {
+    repairOpenTabs = runOpenTabRepair(retry).finally(() => { repairOpenTabs = null; });
+  }
+  return repairOpenTabs;
+}
+
+async function runOpenTabRepair(retry) {
   // The sidebar's entry: the one not in the page's own world (that's
   // content/shell-main.js), whatever the build named its file.
   const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
   if (!files?.length || !api.scripting?.executeScript) return;
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  const tabs = await api.tabs.query({}).catch(() => []);
-  await Promise.all(tabs.map(async (tab) => {
-    if (tab.discarded || checkedCurrent.has(tab.id) || checking.has(tab.id)) return; // ensureCurrent has it
-    const current = await inPage(tab.id, tab.url, (id, since) => {
-      const content = globalThis.Margin?.content;
-      return !!content && (content.instanceId === id || content.startedAt >= since);
-    }, [instanceId, startedAt], 1000);
-    if (typeof current === 'string' || current.result === true) return; // asleep, no access or busy; or already current
-    await api.scripting.executeScript({ target: { tabId: tab.id }, files }).catch(() => {});
-  }));
+  const delays = [0, ...(retry ? REPAIR_RETRY_MS : [])];
+  for (const delay of delays) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    const tabs = await api.tabs.query({}).catch(() => []);
+    await Promise.all(tabs.map(async (tab) => {
+      if (tab.discarded || checkedCurrent.has(tab.id) || checking.has(tab.id) || !/^https?:/i.test(tab.url ?? '')) return;
+      const current = await inPage(tab.id, tab.url, (id, since) => {
+        const content = globalThis.Margin?.content;
+        return !!content && (content.instanceId === id || content.startedAt >= since);
+      }, [instanceId, startedAt], 1000);
+      if (current?.result === true) {
+        checkedCurrent.add(tab.id);
+        return;
+      }
+      if (typeof current === 'string') return; // asleep, no access or busy: a retry or activation gets it
+      await api.scripting.executeScript({ target: { tabId: tab.id }, func: disableStaleSidebarInPage }).catch(() => {});
+      const injected = await api.scripting.executeScript({ target: { tabId: tab.id }, files }).then(() => true, () => false);
+      if (injected) checkedCurrent.add(tab.id);
+    }));
+    if (tabs.every((tab) => tab.discarded || checkedCurrent.has(tab.id) || !/^https?:/i.test(tab.url ?? ''))) return;
+  }
 }
