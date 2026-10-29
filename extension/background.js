@@ -6,7 +6,7 @@
 // top level, as a service worker must.
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
-import { api, load, mutate, now, resync } from './background/store.js';
+import { api, decided, isOwner, isSynced, load, markSynced, mutate, now, recheck, resync } from './background/store.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
@@ -20,25 +20,46 @@ import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
 import { followFullscreen } from './background/fullscreen.js';
 import { platform } from './shared/platform.js';
 
+// ---- which copy is in charge ------------------------------------------------
+// Safari can keep an older copy of Margin running beside a newer one until it
+// quits; the newest owns the state (background/store.js, shared/owner.js).
+// Every listener waits until this copy knows, and does nothing in one that
+// doesn't own it: the tab events, commands and alarms reach both copies.
+/** @template {any[]} A @param {(...args: A) => unknown} fn @returns {(...args: A) => Promise<unknown>} */
+const owned = (fn) => async (...args) => {
+  await decided();
+  if (isOwner()) return fn(...args);
+};
+
 // ---- lifecycle ------------------------------------------------------------
 
-api.runtime.onInstalled.addListener((details) => {
+api.runtime.onInstalled.addListener(owned((details) => {
   console.log('[margin] installed', details.reason);
   if (details.reason === 'install' || details.reason === 'update') injectIntoOpenTabs();
-});
+}));
 
 if (!api.storage.session) {
-  api.runtime.onStartup.addListener(() => resync({ fresh: true, onSync: restore.synced }));
+  api.runtime.onStartup.addListener(owned(() => resync({ fresh: true, onSync: restore.synced })));
 }
 
-resync({ onSync: (sync) => {
+// The open tabs matched to the state, once per background start. Until a
+// copy's first one, the state's tab ids can be another copy's or the last
+// session's, so requests that name tabs wait for it (at most SYNC_WAIT_MS),
+// and pages trust the stored tabs only after (shared/stored.js). A background
+// starting again within the same copy (the usual wake) has them matched
+// already: nothing waits.
+const SYNC_WAIT_MS = 5000;
+const firstSync = resync({ onSync: (sync) => {
   restore.synced(sync);
   // A Safari relaunch can restore pages before it injects extensions into
   // them. Repair this session's already-open pages as soon as the background
   // has reconciled their authoritative ids, without waiting for WebKit's
   // delayed static-content-script pass.
   if (sync.fresh) void injectIntoOpenTabs();
-} }).then(async () => {
+} }).then(() => isOwner() && markSynced(), (err) => console.error('[margin] sync', err));
+const untilSynced = () => (isSynced() ? null : Promise.race([firstSync, new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_MS))]));
+firstSync.then(async () => {
+  if (!isOwner()) return;
   void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
   // stale tab mustn't override one learned since).
@@ -50,14 +71,14 @@ resync({ onSync: (sync) => {
 });
 
 // Margin allowed on more or fewer sites: the Mac app's set-up window shows it.
-api.permissions?.onAdded?.addListener(() => void onboarding.reportAccess());
-api.permissions?.onRemoved?.addListener(() => void onboarding.reportAccess());
+api.permissions?.onAdded?.addListener(owned(() => void onboarding.reportAccess()));
+api.permissions?.onRemoved?.addListener(owned(() => void onboarding.reportAccess()));
 
 // ---- tab events -----------------------------------------------------------
 
 const TRACKED_CHANGES = ['title', 'url', 'favIconUrl'];
 
-api.tabs.onCreated.addListener(async (tab) => {
+api.tabs.onCreated.addListener(owned(async (tab) => {
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.js newTabHandOff); a new tab
   // that stays is tracked as usual.
@@ -74,8 +95,8 @@ api.tabs.onCreated.addListener(async (tab) => {
     restore.tabCreated(s, tab); // back from before the ids changed?
     return M.upsertTab(s, tab, now());
   });
-});
-api.tabs.onUpdated.addListener((tabId, change, tab) => {
+}));
+api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (handingOff.has(tabId)) {
     // A ⌘T tab about to close (handlers.js newTabHandOff), unless it goes
     // somewhere else first: then it stays, and is tracked from here.
@@ -96,8 +117,8 @@ api.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.status === 'loading' && !change.url && shownAt.get(tabId) > Date.now() - 1000) {
     console.info(`[margin] tab ${tabId} reloaded as it was shown`);
   }
-});
-api.tabs.onRemoved.addListener((tabId) => {
+}));
+api.tabs.onRemoved.addListener(owned((tabId) => {
   handingOff.delete(tabId);
   newTabHint.tabGone(tabId);
   forgetCurrent(tabId);
@@ -116,7 +137,7 @@ api.tabs.onRemoved.addListener((tabId) => {
   });
   shownAt.delete(tabId);
   shownUrl.delete(tabId);
-});
+}));
 // The tab in front closed (⌘W, Safari's close button): the browser picks the
 // next one, maybe of another space. The window stays in the closed tab's
 // space when that has other tabs here (Arc), whichever of the two events
@@ -132,7 +153,7 @@ function stayInSpace(windowId, spaceId, closedId) {
     return M.setActiveSpace(s, windowId, spaceId);
   });
 }
-api.tabs.onActivated.addListener(({ tabId, windowId }) => {
+api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
   if (handingOff.has(tabId)) return;
   shownAt.set(tabId, Date.now());
   shownUrl.delete(tabId);
@@ -157,50 +178,58 @@ api.tabs.onActivated.addListener(({ tabId, windowId }) => {
   if (!api.alarms) archiveStaleThrottled();
   // After the switch has landed (not in its way).
   setTimeout(() => ensureCurrent(tabId), 300);
-});
+}));
 // Coming back to a window (or to Safari) shows its tab without onActivated:
 // that tab is checked too (a stale copy there: tabs.js ensureCurrent).
-api.windows?.onFocusChanged?.addListener((windowId) => {
+api.windows?.onFocusChanged?.addListener(owned((windowId) => {
   if (windowId == null || windowId < 0) return;
   api.tabs.query({ active: true, windowId }).then(([tab]) => tab && setTimeout(() => ensureCurrent(tab.id), 300), () => {});
-});
-api.tabs.onMoved.addListener(() => resync({ fresh: false }));
-api.tabs.onAttached.addListener(() => resync({ fresh: false }));
-api.tabs.onDetached?.addListener(() => resync({ fresh: false }));
+}));
+api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
+api.tabs.onAttached.addListener(owned(() => resync({ fresh: false })));
+api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
 // Chrome: a window going full screen becomes Margin full screen.
-api.windows?.onBoundsChanged?.addListener((win) => followFullscreen(win.id));
+api.windows?.onBoundsChanged?.addListener(owned((win) => followFullscreen(win.id)));
 // A closed window may have been the one in full screen (registered.js syncShell).
-if (platform?.marginFullscreen) api.windows?.onRemoved.addListener(() => queueRegistrations());
-api.windows?.onRemoved.addListener((windowId) =>
+if (platform?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
+api.windows?.onRemoved.addListener(owned((windowId) =>
   mutate((s) => {
     if (!(windowId in s.activeSpaceByWindow)) return s;
     const activeSpaceByWindow = { ...s.activeSpaceByWindow };
     delete activeSpaceByWindow[windowId];
     return { ...s, activeSpaceByWindow };
   }),
-);
+));
 
 // sendResponse + `return true` works in both Safari and Chrome (Chrome
 // ignores promises returned from onMessage listeners).
+// A copy that doesn't own the state answers `stale`: its pages then stay out
+// of the way (content/core.js). Requests that name no tab (a page starting,
+// its zoom, scroll and icon) don't wait for the first sync.
+const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'shellShown', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'restoringTab', 'reloadForUpdate', 'getZoom', 'setZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme']);
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;
-  handler(message, sender)
-    .then((result) => sendResponse({ ok: true, result }))
-    .catch((err) => sendResponse({ ok: false, error: String(err?.message ?? err) }));
+  // A page starting asks whether this copy still owns the state (a newer
+  // one may have taken over since: copies don't hear each other's writes).
+  decided()
+    .then(() => (message.type === 'hello' || message.type === 'owner' ? recheck() : null))
+    .then(() => (isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced() : null))
+    .then(() => (isOwner() ? handler(message, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' }))
+    .then(sendResponse, (err) => sendResponse({ ok: false, error: String(err?.message ?? err) }));
   return true;
 });
 
 // The theme, its placeholder and the fitted layout follow the settings.
-api.storage.onChanged.addListener((changes, area) => {
+api.storage.onChanged.addListener(owned((changes, area) => {
   if (area === 'local' && changes.settings) queueRegistrations();
-});
-queueRegistrations();
+}));
+owned(queueRegistrations)();
 
 // ---- auto-archive -----------------------------------------------------------
 
 if (api.alarms) {
-  api.alarms.onAlarm.addListener((alarm) => alarm.name === ARCHIVE_ALARM && archiveStale());
+  api.alarms.onAlarm.addListener(owned((alarm) => alarm.name === ARCHIVE_ALARM && archiveStale()));
   api.alarms.get(ARCHIVE_ALARM).then((alarm) => alarm || api.alarms.create(ARCHIVE_ALARM, { periodInMinutes: 15 }));
   console.log('[margin] auto-archive via browser.alarms');
 } else {
@@ -212,7 +241,8 @@ globalThis.margin = { archiveNow: archiveStale, syncRegistrations: queueRegistra
 
 // ---- commands -------------------------------------------------------------
 
-api.commands?.onCommand.addListener(async (command, tabArg) => {
+api.commands?.onCommand.addListener(owned(async (command, tabArg) => {
+  await untilSynced();
   if (command === 'new-tab') return newTabKey(tabArg);
   if (NAV_ACTIONS.has(command)) {
     const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
@@ -227,4 +257,4 @@ api.commands?.onCommand.addListener(async (command, tabArg) => {
     // runtime messages. Otherwise a Safari internal page, PDF, etc.
     api.runtime.sendMessage({ type: 'command', command, tabId: tab.id }).catch(() => {});
   }
-});
+}));

@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, handingOff, instanceId, isFocusing, markMarginOpening, openTab, openedByMargin, openedFrom, shownAt, shownUrl, wakeTab } from './tabs.js';
+import { focusTab, handingOff, instanceId, isFocusing, markMarginOpening, openTab, openedByMargin, openedFrom, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
@@ -90,6 +90,9 @@ function rememberZoom(tab, url, zoom) {
   }).catch(() => {});
 }
 const SHOW_PALETTE_MS = 1000;
+// When each tab was last loaded again after an update (reloadForUpdate).
+const RELOAD_COOLDOWN_MS = 30000;
+const reloadedAt = new Map();
 // The tab the user was on: the window's active one (Chrome reports the new
 // tab before activating it), else the one most recently left. Not by
 // lastActive alone: a switch gives both its tabs the same one.
@@ -155,16 +158,16 @@ async function carryIfSameWindow(tabId, why, windowId) {
 // command after activation.
 /**
  * @param {number} tabId
- * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number }} [options]
+ * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number, deadline?: number }} [options]
  */
-async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop } = {}) {
+async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop, deadline } = {}) {
   const target = (await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
   const reason = show && sourceWindowId != null && target?.windowId === sourceWindowId ? rememberCarry(tabId, show) : null;
   // Preparation receives the value directly; persistence can finish beside
   // the switch instead of adding a storage.session round trip in front of it.
   if (Number.isFinite(sidebarTop) && sourceWindowId != null) void setScroll(sourceWindowId, sidebarTop);
   try {
-    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null });
+    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline });
     if (!reason) return result;
     if (!result?.tab) carried.delete(tabId);
     else if (result.preparation?.outcome === 'ready') carried.delete(tabId);
@@ -209,9 +212,19 @@ export const handlers = {
     const carry = sender.tab?.id != null ? takeCarried(sender.tab.id) : null;
     return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry };
   },
-  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: keep the sidebar open there */
-  async activateTab({ tabId, show, sidebarTop }, sender) {
-    await focusWithSidebar(tabId, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop });
+  // Whether this copy owns the state: only an owner answers this (the others
+  // say `stale`, background.js), after checking the stored owner again.
+  async owner() {
+    return true;
+  },
+  // Answers which tab came to the front ({ shown }), or fails: the tab is
+  // gone, or the browser didn't show it (the page then says so).
+  /** @param {{ tabId: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it) */
+  async activateTab({ tabId, hint, show, sidebarTop, deadline }, sender) {
+    const target = await resolveTab(tabId, hint, sender.tab?.windowId);
+    if (!target) throw new Error('That tab is no longer open');
+    const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline });
+    return { shown: result?.superseded ? null : target.id };
   },
   // About to be shown, probably (a press on a sidebar row, the palette
   // resting on a row): its process is woken now, so the switch that follows
@@ -264,22 +277,33 @@ export const handlers = {
   // reloadWhenSafe): its URL loaded again once the content scripts a page
   // load needs are registered. A GET (a reload would send a form again), from
   // the browser's side (the old copy's fitted layout would cancel a page's
-  // own navigation to its URL); a URL with a #fragment would only scroll, so
-  // that page keeps running as it is.
+  // own navigation to its URL); a URL with a #fragment, where loading it
+  // again would only scroll: the browser's reload. Answers { reloaded }, and
+  // when it didn't, whether the page may ask again later (`retry`: it was
+  // being shown or switched to, or its address changed) or never will.
+  /** @returns {Promise<{ reloaded: boolean, retry?: boolean }>} */
   async reloadForUpdate(_, sender) {
     const { id, url } = sender.tab ?? {};
-    if (id == null || !/^https?:/i.test(url ?? '') || url.includes('#')) return false;
+    if (id == null || !/^https?:/i.test(url ?? '')) return { reloaded: false, retry: false };
+    // At most once in RELOAD_COOLDOWN_MS per tab, whatever the page asks.
+    if (Date.now() - (reloadedAt.get(id) ?? 0) < RELOAD_COOLDOWN_MS) return { reloaded: false, retry: true };
     await whenRegistered();
     // Let an activation message already in WebKit's queue claim the tab
     // before cleanup commits its navigation.
     await new Promise((resolve) => setTimeout(resolve, 100));
     // The page asked while it was hidden, but registrations (and a cold
     // background) can take long enough that the user selects it meanwhile.
-    // Never turn that first switch after an update into a visible reload.
+    // Never turn that first switch after an update into a visible reload. The
+    // tab in front of a window that isn't (minimized, or Safari hidden) can't
+    // be seen: that one may.
     const current = await api.tabs.get(id).catch(() => null);
-    if (!current || current.active || current.url !== url || isFocusing(id)) return false;
-    await api.tabs.update(id, { url });
-    return true;
+    if (!current) return { reloaded: false, retry: false };
+    const seen = current.active && (await api.windows?.get(current.windowId).catch(() => null))?.focused !== false;
+    if (seen || current.url !== url || isFocusing(id)) return { reloaded: false, retry: true };
+    reloadedAt.set(id, Date.now());
+    if (url.includes('#')) await api.tabs.reload(id);
+    else await api.tabs.update(id, { url });
+    return { reloaded: true };
   },
   // Closing from Margin archives the tab, like Arc.
   /** @param {{ tabId: number }} message */
@@ -455,8 +479,8 @@ export const handlers = {
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
   },
-  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: keep the sidebar open there */
-  async openPin({ pinId, windowId, show, sidebarTop }) {
+  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number }} message `show`: keep the sidebar open there; `deadline`: as activateTab's */
+  async openPin({ pinId, windowId, show, sidebarTop, deadline }) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
@@ -466,8 +490,11 @@ export const handlers = {
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
-      await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop });
-    } else await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
+      const result = await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop, deadline });
+      return { shown: result?.superseded ? null : existing.id };
+    }
+    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
+    return { shown: tab.id };
   },
   /** @param {{ windowId: number, spaceId: string }} message */
   // `bringTab: false`: only the sidebar's space, the page in front stays.
@@ -478,10 +505,13 @@ export const handlers = {
     if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop);
     const reason = show && win != null && win === sender?.tab?.windowId ? (show === 'toggle' ? 'toggle' : 'hover') : null;
     const result = await showSpace(win, spaceId, { bringTab, carry: reason, scroll: sidebarTop });
-    if (!show || win == null) return;
-    if (result?.preparation?.outcome === 'ready') return;
+    // Which tab is in front now (the page that swiped shows it switching).
+    const done = { shown: result?.tab?.id ?? null };
+    if (!show || win == null) return done;
+    if (result?.preparation?.outcome === 'ready') return done;
     const [front] = await api.tabs.query({ active: true, windowId: win });
     if (front && front.id !== sender?.tab?.id) await carryIfSameWindow(front.id, show, sender?.tab?.windowId);
+    return done;
   },
   /** @param {{ windowId?: number, name?: string, emoji?: string, color?: string }} message */
   async createSpace({ windowId, name, emoji, color }) {

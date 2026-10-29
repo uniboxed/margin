@@ -1,9 +1,10 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
-import { api, cached, mutate, now } from './store.js';
+import { api, cached, isOwner, mutate, now } from './store.js';
 import { recordSwitch } from './diagnostics.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
+import { themeFor } from '../themes/index.js';
 
 // When each tab was last shown, and its URL then (restoringTab; a
 // diagnostic in tabs.onUpdated).
@@ -34,13 +35,16 @@ const WAKE_MAX_MS = 400;
 // A wake started this recently still counts: the sidebar renews one every
 // 500ms while the pointer rests on a row (sidebar.js), so a click finds one.
 const WAKE_REUSE_MS = 600;
+// Sidebar preparation (below) is an extra Safari-only round trip. It
+// normally takes a few milliseconds once a hover wake has landed; a process
+// Safari suspended takes 150ms to a second to come back (Safari's log:
+// median 279ms), and the switch waits for it, under its cover, so the page
+// arrives with its sidebar already as the one left. Never longer than this,
+// for a busy page or a broken content script.
+const PREPARE_MAX_MS = 900;
 // Long enough for a reused wake, the wait and tabs.update (~110ms in Safari)
 // to land while the process is still kept awake.
-const KEEP_AWAKE_MS = WAKE_REUSE_MS + WAKE_MAX_MS + 200;
-// Sidebar preparation is an extra Safari-only round trip. It normally takes
-// a few milliseconds once a hover wake has landed; never make a switch wait
-// indefinitely for storage, a busy page or a broken content script.
-const PREPARE_MAX_MS = 300;
+const KEEP_AWAKE_MS = WAKE_REUSE_MS + PREPARE_MAX_MS + 300;
 
 // New tabs being handed back (⌘T, handlers.js newTabPage): gone again in a
 // moment, so the tab events leave them out of the state (no "New Tab" row
@@ -133,12 +137,15 @@ async function startWake(tabId, at) {
     if (!live) return result('gone');
     if (live.active) return result('shown');
   }
-  if (!(await mayAccessCached(tab.url))) return result('no access');
   // Right away, not once the page has loaded (Chrome's default; WebKit
-  // ignores the key and runs it right away anyway).
+  // ignores the key and runs it right away anyway). The permission check
+  // counts toward the wait too (it can be slow while Safari starts).
   const target = { tabId };
-  api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [KEEP_AWAKE_MS] }).catch(() => {});
-  const ran = api.scripting.executeScript({ target, injectImmediately: true, func: () => true }).then(() => 'awake', () => 'no page');
+  const ran = (async () => {
+    if (!(await mayAccessCached(tab.url))) return 'no access';
+    api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [KEEP_AWAKE_MS] }).catch(() => {});
+    return api.scripting.executeScript({ target, injectImmediately: true, func: () => true }).then(() => 'awake', () => 'no page');
+  })();
   let timer;
   const outcome = await Promise.race([ran, new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), WAKE_MAX_MS); })]);
   clearTimeout(timer);
@@ -171,15 +178,18 @@ export function cancelSidebarInPage(token) {
 
 /**
  * @param {any} tab
- * @param {{ token?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null }} [options]
+ * @param {{ token?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, budget?: number }} [options]
  * @returns {Promise<Preparation>}
  */
-async function prepareTabForShow(tab, { token, carry = null, scroll = null } = {}) {
+async function prepareTabForShow(tab, { token, carry = null, scroll = null, budget = PREPARE_MAX_MS } = {}) {
   const at = Date.now();
   const result = (outcome, reason) => ({ outcome, ms: Date.now() - at, ...(reason ? { reason } : {}), token: token ?? null });
   if (!platform?.prepareSidebar || !api.scripting?.executeScript || !tab?.id || tab.windowId == null || !token) return result('skipped');
   let timer;
   const run = (async () => {
+    // Not a page Margin may not run on (asking would only fail, or make
+    // Safari ask for access).
+    if (!(await mayAccessCached(tab.url))) return result('unavailable', 'no access');
     const top = Number.isFinite(scroll) ? scroll : await getScroll(tab.windowId).catch(() => 0);
     return api.scripting.executeScript({
       target: { tabId: tab.id },
@@ -193,7 +203,7 @@ async function prepareTabForShow(tab, { token, carry = null, scroll = null } = {
   })();
   const answer = await Promise.race([
     run,
-    new Promise((resolve) => { timer = setTimeout(() => resolve(result('timeout')), PREPARE_MAX_MS); }),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(result('timeout')), budget); }),
   ]);
   clearTimeout(timer);
   return answer;
@@ -211,11 +221,13 @@ function cancelPreparation(tabId, preparation) {
 let focusGen = 0;
 const focusing = new Map(); // tabId → overlapping Margin focus requests
 export const isFocusing = (tabId) => (focusing.get(tabId) ?? 0) > 0;
-/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null }} [options] */
-export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null } = {}) {
+// `deadline`: when the page that asked stops waiting (it then says the switch
+// didn't happen): no switch after it.
+/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number }} [options] */
+export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline } = {}) {
   focusing.set(tabId, (focusing.get(tabId) ?? 0) + 1);
   try {
-    return await focusTabNow(tabId, { wake, source, carry, scroll });
+    return await focusTabNow(tabId, { wake, source, carry, scroll, deadline });
   } finally {
     const left = (focusing.get(tabId) ?? 1) - 1;
     if (left > 0) focusing.set(tabId, left);
@@ -223,18 +235,39 @@ export async function focusTab(tabId, { wake = true, source = 'other', carry = n
   }
 }
 
-async function focusTabNow(tabId, { wake, source, carry, scroll }) {
+async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
   const gen = ++focusGen;
   const asked = Date.now();
-  const tabBefore = cached()?.tabs?.[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
   const token = `${instanceId}:${gen}:${tabId}`;
+  /** @type {Preparation} */
+  const skipped = { outcome: 'skipped', ms: 0, token: null };
+  // The tab as the browser has it now: whether it's still there, its window,
+  // whether it's in front already (then there's nothing to wake or prepare).
+  const live = await api.tabs.get(tabId).catch(() => null);
+  if (!live) {
+    recordSwitch({ source, tabId, asked, error: 'no such tab' });
+    throw new Error(`No tab with id ${tabId}`);
+  }
+  if (live.active && gen === focusGen) {
+    await focusWindow(live.windowId);
+    return { tab: live, preparation: skipped };
+  }
   // Run these together. Preparation itself wakes the isolated world, while
   // wakeTab's page-world hold keeps WebKit's layer tree attached through the
   // subsequent tabs.update.
-  const [woke, preparation] = await Promise.all([
+  let [woke, preparation] = await Promise.all([
     wake ? wakeTab(tabId) : null,
-    wake && tabBefore ? prepareTabForShow(tabBefore, { token, carry, scroll }) : /** @type {Promise<Preparation>} */ (Promise.resolve({ outcome: 'skipped', ms: 0, token: null })),
+    wake ? prepareTabForShow(live, { token, carry, scroll }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)),
   ]);
+  // A page still running an earlier copy of Margin (it slept through an
+  // update or a rebuild): the current copy goes in now, theme and all, and
+  // is prepared in what's left of the wait, so the page doesn't show the old
+  // copy's sidebar first.
+  const left = () => PREPARE_MAX_MS - (Date.now() - asked);
+  if (preparation.outcome === 'not ready' && preparation.reason === 'no current sidebar' && gen === focusGen && left() > 200) {
+    const added = await Promise.race([addCurrentCopy(live), new Promise((resolve) => setTimeout(() => resolve(false), Math.min(400, left() - 100)))]);
+    if (added && gen === focusGen && left() > 50) preparation = await prepareTabForShow(live, { token, carry, scroll, budget: left() });
+  }
   // Another switch was asked for while this one waited (back to the tab in
   // front, say): the latest wins.
   if (gen !== focusGen) {
@@ -246,16 +279,84 @@ async function focusTabNow(tabId, { wake, source, carry, scroll }) {
   // preparation before activating, otherwise it could finish over the live
   // destination and leave a token for some later switch to consume.
   if (preparation.outcome === 'timeout') cancelPreparation(tabId, preparation);
-  const tab = await api.tabs.update(tabId, { active: true }).catch((err) => {
+  if (Number.isFinite(deadline) && Date.now() > deadline - 250) {
+    cancelPreparation(tabId, preparation);
+    recordSwitch({ source, tabId, asked, wake: woke, preparation, error: 'expired' });
+    throw new Error('Too late: the page stopped waiting for this switch');
+  }
+  // A tab Safari unloaded (no page to wake or prepare): its page starts as
+  // it's shown and draws Margin before its background has said which tab it
+  // is; this says it (content/core.js `showing`).
+  if (woke?.outcome === 'no page') await noteShowing(live, { carry, scroll });
+  const fail = (err) => {
     cancelPreparation(tabId, preparation);
     recordSwitch({ source, tabId, asked, wake: woke, preparation, error: String(err) });
     throw err;
-  });
+  };
+  const tab = await api.tabs.update(tabId, { active: true }).catch(fail);
+  // Safari can answer without having brought the tab to the front: checked,
+  // and asked once more. A switch that didn't happen says so (the page shows
+  // it, instead of its highlight going back as if nothing was asked).
+  if (!(await isInFront(tabId, tab))) {
+    if (gen !== focusGen) return { tab: null, preparation, superseded: true }; // another switch took the front meanwhile
+    await api.tabs.update(tabId, { active: true }).catch(fail);
+    if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
+  }
   recordSwitch({ source, tabId, asked, wake: woke, preparation, shownAfter: Date.now() - asked });
-  if (!tab || !api.windows) return { tab, preparation };
-  const win = await api.windows.get(tab.windowId).catch(() => null);
-  if (!win?.focused) await api.windows.update(tab.windowId, { focused: true });
+  if (tab) await focusWindow(tab.windowId);
   return { tab, preparation };
+}
+// The window comes forward only if it isn't already (see focusTab).
+async function focusWindow(windowId) {
+  if (!api.windows || windowId == null) return;
+  const win = await api.windows.get(windowId).catch(() => null);
+  if (win && !win.focused) await api.windows.update(windowId, { focused: true }).catch(() => {});
+}
+// Whether the tab is the one in front of its window (as tabs.update said, or
+// the browser says a moment later).
+async function isInFront(tabId, updated = null) {
+  if (updated?.active) return true;
+  for (const ms of [0, 120]) {
+    if (ms) await new Promise((resolve) => setTimeout(resolve, ms));
+    if ((await api.tabs.get(tabId).catch(() => null))?.active) return true;
+  }
+  return false;
+}
+
+// ---- the first frame of a page shown without preparation ---------------------
+// Storage `showing`: { tabId, windowId, url, carry, scroll, at }, the tab
+// Margin is bringing to the front without having prepared its sidebar. Its
+// page starts (Safari restoring a tab it had unloaded) before its background
+// has said which tab it is: by this, it draws its own tab highlighted, its
+// space, and the sidebar open and scrolled as the page before, from its
+// first frame (content/core.js); the fitted layout doesn't hold the page back
+// for a previous one that isn't on screen (content/shell.js). Written by the
+// copy that owns the state only (shared/owner.js).
+async function noteShowing(tab, { carry = null, scroll = null } = {}) {
+  if (!isOwner() || !tab?.url) return;
+  const top = Number.isFinite(scroll) ? scroll : await getScroll(tab.windowId).catch(() => null);
+  const showing = { tabId: tab.id, windowId: tab.windowId, url: tab.url, carry, scroll: Number.isFinite(top) ? top : null, at: Date.now() };
+  await Promise.race([api.storage.local.set({ showing }).catch(() => {}), new Promise((resolve) => setTimeout(resolve, 100))]);
+}
+
+// The tab a page asked for, as this copy has it. Pages draw from storage,
+// whose tab ids can be from before this copy's first sync (the last session's,
+// another copy's): a row then also says its tab's address and place
+// (`hint`), which find it among the open tabs (in the asking page's window
+// first, then the nearest place). Null if it's gone.
+/** @param {number} tabId @param {{ url?: string, index?: number, title?: string } | null | undefined} hint @param {number | null | undefined} preferWindow */
+export async function resolveTab(tabId, hint, preferWindow) {
+  const live = Number.isInteger(tabId) ? await api.tabs.get(tabId).catch(() => null) : null;
+  if (live || !hint?.url) return live;
+  const key = M.normalizeUrl(hint.url);
+  let candidates = (await api.tabs.query({}).catch(() => [])).filter((t) => M.normalizeUrl(t.url || t.pendingUrl || '') === key);
+  // The same page open twice: the one with the row's title, if that tells them apart.
+  if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
+  if (!candidates.length) return null;
+  const distance = (t) => (t.windowId === preferWindow ? 0 : 1e6) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
+  const found = candidates.reduce((best, t) => (distance(t) < distance(best) ? t : best));
+  console.info(`[margin] tab ${tabId} isn't one this copy of Margin knows: switching to tab ${found.id}, at the same address`);
+  return found;
 }
 
 // When Margin last opened a tab or window itself (background/newtab-hint.js
@@ -325,6 +426,11 @@ export async function inPage(tabId, url, func, args = [], ms = 300) {
 export async function openTab({ windowId, url, spaceId }) {
   focusGen++; // a switch still waiting for its wake doesn't land after this
   markMarginOpening();
+  // In its space from the start: the window shows that space before the tab
+  // exists, so the browser's events for it (created, activated) already put
+  // it there, instead of in the space shown before and then moving it (the
+  // window could stay on the other one).
+  if (spaceId && windowId != null) await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
   const tab = await api.tabs.create({ windowId, url, active: true });
   if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));
   return tab;
@@ -362,6 +468,19 @@ async function checkCurrent(tabId) {
   await api.scripting.executeScript({ target: { tabId }, files }).catch(() => {});
 }
 export const forgetCurrent = (tabId) => checkedCurrent.delete(tabId);
+// The current copy's core and its active theme, into a page that has neither
+// (focusTabNow, before a switch to it). Whether they went in.
+async function addCurrentCopy(tab) {
+  const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
+  if (!files?.length || !api.scripting?.executeScript || !(await mayAccessCached(tab.url))) return false;
+  const theme = themeFor(cached()?.settings).content;
+  const ok = await api.scripting.executeScript({ target: { tabId: tab.id }, files: [...files, theme], injectImmediately: true }).then(() => true, () => false);
+  if (ok) {
+    checkedCurrent.add(tab.id);
+    console.info(`[margin] tab ${tab.id} had an earlier copy of Margin: the current one went in before switching to it`);
+  }
+  return ok;
+}
 
 // Executed in this install's isolated world before its content bundle is put
 // into an already-open page. A previous temporary install can leave a fully

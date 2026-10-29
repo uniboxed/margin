@@ -32,6 +32,12 @@ function adoptStyles(shadow, css) {
 // into its shell, and a later copy of Margin removes them (content/core.js).
 function createHost(doc, tag) {
   const host = doc.createElement(tag);
+  // A copy that stands back for a newer one itself (content/core.js; no copy
+  // hides another's while it may be the one in charge, content/takeover.js),
+  // and, seen only from this copy's own script world (page scripts and other
+  // copies can't see it), this copy's.
+  host.dataset.marginV = '2';
+  /** @type {any} */ (host).__marginCopy = true;
   for (const [prop, value] of Object.entries({
     all: 'initial',
     position: 'fixed',

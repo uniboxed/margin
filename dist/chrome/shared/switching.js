@@ -4,21 +4,25 @@
 // background/tabs.js wakeTab), so the sidebar highlights the tab at once,
 // this page's own tab softly (shared/view.js sidebar `switchingTo`), and if it
 // takes longer than SLOW_MS the loading pill shows (a theme may cover the
-// page instead: content/core.js). It ends when this page is
-// hidden (the switch landed), GRACE_MS after the switch request is done if
-// this page is still showing (it failed: Margin's send resolves either way;
-// the pill goes as soon as the request is done), at once if the send itself
-// fails, and at the latest after MAX_MS. Used by content/core.js and the
-// new-tab page.
+// page instead: content/core.js). It ends when this page is hidden (the
+// switch landed); GRACE_MS after the request says it's done if this page is
+// still showing (Chrome's split view keeps it on screen); at once if the
+// request failed (`failed(result)`: the tab is gone, the browser didn't show
+// it, no answer), and then `onFailed` says so, rather than the highlight just
+// going back; and at the latest after MAX_MS, longer than a switch request
+// waits for its answer (content/core.js), or UNASKED_MAX_MS for one that
+// came without a request. Used by content/core.js and the new-tab page.
 const SLOW_MS = 150;
 const GRACE_MS = 300;
-const MAX_MS = 2500;
+const MAX_MS = 6000;
+const UNASKED_MAX_MS = 2500;
 
 /**
- * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, doc?: Document }} options
- * `onChange`: redraw the sidebar with this target (null: none); `onSlow`: the pill on or off.
+ * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document }} options
+ * `onChange`: redraw the sidebar with this target (null: none); `onSlow`: the pill on or off;
+ * `failed`: whether a request's result means it didn't switch (default: never).
  */
-export function createSwitching({ onChange, onSlow, doc = document }) {
+export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document }) {
   /** @type {number | null} */
   let target = null;
   let current = null; // this start's token: an older start's request can't end a newer one
@@ -56,15 +60,21 @@ export function createSwitching({ onChange, onSlow, doc = document }) {
       slow = true;
       onSlow(true);
     }, SLOW_MS));
-    timers.push(setTimeout(() => mine() && end(), MAX_MS));
+    timers.push(setTimeout(() => mine() && end(), request ? MAX_MS : UNASKED_MAX_MS));
+    const didFail = () => {
+      if (!mine()) return;
+      end();
+      onFailed(tabId);
+    };
     request?.then(
-      () => {
+      (result) => {
         if (!mine()) return;
+        if (failed(result)) return didFail();
         clearTimers();
         stopPill();
         timers.push(setTimeout(() => mine() && end(), GRACE_MS));
       },
-      () => mine() && end(),
+      didFail,
     );
   }
   doc.addEventListener('visibilitychange', () => doc.hidden && end());

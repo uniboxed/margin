@@ -14,8 +14,11 @@
 //   { op: 'deny', pattern }    take a site permission away (as in Safari's settings)
 //   { op: 'zoom', factor }     the shown tab's page zoom (as ⌘+ / ⌘−)
 
+// Margin's state from storage, by state key (shared/stored.js: the keys
+// holding tab ids have names of their own there): an expression for steps.
+const STATE = '(async (keys) => { const raw = await browser.storage.local.get(null); const open = raw.openTabs ?? {}; const of = (k) => (["tabs", "tabSpace", "activeSpaceByWindow"].includes(k) ? open[k] : k === "lostTabs" ? raw.lostTabs2 : k === "openTabsBy" ? (raw.openTabs ? { origin: open.origin, synced: open.synced } : null) : raw[k]); return Object.fromEntries([].concat(keys).map((k) => [k, of(k)])); })';
 // The id of the tab showing /p/<name>, from Margin's own tab snapshot.
-const ID = 'const { tabs } = await browser.storage.local.get("tabs"); const id = (n) => Object.values(tabs).find((t) => t.url.endsWith("/p/" + n))?.id;';
+const ID = 'const { tabs } = await ' + STATE + '("tabs"); const id = (n) => Object.values(tabs).find((t) => t.url.endsWith("/p/" + n))?.id;';
 const switchTo = (from, to, options = {}) => ({ op: 'eval', in: from, js: `${ID} return JSON.stringify(await Margin.content.send("activateTab", { tabId: id("${to}"), ...${JSON.stringify(options)} }) ?? null)` });
 // `js`: an expression, or statements ending in `return …`.
 const body = (js) => (/\breturn\b/.test(js) ? js : `return ${js}`);
@@ -119,7 +122,7 @@ export const SCENARIOS = {
     { op: 'page', in: 'N', js: `${SWIPE([6, 14, 22, 19, 17, 15, 13, 11.5, 10, 9, 8, 7, 6, 5.2, 4.5, 3.9, 3.4])} return 'flick'` },
     checkPage('N', 'a flick shows the next space at once', `document.querySelector('#sidebar .space-title .title')?.textContent === 'Work'`, 2000),
     shown('B'),
-    check('B', 'B: the window is on Work', `const s = await browser.storage.local.get(['spaces', 'activeSpaceByWindow']); return Object.values(s.activeSpaceByWindow ?? {}).some((id) => s.spaces.find((x) => x.id === id)?.name === 'Work')`),
+    check('B', 'B: the window is on Work', `const s = await ${STATE}(['spaces', 'activeSpaceByWindow']); return Object.values(s.activeSpaceByWindow ?? {}).some((id) => s.spaces.find((x) => x.id === id)?.name === 'Work')`),
   ],
   // Page zoom (⌘+): Margin's UI keeps its size (its host scaled back), and
   // the page is pushed, or its card placed, by the sidebar's width in the
@@ -154,12 +157,79 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `${ID} globalThis.__ids = [id('A'), id('B')]; return 'ids ' + __ids` },
     { op: 'sleep', name: 'B' }, wait(500), switchTo('A', 'B'), wait(1500), reload('B'), wait(1500),
     check('A', 'B: the same id after sleeping, waking and a reload (A too)', `${ID} return id('A') === __ids[0] && id('B') === __ids[1]`, 3000),
-    check('B', 'B: still in Work', `const s = await browser.storage.local.get(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`),
+    check('B', 'B: still in Work', `const s = await ${STATE}(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`),
     { op: 'uninstall' }, wait(800), { op: 'install', sameId: true }, wait(3000),
     // Read from Margin's own page (the pages' old content-script world belongs to the copy before).
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: false }, wait(1500),
-    checkPage('N', 'after the update: B still in Work, A in Personal', `const s = await browser.storage.local.get(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`, 5000),
-    checkPage('N', 'and their ids are new', `const s = await browser.storage.local.get('tabs'); return Object.values(s.tabs).filter((t) => /\\/p\\/[AB]$/.test(t.url)).every((t) => t.id > 50)`),
+    checkPage('N', 'after the update: B still in Work, A in Personal', `const s = await ${STATE}(['tabs', 'tabSpace', 'spaces']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return of('B') === 'Work' && of('A') === 'Personal'`, 5000),
+    checkPage('N', 'and their ids are new', `const s = await ${STATE}('tabs'); return Object.values(s.tabs).filter((t) => /\\/p\\/[AB]$/.test(t.url)).every((t) => t.id > 50)`),
+  ],
+  // Which copy of Margin is in charge (shared/owner.js). An older copy
+  // still running after an update writes its own tab ids under the old
+  // storage names: pages don't read those (shared/stored.js). While this
+  // copy hasn't matched the tabs, a page shows it's getting ready; once a
+  // newer copy owns the state, this one stands back. (Two copies can't run
+  // side by side in this host: the installOld step's copy breaks the
+  // installed one's messaging here, so their writes are made by hand.)
+  owner: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: false }, wait(1000),
+    { op: 'page', in: 'N', js: 'await browser.storage.local.set({ tabs: { 999: { id: 999, windowId: 998, index: 0, url: "http://example.com/", title: "old copy", active: true } }, tabSpace: { 999: "personal" }, activeSpaceByWindow: { 998: "personal" } }); return "an old copy wrote its tabs"' }, wait(800),
+    check('A', 'A: its sidebar still lists the tabs by ids its copy has', `const { state } = Margin.content.getState(); const urls = Object.values(state.tabs).map((t) => t.url); return !state.tabs[999] && urls.some((u) => u.endsWith('/p/A')) && urls.some((u) => u.endsWith('/p/B'))`),
+    switchTo('A', 'B'), shown('B'),
+    { op: 'page', in: 'N', js: 'const { openTabs } = await browser.storage.local.get("openTabs"); await browser.storage.local.set({ openTabs: { ...openTabs, synced: false } }); return "not matched yet"' },
+    checkPage('B', 'B: Margin shows it is getting ready', `document.querySelector('margin-sidebar-host')?.dataset.startup === 'true'`, 2000),
+    { op: 'page', in: 'N', js: 'const { openTabs } = await browser.storage.local.get("openTabs"); await browser.storage.local.set({ openTabs: { ...openTabs, synced: true } }); return "matched"' },
+    checkPage('B', 'B: and stops once it is ready', `document.querySelector('margin-sidebar-host')?.dataset.startup === 'false'`, 2000),
+    { op: 'page', in: 'N', js: 'const { owner } = await browser.storage.local.get("owner"); await browser.storage.local.set({ owner: { origin: "webkit-extension://a-newer-copy/", since: owner.since + 1e9, synced: true } }); return "a newer copy took over"' },
+    check('B', 'B: this copy stands back for the newer one, saying why', `(globalThis.__marginLog ?? []).some((l) => l.includes('stays out of the way')) && !Margin.content.active()`, 3000),
+    checkPage('N', 'its background says so', `(await browser.runtime.sendMessage({ type: 'owner' }))?.stale === true`),
+  ],
+  // A Safari relaunch: every tab comes back asleep with new ids, the one in
+  // front loads; tabs keep their spaces, the page in front shows Margin
+  // getting ready until its copy has matched the tabs (Margin allowed late,
+  // as an unsigned build is), and switching works after.
+  relaunch: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'eval', in: 'A', js: `${ID} const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('B'), spaceId: work }); return 'B moved to Work'` }, wait(800),
+    { op: 'restart', late: true, lateMs: 800 }, drawn('A'),
+    check('A', 'A: Margin waited for its copy to match the tabs, then was ready', `const log = globalThis.__marginLog ?? []; return log.some((l) => l.includes('getting ready: waiting')) && log.some((l) => l.includes('getting ready: done')) && document.querySelector('margin-sidebar-host')?.dataset.startup !== 'true'`, 6000),
+    check('A', 'A: B is still in Work, A in Personal, under their new ids', `const s = await ${STATE}(['tabs', 'tabSpace', 'spaces', 'openTabsBy']); const of = (n) => { const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/' + n)); return t && s.spaces.find((sp) => sp.id === s.tabSpace[t.id])?.name; }; return s.openTabsBy?.synced && of('B') === 'Work' && of('A') === 'Personal'`, 5000),
+    switchTo('A', 'C'), shown('C'), drawn('C'),
+    switchTo('C', 'B'), shown('B'), drawn('B'),
+  ],
+  // A switch to a tab Safari unloaded: nothing to prepare, so the background
+  // notes it before showing it (background/tabs.js noteShowing), and its page
+  // draws itself as the tab shown, in its own space, from its first render.
+  unloaded: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'D', url: '/p/D', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'eval', in: 'A', js: `${ID} const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('D'), spaceId: work }); return 'D moved to Work'` }, wait(500),
+    { op: 'eval', in: 'A', js: `${ID} globalThis.__dId = id('D'); return 'D is ' + __dId` },
+    switchTo('A', 'D', { show: 'toggle' }), shown('D'), drawn('D'),
+    check('D', 'D: drawn as the tab shown from its first render', `(globalThis.__marginLog ?? []).some((l) => /drawn as tab \\d+, the one being shown/.test(l))`, 3000),
+    checkPage('D', 'D: the sidebar was carried open', `document.querySelector('margin-sidebar-host')?.dataset.open === 'true'`, 3000),
+    check('D', 'D: the window is on Work', `const s = await ${STATE}(['spaces', 'activeSpaceByWindow']); return Object.values(s.activeSpaceByWindow ?? {}).some((id) => s.spaces.find((x) => x.id === id)?.name === 'Work')`),
+  ],
+  // Two copies of Margin loaded at once in one controller (as Safari would
+  // load a new one while the old one still runs): they share one script world
+  // in pages, so a page runs one copy, here the first's. Once the newer copy
+  // owns the state, that page's copy stands back, saying to restart Safari,
+  // rather than drawing tabs by ids its copy doesn't own.
+  twins: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'installTwin' }, wait(2500),
+    { op: 'open', name: 'B', url: '/p/B', active: true },
+    check('B', 'B: one copy runs in the shared world', `!!globalThis.Margin?.content && document.querySelectorAll('margin-sidebar-host').length === 1`, 4000),
+    check('B', 'B: it stands back for the newer copy and says why', `(globalThis.__marginLog ?? []).some((l) => l.includes('stays out of the way')) && !Margin.content.active()`, 5000),
+  ],
+  // A tab Safari unloaded whose page is slow: the switch's cover stays over
+  // it, its spinner already turning, until it has loaded.
+  slowunloaded: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'S', url: '/p/S1', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'eval', in: 'A', js: `${ID} return JSON.stringify(await Margin.content.send('activateTab', { tabId: id('S1') }))` },
+    shown('S'),
+    checkPage('S', 'S: covered while it loads', `document.querySelector('margin-sidebar-host')?.dataset.loadingCover === 'true' && document.readyState !== 'complete'`, 1500),
+    checkPage('S', 'S: shown once loaded', `document.readyState === 'complete' && document.querySelector('margin-sidebar-host')?.dataset.loadingCover === 'false'`, 3000),
   ],
   // Settings' shortcut recorder on the start page takes real key presses.
   recorder: [

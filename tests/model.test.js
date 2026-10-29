@@ -307,6 +307,26 @@ test('view.sidebar: shows the window\'s active space, pins separately, newest ta
   assert.deepEqual(view.sidebar(s, 1).tabs.map((t) => t.id), [5, 6, 3], 'the browser\'s order reversed: the newest at the top');
 });
 
+test('view.sidebar: a page shows its own tab\'s space until the state records that it\'s in front, and a tab being switched to from another space shows that one at once', () => {
+  let s = twoSpaces();
+  s = M.upsertTab(s, tab(1, 1, 'https://a.com', { index: 0, active: true }), 0);
+  s = M.upsertTab(s, tab(2, 1, 'https://b.com', { index: 1 }), 0);
+  s = M.moveTab(s, 2, 'work');
+  assert.equal(view.sidebar(s, 1, 1).spaceId, 'personal');
+  // Tab 2 was just brought to the front: its page draws before the background has written it.
+  const shown = view.sidebar(s, 1, 2);
+  assert.equal(shown.spaceId, 'work', 'its own space, not the one the page before showed');
+  assert.equal(shown.tabs.find((t) => t.id === 2)?.active, true);
+  const recorded = M.followTab(M.activateTab(s, 2, 1, 1), 2, 1);
+  assert.equal(view.sidebar(recorded, 1, 2).spaceId, 'work');
+  // Only the sidebar shows another space (held space keys): the window's.
+  assert.equal(view.sidebar(M.setActiveSpace(s, 1, 'work'), 1, 1).spaceId, 'work');
+  // Choosing tab 2 in the palette from tab 1's page: its space at once.
+  const going = view.sidebar(s, 1, 1, { switchingTo: 2 });
+  assert.equal(going.spaceId, 'work');
+  assert.equal(going.tabs.find((t) => t.id === 2)?.active, true);
+});
+
 test('view.sidebar: the new-tab page being shown is the "+ New Tab" row, not a tab', () => {
   let s = twoSpaces();
   s = M.upsertTab(s, tab(1, 1, 'https://a.com', { index: 0 }), 0);
@@ -524,8 +544,10 @@ test('view.cycleTab: sidebar order (open pins, then tabs), wrapping', () => {
   assert.equal(view.cycleTab(s, 1, 3, 1), 1);
   assert.equal(view.cycleTab(s, 1, 1, 1), 2, 'wraps to the top');
   assert.equal(view.cycleTab(s, 1, 2, -1), 1, 'wraps to the bottom');
-  assert.equal(view.cycleTab(s, 1, 4, 1), 2, 'from outside the list: first');
-  assert.equal(view.cycleTab(s, 1, 4, -1), 1, 'from outside the list: last');
+  // Tab 4 in front while the sidebar shows another space (held space keys).
+  const shownElsewhere = M.activateTab(s, 4, 1, 0);
+  assert.equal(view.cycleTab(shownElsewhere, 1, 4, 1), 2, 'from outside the list: first');
+  assert.equal(view.cycleTab(shownElsewhere, 1, 4, -1), 1, 'from outside the list: last');
   const lone = M.removeTab(M.removeTab(s, 1), 3);
   assert.equal(view.cycleTab(lone, 1, 2, 1), null, 'only one tab: stay');
 });

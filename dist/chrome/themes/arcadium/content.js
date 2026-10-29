@@ -20,7 +20,8 @@ registerTheme({
     const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth, onScroll, onSwitch });
     const chrome = createChrome(document);
     // The switch cover below the sidebar (a hovered sidebar stays on top of it).
-    shadow.append(chrome.frame, chrome.cover, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice);
+    // The startup cover over everything, the sidebar too.
+    shadow.append(chrome.frame, chrome.cover, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice, chrome.startup);
     // Styles are bundled (assets.js) and applied synchronously, so the panel
     // is styled from the first frame (no fetch, no unstyled flash).
     adoptStyles(shadow, sidebarCss);
@@ -65,6 +66,7 @@ registerTheme({
       setWidth: chrome.setWidth,
       setLoading: chrome.setLoading,
       setCover: chrome.setCover,
+      setStartup: chrome.setStartup,
       setPull: chrome.setPull,
       setSwipe: chrome.setSwipe,
       setZoom: chrome.setZoom,

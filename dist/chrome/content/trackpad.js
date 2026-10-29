@@ -8,12 +8,13 @@ import { platform } from '../shared/platform.js';
 
 // `page`: see content/core.js. `replacing`: an earlier copy of Margin is still
 // in the page (content/takeover.js); its gestures act on the page, so this
-// copy's stay off.
+// copy's swipe stays off (its pull-to-refresh doesn't: two reloads are one).
 export function startTrackpad(page, { replacing }) {
   const { host, send, onCard } = page;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
-  const guardWindow = (win) => installGestureGuard({ getSettings: () => page.state()?.settings, onPinch: (pinch) => handlePinch(pinch), win });
+  // Not in a copy that stood back for a newer one (content/core.js): that one's guard is enough.
+  const guardWindow = (win) => installGestureGuard({ getSettings: () => (page.dormant?.() ? { blockGestures: false } : page.state()?.settings), onPinch: (pinch) => handlePinch(pinch), win });
   const gestureGuard = platform?.blockGestures ? guardWindow(window) : null;
   const cardGuards = [];
   if (gestureGuard) onCard((win) => cardGuards.push(guardWindow(win)));
@@ -28,7 +29,9 @@ export function startTrackpad(page, { replacing }) {
   // threshold and let go to reload. The gesture logic is shared/pull.js.
   let pullRefreshing = false;
   let pullStuckTimer = null;
-  const pullEnabled = () => !replacing && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.pullToRefresh !== false;
+  // Also while an earlier copy is still in the page (its pull reloads too: the
+  // same reload), unlike swipe below (two would go back twice).
+  const pullEnabled = () => !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.pullToRefresh !== false;
   /** @param {{ state: string, progress?: number }} pull */
   function showPull({ state: phase, progress }) {
     if (pullRefreshing) return;
@@ -64,7 +67,7 @@ export function startTrackpad(page, { replacing }) {
   // Margin's, with Arc's edge badge: swipe sideways where nothing scrolls
   // sideways, past the threshold, and let go to go back (fingers moving
   // right) or forward. The gesture logic is shared/pull.js (axis x).
-  const swipeEnabled = () => !replacing && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
+  const swipeEnabled = () => !replacing && !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
   let swipeHideTimer = null;
   /** @param {{ state: string, progress?: number, direction?: number }} swipe */
   function showSwipe({ state: phase, progress, direction }) {

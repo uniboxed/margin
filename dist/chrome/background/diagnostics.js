@@ -72,6 +72,11 @@ export function recordSwitch({ source, tabId, asked, wake = null, preparation = 
   });
 }
 
+/** A background start that found storage empty (a first install, or Safari cleared Margin's data: seen at every relaunch of an unsigned build). */
+export function recordEmptyStart() {
+  record({ kind: 'start', emptyStorage: true });
+}
+
 /** A tab as Safari reports it when created (background/newtab-hint.js relies on openerTabId and index). */
 export function recordCreated(tab) {
   record({

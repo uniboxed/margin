@@ -14,8 +14,15 @@ const api = globalThis.browser ?? globalThis.chrome;
  * @param {Request<K>} [payload]
  * @returns {Promise<Result<K>>}
  */
+// Never waited on forever (as on web pages, content/core.js send): a request
+// with no answer in SEND_TIMEOUT_MS resolves to nothing, as a failed one does.
+const SEND_TIMEOUT_MS = 8000;
 async function send(type, payload = {}) {
-  const res = await api.runtime.sendMessage({ type, ...payload });
+  let timer;
+  const res = await Promise.race([
+    api.runtime.sendMessage({ type, ...payload }),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(null), SEND_TIMEOUT_MS); }),
+  ]).finally(() => clearTimeout(timer));
   if (res && !res.ok) console.warn('[margin]', type, res.error);
   return res?.result;
 }

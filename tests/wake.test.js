@@ -17,9 +17,12 @@ const fake = {
   session: {},
   local: {},
   reply: true, // what a page answers: true once it showed the note
+  // What a page's sidebar answers when asked to prepare (default: ready).
+  prepare: (args) => ({ ready: true, token: args?.[0]?.token }),
+  contentScripts: undefined, // the manifest's
 };
 globalThis.chrome = {
-  runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ version: '0' }) },
+  runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ version: '0', content_scripts: fake.contentScripts }) },
   permissions: { contains: async () => true },
   tabs: {
     get: async (id) => {
@@ -37,11 +40,11 @@ globalThis.chrome = {
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return fake.reply; },
   },
   scripting: {
-    executeScript: ({ target, world, func, args }) => {
-      fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func, args });
+    executeScript: ({ target, world, func, args, files }) => {
+      fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func: func ?? { name: 'files' }, args, files });
       const delay = fake.scriptDelay(target.tabId, func);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
-      const result = func.name === 'prepareSidebarInPage' ? { ready: true, token: args?.[0]?.token } : true;
+      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : true;
       return sleep(delay).then(() => [{ result }]);
     },
   },
@@ -57,11 +60,13 @@ globalThis.chrome = {
   },
 };
 
-const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake } = await import('../extension/background/tabs.js');
+const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake, resolveTab } = await import('../extension/background/tabs.js');
 const hint = await import('../extension/background/newtab-hint.js');
-const { mutate } = await import('../extension/background/store.js');
+const { mutate, decided } = await import('../extension/background/store.js');
 
 function reset(tabs) {
+  fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
+  fake.contentScripts = undefined;
   fake.tabs = new Map(tabs.map((t) => [t.id, { windowId: 1, status: 'complete', active: false, ...t }]));
   fake.scripts = [];
   fake.updates = [];
@@ -193,12 +198,84 @@ test('wake: a page slow to come back is waited for, up to the cap', async () => 
 
 test('sidebar preparation: a timeout is cancelled before the tab is activated', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 13, url: 'https://slow-sidebar.test/' }]);
-  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 350 : 5;
+  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 950 : 5; // past its 900ms cap
   const focused = await focusTab(13);
   assert.equal(focused.preparation.outcome, 'timeout');
   const cancel = fake.scripts.find((s) => s.func.name === 'cancelSidebarInPage');
   assert.ok(cancel, 'the late preparation is invalidated');
   assert.ok(cancel.at <= fake.updates[0].at, 'invalidated before activation');
+});
+
+test('sidebar preparation: a page still running an earlier copy gets the current one (and its theme) first, then is prepared', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 14, url: 'https://old-copy.test/' }]);
+  fake.contentScripts = [{ js: ['content/shell-main.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }];
+  let added = false;
+  fake.prepare = (args) => (added ? { ready: true, token: args?.[0]?.token } : { ready: false, reason: 'no current sidebar' });
+  fake.scriptDelay = (_id, func) => {
+    if (!func) added = true;
+    return 5;
+  };
+  const focused = await focusTab(14);
+  const files = fake.scripts.find((s) => s.files);
+  assert.deepEqual(files?.files, ['content/content.bundle.js', 'themes/arcadium/content.bundle.js']);
+  assert.equal(focused.preparation.outcome, 'ready');
+  assert.ok(files.at <= fake.updates[0].at, 'before the switch');
+});
+
+test('switch: a tab that isn\'t open any more fails (no switch, and the page says so)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  await assert.rejects(focusTab(99), /No tab with id 99/);
+  assert.equal(fake.updates.length, 0);
+});
+
+test('switch: the tab in front already: nothing to wake, prepare or switch', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  const focused = await focusTab(1);
+  assert.equal(focused.tab.id, 1);
+  assert.equal(fake.scripts.length, 0);
+  assert.equal(fake.updates.length, 0);
+});
+
+test('switch: one Safari didn\'t bring to the front is asked once more, then fails', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 15, url: 'https://stuck.test/' }]);
+  fake.scriptDelay = () => 5;
+  const update = chrome.tabs.update;
+  chrome.tabs.update = async (id, change) => { fake.updates.push({ id, change, at: Date.now() }); return { ...fake.tabs.get(id) }; }; // says it did, didn't
+  try {
+    await assert.rejects(focusTab(15), /didn't bring tab 15 to the front/);
+    assert.equal(fake.updates.length, 2);
+  } finally {
+    chrome.tabs.update = update;
+  }
+});
+
+test('switch: a tab Safari unloaded is noted before it\'s shown, so its page draws the right sidebar from its first frame', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 16, url: 'https://unloaded.test/' }]);
+  await decided(); // the copy that owns the state notes it
+  fake.scriptDelay = () => null; // no page
+  const set = chrome.storage.local.set;
+  let notedAt = 0;
+  chrome.storage.local.set = async (items) => { if (items.showing) notedAt = Date.now(); return set(items); };
+  try {
+    await focusTab(16, { carry: 'toggle', scroll: 120 });
+  } finally {
+    chrome.storage.local.set = set;
+  }
+  const { showing } = fake.local;
+  assert.equal(showing?.tabId, 16);
+  assert.equal(showing.url, 'https://unloaded.test/');
+  assert.equal(showing.carry, 'toggle');
+  assert.equal(showing.scroll, 120);
+  assert.ok(notedAt && notedAt <= fake.updates[0].at, 'noted before the switch');
+});
+
+test('switch: a row\'s tab id from before (another copy\'s, the last session\'s) is found by its address and place', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true, index: 0 }, { id: 20, url: 'https://dup.test/x', index: 1 }, { id: 21, url: 'https://dup.test/x', index: 5 }, { id: 30, url: 'https://dup.test/x', index: 1, windowId: 2 }]);
+  assert.equal((await resolveTab(20, { url: 'https://other.test/' }, 1))?.id, 20, 'an id this copy has stands');
+  assert.equal((await resolveTab(999, { url: 'https://dup.test/x', index: 4 }, 1))?.id, 21, 'the nearest place, in the asking window');
+  assert.equal((await resolveTab(999, { url: 'https://dup.test/x#top', index: 1 }, 2))?.id, 30, 'its own window first');
+  assert.equal(await resolveTab(999, { url: 'https://gone.test/' }, 1), null);
+  assert.equal(await resolveTab(999, null, 1), null);
 });
 
 test('wake: a tab with no page (Safari unloaded it) doesn\'t wait', async () => {

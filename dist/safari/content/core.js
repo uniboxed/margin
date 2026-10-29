@@ -13,6 +13,8 @@ import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
 import { createSwitching, backgroundSwitches } from '../shared/switching.js';
 import { startLayout } from './layout.js';
+import { createReadiness } from './ready.js';
+import { fromStorage, openTabsCurrent, withChanges } from '../shared/stored.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -32,6 +34,12 @@ export function startCore({ onTheme } = {}) {
   Margin.content = { api, startedAt: Date.now() }; // see background.js injectIntoOpenTabs
   // An earlier copy of Margin's sidebar in the page: take over from it.
   const replacing = takeOver(api);
+  // This copy's address: the stored tabs say whether they're this copy's
+  // (shared/stored.js). A copy a newer one replaced stays out of the way
+  // (`dormant`, below), and so does one whose sidebar another copy hid
+  // (`retired`: this one was replaced, or its Margin unloaded).
+  const origin = api.runtime.getURL('');
+  let dormant = false;
 
   // Fitted layout (content/shell.js, registered while "Keep open" is on; it
   // runs right after this script): the page moves into a frame, the "card",
@@ -49,6 +57,7 @@ export function startCore({ onTheme } = {}) {
 
   const host = createHost(document, 'margin-sidebar-host');
   const shadow = host.attachShadow({ mode: 'closed' });
+  const retired = () => dormant || host.style.getPropertyValue('display') === 'none';
 
   // Some pages replace <html>'s children; put the host back if it's removed.
   const attach = () => {
@@ -62,11 +71,18 @@ export function startCore({ onTheme } = {}) {
 
   // If the background was unloaded and the first message doesn't wake it in
   // time, retry once.
-  // A switch should land at once (the background answers in well under a
-  // second, waking a tab at most 0.4s); anything else gets a cold start's time.
+  // A switch usually lands at once (the background answers in well under a
+  // second, waking a tab at most 0.4s), but a background just starting first
+  // matches the open tabs (background.js firstSync): a switch waits that
+  // long, covered (shared/switching.js), before it's given up and said so;
+  // anything else gets a cold start's time.
   const NO_ANSWER = 'no answer';
   /** @type {Record<string, number>} */
-  const SEND_TIMEOUT_MS = { activateTab: 1500, openPin: 1500, default: 8000 };
+  const SEND_TIMEOUT_MS = { activateTab: 4000, openPin: 4000, default: 8000 };
+  // Why the last switch request failed, if it did (a switch says so: below).
+  const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
+  let switchError = null;
+  const failedSwitch = (type, why) => { if (SWITCH_REQUESTS.has(type)) switchError = why; };
   /**
    * @template {MessageType} K
    * @param {K} type a handler in background.js
@@ -77,8 +93,20 @@ export function startCore({ onTheme } = {}) {
   async function send(type, payload = {}, retry = true) {
     // Margin was reloaded or removed since this copy started (Chrome takes its
     // id away, and sendMessage throws "Extension context invalidated"): a
-    // new copy has the page now, this one stays quiet.
-    if (!api.runtime?.id) return;
+    // new copy has the page now, this one stays quiet. So does one a newer
+    // copy replaced.
+    if (!api.runtime?.id || dormant) return;
+    // A switch to a tab also says the tab's address and place, so the
+    // background finds it even if its id is from before (background/tabs.js
+    // resolveTab).
+    if (type === 'activateTab' && !(/** @type {any} */ (payload)).hint) {
+      const tab = state?.tabs?.[/** @type {any} */ (payload).tabId];
+      if (tab) payload = /** @type {any} */ ({ ...payload, hint: { url: tab.url, index: tab.index, title: tab.title } });
+    }
+    // And when this page stops waiting for it: the background doesn't switch
+    // after that (a switch that lands after its page said it didn't).
+    if (type === 'activateTab' || type === 'openPin') payload = /** @type {any} */ ({ ...payload, deadline: Date.now() + SEND_TIMEOUT_MS[type] });
+    failedSwitch(type, null);
     let timer;
     let reply;
     try {
@@ -91,10 +119,20 @@ export function startCore({ onTheme } = {}) {
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(NO_ANSWER)), SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default); }),
       ]);
       if (res?.ok) return res.result;
-      if (res) return void console.warn('[margin]', type, res.error);
+      if (res?.stale) return void standDown();
+      if (res) {
+        failedSwitch(type, String(res.error ?? ''));
+        return void console.warn('[margin]', type, res.error);
+      }
     } catch (err) {
-      if (err?.message === NO_ANSWER) return void noAnswer(type, reply);
-      if (!retry) return void console.warn('[margin]', type, err);
+      if (err?.message === NO_ANSWER) {
+        failedSwitch(type, NO_ANSWER);
+        return void noAnswer(type, reply);
+      }
+      if (!retry) {
+        failedSwitch(type, String(err?.message ?? err));
+        return void console.warn('[margin]', type, err);
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -136,7 +174,8 @@ export function startCore({ onTheme } = {}) {
     view?.showNotice?.({
       text,
       // Loaded again with a GET (a reload could send a form again).
-      actions: [{ label: 'Reload', run: () => location.replace(location.href) }, { label: 'Not now', run: () => { noticeUp = false; } }],
+      // (A URL with a #fragment would only scroll: reloaded then.)
+      actions: [{ label: 'Reload', run: () => (location.hash ? location.reload() : location.replace(location.href)) }, { label: 'Not now', run: () => { noticeUp = false; } }],
       duration: 20000,
     });
   }
@@ -162,13 +201,19 @@ export function startCore({ onTheme } = {}) {
     onTheme?.(theme);
     if (state) render();
     layout.reopen(); // hovered or toggled before it was there
-    // Taking over from a copy left from before Margin was updated, on a page
-    // that copy fitted beside the sidebar: its layout (and the page's keys
-    // and gestures in it) stay with the old copy until the page loads again
-    // (content/takeover.js does that once it's hidden; offered now too).
-    if (replacing && document.documentElement.hasAttribute('data-margin-shell') && !document.hidden) {
-      offerReload('Margin was updated. Reload this page to fit it beside the sidebar again.');
-    }
+    if (readiness.shown()) view.setStartup?.(true); // getting ready before it was there
+    offerFittedReload();
+  }
+  // Taking over from a copy left from before Margin was updated, on a page
+  // that copy fitted beside the sidebar: its layout (and the page's keys and
+  // gestures in it) stay with the old copy until the page loads again
+  // (content/takeover.js does that once it's hidden; offered when it's on
+  // screen too, a few times at most).
+  let fittedOffers = 0;
+  function offerFittedReload() {
+    if (!replacing || !view || document.hidden || fittedOffers >= 3 || !document.documentElement.hasAttribute('data-margin-shell')) return;
+    fittedOffers++;
+    offerReload('Margin was updated. Reload this page to fit it beside the sidebar again.');
   }
   Margin.content.themeArrived = mountTheme;
   // The theme's registered script didn't run on this page (Safari loads
@@ -205,10 +250,10 @@ export function startCore({ onTheme } = {}) {
   const fullscreenOnly = () => !!platform?.marginFullscreen && state?.settings?.fullscreenOnly !== false;
   /** @type {boolean | null} */
   let fullscreen = null;
-  const active = () => !fullscreenOnly() || fullscreen === true;
+  const active = () => !retired() && (!fullscreenOnly() || fullscreen === true);
   let lastOffer = 0;
   function offerFullscreen() {
-    if (fullscreen === null || Date.now() - lastOffer < 1500) return;
+    if (retired() || !fullscreenOnly() || fullscreen === null || Date.now() - lastOffer < 1500) return;
     lastOffer = Date.now();
     view?.showNotice?.({
       text: 'Margin works in full screen.',
@@ -230,6 +275,7 @@ export function startCore({ onTheme } = {}) {
     setState: (next) => { state = next; },
     firstRender: () => firstRender,
     active,
+    dormant: retired,
     offerFullscreen,
     // The page's zoom (1 = 100%), and Margin's pinch having changed it.
     zoom: () => pageZoom,
@@ -274,8 +320,13 @@ export function startCore({ onTheme } = {}) {
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space. Before the layout's
   // show/hide key: on a key both match, navigating wins (as it always has).
   const navSettings = () => (active() ? state?.settings : null); // none while Margin is out of the way
-  shortcuts.installNavigation({ send, getSettings: navSettings });
-  Margin.content.onCard((win) => shortcuts.installNavigation({ send, getSettings: navSettings, target: win }));
+  // The sidebar's scroll position goes first (the next page is prepared with it).
+  const navSend = /** @type {typeof send} */ ((type, payload, ...rest) => {
+    if (type === 'navigate') flushScroll();
+    return send(type, payload, ...rest);
+  });
+  shortcuts.installNavigation({ send: navSend, getSettings: navSettings });
+  Margin.content.onCard((win) => shortcuts.installNavigation({ send: navSend, getSettings: navSettings, target: win }));
   // Going in or out of full screen: Margin shows up, or gets out of the way.
   // The background tells the window's pages; a resize, or coming back to a
   // tab (moved to another window meanwhile), asks again.
@@ -330,6 +381,11 @@ export function startCore({ onTheme } = {}) {
   // through stays visible), 'none'.
   let switchingTo = null;
   let cover = 'now';
+  // A switch that didn't happen says why (the highlight goes back at once):
+  // the tab is gone (the sidebar is drawn again from the state), or Margin
+  // didn't answer (that notice comes later, if it still doesn't: noAnswer).
+  // Switch requests answer what they showed ({ shown }); `undefined` is a
+  // failed request (send).
   const switching = createSwitching({
     onChange: (id) => {
       switchingTo = id;
@@ -340,8 +396,78 @@ export function startCore({ onTheme } = {}) {
       if (!view?.setCover) loader.switching(slow);
       else if (slow && cover === 'slow') view.setCover(true);
     },
+    failed: (result) => result === undefined,
+    onFailed: () => {
+      const why = switchError;
+      void refresh();
+      if (!why || why === NO_ANSWER || dormant) return;
+      view?.showNotice?.({ text: /no longer open|No tab with id/i.test(why) ? 'That tab is no longer open.' : 'Margin couldn’t show that tab. Try again.', duration: 4000 });
+    },
   });
   const fromBackground = backgroundSwitches();
+
+  // ---- getting ready, and standing back -----------------------------------------
+  // Until this copy owns the state and has matched the open tabs (after Safari
+  // starts, or Margin is updated), the stored tabs are another copy's: the
+  // theme's startup cover, if that takes a moment (content/ready.js). Its
+  // background says whether a newer copy runs (`hello`, and `owner` when
+  // another copy has claimed the state since): this one then stands back.
+  // Over a page just loaded or shown, or where Margin just started; not over
+  // one in use when Margin is updated (its sidebar still works meanwhile).
+  let lastShownAt = document.hidden ? 0 : Date.now();
+  const coverable = () => performance.now() < 5000 || Date.now() - lastShownAt < 2000 || (!replacing && Date.now() - Margin.content.startedAt < 3000);
+  const readiness = createReadiness({
+    allowed: coverable,
+    show: (on) => {
+      if (on) switching.end();
+      if (view?.setStartup) view.setStartup(on);
+      else view?.setCover?.(on, { instant: !on && document.hidden });
+      host.dataset.startup = String(on); // test/debug hook
+      console.debug(`[margin] getting ready: cover ${on ? 'shown' : 'gone'}`);
+    },
+  });
+  let storedOwner = null;
+  let helloAnswered = false;
+  let waitedSince = 0;
+  function ownerSeen(owner, openTabsBy) {
+    const before = storedOwner;
+    storedOwner = owner ?? null;
+    const isCurrent = openTabsCurrent(openTabsBy, origin);
+    if (!dormant && !isCurrent && !waitedSince) {
+      waitedSince = Date.now();
+      console.debug('[margin] getting ready: waiting for this copy of Margin to match the tabs');
+    } else if (isCurrent && waitedSince) {
+      console.debug(`[margin] getting ready: done after ${Date.now() - waitedSince}ms`);
+      waitedSince = 0;
+    }
+    readiness.wait(!dormant && !isCurrent);
+    // Another copy claimed the state since this page started: is this copy
+    // the older one (then it stands back), or will it claim it again?
+    if (helloAnswered && storedOwner && storedOwner.origin !== origin && before?.origin !== storedOwner.origin) void send('owner');
+    // In charge here: copies a newer one replaced, or unloaded, show nothing
+    // (they stand back themselves, if they still run). This copy's own (the
+    // sidebar, the palette) are marked in its world (shared/dom.js createHost).
+    if (isCurrent) {
+      for (const node of /** @type {HTMLElement[]} */ ([...(document.documentElement?.children ?? [])])) {
+        if (!(/** @type {any} */ (node)).__marginCopy && /^margin-.*-host$/.test(node.localName)) node.style.setProperty('display', 'none', 'important');
+      }
+    }
+  }
+  // Out of the way: no sidebar, keys or gestures. A page on screen says why
+  // first (Safari runs both copies until it quits; this page can only reach
+  // the older one), then its Margin goes.
+  function standDown() {
+    if (dormant) return;
+    dormant = true;
+    console.info('[margin] a newer copy of Margin runs here: this one stays out of the way');
+    readiness.wait(false);
+    switching.end();
+    render();
+    const hide = () => host.style.setProperty('display', 'none', 'important');
+    if (document.hidden || !view?.showNotice) return hide();
+    view.showNotice({ text: 'Margin was updated while Safari was open. Quit and reopen Safari to finish updating it.', actions: [{ label: 'OK', run: hide }], duration: 15000 });
+    setTimeout(hide, 15500);
+  }
   // Back to this page's own tab: over. A tab in another window: nothing to
   // highlight here, and that window comes forward.
   Margin.content.startSwitching = (id, request = null, { cover: when = 'now' } = {}) => {
@@ -392,6 +518,8 @@ export function startCore({ onTheme } = {}) {
     send('setSidebarScroll', { top: scrollTop }, false);
   }
   function shown() {
+    lastShownAt = Date.now();
+    offerFittedReload();
     const prepared = preparedShow;
     preparedShow = null;
     const fresh = prepared && Date.now() - prepared.at < 1500;
@@ -401,8 +529,17 @@ export function startCore({ onTheme } = {}) {
       // a fallback when that event is late or absent.
       const atVersion = version;
       setTimeout(() => document.visibilityState === 'visible' && version === atVersion && refresh(), 250);
+      // A key switch right after scrolling: the page left saves its position
+      // as it's hidden, after this one was prepared with the one before.
+      // Asked once more (not if the user scrolls here).
+      setTimeout(() => restoreScroll(Promise.resolve()), 400);
     } else {
       if (prepared?.carry) layout.hide(); // a prepared switch that never landed
+      // Drawn at once from what changed while hidden (below), before storage
+      // is read again: a page Safari brings to the front itself (its tab bar,
+      // closing the tab in front) shows the right rows from its first frame.
+      if (changedWhileHidden && state) render();
+      changedWhileHidden = false;
       restoreScroll(refresh());
       // Switched by keyboard or Safari's tab bar right after scrolling: the
       // page left saves its position as it is hidden, which can land just
@@ -488,14 +625,66 @@ export function startCore({ onTheme } = {}) {
   /** @param {{ tabId: number, windowId: number } | null} [show] */
   async function refresh(show = null) {
     const mine = ++version;
-    const next = await api.storage.local.get(null);
+    const next = fromStorage(await api.storage.local.get(null));
+    if (mine === version) ownerSeen(next.owner, next.openTabsBy);
     timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
-    state = stateForShow(next, show);
+    // Brought to the front without preparation (a tab Safari restores as it's
+    // shown): until `hello` says which tab this is, the background's note does
+    // (background/tabs.js noteShowing), with how the page before had the
+    // sidebar, so the first frame is already right.
+    const noted = tabId == null && !dormant ? notedShowing(next.showing) : null;
+    if (noted) {
+      tabId = noted.tabId;
+      helloWindowId = noted.windowId;
+      if (firstRender && Number.isFinite(noted.scroll)) pendingScroll = noted.scroll;
+      console.debug(`[margin] drawn as tab ${noted.tabId}, the one being shown (before hello)`);
+    }
+    state = stateForShow(next, show ?? (noted ? { tabId: noted.tabId, windowId: noted.windowId } : null));
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1)); // drawn at its size from the start
     render();
+    if (noted?.carry && !carriedNoted) {
+      carriedNoted = true;
+      carryOpen(noted.carry);
+    }
+    if (noted && !coveredWhileLoading) coverWhileLoading();
     requestTheme(); // only if it isn't here by now
     return true;
+  }
+  let carriedNoted = false;
+  // A tab Safari loads as it's shown, brought to the front by Margin: the
+  // switch's cover stays over the page (its spinner already turning, as on
+  // the page before) until the page has loaded, at most COVER_LOADING_MS
+  // (then it shows as far as it got), so the switch reads as one wait rather
+  // than a page building up.
+  const COVER_LOADING_MS = 2500;
+  let coveredWhileLoading = false;
+  function coverWhileLoading() {
+    coveredWhileLoading = true;
+    const complete = () => (Margin.shell ? Margin.shell.card?.document.readyState === 'complete' : document.readyState === 'complete');
+    if (!view?.setCover || document.hidden || complete()) return;
+    view.setCover(true, { instant: true, spinnerNow: true });
+    host.dataset.loadingCover = 'true'; // test/debug hook
+    let done = false;
+    const off = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      // Not if a switch from here has taken the cover over meanwhile.
+      if (switchingTo == null) view?.setCover?.(false, { instant: document.hidden });
+      host.dataset.loadingCover = 'false';
+    };
+    const timer = setTimeout(off, COVER_LOADING_MS);
+    // The fitted layout's top document is complete long before its card.
+    if (!Margin.shell) addEventListener('load', off, { once: true });
+    Margin.content.onCard((win) => (win.document.readyState === 'complete' ? off() : win.addEventListener('load', off, { once: true })));
+    document.addEventListener('visibilitychange', () => document.hidden && off(), { once: true });
+  }
+  const SHOWING_MS = 10000;
+  const sameDocument = (a, b) => String(a ?? '').split('#')[0] === String(b ?? '').split('#')[0];
+  function notedShowing(showing) {
+    if (!showing || !Number.isInteger(showing.tabId) || Date.now() - showing.at > SHOWING_MS || document.hidden) return null;
+    return sameDocument(showing.url, location.href) ? showing : null;
   }
 
   // Called through scripting.executeScript in the current isolated extension
@@ -546,7 +735,19 @@ export function startCore({ onTheme } = {}) {
   // anyone sees. A hidden page catches up when it's shown (shown() above).
   // Until its first drawing, a page takes every change (one loaded in the
   // background before the background had any state waits for it).
-  api.storage.onChanged.addListener((_, area) => area === 'local' && (!document.hidden || firstRender) && refresh());
+  // The background's note of a tab being shown is for that tab's page only.
+  const onlyShowing = (changes) => Object.keys(changes).every((key) => key === 'showing');
+  // Hidden, a page keeps its state current from the change events (they
+  // carry the values) without drawing it: shown() draws it at once.
+  let changedWhileHidden = false;
+  api.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || dormant || (!firstRender && onlyShowing(changes))) return;
+    if (!document.hidden || firstRender || !state) return void refresh();
+    const next = withChanges(state, changes);
+    state = next;
+    changedWhileHidden = true;
+    if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
+  });
 
   // One debug-level line per page (hidden unless the console shows Debug
   // messages), once it has loaded: where the time before the sidebar
@@ -565,7 +766,9 @@ export function startCore({ onTheme } = {}) {
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
   restoreScroll(refresh());
   send('hello').then((ctx) => {
+    if (dormant) return;
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
+    helloAnswered = true;
     tabId = ctx.tabId;
     Margin.content.instanceId = ctx.instanceId; // see background.js injectIntoOpenTabs
     helloWindowId = ctx.windowId;

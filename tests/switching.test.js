@@ -26,6 +26,8 @@ function setup() {
     doc: /** @type {any} */ (doc),
     onChange: (id) => events.push(['change', id]),
     onSlow: (slow) => events.push(['slow', slow]),
+    failed: (result) => result === 'failed',
+    onFailed: (id) => events.push(['failed', id]),
   });
   return { doc, events, switching };
 }
@@ -49,7 +51,7 @@ test('switching: the pill only once it takes longer than 150ms', async () => {
   assert.deepEqual(events.slice(2), [['slow', false], ['change', null]]);
 });
 
-test('switching: still showing after the request is done (it failed): ends shortly after, no pill', async () => {
+test('switching: still showing after the request says it switched (split view): ends shortly after, no pill', async () => {
   const { events, switching } = setup();
   let done;
   switching.start(7, new Promise((resolve) => { done = resolve; }));
@@ -87,6 +89,21 @@ test('switching: a send that fails ends it at once', async () => {
   switching.start(7, Promise.reject(new Error('no tab')));
   await sleep(5);
   assert.equal(switching.target(), null);
+});
+
+test('switching: a request that says it didn\'t switch ends it at once, and says so', async () => {
+  const { events, switching } = setup();
+  switching.start(7, Promise.resolve('failed'));
+  await sleep(5);
+  assert.equal(switching.target(), null);
+  assert.deepEqual(events, [['change', 7], ['change', null], ['failed', 7]]);
+});
+
+test('switching: a request still waiting for its answer keeps it on (no going back after 2.5s)', async () => {
+  const { switching } = setup();
+  switching.start(7, new Promise(() => {}));
+  await sleep(2700);
+  assert.equal(switching.target(), 7, 'covered while Margin answers');
 });
 
 test('switching: without a request (the background\'s next/previous), it ends by itself at the latest', async () => {

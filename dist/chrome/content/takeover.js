@@ -9,10 +9,12 @@ export function takeOver(api) {
   // this copy takes over now, leaves swipe and pull-to-refresh to it (they act
   // on the page directly, so both would go back twice), and the page reloads
   // to start clean once that can't lose anything (reloadWhenSafe).
-  const replacing = !!document.querySelector('margin-sidebar-host');
+  // Copies that stand back for a newer one themselves (data-margin-v, set by
+  // content/core.js) are left to do so: this copy may be the older one.
+  // Every host of an earlier copy (any theme's: they're all margin-*-host).
+  const hosts = [...(document.documentElement?.children ?? [])].filter((node) => /^margin-.*-host$/.test(node.localName) && !(/** @type {HTMLElement} */ (node)).dataset.marginV);
+  const replacing = hosts.length > 0;
   if (replacing) {
-    // Every host of the earlier copy (any theme's: they're all margin-*-host).
-    const hosts = [...(document.documentElement?.children ?? [])].filter((node) => /^margin-.*-host$/.test(node.localName));
     for (const stale of /** @type {HTMLElement[]} */ (hosts)) {
       stale.style.setProperty('display', 'none', 'important');
       stale.remove();
@@ -25,7 +27,8 @@ export function takeOver(api) {
   // in the last 30s (then it tries again after). Hidden tabs a few at a time.
   // The background loads the page's URL again once it has registered what a
   // page load needs (the fitted layout): a GET, not a reload, which would send
-  // a form again; WebKit doesn't add a history entry for the same URL.
+  // a form again; WebKit doesn't add a history entry for the same URL (with a
+  // #fragment, which would only scroll, the browser's reload).
   function reloadWhenSafe() {
     const inUse = (doc, depth = 0) => {
       if (!doc || depth > 4) return false;
@@ -56,6 +59,13 @@ export function takeOver(api) {
     };
     let retry = null;
     let asking = false;
+    // Tried while it couldn't be (in front, being shown): again the next time
+    // it's hidden, or after this long if it stays hidden, doubling to 5
+    // minutes; at most TRIES times (then the page keeps the old copy's leftovers
+    // until it's reloaded some other way).
+    let backoff = 2500;
+    let tries = 0;
+    const TRIES = 6;
     const arm = (delay = 500 + Math.random() * 3000) => {
       document.addEventListener('visibilitychange', go);
       clearTimeout(retry);
@@ -80,17 +90,29 @@ export function takeOver(api) {
       if (!api.runtime?.id) return;
       console.info('[margin] Margin was updated while this page was open: loading it again');
       asking = true;
+      tries++;
+      // No answer at all (a background that's gone): asked again later.
+      const unanswered = setTimeout(() => {
+        asking = false;
+        if (tries >= TRIES) return;
+        backoff = Math.min(backoff * 2, 5 * 60_000);
+        arm(backoff);
+      }, 10000);
       api.runtime.sendMessage({ type: 'reloadForUpdate' }).then((reply) => {
-        // It became visible while the background was getting ready. Remove
-        // this attempt's throttle and try again after the page is hidden;
-        // typed fields/media are checked again then too.
-        if (reply?.ok && reply.result === false && api.runtime?.id) {
-          try {
-            if (Number(sessionStorage.getItem(KEY)) === stamp) sessionStorage.removeItem(KEY);
-          } catch {}
-          asking = false;
-          arm(500);
-        }
+        clearTimeout(unanswered);
+        const answer = reply?.ok ? reply.result : null;
+        // Done, or never (not a web page, or the tab is gone: background
+        // handlers.js reloadForUpdate).
+        if (!answer || answer.reloaded || !answer.retry || !api.runtime?.id || tries >= TRIES) return;
+        // Not now (it was being shown meanwhile): this attempt's throttle
+        // goes, and it tries again later (typed fields and media are
+        // checked again then too).
+        try {
+          if (Number(sessionStorage.getItem(KEY)) === stamp) sessionStorage.removeItem(KEY);
+        } catch {}
+        asking = false;
+        backoff = Math.min(backoff * 2, 5 * 60_000);
+        arm(backoff);
       }, () => {});
     };
     arm();

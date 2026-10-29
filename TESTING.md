@@ -436,19 +436,20 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Hold ⌃⌘↓: the tabs go by with their content (no gray cards); one press to a slow tab shows the gray card after a moment.
 - [ ] Tab overview: tabs you left through the sidebar may look gray there (accepted); say if that bothers you.
 
-## Atomic sidebar handoff (2026-10-28)
+## Switching, getting ready, one copy in charge (2026-10-28)
 
-- [ ] Open the hover sidebar, scroll its list, and switch repeatedly among two warm tabs: the destination appears with the same scroll position, the correct row/space highlighted, and the sidebar already open. There must be no one-frame closed, stale, or wrong-space sidebar.
-- [ ] Repeat with Keep open, a pin, a space icon, the active tab's ×, and one ⌥⌘↓/↑ press. The frame/sidebar geometry must not jump when the page changes.
-- [ ] Rapidly click three different rows, then click back to the page already on screen: only the last request may land; no earlier destination may open later or retain a carried hover sidebar.
-- [ ] Leave a tab unused until Safari suspends it, then switch to it. The old page stays under Margin's cover until the destination is ready; no black frame. Repeat after relaunch with a lazily restored tab: Safari may still show its own empty view while it creates the document, but Margin must recover normally and never leave the cover or sidebar stuck.
-- [ ] Start page → Settings → Switch log (development) → Copy. Warm Margin switches should show `preparation.outcome: "ready"` (normally well below 300ms); an unloaded/denied page may show `unavailable`, `not ready`, or `timeout` and must still switch.
+Install the build once, then **quit and reopen Safari** (an earlier copy of Margin can keep running until Safari quits).
 
-## Temporary-extension reinstall recovery (2026-10-28)
-
-- [ ] Keep at least three ordinary web tabs open, quit Safari (so it removes the temporary extension), reopen Safari, allow unsigned extensions, and add `dist/safari/` again. As soon as Margin's sidebar appears, click a different tab. It must switch once and remain there for at least five seconds: no 2–3 second gray cover followed by a snap back to the tab that was active at install time.
-- [ ] Without refreshing any page, switch through every restored tab and all spaces. Each page must have one visible, working sidebar; no tab may require repeated refreshes. A lazily restored/discarded tab may take Safari's normal load time on its first visit, but its first working sidebar must use the correct active tab and space.
-- [ ] Repeat with text typed into a form before quitting. Reinstalling Margin must not erase the draft; that page may postpone its cleanup reload while it is in use.
+- [ ] Quit and reopen Safari, allow unsigned extensions: while Margin starts, a page you're looking at shows "Getting your tabs ready…" over everything for a moment (or nothing, if it's quick), then the sidebar with your spaces. Clicking another tab right away switches to it once and stays there.
+- [ ] After that relaunch: are your spaces, pins and folders still there? (Safari may clear an unsigned build's data at each launch: Start page → Settings → Switch log, look for `emptyStorage`.)
+- [ ] Switch to a tab Safari hasn't loaded since the launch: Safari shows its empty view briefly, then the page; Margin's sidebar on it shows that tab highlighted, in its own space, open if the sidebar was open, from its first frame.
+- [ ] Switch among loaded tabs with the hover sidebar open and its list scrolled: the next page shows the same sidebar (scroll, open, highlight) with no jump. Leave a tab unused for a few minutes and switch to it: the old page stays covered until it's ready, no black frame.
+- [ ] Close a tab from another window or Safari's tab bar, then click its row in a sidebar that still lists it: "That tab is no longer open." and the row goes; no highlight sitting on it.
+- [ ] Rebuild in Xcode while Safari runs, then click rows in pages that were open: they switch (no 2–3 s highlight going back). A tab that was asleep through the rebuild shows the current sidebar when you switch to it (not the old one first).
+- [ ] Spaces stay right: move tabs between spaces, rebuild, relaunch, switch from the palette to a tab in another space: the sidebar shows that tab's space at once and the tab stays in it.
+- [ ] After a rebuild, a hidden page whose address has a `#` (Gmail) reloads once in the background; the tab in front of a minimized window too; no page keeps reloading (Safari's log: no repeated loads of the same hidden tab).
+- [ ] A notice's Reload button reloads a page whose address has a `#`.
+- [ ] Start page → Settings → Switch log (development) → Copy: switches show `preparation.outcome: "ready"` for loaded tabs; errors only for tabs that closed.
 
 ## Swipe between spaces (2026-10-27)
 

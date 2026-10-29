@@ -1,0 +1,80 @@
+// shared/owner.js: which copy of Margin is in charge of its storage.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { newer, ownership } from '../extension/shared/owner.js';
+import { fromStorage, openTabsCurrent, storedName, toStorage, withChanges } from '../extension/shared/stored.js';
+
+const old = { origin: 'safari-web-extension://AAA/', since: 1000 };
+const fresh = { origin: 'safari-web-extension://BBB/', since: 2000 };
+
+test('owner: the first copy claims an empty or broken record', () => {
+  assert.equal(ownership(undefined, old), 'claim');
+  assert.equal(ownership(null, old), 'claim');
+  assert.equal(ownership(/** @type {any} */ ({ origin: 'x' }), old), 'claim');
+});
+
+test('owner: a copy keeps what it owns, across its background restarts', () => {
+  assert.equal(ownership({ ...old, synced: true }, old), 'own');
+});
+
+test('owner: a newer copy takes over; the older one is then stale, whichever starts its background first', () => {
+  assert.equal(ownership(old, fresh), 'claim');
+  assert.equal(ownership(fresh, old), 'stale');
+});
+
+test('owner: after a relaunch the new copy claims the last launch\'s record', () => {
+  const lastLaunch = { origin: 'safari-web-extension://OLD/', since: 5000, synced: true };
+  assert.equal(ownership(lastLaunch, { origin: 'safari-web-extension://NEW/', since: 9000 }), 'claim');
+});
+
+test('owner: the same address started again (Chrome restarts, extension reloaded) claims again, unsynced', () => {
+  assert.equal(ownership({ ...old, synced: true }, { ...old, since: 3000 }), 'claim');
+});
+
+test('owner: two copies started together never both claim', () => {
+  const a = { origin: 'safari-web-extension://AAA/', since: 7000 };
+  const b = { origin: 'safari-web-extension://BBB/', since: 7000 };
+  assert.notEqual(newer(a, b), newer(b, a));
+  assert.equal([ownership(a, b), ownership(b, a)].filter((d) => d === 'claim').length, 1);
+});
+
+test('stored: the open tabs, their spaces and the windows\' spaces go in one value that says whose they are', () => {
+  const state = { tabs: { 5: { id: 5 } }, tabSpace: { 5: 'work' }, activeSpaceByWindow: { 1: 'work' }, spaces: [{ id: 'work' }], lostTabs: null };
+  const written = toStorage(state, ['tabSpace', 'spaces'], { origin: fresh.origin, synced: true });
+  assert.deepEqual(Object.keys(written).sort(), ['openTabs', 'spaces']);
+  assert.deepEqual(written.openTabs, { origin: fresh.origin, synced: true, tabs: state.tabs, tabSpace: state.tabSpace, activeSpaceByWindow: state.activeSpaceByWindow });
+  const read = fromStorage({ ...written, tabs: { 9: { id: 9 } } });
+  assert.deepEqual(read.tabs, state.tabs, 'not the old name another copy writes');
+  assert.deepEqual(read.openTabsBy, { origin: fresh.origin, synced: true });
+  assert.equal(storedName('lostTabs'), 'lostTabs2');
+  assert.equal(storedName('settings'), 'settings');
+});
+
+test('stored: before Margin first wrote them, the open tabs come from the old names', () => {
+  const read = fromStorage({ tabs: { 9: { id: 9 } }, tabSpace: { 9: 'personal' }, activeSpaceByWindow: {}, lostTabs: { windows: [] } });
+  assert.deepEqual(read.tabs, { 9: { id: 9 } });
+  assert.deepEqual(read.lostTabs, { windows: [] });
+  assert.equal(read.openTabsBy, null);
+});
+
+test('stored: pages trust the stored tabs only once their own copy has matched them', () => {
+  assert.equal(openTabsCurrent({ origin: fresh.origin, synced: false }, fresh.origin), false);
+  assert.equal(openTabsCurrent({ origin: fresh.origin, synced: true }, fresh.origin), true);
+  assert.equal(openTabsCurrent({ origin: old.origin, synced: true }, fresh.origin), false);
+  assert.equal(openTabsCurrent(null, fresh.origin), false);
+});
+
+test('stored: a hidden page keeps its state current from the change events, ignoring the old names', () => {
+  const before = fromStorage({ openTabs: { origin: fresh.origin, synced: true, tabs: { 1: { id: 1 } }, tabSpace: { 1: 'personal' }, activeSpaceByWindow: {} }, spaces: [{ id: 'personal' }] });
+  const after = withChanges(before, {
+    openTabs: { newValue: { origin: fresh.origin, synced: true, tabs: { 2: { id: 2 } }, tabSpace: { 2: 'work' }, activeSpaceByWindow: { 1: 'work' } } },
+    spaces: { newValue: [{ id: 'personal' }, { id: 'work' }] },
+    tabs: { newValue: { 9: { id: 9 } } }, // an old copy's write
+    lostTabs2: { newValue: { windows: [] } },
+  });
+  assert.deepEqual(Object.keys(after.tabs), ['2']);
+  assert.equal(after.tabSpace[2], 'work');
+  assert.equal(after.spaces.length, 2);
+  assert.deepEqual(after.lostTabs, { windows: [] });
+  assert.deepEqual(before.tabs, { 1: { id: 1 } }, 'not changed in place');
+});

@@ -7,6 +7,7 @@ import * as V from '../../shared/view.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
+import { fromStorage } from '../../shared/stored.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
 import { installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
 import { createSwitching, backgroundSwitches } from '../../shared/switching.js';
@@ -90,9 +91,13 @@ export function mount({ api, self, send, windowed = false }) {
     if (!SWITCHES.has(type)) return send(type, payload, ...rest);
     const sidebarTop = scrollTimer == null ? null : scrollTop;
     flushScroll();
+    // A switch also says the tab's address and place (as on web pages,
+    // content/core.js send).
+    const tab = type === 'activateTab' ? state?.tabs?.[/** @type {any} */ (payload)?.tabId] : null;
     return send(type, {
       .../** @type {any} */ (payload),
       ...(Number.isFinite(sidebarTop) ? { sidebarTop } : {}),
+      ...(tab ? { hint: { url: tab.url, index: tab.index } } : {}),
     }, ...rest);
   };
   // On Margin's start page (#launcher), "+ New Tab" chooses a new tab as on a
@@ -122,6 +127,10 @@ export function mount({ api, self, send, windowed = false }) {
       if (state) sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo });
     },
     onSlow: (slow) => slow && when === 'slow' && cover.set(true), // its spinner shows by itself
+    // A switch that didn't happen (the tab is gone): over at once, the
+    // sidebar drawn again (as on web pages).
+    failed: (result) => result === undefined,
+    onFailed: () => void refresh(),
   });
   const fromBackground = backgroundSwitches();
   // Back to this tab: over; a tab in another window: nothing to highlight here.
@@ -462,7 +471,7 @@ export function mount({ api, self, send, windowed = false }) {
   let pendingScroll = null; // applied by the next refresh
   async function refresh() {
     const mine = ++version;
-    const next = await api.storage.local.get(null);
+    const next = fromStorage(await api.storage.local.get(null));
     if (mine !== version || !next.spaces?.length) return;
     state = next;
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));

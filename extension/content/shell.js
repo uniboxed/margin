@@ -213,6 +213,14 @@ import { platform } from '../shared/platform.js';
       restoring = true;
       release('tab being restored');
     }, () => {});
+  // Sooner, without waiting for a background that may be starting: Margin
+  // noted that it's bringing this tab to the front unprepared (a tab Safari
+  // unloaded; background/tabs.js noteShowing).
+  (globalThis.browser ?? globalThis.chrome)?.storage?.local.get('showing').then(({ showing }) => {
+    if (!showing || Date.now() - showing.at > 10000 || String(showing.url).split('#')[0] !== href) return;
+    restoring = true;
+    release('tab being restored');
+  }, () => {});
 
   // Card geometry: inset in the theme's frame while docked, the whole window
   // otherwise (Keep open turned off on this page: the sidebar floats over it).
