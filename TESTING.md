@@ -559,3 +559,12 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Safari → Settings → Extensions: one Margin; turn it on, allow it on every website.
 - [ ] Quit and reopen Safari: Margin is still on, with your spaces and pins; no "Allow Unsigned Extensions" needed.
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
+
+## Rows press and drag as in Arc (2026-10-29)
+
+- [ ] Press and hold a tab, a pin, a folder, "+ New Tab": the row shrinks a little; let go: it springs back.
+- [ ] Drag the tab in front up and down the tab list: the row stays, a copy follows the pointer, a line in the space's color with a ring shows where it goes; let go: the copy glides into its place and the rows around it slide. Safari's own tab bar (if shown) has the same order.
+- [ ] Drag pins and folders to new places, a pin into a folder (open and closed), a pin out to the tabs, the tab in front into the pinned area and onto another space's icon: each lands where the line was.
+- [ ] Drop it nowhere (outside the list), or press Escape mid-drag: the copy glides back.
+- [ ] With a long list, drag toward the top or bottom edge: the list scrolls.
+- [ ] Zoomed page (⌘+), the overlay sidebar, Keep open, Margin's new-tab page: the copy stays under the pointer and lands in place.

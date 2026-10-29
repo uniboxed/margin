@@ -223,6 +223,13 @@ ul { list-style: none; margin: 0; padding: 0; }
   cursor: default;
 }
 .tab:hover, .pin:hover, .new-tab-row:hover, .folder:hover { background: var(--hover); }
+/* A press (Arc, sidebar.js): the row shrinks a little while the button is
+   down, and springs back as it comes up. */
+.tab, .pin, .new-tab-row, .folder { transition: transform 300ms cubic-bezier(0.3, 1.5, 0.5, 1); }
+.tab.pressed, .pin.pressed, .new-tab-row.pressed, .folder.pressed { transform: scale(0.97); transition: transform 100ms cubic-bezier(0.2, 0, 0.3, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .tab.pressed, .pin.pressed, .new-tab-row.pressed, .folder.pressed { transform: none; }
+}
 .tab.active, .pin.active, .new-tab-row.active {
   background: linear-gradient(#efefef, rgba(239, 239, 239, 0) 2px), var(--active);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -293,32 +300,54 @@ ul { list-style: none; margin: 0; padding: 0; }
 .tab:hover .icon, .pin:hover .icon { visibility: visible; }
 .margin-sidebar .icon:hover { background: var(--press); }
 
-/* Drag and drop (sidebar.js): a line where it goes, a folder it goes into,
-   the tabs while a pin dropped there unpins; an empty pinned area shows
+/* Drag and drop (Arc, sidebar.js): a copy of the row follows the pointer
+   (the row stays), and glides into its new place once dropped, the row
+   hidden under it meanwhile. Where it goes: a line in the space's color, a
+   ring at its start, between the rows (measured from Arc: 2px, an 8px ring
+   8px in from the row's edge, out to the sidebar's edge); a folder it goes
+   into; the tabs while a pin dropped there unpins. An empty pinned area shows
    where a tab can go. */
+.margin-sidebar.newtab { position: relative; }
+.margin-sidebar .drag-ghost {
+  position: absolute;
+  z-index: 30;
+  margin: 0;
+  pointer-events: none;
+  opacity: 0.9;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: none;
+  will-change: transform;
+}
+.margin-sidebar .drag-ghost:not(.active) { background: rgba(255, 255, 255, 0.6); }
+.margin-sidebar .drag-ghost .icon { visibility: hidden; }
+.margin-sidebar .landing { visibility: hidden; }
+.margin-sidebar[data-dragging] :is(.tab, .pin, .folder, .new-tab-row):hover:not(.active) { background: none; }
 .margin-sidebar .drop-before::before, .margin-sidebar .drop-after::after, .margin-sidebar .pins.drop-end::after {
   content: "";
   position: absolute;
-  left: 10px;
-  right: 10px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--drop);
+  z-index: 1;
+  left: 8px;
+  right: -8px;
+  height: 8px;
+  background:
+    radial-gradient(circle at 4px 50%, transparent 2px, var(--space-color) 2.4px, var(--space-color) 3.6px, transparent 4px) no-repeat 0 0 / 8px 8px,
+    linear-gradient(var(--space-color), var(--space-color)) no-repeat 7.5px 50% / calc(100% - 7.5px) 2px;
   pointer-events: none;
 }
-.margin-sidebar .drop-before::before { top: -3.5px; }
-.margin-sidebar .drop-after::after { bottom: -3.5px; }
+.margin-sidebar .drop-before::before { top: -6.5px; }
+.margin-sidebar .pins > :first-child.drop-before::before { top: -2px; } /* the list's top edge would clip it */
+.margin-sidebar .drop-after::after { bottom: -6.5px; }
 .margin-sidebar .pins { position: relative; }
-.margin-sidebar .pins.drop-end::after { bottom: -3.5px; }
+.margin-sidebar .pins.drop-end::after { bottom: -6.5px; }
 .margin-sidebar .folder.drop-into { background: rgba(10, 132, 255, 0.16); box-shadow: inset 0 0 0 2px rgba(10, 132, 255, 0.6); }
 .margin-sidebar .tabs.drop-unpin { border-radius: 12px; box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.45); }
-.margin-sidebar[data-dragging="tab"] .pins:empty {
+.margin-sidebar:is([data-dragging="tab"], [data-landing="tab"]) .pins:empty {
   display: block;
   height: 36px;
   border: 1.5px dashed rgba(0, 0, 0, 0.25);
   border-radius: 12px;
 }
-.margin-sidebar[data-dragging="tab"] .pins:empty::before { content: "Drop to pin"; display: block; line-height: 33px; text-align: center; color: var(--muted); font-size: 13px; }
+.margin-sidebar:is([data-dragging="tab"], [data-landing="tab"]) .pins:empty::before { content: "Drop to pin"; display: block; line-height: 33px; text-align: center; color: var(--muted); font-size: 13px; }
 
 /* Right-click menu on tabs, pins and folders, and "+" (macOS-style). */
 .tab-menu {

@@ -207,6 +207,22 @@ let pageRecorder = """
   override init() { super.init(); controller.delegate = self }
   func webExtensionController(_ c: WKWebExtensionController, openWindowsFor x: WKWebExtensionContext) -> [any WKWebExtensionWindow] { [window] }
   func webExtensionController(_ c: WKWebExtensionController, focusedWindowFor x: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { window }
+  // tabs.move (WebKit's private delegate call, as Safari answers it): the tabs to that place
+  // in the window, in order, each move told.
+  @objc(_webExtensionController:moveTabs:toIndex:inWindow:forExtensionContext:completionHandler:)
+  func moveTabs(_ c: WKWebExtensionController, moveTabs given: [Any], toIndex index: Int, inWindow _: Any, forExtensionContext _: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+    var to = index
+    for case let t as Tab in given {
+      guard let from = window.tabs.firstIndex(where: { $0 === t }) else { continue }
+      window.tabs.remove(at: from)
+      let at = min(to, window.tabs.count)
+      window.tabs.insert(t, at: at)
+      log("delegate: move \(t.name) \(from) → \(at)")
+      controllers.forEach { $0.didMoveTab(t, from: from, in: window) }
+      to = at + 1
+    }
+    completionHandler(nil)
+  }
   // tabs.create: a tab at the end of the window, named new1, new2, … (in front only if asked).
   var openedForMargin = 0
   func webExtensionController(_ c: WKWebExtensionController, openNewTabUsing cfg: WKWebExtension.TabConfiguration, for x: WKWebExtensionContext, completionHandler: @escaping ((any WKWebExtensionTab)?, (any Error)?) -> Void) {
@@ -468,16 +484,30 @@ Task { @MainActor in
       // hook's __shadowOf reaches the sidebar's closed shadow root). A release goes to the web
       // view that got the press, wherever it is by then (as AppKit sends it).
       let t = host.tab(step["in"] as! String)!
-      let type = (step["type"] as? String) == "up" ? NSEvent.EventType.leftMouseUp : .leftMouseDown
+      let type = (step["type"] as? String) == "up" ? NSEvent.EventType.leftMouseUp : (step["type"] as? String) == "drag" ? .leftMouseDragged : .leftMouseDown
       var flags: NSEvent.ModifierFlags = []
       for m in (step["mods"] as? [String] ?? []) {
         switch m { case "command": flags.insert(.command); case "option": flags.insert(.option); case "control": flags.insert(.control); case "shift": flags.insert(.shift); default: break }
       }
-      guard let wv = type == .leftMouseUp ? (pressedView ?? t.webView) : t.webView, let world = host.world() else { log("mouse: \(t.name) has no web view"); break }
+      guard let wv = type == .leftMouseDown ? t.webView : (pressedView ?? t.webView), let world = host.world() else { log("mouse: \(t.name) has no web view"); break }
       var point = lastPress
       if let at = step["at"] as? String {
         guard let r = try? await wv.callAsyncJavaScript(at, arguments: [:], in: nil, contentWorld: world) as? [Double], r.count == 2 else { log("mouse: no point in \(t.name)"); break }
         point = NSPoint(x: r[0], y: wv.isFlipped ? r[1] : wv.bounds.height - r[1])
+      }
+      if type == .leftMouseDragged {
+        // A drag: from where the button went down (or the last drag) to `at`, in `steps` moves a frame apart.
+        let steps = step["steps"] as? Int ?? 12
+        let from = lastPress
+        for i in 1...steps {
+          let p = NSPoint(x: from.x + (point.x - from.x) * Double(i) / Double(steps), y: from.y + (point.y - from.y) * Double(i) / Double(steps))
+          let e = NSEvent.mouseEvent(with: .leftMouseDragged, location: wv.convert(p, to: nil), modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: host.window.nsWindow.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+          wv.mouseDragged(with: e)
+          try? await Task.sleep(nanoseconds: 16_000_000)
+        }
+        lastPress = point
+        log("mouse drag in \(t.name) to \(Int(point.x)),\(Int(wv.isFlipped ? point.y : wv.bounds.height - point.y))")
+        break
       }
       let e = NSEvent.mouseEvent(with: type, location: wv.convert(point, to: nil), modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: host.window.nsWindow.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)!
       if type == .leftMouseDown { host.window.nsWindow.makeFirstResponder(wv); pressedView = wv; lastPress = point; wv.mouseDown(with: e) } else { wv.mouseUp(with: e); pressedView = nil }

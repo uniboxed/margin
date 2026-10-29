@@ -527,6 +527,24 @@ export const handlers = {
   async moveFolder({ folderId, beforeId = null }) {
     await mutate((s) => M.moveFolder(s, folderId, { beforeId }));
   },
+  // A tab dragged in the sidebar's list, next to another (`side`: above it,
+  // 'before', or below, 'after', as the list shows them: newest at the top,
+  // the reverse of the window's order). Safari's own tab order follows, and
+  // the sidebar with it (background.js tabs.onMoved).
+  // Whether it moved (not: the browser can't, a tab is gone, or one is the
+  // browser's own pinned tab, kept apart from the others).
+  /** @param {{ tabId: number, hint?: any, nextTo: number, nextToHint?: any, side: 'before' | 'after' }} message */
+  async moveTab({ tabId, hint, nextTo, nextToHint, side }, sender) {
+    if (!api.tabs.move) return false;
+    const [tab, other] = await Promise.all([resolveTab(tabId, hint, sender?.tab?.windowId), resolveTab(nextTo, nextToHint, sender?.tab?.windowId)]);
+    if (!tab || !other || tab.windowId !== other.windowId || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
+    // Above it in the list: just after it in the window; below it: just before.
+    const index = side === 'before'
+      ? (tab.index < other.index ? other.index : other.index + 1)
+      : (tab.index < other.index ? other.index - 1 : other.index);
+    if (index === tab.index) return false;
+    return api.tabs.move(tab.id, { index }).then(() => true, () => false);
+  },
   /** @param {{ pinId: string }} message */
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));

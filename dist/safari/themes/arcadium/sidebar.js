@@ -39,9 +39,6 @@ function letterIfBroken(doc, img) {
 }
 
 const SPACE_COLORS = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72'];
-const TAB_MIME = 'application/x-margin-tab';
-const PIN_MIME = 'application/x-margin-pin';
-const FOLDER_MIME = 'application/x-margin-folder';
 
 // Arc's line icons (stroked, currentColor) and its two-tone folder.
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -239,7 +236,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       'data-pin-id': p.id,
       'data-folder-id': p.folderId ?? null,
       'aria-label': p.title, // no tooltip (Arc); the rail hides the title
-      draggable: 'true',
     },
     avatar(doc, { ...p, favIconUrl: V.iconFor(state, p) }),
     el(doc, 'span', { class: 'title', text: p.title }),
@@ -255,7 +251,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       class: `folder${f.open ? ' open' : ''}`,
       'data-action': editingThis ? null : 'toggle-folder', // its padding too
       'data-folder-id': f.id,
-      draggable: editingThis ? null : 'true',
     }, el(doc, 'div', {
       class: 'folder-toggle',
       'data-action': editingThis ? null : 'toggle-folder',
@@ -324,9 +319,14 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     rendering = true;
     try {
       draw();
+      // Through a redraw: the row pressed, rows a dropped copy is gliding into.
+      if (pressedKey) rowFor(pressedKey)?.classList.add('pressed');
+      for (const key of gliding) rowFor(key)?.classList.add('landing');
     } finally {
       rendering = false;
     }
+    if (dragging) moveDrag(dragging.x, dragging.y); // its drop line on the rows drawn now
+    land();
     // The field being typed in keeps its focus and caret through a redraw.
     if (renaming && renameInput?.isConnected) {
       if (renameInput.dataset.fresh === 'true') {
@@ -399,7 +399,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
           'data-action': 'activate',
           'data-tab-id': String(t.id),
           'aria-label': t.title || t.url || 'New Tab',
-          draggable: 'true',
         },
         avatar(doc, { ...t, favIconUrl: V.iconFor(state, t) }),
         el(doc, 'span', { class: 'title', text: t.title || t.url || 'New Tab' }),
@@ -442,6 +441,34 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // window first); null for a pin not open.
   const rowTab = (/** @type {HTMLElement} */ row) => (row.dataset.tabId ? Number(row.dataset.tabId)
     : row.classList.contains('open') && state ? V.pinTabId(state, row.dataset.pinId, windowId) : null);
+  // A press (Arc): the row shrinks a little while the button is down and
+  // springs back as it comes up (sidebar.css .pressed), kept through a redraw
+  // (the switch a press starts draws the list again at once). Not on a row's
+  // buttons; not with ⌃ (the menu).
+  /** @type {string | null} */
+  let pressedKey = null;
+  root.addEventListener('pointerdown', (event) => {
+    releasePress();
+    if (event.button !== 0 || event.ctrlKey || !event.isPrimary) return;
+    const target = /** @type {Element} */ (event.target);
+    if (target.closest?.('.icon, input')) return;
+    const row = target.closest?.('.tab, .pin, .folder, .new-tab-row');
+    if (!row || !root.contains(row)) return;
+    pressedKey = keyOf(row);
+    row.classList.add('pressed');
+  });
+  for (const type of ['pointerup', 'pointercancel']) doc.addEventListener(type, () => releasePress(), true);
+  doc.defaultView?.addEventListener('blur', () => releasePress());
+  function releasePress({ instant = false } = {}) {
+    if (!pressedKey) return;
+    const row = rowFor(pressedKey);
+    pressedKey = null;
+    if (!row) return;
+    if (instant) row.classList.add('instant');
+    row.classList.remove('pressed');
+    if (instant) requestAnimationFrame(() => row.classList.remove('instant'));
+  }
+
   // A tab's row, or a pin's: its tab to the front.
   /** @param {HTMLElement} target */
   function switchRow(target) {
@@ -476,7 +503,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   root.addEventListener('pointerdown', (event) => {
     pressed = false;
     pressedAway = false;
-    if (event.button !== 0 || event.pointerType !== 'mouse' || !event.isPrimary || event.ctrlKey) return;
+    if (event.button !== 0 || event.pointerType !== 'mouse' || !event.isPrimary || event.ctrlKey || dragging) return;
     const target = /** @type {HTMLElement | null} */ (event.target.closest?.('[data-action]'));
     if (!target || !root.contains(target)) return;
     const action = target.dataset.action;
@@ -821,7 +848,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     if (hoverWake) hoverWake.until = Date.now() + HOVER_IDLE_MS;
   }, { passive: true });
   root.addEventListener('pointerleave', stopHoverWake);
-  root.addEventListener('dragstart', stopHoverWake, true);
   root.addEventListener('click', stopHoverWake, true); // a switch: the page goes
   root.addEventListener('pointerdown', (event) => {
     if (pressed || event.button !== 0 || event.ctrlKey || event.target.closest('.icon')) return; // pressed: switching already
@@ -1076,39 +1102,187 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // Keep our keystrokes away from the page's own shortcuts.
   for (const type of ['keydown', 'keyup', 'keypress']) root.addEventListener(type, (e) => e.stopPropagation());
 
-  // ---- drag and drop ----------------------------------------------------------
+  // ---- drag and drop (Arc) ----------------------------------------------------
   // Tabs, pins and folders drag. A tab dropped on a space in the bottom bar
-  // moves there. In the list: a pin or tab dropped on a folder goes into it
-  // (a tab gets pinned there); between rows, before or after that row (a tab
-  // gets pinned in that place; folders stay at the top level); a pin dropped
-  // on the tabs is unpinned (its tab stays open, as a tab).
-
-  let dragging = null; // { kind: 'tab' | 'pin' | 'folder', id }
+  // moves there; between tabs, it goes there (Safari's tab order follows). In
+  // the pinned area: a pin or tab dropped on a folder goes into it (a tab
+  // gets pinned there); between rows, before or after that row (a tab gets
+  // pinned in that place; folders stay at the top level); a pin dropped on the
+  // tabs is unpinned (its tab stays open, as a tab).
+  // As Arc does it: the row stays where it is and a copy of it follows the
+  // pointer (`ghost`); a line in the space's color, a ring at its start, shows
+  // where it goes. Let go, the copy waits there for the list's new order and
+  // glides into the row's new place while the rows around it slide to theirs;
+  // nowhere to go (or Escape), it glides back. The pointer's own events, not
+  // the browser's drag and drop: that can't animate the drop, and its picture
+  // of the row vanishes as it's dropped.
+  const DRAG_START_PX = 4; // the pointer moved this far with the button down: a drag
+  const GLIDE_MS = 300; // the copy into its place (Arc: ~0.3 s)
+  const SLIDE_MS = 180; // the rows around it to theirs
+  const LAND_WAIT_MS = 1200; // the new order not here by then: back where it was
+  const EDGE_PX = 36; // the list scrolls with the pointer this close to its edge
+  /** @type {{ kind: 'tab' | 'pin' | 'folder', id: number | string, key: string, pointerId: number, x: number, y: number, row: HTMLElement } | null} */
+  let pendingDrag = null; // pressed, not moved far enough yet
+  /** @type {{ kind: 'tab' | 'pin' | 'folder', id: number | string, key: string, pointerId: number, ghost: HTMLElement, grabX: number, grabY: number, x: number, y: number, where: any } | null} */
+  let dragging = null;
+  /** @type {{ ghost: HTMLElement, key: string | null, newPin: Set<string> | null, before: Map<string, DOMRect>, from: string, timer: ReturnType<typeof setTimeout> } | null} */
+  let landing = null; // dropped: the copy waiting for the new order
+  const gliding = new Set(); // rows a copy is gliding into (hidden until it's there)
   const MARKS = ['drop-before', 'drop-after', 'drop-into', 'drop-target', 'drop-end', 'drop-unpin'];
   const clearDrop = () => {
     for (const node of root.querySelectorAll(MARKS.map((m) => `.${m}`).join(', '))) node.classList.remove(...MARKS);
   };
-  root.addEventListener('dragstart', (event) => {
-    const row = event.target.closest?.('.tab, .pin, .folder');
-    if (!row || !root.contains(row)) return;
-    // Not on a press that takes this page away ("a press switches", above).
-    if (renaming || pressedAway) return event.preventDefault();
-    if (row.classList.contains('tab')) dragging = { kind: 'tab', id: Number(row.dataset.tabId) };
-    else if (row.classList.contains('pin')) dragging = { kind: 'pin', id: row.dataset.pinId };
-    else dragging = { kind: 'folder', id: row.dataset.folderId };
-    event.dataTransfer.setData({ tab: TAB_MIME, pin: PIN_MIME, folder: FOLDER_MIME }[dragging.kind], String(dragging.id));
-    event.dataTransfer.effectAllowed = 'move';
-    root.dataset.dragging = dragging.kind; // an empty pinned area shows where a tab can go
-    // A redraw mid-drag (a tab's title changing) replaces the row: its
-    // dragend then never reaches the sidebar, so it's listened for here too.
-    row.addEventListener('dragend', endDrag, { once: true });
+  function keyOf(/** @type {Element} */ row) {
+    return row.classList.contains('tab') ? `tab:${/** @type {HTMLElement} */ (row).dataset.tabId}`
+      : row.classList.contains('pin') ? `pin:${/** @type {HTMLElement} */ (row).dataset.pinId}`
+      : row.classList.contains('folder') ? `folder:${/** @type {HTMLElement} */ (row).dataset.folderId}`
+      : row.classList.contains('new-tab-row') ? 'new-tab' : null;
+  }
+  function rowFor(/** @type {string} */ key) {
+    if (key === 'new-tab') return /** @type {HTMLElement | null} */ (tabs.querySelector('.new-tab-row'));
+    const [kind, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    const attr = kind === 'tab' ? 'tab-id' : kind === 'pin' ? 'pin-id' : 'folder-id';
+    return /** @type {HTMLElement | null} */ (root.querySelector(`.${kind}[data-${attr}="${CSS.escape(id)}"]:not(.drag-ghost)`));
+  }
+  const allRows = () => /** @type {HTMLElement[]} */ ([...root.querySelectorAll('.pins > .pin, .pins > .folder, .tabs > .tab')]);
+  // A point of the page in the sidebar's own px (its box: relative to it).
+  const local = (/** @type {number} */ x, /** @type {number} */ y) => {
+    const box = root.getBoundingClientRect();
+    const k = hostScale();
+    return { x: (x - box.left) * k - root.clientLeft, y: (y - box.top) * k - root.clientTop };
+  };
+
+  root.addEventListener('pointerdown', (event) => {
+    pendingDrag = null;
+    if (event.button !== 0 || event.ctrlKey || !event.isPrimary || dragging || landing || renaming) return;
+    if (pressedAway) return; // this page is on its way out (a press switches, above)
+    const target = /** @type {Element} */ (event.target);
+    if (target.closest?.('.icon, input, .folder-name')) return;
+    const row = /** @type {HTMLElement | null} */ (target.closest?.('.tab, .pin, .folder'));
+    if (!row || !root.contains(row) || root.classList.contains('rail')) return;
+    const key = keyOf(row);
+    if (!key) return;
+    const kind = /** @type {'tab' | 'pin' | 'folder'} */ (key.slice(0, key.indexOf(':')));
+    const id = kind === 'tab' ? Number(row.dataset.tabId) : kind === 'pin' ? row.dataset.pinId : row.dataset.folderId;
+    pendingDrag = { kind, id, key, pointerId: event.pointerId, x: event.clientX, y: event.clientY, row };
   });
-  const endDrag = () => {
+  root.addEventListener('pointermove', (event) => {
+    // No button down any more: its release went elsewhere (another page, another app).
+    if (dragging && event.pointerId === dragging.pointerId) return event.buttons & 1 ? moveDrag(event.clientX, event.clientY) : cancelDrag();
+    if (!pendingDrag || event.pointerId !== pendingDrag.pointerId) return;
+    if (!(event.buttons & 1)) return void (pendingDrag = null);
+    const k = hostScale();
+    if (Math.hypot(event.clientX - pendingDrag.x, event.clientY - pendingDrag.y) * k < DRAG_START_PX) return;
+    startDrag(event);
+  });
+  root.addEventListener('pointerup', (event) => {
+    if (dragging && event.pointerId === dragging.pointerId) drop(event.clientX, event.clientY);
+    pendingDrag = null;
+  });
+  root.addEventListener('pointercancel', () => {
+    pendingDrag = null;
+    if (dragging) cancelDrag();
+  });
+  root.addEventListener('lostpointercapture', () => { if (dragging) cancelDrag(); });
+  // The page hidden or left mid-drag (a key switching tabs, ⌘Tab): over.
+  const dropEverything = () => {
+    pendingDrag = null;
+    if (dragging) cancelDrag();
+  };
+  doc.addEventListener('visibilitychange', () => { if (doc.hidden) dropEverything(); });
+  doc.defaultView?.addEventListener('blur', dropEverything);
+  doc.defaultView?.addEventListener('pagehide', dropEverything);
+  doc.addEventListener('keydown', (event) => {
+    if (dragging && event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelDrag();
+    }
+  }, true);
+
+  /** @param {PointerEvent} event */
+  function startDrag(event) {
+    const from = pendingDrag;
+    pendingDrag = null;
+    if (!from) return;
+    const row = from.row.isConnected ? from.row : rowFor(from.key); // redrawn meanwhile
+    if (!row) return;
+    stopHoverWake();
+    releasePress({ instant: true });
+    const box = row.getBoundingClientRect();
+    const k = hostScale();
+    const at = local(box.left, box.top);
+    const ghost = /** @type {HTMLElement} */ (row.cloneNode(true));
+    ghost.classList.remove('pressed', 'nested', ...MARKS);
+    ghost.classList.add('drag-ghost');
+    ghost.removeAttribute('data-action');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.left = `${at.x}px`;
+    ghost.style.top = `${at.y}px`;
+    ghost.style.width = `${box.width * k}px`;
+    root.append(ghost);
+    dragging = { kind: from.kind, id: from.id, key: from.key, pointerId: from.pointerId, ghost, grabX: (from.x - box.left) * k, grabY: (from.y - box.top) * k, x: event.clientX, y: event.clientY, where: null };
+    root.dataset.dragging = from.kind; // an empty pinned area shows where a tab can go
+    // Its moves and its release come here wherever the pointer goes (and the
+    // click after it lands on the sidebar itself: no row's action).
+    try { root.setPointerCapture(from.pointerId); } catch {}
+    moveDrag(event.clientX, event.clientY);
+  }
+
+  function moveDrag(/** @type {number} */ x, /** @type {number} */ y) {
+    if (!dragging) return;
+    dragging.x = x;
+    dragging.y = y;
+    const at = local(x, y);
+    dragging.ghost.style.transform = `translate(${at.x - dragging.grabX - parseFloat(dragging.ghost.style.left)}px, ${at.y - dragging.grabY - parseFloat(dragging.ghost.style.top)}px)`;
+    const under = /** @type {Element | null} */ (/** @type {Document | ShadowRoot} */ (root.getRootNode()).elementFromPoint(x, y));
+    const where = under && root.contains(under) ? dropTarget({ target: under, clientY: y }) : null;
+    dragging.where = where;
+    clearDrop();
+    if (where?.chip) where.chip.classList.add('drop-target');
+    else if (where?.unpin) tabs.classList.add('drop-unpin');
+    else if (where?.into) where.row.classList.add('drop-into');
+    else if (where?.row) where.row.classList.add(where.side === 'before' ? 'drop-before' : 'drop-after');
+    else if (where) pins.classList.add('drop-end');
+    autoScroll();
+  }
+
+  // Near the top or bottom of the list, it scrolls (faster nearer the edge).
+  let scrolling = 0;
+  function autoScroll() {
+    if (scrolling || !dragging) return;
+    const step = () => {
+      scrolling = 0;
+      if (!dragging) return;
+      const box = tabsSection.getBoundingClientRect();
+      const k = hostScale();
+      const top = (dragging.y - box.top) * k, bottom = (box.bottom - dragging.y) * k;
+      if (top < 0 || bottom < 0 || dragging.x < box.left || dragging.x > box.right) return; // not over the list
+      const speed = top < EDGE_PX ? -(EDGE_PX - top) / 2 : bottom < EDGE_PX ? (EDGE_PX - bottom) / 2 : 0;
+      if (!speed) return;
+      const before = tabsSection.scrollTop;
+      tabsSection.scrollTop += Math.max(-16, Math.min(16, speed));
+      if (tabsSection.scrollTop === before) return;
+      moveDrag(dragging.x, dragging.y);
+      scrolling = requestAnimationFrame(step);
+    };
+    scrolling = requestAnimationFrame(step);
+  }
+
+  function endDrag() {
+    const ended = dragging;
     dragging = null;
     delete root.dataset.dragging;
     clearDrop();
-  };
-  root.addEventListener('dragend', endDrag);
+    if (scrolling) cancelAnimationFrame(scrolling);
+    scrolling = 0;
+    try { if (ended) root.releasePointerCapture(ended.pointerId); } catch {}
+    return ended;
+  }
+  function cancelDrag() {
+    const ended = endDrag();
+    if (ended) glideBack(ended.ghost, ended.key);
+  }
 
   // The ids at a level of the pinned area, in order (null: the top level).
   function levelIds(folderId) {
@@ -1123,69 +1297,183 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   };
   // Where a drop at this point would go: { chip } | { unpin } |
   // { into: folderId, row } | { folderId, beforeId, row, side } (row null:
-  // the end of the top level), or null.
-  function dropTarget(event) {
+  // the end of the top level) | { tab: id, row, side } (between tabs), or null.
+  /** @param {{ target: Element, clientY: number }} point */
+  function dropTarget(point) {
     if (!dragging || !state) return null;
-    const target = /** @type {HTMLElement} */ (event.target);
+    const target = /** @type {HTMLElement} */ (point.target);
     const chip = /** @type {HTMLElement | null} */ (target.closest?.('.chip[data-space-id]'));
-    if (chip) return dragging.kind === 'tab' ? { chip } : null;
-    if (target.closest?.('.tabs') || target === listDivider) return dragging.kind === 'pin' ? { unpin: true } : null;
+    if (chip) return dragging.kind === 'tab' && chip.dataset.spaceId !== lastView?.spaceId ? { chip } : null;
+    if (target.closest?.('.tabs') || target === listDivider) {
+      if (dragging.kind === 'pin') return { unpin: true };
+      if (dragging.kind !== 'tab') return null;
+      // Between tabs: before or after the tab under the pointer (the gap
+      // between rows, or below the last one: the nearest).
+      const rows = /** @type {HTMLElement[]} */ ([...tabs.querySelectorAll(':scope > .tab')]);
+      const row = /** @type {HTMLElement | null} */ (target.closest('.tab')) ?? rows.find((r) => point.clientY <= r.getBoundingClientRect().bottom + 2.5) ?? rows.at(-1) ?? null;
+      if (!row) return null;
+      const box = row.getBoundingClientRect();
+      const side = (point.clientY - box.top) / box.height < 0.5 ? 'before' : 'after';
+      const id = Number(row.dataset.tabId);
+      // Where it is already: nowhere to go.
+      const at = rows.indexOf(row), own = rows.findIndex((r) => Number(r.dataset.tabId) === dragging?.id);
+      if (id === dragging.id || (side === 'before' && at === own + 1) || (side === 'after' && at === own - 1)) return null;
+      return { tab: id, row, side };
+    }
     if (!target.closest?.('.pins-section')) return null;
     let row = /** @type {HTMLElement | null} */ (target.closest('.pin, .folder'));
     // The gap between rows, or a nested row's indent: the row below (so
     // before it); below the last row, the end of the top level.
-    if (!row) row = /** @type {HTMLElement | null} */ ([...pins.children].find((r) => event.clientY <= r.getBoundingClientRect().bottom + 2.5) ?? null);
+    if (!row) row = /** @type {HTMLElement | null} */ ([...pins.children].find((r) => point.clientY <= r.getBoundingClientRect().bottom + 2.5) ?? null);
     if (!row) return { folderId: null, beforeId: null, row: null };
     const box = row.getBoundingClientRect();
-    const y = (event.clientY - box.top) / box.height;
+    const y = (point.clientY - box.top) / box.height;
     if (row.classList.contains('folder')) {
       const folderId = row.dataset.folderId;
       if (dragging.kind === 'folder') {
         if (folderId === dragging.id) return null;
-        if (y < 0.5) return { folderId: null, beforeId: folderId, row, side: 'before' };
+        if (y < 0.5) return stays(null, folderId) ? null : { folderId: null, beforeId: folderId, row, side: 'before' };
         // After an open folder: after its pins (the line under its last one).
         const last = /** @type {HTMLElement | undefined} */ ([...pins.querySelectorAll(`.pin.nested[data-folder-id="${folderId}"]`)].at(-1));
-        return { folderId: null, beforeId: after(null, folderId), row: last ?? row, side: 'after' };
+        const beforeId = after(null, folderId);
+        return stays(null, beforeId) ? null : { folderId: null, beforeId, row: last ?? row, side: 'after' };
       }
       // Its top edge: before it; the rest: into it (Arc).
-      if (y < 0.25) return { folderId: null, beforeId: folderId, row, side: 'before' };
-      return { into: folderId, row };
+      if (y < 0.25) return stays(null, folderId) ? null : { folderId: null, beforeId: folderId, row, side: 'before' };
+      return dragging.kind === 'pin' && levelIds(folderId).includes(String(dragging.id)) ? null : { into: folderId, row };
     }
     const pinId = row.dataset.pinId;
     const level = row.dataset.folderId || null;
     if (dragging.kind === 'folder' && level) return null; // folders stay at the top level
     if (dragging.kind === 'pin' && pinId === dragging.id) return null;
-    return y < 0.5 ? { folderId: level, beforeId: pinId, row, side: 'before' } : { folderId: level, beforeId: after(level, pinId), row, side: 'after' };
+    const place = y < 0.5 ? { folderId: level, beforeId: pinId, row, side: 'before' } : { folderId: level, beforeId: after(level, pinId), row, side: 'after' };
+    return stays(level, place.beforeId) ? null : place;
   }
-  root.addEventListener('dragover', (event) => {
-    const where = dropTarget(event);
-    clearDrop();
-    if (!where) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-    if (where.chip) where.chip.classList.add('drop-target');
-    else if (where.unpin) tabs.classList.add('drop-unpin');
-    else if (where.into) where.row.classList.add('drop-into');
-    else if (where.row) where.row.classList.add(where.side === 'before' ? 'drop-before' : 'drop-after');
-    else pins.classList.add('drop-end');
-  });
-  root.addEventListener('dragleave', (event) => {
-    if (!root.contains(/** @type {Node | null} */ (event.relatedTarget))) clearDrop();
-  });
-  root.addEventListener('drop', (event) => {
-    const where = dropTarget(event);
-    const what = dragging;
-    endDrag();
-    if (!where || !what) return;
-    event.preventDefault();
-    if (where.chip) return send('moveTabToSpace', { tabId: what.id, spaceId: where.chip.dataset.spaceId });
-    if (where.unpin) return send('unpin', { pinId: what.id });
-    const folderId = where.into ?? where.folderId ?? null;
-    const beforeId = where.into ? null : where.beforeId ?? null;
-    if (what.kind === 'tab') return send('pinTab', { tabId: what.id, folderId, beforeId });
-    if (what.kind === 'pin') return send('movePin', { pinId: what.id, folderId, beforeId });
-    return send('moveFolder', { folderId: what.id, beforeId });
-  });
+  // Whether a pin or folder put at this level before `beforeId` stays where it is.
+  function stays(/** @type {string | null} */ level, /** @type {string | null} */ beforeId) {
+    if (!dragging || dragging.kind === 'tab') return false;
+    const ids = levelIds(level);
+    const at = ids.indexOf(String(dragging.id));
+    return at >= 0 && (ids[at + 1] ?? null) === (beforeId ?? null);
+  }
+
+  function drop(/** @type {number} */ x, /** @type {number} */ y) {
+    moveDrag(x, y);
+    // Where everything was, as it's shown now (the empty pinned area's box
+    // too: it stays until the pin is in it): the rows slide from there.
+    const before = new Map(allRows().map((row) => [keyOf(row), row.getBoundingClientRect()]));
+    if (dragging?.kind === 'tab' && dragging.where && !dragging.where.chip && !dragging.where.unpin && dragging.where.tab == null) root.dataset.landing = 'tab';
+    const what = endDrag();
+    if (!what) return;
+    const where = what.where;
+    if (!where) return glideBack(what.ghost, what.key);
+    /** @type {string | null} */ let key = what.key;
+    let newPin = null;
+    if (where.chip) {
+      send('moveTabToSpace', { tabId: Number(what.id), spaceId: where.chip.dataset.spaceId });
+      return fadeOut(what.ghost); // into another space: not in this list any more
+    }
+    if (where.unpin) {
+      const tabId = lastView?.pinned.flatMap((item) => (item.kind === 'folder' ? item.pins : [item])).find((p) => p.id === what.id)?.tabId;
+      send('unpin', { pinId: String(what.id) });
+      if (tabId == null) return fadeOut(what.ghost); // not open: gone
+      key = `tab:${tabId}`;
+    } else if (where.tab != null) {
+      const near = state?.tabs?.[where.tab];
+      const moving = send('moveTab', { tabId: Number(what.id), nextTo: where.tab, side: where.side, ...(near ? { nextToHint: { url: near.url, index: near.index, title: near.title, from: /** @type {any} */ (state)?.openTabsBy ?? null } } : {}) });
+      // Not moved (the browser can't, or keeps that tab apart): back at once.
+      void moving.then((moved) => { if (moved !== true && landing?.ghost === what.ghost) giveUpLanding(); });
+    } else {
+      const folderId = where.into ?? where.folderId ?? null;
+      const beforeId = where.into ? null : where.beforeId ?? null;
+      if (what.kind === 'tab') {
+        send('pinTab', { tabId: Number(what.id), folderId, beforeId });
+        key = null; // the new pin's: the one that wasn't there before
+        newPin = new Set(allRows().filter((row) => row.classList.contains('pin')).map((row) => row.dataset.pinId));
+      } else if (what.kind === 'pin') {
+        send('movePin', { pinId: String(what.id), folderId, beforeId });
+        // Into a closed folder it isn't shown in (not the tab in front): in, out of sight.
+        const shut = where.into && lastView?.pinned.find((item) => item.id === where.into && item.kind === 'folder' && !item.open);
+        if (shut && !rowFor(what.key)?.classList.contains('active')) return fadeOut(what.ghost);
+      }
+      else send('moveFolder', { folderId: String(what.id), beforeId });
+    }
+    landing = { ghost: what.ghost, key, newPin, before, from: what.key, timer: setTimeout(() => giveUpLanding(), LAND_WAIT_MS) };
+  }
+
+  // Each redraw (sidebar draw()): a dropped row's new place, once the list has it.
+  function land() {
+    if (!landing) return;
+    let row = landing.key ? rowFor(landing.key) : null;
+    if (!landing.key && landing.newPin) {
+      row = /** @type {HTMLElement | null} */ ([...pins.querySelectorAll('.pin')].find((r) => !landing?.newPin?.has(/** @type {HTMLElement} */ (r).dataset.pinId)) ?? null);
+    }
+    if (!row) return; // not in the list yet (or not any more: given up on later)
+    const was = landing.before.get(landing.key ?? '');
+    const now = row.getBoundingClientRect();
+    if (was && landing.key === landing.from && Math.abs(was.top - now.top) < 0.5) {
+      // Still where it was: wait for the order to change (an unrelated redraw).
+      const rows = allRows();
+      const order = (/** @type {string[]} */ keys) => keys.join(' ');
+      if (order(rows.map((r) => keyOf(r) ?? '')) === order([...landing.before.keys()])) return;
+    }
+    const { ghost, before } = landing;
+    clearTimeout(landing.timer);
+    landing = null;
+    delete root.dataset.landing;
+    // The rows around it, from where they were to where they are now.
+    const k = hostScale();
+    for (const other of allRows()) {
+      if (other === row) continue;
+      const from = before.get(keyOf(other) ?? '');
+      if (!from) continue;
+      const dy = (from.top - other.getBoundingClientRect().top) * k;
+      if (Math.abs(dy) > 0.5) other.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: SLIDE_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+    }
+    glideTo(ghost, row);
+  }
+  function giveUpLanding() {
+    if (!landing) return;
+    const { ghost, from } = landing;
+    clearTimeout(landing.timer);
+    landing = null;
+    delete root.dataset.landing;
+    glideBack(ghost, from);
+  }
+  // The copy into a row's place, the row shown once it's there.
+  function glideTo(/** @type {HTMLElement} */ ghost, /** @type {HTMLElement} */ row) {
+    const k = hostScale();
+    const g = ghost.getBoundingClientRect(), r = row.getBoundingClientRect();
+    // Scrolled out of the list's view: it fades where it is (no flight over the bars).
+    const list = tabsSection.getBoundingClientRect();
+    if (tabsSection.contains(row) && (r.bottom < list.top || r.top > list.bottom)) return fadeOut(ghost);
+    const dx = (r.left - g.left) * k, dy = (r.top - g.top) * k;
+    const start = ghost.style.transform || 'none';
+    const key = keyOf(row);
+    if (key) gliding.add(key);
+    row.classList.add('landing');
+    const done = () => {
+      ghost.remove();
+      if (key) gliding.delete(key);
+      // The row may have been drawn again meanwhile: the one there now.
+      (key ? rowFor(key) : row)?.classList.remove('landing');
+      row.classList.remove('landing');
+    };
+    const end = `${start === 'none' ? '' : start} translate(${dx}px, ${dy}px)`.trim();
+    const glide = ghost.animate([{ transform: start, opacity: 0.9 }, { transform: end, opacity: 1 }], { duration: GLIDE_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' });
+    glide.onfinish = glide.oncancel = done;
+  }
+  function glideBack(/** @type {HTMLElement} */ ghost, /** @type {string} */ key) {
+    const row = rowFor(key);
+    if (row) glideTo(ghost, row);
+    else fadeOut(ghost);
+  }
+  function fadeOut(/** @type {HTMLElement} */ ghost) {
+    const start = ghost.style.transform || 'none';
+    delete root.dataset.landing;
+    const fade = ghost.animate([{ transform: start, opacity: 0.9 }, { transform: `${start === 'none' ? '' : start} scale(0.9)`.trim(), opacity: 0 }], { duration: 180, easing: 'ease-out', fill: 'forwards' });
+    fade.onfinish = fade.oncancel = () => ghost.remove();
+  }
 
   return {
     el: root,

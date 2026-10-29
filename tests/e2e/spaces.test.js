@@ -64,7 +64,7 @@ test('right-click opens the editor; delete needs two clicks and moves tabs to th
   await page.close();
 });
 
-test('drag a tab onto a space chip moves it there; the sidebar follows', async () => {
+test('a tab moved to another space with its menu leaves this one; the sidebar follows', async () => {
   const res = await nt.evaluate(() => chrome.runtime.sendMessage({ type: 'createSpace', name: 'Fun', emoji: '🎈' }));
   const fun = res.result.spaceId;
   const page = await ctx.context.newPage();
@@ -72,14 +72,11 @@ test('drag a tab onto a space chip moves it there; the sidebar follows', async (
   await nt.bringToFront();
   const row = nt.locator('#sidebar .tab', { hasText: 'drag-me' });
   await row.waitFor();
-  // The drag events alone: a mouse press on a tab that isn't in front
-  // switches to it and starts no drag (sidebar.js "a press switches").
-  const chip = nt.locator(`#sidebar .chip[data-space-id="${fun}"]`);
-  const dataTransfer = await nt.evaluateHandle(() => new DataTransfer());
-  await row.dispatchEvent('dragstart', { dataTransfer });
-  await chip.dispatchEvent('dragover', { dataTransfer });
-  await chip.dispatchEvent('drop', { dataTransfer });
-  await row.dispatchEvent('dragend', { dataTransfer });
+  // Dragging a tab (sidebar.js, pointer events) needs the tab in front: its
+  // own page's sidebar, a closed shadow root here; the WebKit host's
+  // `dragtab` scenario covers the drag itself.
+  await row.click({ button: 'right' });
+  await nt.locator('#sidebar .tab-menu .menu-item', { hasText: 'Fun' }).click();
   await waitFor(async () => (await nt.locator('#sidebar .tab', { hasText: 'drag-me' }).count()) === 0);
   const tabs = await storage('tabs');
   const id = Object.values(tabs).find((t) => t.title === 'drag-me').id;

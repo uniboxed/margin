@@ -19,9 +19,11 @@
 //                              the nth show of the tab from now on (empty: WebKit's empty view)
 //   { op: 'checkProbe', name, maxMs, label }  that show had its content within maxMs
 //   { op: 'showProbe', name }  show a tab and log the same, with how long the show took
-//   { op: 'mouse', in, type: 'down' | 'up', at?, mods? }  a real press or release of the mouse's main
-//                              button; `at`: JavaScript (Margin's content world) returning [x, y]
-//                              (the press's point for a release); a release goes where the press did
+//   { op: 'mouse', in, type: 'down' | 'drag' | 'up', at?, mods?, steps? }  a real press, drag or
+//                              release of the mouse's main button; `at`: JavaScript (Margin's content
+//                              world) returning [x, y] (the last point if left out); a drag moves there
+//                              from the last point in `steps` moves (12) a frame apart; a drag and a
+//                              release go where the press did
 //   { op: 'deferLoads' }       from now on, a tab asleep loads only if it's still the one shown
 //                              once the run loop turn is over (Safari putting its load off); its
 //                              view is made as it's selected all the same (no page: a script there
@@ -274,6 +276,23 @@ export const SCENARIOS = {
     { op: 'mouse', in: 'B', type: 'down', mods: ['control'], at: rowAt('C') }, wait(300),
     check('B', 'B: a ⌃-press switches nowhere (it\'s the menu)', `(document.querySelector('margin-sidebar-host').dataset.switchingTo ?? '') === '' && !document.hidden`),
     { op: 'mouse', in: 'B', type: 'up' },
+  ],
+  // A tab dragged in the sidebar (Arc): the row stays and a copy follows the
+  // pointer, a line shows where it goes; let go, the copy glides into the
+  // row's new place and Safari's tab order follows (tabs.move). The list
+  // shows the newest tab at the top: A (in front, at the bottom) to above C.
+  dragtab: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(500),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(300),
+    check('A', 'A: the tabs listed C, B, A', `${ID} return JSON.stringify([...__shadowOf(document.querySelector('margin-sidebar-host')).querySelectorAll('.tabs > .tab')].map((r) => Number(r.dataset.tabId))) === JSON.stringify([id('C'), id('B'), id('A')])`),
+    { op: 'mouse', in: 'A', type: 'down', at: rowAt('A') },
+    check('A', 'A: its row shrinks as it\'s pressed', `${ID} return __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + id('A') + '"]').classList.contains('pressed')`, 500),
+    { op: 'mouse', in: 'A', type: 'drag', at: `${ID} const r = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + id('C') + '"]').getBoundingClientRect(); return [r.left + 40, r.top + r.height * 0.2]` },
+    check('A', 'A: a copy follows the pointer, the row stays, a line above C', `${ID} const root = __shadowOf(document.querySelector('margin-sidebar-host')); return !!root.querySelector('.drag-ghost') && root.querySelectorAll('.tabs > .tab:not(.drag-ghost)').length === 3 && root.querySelector('.tab[data-tab-id="' + id('C') + '"]').classList.contains('drop-before')`, 1000),
+    { op: 'mouse', in: 'A', type: 'up' },
+    check('A', 'A: Safari\'s order follows (A last), the list shows A at the top', `${ID} const s = await ${STATE}(['tabs']); const root = __shadowOf(document.querySelector('margin-sidebar-host')); return s.tabs[id('A')].index > s.tabs[id('C')].index && Number(root.querySelector('.tabs > .tab').dataset.tabId) === id('A')`, 2000),
+    check('A', 'A: the copy glided into place and is gone, the row shown', `${ID} const root = __shadowOf(document.querySelector('margin-sidebar-host')); return !root.querySelector('.drag-ghost') && !root.querySelector('.landing')`, 1500),
+    check('A', 'A: still in front (a drag isn\'t a switch)', `!document.hidden`),
   ],
   // Another unloaded tab asked for while the first still loads behind: that
   // one is restored too (the first's turn in the window is over), then
