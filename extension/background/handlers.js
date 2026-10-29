@@ -7,10 +7,10 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, markMarginOpening, openTab, openedByMargin, openedFrom, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, markMarginOpening, openBehind, openTab, openedByMargin, openedFrom, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
-import { ownSearchTabs, OWN_SEARCH_MS } from './search-engine.js';
+import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
@@ -394,31 +394,42 @@ export const handlers = {
     await api.tabs.setZoom(sender.tab.id, zoom);
     rememberZoom(sender.tab, sender.url ?? sender.tab.url, zoom);
   },
-  // Search with the browser's engine: in `tabId`, else in a new tab.
-  /** @param {{ query: string, windowId?: number, tabId?: number }} message */
-  async search({ query, windowId, tabId }) {
+  // Search with the browser's engine: in `tabId`, else in a new tab (from a
+  // page: behind it until the results have loaded, tabs.js openBehind).
+  /** @param {{ query: string, windowId?: number, tabId?: number, deadline?: number }} message */
+  async search({ query, windowId, tabId, deadline }, sender) {
     const text = String(query ?? '').trim();
     if (!text) return;
+    const from = sender?.tab?.id != null ? sender.tab : null;
     if (platform?.search === 'browser' && api.search?.query) {
-      await (tabId != null ? api.search.query({ text, tabId }) : api.search.query({ text, disposition: 'NEW_TAB' }));
-      return;
+      if (tabId != null) return void (await api.search.query({ text, tabId }));
+      if (from) return openBehind({ windowId, from, deadline, label: text, then: (tab) => api.search.query({ text, tabId: tab.id }) });
+      return void (await api.search.query({ text, disposition: 'NEW_TAB' }));
     }
     const { settings } = await load();
     const url = S.searchUrl(text, settings);
     const own = { at: now(), template: S.safariEngine(settings).template };
+    for (const map of [ownSearchTabs, ownSearchUrls]) for (const [key, entry] of map) if (now() - entry.at > OWN_SEARCH_MS) map.delete(key);
     if (tabId != null) {
       ownSearchTabs.set(tabId, own);
-      await api.tabs.update(tabId, { url });
-    } else {
-      // Mark the tab before it navigates: create it blank, then load the search.
-      const tab = await openTab({ windowId, url: 'about:blank' });
-      ownSearchTabs.set(tab.id, own);
-      await api.tabs.update(tab.id, { url });
+      return void (await api.tabs.update(tabId, { url }));
     }
-    for (const [id, entry] of ownSearchTabs) if (now() - entry.at > OWN_SEARCH_MS) ownSearchTabs.delete(id);
+    // From a page: opened at the search's address (its row says so from the
+    // start), known as Margin's own by that address until it has an id.
+    if (from) {
+      ownSearchUrls.set(url, own);
+      return openBehind({ windowId, url, from, deadline, created: (tab) => ownSearchTabs.set(tab.id, own) });
+    }
+    // Else marked before it navigates: created blank, then the search loads.
+    const tab = await openTab({ windowId, url: 'about:blank' });
+    ownSearchTabs.set(tab.id, own);
+    await api.tabs.update(tab.id, { url });
   },
-  /** @param {{ windowId?: number, url?: string, spaceId?: string }} message */
-  async newTab({ windowId, url, spaceId }) {
+  // An address from a page (the palette): behind it until loaded (tabs.js
+  // openBehind). Margin's new-tab page, or a space's start page, at once.
+  /** @param {{ windowId?: number, url?: string, spaceId?: string, deadline?: number }} message */
+  async newTab({ windowId, url, spaceId, deadline }, sender) {
+    if (url && !spaceId && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
     const tab = await openTab({ windowId, url, spaceId });
     return { tabId: tab.id };
   },

@@ -3,6 +3,7 @@
 // createPalette({ send, getState, getContext, onLocal, colorScheme }) →
 // { open, close, toggle, isOpen, refresh }; see themes/arcadium/palette.js.
 import * as V from '../shared/view.js';
+import { NEW_TAB, opensNewTab } from '../shared/switching.js';
 import { platform } from '../shared/platform.js';
 
 // ⌘T, the palette's key (⌥K before it). The browser keeps it for its own
@@ -55,13 +56,15 @@ export function newTabCloser(setPending, doc = document) {
 }
 
 // A palette's send that also reports switches to another tab (choosing a tab,
-// or a pin that has one open): `onSwitch(tabId, request)` highlights it at
-// once (shared/switching.js).
+// or a pin that has one open; an address or a search, in a new tab:
+// `NEW_TAB`): `onSwitch(tabId, request)` highlights it at once
+// (shared/switching.js).
 export function reportingSwitches(send, getState, onSwitch) {
   return (/** @type {any} */ type, /** @type {any} */ payload) => {
     const request = send(type, payload);
     const tabId = type === 'activateTab' ? payload?.tabId
-      : type === 'openPin' && getState() ? V.pinTabId(getState(), payload?.pinId, payload?.windowId) : null;
+      : type === 'openPin' && getState() ? V.pinTabId(getState(), payload?.pinId, payload?.windowId)
+      : opensNewTab(type, payload) ? NEW_TAB : null;
     if (Number.isInteger(tabId)) onSwitch(tabId, request);
     return request;
   };
@@ -89,14 +92,19 @@ export function wirePalette(c, createPalette) {
   // `newTab`: opened to choose a new tab (⌘T, handed here from the new-tab
   // page by the background; the sidebar's "+ New Tab"): the page stays, the
   // sidebar highlights "+ New Tab" instead of this tab until it closes.
+  // A switch still under way from this page is called off: choosing again
+  // means staying here meanwhile (content/core.js cancelSwitch).
   const open = ({ newTab = false } = {}) => {
+    c.cancelSwitch?.();
     closer.cancel();
     c.setNewTabPending?.(newTab);
     palette.open();
   };
   c.onCommand = (command) => {
     if (!ready()) return;
-    if (command === 'open-palette') palette.toggle();
+    if (command !== 'open-palette') return;
+    if (!palette.isOpen()) c.cancelSwitch?.();
+    palette.toggle();
   };
   c.openPalette = (options) => ready() && open(options);
   // ⌘T (installNewTabKey): the palette for a new tab; while Margin is out of

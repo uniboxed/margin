@@ -14,6 +14,7 @@ const fake = {
   scripts: [],
   updates: [],
   messages: [],
+  created: [],
   session: {},
   local: {},
   reply: true, // what a page answers: true once it showed the note
@@ -37,6 +38,14 @@ globalThis.chrome = {
       return { ...tab };
     },
     query: async () => [...fake.tabs.values()],
+    // A new tab, still loading (a test says when it's loaded).
+    create: async ({ windowId = 1, url, active = true }) => {
+      const id = Math.max(0, ...fake.tabs.keys()) + 1;
+      fake.created.push({ id, url, active });
+      fake.tabs.set(id, { id, windowId, url, status: 'loading', active: false });
+      if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = t.id === id;
+      return { ...fake.tabs.get(id) };
+    },
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return fake.reply; },
   },
   scripting: {
@@ -60,7 +69,7 @@ globalThis.chrome = {
   },
 };
 
-const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake, resolveTab, userSwitched } = await import('../extension/background/tabs.js');
+const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake, openBehind, resolveTab, userSwitched } = await import('../extension/background/tabs.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided } = await import('../extension/background/store.js');
 
@@ -71,6 +80,7 @@ function reset(tabs) {
   fake.scripts = [];
   fake.updates = [];
   fake.messages = [];
+  fake.created = [];
 }
 
 test('wake: a running page answers at once and the switch goes ahead then', async () => {
@@ -421,4 +431,136 @@ test('homepage note: not for tabs Margin opened itself', async () => {
   await homepageTab(60, 'https://own.test/');
   await homepageTab(61, 'https://own.test/');
   assert.equal(fake.messages.length, 0);
+});
+
+// ---- a new tab from the palette, shown once loaded (tabs.js openBehind) ----------
+
+const told = (type) => fake.messages.filter((m) => m.message?.type === type);
+const front = () => [...fake.tabs.values()].find((t) => t.active)?.id;
+
+test('openBehind: the tab opens behind the page, which is told at once (covered); it comes to the front once loaded', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const from = { id: 1, windowId: 1 };
+  const shown = openBehind({ url: 'https://slow.test/', from });
+  await sleep(150);
+  assert.deepEqual(fake.created, [{ id: 2, url: 'https://slow.test/', active: false }], 'opened behind');
+  assert.equal(front(), 1, 'the page stays in front while it loads');
+  assert.deepEqual(told('switching').map((m) => [m.tabId, m.message.tabId, m.message.cover, m.message.windowId]), [[1, 2, 'now', 1]]);
+  fake.tabs.get(2).status = 'complete';
+  assert.deepEqual(await shown, { tabId: 2, shown: 2 });
+  assert.equal(front(), 2);
+  assert.equal(told('switch-done').length, 1);
+  assert.equal(told('switch-failed').length, 0);
+});
+
+test('openBehind: the user going elsewhere meanwhile leaves it behind, loaded', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 3, url: 'https://c.test/' }]);
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+  await sleep(150);
+  userSwitched(3, 1); // Safari's tab bar, say (background.js onActivated)
+  fake.tabs.get(4).status = 'complete';
+  assert.deepEqual(await shown, { tabId: 4, shown: null });
+  assert.equal(front(), 1, 'not brought to the front');
+  assert.equal(told('switch-failed').length, 1, 'the page stops waiting');
+  assert.equal(told('switch-failed')[0].message.reason, undefined, 'no notice: nothing went wrong');
+});
+
+test('openBehind: closed while it loads: nothing comes to the front', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+  await sleep(150);
+  fake.tabs.delete(2);
+  assert.deepEqual(await shown, { tabId: 2, shown: null });
+  assert.equal(front(), 1);
+  assert.equal(told('switch-failed').length, 1);
+});
+
+test('openBehind: a page that never finishes loading still comes up after the limit, as far as it got', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const started = Date.now();
+  assert.deepEqual(await openBehind({ url: 'https://endless.test/', from: { id: 1, windowId: 1 }, maxMs: 400 }), { tabId: 2, shown: 2 });
+  assert.ok(Date.now() - started >= 400, 'it waited for the limit');
+  assert.equal(front(), 2);
+});
+
+test('openBehind: a search starting from a blank page waits for the search, not the blank page', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const shown = openBehind({ from: { id: 1, windowId: 1 }, then: async (tab) => {
+    fake.tabs.get(tab.id).status = 'complete'; // about:blank, loaded
+    await sleep(250);
+    Object.assign(fake.tabs.get(tab.id), { url: 'https://search.test/?q=x', status: 'loading' });
+  } });
+  const started = Date.now();
+  await sleep(350); // the search under way
+  assert.equal(front(), 1, 'not for the blank page');
+  fake.tabs.get(2).status = 'complete';
+  assert.deepEqual(await shown, { tabId: 2, shown: 2 });
+  assert.ok(Date.now() - started < 1000, 'once the search loaded, not at the limit');
+});
+
+test('openBehind: a switch in another window doesn\'t call it off', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 5, url: 'https://e.test/', windowId: 9, active: true }, { id: 6, url: 'https://f.test/', windowId: 9 }]);
+  fake.scriptDelay = () => 1;
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+  await sleep(150);
+  userSwitched(6, 9);
+  fake.tabs.get(7).status = 'complete';
+  assert.deepEqual(await shown, { tabId: 7, shown: 7 });
+});
+
+test('openBehind: the page the user is on going somewhere else meanwhile calls it off', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+  await sleep(150);
+  fake.tabs.get(1).status = 'loading'; // a link, the address bar, ⌘R
+  assert.deepEqual(await shown, { tabId: 2, shown: null });
+  assert.equal(front(), 1);
+  assert.equal(told('switch-failed').length, 1);
+});
+
+test('openBehind: its own row clicked meanwhile: that switch brings it, the page isn\'t told it failed', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+  await sleep(150);
+  const clicked = focusTab(2, { source: 'activateTab' });
+  assert.deepEqual(await shown, { tabId: 2, shown: null });
+  await clicked;
+  assert.equal(front(), 2);
+  assert.equal(told('switch-failed').length, 0, 'the cover stays until the page is hidden');
+});
+
+test('openBehind: within the page\'s deadline (the wait shortened to leave time to bring it forward)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const started = Date.now();
+  assert.deepEqual(await openBehind({ url: 'https://endless.test/', from: { id: 1, windowId: 1 }, deadline: Date.now() + 2900 }), { tabId: 2, shown: 2 });
+  assert.ok(Date.now() - started < 1000, 'waited only until deadline − the time to bring it forward');
+});
+
+test('openBehind: without site access (no address from Safari) it counts as loaded once seen loading, then complete', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const shown = openBehind({ url: 'https://private.test/', from: { id: 1, windowId: 1 } });
+  await sleep(150);
+  Object.assign(fake.tabs.get(2), { url: undefined, status: 'complete' });
+  const started = Date.now();
+  assert.deepEqual(await shown, { tabId: 2, shown: 2 });
+  assert.ok(Date.now() - started < 1000, 'not the full limit');
+});
+
+test('openBehind: told the tab at once (created), its row titled meanwhile (label)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  let createdId = null;
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 }, created: (tab) => { createdId = tab.id; }, label: 'two words' });
+  await sleep(150);
+  assert.equal(createdId, 2);
+  const { load } = await import('../extension/background/store.js');
+  assert.equal((await load()).tabs[2]?.title, 'two words');
+  fake.tabs.get(2).status = 'complete';
+  await shown;
 });

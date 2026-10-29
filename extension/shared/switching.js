@@ -12,6 +12,15 @@
 // going back; and at the latest after MAX_MS, longer than a switch request
 // waits for its answer (content/core.js), or UNASKED_MAX_MS for one that
 // came without a request. Used by content/core.js and the new-tab page.
+// A switch to a new tab the background is opening (an address or a search
+// chosen in the palette: background/tabs.js openBehind): the page is covered
+// at once, before the tab exists; its id comes with the background's
+// 'switching', which takes over.
+export const NEW_TAB = -1;
+// Whether a palette request opens such a tab: an address in a new tab, or a
+// search not in this tab.
+export const opensNewTab = (/** @type {string} */ type, /** @type {any} */ payload) =>
+  (type === 'newTab' && !!payload?.url) || (type === 'search' && payload?.tabId == null);
 const SLOW_MS = 150;
 const GRACE_MS = 300;
 const MAX_MS = 8000;

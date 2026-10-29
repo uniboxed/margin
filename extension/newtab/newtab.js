@@ -16,12 +16,18 @@ const api = globalThis.browser ?? globalThis.chrome;
  */
 // Never waited on forever (as on web pages, content/core.js send): a request
 // with no answer in SEND_TIMEOUT_MS resolves to nothing, as a failed one does.
+// A new tab from the palette answers once it's in front, after its page has
+// loaded (background/tabs.js openBehind): longer.
 const SEND_TIMEOUT_MS = 8000;
+const LOADING_TIMEOUT_MS = 12000;
 async function send(type, payload = {}) {
   let timer;
+  const loading = type === 'newTab' || type === 'search';
+  const waitMs = loading ? LOADING_TIMEOUT_MS : SEND_TIMEOUT_MS;
+  // When this page stops waiting: the background doesn't switch after it.
   const res = await Promise.race([
-    api.runtime.sendMessage({ type, ...payload }),
-    new Promise((resolve) => { timer = setTimeout(() => resolve(null), SEND_TIMEOUT_MS); }),
+    api.runtime.sendMessage({ type, ...(loading && !payload?.deadline ? { deadline: Date.now() + waitMs } : {}), ...payload }),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(null), waitMs); }),
   ]).finally(() => clearTimeout(timer));
   if (res && !res.ok) console.warn('[margin]', type, res.error);
   return res?.result;

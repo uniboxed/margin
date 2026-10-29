@@ -235,6 +235,45 @@ export const SCENARIOS = {
     checkPage('S', 'S: covered while it loads', `document.querySelector('margin-sidebar-host')?.dataset.loadingCover === 'true' && document.readyState !== 'complete'`, 1500),
     checkPage('S', 'S: shown once loaded', `document.readyState === 'complete' && document.querySelector('margin-sidebar-host')?.dataset.loadingCover === 'false'`, 3000),
   ],
+  // An address chosen in the palette (⌘T): the tab opens behind the page,
+  // whose sidebar has its row highlighted and which stays covered while it
+  // loads (a slow page: 1.5s), then comes to the front; or stays behind if the
+  // user picks their own tab meanwhile, or presses Escape (keys typed
+  // meanwhile don't reach the page). Three scenarios: in this host Margin's
+  // background stops answering about 5 s after it starts (README.md).
+  behind: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),
+    // As the palette asks (content/palette.js reportingSwitches): covered at once.
+    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/S2' }); Margin.content.startSwitching(-1, request); const h = document.querySelector('margin-sidebar-host'); return h.dataset.switchingTo + ' ' + h.dataset.switchCover` },
+    check('A', 'A stays in front, covered, its sidebar on the new tab, while the page loads',
+      `const s = await ${STATE}(['tabs']); const t = Object.values(s.tabs).find((x) => x.url.includes('/p/S2')); const host = document.querySelector('margin-sidebar-host'); return !document.hidden && !!t && !t.active && host.dataset.switchingTo === String(t.id) && host.dataset.switchCover === 'true'`, 1500),
+    checkPage('new1', 'the new tab loads behind, hidden', `document.hidden`),
+    checkPage('new1', 'then comes to the front, loaded', `!document.hidden && document.readyState === 'complete'`, 4000),
+    checkPage('A', 'A is behind', `document.hidden`),
+  ],
+  behindleft: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),
+    { op: 'eval', in: 'A', js: `void Margin.content.send('newTab', { url: location.origin + '/p/S3' }); return 'asked'` },
+    wait(400),
+    { op: 'eval', in: 'A', js: `${ID} return JSON.stringify(await Margin.content.send('activateTab', { tabId: id('A') }))` },
+    wait(1800),
+    checkPage('A', 'picking its own tab meanwhile: A stays', `!document.hidden`),
+    checkPage('new1', 'and the new tab stays behind, loaded', `document.hidden && document.readyState === 'complete'`),
+    check('A', 'with its row in the sidebar, not highlighted, uncovered', `const s = await ${STATE}(['tabs']); const t = Object.values(s.tabs).find((x) => x.url.includes('/p/S3')); const h = document.querySelector('margin-sidebar-host'); return !!t && !t.active && h.dataset.switchingTo === '' && h.dataset.switchCover !== 'true'`),
+  ],
+  behindkeys: [
+    { op: 'open', name: 'F', url: '/p/F1', active: true }, wait(800), { op: 'install' }, drawn('F'), wait(600),
+    { op: 'page', in: 'F', js: `document.querySelector('textarea').focus(); return document.activeElement.localName` },
+    { op: 'eval', in: 'F', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/S4' }); Margin.content.startSwitching(-1, request); return 'asked'` },
+    wait(300),
+    { op: 'key', in: 'F', chars: 'x', keyCode: 7 },
+    checkPage('F', 'keys typed while covered don\'t reach the page', `document.querySelector('textarea').value === ''`),
+    { op: 'key', in: 'F', chars: String.fromCharCode(27), keyCode: 53 },
+    check('F', 'Escape calls it off: uncovered', `document.querySelector('margin-sidebar-host').dataset.switchCover === 'false'`, 1000),
+    wait(1800),
+    checkPage('F', 'and F stays', `!document.hidden`),
+    checkPage('new1', 'the new tab stays behind', `document.hidden`),
+  ],
   // Settings' shortcut recorder on the start page takes real key presses.
   recorder: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, wait(1500),

@@ -9,11 +9,23 @@ import { mutate, now } from './store.js';
 // Margin's current engine: a search in a tab Margin just searched in, with
 // that same engine, isn't learned from. A different engine there is Safari's
 // (the user searched from the address bar) and is.
+// A new tab Margin opens at its search's address (background/tabs.js
+// openBehind) has no id before it exists: that search is known by its address.
 export const OWN_SEARCH_MS = 30000;
 export const ownSearchTabs = new Map(); // tabId → { at, template }
-function isOwnSearch(tabId, found) {
-  const own = ownSearchTabs.get(tabId);
-  return !!own && now() - own.at < OWN_SEARCH_MS && own.template === found.template;
+export const ownSearchUrls = new Map(); // address → { at, template }
+const sameAddress = (a, b) => {
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+};
+function isOwnSearch(tabId, found, urls) {
+  const fresh = (own) => !!own && now() - own.at < OWN_SEARCH_MS && own.template === found.template;
+  if (tabId != null && fresh(ownSearchTabs.get(tabId))) return true;
+  for (const [url, own] of ownSearchUrls) if (fresh(own) && urls.some((u) => sameAddress(u, url))) return true;
+  return false;
 }
 /** @param {string[]} urls @param {{ tabId?: number }} [options] */
 export function learnSearchEngine(urls, { tabId } = {}) {
@@ -26,7 +38,7 @@ export function learnSearchEngine(urls, { tabId } = {}) {
     if (engine) console.debug(`[margin] ${engine} search not from Safari's address bar (no Safari parameters), not learned:`, urls.find(S.searchEngineOf));
     return;
   }
-  if (tabId != null && isOwnSearch(tabId, found)) return;
+  if (isOwnSearch(tabId, found, urls)) return;
   return mutate((s) => (s.settings.safariSearch?.template === found.template
     ? s
     : { ...s, settings: { ...s.settings, safariSearch: { ...found, at: now() } } }));

@@ -90,6 +90,22 @@ let pageRecorder = """
   func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
     log("delegate: activate \(name) (asleep=\(webView == nil))"); window?.show(self); completionHandler(nil)
   }
+  // tabs.update with an address.
+  func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+    log("delegate: load \(name) \(url.absoluteString)"); self.url = url
+    if webView == nil { makeWebView() } else { webView!.load(URLRequest(url: url)) }
+    completionHandler(nil)
+  }
+  // tabs.remove.
+  func close(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
+    log("delegate: close \(name)")
+    guard let window else { return completionHandler(nil) }
+    window.tabs.removeAll { $0 === self }
+    if window.active === self { window.active = nil; if let next = window.tabs.last { window.show(next) } }
+    webView?.removeFromSuperview(); webView = nil; loadingObs = []
+    host.controllers.forEach { $0.didCloseTab(self, windowIsClosing: false) }
+    completionHandler(nil)
+  }
   func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
     log("delegate: reload \(name) (asleep=\(webView == nil), shown=\(window?.active === self))")
     if webView == nil { makeWebView() } else { webView!.reload() }
@@ -147,6 +163,19 @@ let pageRecorder = """
   override init() { super.init(); controller.delegate = self }
   func webExtensionController(_ c: WKWebExtensionController, openWindowsFor x: WKWebExtensionContext) -> [any WKWebExtensionWindow] { [window] }
   func webExtensionController(_ c: WKWebExtensionController, focusedWindowFor x: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { window }
+  // tabs.create: a tab at the end of the window, named new1, new2, … (in front only if asked).
+  var openedForMargin = 0
+  func webExtensionController(_ c: WKWebExtensionController, openNewTabUsing cfg: WKWebExtension.TabConfiguration, for x: WKWebExtensionContext, completionHandler: @escaping ((any WKWebExtensionTab)?, (any Error)?) -> Void) {
+    openedForMargin += 1
+    let t = Tab(name: "new\(openedForMargin)", url: cfg.url ?? URL(string: "about:blank")!)
+    t.window = window
+    window.tabs.append(t)
+    t.makeWebView()
+    controllers.forEach { $0.didOpenTab(t) } // WebKit doesn't tell the extension (tabs.onCreated) by itself
+    if cfg.shouldBeActive { window.show(t) }
+    log("opened \(t.name) for Margin, \(cfg.shouldBeActive ? "in front" : "behind"): \(t.url.absoluteString)")
+    completionHandler(t, nil)
+  }
   func webExtensionController(_ c: WKWebExtensionController, promptForPermissions p: Set<WKWebExtension.Permission>, in tab: (any WKWebExtensionTab)?, for x: WKWebExtensionContext, completionHandler: @escaping (Set<WKWebExtension.Permission>, Date?) -> Void) {
     log("PROMPT permissions \(p)"); completionHandler(p, nil)
   }

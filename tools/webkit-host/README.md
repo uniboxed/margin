@@ -34,5 +34,6 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 ## Limits
 
 - It isn't Safari. Everything around the engine is this program's: tabs, the window, sleeping tabs, launching and relaunching. That's where it can differ from Safari (it once loaded a hidden tab on `tabs.reload`, which Safari never does), so confirm tab and window behavior in Safari's own log (`/usr/bin/log show`, passively) or in Safari itself.
+- Margin's background (a service worker) stops about 5 s after it starts, whatever the build, and nothing starts it again: every message after that gets an empty answer (`browser.runtime.sendMessage` resolves to undefined at once). Neither page messages nor tab events keep it running, and `loadBackgroundContent` takes it as still loaded. Safari keeps it running while it's needed and wakes it for a message. So a scenario does what needs the background within about 4 s of `install` (or splits into several scenarios); a step later than that fails, at random near the edge. To check, send 30 × `getZoom` from a page and look for `undefined`.
 - No real trackpad: gestures, pinch zoom and pull-to-refresh aren't covered here.
 - The engine is the one in the installed macOS, which may be newer or older than a user's Safari.

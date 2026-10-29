@@ -1,7 +1,7 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load, mutate, now } from './store.js';
-import { activating, focusTab, openTab, userSwitched, wakeTab } from './tabs.js';
+import { activating, focusTab, openTab, tellPage, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
@@ -54,20 +54,19 @@ async function runNavigation(action, windowId) {
     // It's told when the switch is done or failed (closed meanwhile), as a
     // page's own switch learns from its request (shared/switching.js).
     const passing = queued > 0;
-    const tell = (shown, message) => api.tabs.sendMessage(shown.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
     const shownPage = api.tabs.query({ active: true, windowId }).then(([shown]) => {
       if (!shown || shown.id === next) return null;
-      tell(shown, { type: 'switching', tabId: next, from: shown.id, passing });
+      tellPage(shown, { type: 'switching', tabId: next, from: shown.id, passing });
       return shown;
     }, () => null);
-    const told = (type, reason = null) => shownPage.then((shown) => shown && tell(shown, { type, tabId: next, from: shown.id, ...(reason ? { reason } : {}) }));
+    const told = (type, reason = null) => shownPage.then((shown) => shown && tellPage(shown, { type, tabId: next, from: shown.id, ...(reason ? { reason } : {}) }));
     try {
       // A tab only passed through (more presses waiting: a held key) isn't
       // waited for long, so the switching stops when the key does.
       if (passing) {
         const asked = Date.now();
         const wake = await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
-        userSwitched(); // a switch still waiting for its wake doesn't land after this one
+        userSwitched(null, windowId); // a switch still waiting for its wake doesn't land after this one
         activating(next);
         await api.tabs.update(next, { active: true });
         recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });

@@ -180,7 +180,7 @@ function stayInSpace(windowId, spaceId, closedId) {
 }
 api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
   if (handingOff.has(tabId)) return;
-  userSwitched(tabId);
+  userSwitched(tabId, windowId);
   shownAt.set(tabId, Date.now());
   shownUrl.delete(tabId);
   api.tabs.get(tabId).then((tab) => shownUrl.set(tabId, tab.url), () => {});

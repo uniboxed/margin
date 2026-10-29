@@ -227,23 +227,34 @@ export const isFocusing = (tabId) => (focusing.get(tabId) ?? 0) > 0;
 // come after that switch has ended (and would cancel the next one).
 const activatedByMargin = new Map(); // tabId → when Margin asked Safari to bring it to the front
 const OWN_ACTIVATION_MS = 1500;
+// Switches per window (the user's, and Margin's), so a wait in one window
+// (openBehind) isn't called off by a switch in another.
+const windowGens = new Map(); // windowId → count
+const windowGen = (windowId) => windowGens.get(windowId) ?? 0;
+function movedOn(windowId) {
+  if (windowId == null) return 0;
+  windowGens.set(windowId, windowGen(windowId) + 1);
+  return windowGen(windowId);
+}
 export function activating(tabId) {
   activatedByMargin.set(tabId, Date.now());
   setTimeout(() => {
     if (Date.now() - (activatedByMargin.get(tabId) ?? 0) >= OWN_ACTIVATION_MS) activatedByMargin.delete(tabId);
   }, OWN_ACTIVATION_MS);
 }
-export function userSwitched(tabId = null) {
+export function userSwitched(tabId = null, windowId = null) {
   if (tabId != null && (isFocusing(tabId) || Date.now() - (activatedByMargin.get(tabId) ?? 0) < OWN_ACTIVATION_MS)) return;
   focusGen++;
+  movedOn(windowId);
 }
 // `deadline`: when the page that asked stops waiting (it then says the switch
-// didn't happen): no switch after it.
-/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number }} [options] */
-export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline } = {}) {
+// didn't happen): no switch after it. `raise: false`: the window isn't
+// brought forward (a switch the user didn't just ask for: openBehind).
+/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, raise?: boolean }} [options] */
+export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline, raise = true } = {}) {
   focusing.set(tabId, (focusing.get(tabId) ?? 0) + 1);
   try {
-    return await focusTabNow(tabId, { wake, source, carry, scroll, deadline });
+    return await focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise });
   } finally {
     const left = (focusing.get(tabId) ?? 1) - 1;
     if (left > 0) focusing.set(tabId, left);
@@ -251,7 +262,7 @@ export async function focusTab(tabId, { wake = true, source = 'other', carry = n
   }
 }
 
-async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
+async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise }) {
   const gen = ++focusGen;
   const asked = Date.now();
   const token = `${instanceId}:${gen}:${tabId}`;
@@ -264,10 +275,11 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
     recordSwitch({ source, tabId, asked, error: 'no such tab' });
     throw new Error(`No tab with id ${tabId}`);
   }
+  movedOn(live.windowId);
   if (live.active) {
     // Another switch was asked for meanwhile: that one stands.
     if (gen !== focusGen) return { tab: null, preparation: skipped, superseded: true };
-    await focusWindow(live.windowId);
+    if (raise) await focusWindow(live.windowId);
     return { tab: live, preparation: skipped };
   }
   // Run these together. Preparation itself wakes the isolated world, while
@@ -325,7 +337,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
   recordSwitch({ source, tabId, asked, wake: woke, preparation, shownAfter: Date.now() - asked });
-  if (tab) await focusWindow(tab.windowId);
+  if (tab && raise) await focusWindow(tab.windowId);
   return { tab, preparation };
 }
 // The window comes forward only if it isn't already (see focusTab).
@@ -469,6 +481,7 @@ export async function inPage(tabId, url, func, args = [], ms = 300) {
 /** @param {{ windowId?: number, url?: string, spaceId?: string }} options */
 export async function openTab({ windowId, url, spaceId }) {
   focusGen++; // a switch still waiting for its wake doesn't land after this
+  movedOn(windowId);
   markMarginOpening();
   // In its space from the start: the window shows that space before the tab
   // exists, so the browser's events for it (created, activated) already put
@@ -478,6 +491,115 @@ export async function openTab({ windowId, url, spaceId }) {
   const tab = await api.tabs.create({ windowId, url, active: true });
   if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));
   return tab;
+}
+
+// A page of the tab in front is told about a switch the background makes from
+// it ('switching', then 'switch-done' or 'switch-failed': content/core.js);
+// Margin's own pages have no content script, so they hear it as a broadcast
+// that says which page it's for (`from`).
+export const tellPage = (/** @type {{ id: number }} */ page, /** @type {any} */ message) =>
+  api.tabs.sendMessage(page.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
+
+// ---- a new tab chosen in the palette --------------------------------------------
+// ⌘T, an address or a search, Enter: as a browser that shows the new page
+// once there's something to show, not an empty one while it loads (Safari's
+// new tab is dark until the page arrives). The tab opens behind the page the
+// user is on, and its row is in the sidebar at once, highlighted, with that
+// page covered (the switch's empty screen, its spinner: content/core.js);
+// once the new page has loaded (at most LOADED_MAX_MS, then as far as it got)
+// it comes to the front, its sidebar prepared as for any switch. If the user
+// goes elsewhere meanwhile (another tab, their own tab's row), it stays
+// behind, loaded, as a ⌘-clicked link would. `then(tab)`: what loads it,
+// after the row is in (a search: background/handlers.js); else `url`.
+const LOADED_MAX_MS = 5000;
+const FOCUS_MS = 2500; // what bringing it to the front may take, within the page's deadline
+const POLL_MS = 100;
+/**
+ * `deadline`: when the page that asked stops waiting. `created(tab)`: told
+ * as soon as the tab exists. `label`: its row's title until it has its own.
+ * @param {{ windowId?: number | null, url?: string, from: any, then?: (tab: any) => Promise<unknown>, created?: (tab: any) => void, label?: string, deadline?: number, maxMs?: number }} options
+ * @returns {Promise<{ tabId: number, shown: number | null }>}
+ */
+export async function openBehind({ windowId, url, from, then, created, label, deadline, maxMs = LOADED_MAX_MS }) {
+  const asked = Date.now();
+  const win = from.windowId ?? windowId; // the page's own window (the page's idea of it can be a guess)
+  focusGen++; // a switch still waiting for its wake doesn't land after this
+  const gen = movedOn(win);
+  markMarginOpening();
+  const tab = await api.tabs.create({ windowId: win, url: then ? 'about:blank' : url, active: false });
+  created?.(tab);
+  // In the window's space (model.js assignTab), drawn before the page is told.
+  await mutate((s) => M.upsertTab(s, label && !tab.title ? { ...tab, title: label } : tab, now())).catch(() => {});
+  const told = (type, reason = null) => tellPage(from, { type, tabId: tab.id, from: from.id, ...(reason ? { reason } : {}) });
+  const notShown = (reason = null) => {
+    void told('switch-failed', reason);
+    return { tabId: tab.id, shown: null };
+  };
+  // The user went elsewhere in this window (another tab, their own row, the
+  // palette again). If that's to this very tab (its row clicked, a key
+  // landing on it), that switch brings it and ends the page's wait itself.
+  const left = () => windowGen(win) !== gen;
+  const leftFor = () => (isFocusing(tab.id) || Date.now() - (activatedByMargin.get(tab.id) ?? 0) < OWN_ACTIVATION_MS
+    ? { tabId: tab.id, shown: null }
+    : notShown());
+  // Chosen something else while the tab was being made: it just stays behind.
+  if (left()) return leftFor();
+  void tellPage(from, { type: 'switching', tabId: tab.id, from: from.id, windowId: tab.windowId, cover: 'now' });
+  try {
+    await then?.(tab);
+  } catch (err) {
+    return notShown(String(err?.message ?? err));
+  }
+  const until = Math.min(asked + maxMs, (deadline ?? Infinity) - FOCUS_MS);
+  const loaded = await untilLoaded(tab.id, until, left, from.id);
+  // The wait itself, in the switch log (the switch after it has its own line).
+  recordSwitch({ source: 'new tab loading', tabId: tab.id, asked, shownAfter: Date.now() - asked, error: loaded === 'loaded' ? null : loaded });
+  // Closed meanwhile, or the user went elsewhere (the page they were on
+  // went somewhere else too): it stays where it is.
+  if (loaded === 'gone' || loaded === 'moved') return notShown();
+  if (loaded === 'left') return leftFor();
+  try {
+    const result = await focusTab(tab.id, { source: 'new tab', deadline: Math.min(asked + maxMs + FOCUS_MS, deadline ?? Infinity), raise: false });
+    if (!result?.tab) return result?.superseded ? leftFor() : notShown();
+  } catch (err) {
+    return notShown(String(err?.message ?? err));
+  }
+  void told('switch-done');
+  return { tabId: tab.id, shown: tab.id };
+}
+// 'loaded' (complete at an address of its own, not the blank page a search
+// starts from; or, an address Safari doesn't say without site access, once
+// it was seen loading), 'timeout', 'gone' (closed), 'left' (`left()`) or
+// 'moved' (the page the user is on, `fromId`, started loading something
+// else: a link, the address bar, a reload). A question Safari doesn't answer
+// counts as still loading.
+async function untilLoaded(tabId, until, left, fromId) {
+  const SLOW = Symbol('slow');
+  const ask = (id) => {
+    let timer;
+    return Promise.race([
+      api.tabs.get(id).catch(() => null),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(SLOW), Math.max(POLL_MS, until - Date.now())); }),
+    ]).finally(() => clearTimeout(timer));
+  };
+  let sawLoading = false;
+  let fromLoaded = null; // whether the page the user is on had loaded, when first seen
+  for (;;) {
+    if (left()) return 'left';
+    const [tab, from] = await Promise.all([ask(tabId), fromId != null ? ask(fromId) : null]);
+    if (tab === SLOW) return left() ? 'left' : 'timeout';
+    if (!tab) return 'gone';
+    if (left()) return 'left';
+    if (from && from !== SLOW) {
+      fromLoaded ??= from.status === 'complete';
+      if (fromLoaded && from.status === 'loading') return 'moved';
+      if (from.status === 'complete') fromLoaded = true;
+    }
+    if (tab.status === 'loading') sawLoading = true;
+    if (tab.status === 'complete' && ((tab.url && tab.url !== 'about:blank') || (!tab.url && sawLoading))) return 'loaded';
+    if (Date.now() >= until) return 'timeout';
+    await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_MS, Math.max(0, until - Date.now()))));
+  }
 }
 
 // Tabs opened from a page by openLink, so the next one goes after them.

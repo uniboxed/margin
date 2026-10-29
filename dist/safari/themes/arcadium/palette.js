@@ -5,6 +5,7 @@ import { el, createHost, adoptStyles, asBrowserUi, unzoom, siteModalOpen } from 
 import { containScroll } from '../../shared/gestures.js';
 import { rankPalette } from '../../shared/search.js';
 import * as V from '../../shared/view.js';
+import { opensNewTab } from '../../shared/switching.js';
 import { avatar } from './sidebar.js';
 import { paletteCss } from './assets.js';
 
@@ -211,8 +212,11 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     } catch {}
     input.blur();
     // Back to the page; in the fitted layout that's the card, not the shell.
+    // Not for a new tab loading behind the page (background/tabs.js
+    // openBehind): what's typed meanwhile would go into the page left.
     const shell = globalThis.Margin?.shell;
-    if (shell?.card && (!restoreFocus?.isConnected || restoreFocus === document.body)) shell.focusCard();
+    if (reason === 'run' && action && opensNewTab(action.type, action)) restoreFocus = null;
+    else if (shell?.card && (!restoreFocus?.isConnected || restoreFocus === document.body)) shell.focusCard();
     else if (restoreFocus?.isConnected) restoreFocus.focus?.({ preventScroll: true });
     onClose?.(reason, action);
   }

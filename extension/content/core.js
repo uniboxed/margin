@@ -11,7 +11,7 @@ import { frameAware } from '../shared/shell-logic.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
-import { createSwitching, backgroundSwitches } from '../shared/switching.js';
+import { createSwitching, backgroundSwitches, NEW_TAB } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
 import { fromStorage, openTabsCurrent, withChanges } from '../shared/stored.js';
@@ -86,9 +86,13 @@ export function startCore({ onTheme } = {}) {
   // anything else gets a cold start's time.
   const NO_ANSWER = 'no answer';
   /** @type {Record<string, number>} */
-  const SEND_TIMEOUT_MS = { activateTab: 7000, openPin: 7000, setSpace: 7000, default: 8000 };
+  // A new tab from the palette answers once it's in front, after its page has
+  // loaded (background/tabs.js openBehind).
+  const SEND_TIMEOUT_MS = { activateTab: 7000, openPin: 7000, setSpace: 7000, newTab: 12000, search: 12000, default: 8000 };
   // Why the last switch request failed, if it did (a switch says so: below).
   const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
+  // These, and a new tab from the palette, say when this page stops waiting.
+  const TIMED_REQUESTS = new Set([...SWITCH_REQUESTS, 'newTab', 'search']);
   let switchError = null;
   let helloAnswered = false; // this page's background has said which tab it is
   let switchAskedAt = 0; // when this page last asked for a switch (render: justShown)
@@ -124,7 +128,7 @@ export function startCore({ onTheme } = {}) {
     // again (retry), it keeps its first deadline, and waits only till then.
     if (SWITCH_REQUESTS.has(type)) switchAskedAt = Date.now();
     const deadline = (/** @type {any} */ (payload)).deadline;
-    if (SWITCH_REQUESTS.has(type) && !Number.isFinite(deadline)) payload = /** @type {any} */ ({ ...payload, deadline: Date.now() + SEND_TIMEOUT_MS[type] });
+    if (TIMED_REQUESTS.has(type) && !Number.isFinite(deadline)) payload = /** @type {any} */ ({ ...payload, deadline: Date.now() + SEND_TIMEOUT_MS[type] });
     const waitMs = Number.isFinite(deadline) ? Math.max(0, deadline - Date.now()) : (SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default);
     failedSwitch(type, null);
     let timer;
@@ -425,12 +429,19 @@ export function startCore({ onTheme } = {}) {
   const switching = createSwitching({
     onChange: (id) => {
       switchingTo = id;
-      if (id == null || cover === 'now') view?.setCover?.(id != null, { instant: document.hidden });
+      if (id == null || cover === 'now') {
+        view?.setCover?.(id != null, { instant: document.hidden });
+        setCovered(id != null && !!view?.setCover);
+      }
+      host.dataset.switchingTo = id == null ? '' : String(id); // test/debug hook
       render();
     },
     onSlow: (slow) => {
       if (!view?.setCover) loader.switching(slow);
-      else if (slow && cover === 'slow') view.setCover(true);
+      else if (slow && cover === 'slow') {
+        view.setCover(true);
+        setCovered(true);
+      }
     },
     failed: (result) => result === undefined,
     onFailed: () => {
@@ -444,6 +455,32 @@ export function startCore({ onTheme } = {}) {
     },
   });
   const fromBackground = backgroundSwitches();
+  // While the switch's cover is up, keys don't reach the page under it: it's
+  // on its way out (a new tab can take seconds to load behind it:
+  // background/tabs.js openBehind), and what's typed would land in it.
+  // Shortcuts with ⌘, ⌃ or ⌥ still work; Escape calls the switch off.
+  let covered = false;
+  function setCovered(on) {
+    covered = on;
+    host.dataset.switchCover = String(on); // test/debug hook
+  }
+  const holdKeys = (/** @type {KeyboardEvent} */ event) => {
+    if (!covered || !event.isTrusted || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.type === 'keydown' && event.key === 'Escape') Margin.content.cancelSwitch();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  const KEY_EVENTS = ['keydown', 'keypress', 'keyup'];
+  for (const type of KEY_EVENTS) addEventListener(type, holdKeys, true);
+  Margin.content.onCard((win) => { for (const type of KEY_EVENTS) win.addEventListener(type, holdKeys, true); });
+  // A switch from this page called off (Escape, the palette opened again):
+  // the page stays, as clicking its own tab does; a new tab loading behind it
+  // stays there (background/tabs.js openBehind).
+  Margin.content.cancelSwitch = () => {
+    if (switching.target() == null) return;
+    switching.end();
+    if (tabId != null) void send('activateTab', { tabId });
+  };
 
   // ---- getting ready, and standing back -----------------------------------------
   // Until this copy owns the state and has matched the open tabs (after Safari
@@ -533,10 +570,12 @@ export function startCore({ onTheme } = {}) {
   }
   // Back to this page's own tab: over. A tab in another window: nothing to
   // highlight here, and that window comes forward.
-  Margin.content.startSwitching = (id, request = null, { cover: when = 'now' } = {}) => {
+  // `inWindow`: the tab's window, for a tab the state may not have yet (a new
+  // tab the background just opened: its row comes with the next storage change).
+  Margin.content.startSwitching = (id, request = null, { cover: when = 'now', inWindow = null } = {}) => {
     if (!active()) return;
     if (id === tabId) return switching.end();
-    if (state?.tabs?.[id]?.windowId !== windowId) return;
+    if (id !== NEW_TAB && (state?.tabs?.[id]?.windowId ?? inWindow) !== windowId) return;
     cover = when;
     switching.start(id, request);
   };
@@ -906,13 +945,14 @@ export function startCore({ onTheme } = {}) {
       return sendResponse(can);
     }
     // The background is switching from this tab to another (next/previous
-    // tab): highlight it already (content/palette.js and the sidebar start
-    // their own switches themselves).
+    // tab; a new tab from the palette, once it has loaded, with this page
+    // covered meanwhile: `cover`): highlight it already (content/palette.js
+    // and the sidebar start their own switches themselves).
     const forThisPage = message?.from == null || tabId == null || message.from === tabId;
     if (message?.type === 'switching') {
       if (forThisPage) {
         switchError = null; // not an earlier click's
-        Margin.content.startSwitching(message.tabId, fromBackground.begin(message.tabId), { cover: message.passing ? 'none' : 'slow' });
+        Margin.content.startSwitching(message.tabId, fromBackground.begin(message.tabId), { cover: message.cover ?? (message.passing ? 'none' : 'slow'), inWindow: message.windowId ?? null });
       }
       return;
     }

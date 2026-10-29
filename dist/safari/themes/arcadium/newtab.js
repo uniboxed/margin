@@ -10,7 +10,7 @@ import { platform } from '../../shared/platform.js';
 import { fromStorage } from '../../shared/stored.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
 import { installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
-import { createSwitching, backgroundSwitches } from '../../shared/switching.js';
+import { createSwitching, backgroundSwitches, NEW_TAB } from '../../shared/switching.js';
 import { THEMES, themeFor } from '../index.js';
 import { avatar, createSidebar } from './sidebar.js';
 import { createPalette } from './palette.js';
@@ -141,9 +141,10 @@ export function mount({ api, self, send, windowed = false }) {
   });
   const fromBackground = backgroundSwitches();
   // Back to this tab: over; a tab in another window: nothing to highlight here.
-  const onSwitch = (/** @type {number} */ id, /** @type {Promise<unknown> | null} */ request, { cover: mode = 'now' } = {}) => {
+  // `inWindow`: as on web pages (content/core.js startSwitching).
+  const onSwitch = (/** @type {number} */ id, /** @type {Promise<unknown> | null} */ request, { cover: mode = 'now', inWindow = null } = {}) => {
     if (id === self?.id) return switching.end();
-    if (state?.tabs?.[id]?.windowId !== windowId()) return;
+    if (id !== NEW_TAB && (state?.tabs?.[id]?.windowId ?? inWindow) !== windowId()) return;
     when = mode;
     switching.start(id, request);
   };
@@ -333,7 +334,7 @@ export function mount({ api, self, send, windowed = false }) {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'new-tab' && !recording) onNewTab(); // ⌘T (Safari's shortcut)
     // The background switching from this tab (next/previous tab; shared/switching.js).
-    if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) onSwitch(message.tabId, fromBackground.begin(message.tabId), { cover: message.passing ? 'none' : 'slow' });
+    if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) onSwitch(message.tabId, fromBackground.begin(message.tabId), { cover: message.cover ?? (message.passing ? 'none' : 'slow'), inWindow: message.windowId ?? null });
     if ((message?.type === 'switch-done' || message?.type === 'switch-failed') && message.from === self?.id) fromBackground.settle(message);
   });
 

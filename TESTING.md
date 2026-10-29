@@ -436,6 +436,18 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Hold ⌃⌘↓: the tabs go by with their content (no gray cards); one press to a slow tab shows the gray card after a moment.
 - [ ] Tab overview: tabs you left through the sidebar may look gray there (accepted); say if that bothers you.
 
+## A new tab from ⌘T shows once it has loaded (2026-10-28)
+
+- [ ] On a page, ⌘T, type an address of a slow site (youtube.com), Enter: the page you were on stays, covered by the empty screen with its spinner, and the new tab's row appears in the sidebar at once, highlighted; no dark empty tab. Once the site has loaded it comes to the front, the sidebar open and scrolled as before.
+- [ ] The same with a search (words, Enter): the results come to the front once loaded; Margin's search engine (Settings) doesn't change because of it.
+- [ ] Meanwhile, click your own tab's row: you stay; the new tab stays in the sidebar, loaded, and shows when clicked. Same if you pick another tab in Safari's tab bar.
+- [ ] Meanwhile, close the new row with its ×: nothing comes to the front, no notice.
+- [ ] In a text field (a comment box), ⌘T, an address, Enter, then type: nothing goes into the field; Escape: you stay, the new tab stays behind. ⌘T again while it loads: the palette opens and the new tab stays behind.
+- [ ] A site that keeps loading (or a very slow one): it comes to the front after about 5 seconds, as far as it got.
+- [ ] ⌘T, Enter, then switch to another app or window before it loads: Margin doesn't pull the window forward; back in it, the new tab is in front.
+- [ ] From Margin's start page (`#launcher`) "+ New Tab": an address there behaves the same.
+- [ ] In a fitted site (Keep open + Fit pages beside the sidebar): the same, the cover over the page only.
+
 ## Switching, getting ready, one copy in charge (2026-10-28)
 
 Install the build once, then **quit and reopen Safari** (an earlier copy of Margin can keep running until Safari quits).
