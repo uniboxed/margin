@@ -436,6 +436,13 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Hold ⌃⌘↓: the tabs go by with their content (no gray cards); one press to a slow tab shows the gray card after a moment.
 - [ ] Tab overview: tabs you left through the sidebar may look gray there (accepted); say if that bothers you.
 
+## Tabs of the space kept ready (2026-10-29)
+
+- [ ] Use a few tabs of a space, leave one for a minute or more, then switch back to it with Safari's own tab bar or ⌃Tab: no dark flash. The same from Margin's sidebar.
+- [ ] Settings › "Keep the tabs of the space you're in ready…" shows 30; set 0 and the flashes from Safari's own switching come back after a minute; set it back.
+- [ ] After 30 minutes without using Safari, Activity Monitor's Energy tab shows Safari's web content processes going quiet again.
+- [ ] A tab Safari unloaded (shown as reloading when you click it) still loads only when clicked.
+
 ## A new tab from ⌘T shows once it has loaded (2026-10-28)
 
 - [ ] On a page, ⌘T, type an address of a slow site (youtube.com), Enter: the page you were on stays, covered by the empty screen with its spinner, and the new tab's row appears in the sidebar at once, highlighted; no dark empty tab. Once the site has loaded it comes to the front, the sidebar open and scrolled as before.

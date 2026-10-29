@@ -152,6 +152,17 @@ async function startWake(tabId, at) {
   return result(/** @type {Wake['outcome']} */ (outcome));
 }
 
+// Keeps a hidden tab's process running for `ms` (keepAwake), without waiting
+// for it: background/keep-ready.js. False if it can't (no page: Safari
+// unloaded it, and a hold doesn't load it; no access to the site).
+/** @param {number} tabId @param {number} ms @returns {Promise<boolean>} */
+export async function holdTab(tabId, ms) {
+  if (!platform?.wakeTabs || !api.scripting?.executeScript) return false;
+  const tab = cached()?.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
+  if (!tab || !(await mayAccessCached(tab.url))) return false;
+  return api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [ms] }).then(() => true, () => false);
+}
+
 // Executed in the destination's current isolated extension world. Keeping
 // this self-contained matters: scripting.executeScript serializes only the
 // function and its arguments. An older install's content script lives in a

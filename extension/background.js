@@ -6,7 +6,8 @@
 // top level, as a service worker must.
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
-import { api, decided, isOwner, isStale, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
+import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
+import * as keepReady from './background/keep-ready.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, resolveTab, shownAt, shownUrl, tabOpened, tabShown, userSwitched } from './background/tabs.js';
@@ -83,8 +84,19 @@ const firstSync = (async () => {
   }
 })();
 const untilSynced = () => (isSynced() ? null : Promise.race([firstSync, new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_MS))]));
+// A background Safari stops and starts again (the keep-ready alarm does every
+// minute) doesn't redo this each time: once per START_WORK_MS.
+const START_WORK_MS = 10 * 60_000;
+async function startWorkDue() {
+  const { startWorkAt } = await Promise.resolve(api.storage.session?.get('startWorkAt')).catch(() => null) ?? {};
+  if (Number.isFinite(startWorkAt) && Date.now() - startWorkAt < START_WORK_MS) return false;
+  void Promise.resolve(api.storage.session?.set({ startWorkAt: Date.now() })).catch(() => {});
+  return true;
+}
 firstSync.then(async () => {
   if (!isOwner() || !isSynced()) return;
+  void keepReady.tick(); // the tabs of the space in front, if Safari was used recently (a background started again)
+  if (!(await startWorkDue())) return;
   void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
   // stale tab mustn't override one learned since).
@@ -182,6 +194,12 @@ function stayInSpace(windowId, spaceId, closedId) {
 }
 api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
   if (handingOff.has(tabId)) return;
+  // The tab left stays ready to come back to (Safari can suspend it within a
+  // second), and the set follows the switch (background/keep-ready.js).
+  const left = Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === windowId && t.active && t.id !== tabId);
+  keepReady.noteUsed();
+  keepReady.shown(tabId);
+  if (left) keepReady.holdNow(left.id);
   userSwitched(tabId, windowId);
   tabShown(tabId);
   shownAt.set(tabId, Date.now());
@@ -212,6 +230,7 @@ api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
 // that tab is checked too (a stale copy there: tabs.js ensureCurrent).
 api.windows?.onFocusChanged?.addListener(owned((windowId) => {
   if (windowId == null || windowId < 0) return;
+  keepReady.noteUsed();
   api.tabs.query({ active: true, windowId }).then(([tab]) => tab && setTimeout(() => isOwner() && ensureCurrent(tab.id), 300), () => {});
 }));
 api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
@@ -244,7 +263,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'shellShown', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'restoringTab', 'reloadForUpdate', 'getZoom', 'setZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'used', 'shellShown', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'restoringTab', 'reloadForUpdate', 'getZoom', 'setZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme']);
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;
@@ -262,9 +281,20 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+function keepReadyChanged(changes) {
+  if (changes.settings && changes.settings.oldValue?.keepTabsReadyMinutes !== changes.settings.newValue?.keepTabsReadyMinutes) return true;
+  const open = changes.openTabs;
+  if (!open) return false;
+  const before = open.oldValue ?? {}, after = open.newValue ?? {};
+  return !sameJson(before.activeSpaceByWindow, after.activeSpaceByWindow) || !sameJson(before.tabSpace, after.tabSpace);
+}
 // The theme, its placeholder and the fitted layout follow the settings.
 api.storage.onChanged.addListener(owned((changes, area) => {
   if (area === 'local' && changes.settings) queueRegistrations();
+  // The setting, the space shown or the tabs in it: the set again (not for
+  // every title or icon the open tabs change by).
+  if (area === 'local' && keepReadyChanged(changes)) keepReady.tickSoon();
 }));
 owned(queueRegistrations)();
 
@@ -272,6 +302,14 @@ owned(queueRegistrations)();
 
 if (api.alarms) {
   api.alarms.onAlarm.addListener(owned((alarm) => alarm.name === ARCHIVE_ALARM && archiveStale()));
+  // Not through owned(): a copy that no longer owns the state clears it, or
+  // it would keep starting that copy's background every minute.
+  api.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name !== keepReady.KEEP_READY_ALARM) return;
+    await decided().catch(() => {});
+    if (isOwner()) return keepReady.tick();
+    void Promise.resolve(api.alarms.clear(keepReady.KEEP_READY_ALARM)).catch(() => {});
+  });
   api.alarms.get(ARCHIVE_ALARM).then((alarm) => alarm || api.alarms.create(ARCHIVE_ALARM, { periodInMinutes: 15 }));
   console.log('[margin] auto-archive via browser.alarms');
 } else {

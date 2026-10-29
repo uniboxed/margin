@@ -11,6 +11,7 @@ import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, is
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
+import * as keepReady from './keep-ready.js';
 import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
@@ -380,6 +381,11 @@ export const handlers = {
   // Page zoom (the browser's own, like ⌘+): for Margin's pinch, and so
   // Margin's UI keeps its size on a zoomed page; remembered per site.
   // ⌘T reached Margin on a page (content/palette.js installNewTabKey).
+  // Safari in use (a page saw a click, key or scroll: content/core.js): the
+  // tabs of the space in front stay ready (background/keep-ready.js).
+  async used() {
+    keepReady.noteUsed();
+  },
   async newTabKeyUsed() {
     onboarding.reportEvent('cmdTKey');
   },

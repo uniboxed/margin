@@ -20,6 +20,10 @@ const LEGACY_SHORTCUTS = Object.freeze({
 const DEFAULT_SETTINGS = Object.freeze({
   sidebarPinnedOpen: false,
   archiveAfterHours: 12,
+  // Safari: the tabs of the space in front are kept ready to show (no flash
+  // when switching to them) until this many minutes after Safari was last
+  // used; 0: off (background/keep-ready.js).
+  keepTabsReadyMinutes: 30,
   // Searches use the browser's engine (shared/search.js). Safari: the one
   // learned from Safari's own address-bar searches, { id, name, template, at }.
   safariSearch: null,

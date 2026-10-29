@@ -473,6 +473,20 @@ export function startCore({ onTheme } = {}) {
   const KEY_EVENTS = ['keydown', 'keypress', 'keyup'];
   for (const type of KEY_EVENTS) addEventListener(type, holdKeys, true);
   Margin.content.onCard((win) => { for (const type of KEY_EVENTS) win.addEventListener(type, holdKeys, true); });
+  // Safari in use: the background keeps the tabs of this space ready to show
+  // while it is (background/keep-ready.js). A click, key or scroll here says
+  // so, at most once a minute.
+  const USED_EVERY_MS = 60_000;
+  let usedSaidAt = 0;
+  const onUse = (/** @type {Event} */ event) => {
+    if (!platform?.keepTabsReady || !(Number(state?.settings?.keepTabsReadyMinutes) > 0)) return; // Safari, and on
+    if (!event.isTrusted || Date.now() - usedSaidAt < USED_EVERY_MS) return;
+    usedSaidAt = Date.now();
+    void send('used', undefined, false);
+  };
+  const USE_EVENTS = ['pointerdown', 'keydown', 'wheel'];
+  for (const type of USE_EVENTS) addEventListener(type, onUse, { capture: true, passive: true });
+  Margin.content.onCard((win) => { for (const type of USE_EVENTS) win.addEventListener(type, onUse, { capture: true, passive: true }); });
   // A switch from this page called off (Escape, the palette opened again):
   // the page stays, as clicking its own tab does; a new tab loading behind it
   // stays there (background/tabs.js openBehind).

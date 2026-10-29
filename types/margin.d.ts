@@ -46,6 +46,7 @@ export interface Shortcuts { nextTab: string; prevTab: string; nextSpace: string
 export interface Settings {
   sidebarPinnedOpen: boolean;
   archiveAfterHours: number;
+  keepTabsReadyMinutes: number;
   sidebarShortcut: string;
   newTabHint: boolean;
   safariSearch: { id: string; name: string; template: string; at: number } | null;

@@ -14,6 +14,10 @@ const PROFILES = {
     // Wake a hidden tab's process before showing it (background/tabs.js
     // wakeTab): Safari blanks a suspended tab until it has drawn again.
     wakeTabs: true,
+    // Keep the tabs of the space in front running while Safari is in use
+    // (background/keep-ready.js, setting keepTabsReadyMinutes): Safari drops a
+    // suspended tab's drawn layers, so switching to it flashes.
+    keepTabsReady: true,
     // Before Safari swaps web views, refresh the destination tab's own copy
     // of the sidebar while it is still hidden (background/tabs.js +
     // content/core.js). Chrome keeps hidden tabs' last frames and does not
@@ -60,6 +64,7 @@ const PROFILES = {
     // Chrome always gives ⌘T to the extension's new-tab page.
     newTabHint: false,
     wakeTabs: false,
+    keepTabsReady: false, // Chrome keeps hidden tabs' last frames
     prepareSidebar: false,
     compactRail: false, // as in Safari's profile
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
