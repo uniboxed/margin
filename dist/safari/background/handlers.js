@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, markMarginOpening, openBehind, openTab, openedByMargin, openedFrom, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, openedFrom, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -176,7 +176,9 @@ async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId,
   // the switch instead of adding a storage.session round trip in front of it.
   if (Number.isFinite(sidebarTop) && sourceWindowId != null) void setScroll(sourceWindowId, sidebarTop);
   try {
-    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline });
+    // A page's own switch: it's covered meanwhile (content/core.js), so a tab
+    // never shown before arrives covered too.
+    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline, covered: isNeverShown(tabId) });
     if (!reason) return result;
     if (!result?.tab) carried.delete(tabId);
     else if (result.preparation?.outcome === 'ready') carried.delete(tabId);

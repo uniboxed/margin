@@ -564,3 +564,16 @@ test('openBehind: told the tab at once (created), its row titled meanwhile (labe
   fake.tabs.get(2).status = 'complete';
   await shown;
 });
+
+test('arriving covered: a tab opened behind is prepared to arrive covered; an ordinary switch isn\'t', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 3, url: 'https://c.test/' }]);
+  fake.scriptDelay = () => 1;
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+  await sleep(150);
+  fake.tabs.get(4).status = 'complete';
+  await shown;
+  const prepared = (id) => fake.scripts.filter((s) => s.tabId === id && s.func.name === 'prepareSidebarInPage').map((s) => s.args[0].covered);
+  assert.deepEqual(prepared(4), [true]);
+  await focusTab(3);
+  assert.deepEqual(prepared(3), [false]);
+});

@@ -9,7 +9,7 @@ import * as V from './shared/view.js';
 import { api, decided, isOwner, isStale, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, resolveTab, shownAt, shownUrl, userSwitched } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, resolveTab, shownAt, shownUrl, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -108,6 +108,7 @@ api.tabs.onCreated.addListener(owned(async (tab) => {
   // page the user was on at once (handlers.js newTabHandOff); a new tab
   // that stays is tracked as usual.
   recordCreated(tab);
+  tabOpened(tab);
   if (tab.active && V.isNewTabPage(tab.pendingUrl || tab.url)) {
     void newTabHint.newTabPageSeen(tab); // ⌘T reaches Margin: the setting is Margin
     if (await newTabHandOff(tab)) return;
@@ -145,6 +146,7 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
 }));
 api.tabs.onRemoved.addListener(owned((tabId) => {
   handingOff.delete(tabId);
+  tabShown(tabId); // gone: forgotten
   newTabHint.tabGone(tabId);
   forgetCurrent(tabId);
   mutate((s) => {
@@ -181,6 +183,7 @@ function stayInSpace(windowId, spaceId, closedId) {
 api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
   if (handingOff.has(tabId)) return;
   userSwitched(tabId, windowId);
+  tabShown(tabId);
   shownAt.set(tabId, Date.now());
   shownUrl.delete(tabId);
   api.tabs.get(tabId).then((tab) => shownUrl.set(tabId, tab.url), () => {});

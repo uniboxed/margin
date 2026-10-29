@@ -447,6 +447,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] ⌘T, Enter, then switch to another app or window before it loads: Margin doesn't pull the window forward; back in it, the new tab is in front.
 - [ ] From Margin's start page (`#launcher`) "+ New Tab": an address there behaves the same.
 - [ ] In a fitted site (Keep open + Fit pages beside the sidebar): the same, the cover over the page only.
+- [ ] (2026-10-29) As the new tab comes to the front there's no dark flash: the same cover, then the page fading in. Try a busy site (youtube.com, a Google results page) and record the screen if anything flickers.
+- [ ] A site that focuses its search or login field (github.com/login, duckduckgo.com): typing goes into the field once it's shown.
+- [ ] ⌘-click a link (it opens behind), then click its row in the sidebar: no dark flash either.
 
 ## Switching, getting ready, one copy in charge (2026-10-28)
 

@@ -805,12 +805,87 @@ export function startCore({ onTheme } = {}) {
     return sameDocument(showing.url, location.href) ? showing : null;
   }
 
+  // ---- a tab shown for the first time ------------------------------------------
+  // A tab that has never been on screen (loaded behind the page: a new tab
+  // from the palette, a ⌘-clicked link) can't keep the page before on screen
+  // while it paints, as a tab shown before does: WebKit waits for the paint
+  // only for a view that has been in a window before
+  // (WebPageProxy::dispatchActivityStateChange), and otherwise shows Safari's
+  // empty view until the tab's first paint lands (hideContentUntilPendingUpdate):
+  // 70ms of dark between the cover and the page, for a busy page, in Tirth's
+  // Safari. Asked to arrive covered (the background knows the tab was never
+  // in front, and the page before is covered: background/tabs.js), such a
+  // page makes that first paint as cheap as it gets: the switch's cover,
+  // spinner turning, with the page itself out of sight under it; once shown,
+  // it brings the page back, lets it paint, and only then lifts the cover.
+  // (A document that was visible has been in a window: never covered.)
+  let everShown = !document.hidden;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) everShown = true; });
+  // Never longer than this hidden (a switch that didn't happen, or a page
+  // shown without its frames running).
+  const ARRIVAL_MAX_MS = 3000;
+  // Out of sight but still there: unlike visibility or display, opacity keeps
+  // the page's focus (a field it focused, or autofocus, as it's shown).
+  const HIDE_PROP = 'opacity';
+  const HIDE_VALUE = '0';
+  /** @type {{ finish: (options?: { fade?: boolean }) => void } | null} */
+  let arrival = null;
+  const frames = (/** @type {number} */ n) => new Promise((resolve) => {
+    const step = () => (n-- <= 0 ? resolve(undefined) : requestAnimationFrame(step));
+    requestAnimationFrame(step);
+  });
+  function arriveCovered() {
+    if (everShown || arrival || !view?.setCover) return;
+    // The page: the card in the fitted layout (content/shell.js), else its body.
+    const page = Margin.shell?.frame ?? document.body;
+    if (!page) return;
+    const before = [page.style.getPropertyValue(HIDE_PROP), page.style.getPropertyPriority(HIDE_PROP)];
+    // Only Margin's own change is undone (not one the page made meanwhile).
+    const showPage = () => {
+      if (page.style.getPropertyValue(HIDE_PROP) !== HIDE_VALUE || page.style.getPropertyPriority(HIDE_PROP) !== 'important') return;
+      if (before[0]) page.style.setProperty(HIDE_PROP, before[0], before[1]);
+      else page.style.removeProperty(HIDE_PROP);
+    };
+    page.style.setProperty(HIDE_PROP, HIDE_VALUE, 'important');
+    view.setCover(true, { instant: true, spinnerNow: true });
+    setCovered(true);
+    host.dataset.arrivalCover = 'true'; // test/debug hook
+    let done = false;
+    const finish = ({ fade = true } = {}) => {
+      if (done) return;
+      done = true;
+      clearTimeout(limit);
+      document.removeEventListener('visibilitychange', onShown);
+      showPage();
+      // Not if a switch from here has taken the cover over meanwhile.
+      if (switchingTo == null) {
+        view?.setCover?.(false, { instant: !fade || document.hidden });
+        setCovered(false);
+      }
+      host.dataset.arrivalCover = 'false';
+      arrival = null;
+    };
+    const onShown = async () => {
+      if (document.hidden || done) return;
+      document.removeEventListener('visibilitychange', onShown);
+      await frames(2); // its first frames: the cover, cheap to paint
+      if (done) return;
+      showPage();
+      await frames(2); // the page, painted under the cover
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      finish();
+    };
+    document.addEventListener('visibilitychange', onShown);
+    const limit = setTimeout(() => finish({ fade: !document.hidden }), ARRIVAL_MAX_MS);
+    arrival = { finish };
+  }
+
   // Called through scripting.executeScript in the current isolated extension
   // world (background/tabs.js), not tabs.sendMessage: Safari can leave an old
   // content-script listener behind after an update. Everything necessary for
   // the destination's first frame is committed before this promise answers.
-  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null }} [context] */
-  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry } = {}) => {
+  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean }} [context] */
+  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false } = {}) => {
     if (!token || !Number.isInteger(targetId) || targetWindow == null) return { ready: false, reason: 'bad context' };
     // A newer preparation owns this hidden page. Undo only the transient open
     // state from the older one; ordinary Keep open is restored by hide().
@@ -832,6 +907,7 @@ export function startCore({ onTheme } = {}) {
       layout.show(carry);
       preparedShow.carry = carry;
     }
+    if (covered) arriveCovered();
     // Force style/layout in this WebProcess before the executeScript result
     // crosses back to Safari's UI process. Hidden pages do not reliably run
     // requestAnimationFrame, so an animation-frame acknowledgement would hang.
@@ -842,6 +918,7 @@ export function startCore({ onTheme } = {}) {
     if (!preparedShow || preparedShow.token !== token) return false;
     const { carry } = preparedShow;
     preparedShow = null;
+    arrival?.finish({ fade: false });
     if (carry && document.visibilityState !== 'visible') layout.hide();
     void refresh();
     return true;

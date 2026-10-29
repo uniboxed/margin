@@ -247,9 +247,33 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/S2' }); Margin.content.startSwitching(-1, request); const h = document.querySelector('margin-sidebar-host'); return h.dataset.switchingTo + ' ' + h.dataset.switchCover` },
     check('A', 'A stays in front, covered, its sidebar on the new tab, while the page loads',
       `const s = await ${STATE}(['tabs']); const t = Object.values(s.tabs).find((x) => x.url.includes('/p/S2')); const host = document.querySelector('margin-sidebar-host'); return !document.hidden && !!t && !t.active && host.dataset.switchingTo === String(t.id) && host.dataset.switchCover === 'true'`, 1500),
-    checkPage('new1', 'the new tab loads behind, hidden', `document.hidden`),
+    checkPage('new1', 'the new tab loads behind, hidden, Margin in it', `document.hidden && !!document.querySelector('margin-sidebar-host')`, 1500),
+    // Shown for the first time, it arrives covered with the page hidden under
+    // the cover (its first paint cheap: content/core.js arriveCovered), then
+    // brings the page back and lifts the cover.
+    { op: 'page', in: 'new1', js: `window.__arrival = []; const note = (why) => { const h = document.querySelector('margin-sidebar-host'); __arrival.push([why, document.hidden, h?.dataset.arrivalCover ?? '', document.body?.style.opacity ?? '']); }; document.addEventListener('visibilitychange', () => note('shown')); new MutationObserver(() => note('cover')).observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['data-arrival-cover'] }); return 'recording'` },
     checkPage('new1', 'then comes to the front, loaded', `!document.hidden && document.readyState === 'complete'`, 4000),
+    checkPage('new1', 'first shown covered, the page out of sight under the cover', `__arrival.some(([why, hidden, cover, vis]) => why === 'shown' && !hidden && cover === 'true' && vis === '0')`, 1000),
+    checkPage('new1', 'then the page back and the cover lifted', `const h = document.querySelector('margin-sidebar-host'); return h.dataset.arrivalCover === 'false' && document.body.style.opacity === ''`, 1500),
     checkPage('A', 'A is behind', `document.hidden`),
+  ],
+  // The same in the fitted layout: the card is what's hidden under the cover.
+  behindfitted: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), keepOpen, wait(500), reload('A'), fitted('A'),
+    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/S5' }); Margin.content.startSwitching(-1, request); return 1` },
+    checkPage('new1', 'the new tab loads behind, fitted', `document.hidden && !!document.querySelector('iframe[name^=margin-]')`, 1500),
+    { op: 'page', in: 'new1', js: `window.__arrival = []; const note = (why) => { const h = document.querySelector('margin-sidebar-host'); __arrival.push([why, document.hidden, h?.dataset.arrivalCover ?? '', document.querySelector('iframe[name^=margin-]')?.style.opacity ?? '']); }; document.addEventListener('visibilitychange', () => note('shown')); return 'recording'` },
+    checkPage('new1', 'then comes to the front', `!document.hidden`, 3000),
+    checkPage('new1', 'first shown covered, the card hidden under the cover', `__arrival.some(([why, hidden, cover, vis]) => why === 'shown' && !hidden && cover === 'true' && vis === '0')`, 1000),
+    checkPage('new1', 'then the card back and the cover lifted', `document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'false' && document.querySelector('iframe[name^=margin-]').style.opacity !== '0'`, 1500),
+  ],
+  // A page that focuses a field as it loads (autofocus) keeps its focus
+  // through the covered arrival (typing goes there once it's shown).
+  behindfocus: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),
+    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/G1' }); Margin.content.startSwitching(-1, request); return 1` },
+    checkPage('new1', 'the new tab comes to the front', `!document.hidden`, 3000),
+    checkPage('new1', 'its field focused (autofocus), after the cover lifted', `document.querySelector('margin-sidebar-host')?.dataset.arrivalCover === 'false' && document.activeElement?.id === 't'`, 1500),
   ],
   behindleft: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),

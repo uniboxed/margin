@@ -177,11 +177,13 @@ export function cancelSidebarInPage(token) {
 /** @typedef {{ outcome: 'ready' | 'not ready' | 'unavailable' | 'timeout' | 'skipped', ms: number, reason?: string, token: string | null }} Preparation */
 
 /**
+ * `covered`: the page before is covered (a switch it asked for): a page shown
+ * for the first time arrives covered too (content/core.js arriveCovered).
  * @param {any} tab
- * @param {{ token?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, budget?: number }} [options]
+ * @param {{ token?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, budget?: number, covered?: boolean }} [options]
  * @returns {Promise<Preparation>}
  */
-async function prepareTabForShow(tab, { token, carry = null, scroll = null, budget = PREPARE_MAX_MS } = {}) {
+async function prepareTabForShow(tab, { token, carry = null, scroll = null, budget = PREPARE_MAX_MS, covered = false } = {}) {
   const at = Date.now();
   const result = (outcome, reason) => ({ outcome, ms: Date.now() - at, ...(reason ? { reason } : {}), token: token ?? null });
   if (!platform?.prepareSidebar || !api.scripting?.executeScript || !tab?.id || tab.windowId == null || !token) return result('skipped');
@@ -195,7 +197,7 @@ async function prepareTabForShow(tab, { token, carry = null, scroll = null, budg
       target: { tabId: tab.id },
       injectImmediately: true,
       func: prepareSidebarInPage,
-      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry }],
+      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered }],
     }).then((rows) => {
       const answer = rows?.[0]?.result;
       return answer?.ready ? result('ready') : result('not ready', answer?.reason ?? 'no answer');
@@ -250,11 +252,12 @@ export function userSwitched(tabId = null, windowId = null) {
 // `deadline`: when the page that asked stops waiting (it then says the switch
 // didn't happen): no switch after it. `raise: false`: the window isn't
 // brought forward (a switch the user didn't just ask for: openBehind).
-/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, raise?: boolean }} [options] */
-export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline, raise = true } = {}) {
+// `covered`: the page the switch is from is covered meanwhile (prepareTabForShow).
+/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, raise?: boolean, covered?: boolean }} [options] */
+export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline, raise = true, covered = false } = {}) {
   focusing.set(tabId, (focusing.get(tabId) ?? 0) + 1);
   try {
-    return await focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise });
+    return await focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise, covered });
   } finally {
     const left = (focusing.get(tabId) ?? 1) - 1;
     if (left > 0) focusing.set(tabId, left);
@@ -262,7 +265,7 @@ export async function focusTab(tabId, { wake = true, source = 'other', carry = n
   }
 }
 
-async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise }) {
+async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise, covered }) {
   const gen = ++focusGen;
   const asked = Date.now();
   const token = `${instanceId}:${gen}:${tabId}`;
@@ -287,7 +290,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise
   // subsequent tabs.update.
   let [woke, preparation] = await Promise.all([
     wake ? wakeTab(tabId) : null,
-    wake ? prepareTabForShow(live, { token, carry, scroll }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)),
+    wake ? prepareTabForShow(live, { token, carry, scroll, covered }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)),
   ]);
   // A page still running an earlier copy of Margin (it slept through an
   // update or a rebuild): the current copy goes in now, theme and all, and
@@ -296,7 +299,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise
   const left = () => PREPARE_MAX_MS - (Date.now() - asked);
   if (preparation.outcome === 'not ready' && preparation.reason === 'no current sidebar' && gen === focusGen && left() > 200) {
     const added = await Promise.race([addCurrentCopy(live), new Promise((resolve) => setTimeout(() => resolve(false), Math.min(400, left() - 100)))]);
-    if (added && gen === focusGen && left() > 50) preparation = await prepareTabForShow(live, { token, carry, scroll, budget: left() });
+    if (added && gen === focusGen && left() > 50) preparation = await prepareTabForShow(live, { token, carry, scroll, budget: left(), covered });
   }
   // Another switch was asked for while this one waited (back to the tab in
   // front, say): the latest wins.
@@ -493,6 +496,21 @@ export async function openTab({ windowId, url, spaceId }) {
   return tab;
 }
 
+// Tabs never in front since they opened (behind the page: a new tab from the
+// palette, a ⌘-clicked link). Shown for the first time, such a tab can't keep
+// the page before on screen while it paints (WebKit does that only for a
+// view that has been in a window): it arrives covered instead
+// (content/core.js arriveCovered). This background's own knowledge: a tab
+// it didn't see open (before it started) is taken as shown before.
+const neverShown = new Set();
+export function tabOpened(tab) {
+  if (!tab.active) neverShown.add(tab.id);
+}
+export function tabShown(tabId) {
+  neverShown.delete(tabId);
+}
+export const isNeverShown = (tabId) => neverShown.has(tabId);
+
 // A page of the tab in front is told about a switch the background makes from
 // it ('switching', then 'switch-done' or 'switch-failed': content/core.js);
 // Margin's own pages have no content script, so they hear it as a broadcast
@@ -559,7 +577,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
   if (loaded === 'gone' || loaded === 'moved') return notShown();
   if (loaded === 'left') return leftFor();
   try {
-    const result = await focusTab(tab.id, { source: 'new tab', deadline: Math.min(asked + maxMs + FOCUS_MS, deadline ?? Infinity), raise: false });
+    const result = await focusTab(tab.id, { source: 'new tab', deadline: Math.min(asked + maxMs + FOCUS_MS, deadline ?? Infinity), raise: false, covered: true });
     if (!result?.tab) return result?.superseded ? leftFor() : notShown();
   } catch (err) {
     return notShown(String(err?.message ?? err));
