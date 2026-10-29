@@ -30,13 +30,18 @@ let pageRecorder = """
   let name: String
   var url: URL
   var webView: WKWebView?
+  // Asleep with a view already (made as Safari selected it, its load put off): no page yet, and
+  // WebKit answers a script there with an error in place of a result, as in Safari.
+  var unloaded = false
+  var asleep: Bool { webView == nil || unloaded }
   weak var window: Win?
   var loadingObs: [NSKeyValueObservation] = []
   // Session storage to give back when the tab loads again after a relaunch (Safari restores a
   // tab's sessionStorage with it): origin → [[key, value]]. See the "restart" step.
   var restoredSession: [String: [[String]]] = [:]
   init(name: String, url: URL) { self.name = name; self.url = url }
-  func makeWebView() {
+  // `load: false`: the web view only (no process yet), loaded with loadNow().
+  func makeWebView(load: Bool = true) {
     // Extension pages need the extension context's own configuration (that's
     // what gives them the browser.* APIs); web pages a plain one.
     let isExtensionPage = host.context.map { url.absoluteString.hasPrefix($0.baseURL.absoluteString) } ?? false
@@ -63,8 +68,9 @@ let pageRecorder = """
       wv.observe(\.url, options: [.new]) { [weak self] wv, _ in MainActor.assumeIsolated { guard let self else { return }; if let u = wv.url { self.url = u }; host.controllers.forEach { $0.didChangeTabProperties([.URL], for: self) } } },
       wv.observe(\.title, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controllers.forEach { $0.didChangeTabProperties([.title], for: self) } } },
     ]
-    wv.load(URLRequest(url: url))
+    if load { loadNow() }
   }
+  func loadNow() { webView?.load(URLRequest(url: url)) }
   // Every navigation, so reload loops and redirects show in the log.
   func webView(_ wv: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
     let frame = action.targetFrame.map { $0.isMainFrame ? "top" : "frame" } ?? "new window"
@@ -88,11 +94,12 @@ let pageRecorder = """
     webView?.pageZoom = CGFloat(zoomFactor); completionHandler(nil)
   }
   func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-    log("delegate: activate \(name) (asleep=\(webView == nil), turn \(runLoopTurn))"); window?.show(self); completionHandler(nil)
+    log("delegate: activate \(name) (asleep=\(asleep), turn \(runLoopTurn))"); window?.show(self); completionHandler(nil)
   }
   // tabs.update with an address.
   func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
     log("delegate: load \(name) \(url.absoluteString)"); self.url = url
+    unloaded = false
     if webView == nil { makeWebView() } else { webView!.load(URLRequest(url: url)) }
     completionHandler(nil)
   }
@@ -106,9 +113,11 @@ let pageRecorder = """
     host.controllers.forEach { $0.didCloseTab(self, windowIsClosing: false) }
     completionHandler(nil)
   }
+  // tabs.reload. Safari ignores it for a tab it unloaded (BrowserViewController reload: canReload
+  // is false without a page): it loads one only as it's selected.
   func reload(fromOrigin: Bool, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-    log("delegate: reload \(name) (asleep=\(webView == nil), shown=\(window?.active === self))")
-    if webView == nil { makeWebView() } else { webView!.reload() }
+    log("delegate: reload \(name) (asleep=\(asleep), shown=\(window?.active === self))\(asleep ? ": ignored, as Safari does" : "")")
+    if !asleep { webView?.reload() }
     completionHandler(nil)
   }
 }
@@ -127,10 +136,32 @@ let pageRecorder = """
   func show(_ tab: Tab) {
     let previous = active
     if previous === tab { return }
+    // Safari's own work selecting a tab (its address bar, toolbar, tab bar...): the turn that
+    // shows a tab lasts 2–74 ms in Safari's log (from the tab's view entering the window to the
+    // one before leaving it, at the turn's end). Here it takes microseconds, so a second tab
+    // change sent with the first (an introduction's) could miss the turn; 2 ms, the shortest seen.
+    let selecting = Date()
+    while Date().timeIntervalSince(selecting) < 0.002 {}
     previous?.webView?.removeFromSuperview()
-    if tab.webView == nil { log("  \(tab.name) was asleep: loading it as it's shown"); tab.makeWebView() }
-    nsWindow.contentView!.addSubview(tab.webView!)
     active = tab
+    if tab.asleep {
+      if deferLoads {
+        // Safari putting the load off to the end of its selection update: it then loads the
+        // tab selected by then (BrowserWindowController _finishLoadingTab → didSelectTabViewItem).
+        // Its view is made all the same, as Safari selects it (_applyTabSelectionStateUpdate asks
+        // for the tab's web view before _finishLoadingTab).
+        log("  \(tab.name) was asleep: its load put off to the end of the turn")
+        if tab.webView == nil { tab.makeWebView(load: false); tab.unloaded = true }
+        let atTurnEnd = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 0) { _, _ in
+          MainActor.assumeIsolated {
+            guard let shown = self.active, shown.unloaded else { return log("  \(tab.name) not loaded: \(self.active?.name ?? "-") is the tab shown now") }
+            log("  \(shown.name) loads as it's shown (put off)"); self.restore(shown)
+          }
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), atTurnEnd, .commonModes)
+      } else { log("  \(tab.name) was asleep: loading it as it's shown"); restore(tab) }
+    }
+    if let wv = tab.webView, wv.superview == nil { nsWindow.contentView!.addSubview(wv) }
     if let armed = probeArmed, armed.name == tab.name {
       if armed.nth <= 1 { probeArmed = nil; commitProbe = (tab: tab, started: Date(), frames: []) } else { probeArmed = (armed.name, armed.nth - 1) }
     }
@@ -139,6 +170,16 @@ let pageRecorder = """
       c.didSelectTabs([tab])
       if let previous { c.didDeselectTabs([previous]) }
     }
+  }
+  // Safari's order for a tab it restores: its web view into the window before it has a process
+  // (so WebKit doesn't count it as having been in a window: "Not dispatching because there is no
+  // running process" in Safari's log), and its load a moment later, once its session storage is
+  // back (60–90 ms in Safari's log), wherever the tab is by then.
+  func restore(_ tab: Tab) {
+    if tab.webView == nil { tab.makeWebView(load: false) }
+    tab.unloaded = false
+    if tab.webView!.superview == nil && active === tab { nsWindow.contentView!.addSubview(tab.webView!) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { MainActor.assumeIsolated { tab.loadNow() } }
   }
   func tabs(for context: WKWebExtensionContext) -> [any WKWebExtensionTab] { tabs }
   func activeTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? { active }
@@ -241,6 +282,9 @@ let pageRecorder = """
   func tab(_ name: String) -> Tab? { window.tabs.first { $0.name == name } }
 }
 
+// The "deferLoads" step: a tab asleep loads only if it's still the one shown once the run loop
+// turn that showed it is over.
+var deferLoads = false
 // Run loop turns (each ends before the app waits, where Core Animation commits what's on
 // screen): two tab changes in the same turn never reach the screen in between.
 var runLoopTurn = 0
@@ -297,7 +341,7 @@ Task { @MainActor in
     case "sleep":
       // Safari unloading a hidden tab: its web view goes away.
       let t = host.tab(step["name"] as! String)!
-      t.webView?.removeFromSuperview(); t.webView = nil; t.loadingObs = []
+      t.webView?.removeFromSuperview(); t.webView = nil; t.unloaded = false; t.loadingObs = []
       log("put \(t.name) to sleep")
     case "install": try! await host.install(sameId: (step["sameId"] as? Bool) == true)
     case "installOld":
@@ -311,6 +355,8 @@ Task { @MainActor in
       // or `dir`): WebKit then shares one content-script world between the two.
       let dir = step["dir"] as? String ?? ((step["old"] as? Bool) == true ? ProcessInfo.processInfo.environment["MARGIN_HOST_OLD_EXT"] ?? "" : extDir.path)
       try! await host.installTwin(dir: URL(fileURLWithPath: dir))
+    case "deferLoads":
+      deferLoads = true; log("loads of tabs asleep put off to the end of the turn that shows them")
     case "show":
       // Safari itself bringing a tab to the front (its tab bar, its own shortcuts).
       host.window.show(host.tab(step["name"] as! String)!); log("showed \(step["name"] as! String)")
@@ -358,7 +404,7 @@ Task { @MainActor in
       host.unloadTwin()
       // New tab objects, as a relaunched Safari has (WebKit maps a page to its tab through them).
       let frontName = host.window.active?.name
-      for t in host.window.tabs { t.webView?.removeFromSuperview(); t.webView = nil; t.loadingObs = [] }
+      for t in host.window.tabs { t.webView?.removeFromSuperview(); t.webView = nil; t.unloaded = false; t.loadingObs = [] }
       host.window.tabs = host.window.tabs.map { old in
         let t = Tab(name: old.name, url: old.url); t.window = host.window; t.restoredSession = old.restoredSession; return t
       }
@@ -439,7 +485,7 @@ Task { @MainActor in
     case "zoom": // { op: 'zoom', factor }: the shown tab's page zoom, as ⌘+ / ⌘− do
       host.window.active?.webView?.pageZoom = CGFloat(step["factor"] as! Double); log("zoom \(step["factor"]!)")
     case "state":
-      log("state: active=\(host.window.active?.name ?? "-") " + host.window.tabs.map { "\($0.name):\($0.webView == nil ? "asleep" : ($0.webView!.superview == nil ? "hidden" : "shown"))" }.joined(separator: " "))
+      log("state: active=\(host.window.active?.name ?? "-") " + host.window.tabs.map { "\($0.name):\($0.asleep ? "asleep" : ($0.webView!.superview == nil ? "hidden" : "shown"))" }.joined(separator: " "))
     case "snapshot":
       if let wv = host.window.active?.webView, let img = try? await wv.takeSnapshot(configuration: nil) {
         let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!

@@ -151,6 +151,29 @@ test('switching from the background: failed ends it at once; done ends it shortl
   assert.equal(switching.target(), null, 'still showing (split view): over');
 });
 
+test('switching from the background: an older switch to the same tab, called off, doesn\'t settle a newer one (each says which it is); one with no id still settles by its tab', async () => {
+  const { switching } = setup();
+  const background = backgroundSwitches();
+  switching.start(7, background.begin(7, 'a'));
+  switching.start(7, background.begin(7, 'b'));
+  background.settle({ type: 'switch-done', tabId: 7, switchId: 'a' });
+  await sleep(400);
+  assert.equal(switching.target(), 7, 'the older switch\'s word: still covered');
+  background.settle({ type: 'switch-done', tabId: 7 });
+  await sleep(400);
+  assert.equal(switching.target(), 7, 'nor a word with no id');
+  background.settle({ type: 'switch-failed', tabId: 7, switchId: 'b' });
+  await sleep(5);
+  assert.equal(switching.target(), null, 'its own');
+  switching.start(9, background.begin(9));
+  background.settle({ type: 'switch-failed', tabId: 9, switchId: 'c' });
+  await sleep(5);
+  assert.equal(switching.target(), 9, 'one with an id doesn\'t settle one without');
+  background.settle({ type: 'switch-failed', tabId: 9 });
+  await sleep(5);
+  assert.equal(switching.target(), null);
+});
+
 test('switching from the background: done before the pill\'s delay: no pill (it landed)', async () => {
   const { events, switching } = setup();
   const background = backgroundSwitches();

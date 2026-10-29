@@ -19,6 +19,10 @@
 //                              the nth show of the tab from now on (empty: WebKit's empty view)
 //   { op: 'checkProbe', name, maxMs, label }  that show had its content within maxMs
 //   { op: 'showProbe', name }  show a tab and log the same, with how long the show took
+//   { op: 'deferLoads' }       from now on, a tab asleep loads only if it's still the one shown
+//                              once the run loop turn is over (Safari putting its load off); its
+//                              view is made as it's selected all the same (no page: a script there
+//                              gets an error in place of a result, as in Safari)
 
 // Margin's state from storage, by state key (shared/stored.js: the keys
 // holding tab ids have names of their own there): an expression for steps.
@@ -206,17 +210,74 @@ export const SCENARIOS = {
     switchTo('A', 'C'), shown('C'), drawn('C'),
     switchTo('C', 'B'), shown('B'), drawn('B'),
   ],
-  // A switch to a tab Safari unloaded: nothing to prepare, so the background
-  // notes it before showing it (background/tabs.js noteShowing), and its page
-  // draws itself as the tab shown, in its own space, from its first render.
+  // A switch to a tab Safari unloaded (background/tabs.js restoreTab): loaded
+  // behind the page first (brought to the front and the page straight back, in
+  // one run loop turn: Safari loads a tab as it's selected), the page staying
+  // in front meanwhile; then introduced (its first instant in the window, with
+  // no process yet, doesn't count for WebKit) and shown, its sidebar prepared
+  // (its own tab and space, carried open): its content there as it comes up.
+  // (Without the introduction, 13–24 ms of WebKit's empty view here.)
   unloaded: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'D', url: '/p/D', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
-    { op: 'eval', in: 'A', js: `${ID} const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('D'), spaceId: work }); return 'D moved to Work'` }, wait(500),
-    { op: 'eval', in: 'A', js: `${ID} globalThis.__dId = id('D'); return 'D is ' + __dId` },
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'D', url: '/p/D', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    { op: 'eval', in: 'A', js: `${ID} const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('D'), spaceId: work }); return 'D moved to Work'` }, wait(300),
+    { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
+    { op: 'probeShow', name: 'D', nth: 3 }, // the first is the restore, the second the introduction
     switchTo('A', 'D', { show: 'toggle' }), shown('D'), drawn('D'),
-    check('D', 'D: drawn as the tab shown from its first render', `(globalThis.__marginLog ?? []).some((l) => /drawn as tab \\d+, the one being shown/.test(l))`, 3000),
+    { op: 'checkProbe', name: 'D', maxMs: 10, label: 'D: its content there as it\'s shown (no empty frame worth a screen refresh)' },
+    checkPage('D', 'D: loaded behind before it was shown (hidden from its start)', `window.__vis[0][0] === 'hidden' && window.__vis.some((e) => e[0] === 'shown')`),
+    checkPage('A', 'A: hidden once (the switch), not by the restore or the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
     checkPage('D', 'D: the sidebar was carried open', `document.querySelector('margin-sidebar-host')?.dataset.open === 'true'`, 3000),
     check('D', 'D: the window is on Work', `const s = await ${STATE}(['spaces', 'activeSpaceByWindow']); return Object.values(s.activeSpaceByWindow ?? {}).some((id) => s.spaces.find((x) => x.id === id)?.name === 'Work')`),
+  ],
+  // The same with a page heavy to paint: covered before its introduction
+  // (background/tabs.js coverArrival), so that instant's paint, and the
+  // show's, are the cover's, quick (a heavy page's own first paint took
+  // 70–300 ms in Safari's log, longer than Margin waits after introducing).
+  unloadedheavy: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'H', url: '/p/H1', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
+    { op: 'probeShow', name: 'H', nth: 3 }, // restored, introduced, shown
+    { op: 'eval', in: 'A', js: `${ID} const request = Margin.content.send('activateTab', { tabId: id('H1') }); Margin.content.startSwitching(id('H1'), request); return 'asked for H'` },
+    checkPage('A', 'A: left', 'document.hidden', 4000), shown('H'),
+    { op: 'checkProbe', name: 'H', maxMs: 10, label: 'H: its content there as it\'s shown' },
+    checkPage('H', 'H: loaded behind before it was shown', `window.__vis[0][0] === 'hidden'`),
+    checkPage('A', 'A: hidden once (the switch), not by the restore or the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
+    check('H', 'H: its page back once shown (the arrival cover lifted)', `const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.arrivalCover === 'false' && getComputedStyle(document.body).opacity === '1'`, 3000),
+  ],
+  // Another unloaded tab asked for while the first still loads behind: that
+  // one is restored too (the first's turn in the window is over), then
+  // introduced and shown with its content.
+  unloadedtwo: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'S', url: '/p/S1', asleep: true }, { op: 'open', name: 'E', url: '/p/E', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    { op: 'eval', in: 'A', js: `${ID} const request = Margin.content.send('activateTab', { tabId: id('S1') }); Margin.content.startSwitching(id('S1'), request); return 'asked for S'` },
+    checkPage('S', 'S: loading behind', `document.hidden && document.readyState !== 'complete'`, 1500),
+    { op: 'probeShow', name: 'E', nth: 3 }, // restored, introduced, shown
+    { op: 'eval', in: 'A', js: `${ID} const request = Margin.content.send('activateTab', { tabId: id('E') }); Margin.content.startSwitching(id('E'), request); return 'asked for E'` },
+    checkPage('A', 'A: left', 'document.hidden', 3000), shown('E'),
+    { op: 'checkProbe', name: 'E', maxMs: 10, label: 'E: its content there as it\'s shown' },
+    checkPage('E', 'E: loaded behind before it was shown', `window.__vis[0][0] === 'hidden'`),
+  ],
+  // A space whose last tab Safari unloaded, chosen in the sidebar (nothing
+  // there covers the page itself): Margin covers the page in front while the
+  // tab loads behind, then shows it.
+  unloadedspace: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'S', url: '/p/S1', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    { op: 'eval', in: 'A', js: `${ID} const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('S1'), spaceId: work }); globalThis.__work = work; return 'S moved to Work'` }, wait(300),
+    { op: 'eval', in: 'A', js: `void Margin.content.send('setSpace', { spaceId: __work }); return 'asked for Work'` },
+    check('A', 'A: covered while S loads behind', `const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.switchCover === 'true'`, 1500),
+    checkPage('S', 'S: loading behind', `document.hidden && document.readyState !== 'complete'`, 1500),
+    checkPage('A', 'A: left once S had loaded', 'document.hidden', 3000), shown('S'),
+    checkPage('S', 'S: shown once it had loaded', `const nav = performance.getEntriesByType('navigation')[0]; const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && nav.loadEventEnd > 0 && performance.timeOrigin + nav.loadEventEnd <= shownAt + 5`),
+  ],
+  // Safari putting off the load of a tab it restores until its selection
+  // update is over (it then loads the tab selected by then): nothing loads
+  // behind, and the switch goes ahead as before a moment later, its page told
+  // which tab it is before it draws (background/tabs.js noteShowing).
+  deferred: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'D', url: '/p/D', asleep: true }, { op: 'deferLoads' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    switchTo('A', 'D'), shown('D'), drawn('D'),
+    checkPage('D', 'D: loaded as it was shown (nothing loaded it behind)', `window.__vis[0][0] === 'shown'`),
+    check('D', 'D: drawn as the tab shown from its first render', `(globalThis.__marginLog ?? []).some((l) => /drawn as tab \\d+, the one being shown/.test(l))`, 3000),
   ],
   // Two copies of Margin loaded at once in one controller (as Safari would
   // load a new one while the old one still runs): they share one script world
@@ -232,14 +293,15 @@ export const SCENARIOS = {
     // older one stands back, saying why.
     check('B', 'B: either it runs the copy in charge, or it stands back and says why', `const log = globalThis.__marginLog ?? []; const s = await browser.storage.local.get('openTabs'); return (log.some((l) => l.includes('stays out of the way')) && !Margin.content.active()) || (s.openTabs?.origin === browser.runtime.getURL('') && s.openTabs.synced && Margin.content.active())`, 5000),
   ],
-  // A tab Safari unloaded whose page is slow: the switch's cover stays over
-  // it, its spinner already turning, until it has loaded.
+  // A tab Safari unloaded whose page is slow: it loads behind the page, which
+  // stays in front, covered, its row highlighted; it's shown once loaded.
   slowunloaded: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'S', url: '/p/S1', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
-    { op: 'eval', in: 'A', js: `${ID} return JSON.stringify(await Margin.content.send('activateTab', { tabId: id('S1') }))` },
-    shown('S'),
-    checkPage('S', 'S: covered while it loads', `document.querySelector('margin-sidebar-host')?.dataset.loadingCover === 'true' && document.readyState !== 'complete'`, 1500),
-    checkPage('S', 'S: shown once loaded', `document.readyState === 'complete' && document.querySelector('margin-sidebar-host')?.dataset.loadingCover === 'false'`, 3000),
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'S', url: '/p/S1', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    { op: 'eval', in: 'A', js: `${ID} const request = Margin.content.send('activateTab', { tabId: id('S1') }); Margin.content.startSwitching(id('S1'), request); return 'asked'` },
+    checkPage('S', 'S: loading behind', `document.hidden && document.readyState !== 'complete'`, 1500),
+    check('A', 'A: still in front, covered, S highlighted', `${ID} const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.switchingTo === String(id('S1')) && h.dataset.switchCover === 'true'`),
+    checkPage('S', 'S is the tab shown', '!document.hidden', 5000), checkPage('A', 'A: left (the switch landed)', 'document.hidden'),
+    checkPage('S', 'S: shown once it had loaded', `const nav = performance.getEntriesByType('navigation')[0]; const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && nav.loadEventEnd > 0 && performance.timeOrigin + nav.loadEventEnd <= shownAt + 5`),
   ],
   // An address chosen in the palette (⌘T): the tab opens behind the page,
   // whose sidebar has its row highlighted and which stays covered while it

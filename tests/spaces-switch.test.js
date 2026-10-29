@@ -302,3 +302,21 @@ test('restore: a new-tab page opened in a window never counts as a tab coming ba
   await sleep(1700);
   assert.equal((await load()).tabSpace[400], 'personal');
 });
+
+test('hello: the sidebar carried open goes only to a page in front (one loading behind gets it with its preparation, if its switch goes ahead)', async () => {
+  await setup();
+  const { handlers } = await import('../extension/background/handlers.js');
+  const send = chrome.tabs.sendMessage;
+  chrome.tabs.sendMessage = async (tabId, message) => {
+    if (tabId === 4) throw new Error('no page yet'); // the carry stays for its hello
+    return send(tabId, message);
+  };
+  try {
+    await handlers.setSpace({ spaceId: 'work', show: 'hover' }, { tab: { id: 1, windowId: 1 } });
+    assert.equal(front(1), 4);
+    assert.equal((await handlers.hello({}, { tab: { id: 4, windowId: 1, active: false } })).carry, null, 'not to a page behind');
+    assert.equal((await handlers.hello({}, { tab: { id: 4, windowId: 1, active: true } })).carry, 'hover', 'kept for the page in front');
+  } finally {
+    chrome.tabs.sendMessage = send;
+  }
+});

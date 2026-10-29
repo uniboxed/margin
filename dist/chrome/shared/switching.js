@@ -118,13 +118,15 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
 // when it's done or failed (background/navigation.js 'switch-done',
 // 'switch-failed'), which stands in for the request of a switch this page
 // makes itself: failed ends it at once, done shortly after if this page is
-// still showing (Chrome's split view keeps it on screen).
+// still showing (Chrome's split view keeps it on screen). `switchId`, when the
+// background gives one (background/tabs.js coverFront): only that switch's
+// word settles it (an older switch to the same tab, called off, says it's done).
 export function backgroundSwitches() {
-  /** @type {{ tabId: number, resolve: () => void, reject: () => void } | null} */
+  /** @type {{ tabId: number, switchId: string | null, resolve: () => void, reject: () => void } | null} */
   let pending = null;
   return {
-    /** @param {number} tabId @returns {Promise<any>} the request to pass to start() */
-    begin(tabId) {
+    /** @param {number} tabId @param {string | null} [switchId] @returns {Promise<any>} the request to pass to start() */
+    begin(tabId, switchId = null) {
       pending?.resolve(); // a newer one takes over (start() ignores the old)
       /** @type {(value?: any) => void} */ let resolve = () => {};
       /** @type {(reason: Error) => void} */ let reject = () => {};
@@ -132,12 +134,12 @@ export function backgroundSwitches() {
       const request = new Promise((res, rej) => { resolve = res; reject = rej; });
       request.catch(() => {}); // a switch that never started
       // Done resolves as a page's own switch request does ({ shown }), so it isn't taken for a failure.
-      pending = { tabId, resolve: () => resolve(/** @type {any} */ ({ shown: tabId })), reject: () => reject(new Error('switch failed')) };
+      pending = { tabId, switchId: switchId ?? null, resolve: () => resolve(/** @type {any} */ ({ shown: tabId })), reject: () => reject(new Error('switch failed')) };
       return request;
     },
-    /** @param {{ type: string, tabId?: number }} message 'switch-done' or 'switch-failed' */
-    settle({ type, tabId }) {
-      if (!pending || pending.tabId !== tabId) return;
+    /** @param {{ type: string, tabId?: number, switchId?: string | null }} message 'switch-done' or 'switch-failed' */
+    settle({ type, tabId, switchId = null }) {
+      if (!pending || pending.tabId !== tabId || pending.switchId !== (switchId ?? null)) return;
       (type === 'switch-done' ? pending.resolve : pending.reject)();
       pending = null;
     },

@@ -22,6 +22,11 @@ const PROFILES = {
     // sight, before Margin first shows it (background/tabs.js introduceTab):
     // WebKit then keeps the page before on screen while it paints.
     introduceTabs: true,
+    // A tab Safari unloaded is loaded behind the page before Margin shows it,
+    // brought to the front and straight back as an introduction is
+    // (background/tabs.js restoreTab): Safari shows a dark window until its
+    // document arrives otherwise.
+    restoreTabs: true,
     // Before Safari swaps web views, refresh the destination tab's own copy
     // of the sidebar while it is still hidden (background/tabs.js +
     // content/core.js). Chrome keeps hidden tabs' last frames and does not
@@ -70,6 +75,7 @@ const PROFILES = {
     wakeTabs: false,
     keepTabsReady: false, // Chrome keeps hidden tabs' last frames
     introduceTabs: false,
+    restoreTabs: false,
     prepareSidebar: false,
     compactRail: false, // as in Safari's profile
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by

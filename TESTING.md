@@ -526,3 +526,20 @@ Run `scripts/make-xcode.sh`, then Run in Xcode (the reports need the packaged ap
 - [ ] "Copy “New Tab”" and "Copy Karabiner rule" put the text on the clipboard; "Open Keyboard Settings" opens Keyboard settings.
 - [ ] Dark mode looks right.
 
+## A tab Safari hasn't loaded (2026-10-29)
+
+Quit and reopen Safari with several tabs in a few spaces (Safari brings them back unloaded), then:
+
+- [ ] Click rows of tabs you haven't opened since the relaunch: the page you're on stays, covered by the empty screen with its spinner, the row highlighted; then the tab comes up drawn. No dark window at any point; record the screen and step through it frame by frame.
+- [ ] The same with ⌃⌘↓ / ⌃⌘↑, a space chip in the sidebar (its last tab unloaded), ⌃⌘→, a tab picked in the palette, and closing the tab you're on with its ×.
+- [ ] Hold ⌃⌘↓ over several unloaded tabs: the highlight keeps moving, nothing dark shows for the tabs passed; where you let go, that tab comes up once loaded.
+- [ ] While one loads, click another unloaded row: that one comes up, drawn; the first shows at once when clicked later. Double-click a row, or click it again while it loads: the cover stays until it comes up, no dark frame.
+- [ ] A heavy site unloaded (a news site, YouTube): no dark frame as it comes up, not even a short one.
+- [ ] A space chip whose last tab is unloaded, then Escape while it loads: you stay on the page and space you were on.
+- [ ] From a PDF or Safari's Start Page in front, ⌃⌘↓ to an unloaded tab: it comes up at once, as before (dark while it loads: nothing can cover a page Margin doesn't run in).
+- [ ] An unloaded tab in another window, picked in the palette: that window comes forward at once, covered, and the tab comes up once loaded.
+- [ ] The tab keeps its history: Back goes where it went before the relaunch; it's scrolled where you left it.
+- [ ] While it loads, nothing flickers: not the page you're on, its cover, nor Safari's tab bar or address bar if they're showing.
+- [ ] A slow site (youtube.com) unloaded: it comes up after it has loaded, or after about 2.5 s as far as it got.
+- [ ] ⌘-click a link to a slow site, then click its row at once: the page you're on stays covered until it has loaded, then it comes up drawn.
+- [ ] If a dark window still shows: Start page → Settings → Switch log (development) → Copy, and look at `restored` and `introduced` on those switches (`not loaded`: Safari didn't load it behind; after two of those Margin stops trying until Safari restarts). Safari's log (Console, process Safari) around them: `restoreFromSessionState`, `Not dispatching`, `hideContentUntilPendingUpdate`.

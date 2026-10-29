@@ -350,11 +350,15 @@ export function mount({ api, self, send, windowed = false }) {
     void send('newTabKeyUsed'); // for the Mac app's set-up window (background/onboarding.js)
     onNewTab();
   }, globalThis, () => recording); // recording: Settings says it's taken
-  api.runtime.onMessage.addListener((message) => {
+  api.runtime.onMessage.addListener((message, _, sendResponse) => {
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'open-palette') palette.toggle();
     if (message?.type === 'command' && message.tabId === self?.id && message.command === 'new-tab' && !recording) onNewTab(); // ⌘T (Safari's shortcut)
-    // The background switching from this tab (next/previous tab; shared/switching.js).
-    if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) onSwitch(message.tabId, fromBackground.begin(message.tabId), { cover: message.cover ?? (message.passing ? 'none' : 'slow'), inWindow: message.windowId ?? null });
+    // The background switching from this tab (next/previous tab; shared/switching.js),
+    // answered with whether it's covered (as on web pages).
+    if (message?.type === 'switching' && message.from === self?.id && Number.isInteger(message.tabId)) {
+      onSwitch(message.tabId, fromBackground.begin(message.tabId, message.switchId), { cover: message.cover ?? (message.passing ? 'none' : 'slow'), inWindow: message.windowId ?? null });
+      sendResponse(switching.target() === message.tabId && when === 'now');
+    }
     if ((message?.type === 'switch-done' || message?.type === 'switch-failed') && message.from === self?.id) fromBackground.settle(message);
   });
 

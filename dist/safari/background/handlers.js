@@ -221,7 +221,9 @@ export const handlers = {
     onboarding.pageLoaded();
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
-    const carry = sender.tab?.id != null ? takeCarried(sender.tab.id) : null;
+    // Only to a page in front: one loading behind (background/tabs.js
+    // restoreTab) gets it with its preparation, if its switch goes ahead.
+    const carry = sender.tab?.id != null && sender.tab.active !== false ? takeCarried(sender.tab.id) : null;
     if (sender.tab?.id != null) forgetShowing(sender.tab.id, { later: true });
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.js).
     return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since };

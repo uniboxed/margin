@@ -876,11 +876,12 @@ export function startCore({ onTheme } = {}) {
     setCovered(true);
     host.dataset.arrivalCover = 'true'; // test/debug hook
     let done = false;
+    let hides = 0;
     const finish = ({ fade = true } = {}) => {
       if (done) return;
       done = true;
       clearTimeout(limit);
-      document.removeEventListener('visibilitychange', onShown);
+      document.removeEventListener('visibilitychange', onVisibility);
       showPage();
       // Not if a switch from here has taken the cover over meanwhile.
       if (switchingTo == null) {
@@ -891,16 +892,23 @@ export function startCore({ onTheme } = {}) {
       arrival = null;
     };
     const onShown = async () => {
-      if (document.hidden || done) return;
-      document.removeEventListener('visibilitychange', onShown);
+      const at = hides;
       await frames(2); // its first frames: the cover, cheap to paint
-      if (done) return;
+      // Hidden again meanwhile: on screen for an instant only (introduced:
+      // background/tabs.js); the show to come brings it.
+      if (done || hides !== at) return;
+      document.removeEventListener('visibilitychange', onVisibility);
       showPage();
       await frames(2); // the page, painted under the cover
       await new Promise((resolve) => setTimeout(resolve, 40));
       finish();
     };
-    document.addEventListener('visibilitychange', onShown);
+    const onVisibility = () => {
+      if (done) return;
+      if (document.hidden) hides++;
+      else void onShown();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     const limit = setTimeout(() => finish({ fade: !document.hidden }), ARRIVAL_MAX_MS);
     arrival = { finish };
   }
@@ -938,6 +946,14 @@ export function startCore({ onTheme } = {}) {
     // requestAnimationFrame, so an animation-frame acknowledgement would hang.
     host.getBoundingClientRect();
     return { ready: true, token };
+  };
+  // Covered before the background introduces the tab (background/tabs.js
+  // coverArrival), its style and layout done now: the paint WebKit asks for in
+  // that instant is the cover's, quick. Whether it's covered.
+  Margin.content.coverArrival = () => {
+    arriveCovered();
+    host.getBoundingClientRect();
+    return !!arrival;
   };
   Margin.content.cancelPreparedShow = (token) => {
     if (!preparedShow || preparedShow.token !== token) return false;
@@ -1050,11 +1066,14 @@ export function startCore({ onTheme } = {}) {
     // tab; a new tab from the palette, once it has loaded, with this page
     // covered meanwhile: `cover`): highlight it already (content/palette.js
     // and the sidebar start their own switches themselves).
+    // Answers whether it's covered now (the background waits for a tab to
+    // load only behind a page that is: background/tabs.js coverFront).
     const forThisPage = message?.from == null || tabId == null || message.from === tabId;
     if (message?.type === 'switching') {
       if (forThisPage) {
         switchError = null; // not an earlier click's
-        Margin.content.startSwitching(message.tabId, fromBackground.begin(message.tabId), { cover: message.cover ?? (message.passing ? 'none' : 'slow'), inWindow: message.windowId ?? null });
+        Margin.content.startSwitching(message.tabId, fromBackground.begin(message.tabId, message.switchId), { cover: message.cover ?? (message.passing ? 'none' : 'slow'), inWindow: message.windowId ?? null });
+        return sendResponse(covered && switching.target() === message.tabId);
       }
       return;
     }

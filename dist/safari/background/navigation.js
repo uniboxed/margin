@@ -1,8 +1,9 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load, mutate, now } from './store.js';
-import { activating, focusTab, openTab, tellPage, userSwitched, wakeTab } from './tabs.js';
+import { activating, anyFocusing, focusTab, openTab, tellPage, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
+import { platform } from '../shared/platform.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
 // `commands` (⌃⌘ + arrows; Safari matches them in the app, so they work
@@ -67,16 +68,26 @@ async function runNavigation(action, windowId) {
         const asked = Date.now();
         const wake = await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
         userSwitched(null, windowId); // a switch still waiting for its wake doesn't land after this one
+        // A tab Safari unloaded isn't shown in passing (its empty view, and its
+        // load in front, for an instant): the highlight moves on, and the tab
+        // the key stops on is loaded behind the page (background/tabs.js restoreTab).
+        if (wake?.outcome === 'no page' && platform?.restoreTabs) {
+          recordSwitch({ source: action, tabId: next, asked, wake, error: 'passed over' });
+          void told('switch-done');
+          return;
+        }
         activating(next);
         await api.tabs.update(next, { active: true });
         recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
       } else {
         // The last key in a run is the frame the user keeps. Give it the same
         // hidden render acknowledgement as a click; intermediate held-key
-        // tabs stay on the short pass-through path above.
-        const focused = await focusTab(next, { source: action });
+        // tabs stay on the short pass-through path above. One that isn't
+        // ready to show isn't waited for once another press comes: that one
+        // goes on from it (the tab stays behind, loading).
+        const focused = await focusTab(next, { source: action, hurry: () => queued > 0 });
         if (!focused?.tab) {
-          told('switch-failed');
+          told(focused?.hurried ? 'switch-done' : 'switch-failed');
           return;
         }
       }
@@ -93,7 +104,7 @@ async function runNavigation(action, windowId) {
   } else if (action === 'next-space' || action === 'prev-space') {
     const spaceId = V.cycleSpace(s, windowId, action === 'next-space' ? 1 : -1);
     if (spaceId == null) return;
-    await showSpace(windowId, spaceId, { bringTab: queued === 0 });
+    await showSpace(windowId, spaceId, { bringTab: queued === 0, hurry: () => queued > 0 });
     // Show where you landed (auto-hide mode); Margin's own pages ignore it.
     const [tab] = await api.tabs.query({ active: true, windowId });
     if (tab) api.tabs.sendMessage(tab.id, { type: 'command', command: 'peek' }).catch(() => {});
@@ -108,8 +119,9 @@ export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-
 // opens in it, or the untouched start or new-tab page in front moves to it
 // (no pile of empty pages). `bringTab: false`: only the sidebar's space
 // (held keys pass spaces; the last press brings the tab).
-/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number }} [options] */
-export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline } = {}) {
+// `hurry`: as focusTab's.
+/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, hurry?: (() => boolean) | null }} [options] */
+export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline, hurry = null } = {}) {
   if (windowId == null) return;
   let before = null;
   const s = await mutate((st) => {
@@ -122,18 +134,26 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
   const candidates = Object.values(s.tabs)
     .filter((t) => t.windowId === windowId && s.tabSpace[t.id] === spaceId && t.id !== shown?.id)
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
+  // The window back to the space it showed (its tab in front is still of that
+  // one), unless something else changed it meanwhile.
+  const goBack = async () => {
+    if (!before || before === spaceId) return;
+    const [front] = await api.tabs.query({ active: true, windowId }).catch(() => []);
+    await mutate((st) => (V.activeSpaceId(st, windowId) === spaceId && (!front || st.tabSpace[front.id] === before) ? M.setActiveSpace(st, windowId, before) : st)).catch(() => {});
+  };
   for (const tab of candidates) {
     try {
-      return await focusTab(tab.id, { source: 'space', carry, scroll, deadline });
+      const result = await focusTab(tab.id, { source: 'space', carry, scroll, deadline, hurry, retry: true });
+      // Called off while its tab loaded behind the page (Escape on its cover),
+      // not by another switch of Margin's (that one sets its own space) nor a
+      // key press (the next press goes on from this space).
+      if (!result?.tab && !result?.hurried && !anyFocusing()) await goBack();
+      return result;
     } catch (err) {
       // Closed meanwhile: the next one. Anything else (Safari didn't switch,
-      // too late) is this switch failing, not a reason to open a start page:
-      // the window goes back to the space it showed (its tab in front is still
-      // of that one), unless something else changed it meanwhile.
+      // too late) is this switch failing, not a reason to open a start page.
       if (!/No tab with id/i.test(String(err?.message ?? err))) {
-        if (before && before !== spaceId) {
-          await mutate((st) => (V.activeSpaceId(st, windowId) === spaceId ? M.setActiveSpace(st, windowId, before) : st)).catch(() => {});
-        }
+        await goBack();
         throw err;
       }
     }
