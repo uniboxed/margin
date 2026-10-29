@@ -65,6 +65,10 @@ FIRST=true
 mkdir -p "$HOME/Applications"
 rm -rf "$DEST.new" && ditto "$BUILT" "$DEST.new"
 rm -rf "$DEST" && mv "$DEST.new" "$DEST"
+# The build's own copy goes (it would be a second Margin.app on the Mac; the
+# build folder keeps what makes the next build quick).
+"$LSREGISTER" -u "$BUILT" 2>/dev/null || true
+rm -rf "$BUILT"
 "$LSREGISTER" -f -R "$DEST"
 pluginkit -a "$DEST/Contents/PlugIns/Margin Extension.appex"
 # Only this copy: one Xcode left elsewhere (its own build folder) would be a
