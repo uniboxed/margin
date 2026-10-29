@@ -24,6 +24,18 @@ for f in background.bundle.js content/content.bundle.js; do
   sed "s/__PORT__/$PORT/" hook.js | cat - "$BUILD/ext/$f" > "$BUILD/ext/$f.tmp" && mv "$BUILD/ext/$f.tmp" "$BUILD/ext/$f"
 done
 
+# An old copy of Margin for the "installOld" step (one still running beside the installed one):
+# the Safari build at MARGIN_HOST_OLD_REF (default main), with the same hook, its lines
+# marked "old".
+OLD_REF="${MARGIN_HOST_OLD_REF:-main}"
+rm -rf "$BUILD/old" && mkdir -p "$BUILD/old"
+if git -C ../.. archive "$OLD_REF" dist/safari 2>/dev/null | tar -x -C "$BUILD/old" 2>/dev/null; then
+  export MARGIN_HOST_OLD_EXT="$BUILD/old/dist/safari"
+  for f in background.bundle.js content/content.bundle.js; do
+    sed "s/__PORT__/$PORT/; s/\"bg\" : \"cs \"/\"old bg\" : \"old cs \"/; s/where === \"bg\"/where.endsWith(\"bg\")/g" hook.js | cat - "$MARGIN_HOST_OLD_EXT/$f" > "$MARGIN_HOST_OLD_EXT/$f.tmp" && mv "$MARGIN_HOST_OLD_EXT/$f.tmp" "$MARGIN_HOST_OLD_EXT/$f"
+  done
+fi
+
 run_one() {
   local name=$1 status
   if [[ "$name" == *.json ]]; then

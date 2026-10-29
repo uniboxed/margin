@@ -32,6 +32,9 @@ let pageRecorder = """
   var webView: WKWebView?
   weak var window: Win?
   var loadingObs: [NSKeyValueObservation] = []
+  // Session storage to give back when the tab loads again after a relaunch (Safari restores a
+  // tab's sessionStorage with it): origin → [[key, value]]. See the "restart" step.
+  var restoredSession: [String: [[String]]] = [:]
   init(name: String, url: URL) { self.name = name; self.url = url }
   func makeWebView() {
     // Extension pages need the extension context's own configuration (that's
@@ -46,14 +49,19 @@ let pageRecorder = """
         note(); document.addEventListener('visibilitychange', note); })();
       """, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     cfg.userContentController.addUserScript(WKUserScript(source: pageRecorder, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+    if !restoredSession.isEmpty, let data = try? JSONSerialization.data(withJSONObject: restoredSession), let json = String(data: data, encoding: .utf8) {
+      // Before any other script of the page: its session storage as it was (an origin's, once,
+      // into an empty storage, as a restored tab's first load finds it).
+      cfg.userContentController.addUserScript(WKUserScript(source: "(() => { try { const own = (\(json))[location.origin]; if (own && !sessionStorage.length) for (const [k, v] of own) sessionStorage.setItem(k, v); } catch {} })();", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
     let wv = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800), configuration: cfg)
     wv.isInspectable = true
     wv.navigationDelegate = self
     webView = wv
     loadingObs = [
-      wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controller.didChangeTabProperties([.loading], for: self) } },
-      wv.observe(\.url, options: [.new]) { [weak self] wv, _ in MainActor.assumeIsolated { guard let self else { return }; if let u = wv.url { self.url = u }; host.controller.didChangeTabProperties([.URL], for: self) } },
-      wv.observe(\.title, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controller.didChangeTabProperties([.title], for: self) } },
+      wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controllers.forEach { $0.didChangeTabProperties([.loading], for: self) } } },
+      wv.observe(\.url, options: [.new]) { [weak self] wv, _ in MainActor.assumeIsolated { guard let self else { return }; if let u = wv.url { self.url = u }; host.controllers.forEach { $0.didChangeTabProperties([.URL], for: self) } } },
+      wv.observe(\.title, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controllers.forEach { $0.didChangeTabProperties([.title], for: self) } } },
     ]
     wv.load(URLRequest(url: url))
   }
@@ -107,9 +115,11 @@ let pageRecorder = """
     if tab.webView == nil { log("  \(tab.name) was asleep: loading it as it's shown"); tab.makeWebView() }
     nsWindow.contentView!.addSubview(tab.webView!)
     active = tab
-    host.controller.didActivateTab(tab, previousActiveTab: previous)
-    host.controller.didSelectTabs([tab])
-    if let previous { host.controller.didDeselectTabs([previous]) }
+    for c in host.controllers {
+      c.didActivateTab(tab, previousActiveTab: previous)
+      c.didSelectTabs([tab])
+      if let previous { c.didDeselectTabs([previous]) }
+    }
   }
   func tabs(for context: WKWebExtensionContext) -> [any WKWebExtensionTab] { tabs }
   func activeTab(for context: WKWebExtensionContext) -> (any WKWebExtensionTab)? { active }
@@ -122,8 +132,17 @@ let pageRecorder = """
 }
 
 @MainActor final class Host: NSObject, WKWebExtensionControllerDelegate {
-  let controller = WKWebExtensionController(configuration: WKWebExtensionController.Configuration(identifier: UUID()))
+  // The identity of the controller's storage: a second controller with the same one shares
+  // Margin's storage.local (the "installOld" step), as two copies of Margin in one Safari
+  // profile do while an old one lingers.
+  let storeId = UUID()
+  lazy var controller = WKWebExtensionController(configuration: WKWebExtensionController.Configuration(identifier: storeId))
   var context: WKWebExtensionContext?
+  // An old copy of Margin still running beside the installed one ("installOld"): its own
+  // controller (no pages get its content scripts), same tabs, same storage, its own tab ids.
+  var oldController: WKWebExtensionController?
+  var oldContext: WKWebExtensionContext?
+  var controllers: [WKWebExtensionController] { [controller] + (oldController.map { [$0] } ?? []) }
   let window = Win()
   override init() { super.init(); controller.delegate = self }
   func webExtensionController(_ c: WKWebExtensionController, openWindowsFor x: WKWebExtensionContext) -> [any WKWebExtensionWindow] { [window] }
@@ -148,7 +167,7 @@ let pageRecorder = """
     context = ctx
     controller.didOpenWindow(window)
     controller.didFocusWindow(window)
-    log("installed \(ctx.uniqueIdentifier)")
+    log("installed \(ctx.uniqueIdentifier) at \(ctx.baseURL.absoluteString)")
     // What WebKit made of the manifest: its errors, and the commands' shortcuts.
     for error in ext.errors { log("manifest error: \(error.localizedDescription)") }
     for command in ctx.commands {
@@ -156,6 +175,32 @@ let pageRecorder = """
     }
   }
   func uninstall() throws { if let ctx = context { try controller.unload(ctx); log("uninstalled"); context = nil } }
+  func installOld(dir: URL) async throws {
+    let c = WKWebExtensionController(configuration: WKWebExtensionController.Configuration(identifier: storeId))
+    c.delegate = self
+    let ext = try await WKWebExtension(resourceBaseURL: dir)
+    let ctx = WKWebExtensionContext(for: ext)
+    ctx.uniqueIdentifier = "margin-fixed-id"
+    for p in ext.requestedPermissions { ctx.setPermissionStatus(.grantedExplicitly, for: p) }
+    ctx.setPermissionStatus(.grantedExplicitly, for: WKWebExtension.MatchPattern.allURLs())
+    try c.load(ctx)
+    oldController = c; oldContext = ctx
+    c.didOpenWindow(window)
+    c.didFocusWindow(window)
+    log("installed an old copy from \(dir.lastPathComponent) beside it")
+  }
+  func uninstallOld() { if let c = oldController, let ctx = oldContext { try? c.unload(ctx); log("old copy gone") }; oldController = nil; oldContext = nil }
+  // A second copy loaded into the same controller (as Safari would load a new generation
+  // while the old one still runs): same unique identifier, its own base URL.
+  var twin: WKWebExtensionContext?
+  func installTwin(dir: URL) async throws {
+    let ext = try await WKWebExtension(resourceBaseURL: dir)
+    let ctx = WKWebExtensionContext(for: ext)
+    ctx.uniqueIdentifier = "margin-fixed-id"
+    for p in ext.requestedPermissions { ctx.setPermissionStatus(.grantedExplicitly, for: p) }
+    ctx.setPermissionStatus(.grantedExplicitly, for: WKWebExtension.MatchPattern.allURLs())
+    do { try controller.load(ctx); twin = ctx; log("installed a twin at \(ctx.baseURL.absoluteString)") } catch { log("twin failed to load: \(error)") }
+  }
   func world() -> WKContentWorld? { context.map { WKContentWorld.world(name: "WebExtension-\($0.uniqueIdentifier)") } }
   func tab(_ name: String) -> Tab? { window.tabs.first { $0.name == name } }
 }
@@ -178,7 +223,7 @@ Task { @MainActor in
       t.window = host.window
       host.window.tabs.append(t)
       if (step["asleep"] as? Bool) != true { t.makeWebView() }
-      if host.context != nil { host.controller.didOpenTab(t) }
+      if host.context != nil { host.controllers.forEach { $0.didOpenTab(t) } }
       if (step["active"] as? Bool) == true { host.window.show(t) }
       log("opened \(t.name)\((step["asleep"] as? Bool) == true ? " (asleep)" : "")")
     case "sleep":
@@ -187,6 +232,50 @@ Task { @MainActor in
       t.webView?.removeFromSuperview(); t.webView = nil; t.loadingObs = []
       log("put \(t.name) to sleep")
     case "install": try! await host.install(sameId: (step["sameId"] as? Bool) == true)
+    case "installOld":
+      // An old copy of Margin (MARGIN_HOST_OLD_EXT: run.sh puts main's dist/safari there, or
+      // `dir`) running beside the installed one, sharing its storage.
+      let dir = step["dir"] as? String ?? ProcessInfo.processInfo.environment["MARGIN_HOST_OLD_EXT"] ?? ""
+      try! await host.installOld(dir: URL(fileURLWithPath: dir))
+    case "uninstallOld": host.uninstallOld()
+    case "installTwin":
+      // A second copy in the same controller (this build, or `old: true` for MARGIN_HOST_OLD_EXT,
+      // or `dir`): WebKit then shares one content-script world between the two.
+      let dir = step["dir"] as? String ?? ((step["old"] as? Bool) == true ? ProcessInfo.processInfo.environment["MARGIN_HOST_OLD_EXT"] ?? "" : extDir.path)
+      try! await host.installTwin(dir: URL(fileURLWithPath: dir))
+    case "show":
+      // Safari itself bringing a tab to the front (its tab bar, its own shortcuts).
+      host.window.show(host.tab(step["name"] as! String)!); log("showed \(step["name"] as! String)")
+    case "restart":
+      // A Safari relaunch: Margin stops; every tab comes back asleep (Safari restores tabs
+      // lazily) with its address and its session storage; Margin starts again with its
+      // storage.local (sameId), a new storage.session and new tab ids (a new copy); then the tab
+      // in front loads. `late: true`: the tab in front loads first and Margin only after `lateMs`
+      // (an unsigned build allowed a moment after launch).
+      for t in host.window.tabs {
+        guard let wv = t.webView, let r = try? await wv.callAsyncJavaScript("return JSON.stringify([location.origin, Object.entries(sessionStorage)])", arguments: [:], in: nil, contentWorld: .page) as? String,
+          let pair = try? JSONSerialization.jsonObject(with: Data(r.utf8)) as? [Any], let origin = pair.first as? String, let entries = pair.last as? [[String]] else { continue }
+        t.restoredSession[origin] = entries
+      }
+      if let ctx = host.context { try? host.controller.unload(ctx); host.context = nil }
+      host.uninstallOld()
+      // New tab objects, as a relaunched Safari has (WebKit maps a page to its tab through them).
+      let frontName = host.window.active?.name
+      for t in host.window.tabs { t.webView?.removeFromSuperview(); t.webView = nil; t.loadingObs = [] }
+      host.window.tabs = host.window.tabs.map { old in
+        let t = Tab(name: old.name, url: old.url); t.window = host.window; t.restoredSession = old.restoredSession; return t
+      }
+      host.window.active = nil
+      let front = frontName.flatMap { host.tab($0) }
+      let late = (step["late"] as? Bool) == true
+      let start = { try! await host.install(sameId: true); for t in host.window.tabs { host.controller.didOpenTab(t) } }
+      if !late { await start() }
+      if let front { host.window.show(front) }
+      if late {
+        try? await Task.sleep(nanoseconds: UInt64((step["lateMs"] as? Int ?? 1500) * 1_000_000))
+        await start()
+      }
+      log("restarted\(late ? " (Margin allowed late)" : "")")
     case "uninstall": try! host.uninstall()
     case "deny":
       // A per-site permission change in Safari's settings.

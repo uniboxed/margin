@@ -1,7 +1,7 @@
 // Test pages for the WebKit host, and the log sink the test copy of Margin
 // posts its console output to (run.sh adds that hook). Port 47811, or
 // MARGIN_HOST_PORT.
-//   /p/<Name>  a plain page titled <Name> ("F…": with a textarea; "P…": with a POST form)
+//   /p/<Name>  a plain page titled <Name> ("F…": with a textarea; "P…": with a POST form; "S…": still loading for 1.5s)
 //   /posted    where the POST form goes
 //   POST /log  one log line, printed with a timestamp
 import { createServer } from 'node:http';
@@ -40,6 +40,11 @@ createServer((req, res) => {
   const match = /^\/p\/(\w+)/.exec(req.url);
   if (match) {
     res.setHeader('content-type', 'text/html; charset=utf-8');
+    // "S…": a slow page, still loading for 1.5s after its start arrived.
+    if (match[1].startsWith('S')) {
+      res.write(`<!doctype html><html><head><meta charset="utf-8"><title>${match[1]}</title></head><body><h1>Slow ${match[1]}</h1>`);
+      return setTimeout(() => res.end('<p>done</p></body></html>'), 1500);
+    }
     return res.end(page(match[1]));
   }
   res.statusCode = 404;
