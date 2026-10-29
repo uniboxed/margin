@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, waitFor, gotoLauncher, readState } from './helpers.js';
 
 let ctx, server, nt;
 before(async () => {
@@ -15,7 +15,7 @@ after(async () => {
   await server?.close();
 });
 
-const storage = (key) => ctx.worker.evaluate((k) => chrome.storage.local.get(k).then((s) => s[k]), key);
+const storage = (key) => readState(ctx.worker, key);
 const chips = () => nt.$$eval('#sidebar .chip[data-space-id]', (cs) => cs.map((c) => ({ id: c.dataset.spaceId, emoji: c.textContent, active: c.classList.contains('active') })));
 
 test('create a space with "+" → New Space, then rename, re-emoji and recolor it', async () => {

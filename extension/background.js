@@ -6,10 +6,10 @@
 // top level, as a service worker must.
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
-import { api, decided, isOwner, isSynced, load, markSynced, mutate, now, recheck, resync } from './background/store.js';
+import { api, decided, isOwner, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, shownAt, shownUrl } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, resolveTab, shownAt, shownUrl, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -28,6 +28,9 @@ import { platform } from './shared/platform.js';
 /** @template {any[]} A @param {(...args: A) => unknown} fn @returns {(...args: A) => Promise<unknown>} */
 const owned = (fn) => async (...args) => {
   await decided();
+  // Copies don't hear each other's writes: whether this one still owns the
+  // state is checked again (at most once a second) before it acts.
+  if (isOwner()) await recheckSoon();
   if (isOwner()) return fn(...args);
 };
 
@@ -49,14 +52,25 @@ if (!api.storage.session) {
 // starting again within the same copy (the usual wake) has them matched
 // already: nothing waits.
 const SYNC_WAIT_MS = 5000;
-const firstSync = resync({ onSync: (sync) => {
+const firstSyncOnce = () => resync({ onSync: (sync) => {
   restore.synced(sync);
   // A Safari relaunch can restore pages before it injects extensions into
   // them. Repair this session's already-open pages as soon as the background
   // has reconciled their authoritative ids, without waiting for WebKit's
   // delayed static-content-script pass.
   if (sync.fresh) void injectIntoOpenTabs();
-} }).then(() => isOwner() && markSynced(), (err) => console.error('[margin] sync', err));
+} }).then(() => isOwner() && markSynced());
+// Tried again if it fails (a storage error), a few times.
+const firstSync = (async () => {
+  for (let tries = 0; ; tries++) {
+    try {
+      return await firstSyncOnce();
+    } catch (err) {
+      if (err instanceof StaleError || !isOwner() || tries >= 3) return void (err instanceof StaleError || console.error('[margin] sync', err));
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** tries));
+    }
+  }
+})();
 const untilSynced = () => (isSynced() ? null : Promise.race([firstSync, new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_MS))]));
 firstSync.then(async () => {
   if (!isOwner()) return;
@@ -155,6 +169,7 @@ function stayInSpace(windowId, spaceId, closedId) {
 }
 api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
   if (handingOff.has(tabId)) return;
+  userSwitched(tabId);
   shownAt.set(tabId, Date.now());
   shownUrl.delete(tabId);
   api.tabs.get(tabId).then((tab) => shownUrl.set(tabId, tab.url), () => {});
@@ -203,6 +218,15 @@ api.windows?.onRemoved.addListener(owned((windowId) =>
 
 // sendResponse + `return true` works in both Safari and Chrome (Chrome
 // ignores promises returned from onMessage listeners).
+// A request naming a tab by the id its page drew comes with the tab's
+// address (content/core.js send): it gets this copy's id for that tab, or
+// fails if the tab is gone (no other tab is closed or moved for it).
+async function withTab(message, sender) {
+  if (!Number.isInteger(message?.tabId) || !message.hint) return message;
+  const target = await resolveTab(message.tabId, message.hint, sender.tab?.windowId);
+  if (!target) throw new Error('That tab is no longer open');
+  return { ...message, tabId: target.id, hint: null };
+}
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
@@ -215,8 +239,10 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   decided()
     .then(() => (message.type === 'hello' || message.type === 'owner' ? recheck() : null))
     .then(() => (isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced() : null))
-    .then(() => (isOwner() ? handler(message, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' }))
-    .then(sendResponse, (err) => sendResponse({ ok: false, error: String(err?.message ?? err) }));
+    .then(() => (isOwner() ? withTab(message, sender) : null))
+    .then((request) => (isOwner() ? handler(request, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' }))
+    // A change made while a newer copy took over wasn't written (store.js mutate).
+    .then(sendResponse, (err) => sendResponse(err instanceof StaleError || !isOwner() ? { ok: false, stale: true, error: String(err?.message ?? err) } : { ok: false, error: String(err?.message ?? err) }));
   return true;
 });
 

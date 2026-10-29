@@ -14,7 +14,7 @@
 // came without a request. Used by content/core.js and the new-tab page.
 const SLOW_MS = 150;
 const GRACE_MS = 300;
-const MAX_MS = 6000;
+const MAX_MS = 8000;
 const UNASKED_MAX_MS = 2500;
 
 /**
@@ -91,15 +91,16 @@ export function backgroundSwitches() {
   /** @type {{ tabId: number, resolve: () => void, reject: () => void } | null} */
   let pending = null;
   return {
-    /** @param {number} tabId @returns {Promise<void>} the request to pass to start() */
+    /** @param {number} tabId @returns {Promise<any>} the request to pass to start() */
     begin(tabId) {
       pending?.resolve(); // a newer one takes over (start() ignores the old)
-      /** @type {(value?: void) => void} */ let resolve = () => {};
+      /** @type {(value?: any) => void} */ let resolve = () => {};
       /** @type {(reason: Error) => void} */ let reject = () => {};
-      /** @type {Promise<void>} */
+      /** @type {Promise<any>} */
       const request = new Promise((res, rej) => { resolve = res; reject = rej; });
       request.catch(() => {}); // a switch that never started
-      pending = { tabId, resolve: () => resolve(), reject: () => reject(new Error('switch failed')) };
+      // Done resolves as a page's own switch request does ({ shown }), so it isn't taken for a failure.
+      pending = { tabId, resolve: () => resolve(/** @type {any} */ ({ shown: tabId })), reject: () => reject(new Error('switch failed')) };
       return request;
     },
     /** @param {{ type: string, tabId?: number }} message 'switch-done' or 'switch-failed' */

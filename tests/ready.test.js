@@ -46,16 +46,27 @@ test('ready: never longer than its limit (Margin then works with what it has)', 
   assert.equal(readiness.waiting(), true, 'still waiting, uncovered');
 });
 
-test('ready: nothing on a hidden page; shown while still waiting, it covers then', async () => {
+test('ready: nothing on a hidden page; shown while still waiting, it covers after the grace from then', async () => {
   const { readiness, events, setHidden } = setup();
   setHidden(true);
   readiness.wait(true);
   await sleep(80);
   assert.deepEqual(events, []);
   setHidden(false);
-  assert.deepEqual(events, [true], 'past the grace already');
+  assert.deepEqual(events, [], 'not at once: its grace starts as it\'s shown');
+  await sleep(70);
+  assert.deepEqual(events, [true]);
   setHidden(true);
   assert.deepEqual(events, [true, false], 'gone at once when hidden');
+});
+
+test('ready: at the limit, a cover up only a moment still stays its minimum', async () => {
+  const { readiness, events } = setup({ graceMs: 380, maxMs: 400, minShownMs: 80 });
+  readiness.wait(true);
+  await sleep(410);
+  assert.deepEqual(events, [true], 'shown at 380ms, kept past the 400ms limit');
+  await sleep(80);
+  assert.deepEqual(events, [true, false]);
 });
 
 test('ready: not over a page in use (allowed() false), until it is', async () => {

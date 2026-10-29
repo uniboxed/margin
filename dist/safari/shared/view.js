@@ -36,16 +36,17 @@ function activeSpaceId(state, windowId) {
 // already (the shown one plain, as Arc) until the switch lands; it wins over
 // `newTabPending` (the palette chose a tab).
 // The space shown is the window's, except: while switching to a tab of
-// another space (the palette), that tab's, at once (Arc); and the page's own
-// tab's while the state doesn't say yet that it's in front (the background
-// records an activation a moment after the browser shows the tab: until then
-// the window's space can still be the one the page before showed).
-function sidebar(state, windowId, currentTabId = null, { newTabPending = false, switchingTo = null } = {}) {
+// another space (the palette), that tab's, at once (Arc); and, for a page
+// just shown (`justShown`, from content/core.js), its own tab's while the
+// state doesn't say yet that it's in front (the background records an
+// activation a moment after the browser shows the tab: until then the
+// window's space can still be the one the page before showed).
+function sidebar(state, windowId, currentTabId = null, { newTabPending = false, switchingTo = null, justShown = false } = {}) {
   const has = (id) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
   const going = switchingTo != null ? state.tabs?.[switchingTo] : null;
   const spaceId = going?.windowId === windowId && has(state.tabSpace?.[going.id]) ? state.tabSpace[going.id]
-    : own?.windowId === windowId && !own.active && has(state.tabSpace?.[own.id]) ? state.tabSpace[own.id]
+    : justShown && own?.windowId === windowId && !own.active && has(state.tabSpace?.[own.id]) ? state.tabSpace[own.id]
     : activeSpaceId(state, windowId);
   const known = own?.windowId === windowId;
   const shown = Object.values(state.tabs ?? {})

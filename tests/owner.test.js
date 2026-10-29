@@ -40,12 +40,12 @@ test('owner: two copies started together never both claim', () => {
 
 test('stored: the open tabs, their spaces and the windows\' spaces go in one value that says whose they are', () => {
   const state = { tabs: { 5: { id: 5 } }, tabSpace: { 5: 'work' }, activeSpaceByWindow: { 1: 'work' }, spaces: [{ id: 'work' }], lostTabs: null };
-  const written = toStorage(state, ['tabSpace', 'spaces'], { origin: fresh.origin, synced: true });
+  const written = toStorage(state, ['tabSpace', 'spaces'], { origin: fresh.origin, since: fresh.since, synced: true });
   assert.deepEqual(Object.keys(written).sort(), ['openTabs', 'spaces']);
-  assert.deepEqual(written.openTabs, { origin: fresh.origin, synced: true, tabs: state.tabs, tabSpace: state.tabSpace, activeSpaceByWindow: state.activeSpaceByWindow });
+  assert.deepEqual(written.openTabs, { origin: fresh.origin, since: fresh.since, synced: true, tabs: state.tabs, tabSpace: state.tabSpace, activeSpaceByWindow: state.activeSpaceByWindow });
   const read = fromStorage({ ...written, tabs: { 9: { id: 9 } } });
   assert.deepEqual(read.tabs, state.tabs, 'not the old name another copy writes');
-  assert.deepEqual(read.openTabsBy, { origin: fresh.origin, synced: true });
+  assert.deepEqual(read.openTabsBy, { origin: fresh.origin, since: fresh.since, synced: true });
   assert.equal(storedName('lostTabs'), 'lostTabs2');
   assert.equal(storedName('settings'), 'settings');
 });
@@ -55,6 +55,17 @@ test('stored: before Margin first wrote them, the open tabs come from the old na
   assert.deepEqual(read.tabs, { 9: { id: 9 } });
   assert.deepEqual(read.lostTabs, { windows: [] });
   assert.equal(read.openTabsBy, null);
+});
+
+test('owner: a record from a clock that was ahead is claimed (it would keep every copy out)', () => {
+  assert.equal(ownership({ origin: 'safari-web-extension://FUTURE/', since: 10_000_000 }, fresh, 2000), 'claim');
+  assert.equal(ownership({ origin: 'safari-web-extension://SOON/', since: 2500 }, fresh, 2000), 'stale', 'within a minute: an ordinary newer copy');
+});
+
+test('stored: Chrome keeps its address across restarts: the stored tabs are this copy\'s only if its start matches too', () => {
+  assert.equal(openTabsCurrent({ origin: fresh.origin, since: 1, synced: true }, fresh.origin, 2), false);
+  assert.equal(openTabsCurrent({ origin: fresh.origin, since: 2, synced: true }, fresh.origin, 2), true);
+  assert.equal(openTabsCurrent({ origin: fresh.origin, since: 1, synced: true }, fresh.origin), true, 'before hello says');
 });
 
 test('stored: pages trust the stored tabs only once their own copy has matched them', () => {

@@ -1,6 +1,6 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
-import { api, cached, isOwner, mutate, now } from './store.js';
+import { api, cached, isOwner, mutate, now, thisCopy } from './store.js';
 import { recordSwitch } from './diagnostics.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
@@ -221,6 +221,11 @@ function cancelPreparation(tabId, preparation) {
 let focusGen = 0;
 const focusing = new Map(); // tabId → overlapping Margin focus requests
 export const isFocusing = (tabId) => (focusing.get(tabId) ?? 0) > 0;
+// The user chose a tab themselves (Safari's tab bar, ⌘1–9, a held key passing
+// through): a switch of Margin's still waiting doesn't pull the window back.
+export function userSwitched(tabId = null) {
+  if (tabId == null || !isFocusing(tabId)) focusGen++;
+}
 // `deadline`: when the page that asked stops waiting (it then says the switch
 // didn't happen): no switch after it.
 /** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number }} [options] */
@@ -248,7 +253,9 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
     recordSwitch({ source, tabId, asked, error: 'no such tab' });
     throw new Error(`No tab with id ${tabId}`);
   }
-  if (live.active && gen === focusGen) {
+  if (live.active) {
+    // Another switch was asked for meanwhile: that one stands.
+    if (gen !== focusGen) return { tab: null, preparation: skipped, superseded: true };
     await focusWindow(live.windowId);
     return { tab: live, preparation: skipped };
   }
@@ -290,6 +297,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
   if (woke?.outcome === 'no page') await noteShowing(live, { carry, scroll });
   const fail = (err) => {
     cancelPreparation(tabId, preparation);
+    forgetShowing(tabId);
     recordSwitch({ source, tabId, asked, wake: woke, preparation, error: String(err) });
     throw err;
   };
@@ -299,6 +307,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
   // it, instead of its highlight going back as if nothing was asked).
   if (!(await isInFront(tabId, tab))) {
     if (gen !== focusGen) return { tab: null, preparation, superseded: true }; // another switch took the front meanwhile
+    if (Number.isFinite(deadline) && Date.now() > deadline - 250) fail(new Error('Too late: the page stopped waiting for this switch'));
     await api.tabs.update(tabId, { active: true }).catch(fail);
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
@@ -332,8 +341,25 @@ async function isInFront(tabId, updated = null) {
 // first frame (content/core.js); the fitted layout doesn't hold the page back
 // for a previous one that isn't on screen (content/shell.js). Written by the
 // copy that owns the state only (shared/owner.js).
+let noted = null; // { tabId, at } of the last note
+// The note goes a moment after its page has said hello (handlers.js: its
+// first storage read may still be under way), or when the switch failed:
+// another page at that address mustn't take it for itself later.
+const FORGET_AFTER_HELLO_MS = 2000;
+export function forgetShowing(tabId, { later = false } = {}) {
+  const note = noted;
+  if (note?.tabId !== tabId) return;
+  const forget = () => {
+    if (noted !== note) return; // a newer note
+    noted = null;
+    void Promise.resolve().then(() => api.storage.local.remove('showing')).catch(() => {});
+  };
+  if (later) setTimeout(forget, FORGET_AFTER_HELLO_MS);
+  else forget();
+}
 async function noteShowing(tab, { carry = null, scroll = null } = {}) {
   if (!isOwner() || !tab?.url) return;
+  noted = { tabId: tab.id, at: Date.now() };
   const top = Number.isFinite(scroll) ? scroll : await getScroll(tab.windowId).catch(() => null);
   const showing = { tabId: tab.id, windowId: tab.windowId, url: tab.url, carry, scroll: Number.isFinite(top) ? top : null, at: Date.now() };
   await Promise.race([api.storage.local.set({ showing }).catch(() => {}), new Promise((resolve) => setTimeout(resolve, 100))]);
@@ -344,9 +370,14 @@ async function noteShowing(tab, { carry = null, scroll = null } = {}) {
 // another copy's): a row then also says its tab's address and place
 // (`hint`), which find it among the open tabs (in the asking page's window
 // first, then the nearest place). Null if it's gone.
-/** @param {number} tabId @param {{ url?: string, index?: number, title?: string } | null | undefined} hint @param {number | null | undefined} preferWindow */
+// The id itself stands only if the page drew this copy's tab ids (`hint.from`:
+// whose they were, shared/stored.js); ids from another copy or another Safari
+// session can name a different tab now.
+/** @param {number} tabId @param {{ url?: string, index?: number, title?: string, from?: { origin?: string, since?: number } | null } | null | undefined} hint @param {number | null | undefined} preferWindow */
 export async function resolveTab(tabId, hint, preferWindow) {
-  const live = Number.isInteger(tabId) ? await api.tabs.get(tabId).catch(() => null) : null;
+  const me = thisCopy();
+  const ours = !hint || ('from' in hint ? hint.from?.origin === me.origin && (hint.from.since == null || hint.from.since === me.since) : true);
+  const live = Number.isInteger(tabId) && ours ? await api.tabs.get(tabId).catch(() => null) : null;
   if (live || !hint?.url) return live;
   const key = M.normalizeUrl(hint.url);
   let candidates = (await api.tabs.query({}).catch(() => [])).filter((t) => M.normalizeUrl(t.url || t.pendingUrl || '') === key);

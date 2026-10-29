@@ -93,11 +93,13 @@ export function mount({ api, self, send, windowed = false }) {
     flushScroll();
     // A switch also says the tab's address and place (as on web pages,
     // content/core.js send).
-    const tab = type === 'activateTab' ? state?.tabs?.[/** @type {any} */ (payload)?.tabId] : null;
+    const tab = Number.isInteger(/** @type {any} */ (payload)?.tabId) ? state?.tabs?.[/** @type {any} */ (payload).tabId] : null;
     return send(type, {
       .../** @type {any} */ (payload),
       ...(Number.isFinite(sidebarTop) ? { sidebarTop } : {}),
-      ...(tab ? { hint: { url: tab.url, index: tab.index } } : {}),
+      ...(tab ? { hint: { url: tab.url, index: tab.index, title: tab.title, from: /** @type {any} */ (state)?.openTabsBy ?? null } } : {}),
+      // No switch after this page stops waiting (as on web pages).
+      ...(type === 'closeTab' ? {} : { deadline: Date.now() + 7000 }),
     }, ...rest);
   };
   // On Margin's start page (#launcher), "+ New Tab" chooses a new tab as on a
@@ -292,7 +294,10 @@ export function mount({ api, self, send, windowed = false }) {
     fresh = false;
     if (type === 'restoreArchive') return send(type, { ...payload, replaceTabId: self?.id });
     const result = await send(type, payload);
-    if (LEAVES.has(type) && self?.id != null) api.tabs.remove(self.id).catch(() => {});
+    // Only once another tab is in front (a switch that didn't happen leaves
+    // this page, so Safari doesn't pick some other tab, maybe another space's).
+    const left = type === 'newWindow' || result?.shown != null;
+    if (LEAVES.has(type) && left && self?.id != null) api.tabs.remove(self.id).catch(() => {});
     return result;
   };
   addEventListener('pagehide', () => { fresh = false; cancelOnClose = false; });

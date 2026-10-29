@@ -29,15 +29,33 @@ const me = { origin: api?.runtime?.getURL?.('') ?? '', since: 0 };
 let role = null;
 /** @type {Promise<'owner' | 'stale'> | null} */
 let deciding = null;
-// Settles once this copy knows whether it owns the storage (at most once per
-// background start; every listener waits for it).
-export const decided = () => (deciding ??= decide());
+// Settles once this copy knows whether it owns the storage (once per
+// background start; every listener waits for it). A storage error doesn't
+// stick: it's tried again a few times, and the next caller tries afresh.
+export const decided = () => (deciding ??= decide().catch((err) => {
+  deciding = null;
+  throw err;
+}));
 export const isOwner = () => role === 'owner';
 // Whether the stored tabs are this copy's, matched to the open tabs (its
 // background starting again within the same copy: nothing to wait for).
 export const isSynced = () => role === 'owner' && synced;
+// This copy (for pages' requests: whose tab ids they hold, background/tabs.js).
+export const thisCopy = () => ({ origin: me.origin, since: me.since });
 async function decide() {
-  const session = api.storage.session ? await api.storage.session.get('since').catch(() => null) : null;
+  for (let tries = 0; ; tries++) {
+    try {
+      return await decideOnce();
+    } catch (err) {
+      if (tries >= 3) throw err;
+      console.warn('[margin] reading who owns the state failed; trying again:', err?.message ?? err);
+      await new Promise((resolve) => setTimeout(resolve, 150 * 3 ** tries));
+    }
+  }
+}
+async function decideOnce() {
+  // A failed read isn't a first start (that would make this copy the newest).
+  const session = api.storage.session ? await api.storage.session.get('since') : null;
   const { owner, [OPEN_TABS]: open } = await api.storage.local.get(['owner', OPEN_TABS]);
   if (Number.isFinite(session?.since)) me.since = session.since;
   // Without storage.session a restart can't be told from the copy's first
@@ -45,23 +63,23 @@ async function decide() {
   else if (!api.storage.session && owner?.origin === me.origin && Number.isFinite(owner.since)) me.since = owner.since;
   else {
     me.since = Date.now();
-    await api.storage.session?.set({ since: me.since }).catch(() => {});
+    await api.storage.session?.set({ since: me.since });
   }
+  const own = O.ownership(owner, me, Date.now()) === 'own';
   const decision = await settle(owner, open);
   // This copy's background starting again: the stored tabs are already its
   // own, matched (shared/stored.js), unless it stopped before that.
-  if (decision === 'owner' && O.ownership(owner, me) === 'own') synced = openTabsCurrent(open, me.origin);
+  if (decision === 'owner' && own) synced = openTabsCurrent(open, me.origin, me.since);
   return decision;
 }
 // The stored owner says what this copy is. Copies don't hear each other's
 // storage writes (checked in WebKit), so a copy that owned the state finds out
-// a newer one took over when it next writes (flush) or a page says hello
-// (recheck).
-// Copies don't hear each other's writes, so when it claims, the stored
-// tabs are marked unmatched at once, in the same write (`open`: as read):
-// pages then wait for this copy's first sync (shared/stored.js).
+// a newer one took over when it next writes (flush), a page says hello, or
+// an event reaches it (recheckSoon). When it claims, the stored tabs are
+// marked unmatched at once (`open`: as read): pages then wait for this copy's
+// first sync (shared/stored.js).
 async function settle(stored, open = null) {
-  const decision = O.ownership(stored, me);
+  const decision = O.ownership(stored, me, Date.now());
   if (decision === 'stale') {
     if (role !== 'stale') console.info('[margin] a newer copy of Margin is running: this one stays out of the way');
     role = 'stale';
@@ -70,7 +88,8 @@ async function settle(stored, open = null) {
   role = 'owner';
   if (decision === 'claim') {
     synced = false;
-    await api.storage.local.set({ owner: { ...me }, ...(open?.synced ? { [OPEN_TABS]: { ...open, synced: false } } : {}) });
+    await api.storage.local.set({ owner: { ...me } });
+    if (open?.synced) await api.storage.local.set({ [OPEN_TABS]: { ...open, synced: false } }).catch((err) => console.warn('[margin] marking the stored tabs unmatched failed:', err?.message ?? err));
     // The envelope a development build kept (workspace, workspaceBackup):
     // nothing reads it.
     void Promise.resolve().then(() => api.storage.local.remove(['workspace', 'workspaceBackup'])).catch(() => {});
@@ -78,14 +97,26 @@ async function settle(stored, open = null) {
   return role;
 }
 // Whether this copy still owns the state (another may have claimed it since).
+// An older copy that claimed over it (they started together) is claimed back:
+// this copy's tabs stay matched, and are written again at once.
 export async function recheck() {
   if (role !== 'owner') return role;
   const { owner } = await api.storage.local.get('owner').catch(() => ({ owner: null }));
-  if (owner && owner.origin !== me.origin) await settle(owner);
+  checkedAt = Date.now();
+  if (!owner || (owner.origin === me.origin && owner.since === me.since)) return role;
+  const wasSynced = synced;
+  await settle(owner).catch(() => {});
+  if (role === 'owner' && wasSynced) {
+    synced = true;
+    for (const key of OPEN_TABS_KEYS) unsaved.add(key);
+  }
   return role;
 }
-// Once the open tabs are matched to the state (the first sync), pages may
-// trust the stored tabs: they're written again, marked so (shared/stored.js).
+// The same, at most once a second (before a listener runs: background.js owned).
+let checkedAt = 0;
+export const recheckSoon = () => (role === 'owner' && Date.now() - checkedAt > 1000 ? recheck() : Promise.resolve(role));
+// Once the open tabs are matched to the state (a sync), pages may trust the
+// stored tabs: they're written again, marked so (shared/stored.js).
 let synced = false;
 export async function markSynced() {
   if (synced || role !== 'owner') return;
@@ -136,13 +167,15 @@ function write(keys) {
   queue = queue.then(flush);
   return queue;
 }
+// False if this copy doesn't own the state (any more): nothing was written.
 async function flush() {
-  if (!unsaved.size || role !== 'owner' || !cache) return;
-  if ((await recheck()) !== 'owner') return; // a newer copy took over meanwhile
+  if (role !== 'owner') return false;
+  if (!unsaved.size || !cache) return true;
+  if ((await recheck()) !== 'owner') return false; // a newer copy took over meanwhile
   const keys = [...unsaved];
   unsaved.clear();
   try {
-    await api.storage.local.set(toStorage(cache, keys, { origin: me.origin, synced }));
+    await api.storage.local.set(toStorage(cache, keys, { origin: me.origin, since: me.since, synced }));
     retryMs = 250;
   } catch (err) {
     console.warn('[margin] saving', keys.join(', '), `failed; trying again in ${retryMs}ms:`, err?.message ?? err);
@@ -151,6 +184,7 @@ async function flush() {
     retryTimer = setTimeout(() => write([]), retryMs);
     retryMs = Math.min(retryMs * 2, 5000);
   }
+  return true;
 }
 
 // Serialize every read-modify-write so concurrent tab events can't clobber
@@ -165,11 +199,19 @@ export function mutate(fn) {
     const changed = M.STATE_KEYS.filter((key) => next[key] !== prev[key]);
     cache = next;
     for (const key of changed) unsaved.add(key);
-    await flush();
+    // A newer copy took over while this change was made: it wasn't written,
+    // so it fails (auto-archive doesn't close tabs it couldn't archive; a
+    // page is told: background.js).
+    if (!(await flush())) throw new StaleError();
     return next;
   });
-  queue = run.catch((err) => console.error('[margin]', err));
+  queue = run.catch((err) => { if (!(err instanceof StaleError)) console.error('[margin]', err); });
   return run;
+}
+export class StaleError extends Error {
+  constructor() {
+    super('a newer copy of Margin is running');
+  }
 }
 
 export const newId = () => crypto.randomUUID().slice(0, 8);
@@ -188,12 +230,16 @@ async function isFreshSession() {
 
 // `onSync({ state, renumbered, fresh })`: told after the sync (in the queue).
 /** @param {{ fresh?: boolean, onSync?: (sync: { state: State, renumbered: boolean, fresh: boolean }) => void }} [options] */
+// Any sync that went through lets pages trust the stored tabs (markSynced).
 export function resync({ fresh, onSync } = {}) {
   return mutate(async (s) => {
     const tabs = await api.tabs.query({});
     const isFresh = fresh ?? (await isFreshSession());
     const next = M.syncTabs(s, tabs, { fresh: isFresh, now: now() });
     onSync?.({ state: next, renumbered: M.isRenumbered(s, tabs, { fresh: isFresh }), fresh: isFresh });
+    return next;
+  }).then(async (next) => {
+    await markSynced();
     return next;
   });
 }

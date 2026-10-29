@@ -150,3 +150,14 @@ test('switching from the background: done before the pill\'s delay: no pill (it 
   await sleep(200);
   assert.deepEqual(events, [['change', 7]]);
 });
+
+test('switching from the background: done isn\'t taken for a failure (it resolves as a switch request does)', async () => {
+  const { events, switching } = setup();
+  const background = backgroundSwitches();
+  const request = background.begin(7);
+  switching.start(7, request);
+  background.settle({ type: 'switch-done', tabId: 7 });
+  await sleep(10);
+  assert.equal(events.some(([kind]) => kind === 'failed'), false);
+  assert.deepEqual(await request, { shown: 7 });
+});

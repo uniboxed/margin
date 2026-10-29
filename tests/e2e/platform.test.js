@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, sidebarSnapshot, tabsInBrowser, waitFor, buildSafariProfile, clickInShadow, gotoLauncher } from './helpers.js';
+import { launch, sidebarSnapshot, tabsInBrowser, waitFor, buildSafariProfile, clickInShadow, gotoLauncher, readState } from './helpers.js';
 
 const PNG = readFileSync(new URL('../../extension/icons/icon-48.png', import.meta.url));
 let server, base;
@@ -19,7 +19,7 @@ before(async () => {
 });
 after(() => new Promise((r) => server.close(r)));
 
-const storage = (ctx, key) => ctx.worker.evaluate((k) => chrome.storage.local.get(k).then((s) => s[k]), key);
+const storage = (ctx, key) => readState(ctx.worker, key);
 const switchLog = (ctx, clear = false) => ctx.worker.evaluate((shouldClear) => new Promise((resolve, reject) => {
   const request = indexedDB.open('margin-diagnostics', 1);
   request.onerror = () => reject(request.error);

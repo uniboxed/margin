@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, clickInShadow, sidebarSnapshot, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, clickInShadow, sidebarSnapshot, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -12,7 +12,7 @@ after(async () => {
   await server?.close();
 });
 
-const storage = (key) => ctx.worker.evaluate((k) => chrome.storage.local.get(k).then((s) => s[k]), key);
+const storage = (key) => readState(ctx.worker, key);
 const send = (page, msg) => page.evaluate((m) => chrome.runtime.sendMessage(m), msg);
 
 async function openPage(name) {

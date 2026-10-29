@@ -220,6 +220,9 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // the background is switching), and when that started.
   let shownSpace = null;
   let shownSince = 0;
+  // The page was just shown (content/core.js): its own tab's space until the
+  // state records it's in front (shared/view.js sidebar).
+  let justShown = false;
   // A swipe between spaces under way (see "swipe between spaces"):
   // { neighbours: { -1?: id, 1?: id }, ghosts: { -1?: el, 1?: el }, width, offset, frame, settling, committed }
   let swiping = null;
@@ -339,7 +342,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   let renameSelection = null;
   let shownSpaceId = null;
   function draw() {
-    const view = lastView = V.sidebar(viewState(), windowId, currentTabId, { newTabPending, switchingTo });
+    // Not while this sidebar shows a space of its own choosing (a swipe, a click on a space).
+    const view = lastView = V.sidebar(viewState(), windowId, currentTabId, { newTabPending, switchingTo, justShown: justShown && !shownSpace });
     root.style.setProperty('--space-color', view.spaces.find((s) => s.id === view.spaceId)?.color ?? '');
     if (!resizing) setWidth(sidebarWidth(state.settings));
     if (renaming && !view.pinned.some((item) => item.kind === 'folder' && item.id === renaming.folderId)) renaming = null; // gone
@@ -1145,6 +1149,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       if (context?.fit) fit = context.fit;
       if (context && 'newTabPending' in context) newTabPending = !!context.newTabPending;
       if (context && 'switchingTo' in context) switchingTo = context.switchingTo ?? null;
+      if (context && 'justShown' in context) justShown = !!context.justShown;
       state = nextState;
       // The swiped-to space has arrived (or never will: the switch failed).
       if (shownSpace && (V.activeSpaceId(state, windowId) === shownSpace || Date.now() - shownSince > SHOWN_SPACE_MS)) {

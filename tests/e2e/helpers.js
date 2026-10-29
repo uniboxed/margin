@@ -141,3 +141,14 @@ export async function gotoLauncher(page, ctx) {
   await page.goto(launcherUrl(ctx));
   await page.waitForSelector('#launcher');
 }
+
+// One key of Margin's state, from the worker. The open tabs, their spaces and
+// each window's space are stored together as `openTabs`, and lostTabs as
+// `lostTabs2` (extension/shared/stored.js); everything else under its own name.
+export function readState(worker, key) {
+  return worker.evaluate((k) => chrome.storage.local.get(null).then((raw) => {
+    if (['tabs', 'tabSpace', 'activeSpaceByWindow'].includes(k)) return raw.openTabs?.[k];
+    if (k === 'lostTabs') return raw.lostTabs2;
+    return raw[k];
+  }), key);
+}

@@ -1,7 +1,7 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load, mutate, now } from './store.js';
-import { focusTab, openTab, wakeTab } from './tabs.js';
+import { focusTab, openTab, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
@@ -60,13 +60,14 @@ async function runNavigation(action, windowId) {
       tell(shown, { type: 'switching', tabId: next, from: shown.id, passing });
       return shown;
     }, () => null);
-    const told = (type) => shownPage.then((shown) => shown && tell(shown, { type, tabId: next, from: shown.id }));
+    const told = (type, reason = null) => shownPage.then((shown) => shown && tell(shown, { type, tabId: next, from: shown.id, ...(reason ? { reason } : {}) }));
     try {
       // A tab only passed through (more presses waiting: a held key) isn't
       // waited for long, so the switching stops when the key does.
       if (passing) {
         const asked = Date.now();
         const wake = await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
+        userSwitched(); // a switch still waiting for its wake doesn't land after this one
         await api.tabs.update(next, { active: true });
         recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
       } else {
@@ -80,7 +81,7 @@ async function runNavigation(action, windowId) {
         }
       }
     } catch (err) {
-      told('switch-failed');
+      told('switch-failed', String(err?.message ?? err));
       throw err;
     }
     told('switch-done');
@@ -107,8 +108,8 @@ export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-
 // opens in it, or the untouched start or new-tab page in front moves to it
 // (no pile of empty pages). `bringTab: false`: only the sidebar's space
 // (held keys pass spaces; the last press brings the tab).
-/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null }} [options] */
-export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null } = {}) {
+/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number }} [options] */
+export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline } = {}) {
   if (windowId == null) return;
   const s = await mutate((st) => M.setActiveSpace(st, windowId, spaceId));
   if (V.activeSpaceId(s, windowId) !== spaceId || !bringTab) return; // no such space, or only the sidebar
@@ -119,8 +120,12 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
   for (const tab of candidates) {
     try {
-      return await focusTab(tab.id, { source: 'space', carry, scroll });
-    } catch {} // closed meanwhile: the next one
+      return await focusTab(tab.id, { source: 'space', carry, scroll, deadline });
+    } catch (err) {
+      // Closed meanwhile: the next one. Anything else (Safari didn't switch,
+      // too late) is this switch failing, not a reason to open a start page.
+      if (!/No tab with id/i.test(String(err?.message ?? err))) throw err;
+    }
   }
   const startPage = api.runtime.getURL('newtab/newtab.html#launcher');
   const untouched = shown && (shown.url === startPage || V.isNewTabPage(shown.url || shown.pendingUrl));

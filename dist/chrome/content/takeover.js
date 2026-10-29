@@ -1,6 +1,8 @@
 // A copy of Margin that finds another copy's sidebar in the page: Margin was
 // installed or updated while the page was open. Called by content/core.js.
-// Returns whether it's replacing one.
+// Returns { replacing } (it took over from an earlier copy), { others } (any
+// copy's sidebar was there as it started) and arm() (the cleanup reload,
+// once, for a copy taken over later: content/core.js ownerSeen).
 export function takeOver(api) {
   // A sidebar that isn't this world's was left by an earlier copy of Margin:
   // it was installed or updated while the page was open (WebKit adds this
@@ -9,17 +11,26 @@ export function takeOver(api) {
   // this copy takes over now, leaves swipe and pull-to-refresh to it (they act
   // on the page directly, so both would go back twice), and the page reloads
   // to start clean once that can't lose anything (reloadWhenSafe).
-  // Copies that stand back for a newer one themselves (data-margin-v, set by
-  // content/core.js) are left to do so: this copy may be the older one.
+  // Copies that stand back for a newer one themselves (data-margin-v,
+  // shared/dom.js createHost) are left to do so here: this copy may be the
+  // older one. Once it owns the state, it hides them and arms the cleanup
+  // reload then (content/core.js ownerSeen).
   // Every host of an earlier copy (any theme's: they're all margin-*-host).
-  const hosts = [...(document.documentElement?.children ?? [])].filter((node) => /^margin-.*-host$/.test(node.localName) && !(/** @type {HTMLElement} */ (node)).dataset.marginV);
+  const all = [...(document.documentElement?.children ?? [])].filter((node) => /^margin-.*-host$/.test(node.localName));
+  const hosts = all.filter((node) => !(/** @type {HTMLElement} */ (node)).dataset.marginV);
   const replacing = hosts.length > 0;
+  let armed = false;
+  const arm = () => {
+    if (armed) return;
+    armed = true;
+    reloadWhenSafe();
+  };
   if (replacing) {
     for (const stale of /** @type {HTMLElement[]} */ (hosts)) {
       stale.style.setProperty('display', 'none', 'important');
       stale.remove();
     }
-    reloadWhenSafe();
+    arm();
   }
   // Hidden (not the tab in front, or once the user leaves it), nothing
   // typed into it (judged generously: any text in a field or editor, in any
@@ -72,7 +83,12 @@ export function takeOver(api) {
       retry = setTimeout(go, delay);
     };
     const go = () => {
-      if (asking || !document.hidden || busy()) return;
+      if (asking || !document.hidden) return;
+      // In use: tried again later (it may stay hidden all along).
+      if (busy()) {
+        backoff = Math.min(backoff * 2, 5 * 60_000);
+        return arm(backoff);
+      }
       const KEY = 'margin-reloaded-for-update';
       let stamp = Date.now();
       try {
@@ -100,9 +116,10 @@ export function takeOver(api) {
       }, 10000);
       api.runtime.sendMessage({ type: 'reloadForUpdate' }).then((reply) => {
         clearTimeout(unanswered);
-        const answer = reply?.ok ? reply.result : null;
-        // Done, or never (not a web page, or the tab is gone: background
-        // handlers.js reloadForUpdate).
+        // Done, or never (not a web page, the tab is gone, or a newer copy
+        // runs: background handlers.js reloadForUpdate); a request that
+        // failed otherwise counts as "not now".
+        const answer = reply?.ok ? reply.result : reply?.stale ? null : { reloaded: false, retry: true };
         if (!answer || answer.reloaded || !answer.retry || !api.runtime?.id || tries >= TRIES) return;
         // Not now (it was being shown meanwhile): this attempt's throttle
         // goes, and it tries again later (typed fields and media are
@@ -117,5 +134,5 @@ export function takeOver(api) {
     };
     arm();
   }
-  return replacing;
+  return { replacing, others: all.length > 0, arm };
 }

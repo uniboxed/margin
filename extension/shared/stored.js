@@ -8,10 +8,11 @@
 // the archive and settings hold no ids and stay where they were.
 //
 // The open tabs, their spaces and each window's space go in one value,
-// `openTabs`: { origin, synced, tabs, tabSpace, activeSpaceByWindow }. One
+// `openTabs`: { origin, since, synced, tabs, tabSpace, activeSpaceByWindow }. One
 // key is one write (Safari writes a set() key by key and stops at the first
 // failure), so pages never see the tabs without their spaces; and it says
-// whose ids they are (`origin`, the copy that wrote it) and whether that copy
+// whose ids they are (`origin` and `since`, the copy that wrote it: Chrome
+// keeps its address across browser restarts) and whether that copy
 // has matched them to the open tabs (`synced`), in the same write.
 // `lostTabs` (only the background reads it) has a name of its own.
 //
@@ -40,17 +41,17 @@ export function fromStorage(raw) {
   delete state[OPEN_TABS];
   const open = raw[OPEN_TABS];
   for (const key of OPEN_TABS_KEYS) state[key] = open ? open[key] : raw[key];
-  state.openTabsBy = open ? { origin: open.origin, synced: !!open.synced } : null;
+  state.openTabsBy = open ? { origin: open.origin, since: open.since, synced: !!open.synced } : null;
   for (const [key, name] of Object.entries(RENAMED)) state[key] = name in raw ? raw[name] : raw[key];
   return state;
 }
 
 /**
- * The storage keys and values to write for `keys` of `state`, as the copy at
- * `origin` (`synced`: whether it has matched the open tabs yet).
- * @param {Record<string, any>} state @param {string[]} keys @param {{ origin: string, synced: boolean }} by
+ * The storage keys and values to write for `keys` of `state`, as the copy
+ * `origin`/`since` (`synced`: whether it has matched the open tabs yet).
+ * @param {Record<string, any>} state @param {string[]} keys @param {{ origin: string, since?: number, synced: boolean }} by
  */
-export function toStorage(state, keys, { origin, synced }) {
+export function toStorage(state, keys, { origin, since, synced }) {
   /** @type {Record<string, any>} */
   const out = {};
   for (const key of keys) {
@@ -58,7 +59,7 @@ export function toStorage(state, keys, { origin, synced }) {
     out[storedName(key)] = state[key];
   }
   if (keys.some((key) => OPEN_TABS_KEYS.includes(key))) {
-    out[OPEN_TABS] = { origin, synced, ...Object.fromEntries(OPEN_TABS_KEYS.map((key) => [key, state[key]])) };
+    out[OPEN_TABS] = { origin, since, synced, ...Object.fromEntries(OPEN_TABS_KEYS.map((key) => [key, state[key]])) };
   }
   return out;
 }
@@ -86,7 +87,11 @@ export function withChanges(state, changes) {
   return next;
 }
 
-/** Whether the stored open tabs are the copy at `origin`'s, matched to the open tabs. */
-export function openTabsCurrent(/** @type {{ origin?: string, synced?: boolean } | null | undefined} */ by, /** @type {string} */ origin) {
-  return !!by && by.origin === origin && by.synced === true;
+/**
+ * Whether the stored open tabs are the copy at `origin`'s (and `since`, once
+ * known: a page learns it with hello), matched to the open tabs.
+ * @param {{ origin?: string, since?: number, synced?: boolean } | null | undefined} by @param {string} origin @param {number | null} [since]
+ */
+export function openTabsCurrent(by, origin, since = null) {
+  return !!by && by.origin === origin && by.synced === true && (since == null || by.since == null || by.since === since);
 }

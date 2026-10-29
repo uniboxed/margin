@@ -42,7 +42,7 @@ test('copies: the newest owns the state; the older one stops writing as soon as 
   assert.equal(storedTabs().synced, false, 'its claim marks the stored tabs unmatched at once');
 
   // The older copy, still running, sees a tab event under its own ids.
-  await older.mutate((s) => ({ ...s, tabs: { 7: { id: 7, windowId: 9, url: 'https://old-ids.test/', index: 0 } } }));
+  await assert.rejects(older.mutate((s) => ({ ...s, tabs: { 7: { id: 7, windowId: 9, url: 'https://old-ids.test/', index: 0 } } })), older.StaleError, 'the change fails (it wasn\'t written)');
   assert.equal(older.isOwner(), false, 'it found out at its write');
   assert.deepEqual(Object.keys(storedTabs().tabs), ['1'], 'and wrote nothing');
 
@@ -51,7 +51,7 @@ test('copies: the newest owns the state; the older one stops writing as soon as 
   assert.equal(storedTabs().origin, 'safari-web-extension://NEW/');
   assert.equal(storedTabs().synced, true);
   assert.deepEqual(Object.keys(storedTabs().tabs), ['42']);
-  // And it never claims back.
+  // And it never claims back (a stale copy's changes aren't even made).
   await older.mutate((s) => ({ ...s, tabs: {} }));
   assert.equal(storedTabs().origin, 'safari-web-extension://NEW/');
   assert.equal((await older.recheck()), 'stale');
@@ -70,6 +70,27 @@ test('copies: a copy\'s background starting again keeps what it owns, matched', 
   const again = await import('../extension/background/store.js?copy=same-again');
   await again.decided();
   assert.equal(again.isOwner(), true);
+  assert.equal(again.isSynced(), true, 'its tabs are still its own and matched: nothing to wait for');
+  await again.load();
+  const set = chrome.storage.local.set;
+  let sets = 0;
+  chrome.storage.local.set = async (values) => { sets++; return set(values); };
   await again.markSynced();
-  assert.equal(JSON.stringify(storedTabs()), writes, 'still matched: no rewrite, pages keep trusting them');
+  chrome.storage.local.set = set;
+  assert.equal(sets, 0, 'no rewrite');
+  assert.equal(JSON.stringify(storedTabs()), writes, 'pages keep trusting them');
+});
+
+test('copies: a storage error while deciding who owns the state isn\'t kept: it\'s tried again', async () => {
+  local.clear();
+  globalThis.chrome = /** @type {any} */ (fakeApi('safari-web-extension://FLAKY/'));
+  const get = chrome.storage.local.get;
+  let failures = 1;
+  chrome.storage.local.get = async (keys) => {
+    if (failures-- > 0) throw new Error('SQLite error 5');
+    return get(keys);
+  };
+  const store = await import('../extension/background/store.js?copy=flaky');
+  await store.decided();
+  assert.equal(store.isOwner(), true);
 });

@@ -41,13 +41,24 @@ export function createReadiness({ show, allowed = () => true, doc = document, gr
     }
     since ||= Date.now();
     const waited = Date.now() - since;
-    if (waited >= maxMs || doc.hidden) return set(false);
+    if (doc.hidden) return set(false);
+    if (waited >= maxMs) {
+      // Long enough: Margin works with what it has (a cover up only a moment
+      // still stays its minimum).
+      const left = shownAt ? minShownMs - (Date.now() - shownAt) : 0;
+      return left > 0 ? later(left) : set(false);
+    }
     if (!shownAt && waited < graceMs) return later(graceMs - waited);
     if (!shownAt && !allowed()) return later(100);
     set(true);
     later(maxMs - waited);
   }
-  doc.addEventListener('visibilitychange', update);
+  // Shown while still waiting: the grace and the limit count from now (a
+  // page that waited hidden isn't covered at once, nor never).
+  doc.addEventListener('visibilitychange', () => {
+    if (!doc.hidden && waiting && !shownAt) since = Date.now();
+    update();
+  });
   return {
     /** @param {boolean} value whether the page waits for its copy of Margin */
     wait(value) {

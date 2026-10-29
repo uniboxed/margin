@@ -314,11 +314,12 @@ test('view.sidebar: a page shows its own tab\'s space until the state records th
   s = M.moveTab(s, 2, 'work');
   assert.equal(view.sidebar(s, 1, 1).spaceId, 'personal');
   // Tab 2 was just brought to the front: its page draws before the background has written it.
-  const shown = view.sidebar(s, 1, 2);
+  const shown = view.sidebar(s, 1, 2, { justShown: true });
   assert.equal(shown.spaceId, 'work', 'its own space, not the one the page before showed');
+  assert.equal(view.sidebar(s, 1, 2).spaceId, 'personal', 'only just after it was shown (a sidebar showing a space of its own choosing keeps it)');
   assert.equal(shown.tabs.find((t) => t.id === 2)?.active, true);
   const recorded = M.followTab(M.activateTab(s, 2, 1, 1), 2, 1);
-  assert.equal(view.sidebar(recorded, 1, 2).spaceId, 'work');
+  assert.equal(view.sidebar(recorded, 1, 2, { justShown: true }).spaceId, 'work');
   // Only the sidebar shows another space (held space keys): the window's.
   assert.equal(view.sidebar(M.setActiveSpace(s, 1, 'work'), 1, 1).spaceId, 'work');
   // Choosing tab 2 in the palette from tab 1's page: its space at once.

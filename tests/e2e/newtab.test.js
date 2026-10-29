@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -50,7 +50,7 @@ test('launcher: pins of the active space show as tiles; a tile focuses or opens 
   const site = await ctx.context.newPage();
   await site.goto(`${server.base}/tile`);
   const tabId = await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'tile')?.id);
-  await waitFor(() => ctx.worker.evaluate((id) => chrome.storage.local.get('tabs').then((s) => s.tabs[id]?.title === 'tile'), tabId));
+  await waitFor(async () => (await readState(ctx.worker, 'tabs'))?.[tabId]?.title === 'tile');
 
   const nt = await newTab();
   assert.equal(await nt.isHidden('#pins-section'), true);

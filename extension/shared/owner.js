@@ -22,15 +22,19 @@ export function newer(/** @type {Owner} */ a, /** @type {Owner} */ b) {
   return a.since !== b.since ? a.since > b.since : a.origin > b.origin;
 }
 
+// A record from a copy whose clock was ahead (then set right) would keep
+// every later copy out: one from the future beyond this is claimed.
+const CLOCK_SLACK_MS = 60_000;
+
 /**
  * What the copy `me` does, given the stored owner: 'own' (it's the owner),
  * 'claim' (it becomes the owner: none yet, or an older copy's record) or
  * 'stale' (a newer copy owns the storage).
- * @param {Owner | null | undefined} stored @param {Owner} me
+ * @param {Owner | null | undefined} stored @param {Owner} me @param {number} [now]
  * @returns {'own' | 'claim' | 'stale'}
  */
-export function ownership(stored, me) {
-  if (!stored || typeof stored.origin !== 'string' || !Number.isFinite(stored.since)) return 'claim';
+export function ownership(stored, me, now = Date.now()) {
+  if (!stored || typeof stored.origin !== 'string' || !Number.isFinite(stored.since) || stored.since > now + CLOCK_SLACK_MS) return 'claim';
   if (stored.origin === me.origin) return stored.since === me.since ? 'own' : 'claim';
   return newer(stored, me) ? 'stale' : 'claim';
 }

@@ -174,7 +174,11 @@ let pageRecorder = """
       log("command \(command.id): key=\(command.activationKey ?? "-") modifiers=\(command.modifierFlags.rawValue)")
     }
   }
-  func uninstall() throws { if let ctx = context { try controller.unload(ctx); log("uninstalled"); context = nil } }
+  func uninstall() throws {
+    if let ctx = context { try controller.unload(ctx); log("uninstalled"); context = nil }
+    unloadTwin()
+  }
+  func unloadTwin() { if let t = twin { try? controller.unload(t); log("twin unloaded") }; twin = nil }
   func installOld(dir: URL) async throws {
     let c = WKWebExtensionController(configuration: WKWebExtensionController.Configuration(identifier: storeId))
     c.delegate = self
@@ -259,6 +263,7 @@ Task { @MainActor in
       }
       if let ctx = host.context { try? host.controller.unload(ctx); host.context = nil }
       host.uninstallOld()
+      host.unloadTwin()
       // New tab objects, as a relaunched Safari has (WebKit maps a page to its tab through them).
       let frontName = host.window.active?.name
       for t in host.window.tabs { t.webView?.removeFromSuperview(); t.webView = nil; t.loadingObs = [] }

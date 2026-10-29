@@ -60,7 +60,7 @@ globalThis.chrome = {
   },
 };
 
-const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake, resolveTab } = await import('../extension/background/tabs.js');
+const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake, resolveTab, userSwitched } = await import('../extension/background/tabs.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided } = await import('../extension/background/store.js');
 
@@ -276,6 +276,24 @@ test('switch: a row\'s tab id from before (another copy\'s, the last session\'s)
   assert.equal((await resolveTab(999, { url: 'https://dup.test/x#top', index: 1 }, 2))?.id, 30, 'its own window first');
   assert.equal(await resolveTab(999, { url: 'https://gone.test/' }, 1), null);
   assert.equal(await resolveTab(999, null, 1), null);
+});
+
+test('switch: no switch after the page stopped waiting (its deadline)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 17, url: 'https://slow.test/' }]);
+  fake.scriptDelay = () => 300; // the wake takes longer than the page waits
+  await assert.rejects(focusTab(17, { deadline: Date.now() + 200 }), /Too late/);
+  assert.equal(fake.updates.length, 0);
+});
+
+test('switch: a switch waiting for its wake gives way to a tab the user chose themselves', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 18, url: 'https://b.test/' }]);
+  fake.scriptDelay = () => 150;
+  const pending = focusTab(18);
+  await sleep(20);
+  userSwitched(19); // Safari's tab bar, another tab
+  const focused = await pending;
+  assert.equal(focused.superseded, true);
+  assert.equal(fake.updates.length, 0);
 });
 
 test('wake: a tab with no page (Safari unloaded it) doesn\'t wait', async () => {

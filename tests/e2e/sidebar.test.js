@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -370,7 +370,7 @@ test('right-click menu on tabs: pin, move to another space, close; no hover pin 
   await clickInShadow(b, '.tab-menu .menu-item', 'Move to 🧪 Menu test');
   await waitFor(async () => !(await sidebarSnapshot(b)).tabs.includes('menu-a'));
   const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'menu-a').id;
-  assert.equal(await ctx.worker.evaluate((id) => chrome.storage.local.get('tabSpace').then((s) => s.tabSpace[id]), tabId), work);
+  assert.equal((await readState(ctx.worker, 'tabSpace'))[tabId], work);
 
   await openMenu(b, '.tab', 'menu-b');
   const closed = b.waitForEvent('close');

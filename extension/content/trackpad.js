@@ -9,6 +9,7 @@ import { platform } from '../shared/platform.js';
 // `page`: see content/core.js. `replacing`: an earlier copy of Margin is still
 // in the page (content/takeover.js); its gestures act on the page, so this
 // copy's swipe stays off (its pull-to-refresh doesn't: two reloads are one).
+/** @param {any} page @param {{ replacing: () => boolean }} options */
 export function startTrackpad(page, { replacing }) {
   const { host, send, onCard } = page;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
@@ -67,7 +68,7 @@ export function startTrackpad(page, { replacing }) {
   // Margin's, with Arc's edge badge: swipe sideways where nothing scrolls
   // sideways, past the threshold, and let go to go back (fingers moving
   // right) or forward. The gesture logic is shared/pull.js (axis x).
-  const swipeEnabled = () => !replacing && !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
+  const swipeEnabled = () => !replacing() && !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
   let swipeHideTimer = null;
   /** @param {{ state: string, progress?: number, direction?: number }} swipe */
   function showSwipe({ state: phase, progress, direction }) {

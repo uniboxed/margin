@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, evalInShadow } from './helpers.js';
+import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, evalInShadow, readState } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -12,7 +12,7 @@ after(async () => {
   await server?.close();
 });
 
-const storage = (key) => ctx.worker.evaluate((k) => chrome.storage.local.get(k).then((s) => s[k]), key);
+const storage = (key) => readState(ctx.worker, key);
 
 async function openPage(name) {
   const page = await ctx.context.newPage();
