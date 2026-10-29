@@ -9,7 +9,11 @@
 // Margin works with what it has: a switch still finds its tab by address,
 // background/tabs.js resolveTab). Only where `allowed()` (content/core.js: a
 // page just loaded or shown, not one in use while Margin is updated). Hidden
-// pages show nothing; one shown while still waiting shows it then.
+// pages show nothing; one shown while still waiting shows it then. The limit
+// is for the whole wait: once the page was covered, being hidden and shown
+// again doesn't start it over (a copy that never gets ready doesn't cover the
+// page again at every show; content/core.js also stops waiting on a copy
+// that started long ago).
 const GRACE_MS = 250;
 const MIN_SHOWN_MS = 400;
 const MAX_MS = 6000;
@@ -22,6 +26,7 @@ export function createReadiness({ show, allowed = () => true, doc = document, gr
   let waiting = false;
   let since = 0;
   let shownAt = 0;
+  let covered = false; // the page was covered during this wait: its limit counts from then
   /** @type {ReturnType<typeof setTimeout> | null} */
   let timer = null;
   const set = (/** @type {boolean} */ on) => {
@@ -50,13 +55,14 @@ export function createReadiness({ show, allowed = () => true, doc = document, gr
     }
     if (!shownAt && waited < graceMs) return later(graceMs - waited);
     if (!shownAt && !allowed()) return later(100);
+    covered = true;
     set(true);
     later(maxMs - waited);
   }
   // Shown while still waiting: the grace and the limit count from now (a
   // page that waited hidden isn't covered at once, nor never).
   doc.addEventListener('visibilitychange', () => {
-    if (!doc.hidden && waiting && !shownAt) since = Date.now();
+    if (!doc.hidden && waiting && !shownAt && !covered) since = Date.now();
     update();
   });
   return {
@@ -64,6 +70,7 @@ export function createReadiness({ show, allowed = () => true, doc = document, gr
     wait(value) {
       if (waiting === value) return;
       waiting = value;
+      if (!value) covered = false;
       update();
     },
     waiting: () => waiting,

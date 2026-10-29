@@ -94,3 +94,36 @@ test('copies: a storage error while deciding who owns the state isn\'t kept: it\
   await store.decided();
   assert.equal(store.isOwner(), true);
 });
+
+test('copies: a storage error that outlasts deciding leaves the copy unknown, not stale; the next caller tries again', async () => {
+  local.clear();
+  globalThis.chrome = /** @type {any} */ (fakeApi('safari-web-extension://DOWN/'));
+  const get = chrome.storage.local.get;
+  let failures = 4; // all of decide()'s tries
+  chrome.storage.local.get = async (keys) => {
+    if (failures-- > 0) throw new Error('SQLite error 5');
+    return get(keys);
+  };
+  const store = await import('../extension/background/store.js?copy=down');
+  await assert.rejects(store.decided());
+  assert.equal(store.isOwner(), false);
+  assert.equal(store.isStale(), false, 'its pages aren\'t told to stand down');
+  await store.decided();
+  assert.equal(store.isOwner(), true);
+});
+
+test('copies: an older copy claiming over a newer one is claimed back, with the newer one\'s tabs written again at once', async () => {
+  local.clear();
+  const newer = await startCopy('safari-web-extension://NEWER/');
+  await newer.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://n.test/', index: 0 } } }));
+  await newer.markSynced();
+  // An older copy's record over it (they started together; it read before the newer one wrote).
+  local.set('owner', { origin: 'safari-web-extension://OLDER/', since: 1 });
+  local.set('openTabs', { ...storedTabs(), origin: 'safari-web-extension://OLDER/', since: 1, tabs: { 99: { id: 99 } } });
+  assert.equal(await newer.recheck(), 'owner');
+  assert.equal(newer.isSynced(), true);
+  await sleep(20);
+  assert.equal(storedTabs().origin, 'safari-web-extension://NEWER/');
+  assert.equal(storedTabs().synced, true);
+  assert.deepEqual(Object.keys(storedTabs().tabs), ['5']);
+});

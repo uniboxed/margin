@@ -223,8 +223,19 @@ const focusing = new Map(); // tabId → overlapping Margin focus requests
 export const isFocusing = (tabId) => (focusing.get(tabId) ?? 0) > 0;
 // The user chose a tab themselves (Safari's tab bar, ⌘1–9, a held key passing
 // through): a switch of Margin's still waiting doesn't pull the window back.
+// Not for a tab Margin itself just brought to the front: its onActivated can
+// come after that switch has ended (and would cancel the next one).
+const activatedByMargin = new Map(); // tabId → when Margin asked Safari to bring it to the front
+const OWN_ACTIVATION_MS = 1500;
+export function activating(tabId) {
+  activatedByMargin.set(tabId, Date.now());
+  setTimeout(() => {
+    if (Date.now() - (activatedByMargin.get(tabId) ?? 0) >= OWN_ACTIVATION_MS) activatedByMargin.delete(tabId);
+  }, OWN_ACTIVATION_MS);
+}
 export function userSwitched(tabId = null) {
-  if (tabId == null || !isFocusing(tabId)) focusGen++;
+  if (tabId != null && (isFocusing(tabId) || Date.now() - (activatedByMargin.get(tabId) ?? 0) < OWN_ACTIVATION_MS)) return;
+  focusGen++;
 }
 // `deadline`: when the page that asked stops waiting (it then says the switch
 // didn't happen): no switch after it.
@@ -301,6 +312,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
     recordSwitch({ source, tabId, asked, wake: woke, preparation, error: String(err) });
     throw err;
   };
+  activating(tabId);
   const tab = await api.tabs.update(tabId, { active: true }).catch(fail);
   // Safari can answer without having brought the tab to the front: checked,
   // and asked once more. A switch that didn't happen says so (the page shows
@@ -308,6 +320,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline }) {
   if (!(await isInFront(tabId, tab))) {
     if (gen !== focusGen) return { tab: null, preparation, superseded: true }; // another switch took the front meanwhile
     if (Number.isFinite(deadline) && Date.now() > deadline - 250) fail(new Error('Too late: the page stopped waiting for this switch'));
+    activating(tabId);
     await api.tabs.update(tabId, { active: true }).catch(fail);
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
@@ -370,13 +383,13 @@ async function noteShowing(tab, { carry = null, scroll = null } = {}) {
 // another copy's): a row then also says its tab's address and place
 // (`hint`), which find it among the open tabs (in the asking page's window
 // first, then the nearest place). Null if it's gone.
-// The id itself stands only if the page drew this copy's tab ids (`hint.from`:
-// whose they were, shared/stored.js); ids from another copy or another Safari
-// session can name a different tab now.
-/** @param {number} tabId @param {{ url?: string, index?: number, title?: string, from?: { origin?: string, since?: number } | null } | null | undefined} hint @param {number | null | undefined} preferWindow */
+// The id itself stands only if the page drew this copy's tab ids, matched to
+// the open tabs (`hint.from`: whose they were, shared/stored.js); ids from
+// another copy or another Safari session can name a different tab now.
+/** @param {number} tabId @param {{ url?: string, index?: number, title?: string, from?: { origin?: string, since?: number, synced?: boolean } | null } | null | undefined} hint @param {number | null | undefined} preferWindow */
 export async function resolveTab(tabId, hint, preferWindow) {
   const me = thisCopy();
-  const ours = !hint || ('from' in hint ? hint.from?.origin === me.origin && (hint.from.since == null || hint.from.since === me.since) : true);
+  const ours = !hint || ('from' in hint ? hint.from?.origin === me.origin && (hint.from.since == null || hint.from.since === me.since) && hint.from.synced !== false : true);
   const live = Number.isInteger(tabId) && ours ? await api.tabs.get(tabId).catch(() => null) : null;
   if (live || !hint?.url) return live;
   const key = M.normalizeUrl(hint.url);

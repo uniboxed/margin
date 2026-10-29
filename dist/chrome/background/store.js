@@ -37,6 +37,8 @@ export const decided = () => (deciding ??= decide().catch((err) => {
   throw err;
 }));
 export const isOwner = () => role === 'owner';
+// Known not to own it (a newer copy does); null (not known yet) isn't stale.
+export const isStale = () => role === 'stale';
 // Whether the stored tabs are this copy's, matched to the open tabs (its
 // background starting again within the same copy: nothing to wait for).
 export const isSynced = () => role === 'owner' && synced;
@@ -57,16 +59,20 @@ async function decideOnce() {
   // A failed read isn't a first start (that would make this copy the newest).
   const session = api.storage.session ? await api.storage.session.get('since') : null;
   const { owner, [OPEN_TABS]: open } = await api.storage.local.get(['owner', OPEN_TABS]);
+  // Whether this is the copy's first start (not its background waking): only
+  // then may it claim a record from a clock that was ahead (shared/owner.js).
+  let first = false;
   if (Number.isFinite(session?.since)) me.since = session.since;
   // Without storage.session a restart can't be told from the copy's first
   // start: the record stands if it's this address.
   else if (!api.storage.session && owner?.origin === me.origin && Number.isFinite(owner.since)) me.since = owner.since;
   else {
     me.since = Date.now();
+    first = true;
     await api.storage.session?.set({ since: me.since });
   }
-  const own = O.ownership(owner, me, Date.now()) === 'own';
-  const decision = await settle(owner, open);
+  const own = O.ownership(owner, me) === 'own';
+  const decision = await settle(owner, open, { starting: first });
   // This copy's background starting again: the stored tabs are already its
   // own, matched (shared/stored.js), unless it stopped before that.
   if (decision === 'owner' && own) synced = openTabsCurrent(open, me.origin, me.since);
@@ -77,9 +83,10 @@ async function decideOnce() {
 // a newer one took over when it next writes (flush), a page says hello, or
 // an event reaches it (recheckSoon). When it claims, the stored tabs are
 // marked unmatched at once (`open`: as read): pages then wait for this copy's
-// first sync (shared/stored.js).
-async function settle(stored, open = null) {
-  const decision = O.ownership(stored, me, Date.now());
+// first sync (shared/stored.js). `back`: claimed back from an older copy that
+// claimed over this one (recheck): this copy's tabs stay matched.
+async function settle(stored, open = null, { starting = false, back = false } = {}) {
+  const decision = O.ownership(stored, me, starting ? Date.now() : undefined);
   if (decision === 'stale') {
     if (role !== 'stale') console.info('[margin] a newer copy of Margin is running: this one stays out of the way');
     role = 'stale';
@@ -87,7 +94,7 @@ async function settle(stored, open = null) {
   }
   role = 'owner';
   if (decision === 'claim') {
-    synced = false;
+    if (!back) synced = false;
     await api.storage.local.set({ owner: { ...me } });
     if (open?.synced) await api.storage.local.set({ [OPEN_TABS]: { ...open, synced: false } }).catch((err) => console.warn('[margin] marking the stored tabs unmatched failed:', err?.message ?? err));
     // The envelope a development build kept (workspace, workspaceBackup):
@@ -99,22 +106,31 @@ async function settle(stored, open = null) {
 // Whether this copy still owns the state (another may have claimed it since).
 // An older copy that claimed over it (they started together) is claimed back:
 // this copy's tabs stay matched, and are written again at once.
-export async function recheck() {
-  if (role !== 'owner') return role;
+// One at a time: callers meanwhile share the check under way.
+/** @type {Promise<'owner' | 'stale' | null> | null} */
+let checking = null;
+export function recheck() {
+  if (role !== 'owner') return Promise.resolve(role);
+  return (checking ??= recheckNow().finally(() => { checking = null; }));
+}
+async function recheckNow() {
   const { owner } = await api.storage.local.get('owner').catch(() => ({ owner: null }));
   checkedAt = Date.now();
   if (!owner || (owner.origin === me.origin && owner.since === me.since)) return role;
-  const wasSynced = synced;
-  await settle(owner).catch(() => {});
-  if (role === 'owner' && wasSynced) {
-    synced = true;
+  await settle(owner, null, { back: true }).catch(() => {});
+  // Claimed back: this copy's tabs are written again now, over the older
+  // copy's (not waited for: a recheck inside a write mustn't wait on itself).
+  if (role === 'owner' && synced) {
     for (const key of OPEN_TABS_KEYS) unsaved.add(key);
+    void write([]);
   }
   return role;
 }
-// The same, at most once a second (before a listener runs: background.js owned).
+// The same, at most once a second (before a listener runs: background.js
+// owned). While a check is under way, every caller waits for it: events then
+// go on in the order they came.
 let checkedAt = 0;
-export const recheckSoon = () => (role === 'owner' && Date.now() - checkedAt > 1000 ? recheck() : Promise.resolve(role));
+export const recheckSoon = () => checking ?? (role === 'owner' && Date.now() - checkedAt > 1000 ? recheck() : Promise.resolve(role));
 // Once the open tabs are matched to the state (a sync), pages may trust the
 // stored tabs: they're written again, marked so (shared/stored.js).
 let synced = false;

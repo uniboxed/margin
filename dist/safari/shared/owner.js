@@ -23,18 +23,22 @@ export function newer(/** @type {Owner} */ a, /** @type {Owner} */ b) {
 }
 
 // A record from a copy whose clock was ahead (then set right) would keep
-// every later copy out: one from the future beyond this is claimed.
+// every later copy out: one from the future beyond this is claimed by a copy
+// starting (`now` given). Not by one already running: two copies would then
+// claim from each other in turn (the older one over the future record, that
+// one back over the older), so a running copy takes the record as it is.
 const CLOCK_SLACK_MS = 60_000;
 
 /**
  * What the copy `me` does, given the stored owner: 'own' (it's the owner),
  * 'claim' (it becomes the owner: none yet, or an older copy's record) or
- * 'stale' (a newer copy owns the storage).
+ * 'stale' (a newer copy owns the storage). `now`: only when the copy starts.
  * @param {Owner | null | undefined} stored @param {Owner} me @param {number} [now]
  * @returns {'own' | 'claim' | 'stale'}
  */
-export function ownership(stored, me, now = Date.now()) {
-  if (!stored || typeof stored.origin !== 'string' || !Number.isFinite(stored.since) || stored.since > now + CLOCK_SLACK_MS) return 'claim';
+export function ownership(stored, me, now) {
+  if (!stored || typeof stored.origin !== 'string' || !Number.isFinite(stored.since)) return 'claim';
   if (stored.origin === me.origin) return stored.since === me.since ? 'own' : 'claim';
+  if (now != null && stored.since > now + CLOCK_SLACK_MS) return 'claim';
   return newer(stored, me) ? 'stale' : 'claim';
 }

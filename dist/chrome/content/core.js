@@ -38,6 +38,10 @@ export function startCore({ onTheme } = {}) {
   // out to be) in the page: its gestures stay its own, and the page is
   // cleaned up by a reload when that's safe (content/takeover.js).
   let replacing = takeover.replacing;
+  // Another copy's sidebar this one hid on taking over (`ownerSeen`): a copy
+  // from this protocol on, which stands back itself (its gestures too, so
+  // this copy keeps its own), but its fitted layout stays until a reload.
+  let takenOver = false;
   // This copy's address: the stored tabs say whether they're this copy's
   // (shared/stored.js). A copy a newer one replaced stays out of the way
   // (`dormant`, below), and so does one whose sidebar another copy hid
@@ -86,6 +90,8 @@ export function startCore({ onTheme } = {}) {
   // Why the last switch request failed, if it did (a switch says so: below).
   const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
   let switchError = null;
+  let helloAnswered = false; // this page's background has said which tab it is
+  let switchAskedAt = 0; // when this page last asked for a switch (render: justShown)
   const failedSwitch = (type, why) => { if (SWITCH_REQUESTS.has(type)) switchError = why; };
   /**
    * @template {MessageType} K
@@ -106,13 +112,20 @@ export function startCore({ onTheme } = {}) {
     // So does any request naming a tab (closing, moving, pinning it), with
     // whose ids this page drew: the background then trusts the id only if
     // they're its own, and refuses rather than act on another tab.
-    if (Number.isInteger((/** @type {any} */ (payload)).tabId) && !(/** @type {any} */ (payload)).hint && type !== 'prewake') {
+    // Not for this page's own tab as its background named it (hello): that
+    // id is this copy's already, whoever's ids the stored tabs are.
+    const ownTab = helloAnswered && (/** @type {any} */ (payload)).tabId === tabId;
+    if (Number.isInteger((/** @type {any} */ (payload)).tabId) && !(/** @type {any} */ (payload)).hint && type !== 'prewake' && !ownTab) {
       const tab = state?.tabs?.[/** @type {any} */ (payload).tabId];
       if (tab) payload = /** @type {any} */ ({ ...payload, hint: { url: tab.url, index: tab.index, title: tab.title, from: /** @type {any} */ (state)?.openTabsBy ?? null } });
     }
     // And when this page stops waiting for it: the background doesn't switch
-    // after that (a switch that lands after its page said it didn't).
-    if (SWITCH_REQUESTS.has(type)) payload = /** @type {any} */ ({ ...payload, deadline: Date.now() + SEND_TIMEOUT_MS[type] });
+    // after that (a switch that lands after its page said it didn't). Asked
+    // again (retry), it keeps its first deadline, and waits only till then.
+    if (SWITCH_REQUESTS.has(type)) switchAskedAt = Date.now();
+    const deadline = (/** @type {any} */ (payload)).deadline;
+    if (SWITCH_REQUESTS.has(type) && !Number.isFinite(deadline)) payload = /** @type {any} */ ({ ...payload, deadline: Date.now() + SEND_TIMEOUT_MS[type] });
+    const waitMs = Number.isFinite(deadline) ? Math.max(0, deadline - Date.now()) : (SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default);
     failedSwitch(type, null);
     let timer;
     let reply;
@@ -123,7 +136,7 @@ export function startCore({ onTheme } = {}) {
       reply = api.runtime.sendMessage({ type, ...payload });
       const res = await Promise.race([
         reply,
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(NO_ANSWER)), SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default); }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(NO_ANSWER)), waitMs); }),
       ]);
       if (res?.ok) return res.result;
       if (res?.stale) return void standDown();
@@ -145,6 +158,9 @@ export function startCore({ onTheme } = {}) {
     }
     if (retry) {
       await new Promise((r) => setTimeout(r, 250));
+      const until = (/** @type {any} */ (payload)).deadline;
+      // No time left for a switch: it didn't happen.
+      if (Number.isFinite(until) && until - Date.now() < 500) return void failedSwitch(type, 'Too late');
       return send(type, payload, false);
     }
   }
@@ -175,15 +191,20 @@ export function startCore({ onTheme } = {}) {
       offerReload('Margin isn’t responding on this page (it was probably updated). Reload the page to fix it.');
     }, STALE_MS - (SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default));
   }
+  // Up until it's answered, or it goes by itself (`duration`).
+  let noticeTimer = null;
+  const RELOAD_NOTICE_MS = 20000;
   function offerReload(text) {
     toldNoAnswer = true;
     noticeUp = true;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => { noticeUp = false; }, RELOAD_NOTICE_MS);
     view?.showNotice?.({
       text,
       // Loaded again with a GET (a reload could send a form again).
       // (A URL with a #fragment would only scroll: reloaded then.)
       actions: [{ label: 'Reload', run: () => (location.href.includes('#') ? location.reload() : location.replace(location.href)) }, { label: 'Not now', run: () => { noticeUp = false; } }],
-      duration: 20000,
+      duration: RELOAD_NOTICE_MS,
     });
   }
 
@@ -218,7 +239,7 @@ export function startCore({ onTheme } = {}) {
   // screen too, a few times at most).
   let fittedOffers = 0;
   function offerFittedReload() {
-    if (!replacing || !view || document.hidden || fittedOffers >= 3 || !document.documentElement.hasAttribute('data-margin-shell')) return;
+    if (!(replacing || takenOver) || !view || document.hidden || fittedOffers >= 3 || !document.documentElement.hasAttribute('data-margin-shell')) return;
     fittedOffers++;
     offerReload('Margin was updated. Reload this page to fit it beside the sidebar again.');
     // Not taken for "Margin isn't responding" told already (noAnswer).
@@ -331,7 +352,10 @@ export function startCore({ onTheme } = {}) {
   const navSettings = () => (active() ? state?.settings : null); // none while Margin is out of the way
   // The sidebar's scroll position goes first (the next page is prepared with it).
   const navSend = /** @type {typeof send} */ ((type, payload, ...rest) => {
-    if (type === 'navigate') flushScroll();
+    if (type === 'navigate') {
+      flushScroll();
+      switchAskedAt = Date.now();
+    }
     return send(type, payload, ...rest);
   });
   shortcuts.installNavigation({ send: navSend, getSettings: navSettings });
@@ -343,7 +367,10 @@ export function startCore({ onTheme } = {}) {
   function setFullscreen(value) {
     fullscreen = value;
     if (active() === wasActive) return;
-    if (active()) view?.showNotice?.(null);
+    if (active()) {
+      view?.showNotice?.(null);
+      noticeUp = false;
+    }
     render();
   }
   let recheck = null;
@@ -442,9 +469,9 @@ export function startCore({ onTheme } = {}) {
     },
   });
   let storedOwner = null;
-  let helloAnswered = false;
   let waitedSince = 0;
   let mySince = null; // this copy's start, from hello
+  const READY_GIVE_UP_MS = 20000;
   let storedTabsBy = null;
   let storageSeen = false;
   function ownerSeen(owner, openTabsBy) {
@@ -460,7 +487,11 @@ export function startCore({ onTheme } = {}) {
       console.debug(`[margin] getting ready: done after ${Date.now() - waitedSince}ms`);
       waitedSince = 0;
     }
-    readiness.wait(!dormant && !isCurrent);
+    // Not on a copy that started long ago (it would have matched them by now:
+    // its sync failed, say): Margin then works with what it has, and a page
+    // shown isn't covered each time.
+    const startedLongAgo = Number.isFinite(mySince) && Date.now() - mySince > READY_GIVE_UP_MS;
+    readiness.wait(!dormant && !isCurrent && !startedLongAgo);
     // Another copy claimed the state since this page started: is this copy
     // the older one (then it stands back), or will it claim it again?
     if (helloAnswered && storedOwner && storedOwner.origin !== origin && before?.origin !== storedOwner.origin) void send('owner');
@@ -478,8 +509,8 @@ export function startCore({ onTheme } = {}) {
           others = true;
         }
       }
-      if (others && !replacing) {
-        replacing = true;
+      if (others && !takenOver) {
+        takenOver = true;
         takeover.arm();
         offerFittedReload();
       }
@@ -624,8 +655,10 @@ export function startCore({ onTheme } = {}) {
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
-    // Just shown (or started): its own tab's space while the state catches up (shared/view.js).
-    const justShown = firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS;
+    // Just shown (or started): its own tab's space while the state catches up
+    // (shared/view.js). Not once a switch was asked for from here (a swipe to
+    // another space: the window's space is then the one it went to).
+    const justShown = (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt;
     view.update(state, { windowId, tabId, fit: fitState(), newTabPending, switchingTo, justShown, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     Margin.content.onState?.(state, { tabId, windowId });
@@ -723,11 +756,13 @@ export function startCore({ onTheme } = {}) {
   }
   const SHOWING_MS = 10000;
   const sameDocument = (a, b) => String(a ?? '').split('#')[0] === String(b ?? '').split('#')[0];
-  // Not for a reload of a page that's in front (the note is for a tab Safari
-  // loads as Margin brings it to the front).
-  const reloaded = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0])?.type === 'reload';
+  // Only for a page that started as the note was written: the tab Safari
+  // loads as Margin brings it to the front (whatever kind of load that is:
+  // a restore, or a reload of a page whose process Safari discarded), not a
+  // page reloaded by hand a few seconds later.
+  const startedWith = (at) => performance.timeOrigin - at > -1000 && performance.timeOrigin - at < 3000;
   function notedShowing(showing) {
-    if (!showing || reloaded || !Number.isInteger(showing.tabId) || Date.now() - showing.at > SHOWING_MS || document.hidden) return null;
+    if (!showing || !startedWith(showing.at) || !Number.isInteger(showing.tabId) || Date.now() - showing.at > SHOWING_MS || document.hidden) return null;
     return sameDocument(showing.url, location.href) ? showing : null;
   }
 
@@ -813,13 +848,16 @@ export function startCore({ onTheme } = {}) {
     if (dormant) return;
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
     helloAnswered = true;
-    // The background's note named another tab with this address: undone.
-    if (adoptedNote && adoptedNote.tabId !== ctx.tabId) {
+    // The background's note named another tab with this address: undone,
+    // and drawn again from storage as this tab (its space, not the noted one's).
+    const wrongNote = adoptedNote && adoptedNote.tabId !== ctx.tabId;
+    if (wrongNote) {
       if (carriedNoted && !ctx.carry) layout.hide();
       uncoverLoading?.();
     }
     adoptedNote = null;
     tabId = ctx.tabId;
+    if (wrongNote) void refresh();
     Margin.content.instanceId = ctx.instanceId; // see background.js injectIntoOpenTabs
     // Which copy's tab ids this page may trust: the stored ones are checked
     // again against it (Chrome keeps its address across restarts).

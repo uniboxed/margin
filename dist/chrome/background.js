@@ -6,7 +6,7 @@
 // top level, as a service worker must.
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
-import { api, decided, isOwner, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
+import { api, decided, isOwner, isStale, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, resolveTab, shownAt, shownUrl, userSwitched } from './background/tabs.js';
@@ -26,12 +26,21 @@ import { platform } from './shared/platform.js';
 // Every listener waits until this copy knows, and does nothing in one that
 // doesn't own it: the tab events, commands and alarms reach both copies.
 /** @template {any[]} A @param {(...args: A) => unknown} fn @returns {(...args: A) => Promise<unknown>} */
+// Copies don't hear each other's writes: whether this one still owns the
+// state is checked again (at most once a second) before it acts, so a copy a
+// newer one replaced doesn't act on the event that tells it (a ⌘T both would
+// answer). Events meanwhile wait for the same check, and go on in order
+// (store.js recheckSoon). A change a newer copy took over during isn't
+// written, and fails: nothing more to do here.
 const owned = (fn) => async (...args) => {
   await decided();
-  // Copies don't hear each other's writes: whether this one still owns the
-  // state is checked again (at most once a second) before it acts.
   if (isOwner()) await recheckSoon();
-  if (isOwner()) return fn(...args);
+  if (!isOwner()) return;
+  try {
+    return await fn(...args);
+  } catch (err) {
+    if (!(err instanceof StaleError)) throw err;
+  }
 };
 
 // ---- lifecycle ------------------------------------------------------------
@@ -66,14 +75,16 @@ const firstSync = (async () => {
     try {
       return await firstSyncOnce();
     } catch (err) {
-      if (err instanceof StaleError || !isOwner() || tries >= 3) return void (err instanceof StaleError || console.error('[margin] sync', err));
+      // A storage error, also while deciding who owns the state (still not
+      // known then): tried again. Not in a copy that doesn't own it.
+      if (err instanceof StaleError || isStale() || tries >= 3) return void (err instanceof StaleError || isStale() || console.error('[margin] sync', err));
       await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** tries));
     }
   }
 })();
 const untilSynced = () => (isSynced() ? null : Promise.race([firstSync, new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_MS))]));
 firstSync.then(async () => {
-  if (!isOwner()) return;
+  if (!isOwner() || !isSynced()) return;
   void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
   // stale tab mustn't override one learned since).
@@ -82,7 +93,7 @@ firstSync.then(async () => {
     learnSearchEngine(Object.values(s.tabs).sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0)).map((t) => t.url));
   }
   return archiveStale();
-});
+}).catch((err) => { if (!(err instanceof StaleError)) console.error('[margin]', err); });
 
 // Margin allowed on more or fewer sites: the Mac app's set-up window shows it.
 api.permissions?.onAdded?.addListener(owned(() => void onboarding.reportAccess()));
@@ -192,13 +203,13 @@ api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
   });
   if (!api.alarms) archiveStaleThrottled();
   // After the switch has landed (not in its way).
-  setTimeout(() => ensureCurrent(tabId), 300);
+  setTimeout(() => isOwner() && ensureCurrent(tabId), 300);
 }));
 // Coming back to a window (or to Safari) shows its tab without onActivated:
 // that tab is checked too (a stale copy there: tabs.js ensureCurrent).
 api.windows?.onFocusChanged?.addListener(owned((windowId) => {
   if (windowId == null || windowId < 0) return;
-  api.tabs.query({ active: true, windowId }).then(([tab]) => tab && setTimeout(() => ensureCurrent(tab.id), 300), () => {});
+  api.tabs.query({ active: true, windowId }).then(([tab]) => tab && setTimeout(() => isOwner() && ensureCurrent(tab.id), 300), () => {});
 }));
 api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onAttached.addListener(owned(() => resync({ fresh: false })));
@@ -241,8 +252,10 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .then(() => (isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced() : null))
     .then(() => (isOwner() ? withTab(message, sender) : null))
     .then((request) => (isOwner() ? handler(request, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' }))
-    // A change made while a newer copy took over wasn't written (store.js mutate).
-    .then(sendResponse, (err) => sendResponse(err instanceof StaleError || !isOwner() ? { ok: false, stale: true, error: String(err?.message ?? err) } : { ok: false, error: String(err?.message ?? err) }));
+    // A change made while a newer copy took over wasn't written (store.js
+    // mutate). Only a copy known not to own the state says `stale` (its pages
+    // then stand down for good): a storage error while deciding is an error.
+    .then(sendResponse, (err) => sendResponse(err instanceof StaleError || isStale() ? { ok: false, stale: true, error: String(err?.message ?? err) } : { ok: false, error: String(err?.message ?? err) }));
   return true;
 });
 

@@ -31,6 +31,16 @@ test('owner: the same address started again (Chrome restarts, extension reloaded
   assert.equal(ownership({ ...old, synced: true }, { ...old, since: 3000 }), 'claim');
 });
 
+test('owner: a record from a clock that was ahead is claimed by a copy starting, not by one running (no claiming in turn)', () => {
+  const now = 100_000;
+  const ahead = { origin: 'safari-web-extension://AHEAD/', since: now + 3_600_000 };
+  const older = { origin: 'safari-web-extension://OLDER/', since: now - 5000 };
+  assert.equal(ownership(ahead, older, now), 'claim', 'starting');
+  assert.equal(ownership(ahead, older), 'stale', 'running: as it is');
+  assert.equal(ownership(older, ahead), 'claim', 'the one ahead claims over an older record');
+  assert.equal(ownership(ahead, ahead, now), 'own', 'its own record is never claimed');
+});
+
 test('owner: two copies started together never both claim', () => {
   const a = { origin: 'safari-web-extension://AAA/', since: 7000 };
   const b = { origin: 'safari-web-extension://BBB/', since: 7000 };

@@ -216,9 +216,11 @@ import { platform } from '../shared/platform.js';
   // Sooner, without waiting for a background that may be starting: Margin
   // noted that it's bringing this tab to the front unprepared (a tab Safari
   // unloaded; background/tabs.js noteShowing).
-  const reloading = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0])?.type === 'reload';
+  // Only a page that started as the note was written (not one reloaded by
+  // hand a few seconds later: content/core.js notedShowing).
+  const startedWith = (at) => performance.timeOrigin - at > -1000 && performance.timeOrigin - at < 3000;
   (globalThis.browser ?? globalThis.chrome)?.storage?.local.get('showing').then(({ showing }) => {
-    if (!showing || reloading || document.hidden || Date.now() - showing.at > 10000 || String(showing.url).split('#')[0] !== href) return;
+    if (!showing || !startedWith(showing.at) || document.hidden || Date.now() - showing.at > 10000 || String(showing.url).split('#')[0] !== href) return;
     restoring = true;
     release('tab being restored');
   }, () => {});

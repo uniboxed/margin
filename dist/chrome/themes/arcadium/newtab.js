@@ -86,21 +86,26 @@ export function mount({ api, self, send, windowed = false }) {
   };
   // Saved before a switch from the sidebar, so the next page asks for the right one.
   const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab', 'setSpace']);
+  // A switch (from the sidebar, the palette or a pin tile) also says the
+  // tab's address and place, with whose ids this page drew (as on web pages,
+  // content/core.js send), and when this page stops waiting for it: no switch
+  // after that. Not for this tab itself (its id is the background's own).
+  const withHint = (/** @type {string} */ type, /** @type {any} */ payload) => {
+    if (!SWITCHES.has(type) || payload?.hint) return payload;
+    if (type !== 'closeTab') lastShown = 0; // no longer just shown (refresh): a switch was asked for from here
+    const tab = Number.isInteger(payload?.tabId) && payload.tabId !== self?.id ? state?.tabs?.[payload.tabId] : null;
+    return {
+      ...payload,
+      ...(tab ? { hint: { url: tab.url, index: tab.index, title: tab.title, from: /** @type {any} */ (state)?.openTabsBy ?? null } } : {}),
+      ...(type === 'closeTab' ? {} : { deadline: Date.now() + 7000 }),
+    };
+  };
   /** @type {import('../../../types/margin').Send} */
   const sidebarSend = (type, payload, ...rest) => {
     if (!SWITCHES.has(type)) return send(type, payload, ...rest);
     const sidebarTop = scrollTimer == null ? null : scrollTop;
     flushScroll();
-    // A switch also says the tab's address and place (as on web pages,
-    // content/core.js send).
-    const tab = Number.isInteger(/** @type {any} */ (payload)?.tabId) ? state?.tabs?.[/** @type {any} */ (payload).tabId] : null;
-    return send(type, {
-      .../** @type {any} */ (payload),
-      ...(Number.isFinite(sidebarTop) ? { sidebarTop } : {}),
-      ...(tab ? { hint: { url: tab.url, index: tab.index, title: tab.title, from: /** @type {any} */ (state)?.openTabsBy ?? null } } : {}),
-      // No switch after this page stops waiting (as on web pages).
-      ...(type === 'closeTab' ? {} : { deadline: Date.now() + 7000 }),
-    }, ...rest);
+    return send(type, withHint(type, { .../** @type {any} */ (payload), ...(Number.isFinite(sidebarTop) ? { sidebarTop } : {}) }), ...rest);
   };
   // On Margin's start page (#launcher), "+ New Tab" chooses a new tab as on a
   // web page: highlighted until the palette closes, and what's chosen opens
@@ -198,7 +203,7 @@ export function mount({ api, self, send, windowed = false }) {
     if (!pin) return;
     const key = V.normalizeUrl(pin.url);
     const open = Object.values(state.tabs).find((t) => t.id !== self.id && V.normalizeUrl(t.url) === key);
-    if (open) send('activateTab', { tabId: open.id });
+    if (open) send('activateTab', withHint('activateTab', { tabId: open.id }));
     else go(pin.url);
   });
 
@@ -290,6 +295,7 @@ export function mount({ api, self, send, windowed = false }) {
   const LEAVES = new Set(['activateTab', 'openPin', 'newWindow']);
   /** @type {any} */
   const paletteSend = async (/** @type {any} */ type, /** @type {any} */ payload) => {
+    if (type !== 'prewake') payload = withHint(type, payload);
     if (!fresh || type === 'prewake') return send(type, payload);
     fresh = false;
     if (type === 'restoreArchive') return send(type, { ...payload, replaceTabId: self?.id });
@@ -474,13 +480,19 @@ export function mount({ api, self, send, windowed = false }) {
   let firstDrawn;
   const firstState = new Promise((resolve) => { firstDrawn = resolve; });
   let pendingScroll = null; // applied by the next refresh
+  let lastShown = Date.now();
+  const JUST_SHOWN_MS = 2000;
   async function refresh() {
     const mine = ++version;
     const next = fromStorage(await api.storage.local.get(null));
     if (mine !== version || !next.spaces?.length) return;
     state = next;
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
-    sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    // Just drawn or shown: its own tab's space, while the state doesn't say
+    // it's in front yet (shared/view.js; as on web pages), until a switch is
+    // asked for from here.
+    const justShown = Date.now() - lastShown < JUST_SHOWN_MS;
+    sidebar.update(state, { windowId: windowId(), tabId: self?.id, newTabPending, switchingTo, justShown, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     renderLauncher();
     palette.refresh();
@@ -492,6 +504,7 @@ export function mount({ api, self, send, windowed = false }) {
   api.storage.onChanged.addListener((_, area) => area === 'local' && (!document.hidden || !state) && refresh());
   // Shown again (or first): the current state, at the window's scroll position.
   const shown = () => {
+    lastShown = Date.now();
     const gen = scrollGen;
     send('sidebarScroll').then((top) => {
       if (!Number.isFinite(top) || gen !== scrollGen) return;

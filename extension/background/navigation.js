@@ -1,7 +1,7 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, load, mutate, now } from './store.js';
-import { focusTab, openTab, userSwitched, wakeTab } from './tabs.js';
+import { activating, focusTab, openTab, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
@@ -68,6 +68,7 @@ async function runNavigation(action, windowId) {
         const asked = Date.now();
         const wake = await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
         userSwitched(); // a switch still waiting for its wake doesn't land after this one
+        activating(next);
         await api.tabs.update(next, { active: true });
         recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
       } else {
@@ -111,7 +112,11 @@ export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-
 /** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number }} [options] */
 export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline } = {}) {
   if (windowId == null) return;
-  const s = await mutate((st) => M.setActiveSpace(st, windowId, spaceId));
+  let before = null;
+  const s = await mutate((st) => {
+    before = V.activeSpaceId(st, windowId);
+    return M.setActiveSpace(st, windowId, spaceId);
+  });
   if (V.activeSpaceId(s, windowId) !== spaceId || !bringTab) return; // no such space, or only the sidebar
   const [shown] = await api.tabs.query({ active: true, windowId });
   if (shown && s.tabSpace[shown.id] === spaceId) return;
@@ -123,8 +128,15 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
       return await focusTab(tab.id, { source: 'space', carry, scroll, deadline });
     } catch (err) {
       // Closed meanwhile: the next one. Anything else (Safari didn't switch,
-      // too late) is this switch failing, not a reason to open a start page.
-      if (!/No tab with id/i.test(String(err?.message ?? err))) throw err;
+      // too late) is this switch failing, not a reason to open a start page:
+      // the window goes back to the space it showed (its tab in front is still
+      // of that one), unless something else changed it meanwhile.
+      if (!/No tab with id/i.test(String(err?.message ?? err))) {
+        if (before && before !== spaceId) {
+          await mutate((st) => (V.activeSpaceId(st, windowId) === spaceId ? M.setActiveSpace(st, windowId, before) : st)).catch(() => {});
+        }
+        throw err;
+      }
     }
   }
   const startPage = api.runtime.getURL('newtab/newtab.html#launcher');

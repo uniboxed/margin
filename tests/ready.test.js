@@ -79,3 +79,31 @@ test('ready: not over a page in use (allowed() false), until it is', async () =>
   await sleep(150);
   assert.deepEqual(events, [true]);
 });
+
+test('ready: covered for its whole limit once, a page shown again while still waiting isn\'t covered again', async () => {
+  const { readiness, events, setHidden } = setup({ maxMs: 200 });
+  readiness.wait(true);
+  await sleep(300);
+  assert.deepEqual(events, [true, false]);
+  setHidden(true);
+  setHidden(false);
+  await sleep(120);
+  assert.deepEqual(events, [true, false], 'no second cover');
+  readiness.wait(false);
+  readiness.wait(true); // a new wait covers again
+  await sleep(70);
+  assert.deepEqual(events, [true, false, true]);
+});
+
+test('ready: hidden during the cover and shown again, only what\'s left of the limit', async () => {
+  const { readiness, events, setHidden } = setup({ maxMs: 300 });
+  readiness.wait(true);
+  await sleep(100);
+  assert.deepEqual(events, [true]);
+  setHidden(true);
+  assert.deepEqual(events, [true, false]);
+  await sleep(250); // past the limit, counted from the first show
+  setHidden(false);
+  await sleep(100);
+  assert.deepEqual(events, [true, false], 'not covered again');
+});
