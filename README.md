@@ -48,6 +48,16 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 - **Tabs closed with ⌘W aren't archived.** Only auto-archived tabs and tabs closed with Margin's × are.
 - **Unverified in Safari.** Everything was automated-tested in headless Chromium only. See [TESTING.md](TESTING.md) for what needs a manual check.
 
+## Install in Safari, signed (stays on, updates in place)
+
+```sh
+npm run safari
+```
+
+Builds Margin, signs it with your Apple Developer team, installs it as `~/Applications/Margin.app` and registers it with Safari (`scripts/safari.sh`). Signed, Safari keeps it on, with its data, across relaunches; run the same command again after a change or a `git pull` and Safari takes the new build as an update (nothing to remove or turn on again; pages get the new copy as they're shown). The first time, turn Margin on in Safari → Settings → Extensions and allow it on every website.
+
+The team comes from Xcode → Settings → Accounts (add your Apple ID once; a free Personal Team works), or `MARGIN_TEAM`, or `xcode/.team`. It builds from `xcode/` (made by `scripts/make-xcode.sh` if missing; regenerate it when files under `dist/safari/` are added or removed) and unregisters other Xcode builds of Margin, so Safari has one copy.
+
 ## Install for development (temporary extension, no Xcode)
 
 The fastest loop: Safari loads `dist/safari/` straight from the repo (committed, so no Node needed on the Mac). There's no Xcode build and no "Allow unsigned extensions" toggle.

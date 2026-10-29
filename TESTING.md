@@ -553,3 +553,9 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Drag the tab in front to a space chip, into the pinned area, into a folder: it works. Pressing another tab and dragging: it comes to the front, nothing drags.
 - [ ] Drag a pin that isn't open, and a folder: they move, nothing opens.
 - [ ] With the sidebar open over the page (hover): a press switches and the sidebar stays open on the next page.
+
+## Margin installed with `npm run safari` (2026-10-29)
+
+- [ ] Safari → Settings → Extensions: one Margin; turn it on, allow it on every website.
+- [ ] Quit and reopen Safari: Margin is still on, with your spaces and pins; no "Allow Unsigned Extensions" needed.
+- [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.

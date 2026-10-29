@@ -10,7 +10,8 @@
     "styles": "node scripts/build-styles.js",
     "build": "node scripts/build.js",
     "typecheck": "tsc -p .",
-    "test:webkit": "tools/webkit-host/run.sh all"
+    "test:webkit": "tools/webkit-host/run.sh all",
+    "safari": "sh scripts/safari.sh"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
