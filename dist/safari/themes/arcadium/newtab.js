@@ -138,6 +138,7 @@ export function mount({ api, self, send, windowed = false }) {
     // sidebar drawn again (as on web pages).
     failed: (result) => result === undefined,
     onFailed: () => void refresh(),
+    onBlink: (times) => void send('pageBlinked', times), // as on web pages
   });
   const fromBackground = backgroundSwitches();
   // Back to this tab: over; a tab in another window: nothing to highlight here.

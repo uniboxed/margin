@@ -250,10 +250,16 @@ function movedOn(windowId) {
   return windowGen(windowId);
 }
 export function activating(tabId) {
-  activatedByMargin.set(tabId, Date.now());
+  const at = Date.now();
+  activatedByMargin.set(tabId, at);
   setTimeout(() => {
     if (Date.now() - (activatedByMargin.get(tabId) ?? 0) >= OWN_ACTIVATION_MS) activatedByMargin.delete(tabId);
   }, OWN_ACTIVATION_MS);
+  return at;
+}
+// That mark taken back (if no newer one replaced it).
+function unmark(tabId, at) {
+  if (activatedByMargin.get(tabId) === at) activatedByMargin.delete(tabId);
 }
 export function userSwitched(tabId = null, windowId = null) {
   if (tabId != null && (isFocusing(tabId) || Date.now() - (activatedByMargin.get(tabId) ?? 0) < OWN_ACTIVATION_MS)) return;
@@ -267,17 +273,21 @@ export function userSwitched(tabId = null, windowId = null) {
 /** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, raise?: boolean, covered?: boolean }} [options] */
 export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline, raise = true, covered = false } = {}) {
   focusing.set(tabId, (focusing.get(tabId) ?? 0) + 1);
+  const gen = ++focusGen;
   try {
-    return await focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise, covered });
+    return await focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered });
   } finally {
+    // An activation of the tab left out after its introduction was answered
+    // (the user's, or Safari's late): told if the tab is in front (Margin's
+    // own update of it then made none).
+    if (endIntroduction(tabId, gen)?.lateTab) void api.tabs.get(tabId).then((t) => t.active && hooks.activated?.({ tabId, windowId: t.windowId }), () => {});
     const left = (focusing.get(tabId) ?? 1) - 1;
     if (left > 0) focusing.set(tabId, left);
     else focusing.delete(tabId);
   }
 }
 
-async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise, covered }) {
-  const gen = ++focusGen;
+async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered }) {
   const asked = Date.now();
   const token = `${instanceId}:${gen}:${tabId}`;
   /** @type {Preparation} */
@@ -296,12 +306,31 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise
     if (raise) await focusWindow(live.windowId);
     return { tab: live, preparation: skipped };
   }
+  // Never in front yet: introduced first (introduceTab), once it's awake (a
+  // tab Safari unloaded has no page to introduce: it loads as it's shown).
+  // Its wake's hold ends as it's shown for that instant: held afresh.
+  /** @type {boolean | null} */
+  let introduced = null;
+  if (wake && mayIntroduce(live) && !(await isOff()) && (await wakeTab(tabId)).outcome === 'awake' && gen === focusGen) {
+    introduced = await introduceTab(live, gen);
+    // Left in front by Safari (or brought there by the user meanwhile): shown,
+    // not prepared as a hidden page (it would wait under its cover for a show
+    // that has happened).
+    const now = introduced ? null : await api.tabs.get(tabId).catch(() => null);
+    if (now?.active) {
+      if (gen !== focusGen) return { tab: null, preparation: skipped, superseded: true };
+      recordSwitch({ source, tabId, asked, introduced, shownAfter: Date.now() - asked });
+      if (raise) await focusWindow(now.windowId);
+      return { tab: now, preparation: skipped };
+    }
+  }
   // Run these together. Preparation itself wakes the isolated world, while
   // wakeTab's page-world hold keeps WebKit's layer tree attached through the
   // subsequent tabs.update.
   let [woke, preparation] = await Promise.all([
-    wake ? wakeTab(tabId) : null,
+    wake ? wakeTab(tabId, { renew: !!introduced }) : null,
     wake ? prepareTabForShow(live, { token, carry, scroll, covered }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)),
+    introduced ? new Promise((resolve) => setTimeout(resolve, INTRODUCED_SETTLE_MS)) : null,
   ]);
   // A page still running an earlier copy of Margin (it slept through an
   // update or a rebuild): the current copy goes in now, theme and all, and
@@ -316,7 +345,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise
   // front, say): the latest wins.
   if (gen !== focusGen) {
     cancelPreparation(tabId, preparation);
-    recordSwitch({ source, tabId, asked, wake: woke, preparation, error: 'superseded' });
+    recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, error: 'superseded' });
     return { tab: null, preparation, superseded: true };
   }
   // A timeout only bounds how long the old page stays covered. Stop the late
@@ -325,7 +354,7 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise
   if (preparation.outcome === 'timeout') cancelPreparation(tabId, preparation);
   if (Number.isFinite(deadline) && Date.now() > deadline - 250) {
     cancelPreparation(tabId, preparation);
-    recordSwitch({ source, tabId, asked, wake: woke, preparation, error: 'expired' });
+    recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, error: 'expired' });
     throw new Error('Too late: the page stopped waiting for this switch');
   }
   // A tab Safari unloaded (no page to wake or prepare): its page starts as
@@ -335,9 +364,10 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise
   const fail = (err) => {
     cancelPreparation(tabId, preparation);
     forgetShowing(tabId);
-    recordSwitch({ source, tabId, asked, wake: woke, preparation, error: String(err) });
+    recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, error: String(err) });
     throw err;
   };
+  const ended = endIntroduction(tabId, gen);
   activating(tabId);
   const tab = await api.tabs.update(tabId, { active: true }).catch(fail);
   // Safari can answer without having brought the tab to the front: checked,
@@ -350,7 +380,8 @@ async function focusTabNow(tabId, { wake, source, carry, scroll, deadline, raise
     await api.tabs.update(tabId, { active: true }).catch(fail);
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
-  recordSwitch({ source, tabId, asked, wake: woke, preparation, shownAfter: Date.now() - asked });
+  recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, shownAfter: Date.now() - asked });
+  if (ended?.lateTab) void hooks.activated?.({ tabId, windowId: live.windowId }); // as in focusTab
   if (tab && raise) await focusWindow(tab.windowId);
   return { tab, preparation };
 }
@@ -510,17 +541,170 @@ export async function openTab({ windowId, url, spaceId }) {
 // Tabs never in front since they opened (behind the page: a new tab from the
 // palette, a ⌘-clicked link). Shown for the first time, such a tab can't keep
 // the page before on screen while it paints (WebKit does that only for a
-// view that has been in a window): it arrives covered instead
-// (content/core.js arriveCovered). This background's own knowledge: a tab
-// it didn't see open (before it started) is taken as shown before.
+// view that has been in a window): it's introduced first (below), and
+// arrives covered too (content/core.js arriveCovered). This background's own
+// knowledge: a tab it didn't see open (before it started) is taken as shown
+// before.
 const neverShown = new Set();
 export function tabOpened(tab) {
   if (!tab.active) neverShown.add(tab.id);
 }
 export function tabShown(tabId) {
   neverShown.delete(tabId);
+  introduced.delete(tabId);
 }
 export const isNeverShown = (tabId) => neverShown.has(tabId);
+
+// ---- a tab shown for the first time ------------------------------------------
+// WebKit keeps the page before on screen while a tab paints only if the tab's
+// view has been in a window before (WebPageProxy::dispatchActivityStateChange
+// waits for its paint only then); otherwise it hides the tab's content until
+// it has painted (hideContentUntilPendingUpdate): Safari's empty view, for a
+// frame or more. So a tab never in front is introduced before Margin first
+// shows it: brought to the front and the page in front straight back, two
+// tabs.update sent together. Safari selects a tab as tabs.update asks
+// (BrowserViewController activateForWebExtensionContext, synchronously), so
+// both land in the same run loop turn, and the screen is drawn only once the
+// turn is over: the tab has been in the window without reaching the screen.
+// The page in front doesn't even notice (WebKit tells a page about its
+// visibility at the end of the turn, unchanged by then). Shown a moment later,
+// once its process has drawn, the tab is waited for. In the WebKit host, a
+// heavy page from the palette's new tab: 16–21 ms of WebKit's empty view as it
+// came up without this; with it (and arriving covered too: content/core.js
+// arriveCovered) none in most runs, at most 2 ms in the others (a race inside
+// WebKit). Only a tab whose page has loaded and is awake (one still loading its
+// first page held the host's window up for 250 ms as it was shown, WebKit
+// waiting for a paint; one Safari unloaded loads as it's shown).
+// Off for the rest of the Safari session (storage.session) if Safari leaves
+// the tab in front instead, or the page in front was hidden for an instant
+// (the two updates took two turns: pageBlinked).
+const INTRODUCED_SETTLE_MS = 60; // the tab's process draws meanwhile (60, 120 and 200 all did in the host)
+const introduced = new Set(); // tabs introduced since they opened
+const OFF_KEY = 'introductionsOff';
+/** @type {Promise<boolean> | null} */
+let off = null;
+const isOff = () => (off ??= Promise.resolve(api.storage.session?.get(OFF_KEY)).then((stored) => !!stored?.[OFF_KEY], () => false));
+function stopIntroductions(why) {
+  off = Promise.resolve(true);
+  console.warn(`[margin] ${why}: no more introductions until Safari restarts`);
+  void Promise.resolve().then(() => api.storage.session?.set({ [OFF_KEY]: true })).catch(() => {});
+}
+// The two activations an introduction makes, per window, in order: not
+// switches (background.js leaves them out), until the tab is really shown.
+// Safari sends them as it brings each tab to the front, before it answers
+// tabs.update; should they come later, they're still left out.
+/** @typedef {{ tabId: number, windowId: number }} Activation */
+/** @typedef {{ from: number, until: number }} Span when an introduction's updates were sent, and when it ended (its real switch sent, or over) */
+/** @typedef {{ tabId: number, gen: number, frontId: number | null, frontMark: number, expected: number[], seen: Activation[], answered: boolean, lateTab: boolean, span: Span | null }} Introduction */
+/** @type {Map<number, Introduction>} */
+const introductions = new Map();
+/** @type {Map<number, Span>} */
+const lastSpan = new Map(); // per window, its last introduction's
+// background.js: `activated` handles an activation left out after all (Safari
+// left the tab in front); `introduced` hears of a tab introduced (its hold, if
+// keep-ready.js held it, ended as it was shown for that instant).
+/** @type {{ activated: ((info: Activation) => unknown) | null, introduced: ((tabId: number) => unknown) | null }} */
+let hooks = { activated: null, introduced: null };
+/** @param {Partial<typeof hooks>} given */
+export function setIntroductionHooks(given) {
+  hooks = { ...hooks, ...given };
+}
+/** @param {Activation} info */
+export function isIntroduction(info) {
+  const pending = introductions.get(info.windowId);
+  if (!pending?.expected.length) return false;
+  if (pending.expected[0] !== info.tabId) {
+    pending.expected = []; // something else came first: from here, as it comes
+    return false;
+  }
+  pending.expected.shift();
+  pending.seen.push(info);
+  if (pending.answered && info.tabId === pending.tabId) pending.lateTab = true;
+  // The page in front is back: a switch to it from here is the user's again.
+  if (info.tabId === pending.frontId) unmark(pending.frontId, pending.frontMark);
+  return true;
+}
+// The tab is being shown by the switch that introduced it (`gen`), or that
+// switch is over: its activation from here is the real one. The one ended, if any.
+function endIntroduction(tabId, gen) {
+  for (const [windowId, pending] of introductions) {
+    if (pending.tabId !== tabId || pending.gen !== gen) continue;
+    introductions.delete(windowId);
+    if (pending.span) pending.span.until = Math.min(pending.span.until, Date.now());
+    return pending;
+  }
+  return null;
+}
+/** @param {any} tab the tab as the browser has it */
+const mayIntroduce = (tab) => !!platform?.introduceTabs && neverShown.has(tab.id) && !introduced.has(tab.id) && tab.status === 'complete' && !introductions.has(tab.windowId);
+/**
+ * Whether the tab was introduced. `gen`: the switch it's for (not if another
+ * was asked for meanwhile).
+ * @param {any} tab @param {number} gen @returns {Promise<boolean>}
+ */
+async function introduceTab(tab, gen) {
+  if ((await isOff()) || !mayIntroduce(tab)) return false;
+  const windowId = tab.windowId;
+  /** @type {Introduction} */
+  const pending = { tabId: tab.id, gen, frontId: null, frontMark: 0, expected: [], seen: [], answered: false, lateTab: false, span: null };
+  introductions.set(windowId, pending); // one at a time per window
+  const release = () => {
+    if (introductions.get(windowId) === pending) introductions.delete(windowId);
+    if (pending.span) pending.span.until = Math.min(pending.span.until, Date.now());
+  };
+  // The page in front as Margin has it too: a switch Safari made that Margin
+  // hasn't heard of yet (its event on its way) isn't undone.
+  const known = Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === windowId && t.active)?.id;
+  const [front] = await api.tabs.query({ active: true, windowId }).catch(() => []);
+  if (!front || front.id === tab.id || front.id !== known || gen !== focusGen) {
+    release();
+    return false;
+  }
+  Object.assign(pending, { frontId: front.id, expected: [tab.id, front.id] });
+  introduced.add(tab.id);
+  // Not the tab itself marked as Margin's activation: a switch (this one) is
+  // under way for it (isFocusing), and once it's over, a switch to it is the
+  // user's. The page in front is, until its activation is seen.
+  pending.frontMark = activating(front.id);
+  pending.span = { from: Date.now(), until: Infinity };
+  lastSpan.set(windowId, pending.span);
+  await Promise.allSettled([api.tabs.update(tab.id, { active: true }), api.tabs.update(front.id, { active: true })]);
+  pending.answered = true;
+  void hooks.introduced?.(tab.id);
+  if (pending.seen.some((info) => info.tabId === front.id)) return true; // both seen: the page is back
+  const [now] = await api.tabs.query({ active: true, windowId }).catch(() => []);
+  if (now?.id === front.id) return true; // back (its activation still on its way, or none)
+  release();
+  // Another tab in front: the user's switch, told as it came.
+  const tabInFront = now ? now.id === tab.id : await api.tabs.get(tab.id).then((t) => t.active, () => false);
+  if (!tabInFront) return false;
+  // The tab left in front: its activation, left out, is told after all (as
+  // Margin's own: the switch to it is under way, or was just superseded).
+  activating(tab.id);
+  for (const info of pending.seen) void hooks.activated?.(info);
+  // Safari's doing, unless another switch was asked for meanwhile (it may
+  // have brought the tab itself) or the page in front is gone.
+  if (gen === focusGen && (await api.tabs.get(front.id).then(() => true, () => false))) stopIntroductions(`Safari didn't bring tab ${front.id} back after introducing tab ${tab.id}`);
+  return false;
+}
+// For tests: on again, as after a Safari restart.
+export function resetIntroductions() {
+  off = null;
+}
+// The page in front was hidden for an instant during a switch (content:
+// shared/switching.js onBlink; the page's clock is the background's). Hidden
+// after an introduction's two updates went out in its window, and before its
+// real switch did: the updates took two turns in this Safari. (The page dates
+// it when it gets to it, late if it's busy; a real switch away and straight
+// back hides it only once that real switch has gone out.)
+const BLINK_SLACK_MS = 20;
+/** @param {number | null | undefined} windowId @param {{ hiddenAt?: number, shownAt?: number }} [times] */
+export function pageBlinked(windowId, { hiddenAt, shownAt } = {}) {
+  const span = windowId == null ? null : lastSpan.get(windowId);
+  if (!span || !Number.isFinite(hiddenAt) || !Number.isFinite(shownAt)) return;
+  if (hiddenAt < span.from - BLINK_SLACK_MS || hiddenAt >= span.until) return;
+  stopIntroductions('The page in front was hidden for an instant as a tab was introduced');
+}
 
 // A page of the tab in front is told about a switch the background makes from
 // it ('switching', then 'switch-done' or 'switch-failed': content/core.js);

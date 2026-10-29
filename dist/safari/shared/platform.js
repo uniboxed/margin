@@ -18,6 +18,10 @@ const PROFILES = {
     // (background/keep-ready.js, setting keepTabsReadyMinutes): Safari drops a
     // suspended tab's drawn layers, so switching to it flashes.
     keepTabsReady: true,
+    // A tab never in front is brought to the front and straight back, out of
+    // sight, before Margin first shows it (background/tabs.js introduceTab):
+    // WebKit then keeps the page before on screen while it paints.
+    introduceTabs: true,
     // Before Safari swaps web views, refresh the destination tab's own copy
     // of the sidebar while it is still hidden (background/tabs.js +
     // content/core.js). Chrome keeps hidden tabs' last frames and does not
@@ -65,6 +69,7 @@ const PROFILES = {
     newTabHint: false,
     wakeTabs: false,
     keepTabsReady: false, // Chrome keeps hidden tabs' last frames
+    introduceTabs: false,
     prepareSidebar: false,
     compactRail: false, // as in Safari's profile
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by

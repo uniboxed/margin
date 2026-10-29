@@ -3,7 +3,9 @@
 # build: ./run.sh <scenario> | ./run.sh all | ./run.sh path/to/scenario.json
 # Exits 1 if a check failed. Nothing shows on screen. Run `npm run build` first.
 # Several runs can go at once with their own MARGIN_HOST_PORT (default 47811)
-# and MARGIN_HOST_BUILD (default build/); MARGIN_HOST_TIMEOUT: seconds per run.
+# and MARGIN_HOST_BUILD (default build/); MARGIN_HOST_TIMEOUT: seconds per run;
+# MARGIN_HOST_DIST: another Safari build to test (default ../../dist/safari; a relative
+# path is from tools/webkit-host).
 set -u
 cd "$(dirname "$0")"
 BUILD="${MARGIN_HOST_BUILD:-$PWD/build}" # absolute: WebKit loads the extension from a file URL
@@ -19,7 +21,7 @@ fi
 
 # A test copy of dist/safari whose console output goes to the page server
 # (hook.js, prepended to the background and content bundles).
-rm -rf "$BUILD/ext" && cp -R ../../dist/safari "$BUILD/ext"
+rm -rf "$BUILD/ext" && cp -R "${MARGIN_HOST_DIST:-../../dist/safari}" "$BUILD/ext" || exit 1
 for f in background.bundle.js content/content.bundle.js; do
   sed "s/__PORT__/$PORT/" hook.js | cat - "$BUILD/ext/$f" > "$BUILD/ext/$f.tmp" && mv "$BUILD/ext/$f.tmp" "$BUILD/ext/$f"
 done

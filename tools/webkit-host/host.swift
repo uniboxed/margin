@@ -88,7 +88,7 @@ let pageRecorder = """
     webView?.pageZoom = CGFloat(zoomFactor); completionHandler(nil)
   }
   func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-    log("delegate: activate \(name) (asleep=\(webView == nil))"); window?.show(self); completionHandler(nil)
+    log("delegate: activate \(name) (asleep=\(webView == nil), turn \(runLoopTurn))"); window?.show(self); completionHandler(nil)
   }
   // tabs.update with an address.
   func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
@@ -131,6 +131,9 @@ let pageRecorder = """
     if tab.webView == nil { log("  \(tab.name) was asleep: loading it as it's shown"); tab.makeWebView() }
     nsWindow.contentView!.addSubview(tab.webView!)
     active = tab
+    if let armed = probeArmed, armed.name == tab.name {
+      if armed.nth <= 1 { probeArmed = nil; commitProbe = (tab: tab, started: Date(), frames: []) } else { probeArmed = (armed.name, armed.nth - 1) }
+    }
     for c in host.controllers {
       c.didActivateTab(tab, previousActiveTab: previous)
       c.didSelectTabs([tab])
@@ -238,6 +241,38 @@ let pageRecorder = """
   func tab(_ name: String) -> Tab? { window.tabs.first { $0.name == name } }
 }
 
+// Run loop turns (each ends before the app waits, where Core Animation commits what's on
+// screen): two tab changes in the same turn never reach the screen in between.
+var runLoopTurn = 0
+let turnObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { _, _ in runLoopTurn += 1 }
+CFRunLoopAddObserver(CFRunLoopGetMain(), turnObserver, .commonModes)
+// Layers under a web view: WebKit detaches a page's whole layer tree while it hides its content
+// (hideContentUntilPendingUpdate), so a count taken as the tab is shown says whether its content
+// is there for the first frame.
+@MainActor func layerCount(_ layer: CALayer?) -> Int { guard let layer else { return 0 }; return 1 + (layer.sublayers ?? []).reduce(0) { $0 + layerCount($1) } }
+// What the first frame after a show contains: the target web view's layers counted just before
+// Core Animation commits the run loop turn (its observer has order 2000000), each turn until one
+// has content, so a frame shown empty is counted as such. Counted from the end of the show: while
+// WebKit waits for the page's paint inside it, nothing is committed (the window keeps its frame).
+var commitProbe: (tab: Tab, started: Date, frames: [Int])? = nil
+// The same for the nth time a tab is shown from now on, by whoever shows it ("probeShow"),
+// and what the last probe found ("checkProbe": nil ms if no content came in 40 turns).
+var probeArmed: (name: String, nth: Int)? = nil
+var lastProbe: (name: String, contentMs: Double?)? = nil
+let commitObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, 1_999_000) { _, _ in
+  MainActor.assumeIsolated {
+    guard var probe = commitProbe else { return }
+    let n = layerCount(probe.tab.webView?.layer)
+    probe.frames.append(n)
+    if n > 3 || probe.frames.count >= 40 {
+      let ms = Date().timeIntervalSince(probe.started) * 1000
+      log(String(format: "commitProbe %@: layers in the turns committed after showing: %@ (content after %.0f ms)", probe.tab.name, probe.frames.map(String.init).joined(separator: ","), ms))
+      lastProbe = (name: probe.tab.name, contentMs: n > 3 ? ms : nil)
+      commitProbe = nil
+    } else { commitProbe = probe }
+  }
+}
+CFRunLoopAddObserver(CFRunLoopGetMain(), commitObserver, .commonModes)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let host = MainActor.assumeIsolated { Host() }
@@ -279,6 +314,34 @@ Task { @MainActor in
     case "show":
       // Safari itself bringing a tab to the front (its tab bar, its own shortcuts).
       host.window.show(host.tab(step["name"] as! String)!); log("showed \(step["name"] as! String)")
+    case "showProbe":
+      // Show a tab and report its layers at once (before the screen can update), then a moment later.
+      let t = host.tab(step["name"] as! String)!
+      let started = Date()
+      commitProbe = (tab: t, started: started, frames: [])
+      host.window.show(t)
+      let showMs = Date().timeIntervalSince(started) * 1000
+      let now = layerCount(t.webView?.layer)
+      log(String(format: "showProbe %@: show() took %.1f ms", t.name, showMs))
+      try? await Task.sleep(nanoseconds: 100_000_000)
+      log("showProbe \(t.name): layers as shown \(now), 100ms later \(layerCount(t.webView?.layer)) (turn \(runLoopTurn))")
+    case "probeShow":
+      // { op: 'probeShow', name, nth? }: commitProbe for the nth time (default 1) the tab is shown from now on.
+      probeArmed = (step["name"] as! String, step["nth"] as? Int ?? 1); log("probe armed for \(step["name"] as! String)")
+    case "checkProbe":
+      // { op: 'checkProbe', name, maxMs, label }: the probed show of the tab had content within maxMs.
+      let name = step["name"] as! String, maxMs = step["maxMs"] as! Double, label = step["label"] as! String
+      let deadline = Date().addingTimeInterval(3)
+      while lastProbe?.name != name && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
+      if let ms = lastProbe?.contentMs, lastProbe?.name == name, ms <= maxMs { log(String(format: "PASS %@ (%.0f ms)", label, ms)) }
+      else { fail(label, lastProbe?.name == name ? (lastProbe!.contentMs.map { String(format: "%.0f ms", $0) } ?? "no content") : "not shown") }
+      lastProbe = nil
+    case "flip":
+      // Show one tab and then another in the same run loop turn (what reaches the screen is the second).
+      let a = host.tab(step["to"] as! String)!, b = host.tab(step["back"] as! String)!
+      let turn = runLoopTurn
+      host.window.show(a); host.window.show(b)
+      log("flipped to \(a.name) and back to \(b.name) in turn \(turn)\(runLoopTurn == turn ? " (same turn)" : " (turn changed!)")")
     case "restart":
       // A Safari relaunch: Margin stops; every tab comes back asleep (Safari restores tabs
       // lazily) with its address and its session storage; Margin starts again with its

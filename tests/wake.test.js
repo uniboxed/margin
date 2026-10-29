@@ -31,13 +31,17 @@ globalThis.chrome = {
       if (!tab) throw new Error('no tab');
       return { ...tab };
     },
+    // `fake.activated`: told as Safari tells onActivated, as it brings the tab
+    // to the front (before it answers).
     update: async (id, change) => {
       fake.updates.push({ id, change, at: Date.now() });
       const tab = fake.tabs.get(id);
+      const was = tab.active;
       for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
+      if (change.active && !was) fake.activated?.({ tabId: id, windowId: tab.windowId });
       return { ...tab };
     },
-    query: async () => [...fake.tabs.values()],
+    query: async ({ active, windowId } = {}) => [...fake.tabs.values()].filter((t) => (active == null || t.active === active) && (windowId == null || t.windowId === windowId)),
     // A new tab, still loading (a test says when it's loaded).
     create: async ({ windowId = 1, url, active = true }) => {
       const id = Math.max(0, ...fake.tabs.keys()) + 1;
@@ -69,7 +73,8 @@ globalThis.chrome = {
   },
 };
 
-const { wakeTab, focusTab, isFocusing, markMarginOpening, keepAwake, openBehind, resolveTab, userSwitched } = await import('../extension/background/tabs.js');
+const { wakeTab, focusTab, isFocusing, isIntroduction, markMarginOpening, keepAwake, openBehind, pageBlinked, resetIntroductions, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided } = await import('../extension/background/store.js');
 
@@ -81,6 +86,7 @@ function reset(tabs) {
   fake.updates = [];
   fake.messages = [];
   fake.created = [];
+  fake.activated = null;
 }
 
 test('wake: a running page answers at once and the switch goes ahead then', async () => {
@@ -577,3 +583,356 @@ test('arriving covered: a tab opened behind is prepared to arrive covered; an or
   await focusTab(3);
   assert.deepEqual(prepared(3), [false]);
 });
+
+// ---- a tab shown for the first time (tabs.js introduceTab) ----------------------
+
+const keepAwakes = (id) => fake.scripts.filter((x) => x.tabId === id && x.func === keepAwake);
+const prepares = (id) => fake.scripts.filter((x) => x.tabId === id && x.func.name === 'prepareSidebarInPage');
+// Margin's state has `id` in front of window 1 (as onActivated left it).
+const knownInFront = (id) => mutate((s) => M.activateTab(M.upsertTab(s, fake.tabs.get(id), Date.now()), id, 1, Date.now()));
+// Safari has `id` in front of its window again.
+const putInFront = (id) => { for (const t of fake.tabs.values()) if (t.windowId === fake.tabs.get(id).windowId) t.active = t.id === id; };
+/** @param {any[]} tabs @param {number[]} opened never in front since they opened */
+async function introducing(tabs, opened) {
+  reset(tabs);
+  fake.scriptDelay = () => 1;
+  for (const id of opened) tabOpened({ id, active: false }); // opened behind (background.js onCreated)
+  delete fake.session.introductionsOff;
+  resetIntroductions();
+  await knownInFront(1);
+  return () => { // after the test
+    for (const id of opened) tabShown(id);
+    fake.activated = null;
+    setIntroductionHooks({ activated: null, introduced: null });
+    delete fake.session.introductionsOff;
+    resetIntroductions();
+  };
+}
+// chrome.tabs.update replaced for one test.
+async function withUpdate(replacement, run) {
+  const update = chrome.tabs.update;
+  chrome.tabs.update = (id, change) => replacement(update, id, change);
+  try {
+    return await run();
+  } finally {
+    chrome.tabs.update = update;
+  }
+}
+
+test('introducing: a tab never in front, loaded, is brought to the front and the page in front straight back (sent together), then shown', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 30, url: 'https://new.test/' }], [30]);
+  try {
+    const events = [];
+    fake.activated = (info) => events.push([info.tabId, isIntroduction(info)]);
+    const introduced = [];
+    setIntroductionHooks({ introduced: (id) => introduced.push(id) });
+    // Answers that take a moment, as Safari's do: the second is sent before the first has answered.
+    let inFlight = 0;
+    const startedWhile = [];
+    await withUpdate(async (update, id, change) => {
+      startedWhile.push(inFlight++);
+      try {
+        const answer = await update(id, change);
+        await sleep(10);
+        return answer;
+      } finally {
+        inFlight--;
+      }
+    }, () => focusTab(30));
+    assert.deepEqual(fake.updates.map((u) => u.id), [30, 1, 30]);
+    assert.deepEqual(startedWhile.slice(0, 2), [0, 1], 'the two sent together, not one after the other\'s answer');
+    assert.ok(fake.updates[2].at - fake.updates[1].at >= 55, 'shown once its process has drawn');
+    assert.deepEqual(events, [[30, true], [1, true], [30, false]], 'only the real switch is told as one');
+    assert.deepEqual(introduced, [30], 'keep-ready hears of it (its hold ended)');
+    const holds = keepAwakes(30);
+    assert.equal(holds.length, 2, 'woken first, and held afresh after (the instant in front ended the first hold)');
+    assert.ok(holds[0].at <= fake.updates[0].at && holds[1].at >= fake.updates[1].at);
+    // Not introduced twice (say the switch didn't land and it's asked again).
+    putInFront(1);
+    fake.updates = [];
+    await focusTab(30);
+    assert.deepEqual(fake.updates.map((u) => u.id), [30]);
+  } finally {
+    done();
+  }
+});
+
+test('introducing: not a tab still loading, one shown before, or one Safari unloaded (and one that is: introduced)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 31, url: 'https://loading.test/', status: 'loading' }, { id: 32, url: 'https://seen.test/' }, { id: 33, url: 'https://unloaded.test/' }, { id: 34, url: 'https://new.test/' }], [31, 33, 34]);
+  try {
+    fake.scriptDelay = (id) => (id === 33 ? null : 1);
+    for (const id of [31, 32, 33]) {
+      putInFront(1); // as Margin has it
+      fake.updates = [];
+      await focusTab(id);
+      assert.deepEqual(fake.updates.map((u) => u.id), [id], `tab ${id}: just shown`);
+    }
+    assert.equal(isIntroduction({ tabId: 33, windowId: 1 }), false, 'no activations left out');
+    putInFront(1);
+    fake.updates = [];
+    await focusTab(34);
+    assert.deepEqual(fake.updates.map((u) => u.id), [34, 1, 34], 'the same set-up does introduce a tab that can be');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: not while Safari has another tab in front than Margin knows of (a switch on its way): it isn\'t undone', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/' }, { id: 35, url: 'https://new.test/' }, { id: 36, url: 'https://picked.test/', active: true }], [35]);
+  try {
+    await focusTab(35);
+    assert.deepEqual(fake.updates.map((u) => u.id), [35], 'no update for tab 36 (it would undo the user\'s switch)');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: not once another switch was asked for while Safari was asked which tab is in front', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 37, url: 'https://new.test/' }, { id: 38, url: 'https://picked.test/' }], [37]);
+  const query = chrome.tabs.query;
+  try {
+    let asked = 0;
+    chrome.tabs.query = async (q) => {
+      const answer = await query(q);
+      // The user picks tab 38 just as Safari answers (its event reaches Margin first).
+      if (q?.active && asked++ === 0) {
+        putInFront(38);
+        userSwitched(38, 1);
+      }
+      return answer;
+    };
+    const result = await focusTab(37);
+    assert.equal(result.superseded, true);
+    assert.equal(fake.updates.some((u) => u.id === 1), false, 'the page in front isn\'t brought back over the user\'s pick');
+    assert.equal(front(), 38);
+  } finally {
+    chrome.tabs.query = query;
+    done();
+  }
+});
+
+test('introducing: something else coming first ends the activations left out (told as they come)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 39, url: 'https://new.test/' }, { id: 40, url: 'https://other.test/' }], [39]);
+  try {
+    const events = [];
+    // The user's own switch lands in between (Safari's tab bar).
+    fake.activated = (info) => {
+      if (info.tabId === 39 && events.length === 0) events.push([40, isIntroduction({ tabId: 40, windowId: 1 })]);
+      events.push([info.tabId, isIntroduction(info)]);
+    };
+    await focusTab(39);
+    assert.deepEqual(events.slice(0, 3), [[40, false], [39, false], [1, false]]);
+  } finally {
+    done();
+  }
+});
+
+test('introducing: activations told after Safari has answered are still left out, until the tab is really shown', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 41, url: 'https://new.test/' }], [41]);
+  try {
+    const events = [];
+    fake.activated = (info) => setTimeout(() => events.push([info.tabId, isIntroduction(info)]), 5);
+    await focusTab(41);
+    await sleep(20);
+    assert.deepEqual(events, [[41, true], [1, true], [41, false]]);
+  } finally {
+    done();
+  }
+});
+
+test('introducing: a switch called off or out of time after its introduction leaves the window free for the next', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 42, url: 'https://new.test/' }, { id: 43, url: 'https://next.test/' }, { id: 44, url: 'https://third.test/' }], [42, 43, 44]);
+  try {
+    fake.activated = (info) => isIntroduction(info);
+    setTimeout(() => userSwitched(null, 1), 25); // during the wait after the introduction
+    assert.equal((await focusTab(42)).superseded, true);
+    assert.deepEqual(fake.updates.map((u) => u.id), [42, 1]);
+    fake.updates = [];
+    await assert.rejects(focusTab(43, { deadline: Date.now() + 300 }), /Too late/);
+    assert.deepEqual(fake.updates.map((u) => u.id), [43, 1], 'introduced, then out of time');
+    fake.updates = [];
+    await focusTab(44);
+    assert.deepEqual(fake.updates.map((u) => u.id), [44, 1, 44]);
+    assert.equal(isIntroduction({ tabId: 44, windowId: 1 }), false, 'nothing left expected');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: a new tab whose switch is called off from another window: the page that asked is told (not left covered)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 5, url: 'https://e.test/', windowId: 9, active: true }, { id: 6, url: 'https://f.test/', windowId: 9 }], []);
+  try {
+    fake.activated = (info) => isIntroduction(info);
+    const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+    await sleep(150);
+    const id = fake.created[0].id;
+    tabOpened({ id, active: false });
+    const update = chrome.tabs.update;
+    // Once it's introduced, a switch in the other window.
+    chrome.tabs.update = async (tabId, change) => {
+      const answer = await update(tabId, change);
+      if (tabId === 1) setTimeout(() => userSwitched(6, 9), 10);
+      return answer;
+    };
+    try {
+      fake.tabs.get(id).status = 'complete';
+      assert.deepEqual(await shown, { tabId: id, shown: null });
+    } finally {
+      chrome.tabs.update = update;
+    }
+    assert.equal(told('switch-failed').length, 1, 'the page stops waiting');
+    tabShown(id);
+  } finally {
+    done();
+  }
+});
+
+test('introducing: Safari not bringing the page back: the tab is shown as it is (not prepared covered), its activation told after all, and no more introductions this session', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 45, url: 'https://new.test/' }, { id: 46, url: 'https://next.test/' }], [45, 46]);
+  try {
+    const toldAfter = [];
+    // As background.js's handler: it can get to userSwitched only after the switch is over.
+    setIntroductionHooks({ activated: (info) => { toldAfter.push(info.tabId); setTimeout(() => userSwitched(info.tabId, info.windowId), 0); } });
+    fake.activated = (info) => isIntroduction(info);
+    // The page in front isn't brought back (Safari says it was).
+    const result = await withUpdate(async (update, id, change) => (id === 1 ? (fake.updates.push({ id, change, at: Date.now() }), { ...fake.tabs.get(1), active: true }) : update(id, change)),
+      () => focusTab(45, { covered: true }));
+    assert.equal(front(), 45, 'the tab is in front: it was about to be anyway');
+    assert.equal(result.tab?.id, 45);
+    assert.deepEqual(prepares(45), [], 'not prepared to arrive covered: it\'s on screen already');
+    assert.deepEqual(toldAfter, [45], 'its activation, left out, told after all');
+    assert.equal(fake.session.introductionsOff, true, 'for the rest of the Safari session');
+    await knownInFront(45);
+    fake.updates = [];
+    const next = await focusTab(46);
+    assert.ok(!next.superseded, 'the activation told after all is Margin\'s: it doesn\'t call off the next switch');
+    assert.deepEqual(fake.updates.map((u) => u.id), [46], 'not introduced');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: not Safari\'s doing, introductions stay on: the user\'s pick of a third tab, the page in front closed, a second switch to the same tab', async () => {
+  // The user picks tab 49 between the updates and Safari's answer (its event on its way).
+  let done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 47, url: 'https://new.test/' }, { id: 49, url: 'https://picked.test/' }], [47]);
+  try {
+    const toldAfter = [];
+    setIntroductionHooks({ activated: (info) => toldAfter.push(info.tabId) });
+    fake.activated = (info) => (info.tabId === 47 ? isIntroduction(info) : setTimeout(() => isIntroduction(info), 30));
+    await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (id === 1) putInFront(49);
+      return answer;
+    }, () => focusTab(47).catch(() => {}));
+    assert.deepEqual(toldAfter, [], 'nothing told after all: the user\'s switch tells itself');
+    assert.equal(fake.session.introductionsOff, undefined);
+  } finally {
+    done();
+  }
+  // The page in front closed meanwhile.
+  done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 50, url: 'https://new.test/' }], [50]);
+  try {
+    fake.activated = (info) => isIntroduction(info);
+    await withUpdate(async (update, id, change) => {
+      if (id !== 1) return update(id, change);
+      fake.tabs.delete(1);
+      throw new Error('No tab with id 1');
+    }, () => focusTab(50).catch(() => {}));
+    assert.equal(fake.session.introductionsOff, undefined);
+  } finally {
+    done();
+  }
+  // A second switch to the same tab while the first one introduces it.
+  done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 51, url: 'https://new.test/' }], [51]);
+  try {
+    fake.activated = (info) => setTimeout(() => isIntroduction(info), 20);
+    let second = null;
+    await withUpdate(async (update, id, change) => {
+      if (id === 51 && !second) second = focusTab(51, { wake: false });
+      return update(id, change);
+    }, () => focusTab(51).catch(() => {}));
+    await second;
+    await sleep(30);
+    assert.equal(front(), 51);
+    assert.equal(fake.session.introductionsOff, undefined);
+  } finally {
+    done();
+  }
+});
+
+test('introducing: the page in front hidden for an instant after the two updates went out, before the real switch, turns them off for the session; a real switch away and back doesn\'t', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 52, url: 'https://new.test/' }, { id: 53, url: 'https://next.test/' }], [52, 53]);
+  try {
+    let sentAt = 0;
+    let answeredAt = 0;
+    await withUpdate(async (update, id, change) => {
+      if (id === 52 && !sentAt) sentAt = Date.now();
+      const answer = await update(id, change);
+      await sleep(5);
+      if (id === 1) answeredAt = Date.now();
+      return answer;
+    }, () => focusTab(52));
+    const realAt = fake.updates[2].at;
+    assert.ok(realAt - answeredAt >= 50);
+    // The real switch to 52 and straight back: hidden once the real switch went out.
+    pageBlinked(1, { hiddenAt: realAt + 2, shownAt: realAt + 40 });
+    pageBlinked(2, { hiddenAt: sentAt + 1, shownAt: sentAt + 10 }); // another window
+    pageBlinked(1, { hiddenAt: sentAt - 100, shownAt: sentAt - 90 }); // before it
+    await sleep(0);
+    assert.equal(fake.session.introductionsOff, undefined);
+    // A busy page in front, dating it when it got to it (after the answers).
+    pageBlinked(1, { hiddenAt: answeredAt + 30, shownAt: answeredAt + 30 });
+    await sleep(0);
+    assert.equal(fake.session.introductionsOff, true);
+    // As after a background restart: the session's word is kept.
+    resetIntroductions();
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    await focusTab(53);
+    assert.deepEqual(fake.updates.map((u) => u.id), [53], 'not introduced');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: Safari leaving the tab in front while another switch starts: its activation is still told (Margin\'s state follows)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 54, url: 'https://new.test/' }, { id: 5, url: 'https://e.test/', windowId: 9, active: true }], [54]);
+  try {
+    const toldAfter = [];
+    setIntroductionHooks({ activated: (info) => toldAfter.push(info.tabId) });
+    fake.activated = (info) => isIntroduction(info);
+    const result = await withUpdate(async (update, id, change) => {
+      if (id !== 1) return update(id, change);
+      userSwitched(null, 9); // a switch in another window, just then
+      fake.updates.push({ id, change, at: Date.now() });
+      return { ...fake.tabs.get(1), active: true }; // says it did, didn't
+    }, () => focusTab(54));
+    assert.equal(result.superseded, true);
+    assert.equal(front(), 54);
+    assert.deepEqual(toldAfter, [54]);
+    assert.equal(fake.session.introductionsOff, undefined, 'not taken for Safari\'s doing: another switch was asked for');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: a user\'s activation of the tab left out after the updates were answered is told once the switch has shown it', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 55, url: 'https://new.test/' }], [55]);
+  try {
+    const toldAfter = [];
+    setIntroductionHooks({ activated: (info) => toldAfter.push(info.tabId) });
+    fake.activated = null; // Safari tells nothing of the two updates
+    let userAt = null;
+    const shown = withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (id === 1 && !userAt) userAt = setTimeout(() => { putInFront(55); isIntroduction({ tabId: 55, windowId: 1 }); }, 20); // the user's click on it, left out
+      return answer;
+    }, () => focusTab(55));
+    await shown;
+    assert.deepEqual(toldAfter, [55], 'Margin\'s own update of it made no event: told');
+  } finally {
+    done();
+  }
+});
+

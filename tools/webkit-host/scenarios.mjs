@@ -13,6 +13,12 @@
 //   { op: 'snapshot', file }   PNG of the shown tab
 //   { op: 'deny', pattern }    take a site permission away (as in Safari's settings)
 //   { op: 'zoom', factor }     the shown tab's page zoom (as ⌘+ / ⌘−)
+//   { op: 'show', name }       Safari itself bringing a tab to the front (its tab bar)
+//   { op: 'flip', to, back }   one tab to the front and another back, in the same run loop turn
+//   { op: 'probeShow', name, nth? }  count the web view's layers in each turn committed after
+//                              the nth show of the tab from now on (empty: WebKit's empty view)
+//   { op: 'checkProbe', name, maxMs, label }  that show had its content within maxMs
+//   { op: 'showProbe', name }  show a tab and log the same, with how long the show took
 
 // Margin's state from storage, by state key (shared/stored.js: the keys
 // holding tab ids have names of their own there): an expression for steps.
@@ -274,6 +280,42 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/G1' }); Margin.content.startSwitching(-1, request); return 1` },
     checkPage('new1', 'the new tab comes to the front', `!document.hidden`, 3000),
     checkPage('new1', 'its field focused (autofocus), after the cover lifted', `document.querySelector('margin-sidebar-host')?.dataset.arrivalCover === 'false' && document.activeElement?.id === 't'`, 1500),
+  ],
+  // Shown for the first time, a tab is introduced first (background/tabs.js
+  // introduceTab): brought to the front and the page in front straight back,
+  // in one run loop turn, so WebKit then keeps the page before on screen until
+  // it has painted. A heavy page, from the turn it's shown: none of WebKit's
+  // empty view worth a screen refresh (without the introduction, 16–21 ms in
+  // this host). The page in front sees nothing of it, and Margin's state only
+  // the real switch.
+  introduce: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),
+    { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
+    // The tab in front in each state Margin writes (its isolated world).
+    { op: 'eval', in: 'A', js: `globalThis.__fronts = []; browser.storage.onChanged.addListener((changes) => { const tabs = changes.openTabs?.newValue?.tabs; if (tabs) __fronts.push(Object.values(tabs).filter((t) => t.active).map((t) => t.url.split('/p/')[1]).join()); }); return 'recording'` },
+    { op: 'probeShow', name: 'new1', nth: 2 }, // the first time is the introduction
+    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/H3' }); Margin.content.startSwitching(-1, request); return 1` },
+    checkPage('new1', 'the new tab comes to the front', `!document.hidden`, 3000),
+    { op: 'checkProbe', name: 'new1', maxMs: 10, label: 'its content there as it\'s shown (WebKit\'s empty view under a screen refresh at most)' },
+    checkPage('A', 'the page before was hidden once (the switch), not by the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
+    check('new1', 'the switch says it introduced the tab', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.source === 'new tab' && e.introduced === true && !e.error)`),
+    check('new1', 'in Margin\'s state, the new tab is the one in front', `const s = await ${STATE}(['tabs']); const active = Object.values(s.tabs).filter((t) => t.active); return active.length === 1 && active[0].url.includes('/p/H3')`),
+    check('A', 'and it never had the new tab in front before that, then A again (the introduction left out)', `const i = __fronts.indexOf('H3'); return i >= 0 && !__fronts.slice(i).includes('A')`),
+  ],
+  // The covered arrival (content/core.js arriveCovered): not for a page on
+  // screen already (Safari left it in front: no show would bring it back),
+  // still for one visible only for an instant (an introduction).
+  arrival: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, wait(800), { op: 'install' }, drawn('A'), drawn('B'), drawn('C'), wait(300),
+    // C just brought to the front by Safari (within the 200 ms it takes to count as shown).
+    { op: 'show', name: 'C' },
+    { op: 'eval', in: 'C', js: `${ID} return JSON.stringify(await Margin.content.prepareForShow({ token: 'on-screen', tabId: id('C'), windowId: Object.values(tabs).find((t) => t.id === id('C')).windowId, covered: true }))` },
+    checkPage('C', 'a page on screen asked to arrive covered isn\'t covered', `!document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover !== 'true' && document.body.style.opacity !== '0'`, 300), // (the cover would lift by itself after 3 s)
+    { op: 'flip', to: 'B', back: 'C' }, wait(50),
+    { op: 'eval', in: 'B', js: `${ID} return JSON.stringify(await Margin.content.prepareForShow({ token: 'instant', tabId: id('B'), windowId: Object.values(tabs).find((t) => t.id === id('B')).windowId, covered: true }))` },
+    checkPage('B', 'one visible for an instant still arrives covered', `document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'true' && document.body.style.opacity === '0'`),
+    { op: 'eval', in: 'B', js: `return String(Margin.content.cancelPreparedShow('instant'))` },
+    checkPage('B', 'and is uncovered when the switch is called off', `document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'false' && document.body.style.opacity === ''`),
   ],
   behindleft: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),

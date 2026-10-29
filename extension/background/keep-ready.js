@@ -15,8 +15,8 @@
 // before it ends. Holds end by themselves; nothing needs undoing when this
 // stops. Measured in the WebKit host: a busy page held hidden used 0.1
 // CPU-seconds in 30 s (0.3% of a core); left alone, Safari suspended it.
-// A tab Safari unloaded stays unloaded (a hold can't run without a page), and
-// a tab never shown still can't be helped (content/core.js arriveCovered).
+// A tab Safari unloaded stays unloaded (a hold can't run without a page); a
+// tab never shown has nothing to keep (background/tabs.js introduceTab).
 import * as V from '../shared/view.js';
 import { api, cached, isOwner, isSynced, load } from './store.js';
 import { holdTab } from './tabs.js';

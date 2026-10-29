@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, openedFrom, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, openedFrom, pageBlinked, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
 import { clearLog, readLog, recordShown } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -385,6 +385,11 @@ export const handlers = {
   // tabs of the space in front stay ready (background/keep-ready.js).
   async used() {
     keepReady.noteUsed();
+  },
+  // The page in front was hidden for an instant during a switch
+  // (shared/switching.js onBlink): tabs.js pageBlinked.
+  async pageBlinked({ hiddenAt, shownAt }, sender) {
+    pageBlinked(sender.tab?.windowId, { hiddenAt, shownAt });
   },
   async newTabKeyUsed() {
     onboarding.reportEvent('cmdTKey');

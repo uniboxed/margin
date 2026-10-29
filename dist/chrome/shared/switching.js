@@ -26,12 +26,18 @@ const GRACE_MS = 300;
 const MAX_MS = 8000;
 const UNASKED_MAX_MS = 2500;
 
+// Hidden for less than this during a switch, then shown again: a blink
+// (background/tabs.js introduceTab should never cause one: pageBlinked).
+const BLINK_MS = 100;
+
 /**
- * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document }} options
+ * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, onBlink?: (times: { hiddenAt: number, shownAt: number }) => void, doc?: Document }} options
  * `onChange`: redraw the sidebar with this target (null: none); `onSlow`: the pill on or off;
- * `failed`: whether a request's result means it didn't switch (default: never).
+ * `failed`: whether a request's result means it didn't switch (default: never);
+ * `onBlink`: the page was hidden for an instant as it switched, then shown
+ * again (when, by the clock Date.now() reads).
  */
-export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document }) {
+export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, onBlink = () => {}, doc = document }) {
   /** @type {number | null} */
   let target = null;
   let current = null; // this start's token: an older start's request can't end a newer one
@@ -86,7 +92,24 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
       didFail,
     );
   }
-  doc.addEventListener('visibilitychange', () => doc.hidden && end());
+  // When the page got to each event (WebKit queues them, and in Safari 26 and
+  // later makes the event as it runs it: late on a busy page; one can run
+  // after the page was hidden and shown again, and find it visible: a blink too).
+  const when = (/** @type {Event | undefined} */ event) => (event?.timeStamp && globalThis.performance ? performance.timeOrigin + event.timeStamp : Date.now());
+  let wasHidden = doc.hidden;
+  let hiddenAt = 0; // hidden while switching
+  doc.addEventListener('visibilitychange', (event) => {
+    const changed = doc.hidden !== wasHidden;
+    wasHidden = doc.hidden;
+    if (doc.hidden) {
+      hiddenAt = target != null ? when(event) : 0;
+      return end();
+    }
+    const at = when(event);
+    if (!changed && target != null) onBlink({ hiddenAt: at, shownAt: at });
+    else if (hiddenAt && at - hiddenAt < BLINK_MS) onBlink({ hiddenAt, shownAt: at });
+    hiddenAt = 0;
+  });
   doc.defaultView?.addEventListener('pagehide', end);
   return { start, end, target: () => target };
 }

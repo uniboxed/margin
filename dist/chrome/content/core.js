@@ -444,6 +444,7 @@ export function startCore({ onTheme } = {}) {
       }
     },
     failed: (result) => result === undefined,
+    onBlink: (times) => void send('pageBlinked', times, false),
     onFailed: () => {
       const why = switchError;
       void refresh();
@@ -832,9 +833,17 @@ export function startCore({ onTheme } = {}) {
   // page makes that first paint as cheap as it gets: the switch's cover,
   // spinner turning, with the page itself out of sight under it; once shown,
   // it brings the page back, lets it paint, and only then lifts the cover.
-  // (A document that was visible has been in a window: never covered.)
+  // (A document that was visible has been in a window: never covered. Not one
+  // visible for an instant: background/tabs.js introduceTab brings a tab to
+  // the front and straight back, out of sight, and it then still arrives
+  // covered: the two together leave no empty frame.)
+  const SEEN_MS = 200;
   let everShown = !document.hidden;
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) everShown = true; });
+  let seenTimer = null;
+  document.addEventListener('visibilitychange', () => {
+    clearTimeout(seenTimer);
+    if (!document.hidden) seenTimer = setTimeout(() => { everShown = true; }, SEEN_MS);
+  });
   // Never longer than this hidden (a switch that didn't happen, or a page
   // shown without its frames running).
   const ARRIVAL_MAX_MS = 3000;
@@ -849,7 +858,9 @@ export function startCore({ onTheme } = {}) {
     requestAnimationFrame(step);
   });
   function arriveCovered() {
-    if (everShown || arrival || !view?.setCover) return;
+    // Not a page on screen already (Safari left it in front, or the user
+    // brought it there): no show is coming to bring it back.
+    if (everShown || arrival || !view?.setCover || !document.hidden) return;
     // The page: the card in the fitted layout (content/shell.js), else its body.
     const page = Margin.shell?.frame ?? document.body;
     if (!page) return;

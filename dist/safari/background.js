@@ -10,7 +10,7 @@ import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mut
 import * as keepReady from './background/keep-ready.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, resolveTab, shownAt, shownUrl, tabOpened, tabShown, userSwitched } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, isIntroduction, resolveTab, setIntroductionHooks, shownAt, shownUrl, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -192,7 +192,7 @@ function stayInSpace(windowId, spaceId, closedId) {
     return M.setActiveSpace(s, windowId, spaceId);
   });
 }
-api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
+const activated = owned(({ tabId, windowId }) => {
   if (handingOff.has(tabId)) return;
   // The tab left stays ready to come back to (Safari can suspend it within a
   // second), and the set follows the switch (background/keep-ready.js).
@@ -225,7 +225,14 @@ api.tabs.onActivated.addListener(owned(({ tabId, windowId }) => {
   if (!api.alarms) archiveStaleThrottled();
   // After the switch has landed (not in its way).
   setTimeout(() => isOwner() && ensureCurrent(tabId), 300);
-}));
+});
+// Not the two activations of a tab brought to the front for an instant, out of
+// sight, and the page in front straight back (tabs.js introduceTab): checked as
+// they come, in order, before anything else can.
+api.tabs.onActivated.addListener((info) => (isIntroduction(info) ? undefined : activated(info)));
+// An activation left out after all (Safari left the tab in front); a tab whose
+// hold ended as it was shown for that instant is held afresh if it's still behind.
+setIntroductionHooks({ activated, introduced: (tabId) => { keepReady.shown(tabId); keepReady.tickSoon(); } });
 // Coming back to a window (or to Safari) shows its tab without onActivated:
 // that tab is checked too (a stale copy there: tabs.js ensureCurrent).
 api.windows?.onFocusChanged?.addListener(owned((windowId) => {
@@ -263,7 +270,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'used', 'shellShown', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'restoringTab', 'reloadForUpdate', 'getZoom', 'setZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'used', 'pageBlinked', 'shellShown', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'restoringTab', 'reloadForUpdate', 'getZoom', 'setZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme']);
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;

@@ -436,6 +436,15 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Hold ⌃⌘↓: the tabs go by with their content (no gray cards); one press to a slow tab shows the gray card after a moment.
 - [ ] Tab overview: tabs you left through the sidebar may look gray there (accepted); say if that bothers you.
 
+## A tab shown for the first time (2026-10-29)
+
+- [ ] ⌘T, an address of a busy site (youtube.com, a Google search), Enter: as the new tab comes up there's no dark frame at all; record the screen and step through it frame by frame around the switch.
+- [ ] While the new tab loads behind, nothing flickers: not the page you're on, its cover or highlight, nor Safari's tab bar or address bar if they're showing.
+- [ ] ⌘-click a few links (they open behind), wait a few seconds, then click their rows in the sidebar: no dark frame either.
+- [ ] With a video playing in the page you're on, ⌘T and an address: the video doesn't pause and resume as the new tab is introduced.
+- [ ] After the new tab is shown: the sidebar highlights it and stays in its space; ⌃⌘↓ goes on to the next tab, ⌃⌘↑ back.
+- [ ] If anything above goes wrong, say so: Safari's log (Console, process Safari, `hideContentUntilPendingUpdate`) and Margin's switch log (`introduced` on those switches) show what happened.
+
 ## Tabs of the space kept ready (2026-10-29)
 
 - [ ] Use a few tabs of a space, leave one for a minute or more, then switch back to it with Safari's own tab bar or ⌃Tab: no dark flash. The same from Margin's sidebar.

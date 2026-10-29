@@ -62,9 +62,9 @@ function record(entry) {
 }
 
 /** A switch Margin made (background/tabs.js focusTab, background/navigation.js). */
-export function recordSwitch({ source, tabId, asked, wake = null, preparation = null, shownAfter = null, error = null }) {
+export function recordSwitch({ source, tabId, asked, wake = null, preparation = null, introduced = null, shownAfter = null, error = null }) {
   record({
-    kind: 'switch', source, tabId,
+    kind: 'switch', source, tabId, introduced,
     wake: wake && { outcome: wake.outcome, ms: wake.ms, early: wake.startedAt < asked ? asked - wake.startedAt : 0 },
     preparation: preparation && { outcome: preparation.outcome, ms: preparation.ms, reason: preparation.reason ?? null },
     waited: wake ? Math.max(0, wake.startedAt + wake.ms - asked) : 0,
