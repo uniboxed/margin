@@ -438,28 +438,75 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // how it was opened; background handlers.js carryOpen).
   const openOverPage = () => mode === 'overlay' && root.classList.contains('open') && (!root.classList.contains('docked') || root.classList.contains('rail-expanded'));
 
+  // The tab a row brings to the front: its own, or an open pin's (in this
+  // window first); null for a pin not open.
+  const rowTab = (/** @type {HTMLElement} */ row) => (row.dataset.tabId ? Number(row.dataset.tabId)
+    : row.classList.contains('open') && state ? V.pinTabId(state, row.dataset.pinId, windowId) : null);
+  // A tab's row, or a pin's: its tab to the front.
+  /** @param {HTMLElement} target */
+  function switchRow(target) {
+    const show = openOverPage();
+    if (target.dataset.action === 'activate') {
+      const tabId = Number(target.dataset.tabId);
+      if (switchingTo === tabId) return null; // on its way already (a second press)
+      const request = send('activateTab', { tabId, ...(show ? { show } : {}) });
+      if (!target.classList.contains('active')) onSwitch?.(tabId, request);
+      return request;
+    }
+    const pinTab = rowTab(target);
+    if (pinTab != null && switchingTo === pinTab) return null;
+    const request = send('openPin', { pinId: target.dataset.pinId, windowId, ...(show ? { show } : {}) });
+    if (pinTab != null && !target.classList.contains('active')) onSwitch?.(pinTab, request);
+    return request;
+  }
+  // A press switches (Arc): a tab, or a pin whose tab is open, comes to the
+  // front as the mouse button goes down, not once it's back up, and the
+  // click that follows does nothing more. Only the main button of a mouse or
+  // trackpad, without ⌃ (the Mac's right-click: the menu); not its close
+  // button; not a touch or a pen (a press there can be the start of a
+  // scroll). A pin not open yet opens on click (pressing it to drag it
+  // elsewhere doesn't open it). Each page draws its own sidebar, so a drag
+  // that starts on another tab's row ends as that tab comes to the front: a
+  // tab drags once it's the one in front (DECISIONS.md): a press that takes
+  // this page away (to another tab, or during a switch to one) starts no drag,
+  // whatever row the redraw has put under it (the drag would go on in a page
+  // no longer shown, with nowhere to drop).
+  let pressed = false; // a press switched: its click is the same switch
+  let pressedAway = false; // and this page is on its way out
+  root.addEventListener('pointerdown', (event) => {
+    pressed = false;
+    pressedAway = false;
+    if (event.button !== 0 || event.pointerType !== 'mouse' || !event.isPrimary || event.ctrlKey) return;
+    const target = /** @type {HTMLElement | null} */ (event.target.closest?.('[data-action]'));
+    if (!target || !root.contains(target)) return;
+    const action = target.dataset.action;
+    if (action !== 'activate' && !(action === 'open-pin' && target.classList.contains('open'))) return;
+    pressed = true;
+    const tab = rowTab(target);
+    pressedAway = (tab != null && tab !== currentTabId) || (switchingTo != null && switchingTo !== currentTabId);
+    stopHoverWake();
+    void switchRow(target);
+  });
+
   root.addEventListener('click', (event) => {
     const target = event.target.closest('[data-action]');
     if (!target || !root.contains(target)) return;
     event.stopPropagation();
     if (event.ctrlKey && target.closest('.tab, .pin, .folder')) return; // ⌃-click is the Mac's right-click: the menu
     const tabId = Number(target.dataset.tabId);
-    const { pinId, spaceId, folderId } = target.dataset;
+    const { spaceId, folderId } = target.dataset;
     const show = openOverPage();
+    // Switched as it was pressed (above); a click with no press (the
+    // keyboard, a script) still switches.
+    if ((target.dataset.action === 'activate' || target.dataset.action === 'open-pin') && pressed && event.detail > 0) {
+      pressed = false;
+      return;
+    }
     switch (target.dataset.action) {
-      case 'activate': {
-        const request = send('activateTab', { tabId, ...(show ? { show } : {}) });
-        if (!target.classList.contains('active')) onSwitch?.(tabId, request);
-        return request;
-      }
+      case 'activate':
+      case 'open-pin':
+        return switchRow(target);
       case 'close': return send('closeTab', { tabId, ...(show ? { show } : {}) });
-      case 'open-pin': {
-        const request = send('openPin', { pinId, windowId, ...(show ? { show } : {}) });
-        // The tab the background will show (in this window first).
-        const pinTab = target.classList.contains('open') && !target.classList.contains('active') && state ? V.pinTabId(state, pinId, windowId) : null;
-        if (pinTab != null) onSwitch?.(pinTab, request);
-        return request;
-      }
       case 'toggle-folder': {
         if (event.detail > 1) return; // the second click of a double-click (renames)
         const folder = state?.folders?.find((f) => f.id === folderId);
@@ -777,7 +824,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   root.addEventListener('dragstart', stopHoverWake, true);
   root.addEventListener('click', stopHoverWake, true); // a switch: the page goes
   root.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || event.ctrlKey || event.target.closest('.icon')) return;
+    if (pressed || event.button !== 0 || event.ctrlKey || event.target.closest('.icon')) return; // pressed: switching already
     const row = event.target.closest('.tab, .pin');
     if (row && root.contains(row)) prewakeRow(row);
   });
@@ -1044,7 +1091,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   root.addEventListener('dragstart', (event) => {
     const row = event.target.closest?.('.tab, .pin, .folder');
     if (!row || !root.contains(row)) return;
-    if (renaming) return event.preventDefault();
+    // Not on a press that takes this page away ("a press switches", above).
+    if (renaming || pressedAway) return event.preventDefault();
     if (row.classList.contains('tab')) dragging = { kind: 'tab', id: Number(row.dataset.tabId) };
     else if (row.classList.contains('pin')) dragging = { kind: 'pin', id: row.dataset.pinId };
     else dragging = { kind: 'folder', id: row.dataset.folderId };

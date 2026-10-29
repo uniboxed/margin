@@ -19,6 +19,9 @@
 //                              the nth show of the tab from now on (empty: WebKit's empty view)
 //   { op: 'checkProbe', name, maxMs, label }  that show had its content within maxMs
 //   { op: 'showProbe', name }  show a tab and log the same, with how long the show took
+//   { op: 'mouse', in, type: 'down' | 'up', at?, mods? }  a real press or release of the mouse's main
+//                              button; `at`: JavaScript (Margin's content world) returning [x, y]
+//                              (the press's point for a release); a release goes where the press did
 //   { op: 'deferLoads' }       from now on, a tab asleep loads only if it's still the one shown
 //                              once the run loop turn is over (Safari putting its load off); its
 //                              view is made as it's selected all the same (no page: a script there
@@ -45,6 +48,11 @@ const SWIPE = (deltas) => `await new Promise((resolve) => { const target = docum
 const drawn = (tab) => checkPage(tab, `${tab}: Margin's sidebar is there`, `document.querySelector('margin-sidebar-host')?.dataset.open !== undefined`, 5000);
 const themed = (tab) => check(tab, `${tab}: the Arcadium theme is mounted`, `globalThis.Margin?.theme?.id === 'arcadium'`, 5000);
 const shown = (tab) => checkPage(tab, `${tab} is the tab shown`, `!document.hidden`);
+// The middle of a tab's row in the sidebar (over its title, clear of its close
+// button), for a `mouse` step; through the test hook's __shadowOf (hook.js).
+const rowAt = (name) => `${ID} const root = __shadowOf(document.querySelector('margin-sidebar-host')); const r = root.querySelector('.tab[data-tab-id="' + id('${name}') + '"]').getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]`;
+// The switch requests a page's sidebar sends from here on (__sent).
+const countSends = { op: 'eval', in: 'A', js: `const runtime = (globalThis.browser ?? chrome).runtime; const send = runtime.sendMessage.bind(runtime); globalThis.__sent = []; runtime.sendMessage = (m, ...rest) => { if (m?.type === 'activateTab') __sent.push(m.tabId); return send(m, ...rest); }; return 'counting'` };
 const keepOpen = { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { sidebarPinnedOpen: true } }))' };
 const reload = (tab) => ({ op: 'page', in: tab, js: 'location.reload(); return "reloading"' });
 const fitted = (tab) => checkPage(tab, `${tab}: the page is fitted beside the sidebar`, `document.documentElement.hasAttribute('data-margin-shell') && !!document.querySelector('iframe[name^=margin-]')`, 5000);
@@ -243,6 +251,29 @@ export const SCENARIOS = {
     checkPage('H', 'H: loaded behind before it was shown', `window.__vis[0][0] === 'hidden'`),
     checkPage('A', 'A: hidden once (the switch), not by the restore or the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
     check('H', 'H: its page back once shown (the arrival cover lifted)', `const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.arrivalCover === 'false' && getComputedStyle(document.body).opacity === '1'`, 3000),
+  ],
+  // A tab's row pressed with the mouse (Arc): the switch starts as the button
+  // goes down and lands with it still down, and the click that follows the
+  // release doesn't switch again. A press on the tab in front, or with ⌃
+  // (the Mac's right-click), doesn't switch.
+  press: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(500),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(300),
+    { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
+    countSends,
+    { op: 'mouse', in: 'A', type: 'down', at: rowAt('A') }, wait(150), { op: 'mouse', in: 'A', type: 'up' }, wait(150),
+    check('A', 'A: a press on the tab in front switches nowhere, and its click asks nothing more', `${ID} return (document.querySelector('margin-sidebar-host').dataset.switchingTo ?? '') === '' && !document.hidden && JSON.stringify(__sent) === JSON.stringify([id('A')])`),
+    { op: 'mouse', in: 'A', type: 'down', at: rowAt('B') },
+    check('A', 'A: B highlighted as it\'s pressed', `${ID} return document.querySelector('margin-sidebar-host').dataset.switchingTo === String(id('B'))`, 300),
+    checkPage('B', 'B: in front with the button still down', '!document.hidden', 2000),
+    { op: 'mouse', in: 'A', type: 'up' }, wait(400),
+    check('A', 'A: the release asked for no second switch', `${ID} return JSON.stringify(__sent) === JSON.stringify([id('A'), id('B')])`),
+    checkPage('B', 'B: still in front after the release', '!document.hidden'),
+    checkPage('A', 'A: hidden once (the switch)', `JSON.stringify(__visibility) === '["hidden"]'`),
+    check('B', 'B: the sidebar was carried open', `document.querySelector('margin-sidebar-host')?.dataset.open === 'true'`, 2000),
+    { op: 'mouse', in: 'B', type: 'down', mods: ['control'], at: rowAt('C') }, wait(300),
+    check('B', 'B: a ⌃-press switches nowhere (it\'s the menu)', `(document.querySelector('margin-sidebar-host').dataset.switchingTo ?? '') === '' && !document.hidden`),
+    { op: 'mouse', in: 'B', type: 'up' },
   ],
   // Another unloaded tab asked for while the first still loads behind: that
   // one is restored too (the first's turn in the window is over), then

@@ -282,6 +282,9 @@ let pageRecorder = """
   func tab(_ name: String) -> Tab? { window.tabs.first { $0.name == name } }
 }
 
+// The "mouse" step: the web view a press went to (its release goes there too), and where.
+var pressedView: WKWebView?
+var lastPress = NSPoint.zero
 // The "deferLoads" step: a tab asleep loads only if it's still the one shown once the run loop
 // turn that showed it is over.
 var deferLoads = false
@@ -458,6 +461,27 @@ Task { @MainActor in
         if type == .keyDown { if !wv.performKeyEquivalent(with: e) { wv.keyDown(with: e) } } else { wv.keyUp(with: e) }
       }
       log("key \(t.name): \(step["mods"] ?? []) \(code)")
+    case "mouse":
+      // { op: 'mouse', in, at, type: 'down' | 'up', mods }: a real press or release of the mouse's
+      // main button in the tab's web view, as a mouse or trackpad sends it. `at`: JavaScript in
+      // Margin's content-script world returning the point [x, y] in the page's CSS pixels (the
+      // hook's __shadowOf reaches the sidebar's closed shadow root). A release goes to the web
+      // view that got the press, wherever it is by then (as AppKit sends it).
+      let t = host.tab(step["in"] as! String)!
+      let type = (step["type"] as? String) == "up" ? NSEvent.EventType.leftMouseUp : .leftMouseDown
+      var flags: NSEvent.ModifierFlags = []
+      for m in (step["mods"] as? [String] ?? []) {
+        switch m { case "command": flags.insert(.command); case "option": flags.insert(.option); case "control": flags.insert(.control); case "shift": flags.insert(.shift); default: break }
+      }
+      guard let wv = type == .leftMouseUp ? (pressedView ?? t.webView) : t.webView, let world = host.world() else { log("mouse: \(t.name) has no web view"); break }
+      var point = lastPress
+      if let at = step["at"] as? String {
+        guard let r = try? await wv.callAsyncJavaScript(at, arguments: [:], in: nil, contentWorld: world) as? [Double], r.count == 2 else { log("mouse: no point in \(t.name)"); break }
+        point = NSPoint(x: r[0], y: wv.isFlipped ? r[1] : wv.bounds.height - r[1])
+      }
+      let e = NSEvent.mouseEvent(with: type, location: wv.convert(point, to: nil), modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: host.window.nsWindow.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)!
+      if type == .leftMouseDown { host.window.nsWindow.makeFirstResponder(wv); pressedView = wv; lastPress = point; wv.mouseDown(with: e) } else { wv.mouseUp(with: e); pressedView = nil }
+      log("mouse \(type == .leftMouseDown ? "down" : "up") in \(t.name) at \(Int(point.x)),\(Int(wv.isFlipped ? point.y : wv.bounds.height - point.y))\(flags.isEmpty ? "" : " \(step["mods"] ?? [])")")
     case "hidewin":
       // Take a tab's web view out of the window without showing another (like Safari hiding it).
       let t = host.tab(step["name"] as! String)!; t.webView?.removeFromSuperview(); log("took \(t.name) out of the window")

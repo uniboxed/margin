@@ -72,7 +72,14 @@ test('drag a tab onto a space chip moves it there; the sidebar follows', async (
   await nt.bringToFront();
   const row = nt.locator('#sidebar .tab', { hasText: 'drag-me' });
   await row.waitFor();
-  await row.dragTo(nt.locator(`#sidebar .chip[data-space-id="${fun}"]`));
+  // The drag events alone: a mouse press on a tab that isn't in front
+  // switches to it and starts no drag (sidebar.js "a press switches").
+  const chip = nt.locator(`#sidebar .chip[data-space-id="${fun}"]`);
+  const dataTransfer = await nt.evaluateHandle(() => new DataTransfer());
+  await row.dispatchEvent('dragstart', { dataTransfer });
+  await chip.dispatchEvent('dragover', { dataTransfer });
+  await chip.dispatchEvent('drop', { dataTransfer });
+  await row.dispatchEvent('dragend', { dataTransfer });
   await waitFor(async () => (await nt.locator('#sidebar .tab', { hasText: 'drag-me' }).count()) === 0);
   const tabs = await storage('tabs');
   const id = Object.values(tabs).find((t) => t.title === 'drag-me').id;

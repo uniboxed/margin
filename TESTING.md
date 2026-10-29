@@ -543,3 +543,13 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] A slow site (youtube.com) unloaded: it comes up after it has loaded, or after about 2.5 s as far as it got.
 - [ ] ⌘-click a link to a slow site, then click its row at once: the page you're on stays covered until it has loaded, then it comes up drawn.
 - [ ] If a dark window still shows: Start page → Settings → Switch log (development) → Copy, and look at `restored` and `introduced` on those switches (`not loaded`: Safari didn't load it behind; after two of those Margin stops trying until Safari restarts). Safari's log (Console, process Safari) around them: `restoreFromSessionState`, `Not dispatching`, `hideContentUntilPendingUpdate`.
+
+## A press on a tab switches (2026-10-29)
+
+- [ ] Press (don't release yet) on another tab's row: it highlights and comes to the front while the button is still down; releasing does nothing more. The same for a pin whose tab is open.
+- [ ] Click quickly through several tabs: each switches once, nothing flickers or switches back.
+- [ ] Double-click a tab's row: one switch.
+- [ ] ⌃-click or right-click a row: its menu, no switch. A click on a row's ×: it closes, no switch.
+- [ ] Drag the tab in front to a space chip, into the pinned area, into a folder: it works. Pressing another tab and dragging: it comes to the front, nothing drags.
+- [ ] Drag a pin that isn't open, and a folder: they move, nothing opens.
+- [ ] With the sidebar open over the page (hover): a press switches and the sidebar stays open on the next page.
