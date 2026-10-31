@@ -5,6 +5,7 @@ import { recordSwitch } from './diagnostics.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
+import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
 
 // When each tab was last shown, and its URL then (restoringTab; a
 // diagnostic in tabs.onUpdated).
@@ -374,6 +375,13 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     if (raise) await focusWindow(live.windowId);
     return { tab: live, preparation: skipped };
   }
+  // A page that may be cut off from Margin (background/cut-off.js: it was,
+  // and was in use, or didn't answer when the open tabs were checked): loaded
+  // again before it's shown if it's no longer in use, as its old copy would
+  // show it under covers that never lift. Asked beside the rest, and waited
+  // for only briefly before the show. (Any other is checked as it's shown:
+  // ensureCurrent.)
+  const cutting = cutOffSuspects.has(tabId) && !live.discarded ? repairCutOff(live, { ms: 400 }) : null;
   // Left in front by Safari (or brought there by the user meanwhile) while
   // being introduced or restored: shown, not prepared as a hidden page (it
   // would wait under its cover for a show that has happened).
@@ -501,6 +509,11 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: String(err) });
     throw err;
   };
+  if (cutting) {
+    let timer;
+    await Promise.race([cutting, new Promise((resolve) => { timer = setTimeout(resolve, CUT_OFF_SWITCH_MS); })]);
+    clearTimeout(timer);
+  }
   const ended = endIntroduction(tabId, gen);
   activating(tabId);
   const tab = await api.tabs.update(tabId, { active: true }).catch(fail);
@@ -1163,7 +1176,13 @@ async function checkCurrent(tabId) {
   if (checkedCurrent.has(tabId) || !api.scripting?.executeScript) return;
   const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
   const tab = await api.tabs.get(tabId).catch(() => null);
+  if (await repairOldOwnPage(tab)) return void checkedCurrent.add(tabId);
   if (!files?.length || !tab?.url || tab.discarded) return;
+  // Its world still bound to a copy that's gone (background/cut-off.js): no
+  // copy can run there until it's loaded again.
+  const cut = await repairCutOff(tab);
+  if (cut === 'reloaded') checkedCurrent.add(tabId);
+  if (cut) return;
   const here = await inPage(tabId, tab.url, () => !!globalThis.Margin?.content, [], 1000);
   if (typeof here === 'string') return; // asleep, no access or busy: next time
   checkedCurrent.add(tabId);
@@ -1171,7 +1190,86 @@ async function checkCurrent(tabId) {
   console.info(`[margin] tab ${tabId} had no current copy of Margin: added`);
   await api.scripting.executeScript({ target: { tabId }, files }).catch(() => {});
 }
-export const forgetCurrent = (tabId) => checkedCurrent.delete(tabId);
+export const forgetCurrent = (tabId) => {
+  checkedCurrent.delete(tabId);
+  boundHere.delete(tabId);
+  cutOffSuspects.delete(tabId);
+};
+
+// ---- pages cut off from Margin (background/cut-off.js) -----------------------
+// This copy's address, as a page's world bound to it says it.
+const ownAddress = api.runtime.getURL('');
+// Tabs whose page's world was found bound to this copy (or to another copy
+// still running: background/cut-off.js): not asked again.
+const boundHere = new Set();
+// When each tab was last loaded again for that.
+const CUT_OFF_COOLDOWN_MS = 30000;
+const cutOffLoadedAt = new Map();
+// Loaded again one after another, a little apart (every page open when
+// Margin was reloaded can be cut off).
+const CUT_OFF_GAP_MS = 150;
+// How long a switch waits for that answer, at most, before the show.
+const CUT_OFF_SWITCH_MS = 150;
+const quietened = new Set(); // said once per tab
+// Tabs that may be cut off: found so but in use (put out of sight), or
+// silent when asked. A switch to one asks again first (focusTabNow).
+const cutOffSuspects = new Set();
+let cutOffLoads = Promise.resolve();
+/** @param {number} tabId @param {boolean} quiet @param {number} ms */
+async function askCutOff(tabId, url, quiet, ms) {
+  const answer = await inPage(tabId, url, cutOffInPage, [ownAddress, quiet], ms);
+  return typeof answer === 'string' ? null : answer.result ?? null;
+}
+// A tab whose page is cut off: loaded again ('reloaded') when nothing in it
+// would be lost, else its dead Margin put out of sight ('quiet', asked again
+// the next time it's checked). False when it isn't cut off (or didn't say).
+// `ms`: how long the page is waited for.
+/** @returns {Promise<'reloaded' | 'quiet' | false>} */
+export async function repairCutOff(tab, { ms = 1000 } = {}) {
+  if (tab?.id == null || tab.discarded || boundHere.has(tab.id) || !/^https?:/i.test(tab.url ?? '')) return false;
+  const probe = await askCutOff(tab.id, tab.url, false, ms);
+  const action = cutOffAction(probe);
+  if (action === 'none') {
+    if (probe) {
+      boundHere.add(tab.id);
+      cutOffSuspects.delete(tab.id);
+    } else cutOffSuspects.add(tab.id);
+    return false;
+  }
+  if (action === 'reload' && Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) >= CUT_OFF_COOLDOWN_MS) {
+    cutOffLoadedAt.set(tab.id, Date.now());
+    const load = cutOffLoads.then(async () => {
+      // A GET of its address (a reload would send a form again); with a
+      // #fragment, where that would only scroll, the browser's reload.
+      const ok = await (tab.url.includes('#') ? api.tabs.reload(tab.id) : api.tabs.update(tab.id, { url: tab.url })).then(() => true, () => false);
+      await new Promise((resolve) => setTimeout(resolve, CUT_OFF_GAP_MS));
+      return ok;
+    });
+    cutOffLoads = load;
+    if (await load) {
+      cutOffSuspects.delete(tab.id);
+      console.info(`[margin] tab ${tab.id} still had Margin from before it was reloaded: loaded again`);
+      return 'reloaded';
+    }
+  }
+  cutOffSuspects.add(tab.id);
+  await askCutOff(tab.id, tab.url, true, ms);
+  if (quietened.has(tab.id)) return 'quiet';
+  quietened.add(tab.id);
+  console.info(`[margin] tab ${tab.id} still has Margin from before it was reloaded, and is in use: its sidebar is put away until it's loaded again`);
+  return 'quiet';
+}
+// A tab showing Margin's new-tab page from a copy that's gone (background/
+// cut-off.js oldOwnPageAddress): sent to this copy's. Whether it was. A tab
+// asleep is too (it'd load the old address, which no longer exists).
+async function repairOldOwnPage(tab) {
+  const to = oldOwnPageAddress(tab?.url, ownAddress);
+  if (tab?.id == null || !to || Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) < CUT_OFF_COOLDOWN_MS) return false;
+  cutOffLoadedAt.set(tab.id, Date.now());
+  const ok = await api.tabs.update(tab.id, { url: to }).then(() => true, () => false);
+  if (ok) console.info(`[margin] tab ${tab.id} still had the new-tab page of Margin from before it was reloaded: loaded again`);
+  return ok;
+}
 // The current copy's core and its active theme, into a page that has neither
 // (focusTabNow, before a switch to it). Whether they went in.
 async function addCurrentCopy(tab) {
@@ -1232,7 +1330,11 @@ async function runOpenTabRepair(retry) {
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
     const tabs = await api.tabs.query({}).catch(() => []);
     await Promise.all(tabs.map(async (tab) => {
+      if (!checkedCurrent.has(tab.id) && await repairOldOwnPage(tab)) return void checkedCurrent.add(tab.id);
       if (tab.discarded || checkedCurrent.has(tab.id) || checking.has(tab.id) || !/^https?:/i.test(tab.url ?? '')) return;
+      const cut = await repairCutOff(tab);
+      if (cut === 'reloaded') checkedCurrent.add(tab.id);
+      if (cut) return;
       const current = await inPage(tab.id, tab.url, (id, since) => {
         const content = globalThis.Margin?.content;
         return !!content && (content.instanceId === id || content.startedAt >= since);

@@ -43,7 +43,9 @@ async function send(type, payload = {}) {
 // tab) the palette opens over this page.
 const nav = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0]);
 // `newtab.html#launcher` opens the launcher on purpose and never redirects.
-const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && location.hash !== '#launcher';
+// `?again`: a page from a copy of Margin that's gone, loaded again at this
+// copy's address (background/cut-off.js oldOwnPageAddress), not a new tab.
+const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && location.hash !== '#launcher' && !/[?&]again\b/.test(location.search);
 const handoff = fresh ? send('newTabPage').catch(() => null) : Promise.resolve(null);
 
 // The theme loads right away, alongside the ⌘T answer.

@@ -561,6 +561,12 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Pages open while Safari reloads Margin (2026-10-31)
+
+- [ ] **An update reloads Margin in Safari**, and so does opening Margin.app (the system registers the app again each time it's opened). With some pages open (one with something typed in a field), run `npm run safari`, then look at those pages: the one in front and the ones behind are loaded again within a second or two (the background's console says `tab … still had Margin from before it was reloaded: loaded again`); the one with something typed keeps it and shows no sidebar until you reload it.
+- [ ] Then switch tabs from the sidebar (to a tab Safari unloaded too), open a new tab from the palette, and wait a minute: no spinner that stays, no rows missing, and no ⌘R needed.
+- [ ] With Margin's new-tab page open in a tab during the update: switch to it, it's loaded again (its address ends in `?again`), stays open, and its sidebar has every tab.
+
 ## Rows press and drag as in Arc (2026-10-29)
 
 - [ ] Press and hold a tab, a pin, a folder, "+ New Tab": the row shrinks a little; let go: it springs back.

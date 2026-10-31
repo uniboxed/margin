@@ -3,7 +3,9 @@
 //
 // Steps (host.swift):
 //   { op: 'open', name, url: '/p/A' | 'ext:<path>', active?, asleep? }  a tab
-//   { op: 'install', sameId? } / { op: 'uninstall' }  Margin (sameId: as an update would)
+//   { op: 'install', sameId? } / { op: 'uninstall', keepWorld? }  Margin (sameId: as an update would;
+//                              keepWorld: open pages keep Margin's content-script world, and the old
+//                              copy's globals and `browser` in it, as Safari keeps them when it reloads Margin)
 //   { op: 'sleep', name }      the tab's web view goes away (Safari unloading it)
 //   { op: 'wait', ms }
 //   { op: 'eval', in, js }     run JS in Margin's content-script world of a tab, log the result
@@ -336,12 +338,17 @@ export const SCENARIOS = {
   // rather than drawing tabs by ids its copy doesn't own.
   twins: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'page', in: 'A', js: 'window.__before = true; return "marked"' },
     { op: 'installTwin' }, wait(2500),
     { op: 'open', name: 'B', url: '/p/B', active: true },
     check('B', 'B: one copy runs in the shared world', `!!globalThis.Margin?.content && document.querySelectorAll('margin-sidebar-host').length === 1`, 4000),
     // Which copy the page runs is WebKit's pick: the newer one draws; the
     // older one stands back, saying why.
     check('B', 'B: either it runs the copy in charge, or it stands back and says why', `const log = globalThis.__marginLog ?? []; const s = await browser.storage.local.get('openTabs'); return (log.some((l) => l.includes('stays out of the way')) && !Margin.content.active()) || (s.openTabs?.origin === browser.runtime.getURL('') && s.openTabs.synced && Margin.content.active())`, 5000),
+    // A page whose world is the other copy's, which still answers, isn't taken for one cut off
+    // from a copy that's gone (background/cut-off.js): not loaded again, as it's shown or after.
+    { op: 'show', name: 'A' }, wait(2000),
+    checkPage('A', 'A (the other copy\'s world, still running): not loaded again', 'window.__before === true', 1000),
   ],
   // A tab Safari unloaded whose page is slow: it loads behind the page, which
   // stays in front, covered, its row highlighted; it's shown once loaded.
@@ -471,6 +478,65 @@ export const SCENARIOS = {
     { op: 'snapshot', file: new URL('build/screenshot.png', import.meta.url).pathname },
   ],
 };
+
+// Safari reloading Margin while pages are open (an update, or Margin.app opened): it keeps
+// Margin's content-script world in those pages, still bound to the copy that's gone, where
+// nothing answers (background/cut-off.js). The page in front and the ones behind are loaded
+// again; one with a draft typed keeps it, its dead sidebar put away; switching from the sidebar
+// then lifts every cover, a new tab from the palette loads and comes to the front, and the
+// sidebar keeps every tab.
+const shownHost = "[...document.querySelectorAll('margin-sidebar-host')].find((h) => getComputedStyle(h).display !== 'none')";
+const settled = (tab, label, rows) => check(tab, label, `const h = ${shownHost}; if (!h) return false; const f = document.querySelector('iframe[name^=margin-]'); return h.dataset.switchCover !== 'true' && h.dataset.arrivalCover !== 'true' && h.dataset.loadingCover !== 'true' && h.dataset.startup !== 'true' && (!f || f.style.opacity !== '0') && __shadowOf(h).querySelectorAll('.tab[data-tab-id]').length >= ${rows}`, 5000);
+const answers = (tab) => check(tab, `${tab}: its Margin answers (storage and the background)`, "const later = (ms) => new Promise((r) => setTimeout(() => r(false), ms)); return (await Promise.race([browser.storage.local.get('owner').then(() => true), later(1000)])) && (await Promise.race([Margin.content.send('sidebarScroll').then(() => true), later(1500)]))", 3000);
+const click = (from, to) => [{ op: 'mouse', in: from, type: 'down', at: rowAt(to) }, { op: 'mouse', in: from, type: 'up' }];
+const newTabRound = (n, rows) => [
+  { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/S${n}' }); Margin.content.startSwitching(-1, request); return 'asked for S${n}'` },
+  check('A', `round ${n}: the new tab is made`, `const s = await ${STATE}(['tabs']); return Object.values(s.tabs).some((t) => t.url.endsWith('/p/S${n}'))`, 4000), wait(300),
+  checkPage(`new${n}`, `round ${n}: the new tab comes to the front, loaded`, `!document.hidden && document.readyState === 'complete'`, 8000),
+  settled(`new${n}`, `round ${n}: its covers lifted, its sidebar has every tab`, rows),
+  ...click(`new${n}`, 'A'), shown('A'),
+  settled('A', `round ${n}: back on A from the sidebar: covers lifted, every tab there`, rows),
+];
+Object.assign(SCENARIOS, {
+  reloaded: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/FC' }, { op: 'open', name: 'D', url: '/p/D', asleep: true },
+    wait(800), { op: 'install', sameId: true }, drawn('A'), themed('A'), keepOpen, wait(800),
+    reload('A'), reload('B'), reload('C'), wait(1500), fitted('A'), fitted('B'), fitted('C'),
+    ...['A', 'B', 'C'].map((t) => ({ op: 'page', in: t, js: 'window.__before = true; return "marked"' })),
+    { op: 'page', in: 'C', js: `${CARD} d.getElementById('t').value = 'draft'; return 'typed'` },
+    { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
+    checkPage('A', 'A (in front, nothing typed), left with the old copy: loaded again', '!window.__before', 8000),
+    checkPage('B', 'B (behind): loaded again', '!window.__before', 8000),
+    fitted('A'), themed('A'), answers('A'),
+    checkPage('C', 'C (a draft typed): not loaded again, the draft kept', `${CARD} return window.__before === true && d.getElementById('t').value === 'draft'`, 3000),
+    checkPage('C', 'C: the old copy\'s dead sidebar out of sight', "[...document.querySelectorAll('margin-sidebar-host')].every((h) => getComputedStyle(h).display === 'none')", 3000),
+    settled('A', 'A: covers lifted, its sidebar has every tab', 4),
+    ...click('A', 'B'), shown('B'), settled('B', 'A to B from the sidebar: covers lifted, every tab there', 4),
+    ...click('B', 'D'), shown('D'), settled('D', 'B to D (asleep) from the sidebar: loaded, covers lifted', 4),
+    ...click('D', 'FC'), shown('C'),
+    checkPage('C', 'C shown: still the draft, no dead cover over it', `${CARD} return d.getElementById('t').value === 'draft' && f.style.opacity !== '0' && [...document.querySelectorAll('margin-sidebar-host')].every((h) => getComputedStyle(h).display === 'none')`, 2000),
+    switchTo('B', 'A'), shown('A'), settled('A', 'back on A: covers lifted', 4),
+    ...newTabRound(1, 5),
+  ],
+  // The same reload with Margin's new-tab page open: that page is the old copy's, at its address,
+  // and nothing in it answers. It's loaded again at this copy's address (marked as not a new tab:
+  // ⌘T's hand-off would close it), then shown with every tab.
+  'reloaded-newtab': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html' }, wait(1500),
+    checkPage('N', "N: Margin's new-tab page drew the tabs", "document.querySelectorAll('[data-tab-id]').length >= 3", 4000),
+    { op: 'page', in: 'N', js: 'window.__before = true; return location.href' },
+    { op: 'page', in: 'A', js: 'window.__before = true; return "marked"' },
+    { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
+    checkPage('A', 'A: loaded again', '!window.__before', 8000),
+    checkPage('N', "N: loaded again at this copy's address, and it answers", "const later = (ms) => new Promise((r) => setTimeout(() => r(false), ms)); return !window.__before && location.search === '?again' && document.readyState === 'complete' && await Promise.race([browser.storage.local.get('owner').then(() => true), later(1000)])", 8000),
+    wait(1500),
+    { op: 'show', name: 'N' },
+    checkPage('N', 'N shown: still open, its sidebar has every tab', "!document.hidden && document.querySelectorAll('[data-tab-id]').length >= 3", 4000),
+    check('A', 'no hand-off closed N', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).some((t) => /newtab\\.html\\?again/.test(t.url))`, 3000),
+  ],
+});
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const name = process.argv[2];

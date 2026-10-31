@@ -53,6 +53,7 @@ globalThis.chrome = {
       return { ...fake.tabs.get(id) };
     },
     sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return fake.reply; },
+    reload: async (id) => { fake.updates.push({ id, change: { reload: true }, at: Date.now() }); },
   },
   scripting: {
     executeScript: ({ target, world, func, args, files }) => {
@@ -60,7 +61,7 @@ globalThis.chrome = {
       if (fake.scriptError?.(target.tabId)) return sleep(1).then(() => [{ result: null, error: 'Failed to execute script.' }]);
       const delay = fake.scriptDelay(target.tabId, func);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
-      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : true;
+      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : true;
       return sleep(delay).then(() => [{ result }]);
     },
   },
@@ -76,7 +77,7 @@ globalThis.chrome = {
   },
 };
 
-const { wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided, load } = await import('../extension/background/store.js');
@@ -86,6 +87,7 @@ const { navigate, showSpace } = await import('../extension/background/navigation
 function reset(tabs) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
   fake.scriptError = null;
+  fake.cutOff = null;
   fake.reply = true;
   fake.contentScripts = undefined;
   fake.tabs = new Map(tabs.map((t) => [t.id, { windowId: 1, status: 'complete', active: false, ...t }]));
@@ -1632,4 +1634,43 @@ test('restoring: a held key passes over tabs Safari unloaded (nothing shown for 
   } finally {
     done();
   }
+});
+
+// Pages cut off from Margin (background/cut-off.js): Safari reloaded Margin
+// and kept its world in them, bound to the copy that's gone.
+test('cut off: a page not in use is loaded again (a GET of its address; with a #fragment, the browser\'s reload)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 40, url: 'https://cut.test/x' }, { id: 41, url: 'https://cut.test/y#part' }]);
+  fake.scriptDelay = () => 1;
+  fake.cutOff = () => ({ cutOff: true, busy: false, hidden: true });
+  assert.equal(await repairCutOff(fake.tabs.get(40)), 'reloaded');
+  assert.equal(await repairCutOff(fake.tabs.get(41)), 'reloaded');
+  assert.deepEqual(fake.updates.map((u) => [u.id, u.change]), [[40, { url: 'https://cut.test/x' }], [41, { reload: true }]]);
+  assert.ok(fake.scripts.every((x) => x.func.name !== 'cutOffInPage' || x.args[1] === false), 'only asked, nothing hidden');
+  // Still cut off at once after (a load that didn't happen): not loaded again within the cooldown.
+  assert.equal(await repairCutOff(fake.tabs.get(40)), 'quiet');
+  assert.equal(fake.updates.length, 2);
+});
+
+test('cut off: a page in use keeps its page, its dead Margin out of sight; a switch to it later loads it again first', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 42, url: 'https://draft.test/' }]);
+  fake.scriptDelay = () => 1;
+  let busy = true;
+  fake.cutOff = () => ({ cutOff: true, busy, hidden: true });
+  assert.equal(await repairCutOff(fake.tabs.get(42)), 'quiet');
+  assert.deepEqual(fake.scripts.filter((x) => x.func.name === 'cutOffInPage').map((x) => x.args[1]), [false, true], 'asked, then put out of sight');
+  assert.equal(fake.updates.length, 0, 'not loaded again');
+  busy = false; // the draft sent meanwhile
+  await focusTab(42);
+  assert.deepEqual(fake.updates.map((u) => u.change), [{ url: 'https://draft.test/' }, { active: true }], 'loaded again, then shown');
+});
+
+test('cut off: a page bound to this copy isn\'t, and isn\'t asked again; a switch to a tab not suspected doesn\'t ask', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 43, url: 'https://fine.test/' }, { id: 44, url: 'https://other.test/' }]);
+  fake.scriptDelay = () => 1;
+  assert.equal(await repairCutOff(fake.tabs.get(43)), false);
+  assert.equal(await repairCutOff(fake.tabs.get(43)), false);
+  assert.equal(fake.scripts.filter((x) => x.func.name === 'cutOffInPage').length, 1);
+  await focusTab(44);
+  assert.equal(fake.scripts.filter((x) => x.func.name === 'cutOffInPage').length, 1);
+  assert.equal(await repairCutOff({ id: 45, url: 'safari-web-extension://test/newtab/newtab.html' }), false, 'not a web page: not asked');
 });

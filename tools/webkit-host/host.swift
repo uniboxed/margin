@@ -30,6 +30,8 @@ let pageRecorder = """
   let name: String
   var url: URL
   var webView: WKWebView?
+  // The extension address the web view was made for (an extension page's), or nil (a web page's).
+  var madeFor: String?
   // Asleep with a view already (made as Safari selected it, its load put off): no page yet, and
   // WebKit answers a script there with an error in place of a result, as in Safari.
   var unloaded = false
@@ -45,6 +47,7 @@ let pageRecorder = """
     // Extension pages need the extension context's own configuration (that's
     // what gives them the browser.* APIs); web pages a plain one.
     let isExtensionPage = host.context.map { url.absoluteString.hasPrefix($0.baseURL.absoluteString) } ?? false
+    madeFor = isExtensionPage ? host.context?.baseURL.absoluteString : nil
     let cfg = isExtensionPage ? host.context!.webViewConfiguration! : WKWebViewConfiguration()
     if !isExtensionPage { cfg.webExtensionController = host.controller }
     // Frame timing in every frame: when it was shown, and its first rendering updates after that.
@@ -61,6 +64,14 @@ let pageRecorder = """
     }
     let wv = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800), configuration: cfg)
     wv.isInspectable = true
+    // Not hidden by the window server's occlusion: the window is off screen, which macOS
+    // sometimes marks occluded (WebKit's log: "window visible 1 … window occluded 1"); a tab
+    // then stayed `document.hidden` after it was shown. Safari's window is on screen.
+    let noOcclusion = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
+    if let m = class_getInstanceMethod(WKWebView.self, noOcclusion) {
+      typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
+      unsafeBitCast(method_getImplementation(m), to: Setter.self)(wv, noOcclusion, false)
+    }
     wv.navigationDelegate = self
     webView = wv
     loadingObs = [
@@ -100,7 +111,16 @@ let pageRecorder = """
   func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
     log("delegate: load \(name) \(url.absoluteString)"); self.url = url
     unloaded = false
-    if webView == nil { makeWebView() } else { webView!.load(URLRequest(url: url)) }
+    // A web view is made for a web page or for one copy's pages (its configuration): going to
+    // another's (or from a copy that's gone to the current one), it's made again, as Safari does.
+    let base = host.context?.baseURL.absoluteString
+    let wantFor = base.flatMap { url.absoluteString.hasPrefix($0) ? $0 : nil }
+    if let wv = webView, wantFor != madeFor {
+      let shown = wv.superview != nil
+      wv.removeFromSuperview(); webView = nil; loadingObs = []
+      makeWebView()
+      if shown { window?.nsWindow.contentView!.addSubview(webView!) }
+    } else if webView == nil { makeWebView() } else { webView!.load(URLRequest(url: url)) }
     completionHandler(nil)
   }
   // tabs.remove.
@@ -304,6 +324,8 @@ var lastPress = NSPoint.zero
 // The "deferLoads" step: a tab asleep loads only if it's still the one shown once the run loop
 // turn that showed it is over.
 var deferLoads = false
+// Margin's content-script world, held through an uninstall (`keepWorld`).
+var keptWorld: WKContentWorld?
 // Run loop turns (each ends before the app waits, where Core Animation commits what's on
 // screen): two tab changes in the same turn never reach the screen in between.
 var runLoopTurn = 0
@@ -338,6 +360,10 @@ let commitObserver = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.b
 CFRunLoopAddObserver(CFRunLoopGetMain(), commitObserver, .commonModes)
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
+// No App Nap: an accessory app with only an off-screen window is napped after a minute or so
+// (its timers and WebKit's IPC to it held back), which Safari, in front, never is. Without this,
+// runs over a minute long failed now and then: tabs shown stayed hidden, clicks went unanswered.
+let noNap = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled], reason: "WebKit host test run")
 let host = MainActor.assumeIsolated { Host() }
 
 Task { @MainActor in
@@ -438,7 +464,11 @@ Task { @MainActor in
         await start()
       }
       log("restarted\(late ? " (Margin allowed late)" : "")")
-    case "uninstall": try! host.uninstall()
+    case "uninstall":
+      // { op: 'uninstall', keepWorld? }: keepWorld holds Margin's content-script world through
+      // the unload (as Safari does when it reloads Margin), so pages keep the old copy's globals.
+      if (step["keepWorld"] as? Bool) == true, let w = host.world() { keptWorld = w; log("content world kept") }
+      try! host.uninstall()
     case "deny":
       // A per-site permission change in Safari's settings.
       if let ctx = host.context, let p = try? WKWebExtension.MatchPattern(string: step["pattern"] as! String) { ctx.setPermissionStatus(.deniedExplicitly, for: p); log("denied \(step["pattern"] as! String)") }
