@@ -11,7 +11,7 @@
    --vh: the room the page has (without classic scroll bars), measured in
    Margin's own pixels (themes/arcadium/content.js followWindow); until then,
    and on Margin's new-tab page, the viewport's. */
-.margin-sidebar, .frame, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud, .notice {
+.margin-sidebar, .frame, .rims, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud, .notice {
   --vw: calc(100vw * var(--page-zoom, 1));
   --vh: calc(100vh * var(--page-zoom, 1));
 }
@@ -21,7 +21,7 @@
 /* What --vw and --vh are measured from: the one fixed box, empty and never
    drawn (so it costs nothing as the page scrolls). */
 .window-probe { position: fixed; inset: 0; visibility: hidden; pointer-events: none; }
-.margin-sidebar, .frame, .switch-cover, .startup-cover {
+.margin-sidebar, .frame, .rims, .switch-cover, .startup-cover {
   /* One sidebar background for now (Arc-like neutral gray), the same in
      Light and Dark Mode; not tinted by the space or taken from the page.
      Keep in sync with newtab.css and docked.css. */
@@ -165,6 +165,49 @@
   width: calc(var(--vw) - var(--width, 260px) - 8px);
   height: calc(var(--vh) - 16px);
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06);
+}
+/* Hidden: the frame alone, around the whole page, and the pointer goes
+   through it to the page. Out of Keep open, the card's left edge travels here
+   with the sidebar; the page is at its full size underneath from the start,
+   so nothing is laid out meanwhile. */
+.frame.around .grip { pointer-events: none; }
+.frame.around .hole { transition: left 200ms ease; }
+.card-edge.around { transition: opacity 160ms ease, left 200ms ease, width 200ms ease; }
+.margin-sidebar.overlay.leaving {
+  top: 0;
+  left: 0;
+  height: calc(100vh * var(--page-zoom, 1));
+  border-radius: 0;
+  box-shadow: none;
+  transition: transform 200ms ease, visibility 0s linear 200ms;
+}
+/* At rest, the same picture in four thin strips (chrome.js rims): each clips
+   a copy of the card's edge and frame, and is its own small surface, where a
+   surface the size of the window would cost every tab some 18 MB. */
+.frame.settled, .card-edge.settled { visibility: hidden; transition: none; }
+.rims { position: absolute; top: 0; left: 0; z-index: 0; display: none; pointer-events: none; }
+.rims.settled { display: block; }
+.rim { --edge: 15px; position: absolute; overflow: hidden; will-change: transform; } /* the frame, and the corner's depth */
+.rim.top, .rim.bottom { left: 0; width: var(--vw); height: var(--edge); }
+.rim.left, .rim.right { top: var(--edge); width: var(--edge); height: calc(var(--vh) - 2 * var(--edge)); }
+.rim.top { top: 0; }
+.rim.bottom { top: calc(var(--vh) - var(--edge)); }
+.rim.left { left: 0; }
+.rim.right { left: calc(var(--vw) - var(--edge)); }
+.rim .edge {
+  position: absolute;
+  width: calc(var(--vw) - 16px);
+  height: calc(var(--vh) - 16px);
+  border-radius: 6.25px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06), 0 0 0 calc(100vmax * var(--page-zoom, 1)) var(--frame);
+}
+.rim.top .edge { top: 8px; left: 8px; }
+.rim.bottom .edge { bottom: 8px; left: 8px; }
+.rim.left .edge { top: calc(8px - var(--edge)); left: 8px; }
+.rim.right .edge { top: calc(8px - var(--edge)); right: 8px; }
+@media print { .rims, .frame, .card-edge { display: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .frame.around .hole, .card-edge.around, .margin-sidebar.overlay.leaving { transition: none; }
 }
 
 button {

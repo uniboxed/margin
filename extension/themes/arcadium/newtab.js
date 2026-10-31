@@ -280,6 +280,9 @@ export function mount({ api, self, send, windowed = false }) {
     fullscreenOnly.addEventListener('change', () => send('updateSettings', { patch: { fullscreenOnly: fullscreenOnly.checked } }));
   }
 
+  const frameWhenHidden = $('frame-when-hidden');
+  frameWhenHidden.addEventListener('change', () => send('updateSettings', { patch: { frameWhenHidden: frameWhenHidden.checked } }));
+
   // Fitted layout with "Keep open" (content/shell.js; Safari builds only).
   const fitPages = $('fit-pages');
   if (platform?.shell) {
@@ -485,6 +488,7 @@ export function mount({ api, self, send, windowed = false }) {
     swipeNavigation.checked = state.settings.swipeNavigation !== false;
     swipeNavigation.disabled = !blockGestures.checked;
     fitPages.checked = state.settings.fitPages !== false;
+    frameWhenHidden.checked = state.settings.frameWhenHidden !== false;
     compactPushed.checked = state.settings.compactWhenPushed !== false;
     newTabHint.checked = state.settings.newTabHint !== false;
     marginFullscreen.checked = state.settings.marginFullscreenAuto !== false;

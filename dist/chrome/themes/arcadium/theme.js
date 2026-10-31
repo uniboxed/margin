@@ -40,6 +40,8 @@ export default Object.freeze({
   // The first-paint placeholder while "Keep open" is on (registered CSS,
   // applied before the page's first paint).
   placeholder: (settings) => `themes/arcadium/docked/w-${sidebarWidth(settings)}.css`,
+  // While it isn't: the frame around the page, the page where it is.
+  closedPlaceholder: 'themes/arcadium/docked/closed.css',
   // The same, for pages known to be pushed with the rail (registered.js).
   railPlaceholder: 'themes/arcadium/docked/rail.css',
 });

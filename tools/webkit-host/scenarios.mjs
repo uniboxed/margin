@@ -256,6 +256,25 @@ export const SCENARIOS = {
     checkPage('A', 'A: hidden once (the switch), not by the restore or the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
     check('H', 'H: its page back once shown (the arrival cover lifted)', `const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.arrivalCover === 'false' && getComputedStyle(document.body).opacity === '1'`, 3000),
   ],
+  // The sidebar hidden: the frame around the page, in thin strips, the page
+  // inside it and the pointer through it. Keep open turned off: the sidebar
+  // slides away with the frame's edge, then the strips take over.
+  'closed-frame': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), themed('A'),
+    check('A', 'A: the strips show at rest, the full frame doesn\'t', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'block' && getComputedStyle(r.querySelector('.frame')).visibility === 'hidden'`, 3000),
+    checkPage('A', 'A: the page sits inside the frame', `const s = getComputedStyle(document.documentElement); return s.marginLeft === '8px' && s.marginRight === '8px' && s.overflowX === 'visible'`, 3000),
+    checkPage('A', 'A: the pointer goes through the frame to the page', `document.elementFromPoint(3, 300) === document.documentElement`),
+    keepOpen, wait(800),
+    check('A', 'A: Keep open: the frame at the sidebar, no strips', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'none' && r.querySelector('.frame .hole').getBoundingClientRect().left === 260`, 3000),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.toggle(); return 'off'` }, wait(90), // as the shortcut does: the setting's write comes back on the way
+    check('A', 'A: on its way: the edge between the sidebar and the frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const left = r.querySelector('.frame .hole').getBoundingClientRect().left; return left > 8 && left < 260 && r.querySelector('.margin-sidebar').getBoundingClientRect().right > 0`, 150),
+    check('A', 'A: at rest again: the strips, the sidebar away, the frame at 8px', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'block' && r.querySelector('.margin-sidebar').getBoundingClientRect().right <= 0 && !r.querySelector('.margin-sidebar').classList.contains('leaving')`, 1500),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('hover'); return 'hovered'` }, wait(300),
+    checkPage('A', 'A: hovered, the page doesn\'t move', `getComputedStyle(document.documentElement).marginLeft === '8px'`),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.hide(); return JSON.stringify(await Margin.content.send("updateSettings", { patch: { frameWhenHidden: false } }))` }, 
+    checkPage('A', 'A: the setting off: the page as it was', `getComputedStyle(document.documentElement).marginLeft === '0px'`, 2000),
+    check('A', 'A: the setting off: no frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'none' && getComputedStyle(r.querySelector('.frame')).visibility === 'hidden'`, 2000),
+  ],
   // A tab's row pressed with the mouse (Arc): the switch starts as the button
   // goes down and lands with it still down, and the click that follows the
   // release doesn't switch again. A press on the tab in front, or with ⌃

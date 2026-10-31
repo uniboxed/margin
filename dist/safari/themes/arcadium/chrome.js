@@ -51,6 +51,8 @@ export function createStartupCover(doc) {
   };
 }
 
+const FRAME = 8; // the frame's width (theme geometry.inset; styles/sidebar.css)
+
 export function createChrome(doc) {
   const svg = svgIn(doc);
   // Arc-style frame: sidebar-colored strips around the page card with its
@@ -91,11 +93,22 @@ export function createChrome(doc) {
   const notice = el(doc, 'div', { class: 'notice', role: 'status', hidden: true });
   let noticeTimer = null;
 
+  // The frame at rest, the sidebar hidden, in every tab: the same picture as
+  // .frame and .card-edge, drawn in four thin strips of its own, each its own
+  // small surface, instead of one the size of the window (sidebar.css .rims).
+  const rims = el(doc, 'div', { class: 'rims', 'aria-hidden': 'true' },
+    ...['top', 'right', 'bottom', 'left'].map((side) => el(doc, 'div', { class: `rim ${side}` }, el(doc, 'div', { class: 'edge' }))));
+  let settleTimer = null;
+  // At rest: the strips; the full frame only while its edge travels.
+  const settle = (on) => {
+    for (const node of [frame, cardEdge, rims]) node.classList.toggle('settled', on);
+  };
+
   const sized = [frame, cardEdge, loader, pull, swipe, zoomHud, cover];
   const inFrame = [loader, pull, swipe, zoomHud, cover];
 
   return {
-    frame, cardEdge, loader, pull, swipe, zoomHud, notice, cover, startup,
+    frame, rims, cardEdge, loader, pull, swipe, zoomHud, notice, cover, startup,
     setCover: switchCover.set,
     setStartup: startupCover.set,
     // { text, actions: [{ label, run }], duration? (ms, 6s by default) }, or null to hide it.
@@ -119,14 +132,35 @@ export function createChrome(doc) {
       noticeTimer = setTimeout(() => { notice.hidden = true; }, message.duration ?? 6000);
     },
     // While docked, the frame shows and the indicators sit over the card.
-    setLayout({ docked, width }) {
-      frame.classList.toggle('open', docked);
-      cardEdge.classList.toggle('open', docked);
-      for (const node of inFrame) node.classList.toggle('in-frame', docked);
+    // `framed`: hidden, the frame alone around the whole page (the sidebar's
+    // width is then the frame's own), reached by sliding left.
+    setLayout({ docked, framed = false, width }) {
+      const shown = docked || framed;
+      const starts = framed && frame.classList.contains('open') && !frame.classList.contains('around');
+      // Drawn again on the way (the setting's write comes back): it travels on.
+      if (!framed || starts) {
+        clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+      if (starts) {
+        settle(false);
+        settleTimer = setTimeout(() => {
+          settleTimer = null;
+          settle(true);
+        }, 260);
+      } else if (settleTimer == null) {
+        settle(framed);
+      }
+      frame.classList.toggle('open', shown);
+      cardEdge.classList.toggle('open', shown);
+      frame.classList.toggle('around', framed);
+      cardEdge.classList.toggle('around', framed);
+      for (const node of inFrame) node.classList.toggle('in-frame', shown);
       this.setWidth(width);
     },
     setWidth(width) {
-      for (const node of sized) node.style.setProperty('--width', `${width}px`);
+      const left = frame.classList.contains('around') ? FRAME : width;
+      for (const node of sized) node.style.setProperty('--width', `${left}px`);
     },
     setColorScheme(scheme) {
       frame.dataset.theme = scheme;

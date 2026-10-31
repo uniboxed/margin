@@ -561,6 +561,17 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## The frame with the sidebar hidden (2026-10-31)
+
+- [ ] Sidebar hidden: every page has the frame on all sides, with rounded corners, from its first frame: no pop-in on loads, reloads or tab switches. Hover the left edge: the sidebar floats over and the page doesn't move.
+- [ ] With Keep open on, turn it off with the button, with Option+S and from the palette: the sidebar slides off to the left while the frame's edge travels with it to 8px from the window's edge, smoothly each time, with no jump in the sidebar's shape. The page takes its full size at the start, under the sliding sidebar: say if that jump looks wrong. Turn it off and back on quickly, too.
+- [ ] Turn Keep open off in one tab, then go to another: no animation plays on arrival.
+- [ ] Sites: a wide table or diagram still scrolls sideways; sticky headers stick; a dialog that locks the page still locks it; a full-height app (Gmail, Figma, a chat) shows no extra scroll. Look at what's under the frame: fixed headers and bars at the window's edge lose up to 8px, and so does the top and the bottom of the page.
+- [ ] A site with full-width sections: does it now scroll a few pixels sideways?
+- [ ] The scroll bar at the right edge shows and can be dragged. Clicks in the outer 8px reach the page.
+- [ ] Print a page: no frame on paper.
+- [ ] New-tab page → Settings → "With the sidebar hidden, keep the frame around pages" off: pages are as before, with no frame and no inset (new pages from the first frame).
+
 ## Sidebar efficiency: scrolling, redraws, wheel (2026-10-31)
 
 - [ ] **Looks the same.** With Keep open: the sidebar, the frame around the page, the card's rounded corners and shadow are where they were, at 100%, after ⌘+ and ⌘−, and after resizing the window. Hover mode: the sidebar slides in from the left edge as before. A long tab list still scrolls; a row's menu opens beside it.

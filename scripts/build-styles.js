@@ -65,6 +65,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const widths = dockedWidths(id);
     const files = widths.map((w) => [`w-${w}.css`, buildDocked(id, w)]);
     if (rails[id]) files.push(['rail.css', buildDocked(id, rails[id])]);
+    if (existsSync(new URL('closed.template.css', themeDir(id)))) files.push(['closed.css', readFileSync(new URL('closed.template.css', themeDir(id)), 'utf8')]);
     if (files.length) writeDir(new URL('docked/', themeDir(id)), files);
     count += files.length;
   }

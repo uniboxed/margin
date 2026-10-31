@@ -39,6 +39,7 @@ export function startLayout(page, { loader }) {
   function applyLiveWidth() {
     widthFrame = null;
     page.view()?.setWidth(liveWidth);
+    if (!wasDocked) return; // hidden, the page stays in the frame
     if (pushed && !railWidth()) setPushed(true, pagePx(liveWidth)); // with the rail, the page stays at the rail
     globalThis.Margin?.shell?.setLayout({ width: pagePx(liveWidth) });
   }
@@ -62,6 +63,7 @@ export function startLayout(page, { loader }) {
   // Hover: floating over the page. Keep open: docked, with the page pushed
   // right (or, in the fitted layout, its card placed beside the sidebar).
   let isOpen = false;
+  let wasDocked = false;
   function setOpen(open) {
     const view = page.view();
     if (!view) return;
@@ -71,12 +73,19 @@ export function startLayout(page, { loader }) {
     const rail = docked ? railWidth() : null;
     isOpen = open;
     // Hovered or toggled over the rail: the full sidebar, over the page.
-    view.setLayout({ open, docked, width, rail: rail && { width: rail, expanded: reason != null } });
+    const framed = !docked && page.active() && page.state()?.settings?.frameWhenHidden !== false;
+    // Keep open turned off slides away (the theme), only where it's seen
+    // happening: not on a page hidden, or just shown, when it catches up.
+    if (wasDocked && !docked && (document.hidden || page.justShown())) view.instantOnce?.();
+    wasDocked = docked;
+    view.setLayout({ open, docked, framed, width, rail: rail && { width: rail, expanded: reason != null } });
     host.dataset.open = String(open); // test/debug hook; reveals nothing private
     host.dataset.rail = rail ? (reason != null ? 'expanded' : 'rail') : 'off';
-    setPushed(docked, pagePx(rail ?? width));
+    // Hidden, the page sits inside the frame (the sidebar floats over it
+    // when it's out, and moves nothing); out of the way, it has the window.
+    setPushed(docked || framed, pagePx(docked ? rail ?? width : inset()), framed);
     const radius = page.theme().geometry?.radius;
-    globalThis.Margin?.shell?.setLayout({ docked, width: pagePx(width), inset: pagePx(inset()), radius: radius && `${pagePx(parseFloat(radius))}px` });
+    globalThis.Margin?.shell?.setLayout({ docked: docked || framed, width: pagePx(docked ? width : inset()), inset: pagePx(inset()), radius: radius && `${pagePx(parseFloat(radius))}px` });
     if (page.state()) syncPlaceholder();
   }
 
@@ -87,31 +96,37 @@ export function startLayout(page, { loader }) {
   // media only, removed as soon as "Keep open" is off. Known trade-offs are in
   // DECISIONS.md: position:fixed elements don't move, 100vw elements are
   // clipped on the right.
-  const pushCss = (width) => `@media screen {
+  // `light`: hidden, inside the frame: only the sides. The page's overflow is
+  // left alone (on <html> it would stop sideways scrolling, and body's own
+  // overflow from reaching the window: sticky headers, scroll locks), and its
+  // height too (the frame lies over its top and bottom 8px, as with the push).
+  const pushCss = (width, light) => `@media screen {
     html {
       margin-left: ${width}px !important;
       margin-right: ${pagePx(inset())}px !important;
       width: auto !important;
-      overflow-x: hidden !important;
+      ${light ? '' : 'overflow-x: hidden !important;'}
     }
   }`;
   const canPush = document.documentElement instanceof HTMLHtmlElement;
   let pushed = false;
   let pushedWidth = null;
+  let pushedLight = false;
   let pushSheet = null;
   let pushStyle = null;
-  function setPushed(on, width) {
-    if (!canPush || globalThis.Margin?.shell || (on === pushed && (!on || width === pushedWidth))) return; // the fitted layout needs no push
+  function setPushed(on, width, light = false) {
+    if (!canPush || globalThis.Margin?.shell || (on === pushed && (!on || (width === pushedWidth && light === pushedLight)))) return; // the fitted layout needs no push
     pushed = on;
     pushedWidth = on ? width : null;
+    pushedLight = on && light;
     if ('adoptedStyleSheets' in document && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
       pushSheet ??= new CSSStyleSheet();
-      pushSheet.replaceSync(pushCss(width));
+      pushSheet.replaceSync(pushCss(width, light));
       const others = document.adoptedStyleSheets.filter((s) => s !== pushSheet);
       document.adoptedStyleSheets = on ? [...others, pushSheet] : others;
     } else if (on) {
       pushStyle ??= document.createElement('style');
-      pushStyle.textContent = pushCss(width);
+      pushStyle.textContent = pushCss(width, light);
       if (!pushStyle.isConnected) document.documentElement.appendChild(pushStyle);
     } else {
       pushStyle?.remove();
@@ -130,7 +145,7 @@ export function startLayout(page, { loader }) {
     if (!canPush || html.dataset.marginDocked === 'off') return;
     if (getComputedStyle(html, '::after').content !== 'none') {
       html.dataset.marginDocked = 'off';
-      loader.tookOverPlaceholder();
+      if (pinnedOpen()) loader.tookOverPlaceholder(); // hidden, its placeholder has no pill
     }
   }
 

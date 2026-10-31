@@ -44,11 +44,12 @@ const DOCKED_RAIL_ID = 'margin-docked-rail';
 // turned off by hand, or every page when fitting is off (or unavailable).
 // Pages the shell skips for other reasons start full and narrow to the rail.
 // `railAvailable`: platform.compactRail (the rail is off for now).
-export function placeholderPlan(settings, { fits = !!platform?.shell, theme = themeFor(settings), railAvailable = !!platform?.compactRail } = {}) {
-  if (!settings?.sidebarPinnedOpen) return [];
+export function placeholderPlan(settings, { fits = !!platform?.shell, theme = themeFor(settings), railAvailable = !!platform?.compactRail, fullscreenOnly = !!platform?.marginFullscreen && settings?.fullscreenOnly !== false } = {}) {
+  const plan = (id, css, matches, excludeMatches = []) => ({ id, css: [css], matches, excludeMatches });
+  // Hidden: the frame alone (not where Margin works only in full screen: no frame in a window).
+  if (!settings?.sidebarPinnedOpen) return theme.closedPlaceholder && !fullscreenOnly && settings?.frameWhenHidden !== false ? [plan(DOCKED_ID, theme.closedPlaceholder, ['<all_urls>'])] : [];
   const full = theme.placeholder?.(settings);
   const rail = railAvailable && settings.compactWhenPushed !== false ? theme.railPlaceholder : null;
-  const plan = (id, css, matches, excludeMatches = []) => ({ id, css: [css], matches, excludeMatches });
   if (!rail) return full ? [plan(DOCKED_ID, full, ['<all_urls>'])] : [];
   if (!fits || settings.fitPages === false) return [plan(DOCKED_RAIL_ID, rail, ['<all_urls>'])];
   const pushed = [...excludePatterns(settings.fitPagesExcept), ...FRAME_AWARE_PATTERNS];

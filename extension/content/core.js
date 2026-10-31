@@ -308,6 +308,7 @@ export function startCore({ onTheme } = {}) {
     state: () => state,
     setState: (next) => { state = next; },
     firstRender: () => firstRender,
+    justShown: () => Date.now() - lastShownAt < 600,
     active,
     dormant: retired,
     offerFullscreen,

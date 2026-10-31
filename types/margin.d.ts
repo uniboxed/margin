@@ -45,6 +45,7 @@ export interface Favicon { data: string; href: string; at: number }
 export interface Shortcuts { nextTab: string; prevTab: string; nextSpace: string; prevSpace: string }
 export interface Settings {
   sidebarPinnedOpen: boolean;
+  frameWhenHidden?: boolean;
   archiveAfterHours: number;
   keepTabsReadyMinutes: number;
   sidebarShortcut: string;

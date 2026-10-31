@@ -19,6 +19,7 @@ const LEGACY_SHORTCUTS = Object.freeze({
 
 const DEFAULT_SETTINGS = Object.freeze({
   sidebarPinnedOpen: false,
+  frameWhenHidden: true, // the sidebar hidden: Margin's frame around the page, the page inside it at its sides
   archiveAfterHours: 12,
   // Safari: the tabs of the space in front are kept ready to show (no flash
   // when switching to them) until this many minutes after Safari was last

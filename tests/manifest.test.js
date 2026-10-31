@@ -88,7 +88,7 @@ test('first-paint placeholders: one up-to-date file per sidebar width, nothing e
   for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
   assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match Arcadium\'s theme.js');
   const names = expected.map((w) => `w-${w}.css`).sort();
-  assert.deepEqual(readdirSync(new URL('themes/arcadium/docked/', root)).sort(), [...names, 'rail.css'].sort());
+  assert.deepEqual(readdirSync(new URL('themes/arcadium/docked/', root)).sort(), [...names, 'closed.css', 'rail.css'].sort());
   // The old path stays for Safari's stored registrations (same content).
   assert.deepEqual(readdirSync(new URL('content/docked/', root)).sort(), names);
   // The narrow rail's (pages pushed with "Keep open", theme.js RAIL).

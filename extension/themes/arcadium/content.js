@@ -15,7 +15,7 @@ import theme, { RAIL } from './theme.js';
 // covers: no classic scroll bars), in Margin's own pixels (its host is
 // scaled back by the page's zoom), whenever that changes; set in a style
 // sheet of the shadow root's own, which the page's styles can't reach.
-const SIZED = '.margin-sidebar, .frame, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud, .notice';
+const SIZED = '.margin-sidebar, .frame, .rims, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud, .notice';
 function followWindow(shadow) {
   const doc = shadow.ownerDocument;
   const win = doc.defaultView;
@@ -51,7 +51,7 @@ registerTheme({
     const chrome = createChrome(document);
     // The switch cover below the sidebar (a hovered sidebar stays on top of it).
     // The startup cover over everything, the sidebar too.
-    shadow.append(chrome.frame, chrome.cover, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice, chrome.startup);
+    shadow.append(chrome.frame, chrome.rims, chrome.cover, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice, chrome.startup);
     // Styles are bundled (assets.js) and applied synchronously, so the panel
     // is styled from the first frame (no fetch, no unstyled flash).
     adoptStyles(shadow, sidebarCss);
@@ -62,6 +62,7 @@ registerTheme({
     // No slide/fade on the first render: a kept-open sidebar should simply be
     // there when the page appears, not animate in on every navigation.
     const instant = [sidebar.el, chrome.frame, chrome.cardEdge];
+    let leavingTimer = null;
     for (const node of instant) node.classList.add('instant');
     return {
       isBusy: sidebar.isBusy,
@@ -86,13 +87,21 @@ registerTheme({
       // frame around the page. `rail` ({ width, expanded }): docked as the
       // narrow icon rail on a pushed page, or expanded from it over the page
       // (the frame stays at the rail).
-      setLayout({ open, docked, width, rail = null }) {
+      setLayout({ open, docked, framed = false, width, rail = null }) {
+        // Out of Keep open: it slides off as it was, flush to the window.
+        // (Drawn again on the way, it slides on.)
+        if (open || docked || !sidebar.el.classList.contains('leaving')) {
+          const leaving = !open && !docked && sidebar.el.classList.contains('docked');
+          clearTimeout(leavingTimer);
+          sidebar.el.classList.toggle('leaving', leaving);
+          if (leaving) leavingTimer = setTimeout(() => sidebar.el.classList.remove('leaving'), 300);
+        }
         sidebar.el.classList.toggle('open', open);
         sidebar.el.classList.toggle('docked', docked);
         sidebar.el.classList.toggle('rail', !!rail && !rail.expanded);
         sidebar.el.classList.toggle('rail-expanded', !!rail?.expanded);
         if (rail) sidebar.el.style.setProperty('--rail', `${rail.width}px`);
-        chrome.setLayout({ docked, width: rail ? rail.width : width });
+        chrome.setLayout({ docked, framed, width: rail ? rail.width : width });
       },
       setWidth: chrome.setWidth,
       setLoading: chrome.setLoading,

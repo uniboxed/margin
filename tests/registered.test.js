@@ -7,8 +7,10 @@ const keepOpen = { sidebarPinnedOpen: true, themes: { arcadium: { sidebarWidth: 
 const full = 'themes/arcadium/docked/w-300.css';
 const rail = 'themes/arcadium/docked/rail.css';
 
-test('placeholders: none without Keep open', () => {
-  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true }), []);
+test('placeholders: without Keep open, only the frame', () => {
+  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true, fullscreenOnly: false }), [{ id: 'margin-docked', css: ['themes/arcadium/docked/closed.css'], matches: ['<all_urls>'], excludeMatches: [] }], 'hidden: the frame alone');
+  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true, fullscreenOnly: true }), [], 'not where Margin works only in full screen');
+  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false, frameWhenHidden: false }, { fits: true, fullscreenOnly: false }), [], 'the setting off: nothing, as before');
 });
 
 test('placeholders: the rail is off for now (platform.compactRail): the full sidebar everywhere, whatever the setting', () => {
