@@ -863,6 +863,7 @@ Tirth's plan: tell users (on the website) which Safari feature flags give the cl
 - **What was wrong:** the system dropped Margin's extension record right after `pluginkit -a` added it. The script unregisters other copies of Margin.app just before, and the system handles that late, taking this copy's extension with it. Running `pluginkit -a` again by hand brought it back.
 - **Changed** (`scripts/safari.sh`): `pluginkit -a` is run again, 0.5 s apart and up to 10 times, until `pluginkit -m` lists this copy's extension; if it never does, the script warns that opening Margin.app once makes Safari see it. Brought over from the native-panel branch (`feat/native-panel`, never merged), where it was found.
 - **Verified:** the shell syntax (`sh -n`); in Tirth's Safari it fixed the missing extension on that branch. Not yet run from main: TESTING.md.
+- **Then (2026-10-31, after a run from `feat/closed-frame`):** Margin was gone again. The record had been listed once, ending the loop, and dropped later. The script now adds it again whenever it's gone, until it has stayed listed for 5 seconds (15 seconds at most, then the warning). `pluginkit -a` by hand brought it back and it stayed. The new loop is checked with `sh -n` only; the next `npm run safari` is its first run.
 
 ## Pages open while Safari reloads Margin are loaded again (2026-10-31)
 
