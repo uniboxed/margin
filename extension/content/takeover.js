@@ -3,6 +3,8 @@
 // Returns { replacing } (it took over from an earlier copy), { others } (any
 // copy's sidebar was there as it started) and arm() (the cleanup reload,
 // once, for a copy taken over later: content/core.js ownerSeen).
+import { marginHosts } from '../shared/dom.js';
+
 export function takeOver(api) {
   // A sidebar that isn't this world's was left by an earlier copy of Margin:
   // it was installed or updated while the page was open (WebKit adds this
@@ -11,13 +13,13 @@ export function takeOver(api) {
   // this copy takes over now, leaves swipe and pull-to-refresh to it (they act
   // on the page directly, so both would go back twice), and the page reloads
   // to start clean once that can't lose anything (reloadWhenSafe).
-  // Copies that stand back for a newer one themselves (data-margin-v,
-  // shared/dom.js createHost) are left to do so here: this copy may be the
+  // Copies that stand back for a newer one themselves (hosts in <margin-app>,
+  // or, as they used to be, marked data-margin-v; shared/dom.js) are left to do so here: this copy may be the
   // older one. Once it owns the state, it hides them and arms the cleanup
   // reload then (content/core.js ownerSeen).
   // Every host of an earlier copy (any theme's: they're all margin-*-host).
-  const all = [...(document.documentElement?.children ?? [])].filter((node) => /^margin-.*-host$/.test(node.localName));
-  const hosts = all.filter((node) => !(/** @type {HTMLElement} */ (node)).dataset.marginV);
+  const all = marginHosts(document);
+  const hosts = all.filter((node) => node.parentNode === document.documentElement && !node.dataset.marginV);
   const replacing = hosts.length > 0;
   let armed = false;
   const arm = () => {

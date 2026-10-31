@@ -3,6 +3,7 @@
 // sidebar in the fitted layout), the first-paint placeholder's hand-over, and
 // the show/hide shortcut. The theme draws it (view.setLayout, setWidth).
 // Called by content/core.js.
+import { mark } from '../shared/dom.js';
 import * as V from '../shared/view.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
@@ -86,8 +87,8 @@ export function startLayout(page, { loader }) {
       globalThis.Margin?.shell?.setLayout({ docked: docked || framed, width: pagePx(docked ? width : inset()), inset: pagePx(inset()), radius: radius && `${pagePx(parseFloat(radius))}px` });
     };
     if (!view.setLayout({ open, docked, framed, width, rail: rail && { width: rail, expanded: reason != null }, place })) place();
-    host.dataset.open = String(open); // test/debug hook; reveals nothing private
-    host.dataset.rail = rail ? (reason != null ? 'expanded' : 'rail') : 'off';
+    mark(host, 'open', String(open)); // test/debug hook; reveals nothing private
+    mark(host, 'rail', rail ? (reason != null ? 'expanded' : 'rail') : 'off');
     if (page.state()) syncPlaceholder();
   }
 
@@ -133,7 +134,7 @@ export function startLayout(page, { loader }) {
     } else {
       pushStyle?.remove();
     }
-    host.dataset.pushed = String(on);
+    mark(host, 'pushed', String(on));
   }
 
   // The first-paint placeholder (content/docked/w-<width>.css, registered

@@ -1,7 +1,7 @@
 // Arcadium's command palette: Arc's dark command bar in its own closed
 // shadow root. Used on web pages (content.js; content/palette.js wires it to
 // the page) and on the new-tab page (newtab.js).
-import { el, createHost, adoptStyles, asBrowserUi, unzoom, siteModalOpen } from '../../shared/dom.js';
+import { el, createHost, mountHost, mark, adoptStyles, asBrowserUi, unzoom, siteModalOpen } from '../../shared/dom.js';
 import { containScroll } from '../../shared/gestures.js';
 import { rankPalette } from '../../shared/search.js';
 import * as V from '../../shared/view.js';
@@ -41,9 +41,16 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
   let open = false;
   let restoreFocus = null;
 
+  let backdrop = null;
+  const setShown = (on) => {
+    backdrop.classList.toggle('shown', on);
+    panel.classList.toggle('shown', on);
+    mark(host, 'open', String(on));
+  };
   function build() {
-    host = createHost(document, 'margin-palette-host');
-    const shadow = host.attachShadow({ mode: 'closed' });
+    const made = createHost(document, 'margin-palette-host');
+    host = made.host;
+    const { shadow } = made;
     adoptStyles(shadow, paletteCss);
     asBrowserUi(shadow); // no page context menu or selection (but the field)
     input = el(document, 'input', {
@@ -61,7 +68,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     panel = el(document, 'div', { class: 'palette', role: 'dialog', 'aria-label': 'Margin command palette' },
       el(document, 'div', { class: 'search' }, searchIcon(), input),
       list);
-    const backdrop = el(document, 'div', { class: 'backdrop' });
+    backdrop = el(document, 'div', { class: 'backdrop' });
     shadow.append(backdrop, panel);
     // While it's open, scrolling moves only its results, never the page.
     for (const node of [backdrop, panel]) containScroll(node);
@@ -163,7 +170,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     const zoom = /** @type {any} */ (globalThis).marginPageZoom ?? 1;
     unzoom(host, zoom);
     const tall = innerHeight * zoom;
-    host.dataset.short = tall <= 357 ? '3' : tall <= 418 ? '2' : tall <= 507 ? '1' : '';
+    panel.dataset.short = tall <= 357 ? '3' : tall <= 418 ? '2' : tall <= 507 ? '1' : '';
   }
   // The window resized while it's open (as the media queries this replaces did).
   addEventListener('resize', () => { if (open && host) fitWindow(); });
@@ -173,7 +180,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     // and how tall the window is in Margin's px, which its short-window
     // layouts use (a media query would see the page's zoomed px).
     fitWindow();
-    if (!host.isConnected) document.documentElement.appendChild(host);
+    if (!host.isConnected) mountHost(host);
     // In the top layer (popover) where supported, so a site's own popovers
     // or full-screen elements can't cover it; otherwise the max z-index, as
     // before. Not while the site has a modal dialog open: everything outside
@@ -193,7 +200,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     const spaceId = state ? V.activeSpaceId(state, ctx.windowId) : null;
     const color = state?.spaces?.find((s) => s.id === spaceId)?.color;
     if (color) panel.style.setProperty('--space-color', color);
-    host.dataset.open = 'true';
+    setShown(true);
     open = true;
     prewoken = null;
     input.value = '';
@@ -206,7 +213,7 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
     if (!open) return;
     open = false;
     clearTimeout(prewakeTimer);
-    host.dataset.open = 'false';
+    setShown(false);
     try {
       if (host.matches?.(':popover-open')) host.hidePopover();
     } catch {}

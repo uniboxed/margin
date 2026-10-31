@@ -155,7 +155,7 @@ export const SCENARIOS = {
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), keepOpen, wait(1000),
     { op: 'snapshot', file: new URL('build/zoom-100.png', import.meta.url).pathname },
     { op: 'zoom', factor: 1.5 },
-    checkPage('A', 'pushed: Margin scaled back, the page pushed by 260/1.5', `const h = document.querySelector('margin-sidebar-host'); return Math.abs(parseFloat(h.style.zoom) - 1 / 1.5) < 0.001 && Math.abs(parseFloat(getComputedStyle(document.documentElement).marginLeft) - 260 / 1.5) < 0.5`, 3000),
+    checkPage('A', 'pushed: Margin scaled back, the page pushed by 260/1.5', `const h = document.querySelector('margin-sidebar-host'); return Math.abs(parseFloat(getComputedStyle(h).zoom) - 1 / 1.5) < 0.001 && Math.abs(parseFloat(getComputedStyle(document.documentElement).marginLeft) - 260 / 1.5) < 0.5`, 3000),
     { op: 'snapshot', file: new URL('build/zoom-150.png', import.meta.url).pathname },
     { op: 'zoom', factor: 1 },
     checkPage('A', 'back to 100%: no scaling, pushed by 260', `const h = document.querySelector('margin-sidebar-host'); return !h.style.zoom && parseFloat(getComputedStyle(document.documentElement).marginLeft) === 260`, 3000),
@@ -165,7 +165,7 @@ export const SCENARIOS = {
     // Reloaded at 150%: the site's zoom is remembered, so Margin is drawn at
     // its size from its first render (before the browser has answered).
     reload('A'), drawn('A'),
-    checkPage('A', 'reloaded at 150%: scaled back as soon as drawn', `Math.abs(parseFloat(document.querySelector('margin-sidebar-host').style.zoom) - 1 / 1.5) < 0.001`, 100),
+    checkPage('A', 'reloaded at 150%: scaled back as soon as drawn', `Math.abs(parseFloat(getComputedStyle(document.querySelector('margin-sidebar-host')).zoom) - 1 / 1.5) < 0.001`, 100),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
     checkPage('N', 'N: drawn', `!!document.querySelector('#sidebar .space-pane')`, 5000),
     { op: 'zoom', factor: 1.5 },
@@ -281,6 +281,23 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `Margin.content.sidebar.hide(); return JSON.stringify(await Margin.content.send("updateSettings", { patch: { frameWhenHidden: false } }))` },
     checkPage('A', 'A: the setting off: the page as it was', `getComputedStyle(document.documentElement).marginLeft === '0px'`, 2000),
     check('A', 'A: the setting off: no frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'none' && getComputedStyle(r.querySelector('.frame')).visibility === 'hidden'`, 2000),
+  ],
+  // What Margin adds to a page: <margin-app> and its hosts, bare; page zoom and
+  // hiding work from the hosts' own styles, whatever the page's styles say.
+  'clean-tags': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), themed('A'),
+    { op: 'page', in: 'A', js: `const s = document.createElement('style'); s.textContent = ':root { --page-zoom: 2; } margin-app, margin-sidebar-host { --page-zoom: 2 !important; display: none !important; position: static !important; opacity: 0 !important; }'; document.head.append(s); return 'hostile styles'` },
+    checkPage('A', 'A: one <margin-app> under <html>, the hosts in it', `const a = document.documentElement.querySelectorAll(':scope > margin-app'); return a.length === 1 && a[0].querySelector(':scope > margin-sidebar-host') && !document.documentElement.querySelector(':scope > margin-sidebar-host')`),
+    checkPage('A', 'A: the host is the only style-free thing it needs to be', `!document.querySelector('margin-sidebar-host').hasAttribute('style')`),
+    checkPage('A', 'A: the page\'s styles don\'t reach it', `const g = getComputedStyle(document.querySelector('margin-sidebar-host')); return g.position === 'fixed' && g.display !== 'none' && g.opacity === '1' && g.zoom === '1' && getComputedStyle(document.querySelector('margin-app')).display === 'contents'`),
+    { op: 'zoom', factor: 1.5 }, wait(700),
+    checkPage('A', 'A: page zoom: the host scaled back', `getComputedStyle(document.querySelector('margin-sidebar-host')).zoom !== '1'`, 2000),
+    { op: 'zoom', factor: 1 }, wait(700),
+    checkPage('A', 'A: back at 100%: bare again', `!document.querySelector('margin-sidebar-host').hasAttribute('style')`, 2000),
+    { op: 'page', in: 'A', js: `document.querySelector('margin-app').remove(); return 'removed'` }, wait(300),
+    checkPage('A', 'A: taken out by the page: put back', `!!document.querySelector('margin-app margin-sidebar-host')`, 2000),
+    { op: 'page', in: 'A', js: `document.querySelector('margin-sidebar-host').remove(); return 'host removed'` }, wait(300),
+    checkPage('A', 'A: the host taken out of it: put back', `!!document.querySelector('margin-app margin-sidebar-host')`, 2000),
   ],
   // A tab's row pressed with the mouse (Arc): the switch starts as the button
   // goes down and lands with it still down, and the click that follows the

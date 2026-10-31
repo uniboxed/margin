@@ -561,6 +561,12 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## One bare tag in the page (2026-10-31)
+
+- [ ] Web Inspector on any page: the last child of `<html>` is `<margin-app>`, with `<margin-sidebar-host>` inside it, and `<margin-palette-host>` too once the palette has opened. No `style` or `data-` attributes on them (`popover` on the palette's), on Margin's new-tab page too.
+- [ ] Everything works as before: the sidebar, the palette (⌘T, Option+K, Escape, a short window), page zoom with ⌘+ and pinch keeps the sidebar's size, the fitted layout, full screen.
+- [ ] An update while pages are open (`npm run safari` with Safari running), including from a build before this one: one sidebar on each page, none stuck.
+
 ## The frame with the sidebar hidden (2026-10-31)
 
 - [ ] Sidebar hidden: every page has the frame on all sides, with rounded corners, from its first frame: no pop-in on loads, reloads or tab switches. Hover the left edge: the sidebar floats over and the page doesn't move.

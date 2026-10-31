@@ -1293,11 +1293,12 @@ async function addCurrentCopy(tab) {
 export function disableStaleSidebarInPage() {
   if (globalThis.Margin?.content) return false;
   let disabled = false;
-  for (const node of /** @type {HTMLElement[]} */ ([...(document.documentElement?.children ?? [])])) {
+  for (const node of /** @type {HTMLElement[]} */ ([...(document.documentElement?.children ?? []), ...(document.querySelector?.(':root > margin-app')?.children ?? [])])) {
     if (!/^margin-.*-host$/.test(node.localName)) continue;
     node.style.setProperty('display', 'none', 'important');
     node.style.setProperty('pointer-events', 'none', 'important');
     node.setAttribute('aria-hidden', 'true');
+    node.setAttribute('data-margin-off', ''); // what a host's own styles respect (shared/dom.js)
     disabled = true;
   }
   return disabled;

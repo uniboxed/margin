@@ -4,7 +4,7 @@
 // (themes/<id>/content.js, a separate script that runs right after this
 // one; see themes/register.js for what a theme provides).
 import * as V from '../shared/view.js';
-import { createHost, setPageZoom } from '../shared/dom.js';
+import { createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHost } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
 import { frameAware } from '../shared/shell-logic.js';
@@ -63,16 +63,16 @@ export function startCore({ onTheme } = {}) {
     for (const fn of cardHooks) fn(win);
   };
 
-  const host = createHost(document, 'margin-sidebar-host');
-  const shadow = host.attachShadow({ mode: 'closed' });
+  const { host, shadow } = createHost(document, 'margin-sidebar-host');
   const retired = () => dormant || host.style.getPropertyValue('display') === 'none';
 
   // Some pages replace <html>'s children; put the host back if it's removed.
   const attach = () => {
-    if (!host.isConnected && document.documentElement) document.documentElement.appendChild(host);
+    if (!host.isConnected) mountHost(host);
+    if (host.parentNode) observer.observe(host.parentNode, { childList: true }); // <margin-app>: the host taken out of it
   };
-  attach();
   const observer = new MutationObserver(attach);
+  attach();
   observer.observe(document, { childList: true });
   if (document.documentElement) observer.observe(document.documentElement, { childList: true });
   document.addEventListener('DOMContentLoaded', attach);
@@ -434,7 +434,7 @@ export function startCore({ onTheme } = {}) {
         view?.setCover?.(id != null, { instant: document.hidden });
         setCovered(id != null && !!view?.setCover);
       }
-      host.dataset.switchingTo = id == null ? '' : String(id); // test/debug hook
+      mark(host, 'switchingTo', id == null ? '' : String(id)); // test/debug hook
       render();
     },
     onSlow: (slow) => {
@@ -464,7 +464,7 @@ export function startCore({ onTheme } = {}) {
   let covered = false;
   function setCovered(on) {
     covered = on;
-    host.dataset.switchCover = String(on); // test/debug hook
+    mark(host, 'switchCover', String(on)); // test/debug hook
   }
   const holdKeys = (/** @type {KeyboardEvent} */ event) => {
     if (!covered || !event.isTrusted || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -517,7 +517,7 @@ export function startCore({ onTheme } = {}) {
       if (on) switching.end();
       if (view?.setStartup) view.setStartup(on);
       else view?.setCover?.(on, { instant: !on && document.hidden });
-      host.dataset.startup = String(on); // test/debug hook
+      mark(host, 'startup', String(on)); // test/debug hook
       console.debug(`[margin] getting ready: cover ${on ? 'shown' : 'gone'}`);
     },
   });
@@ -554,11 +554,10 @@ export function startCore({ onTheme } = {}) {
     // Hidden by another copy before this one took over: shown again.
     if (isCurrent && !dormant) {
       let others = false;
-      for (const node of /** @type {HTMLElement[]} */ ([...(document.documentElement?.children ?? [])])) {
-        if (!/^margin-.*-host$/.test(node.localName)) continue;
-        if ((/** @type {any} */ (node)).__marginCopy) node.style.removeProperty('display');
+      for (const node of marginHosts(document)) {
+        if ((/** @type {any} */ (node)).__marginCopy) showHost(node);
         else {
-          node.style.setProperty('display', 'none', 'important');
+          hideHost(node);
           others = true;
         }
       }
@@ -579,7 +578,7 @@ export function startCore({ onTheme } = {}) {
     readiness.wait(false);
     switching.end();
     render();
-    const hide = () => host.style.setProperty('display', 'none', 'important');
+    const hide = () => hideHost(host);
     if (document.hidden || !view?.showNotice) return hide();
     view.showNotice({ text: 'Margin was updated while Safari was open. Quit and reopen Safari to finish updating it.', actions: [{ label: 'OK', run: hide }], duration: 15000 });
     setTimeout(hide, 15500);
@@ -809,7 +808,7 @@ export function startCore({ onTheme } = {}) {
     const complete = () => (Margin.shell ? Margin.shell.card?.document.readyState === 'complete' : document.readyState === 'complete');
     if (!view?.setCover || document.hidden || complete()) return;
     view.setCover(true, { instant: true, spinnerNow: true });
-    host.dataset.loadingCover = 'true'; // test/debug hook
+    mark(host, 'loadingCover', 'true'); // test/debug hook
     let done = false;
     const off = () => {
       if (done) return;
@@ -817,7 +816,7 @@ export function startCore({ onTheme } = {}) {
       clearTimeout(timer);
       // Not if a switch from here has taken the cover over meanwhile.
       if (switchingTo == null) view?.setCover?.(false, { instant: document.hidden });
-      host.dataset.loadingCover = 'false';
+      mark(host, 'loadingCover', 'false');
     };
     const timer = setTimeout(off, COVER_LOADING_MS);
     uncoverLoading = off;
@@ -892,7 +891,7 @@ export function startCore({ onTheme } = {}) {
     page.style.setProperty(HIDE_PROP, HIDE_VALUE, 'important');
     view.setCover(true, { instant: true, spinnerNow: true });
     setCovered(true);
-    host.dataset.arrivalCover = 'true'; // test/debug hook
+    mark(host, 'arrivalCover', 'true'); // test/debug hook
     let done = false;
     let hides = 0;
     const finish = ({ fade = true } = {}) => {
@@ -906,7 +905,7 @@ export function startCore({ onTheme } = {}) {
         view?.setCover?.(false, { instant: !fade || document.hidden });
         setCovered(false);
       }
-      host.dataset.arrivalCover = 'false';
+      mark(host, 'arrivalCover', 'false');
       arrival = null;
     };
     const onShown = async () => {

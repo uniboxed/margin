@@ -2,6 +2,7 @@
 // Safari's swipe, pinch and bounce from leaving or distorting the page, and
 // Margin's own pull-to-refresh, swipe back/forward and pinch zoom, which the
 // theme draws (view.setPull, setSwipe, setZoom). Called by content/core.js.
+import { mark } from '../shared/dom.js';
 import { installGestureGuard, atPageTop, canSwipe, zoomForPinch } from '../shared/gestures.js';
 import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.js';
 import { platform } from '../shared/platform.js';
@@ -50,7 +51,7 @@ export function startTrackpad(page, { replacing }) {
   function refreshFromPull() {
     pullRefreshing = true;
     page.view()?.setPull({ phase: 'refreshing' });
-    host.dataset.pullRefresh = 'true'; // test/debug hook
+    mark(host, 'pullRefresh', 'true'); // test/debug hook
     // A moment to see it start, then reload (the next page's pill follows).
     setTimeout(() => {
       location.reload();
@@ -67,7 +68,7 @@ export function startTrackpad(page, { replacing }) {
     pullRefreshing = false;
     clearTimeout(pullStuckTimer);
     page.view()?.setPull({ phase: 'idle' });
-    delete host.dataset.pullRefresh;
+    mark(host, 'pullRefresh');
   }
   addEventListener('pageshow', (event) => { if (event.persisted) resetPull(); });
 
@@ -87,7 +88,7 @@ export function startTrackpad(page, { replacing }) {
   }
   function navigateBySwipe(direction) {
     page.view()?.setSwipe({ phase: 'going', direction });
-    host.dataset.swipe = direction > 0 ? 'forward' : 'back'; // test/debug hook
+    mark(host, 'swipe', direction > 0 ? 'forward' : 'back'); // test/debug hook
     if (direction > 0) history.forward();
     else history.back();
     // Same-page history (and no history at all) doesn't unload: fade it out.
@@ -175,7 +176,7 @@ export function startTrackpad(page, { replacing }) {
   function showZoomHud() {
     clearTimeout(zoomHudTimer);
     page.view()?.setZoom(pageZoom);
-    host.dataset.zoom = String(pageZoom); // test/debug hook
+    mark(host, 'zoom', String(pageZoom)); // test/debug hook
   }
   // A pinch that starts over Margin's own UI (the sidebar, the frame, the
   // palette) zooms nothing, as over a browser's own (still taken from Safari).

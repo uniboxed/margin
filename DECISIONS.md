@@ -935,3 +935,17 @@ Tirth's plan: tell users (on the website) which Safari feature flags give the cl
 - **Also found:** the press only took effect when the pointer left the sidebar: a hover kept it floating. `layout.settle` now docks at once.
 - **After review** (two reviewers, each finding checked by another; four held up): the fitted page's strip above; Reduce Motion got the slide out and a gap; a zoom or width change during the slide was lost.
 - **Verified:** `npm test` (326); `npm run test:webkit`: 32 scenarios, all pass; `closed-frame` now presses the button and checks both stages. The fitted page's order and Reduce Motion aren't covered by a scenario. Chrome and the end-to-end tests weren't run. Not yet in Tirth's Safari: TESTING.md.
+
+## One bare tag in the page (2026-10-31)
+
+- **Asked (Tirth):** the tags Margin adds looked bulky in the inspector, all that inline CSS and those attributes. A plain tag at the top with everything inside it, nothing lost, no extra cost.
+- **Changed** (`shared/dom.js`): the page now gets `<margin-app>` under `<html>` (no box: `display: contents`, its children through a slot), with the hosts in it, both bare.
+  - The hosts' styles moved from `style` (`all: initial` expands to hundreds of properties there) into a rule in their own shadow root. `!important` from inside beats the page's rules, `!important` and all, so they're as protected. Checked in WebKit and Chromium.
+  - Zoom is a small sheet per host for the same reason. That also keeps a page's own `--page-zoom` out.
+  - `all` from inside also beats an inline `display: none`, so hiding a host adds `data-margin-off`, which its rule respects. That's the one attribute it can get, only on a host hidden.
+  - The `data-*` state was for tests and is written only under a test harness (`mark`, `__marginMarks`: the WebKit host's hook, the end-to-end helpers). The palette's open and short states, which its styles need, moved inside its shadow root.
+  - `data-margin-v` went: a host in `<margin-app>` is by that a copy that stands back for itself. Copies scan `<margin-app>` and `<html>`'s children, for older copies' hosts.
+- **After review** (two reviewers, each finding checked by another; found while testing too): `all` from inside wiped the inline `zoom` (the sidebar grew with the page); a page's `--page-zoom` reached the host; a host taken out of `<margin-app>` wasn't put back; a page's own `<margin-app>` could be taken for Margin's; the end-to-end palette check read a mark the new-tab page doesn't get.
+- **Measured** (as in the entries above, hidden with the frame, before → after): memory unchanged (Hacker News 51 MB, jvns.ca 157 MB); web process during a script-driven scroll 445 → 455 M instructions and 628 → 632 M, graphics about the same (19 → 20 M, 484 → 484 M).
+- **Verified:** `npm test` (326); `npm run test:webkit`: 33 scenarios, all pass, with a new `clean-tags` (the structure, hostile page styles, zoom, put back); element rectangles and snapshots identical to the build before at zoom 0.75 to 2; without the test hook the page has `<margin-app><margin-sidebar-host></margin-sidebar-host></margin-app>`. Chrome and the end-to-end tests weren't run (the end-to-end helpers changed too). Not yet in Tirth's Safari: TESTING.md.
+

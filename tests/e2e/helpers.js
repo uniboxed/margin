@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildTo } from '../../scripts/build.js';
@@ -19,7 +19,17 @@ export function buildSafariProfile() {
   return buildTo(join(mkdtempSync(join(tmpdir(), 'margin-safari-')), 'ext'), { profile: 'safari', manifest: 'chrome' });
 }
 
-export async function launch({ extensionPath = EXTENSION_PATH } = {}) {
+// A copy of a build whose hosts show their state (shared/dom.js mark).
+function marked(built) {
+  const copy = join(mkdtempSync(join(tmpdir(), 'margin-marks-')), 'ext');
+  cpSync(built, copy, { recursive: true });
+  const bundle = join(copy, 'content/content.bundle.js');
+  writeFileSync(bundle, `globalThis.__marginMarks = true;\n${readFileSync(bundle, 'utf8')}`);
+  return copy;
+}
+
+export async function launch({ extensionPath: built = EXTENSION_PATH } = {}) {
+  const extensionPath = marked(built);
   const context = await chromium.launchPersistentContext('', {
     headless: false,
     args: [
@@ -120,7 +130,7 @@ export const tabsInBrowser = (worker) =>
 
 export function paletteSnapshot(page) {
   return evalInShadow(page, 'margin-palette-host', function () {
-    const open = this.host.dataset.open === 'true';
+    const open = !!this.querySelector('.palette.shown');
     const rows = [...this.querySelectorAll('.results li[data-id]')];
     return {
       open,

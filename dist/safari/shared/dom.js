@@ -27,32 +27,96 @@ function adoptStyles(shadow, css) {
   }
 }
 
-// Zero-size, top-most host for a closed shadow root that site CSS can't touch.
-// Hosts are named margin-*: the fitted layout (content/shell.js) moves those
-// into its shell, and a later copy of Margin removes them (content/core.js).
+// What a host is, in its own shadow root rather than on the tag. `!important`
+// there beats everything the page's styles can say, !important and style
+// attributes too (the cascade lets the inner context win), so the page can't
+// touch it, and the tag stays bare in the inspector. `data-margin-off`: put
+// out of sight (hideHost; `display` from outside would lose to `all`).
+const HOST_CSS = `:host {
+  all: initial !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  z-index: 2147483647 !important;
+  /* Margin's UI isn't page text (asBrowserUi): inherited by what's inside,
+     text fields excepted by their own styles. */
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+:host([data-margin-off]) { display: none !important; pointer-events: none !important; }`;
+
+// Zero-size, top-most host with a closed shadow root that site CSS can't
+// touch; { host, shadow }. Hosts are named margin-*-host and live in the page's
+// one <margin-app> (mountHost). The fitted layout (content/shell.js) moves that
+// into its shell, and a later copy of Margin hides them (content/core.js).
 function createHost(doc, tag) {
   const host = doc.createElement(tag);
-  // A copy that stands back for a newer one itself (content/core.js; no copy
-  // hides another's while it may be the one in charge, content/takeover.js),
-  // and, seen only from this copy's own script world (page scripts and other
-  // copies can't see it), this copy's.
-  host.dataset.marginV = '2';
+  // This copy's, seen only from its own script world (page scripts and other
+  // copies can't see it).
   /** @type {any} */ (host).__marginCopy = true;
-  for (const [prop, value] of Object.entries({
-    all: 'initial',
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    width: '0',
-    height: '0',
-    'z-index': '2147483647',
-    // Margin's UI isn't page text (asBrowserUi): inherited by what's inside,
-    // text fields excepted by their own styles.
-    '-webkit-user-select': 'none',
-    'user-select': 'none',
-  })) host.style.setProperty(prop, value, 'important');
+  const shadow = host.attachShadow({ mode: 'closed' });
+  adoptStyles(shadow, HOST_CSS);
+  // Its zoom (unzoom), a sheet of its own for the same reason: nothing on the
+  // tag, and a page's own --page-zoom can't reach what's inside.
+  if ('adoptedStyleSheets' in shadow) {
+    const zoomSheet = new CSSStyleSheet();
+    shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, zoomSheet];
+    /** @type {any} */ (host).__marginZoom = zoomSheet;
+  }
   unzoom(host, /** @type {any} */ (globalThis).marginPageZoom ?? 1);
-  return host;
+  return { host, shadow };
+}
+
+// The one tag Margin adds to a page, shared by its hosts: no box of its own,
+// and what's in it shows through a slot.
+const APP_TAG = 'margin-app';
+const APP_ROOT = ':root > margin-app'; // Margin's, not a page's own of that name
+function appRoot(doc) {
+  const found = doc.querySelector(APP_ROOT);
+  if (found) return found;
+  const root = doc.createElement(APP_TAG);
+  const shadow = root.attachShadow({ mode: 'closed' });
+  adoptStyles(shadow, ':host { all: initial !important; display: contents !important; }');
+  shadow.append(doc.createElement('slot'));
+  return root;
+}
+// `host` into the page (again, if the page replaced what's under <html>).
+/** @param {HTMLElement} host */
+function mountHost(host) {
+  const doc = host.ownerDocument;
+  if (!doc.documentElement) return;
+  const root = appRoot(doc);
+  if (host.parentNode !== root) root.append(host);
+  if (!root.isConnected) doc.documentElement.append(root);
+}
+// Every Margin host in `doc`: in <margin-app>, or an older copy's under <html>.
+/** @param {Document} doc @returns {HTMLElement[]} */
+function marginHosts(doc) {
+  const nodes = [...(doc.documentElement?.children ?? []), ...(doc.querySelector(APP_ROOT)?.children ?? [])];
+  return /** @type {HTMLElement[]} */ (nodes.filter((node) => /^margin-.*-host$/.test(node.localName)));
+}
+// Out of sight (an older copy's host has only its inline display to go by),
+// and back.
+/** @param {HTMLElement} node */
+function hideHost(node) {
+  node.style.setProperty('display', 'none', 'important');
+  node.setAttribute('data-margin-off', '');
+}
+/** @param {HTMLElement} node */
+function showHost(node) {
+  node.style.removeProperty('display');
+  node.removeAttribute('data-margin-off');
+  if (!node.getAttribute('style')) node.removeAttribute('style');
+}
+// State shown on a host for tests and nothing else (the page's inspector
+// stays clean): only under a test harness, which sets this in Margin's world.
+/** @param {HTMLElement} host @param {string} key @param {string} [value] (none: taken off) */
+function mark(host, key, value) {
+  if (!(/** @type {any} */ (globalThis).__marginMarks)) return;
+  if (value === undefined) delete host.dataset[key];
+  else host.dataset[key] = value;
 }
 
 // ---- Margin's UI as the browser's own ----------------------------------------
@@ -66,6 +130,8 @@ function createHost(doc, tag) {
 // set in CSS are the host's. content/core.js follows the zoom.
 /** @param {HTMLElement} el @param {number} zoom */
 function unzoom(el, zoom) {
+  const sheet = /** @type {any} */ (el).__marginZoom; // this copy's host (createHost)
+  if (sheet) return sheet.replaceSync(`:host { --page-zoom: ${zoom} !important; zoom: ${1 / zoom} !important; }`);
   if (zoom === 1) {
     el.style.removeProperty('zoom');
     el.style.removeProperty('--page-zoom');
@@ -79,9 +145,7 @@ function unzoom(el, zoom) {
 /** @param {Document} doc @param {number} zoom */
 function setPageZoom(doc, zoom) {
   /** @type {any} */ (globalThis).marginPageZoom = zoom; // for hosts made later (one bundle's module isn't another's)
-  for (const node of doc.documentElement?.children ?? []) {
-    if (/^margin-.*-host$/.test(node.localName)) unzoom(/** @type {HTMLElement} */ (node), zoom);
-  }
+  for (const node of marginHosts(doc)) unzoom(node, zoom);
 }
 
 // Margin's own UI under `root` (a shadow root, or Margin's new-tab page)
@@ -141,4 +205,4 @@ function hostOf(url) {
   }
 }
 
-export { el, adoptStyles, createHost, setPageZoom, unzoom, asBrowserUi, siteModalOpen, hostOf };
+export { el, adoptStyles, createHost, mountHost, marginHosts, hideHost, showHost, mark, setPageZoom, unzoom, asBrowserUi, siteModalOpen, hostOf };

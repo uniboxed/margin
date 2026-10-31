@@ -3,6 +3,8 @@
 
 // `page`: see content/core.js. `pullRefreshing()`: the pull-to-refresh
 // spinner is showing (content/trackpad.js), which shows the reload instead.
+import { mark } from '../shared/dom.js';
+
 export function startLoader(page, { pullRefreshing }) {
   const { host, onCard } = page;
   // ---- page-load indicator --------------------------------------------------
@@ -20,7 +22,7 @@ export function startLoader(page, { pullRefreshing }) {
     if (!page.active()) return; // Margin is out of the way (content/core.js)
     clearTimeout(loaderHideTimer);
     page.view()?.setLoading(true, { instant });
-    host.dataset.loading = 'true'; // test/debug hook
+    mark(host, 'loading', 'true'); // test/debug hook
   };
   const hidePill = (delay = 0) => {
     clearTimeout(loaderHideTimer);
@@ -28,7 +30,7 @@ export function startLoader(page, { pullRefreshing }) {
       loadPill = false;
       if (switchingPill) return; // a switch to another tab still shows it (below)
       page.view()?.setLoading(false);
-      host.dataset.loading = 'false';
+      mark(host, 'loading', 'false');
     }, delay);
   };
   let loadPill = false; // the page-load or a navigation's pill is up (or fading out)
@@ -131,13 +133,13 @@ export function startLoader(page, { pullRefreshing }) {
       // must still end it (it then leaves the pill to this).
       if (!page.active()) return;
       page.view()?.setLoading(true);
-      host.dataset.loading = 'true';
+      mark(host, 'loading', 'true');
       return;
     }
     if (loadPill) return; // the page's own pill was up too: it hides as before
     clearTimeout(loaderHideTimer);
     page.view()?.setLoading(false, { instant: document.hidden });
-    host.dataset.loading = 'false';
+    mark(host, 'loading', 'false');
   }
 
   return {

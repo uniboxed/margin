@@ -87,6 +87,7 @@ test('cut off: quiet puts the dead Margin out of sight, and the page back from u
     assert.equal(host.style.getPropertyValue('display'), 'none');
     assert.equal(host.style.getPropertyPriority('display'), 'important');
     assert.equal(host.style.getPropertyValue('pointer-events'), 'none');
+    assert.equal(host.getAttribute('data-margin-off'), '', 'what the host\'s own styles respect');
   }
   assert.equal(p.other.style.getPropertyValue('display'), '', 'the page\'s own elements left alone');
   assert.equal(p.doc.body.style.getPropertyValue('opacity'), '', 'the old copy\'s arrival cover undone');

@@ -9,13 +9,13 @@
 img { -webkit-user-drag: none; }
 input { -webkit-user-select: text; user-select: text; }
 .backdrop, .palette { display: none; }
-:host([data-open="true"]) .backdrop {
+.backdrop.shown {
   display: block;
   position: fixed;
   inset: 0;
   background: transparent; /* catches clicks outside; Arc doesn't dim the page */
 }
-:host([data-open="true"]) .palette { display: flex; }
+.palette.shown { display: flex; }
 
 .palette {
   --space-color: #6c5ce7; /* set to the current space's color when opened */
@@ -51,9 +51,9 @@ input { -webkit-user-select: text; user-select: text; }
 /* Short windows: higher up, then fewer whole rows (never half of one). */
 /* Short windows (≤ 507, 418, 357 tall in Margin's px, whatever the page's
    zoom: palette.js sets data-short). */
-:host(:is([data-short="1"], [data-short="2"], [data-short="3"])) .palette { top: calc(18vh * var(--page-zoom, 1)); }
-:host(:is([data-short="2"], [data-short="3"])) .palette { --rows: 4; }
-:host([data-short="3"]) .palette { --rows: 3; }
+.palette:is([data-short="1"], [data-short="2"], [data-short="3"]) { top: calc(18vh * var(--page-zoom, 1)); }
+.palette:is([data-short="2"], [data-short="3"]) { --rows: 4; }
+.palette[data-short="3"] { --rows: 3; }
 
 /* 62 high above a divider inset from the sides; the magnifier (12 of ink)
    centered on the row icons' column, the text where the titles start. */
