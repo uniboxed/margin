@@ -1,6 +1,5 @@
 // Arcadia's chrome around the page: the Arc frame and the page card's edge
-// while docked, the page-load pill, the pull-to-refresh and swipe badges and
-// the pinch-zoom readout. content/core.js decides when each shows; this file
+// while docked, the page-load pill and the pull-to-refresh and swipe badges. content/core.js decides when each shows; this file
 // only draws them (styles/sidebar.css).
 import { el } from '../../shared/dom.js';
 
@@ -81,8 +80,6 @@ export function createChrome(doc) {
   const swipeIcon = svg('svg', { viewBox: '0 0 36 36', width: 36, height: 36 });
   swipeIcon.append(svg('path', { d: 'M28 18H8.5M17 9.5 8.5 18l8.5 8.5' }));
   const swipe = el(doc, 'div', { class: 'swipe', 'aria-hidden': 'true' }, swipeIcon);
-  // Pinch-to-zoom readout ("125%"), centered over the page while pinching.
-  const zoomHud = el(doc, 'div', { class: 'zoom-hud', 'aria-hidden': 'true' });
   const switchCover = createSwitchCover(doc);
   const cover = switchCover.el;
   const startupCover = createStartupCover(doc);
@@ -104,11 +101,11 @@ export function createChrome(doc) {
     for (const node of [frame, cardEdge, rims]) node.classList.toggle('settled', on);
   };
 
-  const sized = [frame, cardEdge, loader, pull, swipe, zoomHud, cover];
-  const inFrame = [loader, pull, swipe, zoomHud, cover];
+  const sized = [frame, cardEdge, loader, pull, swipe, cover];
+  const inFrame = [loader, pull, swipe, cover];
 
   return {
-    frame, rims, cardEdge, loader, pull, swipe, zoomHud, notice, cover, startup,
+    frame, rims, cardEdge, loader, pull, swipe, notice, cover, startup,
     setCover: switchCover.set,
     setStartup: startupCover.set,
     // { text, actions: [{ label, run }], duration? (ms, 6s by default) }, or null to hide it.
@@ -210,12 +207,6 @@ export function createChrome(doc) {
       swipe.classList.toggle('forward', direction > 0);
       swipe.classList.toggle('armed', phase === 'armed' || phase === 'going');
       swipe.style.setProperty('--swipe', phase === 'going' ? '1' : String(Math.min(progress, 1)));
-    },
-    // The page zoom level (1 = 100%), or null to hide the readout.
-    setZoom(level) {
-      if (level == null) return zoomHud.classList.remove('show');
-      zoomHud.textContent = `${Math.round(level * 100)}%`;
-      zoomHud.classList.add('show');
     },
   };
 }

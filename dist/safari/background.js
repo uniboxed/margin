@@ -270,7 +270,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'used', 'pageBlinked', 'shellShown', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'restoringTab', 'reloadForUpdate', 'getZoom', 'setZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'used', 'pageBlinked', 'shellShown', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'restoringTab', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme']);
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;

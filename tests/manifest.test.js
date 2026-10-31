@@ -111,6 +111,13 @@ test('manifest command keys are the default navigation shortcuts', async () => {
   }
 });
 
+test('Chrome\'s page-world writer finds the card where the shell puts it', () => {
+  const read = (f) => readFileSync(new URL(f, root), 'utf8');
+  assert.match(read('content/shell-writer.js'), /:scope > body > \[data-margin-clip\] > iframe/);
+  assert.match(read('content/shell.js'), /clip\.dataset\.marginClip = ''/);
+  assert.match(read('content/shell.js'), /clip\.append\(frame\)/);
+});
+
 test('the page card has the same corner radius and shadow wherever it is drawn', () => {
   const read = (f) => readFileSync(new URL(f, root), 'utf8');
   const decl = (css, selector, prop) => {

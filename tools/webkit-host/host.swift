@@ -64,6 +64,7 @@ let pageRecorder = """
     }
     let wv = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800), configuration: cfg)
     wv.isInspectable = true
+    wv.allowsMagnification = true // as Safari's
     // Not hidden by the window server's occlusion: the window is off screen, which macOS
     // sometimes marks occluded (WebKit's log: "window visible 1 … window occluded 1"); a tab
     // then stayed `document.hidden` after it was shown. Safari's window is on screen.
@@ -566,6 +567,8 @@ Task { @MainActor in
         if Date() > deadline { fail(label, last); break }
         try? await Task.sleep(nanoseconds: 100_000_000)
       }
+    case "pinch": // { op: 'pinch', deltas, x?, y? }: real magnify events handed to the shown tab's web view
+      if let wv = host.window.active?.webView { await pinchOn(wv, step) }
     case "zoom": // { op: 'zoom', factor }: the shown tab's page zoom, as ⌘+ / ⌘− do
       host.window.active?.webView?.pageZoom = CGFloat(step["factor"] as! Double); log("zoom \(step["factor"]!)")
     case "state":
@@ -581,6 +584,27 @@ Task { @MainActor in
   }
   log(failures == 0 ? "all checks passed" : "\(failures) check(s) failed")
   exit(failures == 0 ? 0 : 1)
+}
+// A pinch: the first of `deltas` as its Began (a real one is never 0), the rest Changed, then Ended.
+func pinchField(_ n: UInt32) -> CGEventField { CGEventField(rawValue: n)! }
+@MainActor func pinchOn(_ wv: WKWebView, _ step: [String: Any]) async {
+  let deltas = step["deltas"] as! [Double]
+  let x = step["x"] as? Double ?? 700, y = step["y"] as? Double ?? 400
+  let screenH = NSScreen.screens[0].frame.height
+  let origin = wv.window?.frame.origin ?? .zero
+  let seq: [(Double, Int64)] = deltas.enumerated().map { ($1, $0 == 0 ? 1 : 2) } + [(0, 4)]
+  for (mag, phase) in seq {
+    let cg = CGEvent(source: nil)!
+    cg.type = CGEventType(rawValue: 29)!
+    cg.location = CGPoint(x: origin.x + x, y: screenH - (origin.y + 800 - y))
+    cg.setIntegerValueField(pinchField(110), value: 8)
+    cg.setDoubleValueField(pinchField(113), value: mag)
+    cg.setIntegerValueField(pinchField(132), value: phase)
+    wv.magnify(with: NSEvent(cgEvent: cg)!)
+    try? await Task.sleep(nanoseconds: 12_000_000)
+  }
+  try? await Task.sleep(nanoseconds: 120_000_000)
+  log("pinch \(deltas.count) deltas: native magnification \(wv.magnification)")
 }
 // A whole run's time limit in seconds (MARGIN_HOST_TIMEOUT, default 120).
 let limit = Double(ProcessInfo.processInfo.environment["MARGIN_HOST_TIMEOUT"] ?? "") ?? 120

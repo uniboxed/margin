@@ -1,9 +1,10 @@
 // Margin's trackpad gestures on the page (Safari builds): the guard that keeps
-// Safari's swipe, pinch and bounce from leaving or distorting the page, and
-// Margin's own pull-to-refresh, swipe back/forward and pinch zoom, which the
-// theme draws (view.setPull, setSwipe, setZoom). Called by content/core.js.
+// Safari's swipe, pinch for all tabs and bounce from leaving or distorting the
+// page, and Margin's own pull-to-refresh and swipe back/forward, which the
+// theme draws (view.setPull, setSwipe), and the fitted card's pinch zoom
+// (content/shell.js). Called by content/core.js.
 import { mark } from '../shared/dom.js';
-import { installGestureGuard, atPageTop, canSwipe, zoomForPinch } from '../shared/gestures.js';
+import { installGestureGuard, atPageTop, canSwipe } from '../shared/gestures.js';
 import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.js';
 import { platform } from '../shared/platform.js';
 
@@ -12,7 +13,7 @@ import { platform } from '../shared/platform.js';
 // copy's swipe stays off (its pull-to-refresh doesn't: two reloads are one).
 /** @param {any} page @param {{ replacing: () => boolean }} options */
 export function startTrackpad(page, { replacing }) {
-  const { host, send, onCard } = page;
+  const { host, onCard } = page;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
   // Not in a copy that stood back for a newer one (content/core.js): that one's guard is enough.
@@ -21,7 +22,18 @@ export function startTrackpad(page, { replacing }) {
   const guardWindow = (win) => installGestureGuard({
     getSettings: () => (page.dormant?.() ? { blockGestures: false } : page.state()?.settings),
     wanted: () => page.state()?.settings?.blockGestures !== false,
-    onPinch: (pinch) => handlePinch(pinch),
+    // Safari's own on a page; in the fitted layout it would magnify Margin
+    // too, and goes dead every other pinch in a frame (DECISIONS.md): the
+    // card's own zoom there, nothing over the shell around it.
+    pinch: () => (document.fullscreenElement ? 'block' : win !== window ? 'own' : globalThis.Margin?.shell ? 'block' : 'native'),
+    onPinch: ({ phase, scale, x, y }) => {
+      const shell = globalThis.Margin?.shell;
+      if (phase === 'start') shell?.zoomStart(x, y);
+      else if (phase === 'change') shell?.zoomTo(scale);
+      else shell?.zoomEnd();
+    },
+    // (What the top window gets is Margin's own UI, or the frame.)
+    onWheelFirst: win === window ? undefined : (event) => !!globalThis.Margin?.shell?.zoomPan(event.deltaX, event.deltaY),
     win,
   });
   const gestureGuard = platform?.blockGestures ? guardWindow(window) : null;
@@ -31,6 +43,8 @@ export function startTrackpad(page, { replacing }) {
     gestureGuard?.update();
     for (const guard of cardGuards) guard.update();
     syncWheelWatch();
+    // Gestures off, or this copy stood back: nothing could move or undo a zoomed card.
+    if (page.dormant?.() || page.state()?.settings?.blockGestures === false) globalThis.Margin?.shell?.zoomReset();
   };
 
   // ---- pull to refresh (Safari builds) ---------------------------------------
@@ -120,8 +134,9 @@ export function startTrackpad(page, { replacing }) {
       // Not over Margin's own panels; pixel deltas only (a trackpad).
       const usable = () => event.deltaMode === 0 && !event.composedPath().some((node) => node === host || /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
-      const pulling = pullEnabled() && !pullRefreshing;
-      const swiping = swipeEnabled();
+      const zoomed = globalThis.Margin?.shell?.zoomed(); // the card zoomed: the wheel pans it, no gestures
+      const pulling = pullEnabled() && !pullRefreshing && !zoomed;
+      const swiping = swipeEnabled() && !zoomed;
       if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: () => usable() && atPageTop(event, doc) }));
       if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: () => usable() && historyAllows(event.deltaX) && canSwipe(event, doc) }));
       if (!pulling && !swiping) return;
@@ -160,48 +175,6 @@ export function startTrackpad(page, { replacing }) {
       showSwipe({ state: 'idle' });
     };
     syncWheelWatch();
-  }
-
-  // ---- pinch to zoom (Safari builds) -------------------------------------------
-  // The gesture guard takes pinches from Safari (pinching in would open the
-  // all-tabs overview) and hands them here: Margin zooms the page with
-  // Safari's own page zoom (tabs.setZoom), stepping through Safari's zoom
-  // levels (shared/gestures.js zoomForPinch), and shows the level.
-  let pageZoom = 1;
-  let pinchStart = 1;
-  let pinchMoved = false;
-  let zoomHudTimer = null;
-  const readZoom = () => send('getZoom', {}, false).then((z) => (Number.isFinite(z) ? z : null));
-  if (gestureGuard) readZoom().then((z) => { if (z) pageZoom = z; });
-  function showZoomHud() {
-    clearTimeout(zoomHudTimer);
-    page.view()?.setZoom(pageZoom);
-    mark(host, 'zoom', String(pageZoom)); // test/debug hook
-  }
-  // A pinch that starts over Margin's own UI (the sidebar, the frame, the
-  // palette) zooms nothing, as over a browser's own (still taken from Safari).
-  let pinchOverMargin = false;
-  function handlePinch({ phase, scale, overMargin = false }) {
-    if (phase === 'start') pinchOverMargin = overMargin;
-    if (pinchOverMargin) return;
-    if (phase === 'start') {
-      pinchStart = pageZoom;
-      pinchMoved = false;
-      // ⌘+/⌘− may have changed it since: start from the real level unless
-      // the pinch already moved on.
-      readZoom().then((z) => { if (z && !pinchMoved) pinchStart = pageZoom = z; });
-      return showZoomHud();
-    }
-    if (phase === 'change') {
-      const zoom = zoomForPinch(pinchStart, scale);
-      if (zoom !== pageZoom) {
-        pageZoom = zoom;
-        pinchMoved = true;
-        send('setZoom', { factor: zoom }, false).then(() => page.zoomed?.(zoom), () => {});
-      }
-      return showZoomHud();
-    }
-    zoomHudTimer = setTimeout(() => page.view()?.setZoom(null), 700);
   }
 
   return {

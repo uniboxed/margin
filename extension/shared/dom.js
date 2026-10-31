@@ -120,7 +120,7 @@ function mark(host, key, value) {
 }
 
 // ---- Margin's UI as the browser's own ----------------------------------------
-// The browser's page zoom (⌘+ / ⌘−, Margin's pinch) scales everything in the
+// The browser's page zoom (⌘+ / ⌘−) scales everything in the
 // page, Margin's UI with it; a browser's own UI keeps its size. So Margin's
 // hosts are scaled back by 1/zoom (CSS zoom: what they show, and how they're
 // hit, at their normal size), and `--page-zoom` lets their styles undo it
@@ -182,8 +182,8 @@ function asBrowserUi(root, { zoomable = () => false } = {}) {
   root.addEventListener('wheel', (event) => {
     if (/** @type {WheelEvent} */ (event).ctrlKey && event.cancelable && !fromHost(event) && !zoomable(event)) event.preventDefault();
   }, { passive: false });
-  // Safari's pinch, when Margin's gesture guard leaves it to Safari (its
-  // setting off, or the page already magnified): not over Margin's UI.
+  // Safari's pinch, whenever Margin's gesture guard leaves it to Safari: not
+  // over Margin's UI.
   if (shadow) for (const type of ['gesturestart', 'gesturechange']) root.addEventListener(type, (event) => event.preventDefault(), { passive: false });
 }
 

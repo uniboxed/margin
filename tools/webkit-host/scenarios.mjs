@@ -15,6 +15,8 @@
 //   { op: 'snapshot', file }   PNG of the shown tab
 //   { op: 'deny', pattern }    take a site permission away (as in Safari's settings)
 //   { op: 'zoom', factor }     the shown tab's page zoom (as ⌘+ / ⌘−)
+//   { op: 'pinch', deltas, x?, y? }  real magnify events for the shown tab's web view (x, y: in the
+//                              window); the first delta is the Began's; logs its native magnification
 //   { op: 'show', name }       Safari itself bringing a tab to the front (its tab bar)
 //   { op: 'flip', to, back }   one tab to the front and another back, in the same run loop turn
 //   { op: 'probeShow', name, nth? }  count the web view's layers in each turn committed after
@@ -160,7 +162,7 @@ export const SCENARIOS = {
     { op: 'zoom', factor: 1 },
     checkPage('A', 'back to 100%: no scaling, pushed by 260', `const h = document.querySelector('margin-sidebar-host'); return !h.style.zoom && parseFloat(getComputedStyle(document.documentElement).marginLeft) === 260`, 3000),
     reload('A'), fitted('A'), { op: 'zoom', factor: 1.5 },
-    checkPage('A', 'fitted: the card placed by 260/1.5', `const f = document.querySelector('iframe[name^=margin-]'); return Math.abs(parseFloat(f.style.left) - 260 / 1.5) < 0.5`, 3000),
+    checkPage('A', 'fitted: the card placed by 260/1.5', `const f = document.querySelector('iframe[name^=margin-]'); return Math.abs(parseFloat(f.parentElement.style.left) - 260 / 1.5) < 0.5`, 3000),
     { op: 'snapshot', file: new URL('build/zoom-150-fitted.png', import.meta.url).pathname },
     // Reloaded at 150%: the site's zoom is remembered, so Margin is drawn at
     // its size from its first render (before the browser has answered).
@@ -281,6 +283,45 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `Margin.content.sidebar.hide(); return JSON.stringify(await Margin.content.send("updateSettings", { patch: { frameWhenHidden: false } }))` },
     checkPage('A', 'A: the setting off: the page as it was', `getComputedStyle(document.documentElement).marginLeft === '0px'`, 2000),
     check('A', 'A: the setting off: no frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'none' && getComputedStyle(r.querySelector('.frame')).visibility === 'hidden'`, 2000),
+  ],
+  // A pinch. On a page: Safari's own, smooth, Margin out of it, except what would
+  // open the overview. In the fitted layout: the card's own zoom, every time.
+  pinch: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), themed('A'), wait(400),
+    { op: 'page', in: 'A', js: `window.__pinch = []; for (const t of ['gesturestart', 'gesturechange']) addEventListener(t, (e) => __pinch.push(t + ':' + e.defaultPrevented), false); return 'listening'` },
+    { op: 'pinch', deltas: Array(14).fill(0.03) }, wait(300),
+    checkPage('A', 'A: outward: Safari\'s own magnification', `visualViewport.scale > 1.2`, 1500),
+    { op: 'pinch', deltas: Array(40).fill(-0.03) }, wait(400),
+    checkPage('A', 'A: inward, while magnified: Safari\'s, back to normal', `visualViewport.scale === 1`, 2000),
+    { op: 'page', in: 'A', js: `__pinch.length = 0; return 'reset'` },
+    { op: 'pinch', deltas: Array(10).fill(-0.03) }, wait(200),
+    checkPage('A', 'A: inward at normal scale: cancelled, nothing moves', `visualViewport.scale === 1 && __pinch[0] === 'gesturestart:true'`),
+    { op: 'pinch', deltas: Array(10).fill(0.03) }, wait(300),
+    checkPage('A', 'A: and the next one works', `visualViewport.scale > 1.1`, 1500),
+    { op: 'pinch', deltas: Array(30).fill(-0.03) }, wait(400),
+    keepOpen, wait(300), reload('A'), fitted('A'), themed('A'), wait(700),
+    ...[1, 2, 3].flatMap((n) => [
+      { op: 'pinch', deltas: Array(12).fill(0.03), x: 700, y: 400 },
+      checkPage('A', `fitted: pinch ${n} zooms the card`, `getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform.startsWith('matrix(1.' )`, 500),
+      { op: 'pinch', deltas: Array(30).fill(-0.03), x: 700, y: 400 }, wait(260),
+      checkPage('A', `fitted: pinch ${n} in: back to the card's size`, `getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform === 'none'`, 800),
+    ]),
+    checkPage('A', 'fitted: Safari\'s magnification never ran', `visualViewport.scale === 1`),
+    { op: 'pinch', deltas: Array(10).fill(0.03), x: 100, y: 300 }, wait(100),
+    checkPage('A', 'fitted: over the sidebar nothing zooms', `visualViewport.scale === 1 && getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform === 'none'`),
+    { op: 'pinch', deltas: Array(40).fill(0.06), x: 700, y: 400 }, wait(300),
+    checkPage('A', 'fitted: at most 3×', `Math.abs(new DOMMatrix(getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform).a - 3) < 0.01`, 800),
+    { op: 'eval', in: 'A', js: `return String(Margin.shell.zoomPan(0, 300))` },
+    checkPage('A', 'fitted: two fingers move it, the page not scrolled', `new DOMMatrix(getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform).f < -200`),
+    { op: 'pinch', deltas: Array(60).fill(-0.05), x: 700, y: 400 }, wait(300),
+    { op: 'pinch', deltas: Array(8).fill(-0.03), x: 700, y: 400 }, wait(300),
+    checkPage('A', 'fitted: pinched in past the card\'s size: it springs back', `getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform === 'none'`, 800),
+    { op: 'pinch', deltas: [0.01, 0.005], x: 700, y: 400 }, wait(280),
+    checkPage('A', 'fitted: a pinch that ends next to its size: no zoom left', `getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform === 'none'`, 800),
+    { op: 'pinch', deltas: Array(14).fill(0.04), x: 700, y: 400 },
+    check('A', 'fitted: x of a pointer in the zoomed card, in the window', `Margin.shell.zoomed() && Math.abs(Margin.shell.cardX(0) - 260) < 400`, 500),
+    { op: 'eval', in: 'A', js: 'const { settings } = await browser.storage.local.get("settings"); await browser.storage.local.set({ settings: { ...settings, blockGestures: false } }); return "off"' }, // (the host\'s background has stopped by now)
+    checkPage('A', 'fitted: gestures turned off: the card back to its size', `getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform === 'none'`, 1500),
   ],
   // What Margin adds to a page: <margin-app> and its hosts, bare; page zoom and
   // hiding work from the hosts' own styles, whatever the page's styles say.

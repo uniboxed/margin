@@ -312,18 +312,17 @@ export function startCore({ onTheme } = {}) {
     active,
     dormant: retired,
     offerFullscreen,
-    // The page's zoom (1 = 100%), and Margin's pinch having changed it.
+    // The page's zoom (1 = 100%).
     zoom: () => pageZoom,
-    zoomed: (z) => applyZoom(z),
   };
 
   // ---- page zoom ---------------------------------------------------------------
-  // Margin's UI keeps its size whatever the page's zoom (⌘+ / ⌘−, Margin's
-  // pinch), as a browser's does (shared/dom.js setPageZoom); the push and the
+  // Margin's UI keeps its size whatever the page's zoom (⌘+ / ⌘−), as a
+  // browser's does (shared/dom.js setPageZoom); the push and the
   // fitted card follow the sidebar in the page's zoomed pixels (layout.js).
   // Read at start, after a resize (a zoom change resizes the page's
   // viewport; ⌘+ sends nothing else), when shown again (a site's zoom is
-  // shared by its tabs), and from Margin's own pinch.
+  // shared by its tabs).
   let pageZoom = 1;
   let zoomAnswered = false; // until the browser says, the site's last zoom (storage pageZoom)
   function applyZoom(z) {

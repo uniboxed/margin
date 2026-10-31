@@ -157,7 +157,12 @@ import { platform } from '../shared/platform.js';
     'geolocation', 'camera', 'microphone', 'display-capture', 'web-share', 'autoplay', 'encrypted-media', 'picture-in-picture',
     'screen-wake-lock',
   ].join('; '));
-  body.append(frame);
+  // Around the frame: the card's place and corners, which the zoom below
+  // moves and scales the frame inside.
+  const clip = document.createElement('div');
+  clip.dataset.marginClip = ''; // (a page's code can add its own to this body: shell-writer.js)
+  clip.append(frame);
+  body.append(clip);
   // Margin's own hosts (its content scripts ran before this one) move along.
   for (const node of [...old.childNodes]) if (node.nodeType === 1 && /** @type {Element} */ (node).localName.startsWith('margin-')) shell.append(node);
 
@@ -174,8 +179,10 @@ import { platform } from '../shared/platform.js';
          flash. */
       background: Canvas !important;
     }
-    html[data-margin-shell] > body > iframe {
-      position: fixed !important; display: block !important; margin: 0 !important; padding: 0 !important;
+    html[data-margin-shell] > body > [data-margin-clip] { position: fixed !important; overflow: hidden !important; }
+    html[data-margin-shell] > body > [data-margin-clip] > iframe {
+      position: absolute !important; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0;
+      display: block !important; margin: 0 !important; padding: 0 !important;
       border: 0 !important; background: Canvas; color-scheme: normal;
     }`);
   // Paint hold: until the card has its HTML and stylesheets, the shell stays
@@ -234,13 +241,62 @@ import { platform } from '../shared/platform.js';
   let layout = { docked: true, width: 260, inset: 8, radius: '6.25px' };
   function applyLayout() {
     const { docked, width, inset, radius } = layout;
-    const set = (prop, value) => frame.style.setProperty(prop, value, 'important');
+    const set = (prop, value) => clip.style.setProperty(prop, value, 'important');
     set('top', docked ? `${inset}px` : '0');
     set('left', docked ? `${width}px` : '0');
     set('width', docked ? `calc(100% - ${width + inset}px)` : '100%');
     set('height', docked ? `calc(100% - ${2 * inset}px)` : '100%');
     set('border-radius', docked ? radius : '0');
+    if (zoom.scale !== 1) settleZoom(false); // the card's size changed
   }
+  // ---- pinch zoom of the card -------------------------------------------------
+  // Safari's own pinch can't work in a frame (it would magnify the sidebar with
+  // the page, and every other pinch goes dead: WebKit keeps a frame's gesture
+  // state after one): the frame is moved and scaled instead, a transform of a
+  // layer that's composited already. The page never knows; it keeps its size,
+  // and nothing runs between pinches. It stays as sharp as it was drawn: a page
+  // can't be drawn again at a scale without knowing. Two fingers pan it.
+  const ZOOM_MAX = 3;
+  const zoom = { scale: 1, x: 0, y: 0, from: 1, atX: 0, atY: 0, startX: 0, startY: 0, settling: 0 };
+  const showZoom = () => frame.style.setProperty('transform', zoom.scale === 1 ? 'none' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`, 'important');
+  // In the card's bounds; below its size, in the middle of it.
+  const keepInCard = () => {
+    const w = clip.clientWidth;
+    const h = clip.clientHeight;
+    const within = (at, size) => (zoom.scale < 1 ? (size - size * zoom.scale) / 2 : Math.min(0, Math.max(size - size * zoom.scale, at)));
+    zoom.x = within(zoom.x, w);
+    zoom.y = within(zoom.y, h);
+  };
+  // Back inside the limits, with a short spring.
+  function settleZoom(spring = true) {
+    let scale = Math.min(ZOOM_MAX, Math.max(1, zoom.scale));
+    if (spring && scale < 1.03) scale = 1; // a pinch that ended next to its size: no zoom to speak of
+    const moved = scale !== zoom.scale;
+    if (moved) {
+      const k = scale / zoom.scale;
+      zoom.x = zoom.atX - (zoom.atX - zoom.x) * k;
+      zoom.y = zoom.atY - (zoom.atY - zoom.y) * k;
+      zoom.scale = scale;
+    }
+    keepInCard();
+    if (moved && spring) {
+      clearTimeout(zoom.settling);
+      frame.style.setProperty('transition', 'transform 180ms ease-out');
+      zoom.settling = setTimeout(() => frame.style.removeProperty('transition'), 200);
+    }
+    if (scale === 1) Object.assign(zoom, { x: 0, y: 0 });
+    showZoom();
+  }
+  addEventListener('resize', () => { if (zoom.scale !== 1) settleZoom(false); });
+  // Full screen shows the frame, or something in it, as it is.
+  function resetZoom() {
+    if (zoom.scale === 1) return;
+    clearTimeout(zoom.settling);
+    frame.style.removeProperty('transition');
+    Object.assign(zoom, { scale: 1, x: 0, y: 0 });
+    showZoom();
+  }
+  document.addEventListener('fullscreenchange', resetZoom);
   applyLayout();
 
   // ---- title, icons and tab color --------------------------------------------
@@ -895,6 +951,36 @@ import { platform } from '../shared/platform.js';
 
   Margin.shell = {
     frame,
+    // A pinch at (x, y) in the page. zoomTo: `scale` of where it started.
+    zoomStart(x, y) {
+      clearTimeout(zoom.settling);
+      frame.style.removeProperty('transition');
+      Object.assign(zoom, { from: zoom.scale, atX: x * zoom.scale + zoom.x, atY: y * zoom.scale + zoom.y, startX: zoom.x, startY: zoom.y });
+    },
+    zoomTo(scale) {
+      const wanted = zoom.from * scale;
+      // Past the limits it gives a little, as Safari's does.
+      const next = wanted > ZOOM_MAX ? ZOOM_MAX + (wanted - ZOOM_MAX) * 0.25 : wanted < 1 ? 1 - (1 - wanted) * 0.25 : wanted;
+      const k = next / zoom.from;
+      zoom.scale = next;
+      zoom.x = zoom.atX - (zoom.atX - zoom.startX) * k;
+      zoom.y = zoom.atY - (zoom.atY - zoom.startY) * k;
+      keepInCard();
+      showZoom();
+    },
+    zoomEnd: () => settleZoom(),
+    zoomReset: resetZoom,
+    zoomed: () => zoom.scale !== 1,
+    // Two fingers while zoomed: moves it, until its edge. Whether it moved.
+    zoomPan(dx, dy) {
+      if (zoom.scale === 1) return false;
+      const { x, y } = zoom;
+      zoom.x -= dx;
+      zoom.y -= dy;
+      keepInCard();
+      showZoom();
+      return x !== zoom.x || y !== zoom.y;
+    },
     get card() {
       return card;
     },
@@ -904,7 +990,8 @@ import { platform } from '../shared/platform.js';
       for (const [key, value] of Object.entries(next)) if (value != null) layout[key] = value;
       applyLayout();
     },
-    cardLeft: () => (layout.docked ? layout.width : 0),
+    // A pointer's x in the card as x in the window.
+    cardX: (x) => x * zoom.scale + zoom.x + (layout.docked ? layout.width : 0),
     cardTop: () => (layout.docked ? layout.inset : 0),
     focusCard: () => card?.focus(),
   };

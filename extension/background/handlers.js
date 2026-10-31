@@ -402,13 +402,6 @@ export const handlers = {
     rememberZoom(sender.tab, sender.url ?? sender.tab.url, zoom);
     return zoom;
   },
-  /** @param {{ factor: number }} message */
-  async setZoom({ factor }, sender) {
-    if (!sender.tab || !Number.isFinite(factor)) return;
-    const zoom = Math.min(3, Math.max(0.25, factor));
-    await api.tabs.setZoom(sender.tab.id, zoom);
-    rememberZoom(sender.tab, sender.url ?? sender.tab.url, zoom);
-  },
   // Search with the browser's engine: in `tabId`, else in a new tab (from a
   // page: behind it until the results have loaded, tabs.js openBehind).
   /** @param {{ query: string, windowId?: number, tabId?: number, deadline?: number }} message */

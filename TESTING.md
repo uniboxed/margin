@@ -195,7 +195,6 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 - [ ] On a normal page, two-finger swipe left/right does **not** go back/forward. Vertical scrolling is unaffected, and so are things that scroll sideways (a carousel, a wide table, a horizontally scrolling page): they scroll.
 - [ ] Pinching in (two fingers together) at normal zoom does **not** open the all-tabs overview, on web pages and the new-tab page.
-- [ ] Note whether pinching out still zooms the page in (it may not: Margin now cancels the start of every pinch at normal zoom). ⌘+ / ⌘− always zoom.
 - [ ] If the overview still opens: on that page, open Web Inspector → Console, paste
   `['gesturestart','gesturechange','gestureend'].forEach(t => addEventListener(t, e => console.log(t, e.scale.toFixed(2), 'blocked:', e.defaultPrevented, 'zoom:', visualViewport.scale)))`
   then pinch in once and send the lines. "blocked: true" on all of them while the overview still opens means Safari doesn't let pages stop it.
@@ -215,8 +214,6 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Pinch to zoom and swipe back/forward (Safari)
 
-- [ ] Pinch out (fingers apart) on a page: it zooms in through Safari's zoom steps (115%, 125%, 150%…), with a small "125%"-style readout at the top. Pinch in: back down, stopping at 100%. Pinching in at 100% never opens the all-tabs overview.
-- [ ] After ⌘+ / ⌘−, the next pinch starts from that level.
 - [ ] Swipe right with two fingers (back): a dark round badge with ← appears on the page's left edge, darkening as you swipe; let go past the point where it's fully dark and the page goes back. Swipe left: → on the right edge, forward. A short swipe, or one over a carousel/wide table that scrolls sideways, doesn't navigate.
 - [ ] Settings → "Swipe sideways with two fingers to go back or forward" off: no badge, no navigation.
 
@@ -309,7 +306,7 @@ Files were added and moved under `dist/safari/`: re-run `scripts/make-xcode.sh`,
 - [ ] "Keep open": the first paint already shows the frame (placeholder), pages push or fit as before, and resizing still saves the width (it's now Arcadia's own setting; your old width carries over).
 - [ ] The new-tab page looks the same; Settings has a new "Theme" row showing Arcadia.
 - [ ] ⌘T still hands off to the palette over the previous tab (the new tab now closes without drawing the launcher first); ⌘N's first tab opens the palette over the launcher.
-- [ ] Loader pill, pull-to-refresh, swipe badge and pinch-zoom readout look and behave as before.
+- [ ] Loader pill, pull-to-refresh and swipe badge look and behave as before.
 
 ## Sites that don't want a frame (2026-10-26)
 
@@ -561,6 +558,18 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Pinch zoom (2026-10-31)
+
+- [ ] A page with Keep open off: pinch out and in. It follows your fingers smoothly, as in Safari, with no percentage, and the page doesn't re-lay out. ⌘+ / ⌘− stay a separate zoom.
+- [ ] Pinch in at normal size: nothing happens, and the all-tabs overview never opens, right after zooming back to normal and on quick repeated pinches too.
+- [ ] Pinch out several times: how often does one do nothing? A pinch whose very first movement is slightly inward is treated as pinching in, and it can't be recovered mid-pinch.
+- [ ] While zoomed in on such a page: hover the left edge and press Option+S. The sidebar is part of the page there, so it's magnified with it and may be out of view. Say if that's a problem.
+- [ ] A fitted page (Keep open on): pinch several times in a row, in and out, at different spots: every pinch works and stays under your fingers, the sidebar and frame don't scale, two fingers move the zoomed page, then scroll it at the edges.
+- [ ] Fitted page at 1.5×, 2× and 3×: how sharp is the text? It's magnified as drawn, so softer than Safari's. This is the trade on fitted pages.
+- [ ] A busy site on a fitted page: does the pinch keep up?
+- [ ] Fitted page: double-tap with two fingers (smart zoom), then pinch out and in.
+- [ ] Pinch in over an embedded video at normal size: the overview may open (as before: Margin isn't in that frame).
+
 ## The theme renamed to Arcadia (2026-10-31)
 
 - [ ] The first `npm run safari` after the rename, with pages open and Keep open on: the sidebar shows on pages after reopening Safari, at the width you had. Your settings show Arcadia. New pages have their sidebar and frame from the first frame.
@@ -568,7 +577,7 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 ## One bare tag in the page (2026-10-31)
 
 - [ ] Web Inspector on any page: the last child of `<html>` is `<margin-app>`, with `<margin-sidebar-host>` inside it, and `<margin-palette-host>` too once the palette has opened. No `style` or `data-` attributes on them (`popover` on the palette's), on Margin's new-tab page too.
-- [ ] Everything works as before: the sidebar, the palette (⌘T, Option+K, Escape, a short window), page zoom with ⌘+ and pinch keeps the sidebar's size, the fitted layout, full screen.
+- [ ] Everything works as before: the sidebar, the palette (⌘T, Option+K, Escape, a short window), page zoom with ⌘+ keeps the sidebar's size, the fitted layout, full screen.
 - [ ] An update while pages are open (`npm run safari` with Safari running), including from a build before this one: one sidebar on each page, none stuck.
 
 ## The frame with the sidebar hidden (2026-10-31)
@@ -588,7 +597,7 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 
 - [ ] **Looks the same.** With Keep open: the sidebar, the frame around the page, the card's rounded corners and shadow are where they were, at 100%, after ⌘+ and ⌘−, and after resizing the window. Hover mode: the sidebar slides in from the left edge as before. A long tab list still scrolls; a row's menu opens beside it.
 - [ ] With System Settings → Appearance → "Show scroll bars: Always" (try it, then set it back): the frame's right edge meets the page's scroll bar as before. The loading pill, the pull-to-refresh badge and the zoom readout are centred over the page card.
-- [ ] Badges and covers: reload a page (the pill at the top), pull down at the top of a page (the badge comes down, spins on reload), swipe back and forward (the round badge at the edge), pinch (the "125%" readout), switch tabs from the sidebar (the switch cover): each shows, fades out, and leaves nothing behind.
+- [ ] Badges and covers: reload a page (the pill at the top), pull down at the top of a page (the badge comes down, spins on reload), swipe back and forward (the round badge at the edge), switch tabs from the sidebar (the switch cover): each shows, fades out, and leaves nothing behind.
 - [ ] **Smooth-scrolling sites** (a page whose own script scrolls, e.g. one with a smooth-scroll library) with Keep open: scrolling isn't heavier than with Margin off (Activity Monitor: Safari's "Graphics and Media" process stays low while scrolling).
 - [ ] **Redraws:** with many tabs, the sidebar updates when a tab's title or icon changes, a tab opens, closes or moves, a pin or folder changes, or a space is renamed (also from another window), and the row under the pointer keeps its hover. A tab whose icon failed to load shows its letter, and the icon once it loads.
 - [ ] Rename a folder while another tab loads (its title changes): the field keeps its text and caret.

@@ -193,16 +193,3 @@ test('no swipe navigation over something that scrolls sideways, for a small swip
   await setSettings({ swipeNavigation: true });
   await page.close();
 });
-
-test('pinch zoom uses the browser\'s page zoom for the tab (background setZoom/getZoom)', async () => {
-  const page = await ctx.context.newPage();
-  await gotoLauncher(page, ctx);
-  const tabId = await page.evaluate(() => chrome.tabs.getCurrent().then((t) => t.id));
-  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'setZoom', factor: 1.5 }));
-  assert.equal(await ctx.worker.evaluate((id) => chrome.tabs.getZoom(id), tabId), 1.5);
-  assert.deepEqual(await page.evaluate(() => chrome.runtime.sendMessage({ type: 'getZoom' })), { ok: true, result: 1.5 });
-  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'setZoom', factor: 9 }));
-  assert.equal(await ctx.worker.evaluate((id) => chrome.tabs.getZoom(id), tabId), 3, 'clamped');
-  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'setZoom', factor: 1 }));
-  await page.close();
-});

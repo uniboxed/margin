@@ -11,13 +11,13 @@
    --vh: the room the page has (without classic scroll bars), measured in
    Margin's own pixels (themes/arcadia/content.js followWindow); until then,
    and on Margin's new-tab page, the viewport's. */
-.margin-sidebar, .frame, .rims, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud, .notice {
+.margin-sidebar, .frame, .rims, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .notice {
   --vw: calc(100vw * var(--page-zoom, 1));
   --vh: calc(100vh * var(--page-zoom, 1));
 }
 /* Each its own stacking context, as a fixed box was: what's raised inside
    (the resize handle, the tab menu, a dragged row's copy) stays inside. */
-.margin-sidebar.overlay, .frame, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud { z-index: 0; }
+.margin-sidebar.overlay, .frame, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe { z-index: 0; }
 /* What --vw and --vh are measured from: the one fixed box, empty and never
    drawn (so it costs nothing as the page scrolls). */
 .window-probe { position: fixed; inset: 0; visibility: hidden; pointer-events: none; }
@@ -667,30 +667,9 @@ ul { list-style: none; margin: 0; padding: 0; }
 .swipe.forward svg { transform: translateX(-36px) rotate(180deg); }
 .swipe path { fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 
-/* Pinch-to-zoom readout (Safari builds): "125%" in a small dark pill
-   centered at the top of the page while pinching. */
-.zoom-hud {
-  position: absolute;
-  top: 16px;
-  left: calc(var(--vw) / 2);
-  transform: translateX(-50%);
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(28, 28, 30, 0.9);
-  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
-  color: #fff;
-  font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 200ms ease, visibility 0s linear 200ms;
-}
-.zoom-hud.in-frame { left: calc(var(--width, 260px) + (var(--vw) - var(--width, 260px) - 8px) / 2); }
-.zoom-hud.show { opacity: 1; visibility: visible; transition: opacity 80ms ease; }
 @media (prefers-reduced-motion: reduce) {
-  .swipe, .zoom-hud { transition: opacity 120ms linear, visibility 0s linear 120ms; }
-  .swipe.active:not(.tracking), .zoom-hud.show { transition: opacity 120ms linear; }
+  .swipe { transition: opacity 120ms linear, visibility 0s linear 120ms; }
+  .swipe.active:not(.tracking) { transition: opacity 120ms linear; }
 }
 
 /* While switching to another tab (shared/switching.js, chrome.js): an empty

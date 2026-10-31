@@ -10,15 +10,16 @@
 //    mostly-horizontal wheel event that nothing on the page can scroll is
 //    cancelled; one that something can scroll (a carousel, a wide table) is
 //    left alone and scrolls as usual.
-//  - Pinch for all tabs: Safari sends pinch events to the page first
-//    (gesturestart/change/end) and acts on them only if the page doesn't
-//    handle them. Once Safari has the start, it handles the rest of the pinch
-//    itself (WebKit's magnification gesture then bypasses the page), and
-//    pinching in at normal zoom opens the tab overview; so at normal zoom
-//    the whole pinch is cancelled and handed to `onPinch` instead: Margin
-//    zooms the page itself (Safari's page zoom, tabs.setZoom; zoomForPinch).
-//    A page Safari has magnified (smart zoom) keeps its pinch gestures.
-//    Pinch-in as ⌃+wheel (how some browsers report a pinch) is cancelled.
+//  - Pinch for all tabs: Safari opens the tab overview from one event only:
+//    the first of a pinch (Began), moving inward, unhandled by the page, with
+//    the page at its normal scale (SearchableWKView
+//    _shouldBeginVisualTabPickerTransitionForMagnification, read from Safari
+//    27.2, DECISIONS.md). Its own smooth zoom starts from that same one event,
+//    unhandled. gesturestart carries the direction (scale = 1 + the first
+//    delta), so only that case is cancelled: every other pinch is Safari's,
+//    in its own process, with nothing running here (the page gets no more
+//    events from it, not even gestureend). A pinch that starts inward at
+//    normal scale does nothing. Pinches go by `pinch()`, see the options.
 //  - Bounce and pull-to-refresh: the page's top/bottom rubber-band, and
 //    Safari's pull-to-refresh (driven only by the top rubber-band stretch,
 //    WebViewImpl::topScrollStretchDidChange → NSRefreshController), both stop
@@ -117,35 +118,28 @@ function atPageTop(event, doc) {
 
 const NO_BOUNCE_CSS = ':root { overscroll-behavior-y: none !important; }';
 
-// Pinch → page zoom: the nearest of Safari's zoom levels to where the pinch
-// has taken it (start × scale), never below 100% (or below where it
-// started, if already zoomed out with ⌘−), at most 300%.
-const ZOOM_LEVELS = [0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2, 2.5, 3];
-function zoomForPinch(start, scale) {
-  const target = start * scale;
-  const floor = Math.min(start, 1) - 1e-9;
-  return ZOOM_LEVELS.filter((z) => z >= floor)
-    .reduce((best, z) => (Math.abs(Math.log(z / target)) < Math.abs(Math.log(best / target)) ? z : best));
-}
-
 // `getSettings()` returns the current settings (or null while unknown).
-// `onPinch({ phase: 'start' | 'change' | 'end', scale, overMargin? })` gets
-// the pinches taken from Safari (`overMargin` on the start: over one of
-// Margin's own hosts). `wanted()`: whether the guard is on by the settings
+// `pinch()`, for a pinch starting in `win` with the page at its normal scale:
+// 'native' (Safari's, but for what opens its overview), 'block' (none: the
+// fitted layout's shell, the new-tab page) or 'own' (Margin's, through
+// `onPinch({ phase: 'start' | 'change' | 'end', scale, x, y })`: the fitted
+// card, where Safari's is no use). `onWheelFirst(event)`: a wheel event
+// that's taken (panning the zoomed card). `wanted()`: whether the guard is on by the settings
 // alone (default: getSettings says so). Returns { update() }: call it when
 // settings change (adds or removes the no-bounce rule, and the wheel
 // listener).
 /**
- * @param {{ getSettings: () => any, wanted?: () => boolean, onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number, overMargin?: boolean }) => void, win?: Window & typeof globalThis }} options
+ * @param {{ getSettings: () => any, wanted?: () => boolean, pinch?: () => 'native' | 'block' | 'own', onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number, x?: number, y?: number }) => void, onWheelFirst?: (event: WheelEvent) => boolean, win?: Window & typeof globalThis }} options
  */
-function installGestureGuard({ getSettings, wanted = undefined, onPinch = () => {}, win = globalThis.window }) {
+function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'block', onPinch = () => {}, onWheelFirst = undefined, win = globalThis.window }) {
   if (!win) return { update() {} };
   const doc = win.document;
   const enabled = () => getSettings()?.blockGestures !== false;
   const wheelWanted = wanted ?? enabled;
 
-  // Safari's pinch events (macOS); `scale` < 1 means pinching in.
-  const zoomedIn = () => (win.visualViewport?.scale ?? 1) > 1.01;
+  // Magnified by Safari: the top window's scale (a frame's is always 1), as
+  // Safari tests it. `scale` < 1 means pinching in.
+  const zoomedIn = () => (globalThis.visualViewport?.scale ?? 1) > 1;
 
   // A cancelable (non-passive) wheel listener makes WebKit hand every wheel
   // event of the page to the page's main thread first, and wait for it at
@@ -156,10 +150,10 @@ function installGestureGuard({ getSettings, wanted = undefined, onPinch = () => 
   // may have taken over without a change of settings).
   const wheelOptions = { capture: true, passive: false };
   const onWheel = (/** @type {WheelEvent} */ event) => {
-    if (!enabled() || !event.cancelable) return;
-    if (event.ctrlKey) { // a pinch reported as wheel: deltaY > 0 is pinching in
-      if (event.deltaY > 0 && !zoomedIn()) event.preventDefault();
-      return;
+    if (!enabled() || !event.cancelable || event.ctrlKey) return;
+    if (onWheelFirst?.(event)) {
+      event.stopPropagation(); // not for the page as well: a map would move under the pan
+      return event.preventDefault();
     }
     if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
     if (pageScrollsX(event, doc)) return;
@@ -175,26 +169,33 @@ function installGestureGuard({ getSettings, wanted = undefined, onPinch = () => 
   };
   syncWheel();
 
-  // A pinch is Margin's if it started at normal (unmagnified) zoom.
+  // Decided on the first event alone (see the top of this file).
   let ours = false;
   const options = { capture: true, passive: false };
   win.addEventListener('gesturestart', (event) => {
-    ours = enabled() && !zoomedIn();
-    if (!ours) return;
-    event.preventDefault();
-    // Over Margin's own UI (one of its hosts): the caller zooms nothing.
+    ours = false;
+    if (!enabled() || zoomedIn()) return; // magnified: Safari's, both ways
+    // Over Margin's own UI (one of its hosts), nothing zooms.
     const overMargin = event.composedPath().some((node) => /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
-    onPinch({ phase: 'start', scale: 1, overMargin });
+    const mode = overMargin ? 'block' : pinch();
+    if (mode === 'native' && event.scale >= 1) return;
+    event.preventDefault();
+    if (mode !== 'own') return;
+    event.stopPropagation(); // Margin's, not the page's as well
+    ours = true;
+    onPinch({ phase: 'start', scale: event.scale, x: /** @type {any} */ (event).clientX, y: /** @type {any} */ (event).clientY });
   }, options);
   win.addEventListener('gesturechange', (event) => {
-    if (!ours) return;
+    if (!ours || !enabled()) return;
     event.preventDefault();
+    event.stopPropagation();
     if (Number.isFinite(event.scale)) onPinch({ phase: 'change', scale: event.scale });
   }, options);
   win.addEventListener('gestureend', (event) => {
     if (!ours) return;
     ours = false;
     event.preventDefault();
+    event.stopPropagation();
     onPinch({ phase: 'end', scale: event.scale });
   }, options);
 
@@ -229,4 +230,4 @@ function installGestureGuard({ getSettings, wanted = undefined, onPinch = () => 
 // this event's direction (so the swipe is the page's to go back/forward)?
 const canSwipe = (event, doc) => !pageScrollsX(event, doc);
 
-export { installGestureGuard, containScroll, atPageTop, canSwipe, zoomForPinch, ZOOM_LEVELS, canScroll, canScrollX };
+export { installGestureGuard, containScroll, atPageTop, canSwipe, canScroll, canScrollX };

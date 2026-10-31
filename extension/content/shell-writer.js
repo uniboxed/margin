@@ -45,7 +45,7 @@ import { setUpCard } from './shell-card.js';
     const root = document.documentElement;
     let result = 'error: no card';
     try {
-      const frame = root.hasAttribute('data-margin-shell') ? root.querySelector(':scope > body > iframe[name^="margin-"]') : null;
+      const frame = root.hasAttribute('data-margin-shell') ? root.querySelector(':scope > body > [data-margin-clip] > iframe[name^="margin-"]') : null;
       const card = /** @type {HTMLIFrameElement | null} */ (frame)?.contentWindow;
       if (card && typeof event.detail === 'string') {
         setUpCard(card, window);

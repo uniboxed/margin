@@ -234,12 +234,12 @@ export function startLayout(page, { loader }) {
   onCard(watchToggleKey);
 
   // `target`: this document, or the card's window in the fitted layout,
-  // whose coordinates start `offsetX` px into the window.
-  function watchPointer(target, offsetX = () => 0) {
+  // whose x `toWindowX` makes the window's.
+  function watchPointer(target, toWindowX = (x) => x) {
     target.addEventListener(
       'mousemove',
       (e) => {
-        const x = e.clientX + offsetX();
+        const x = toWindowX(e.clientX);
         // On the narrow rail (Keep open, a pushed page): its icons work at
         // once; resting on it opens the full sidebar over the page.
         const rail = onRail();
@@ -271,7 +271,7 @@ export function startLayout(page, { loader }) {
     target.addEventListener('mouseout', (e) => {
       if (e.relatedTarget) return;
       cancelRail(); // left the window
-      if (e.clientX + offsetX() > pagePx(edgePx())) scheduleHide();
+      if (toWindowX(e.clientX) > pagePx(edgePx())) scheduleHide();
     });
     target.addEventListener(
       'keydown',
@@ -290,7 +290,7 @@ export function startLayout(page, { loader }) {
   // Another tab now: nothing pending here.
   document.addEventListener('visibilitychange', () => document.hidden && cancelRail());
   watchPointer(document);
-  onCard((win) => watchPointer(win, () => globalThis.Margin?.shell?.cardLeft() ?? 0));
+  onCard((win) => watchPointer(win, (x) => globalThis.Margin?.shell?.cardX(x) ?? x));
 
   return {
     show, hide, toggle, peek, onWidth,

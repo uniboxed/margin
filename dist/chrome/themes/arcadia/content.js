@@ -15,7 +15,7 @@ import theme, { RAIL } from './theme.js';
 // covers: no classic scroll bars), in Margin's own pixels (its host is
 // scaled back by the page's zoom), whenever that changes; set in a style
 // sheet of the shadow root's own, which the page's styles can't reach.
-const SIZED = '.margin-sidebar, .frame, .rims, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud, .notice';
+const SIZED = '.margin-sidebar, .frame, .rims, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .notice';
 function followWindow(shadow) {
   const doc = shadow.ownerDocument;
   const win = doc.defaultView;
@@ -51,7 +51,7 @@ registerTheme({
     const chrome = createChrome(document);
     // The switch cover below the sidebar (a hovered sidebar stays on top of it).
     // The startup cover over everything, the sidebar too.
-    shadow.append(chrome.frame, chrome.rims, chrome.cover, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.zoomHud, chrome.notice, chrome.startup);
+    shadow.append(chrome.frame, chrome.rims, chrome.cover, sidebar.el, chrome.cardEdge, chrome.loader, chrome.pull, chrome.swipe, chrome.notice, chrome.startup);
     // Styles are bundled (assets.js) and applied synchronously, so the panel
     // is styled from the first frame (no fetch, no unstyled flash).
     adoptStyles(shadow, sidebarCss);
@@ -158,7 +158,6 @@ registerTheme({
       setStartup: chrome.setStartup,
       setPull: chrome.setPull,
       setSwipe: chrome.setSwipe,
-      setZoom: chrome.setZoom,
       showNotice: chrome.showNotice,
     };
   },

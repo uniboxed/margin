@@ -239,9 +239,6 @@ test('page zoom: remembered per site (only away from the default), capped, so it
   assert.equal(await handlers.getZoom({}, at('https://p1.com/a')), 1.5);
   await sleep(10);
   assert.deepEqual(zooms(), { 'https://p1.com': 1.5 });
-  await handlers.setZoom({ factor: 1.25 }, at('https://p1.com/b'));
-  await sleep(10);
-  assert.deepEqual(zooms(), { 'https://p1.com': 1.25 }, 'the same site, from Margin\'s pinch');
   fake.zoom[1] = 1;
   await handlers.getZoom({}, at('https://p1.com/a'));
   await sleep(10);
