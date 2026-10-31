@@ -70,7 +70,20 @@ rm -rf "$DEST" && mv "$DEST.new" "$DEST"
 "$LSREGISTER" -u "$BUILT" 2>/dev/null || true
 rm -rf "$BUILT"
 "$LSREGISTER" -f -R "$DEST"
-pluginkit -a "$DEST/Contents/PlugIns/Margin Extension.appex"
+# Safari lists Margin only once the system has the extension. Its record can
+# be dropped right after it's added (the copies unregistered above are handled
+# late), so it's added again until the system lists this copy.
+APPEX="$DEST/Contents/PlugIns/Margin Extension.appex"
+REGISTERED=false
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  pluginkit -a "$APPEX"
+  sleep 0.5
+  if pluginkit -m -v -i io.tirth.margin.Extension 2>/dev/null | grep -qF "$APPEX"; then
+    REGISTERED=true
+    break
+  fi
+done
+[ "$REGISTERED" = true ] || echo "warning: the system doesn't list Margin's extension; open $DEST once so Safari sees it." >&2
 # Only this copy: one Xcode left elsewhere (its own build folder) would be a
 # second Margin in Safari, with storage of its own.
 "$LSREGISTER" -dump 2>/dev/null | sed -n 's/^path: *\(.*Margin\.app\) (0x[0-9a-f]*)$/\1/p' | sort -u | while read -r other; do

@@ -559,6 +559,7 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Safari → Settings → Extensions: one Margin; turn it on, allow it on every website.
 - [ ] Quit and reopen Safari: Margin is still on, with your spaces and pins; no "Allow Unsigned Extensions" needed.
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
+- [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
 ## Rows press and drag as in Arc (2026-10-29)
 
