@@ -113,7 +113,7 @@ test("a tab on Margin's new-tab page from a copy that's gone is sent to this cop
 
 test("this copy's own new-tab page, another of its files, web pages and other schemes are left alone", () => {
   assert.equal(oldOwnPageAddress(`${OWN}newtab/newtab.html`, OWN), null);
-  assert.equal(oldOwnPageAddress(`${OLD}themes/arcadium/newtab.html`, OWN), null);
+  assert.equal(oldOwnPageAddress(`${OLD}themes/arcadia/newtab.html`, OWN), null);
   assert.equal(oldOwnPageAddress('https://example.com/newtab/newtab.html', OWN), null);
   assert.equal(oldOwnPageAddress('chrome-extension://OLD/newtab/newtab.html', OWN), null);
   assert.equal(oldOwnPageAddress(undefined, OWN), null);

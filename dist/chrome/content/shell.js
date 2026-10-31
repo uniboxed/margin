@@ -228,7 +228,7 @@ import { platform } from '../shared/platform.js';
   // Card geometry: inset in the theme's frame while docked, the whole window
   // otherwise (Keep open turned off on this page: the sidebar floats over it).
   // The theme reports its width, inset and corner radius through
-  // content/core.js; until then, the default theme's (Arcadium: 260px
+  // content/core.js; until then, the default theme's (Arcadia: 260px
   // sidebar, 8px frame, 6.25px corners), which its first-paint placeholder
   // draws around this card.
   let layout = { docked: true, width: 260, inset: 8, radius: '6.25px' };

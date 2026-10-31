@@ -8,8 +8,10 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { dirname } from 'node:path';
 import { THEMES } from '../extension/themes/index.js';
 import { PROFILES } from '../extension/shared/platform.js';
+import { DOCKED_WIDTHS } from './build-styles.js';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
@@ -66,6 +68,15 @@ const BUNDLES = {
   newtab: 'newtab/newtab.bundle.js',
 };
 export const LEGACY_SHELL_FILES = ['shared/shell-logic.js', 'content/shell.js'];
+// Where earlier versions registered Arcadia, under its earlier name: empty, so
+// Safari's stored registrations stay valid until the background replaces them.
+// A page that loads one then asks for the theme (handlers.js injectTheme).
+export const LEGACY_THEME_FILES = [
+  'themes/arcadium/content.bundle.js',
+  'themes/arcadium/docked/closed.css',
+  'themes/arcadium/docked/rail.css',
+  ...DOCKED_WIDTHS.map((width) => `themes/arcadium/docked/w-${width}.css`),
+];
 
 function bundle(out, manifest, profile) {
   const write = (file, entries, { format = 'iife' } = {}) => buildSync({
@@ -81,6 +92,11 @@ function bundle(out, manifest, profile) {
     outfile: `${out}/${file}`,
     logLevel: 'warning',
   });
+
+  for (const file of LEGACY_THEME_FILES) {
+    mkdirSync(dirname(`${out}/${file}`), { recursive: true });
+    writeFileSync(`${out}/${file}`, '');
+  }
 
   // Margin's content script (its core on web pages; the theme is separate).
   const [sidebar] = manifest.content_scripts;

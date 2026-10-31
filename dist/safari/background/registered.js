@@ -29,8 +29,8 @@ async function syncTheme() {
 
 // ---- first-paint placeholder ------------------------------------------------
 
-// While "Keep open" is on, register the theme's placeholder CSS (Arcadium:
-// themes/arcadium/docked/w-<width>.css, one per sidebar width): the browser
+// While "Keep open" is on, register the theme's placeholder CSS (Arcadia:
+// themes/arcadia/docked/w-<width>.css, one per sidebar width): the browser
 // applies it before the page's first paint, ahead of content scripts, so the
 // docked layout is there from the first frame. Feature-detected; without the
 // scripting API the sidebar simply appears when the content script runs.

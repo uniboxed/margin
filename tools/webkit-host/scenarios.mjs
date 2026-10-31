@@ -50,7 +50,7 @@ const CARD = "const f = document.querySelector('iframe[name^=margin-]'); const w
 const SWIPE = (deltas) => `await new Promise((resolve) => { const target = document.querySelector('#sidebar .tabs-section'); const d = ${JSON.stringify(deltas)}; let i = 0; const tick = () => { if (i >= d.length) return resolve(); target.dispatchEvent(new WheelEvent('wheel', { deltaX: d[i++], bubbles: true, cancelable: true, composed: true })); setTimeout(tick, 10); }; tick(); });`;
 // Margin drew its sidebar here (the core sets data-open once the theme is mounted).
 const drawn = (tab) => checkPage(tab, `${tab}: Margin's sidebar is there`, `document.querySelector('margin-sidebar-host')?.dataset.open !== undefined`, 5000);
-const themed = (tab) => check(tab, `${tab}: the Arcadium theme is mounted`, `globalThis.Margin?.theme?.id === 'arcadium'`, 5000);
+const themed = (tab) => check(tab, `${tab}: the Arcadia theme is mounted`, `globalThis.Margin?.theme?.id === 'arcadia'`, 5000);
 const shown = (tab) => checkPage(tab, `${tab} is the tab shown`, `!document.hidden`);
 // The middle of a tab's row in the sidebar (over its title, clear of its close
 // button), for a `mouse` step; through the test hook's __shadowOf (hook.js).
@@ -124,9 +124,9 @@ export const SCENARIOS = {
   newtab: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, wait(2000),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
-    checkPage('N', 'N: Arcadium\'s launcher is drawn', `!!document.querySelector('#launcher')`, 5000),
+    checkPage('N', 'N: Arcadia\'s launcher is drawn', `!!document.querySelector('#launcher')`, 5000),
     checkPage('N', 'N: its sidebar lists the tabs', `document.querySelectorAll('#sidebar .tab').length >= 2`),
-    checkPage('N', 'N: Settings shows the theme', `document.querySelector('#theme')?.value === 'arcadium'`),
+    checkPage('N', 'N: Settings shows the theme', `document.querySelector('#theme')?.value === 'arcadia'`),
   ],
   // Swiping between spaces in the sidebar (the new-tab page's: the same code
   // as on pages, whose sidebar is in a closed shadow root): a trackpad-like

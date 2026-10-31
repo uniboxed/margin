@@ -57,7 +57,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   // Which profile's defaults `shortcuts` started from (see normalizeShortcuts).
   shortcutDefaults: platform?.name ?? 'chrome',
   // What Margin looks like (themes/index.js), and each theme's own settings
-  // ({ [themeId]: {...} }; Arcadium: sidebarWidth).
+  // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,
   themes: Object.freeze(Object.fromEntries(Object.values(THEMES).map((t) => [t.id, t.defaults]))),
 });
@@ -124,8 +124,8 @@ function normalizeState(raw = {}) {
 }
 
 // Settings that no longer exist: `searchEngine` (Margin's own engine
-// choice, replaced by the browser's); `sidebarWidth` (now Arcadium's own,
-// settings.themes.arcadium; normalizeThemes moves a saved one there);
+// choice, replaced by the browser's); `sidebarWidth` (now Arcadia's own,
+// settings.themes.arcadia; normalizeThemes moves a saved one there);
 // `paletteShortcut` (⌥K: ⌘T opens the same palette, content/palette.js).
 const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
 const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
@@ -137,6 +137,7 @@ function normalizeThemes(rawSettings) {
   const saved = rawSettings?.themes && typeof rawSettings.themes === 'object' ? rawSettings.themes : {};
   const themes = { ...saved };
   for (const theme of Object.values(THEMES)) themes[theme.id] = theme.settingsOf(rawSettings);
+  delete themes.arcadium; // Arcadia's earlier name: taken over just now
   return themes;
 }
 

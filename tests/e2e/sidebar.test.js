@@ -306,7 +306,7 @@ test('Keep open registers the first-paint placeholder for the current width; Mar
     }));
 
   await setKeepOpen(true);
-  await waitFor(async () => (await registered())?.endsWith('themes/arcadium/docked/w-260.css'));
+  await waitFor(async () => (await registered())?.endsWith('themes/arcadia/docked/w-260.css'));
   const page = await openPage('placeholder');
   // The placeholder pushed the first paint; Margin's live push now holds the
   // same width and the placeholder is switched off on this page.

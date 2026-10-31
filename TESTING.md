@@ -301,13 +301,13 @@ Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then R
 - [ ] Site icons appear for new sites.
 - [ ] After changing Margin's website access in Safari's settings, Option+K still opens the palette once (not open-then-close).
 
-## Themes: Arcadium in its own folder (2026-10-25)
+## Themes: Arcadia in its own folder (2026-10-25)
 
 Files were added and moved under `dist/safari/`: re-run `scripts/make-xcode.sh`, then Run in Xcode. Nothing should look or behave differently.
 
-- [ ] After installing, pages you open show the sidebar as before (it now comes from `themes/arcadium/`). Also right after relaunching Safari: the first restored tabs still get it (they ask the background for the theme if Safari hasn't loaded its registrations yet).
-- [ ] "Keep open": the first paint already shows the frame (placeholder), pages push or fit as before, and resizing still saves the width (it's now Arcadium's own setting; your old width carries over).
-- [ ] The new-tab page looks the same; Settings has a new "Theme" row showing Arcadium.
+- [ ] After installing, pages you open show the sidebar as before (it now comes from `themes/arcadia/`). Also right after relaunching Safari: the first restored tabs still get it (they ask the background for the theme if Safari hasn't loaded its registrations yet).
+- [ ] "Keep open": the first paint already shows the frame (placeholder), pages push or fit as before, and resizing still saves the width (it's now Arcadia's own setting; your old width carries over).
+- [ ] The new-tab page looks the same; Settings has a new "Theme" row showing Arcadia.
 - [ ] ⌘T still hands off to the palette over the previous tab (the new tab now closes without drawing the launcher first); ⌘N's first tab opens the palette over the launcher.
 - [ ] Loader pill, pull-to-refresh, swipe badge and pinch-zoom readout look and behave as before.
 
@@ -560,6 +560,10 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Quit and reopen Safari: Margin is still on, with your spaces and pins; no "Allow Unsigned Extensions" needed.
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
+
+## The theme renamed to Arcadia (2026-10-31)
+
+- [ ] The first `npm run safari` after the rename, with pages open and Keep open on: the sidebar shows on pages after reopening Safari, at the width you had. Your settings show Arcadia. New pages have their sidebar and frame from the first frame.
 
 ## One bare tag in the page (2026-10-31)
 

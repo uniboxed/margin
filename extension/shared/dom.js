@@ -175,7 +175,7 @@ function asBrowserUi(root, { zoomable = () => false } = {}) {
   root.addEventListener('selectstart', (event) => { if (!fromHost(event) && !editable(event)) event.preventDefault(); });
   root.addEventListener('dragstart', (event) => {
     const source = event.composedPath()[0];
-    // (Margin's rows drag by the pointer's own events: themes/arcadium/sidebar.js.)
+    // (Margin's rows drag by the pointer's own events: themes/arcadia/sidebar.js.)
     if (source instanceof Element && /^(IMG|A)$/.test(source.tagName) && !source.closest('[draggable="true"]')) event.preventDefault();
   });
   root.addEventListener('webkitmouseforcewillbegin', (event) => event.preventDefault());

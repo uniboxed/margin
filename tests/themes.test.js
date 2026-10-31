@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import * as M from '../extension/state/model.js';
 import { THEMES, DEFAULT_THEME, themeFor } from '../extension/themes/index.js';
-import arcadium, { WIDTH, snapWidth, clampWidth, sidebarWidth } from '../extension/themes/arcadium/theme.js';
+import arcadia, { WIDTH, snapWidth, clampWidth, sidebarWidth } from '../extension/themes/arcadia/theme.js';
 
 const root = new URL('../extension/', import.meta.url);
 
-test('Margin ships Arcadium, the default theme; an unknown theme falls back to it', () => {
-  assert.equal(DEFAULT_THEME, 'arcadium');
-  assert.deepEqual(Object.keys(THEMES), ['arcadium']);
-  assert.equal(themeFor({ theme: 'arcadium' }), arcadium);
-  assert.equal(themeFor({ theme: 'gone' }), arcadium);
-  assert.equal(themeFor(undefined), arcadium);
+test('Margin ships Arcadia, the default theme; an unknown theme falls back to it', () => {
+  assert.equal(DEFAULT_THEME, 'arcadia');
+  assert.deepEqual(Object.keys(THEMES), ['arcadia']);
+  assert.equal(themeFor({ theme: 'arcadia' }), arcadia);
+  assert.equal(themeFor({ theme: 'gone' }), arcadia);
+  assert.equal(themeFor(undefined), arcadia);
 });
 
 test('every theme has its folder: content.js, newtab.js, and bundle paths the build makes', () => {
@@ -28,34 +28,34 @@ test('every theme has its folder: content.js, newtab.js, and bundle paths the bu
 test('theme.js files are UI-free (the background, the model and the build import them)', () => {
   for (const f of ['themes/index.js', ...Object.keys(THEMES).map((id) => `themes/${id}/theme.js`)]) {
     const imports = [...readFileSync(new URL(f, root), 'utf8').matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
-    for (const path of imports) assert.match(path, /(^|\/)theme\.js$|^\.\/arcadium\/theme\.js$/, `${f} imports ${path}`);
+    for (const path of imports) assert.match(path, /(^|\/)theme\.js$|^\.\/arcadia\/theme\.js$/, `${f} imports ${path}`);
   }
 });
 
 test('settings: the active theme and each theme\'s own settings', () => {
   const s = M.defaultState();
-  assert.equal(s.settings.theme, 'arcadium');
-  assert.deepEqual(s.settings.themes, { arcadium: { sidebarWidth: 260 } });
-  assert.notEqual(s.settings.themes.arcadium, M.DEFAULT_SETTINGS.themes.arcadium, 'a copy, not the frozen default');
-  assert.equal(M.normalizeState({ settings: { theme: 'gone' } }).settings.theme, 'arcadium');
+  assert.equal(s.settings.theme, 'arcadia');
+  assert.deepEqual(s.settings.themes, { arcadia: { sidebarWidth: 260 } });
+  assert.notEqual(s.settings.themes.arcadia, M.DEFAULT_SETTINGS.themes.arcadia, 'a copy, not the frozen default');
+  assert.equal(M.normalizeState({ settings: { theme: 'gone' } }).settings.theme, 'arcadia');
   // A theme this build doesn't have keeps its saved settings.
   assert.deepEqual(M.normalizeState({ settings: { themes: { other: { x: 1 } } } }).settings.themes.other, { x: 1 });
 });
 
-test('a saved top-level sidebarWidth (before themes) becomes Arcadium\'s', () => {
+test('a saved top-level sidebarWidth (before themes) becomes Arcadia\'s', () => {
   const s = M.normalizeState({ settings: { sidebarWidth: 333 } });
-  assert.equal(s.settings.themes.arcadium.sidebarWidth, 330, 'snapped');
+  assert.equal(s.settings.themes.arcadia.sidebarWidth, 330, 'snapped');
   assert.ok(!('sidebarWidth' in s.settings), 'the old key is dropped');
-  // Arcadium's own value wins over a leftover old one.
-  assert.equal(M.normalizeState({ settings: { sidebarWidth: 400, themes: { arcadium: { sidebarWidth: 200 } } } }).settings.themes.arcadium.sidebarWidth, 200);
+  // Arcadia's own value wins over a leftover old one.
+  assert.equal(M.normalizeState({ settings: { sidebarWidth: 400, themes: { arcadia: { sidebarWidth: 200 } } } }).settings.themes.arcadia.sidebarWidth, 200);
 });
 
-test('Arcadium sidebar width: default 260, clamped to 160–500, snapped to 10px', () => {
+test('Arcadia sidebar width: default 260, clamped to 160–500, snapped to 10px', () => {
   assert.deepEqual({ ...WIDTH }, { min: 160, max: 500, default: 260, step: 10 });
   assert.equal(sidebarWidth(M.defaultState().settings), 260);
   assert.equal(sidebarWidth({}), 260);
   assert.equal(sidebarWidth(undefined), 260);
-  assert.equal(sidebarWidth({ themes: { arcadium: { sidebarWidth: 'nonsense' } } }), 260);
+  assert.equal(sidebarWidth({ themes: { arcadia: { sidebarWidth: 'nonsense' } } }), 260);
   assert.equal(sidebarWidth({ sidebarWidth: 420 }), 420, 'pages may read settings saved before themes');
   assert.equal(snapWidth(333), 330);
   assert.equal(snapWidth(336), 340);
@@ -64,8 +64,15 @@ test('Arcadium sidebar width: default 260, clamped to 160–500, snapped to 10px
   assert.equal(clampWidth(171.5), 171.5, 'live dragging is not snapped');
 });
 
-test('Arcadium\'s placeholder follows its width; one file exists for every width', () => {
-  assert.equal(arcadium.placeholder({ themes: { arcadium: { sidebarWidth: 330 } } }), 'themes/arcadium/docked/w-330.css');
-  const files = readdirSync(new URL('themes/arcadium/docked/', root));
+test('Arcadia\'s placeholder follows its width; one file exists for every width', () => {
+  assert.equal(arcadia.placeholder({ themes: { arcadia: { sidebarWidth: 330 } } }), 'themes/arcadia/docked/w-330.css');
+  const files = readdirSync(new URL('themes/arcadia/docked/', root));
   for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) assert.ok(files.includes(`w-${w}.css`), `w-${w}.css`);
+});
+
+test('the theme\'s earlier name: its id falls back, its own settings carry over, and the old entry goes', () => {
+  const { settings } = M.normalizeState({ settings: { theme: 'arcadium', themes: { arcadium: { sidebarWidth: 330 } } } });
+  assert.equal(settings.theme, 'arcadia');
+  assert.equal(settings.themes.arcadia.sidebarWidth, 330);
+  assert.equal('arcadium' in settings.themes, false);
 });

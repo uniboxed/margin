@@ -643,7 +643,7 @@ export const handlers = {
     if (!sender.tab) return { openPalette: true };
     return (await newTabHandOff(sender.tab)) ? { handled: true } : { openPalette: true };
   },
-  // Escape in the palette of a fresh new tab (⌘T; themes/arcadium/newtab.js):
+  // Escape in the palette of a fresh new tab (⌘T; themes/arcadia/newtab.js):
   // back to the tab the user was on, and this one closes, as if no tab had
   // been opened. The window's only tab (⌘N) stays, with the start page.
   async cancelNewTab(_, sender) {

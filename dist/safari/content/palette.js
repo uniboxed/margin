@@ -1,7 +1,7 @@
 // The command palette's wiring: its shortcut, and on web pages its place in
 // Margin.content. The palette itself (what it looks like) is the theme's
 // createPalette({ send, getState, getContext, onLocal, colorScheme }) →
-// { open, close, toggle, isOpen, refresh }; see themes/arcadium/palette.js.
+// { open, close, toggle, isOpen, refresh }; see themes/arcadia/palette.js.
 import * as V from '../shared/view.js';
 import { NEW_TAB, opensNewTab } from '../shared/switching.js';
 import { platform } from '../shared/platform.js';

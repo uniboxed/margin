@@ -32,7 +32,7 @@ You are running in a **Linux cloud session** with no Xcode, no `xcodebuild`, no 
   Put that command, plus how to rebuild after pulling new changes, in `README.md` under "Building for Safari (local, macOS)". Add `xcode/` to `.gitignore` unless Tirth later commits it himself.
 - Unit tests for pure state logic with **`node --test`** (no test framework installs). E2E tests with **Playwright** (Chromium only) in `tests/e2e/`. Dev dependencies, declared in a root `package.json`, are Playwright, esbuild and TypeScript (the type checker; pinned versions). The extension itself stays dependency-free.
 - Use `browser.*` APIs (Safari supports them); fall back to `chrome.*` only if needed.
-- **Themes (Tirth's decision, 2026-10-25):** everything visual (components, structure, CSS, icons, fonts, the new-tab layout, first-paint placeholders) lives in a theme under `extension/themes/<id>/`; behavior stays in core. Arcadium is the default. Each theme has its own settings (`settings.themes[id]`). Only the active theme's code loads (its content bundle is a registered content script; the new-tab page imports only its module). Themes ship inside the extension: MV3 and App Store review forbid downloading code, so a downloadable theme could only be data (CSS, colors, fonts), and a shipped theme can't be deleted from the app.
+- **Themes (Tirth's decision, 2026-10-25):** everything visual (components, structure, CSS, icons, fonts, the new-tab layout, first-paint placeholders) lives in a theme under `extension/themes/<id>/`; behavior stays in core. Arcadia is the default. Each theme has its own settings (`settings.themes[id]`). Only the active theme's code loads (its content bundle is a registered content script; the new-tab page imports only its module). Themes ship inside the extension: MV3 and App Store review forbid downloading code, so a downloadable theme could only be data (CSS, colors, fonts), and a shipped theme can't be deleted from the app.
 
 ## Repo layout (target)
 
@@ -57,7 +57,7 @@ margin/
     themes/                # what Margin looks like; only the active theme's code loads
       index.js             # the themes Margin ships (UI-free registry)
       register.js          # how a theme's content bundle hands itself to core
-      arcadium/            # Arcadium (the default): Arc's look
+      arcadia/            # Arcadia (the default): Arc's look
         theme.js           # UI-free description, defaults, its own settings
         content.js         # its part on web pages: sidebar, chrome, palette, CSS
         newtab.js, newtab.html
@@ -84,7 +84,7 @@ margin/
   pins: [{ id, spaceId, url, title }],         // URL-based (tab ids don't survive restarts)
   archive: [{ url, title, spaceId, closedAt }],// capped at 200 entries
   settings: { sidebarPinnedOpen: false, archiveAfterHours: 12, …,
-              theme: "arcadium", themes: { arcadium: { sidebarWidth: 260 } } } // each theme's own settings
+              theme: "arcadia", themes: { arcadia: { sidebarWidth: 260 } } } // each theme's own settings
 }
 ```
 

@@ -4,10 +4,10 @@
 // page. Only the active theme's code loads: the background registers its
 // content bundle (background/registered.js) and the new-tab page imports its
 // new-tab bundle (newtab/newtab.js).
-import arcadium from './arcadium/theme.js';
+import arcadia from './arcadia/theme.js';
 
-export const THEMES = Object.freeze({ [arcadium.id]: arcadium });
-export const DEFAULT_THEME = arcadium.id;
+export const THEMES = Object.freeze({ [arcadia.id]: arcadia });
+export const DEFAULT_THEME = arcadia.id;
 
 // The active theme (an unknown or missing id falls back to the default).
 export const themeFor = (settings) => THEMES[settings?.theme] ?? THEMES[DEFAULT_THEME];

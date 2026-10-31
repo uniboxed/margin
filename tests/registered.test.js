@@ -3,18 +3,18 @@ import assert from 'node:assert/strict';
 import { placeholderPlan } from '../extension/background/registered.js';
 import { FRAME_AWARE_PATTERNS } from '../extension/shared/shell-logic.js';
 
-const keepOpen = { sidebarPinnedOpen: true, themes: { arcadium: { sidebarWidth: 300 } } };
-const full = 'themes/arcadium/docked/w-300.css';
-const rail = 'themes/arcadium/docked/rail.css';
+const keepOpen = { sidebarPinnedOpen: true, themes: { arcadia: { sidebarWidth: 300 } } };
+const full = 'themes/arcadia/docked/w-300.css';
+const rail = 'themes/arcadia/docked/rail.css';
 
 test('placeholders: without Keep open, only the frame', () => {
-  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true, fullscreenOnly: false }), [{ id: 'margin-docked', css: ['themes/arcadium/docked/closed.css'], matches: ['<all_urls>'], excludeMatches: [] }], 'hidden: the frame alone');
+  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true, fullscreenOnly: false }), [{ id: 'margin-docked', css: ['themes/arcadia/docked/closed.css'], matches: ['<all_urls>'], excludeMatches: [] }], 'hidden: the frame alone');
   assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true, fullscreenOnly: true }), [], 'not where Margin works only in full screen');
   assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false, frameWhenHidden: false }, { fits: true, fullscreenOnly: false }), [], 'the setting off: nothing, as before');
 });
 
 test('placeholders: the rail is off for now (platform.compactRail): the full sidebar everywhere, whatever the setting', () => {
-  const full = [{ id: 'margin-docked', css: ['themes/arcadium/docked/w-300.css'], matches: ['<all_urls>'], excludeMatches: [] }];
+  const full = [{ id: 'margin-docked', css: ['themes/arcadia/docked/w-300.css'], matches: ['<all_urls>'], excludeMatches: [] }];
   assert.deepEqual(placeholderPlan(keepOpen, { fits: true }), full);
   assert.deepEqual(placeholderPlan({ ...keepOpen, fitPages: false }, { fits: true }), full);
   assert.deepEqual(placeholderPlan({ ...keepOpen, compactWhenPushed: true }, { fits: false }), full);

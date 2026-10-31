@@ -164,7 +164,7 @@ async function read() {
   // them): save, so pages, which read storage directly, use the new ones.
   if (raw.settings && raw.settings.shortcutDefaults !== next.settings.shortcutDefaults) missing.push('settings');
   // Removed settings to drop, or theme settings to fill in or move (a saved
-  // top-level sidebarWidth became Arcadium's): save, for the same reason.
+  // top-level sidebarWidth became Arcadia's): save, for the same reason.
   else if (raw.settings && ('searchEngine' in raw.settings || 'sidebarWidth' in raw.settings || !raw.settings.themes || raw.settings.theme !== next.settings.theme)) missing.push('settings');
   cache ??= next;
   if (missing.length) write(missing);

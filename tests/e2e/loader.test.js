@@ -31,10 +31,10 @@ after(async () => {
   server.close();
 });
 
-// The width is Arcadium's own setting (settings.themes.arcadium).
+// The width is Arcadia's own setting (settings.themes.arcadia).
 const setSettings = async ({ sidebarWidth, ...patch }) => {
   if (Object.keys(patch).length) await control.evaluate((p) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: p }), patch);
-  if (sidebarWidth != null) await control.evaluate((w) => chrome.runtime.sendMessage({ type: 'updateThemeSettings', themeId: 'arcadium', patch: { sidebarWidth: w } }), sidebarWidth);
+  if (sidebarWidth != null) await control.evaluate((w) => chrome.runtime.sendMessage({ type: 'updateThemeSettings', themeId: 'arcadia', patch: { sidebarWidth: w } }), sidebarWidth);
 };
 const loaderState = (page) =>
   evalInShadow(page, 'margin-sidebar-host', function () {

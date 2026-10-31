@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEGACY_SHELL_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
+import { LEGACY_SHELL_FILES, LEGACY_THEME_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
 import { THEMES } from '../extension/themes/index.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -62,6 +62,7 @@ test('each build loads one bundled script per context', () => {
     // Safari drops every registered script if a file one lists is missing, so
     // the sources an earlier version registered must still be there.
     for (const file of LEGACY_SHELL_FILES) assert.ok(statSync(join(dir, file)).isFile(), `${target}/${file}`);
+    for (const file of LEGACY_THEME_FILES) assert.equal(statSync(join(dir, file)).size, 0, `${target}/${file}: an empty stub`);
   }
 });
 

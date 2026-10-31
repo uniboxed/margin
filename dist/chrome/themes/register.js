@@ -11,7 +11,7 @@
 // setStartup?(on) (over everything while Margin gets ready after Safari starts or Margin is updated; else setCover),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),
 // setZoom(level | null), showNotice({ text, actions: [{ label, run }], duration? } | null) }
-// (themes/arcadium/content.js is the reference).
+// (themes/arcadia/content.js is the reference).
 export function registerTheme(theme) {
   const Margin = (globalThis.Margin ??= {});
   // Already there: WebKit runs content scripts again in open pages when
