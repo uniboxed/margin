@@ -63,6 +63,8 @@ registerTheme({
     // there when the page appears, not animate in on every navigation.
     const instant = [sidebar.el, chrome.frame, chrome.cardEdge];
     let leavingTimer = null;
+    /** @type {{ place: () => void, width: number, coming: boolean, timer: any } | null} */
+    let arrival = null;
     for (const node of instant) node.classList.add('instant');
     return {
       isBusy: sidebar.isBusy,
@@ -87,7 +89,54 @@ registerTheme({
       // frame around the page. `rail` ({ width, expanded }): docked as the
       // narrow icon rail on a pushed page, or expanded from it over the page
       // (the frame stays at the rail).
-      setLayout({ open, docked, framed = false, width, rail = null }) {
+      // `place`: puts the page where this layout has it. Returns true if it
+      // will be called later (Keep open turned on: the floating sidebar goes
+      // off to the left, the docked one comes in with the card's edge, and
+      // the page moves as that starts); otherwise the caller places it.
+      setLayout({ open, docked, framed = false, width, rail = null, place }) {
+        const classes = sidebar.el.classList;
+        if (arrival) {
+          if (docked && open) { // drawn again on the way: it goes on, with what's new
+            arrival.place = place;
+            arrival.width = width;
+            if (!arrival.coming) return true;
+            chrome.setLayout({ docked: true, width, arriving: true });
+            return !!globalThis.Margin?.shell;
+          }
+          clearTimeout(arrival.timer);
+          arrival = null;
+          classes.remove('arriving');
+          chrome.arrived();
+        }
+        if (open && docked && !rail && !classes.contains('docked') && !classes.contains('instant') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          arrival = { place, width, coming: false, timer: null };
+          const comeIn = () => {
+            // A fitted page's card moves last: until the edge is there it
+            // would leave the shell's bare canvas beside it. A pushed page's
+            // background is the window's, so it moves now.
+            const fitted = !!globalThis.Margin?.shell;
+            arrival.coming = true;
+            classes.add('docked');
+            void sidebar.el.offsetWidth; // from off the left edge, in its docked shape
+            classes.add('arriving', 'open');
+            chrome.setLayout({ docked: true, width: arrival.width, arriving: true });
+            if (!fitted) arrival.place();
+            arrival.timer = setTimeout(() => {
+              const last = arrival.place;
+              arrival = null;
+              classes.remove('arriving');
+              chrome.arrived();
+              if (fitted) last();
+            }, 240);
+          };
+          if (classes.contains('open')) {
+            classes.remove('open');
+            arrival.timer = setTimeout(comeIn, 170);
+          } else {
+            comeIn();
+          }
+          return true;
+        }
         // Out of Keep open: it slides off as it was, flush to the window.
         // (Drawn again on the way, it slides on.)
         if (open || docked || !sidebar.el.classList.contains('leaving')) {

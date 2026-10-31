@@ -134,7 +134,8 @@ export function createChrome(doc) {
     // While docked, the frame shows and the indicators sit over the card.
     // `framed`: hidden, the frame alone around the whole page (the sidebar's
     // width is then the frame's own), reached by sliding left.
-    setLayout({ docked, framed = false, width }) {
+    // `arriving`: Keep open just turned on: the edge travels to the sidebar.
+    setLayout({ docked, framed = false, width, arriving = false }) {
       const shown = docked || framed;
       const starts = framed && frame.classList.contains('open') && !frame.classList.contains('around');
       // Drawn again on the way (the setting's write comes back): it travels on.
@@ -155,12 +156,18 @@ export function createChrome(doc) {
       cardEdge.classList.toggle('open', shown);
       frame.classList.toggle('around', framed);
       cardEdge.classList.toggle('around', framed);
+      frame.classList.toggle('arriving', arriving);
+      cardEdge.classList.toggle('arriving', arriving);
       for (const node of inFrame) node.classList.toggle('in-frame', shown);
       this.setWidth(width);
     },
     setWidth(width) {
       const left = frame.classList.contains('around') ? FRAME : width;
       for (const node of sized) node.style.setProperty('--width', `${left}px`);
+    },
+    arrived() {
+      frame.classList.remove('arriving');
+      cardEdge.classList.remove('arriving');
     },
     setColorScheme(scheme) {
       frame.dataset.theme = scheme;

@@ -347,7 +347,7 @@ img.avatar { box-sizing: content-box; width: 14px; height: 14px; padding: 5px; }
   top: 8px;
   left: 8px;
   height: calc(100vh * var(--page-zoom, 1) - 16px);
-  border-radius: 12px;
+  border-radius: 6.25px; /* the page card's (.frame .hole) */
   background: var(--frame);
   box-shadow: 0 0 0 1px var(--border), 0 12px 40px rgba(0, 0, 0, 0.22);
   transform: translateX(calc(-100% - 16px));
@@ -452,6 +452,11 @@ img.avatar { box-sizing: content-box; width: 14px; height: 14px; padding: 5px; }
 .frame.around .grip { pointer-events: none; }
 .frame.around .hole { transition: left 200ms ease; }
 .card-edge.around { transition: opacity 160ms ease, left 200ms ease, width 200ms ease; }
+/* Into Keep open, the same the other way: the sidebar comes in from the left
+   with the card's edge. Only for these 200ms: nothing runs at rest. */
+.frame.arriving .hole { transition: left 200ms ease; }
+.card-edge.arriving { transition: opacity 160ms ease, left 200ms ease, width 200ms ease; }
+.margin-sidebar.overlay.arriving { transition: transform 200ms ease; }
 .margin-sidebar.overlay.leaving {
   top: 0;
   left: 0;
@@ -486,7 +491,8 @@ img.avatar { box-sizing: content-box; width: 14px; height: 14px; padding: 5px; }
 .rim.right .edge { top: calc(8px - var(--edge)); right: 8px; }
 @media print { .rims, .frame, .card-edge { display: none !important; } }
 @media (prefers-reduced-motion: reduce) {
-  .frame.around .hole, .card-edge.around, .margin-sidebar.overlay.leaving { transition: none; }
+  .frame.around .hole, .card-edge.around, .margin-sidebar.overlay.leaving,
+  .frame.arriving .hole, .card-edge.arriving, .margin-sidebar.overlay.arriving { transition: none; }
 }
 
 button {

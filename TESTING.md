@@ -565,6 +565,8 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 
 - [ ] Sidebar hidden: every page has the frame on all sides, with rounded corners, from its first frame: no pop-in on loads, reloads or tab switches. Hover the left edge: the sidebar floats over and the page doesn't move.
 - [ ] With Keep open on, turn it off with the button, with Option+S and from the palette: the sidebar slides off to the left while the frame's edge travels with it to 8px from the window's edge, smoothly each time, with no jump in the sidebar's shape. The page takes its full size at the start, under the sliding sidebar: say if that jump looks wrong. Turn it off and back on quickly, too.
+- [ ] The floating sidebar's corners match the page card's.
+- [ ] Hover the left edge, press the sidebar's Keep open button: the floating sidebar goes off to the left, then the docked one comes in from the left with the frame's edge. The page moves as it comes in, or at the end on a page that was fitted. Do it again with the pointer moving away during it.
 - [ ] Turn Keep open off in one tab, then go to another: no animation plays on arrival.
 - [ ] Sites: a wide table or diagram still scrolls sideways; sticky headers stick; a dialog that locks the page still locks it; a full-height app (Gmail, Figma, a chat) shows no extra scroll. Look at what's under the frame: fixed headers and bars at the window's edge lose up to 8px, and so does the top and the bottom of the page.
 - [ ] A site with full-width sections: does it now scroll a few pixels sideways?

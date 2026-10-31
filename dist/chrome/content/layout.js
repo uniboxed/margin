@@ -74,18 +74,20 @@ export function startLayout(page, { loader }) {
     isOpen = open;
     // Hovered or toggled over the rail: the full sidebar, over the page.
     const framed = !docked && page.active() && page.state()?.settings?.frameWhenHidden !== false;
-    // Keep open turned off slides away (the theme), only where it's seen
-    // happening: not on a page hidden, or just shown, when it catches up.
-    if (wasDocked && !docked && (document.hidden || page.justShown())) view.instantOnce?.();
+    // Keep open turned off or on slides (the theme), only where it's seen
+    // happening: not on a page hidden, just shown, or being drawn first.
+    if (wasDocked !== docked && (document.hidden || page.justShown() || page.firstRender())) view.instantOnce?.();
     wasDocked = docked;
-    view.setLayout({ open, docked, framed, width, rail: rail && { width: rail, expanded: reason != null } });
-    host.dataset.open = String(open); // test/debug hook; reveals nothing private
-    host.dataset.rail = rail ? (reason != null ? 'expanded' : 'rail') : 'off';
     // Hidden, the page sits inside the frame (the sidebar floats over it
     // when it's out, and moves nothing); out of the way, it has the window.
-    setPushed(docked || framed, pagePx(docked ? rail ?? width : inset()), framed);
-    const radius = page.theme().geometry?.radius;
-    globalThis.Margin?.shell?.setLayout({ docked: docked || framed, width: pagePx(docked ? width : inset()), inset: pagePx(inset()), radius: radius && `${pagePx(parseFloat(radius))}px` });
+    const place = () => {
+      setPushed(docked || framed, pagePx(docked ? rail ?? width : inset()), framed);
+      const radius = page.theme().geometry?.radius;
+      globalThis.Margin?.shell?.setLayout({ docked: docked || framed, width: pagePx(docked ? width : inset()), inset: pagePx(inset()), radius: radius && `${pagePx(parseFloat(radius))}px` });
+    };
+    if (!view.setLayout({ open, docked, framed, width, rail: rail && { width: rail, expanded: reason != null }, place })) place();
+    host.dataset.open = String(open); // test/debug hook; reveals nothing private
+    host.dataset.rail = rail ? (reason != null ? 'expanded' : 'rail') : 'off';
     if (page.state()) syncPlaceholder();
   }
 
@@ -294,7 +296,15 @@ export function startLayout(page, { loader }) {
     // The page's zoom changed: the push and the card follow.
     rezoom: () => setOpen(isOpen),
     // After a render: back to the resting layout, unless hovered or toggled.
-    settle: () => { if (!reason) setOpen(pinnedOpen()); },
+    // Keep open just turned on from the sidebar out over the page: it docks.
+    settle: () => {
+      if (reason && pinnedOpen() && !wasDocked && !railWidth()) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+        reason = null;
+      }
+      if (!reason) setOpen(pinnedOpen());
+    },
     // Once the theme is mounted: open if it was hovered or toggled before.
     reopen: () => { if (reason) setOpen(true); },
     // The page was left for another tab: an open-over-the-page sidebar
