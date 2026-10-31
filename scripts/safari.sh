@@ -21,7 +21,16 @@ UNSIGNED=false
 [ "${1:-}" = "--unsigned" ] && UNSIGNED=true
 
 npm run build
-[ -d xcode/Margin/Margin.xcodeproj ] || sh scripts/make-xcode.sh
+# The project again when what makes it isn't what it was made from: the app's
+# code (app/safari/) or this script's partner (make-xcode.sh) changed, or
+# another branch made it (its project can list files this one doesn't have).
+# dist/ is copied in by each build, so it needs no new project. xcode/.team stays.
+MADE_FROM="xcode/.made-from"
+FROM=$(find app/safari scripts/make-xcode.sh -type f | LC_ALL=C sort | xargs shasum | shasum | cut -d' ' -f1)
+if [ ! -d xcode/Margin/Margin.xcodeproj ] || [ "$(cat "$MADE_FROM" 2>/dev/null)" != "$FROM" ]; then
+  sh scripts/make-xcode.sh
+  echo "$FROM" > "$MADE_FROM"
+fi
 
 TEAM="${MARGIN_TEAM:-}"
 [ -z "$TEAM" ] && [ -f xcode/.team ] && TEAM=$(tr -d '[:space:]' < xcode/.team)
