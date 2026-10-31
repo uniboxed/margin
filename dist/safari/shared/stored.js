@@ -95,3 +95,23 @@ export function withChanges(state, changes) {
 export function openTabsCurrent(by, origin, since = null) {
   return !!by && by.origin === origin && by.synced === true && (since == null || by.since == null || by.since === since);
 }
+
+/**
+ * Whether two values of a state key would be stored the same: as Safari tells
+ * a change (storage.onChanged fires only when a value's JSON differs), so a
+ * value rebuilt with nothing new isn't written again.
+ * @param {any} a @param {any} b
+ */
+export const sameStored = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Whether a page already drawn can take what storage.onChanged reported
+ * straight into its state (withChanges), rather than reading all of storage
+ * again (some 300 KB, most of it site icons). Not while a full read is under
+ * way (the event may be older or newer than what it brings), for a removal
+ * (no newValue: storage was cleared), or while the open tabs are still under
+ * their old names (only a full read knows them then).
+ * @param {Record<string, { newValue?: any }>} changes
+ * @param {{ reading: number, openTabsBy: any }} page
+ */
+export const takesChanges = (changes, { reading, openTabsBy }) => reading === 0 && openTabsBy != null && Object.values(changes).every((change) => change && 'newValue' in change);

@@ -127,3 +127,33 @@ test('copies: an older copy claiming over a newer one is claimed back, with the 
   assert.equal(storedTabs().synced, true);
   assert.deepEqual(Object.keys(storedTabs().tabs), ['5']);
 });
+
+test('store: a change with nothing new isn\'t written; a real one is, with the tabs\' whole value; a failed write is still retried', async () => {
+  local.clear();
+  const copy = await startCopy('safari-web-extension://NOOP/');
+  await copy.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://e.test/', index: 0, title: 'E' } }, tabSpace: { 5: 'personal' } }));
+  const set = chrome.storage.local.set;
+  const written = [];
+  chrome.storage.local.set = async (values) => { written.push(Object.keys(values)); return set(values); };
+  // Rebuilt as a tab event does, nothing new in it.
+  await copy.mutate((s) => ({ ...s, tabs: { ...s.tabs, 5: { ...s.tabs[5] } }, tabSpace: { ...s.tabSpace } }));
+  await copy.mutate((s) => s);
+  assert.deepEqual(written, [], 'not written');
+  await copy.mutate((s) => ({ ...s, tabs: { ...s.tabs, 5: { ...s.tabs[5], title: 'E2' } } }));
+  assert.deepEqual(written, [['openTabs']], 'a new title: written');
+  assert.equal(storedTabs().tabs[5].title, 'E2');
+  assert.deepEqual(storedTabs().tabSpace, { 5: 'personal' }, 'with the tabs\' spaces');
+
+  let fail = true;
+  chrome.storage.local.set = async (values) => {
+    if (fail) { fail = false; throw new Error('busy'); }
+    written.push(Object.keys(values));
+    return set(values);
+  };
+  written.length = 0;
+  await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 301 } }));
+  await copy.mutate((s) => ({ ...s, settings: { ...s.settings } })); // nothing new: the failed write still goes
+  assert.deepEqual(written, [['settings']]);
+  assert.equal(local.get('settings').sidebarWidth, 301);
+  chrome.storage.local.set = set;
+});

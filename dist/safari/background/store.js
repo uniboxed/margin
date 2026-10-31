@@ -5,7 +5,7 @@
 // never writes.
 import * as M from '../state/model.js';
 import * as O from '../shared/owner.js';
-import { OPEN_TABS, OPEN_TABS_KEYS, fromStorage, openTabsCurrent, storedName, toStorage } from '../shared/stored.js';
+import { OPEN_TABS, OPEN_TABS_KEYS, fromStorage, openTabsCurrent, sameStored, storedName, toStorage } from '../shared/stored.js';
 import { recordEmptyStart } from './diagnostics.js';
 /** @import { State } from '../../types/margin' */
 
@@ -212,7 +212,11 @@ export function mutate(fn) {
     const prev = await load();
     if (role !== 'owner') return prev;
     const next = /** @type {State} */ ((await fn(prev)) ?? prev);
-    const changed = M.STATE_KEYS.filter((key) => next[key] !== prev[key]);
+    // Changed by value: a tab event with nothing new (a page that finished
+    // loading again, the same title) rebuilds its records, but isn't written.
+    // A real change still goes through flush, which asks first whether this
+    // copy still owns the state.
+    const changed = M.STATE_KEYS.filter((key) => !sameStored(next[key], prev[key]));
     cache = next;
     for (const key of changed) unsaved.add(key);
     // A newer copy took over while this change was made: it wasn't written,

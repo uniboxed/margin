@@ -14,7 +14,7 @@ import { startLoader } from './loader.js';
 import { createSwitching, backgroundSwitches, NEW_TAB } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
-import { fromStorage, openTabsCurrent, withChanges } from '../shared/stored.js';
+import { fromStorage, openTabsCurrent, takesChanges, withChanges } from '../shared/stored.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -647,7 +647,7 @@ export function startCore({ onTheme } = {}) {
       // browser switch. storage.onChanged normally brings it in; this is only
       // a fallback when that event is late or absent.
       const atVersion = version;
-      setTimeout(() => document.visibilityState === 'visible' && version === atVersion && refresh(), 250);
+      setTimeout(() => document.visibilityState === 'visible' && (version === atVersion || staleRead) && refresh(), 250);
       // A key switch right after scrolling: the page left saves its position
       // as it's hidden, after this one was prepared with the one before.
       // Asked once more (not if the user scrolls here).
@@ -746,12 +746,29 @@ export function startCore({ onTheme } = {}) {
   }
 
   /** @param {{ tabId: number, windowId: number } | null} [show] */
+  let reading = 0; // full reads under way
+  // A change taken (hidden) while a read was under way: that read may be
+  // older than it and put the old value back, so the page reads again before
+  // it takes changes from events once more.
+  let staleRead = false;
+  let changedDuringRead = 0; // hidden changes taken while a full read was under way
   async function refresh(show = null) {
     const mine = ++version;
-    const next = fromStorage(await api.storage.local.get(null));
+    reading++;
+    const missedBefore = changedDuringRead;
+    let raw;
+    try {
+      raw = await api.storage.local.get(null);
+    } finally {
+      reading--;
+    }
+    const missed = changedDuringRead !== missedBefore;
+    if (missed) staleRead = true;
+    const next = fromStorage(raw);
     if (mine === version) ownerSeen(next.owner, next.openTabsBy);
     timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
+    if (!missed) staleRead = false; // what's drawn now is all of storage, newer than any change taken before
     // Brought to the front without preparation (a tab Safari restores as it's
     // shown): until `hello` says which tab this is, the background's note does
     // (background/tabs.js noteShowing), with how the page before had the
@@ -974,15 +991,34 @@ export function startCore({ onTheme } = {}) {
   // The background's note of a tab being shown is for that tab's page only.
   const onlyShowing = (changes) => Object.keys(changes).every((key) => key === 'showing');
   // Hidden, a page keeps its state current from the change events (they
-  // carry the values) without drawing it: shown() draws it at once.
+  // carry the values) without drawing it: shown() draws it at once. Shown,
+  // it takes them the same way and draws them; it reads all of storage
+  // again only when an event can't be taken (shared/stored.js takesChanges),
+  // before its first drawing, and whenever it's shown.
   let changedWhileHidden = false;
   api.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || dormant || (!firstRender && onlyShowing(changes))) return;
-    if (!document.hidden || firstRender || !state) return void refresh();
+    if (firstRender || !state) return void refresh();
+    if (!document.hidden) {
+      if (tabId == null || staleRead || !takesChanges(changes, { reading, openTabsBy: /** @type {any} */ (state).openTabsBy })) return void refresh();
+      const next = withChanges(state, changes);
+      if (!next.spaces?.length) return void refresh();
+      version++; // newer than any read started before it
+      state = next;
+      if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
+      if (!zoomAnswered && 'pageZoom' in changes) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
+      render();
+      requestTheme(); // only if it isn't here by now
+      return;
+    }
+    if (reading) changedDuringRead++;
     const next = withChanges(state, changes);
     state = next;
     changedWhileHidden = true;
     if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
+    // The trackpad's listeners follow the settings now, not at the next
+    // drawing: a swipe right after this page is shown is already guarded.
+    if ('settings' in changes) trackpad.update();
   });
 
   // One debug-level line per page (hidden unless the console shows Debug

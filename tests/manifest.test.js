@@ -119,7 +119,7 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   };
   const sidebar = read('themes/arcadium/styles/sidebar.css');
   const radius = decl(sidebar, '.frame .hole, .card-edge {', 'border-radius');
-  const shadow = decl(sidebar, '.card-edge {\n  position: fixed', 'box-shadow');
+  const shadow = decl(sidebar, '.card-edge {\n  right: auto', 'box-shadow');
   assert.equal(radius, '6.25px');
   const docked = read('themes/arcadium/docked.template.css');
   assert.equal(decl(docked, 'html:not([data-margin-docked="off"])::after', 'border-radius'), radius);

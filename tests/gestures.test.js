@@ -96,3 +96,80 @@ test('wheel: vertical and non-cancelable events are never touched', () => {
     assert.equal(prevented, false, JSON.stringify(e));
   }
 });
+
+// A node that throws if its sizes are read: canScroll must not ask them
+// of an event that doesn't move that way, or of what doesn't scroll by style.
+const untouchable = (overflow = 'visible') => new Proxy({ nodeType: 1, overflow }, {
+  get(target, key) {
+    if (/^(scroll|client)(Width|Height)$|^scroll(Left|Top)$/.test(String(key))) throw new Error(`read ${String(key)}`);
+    return target[key];
+  },
+});
+const withStyles = (fn) => {
+  const before = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = (node) => ({ overflowX: node.overflow, overflowY: node.overflow, direction: 'ltr' });
+  try { return fn(); } finally { globalThis.getComputedStyle = before; }
+};
+
+test('wheel: what can scroll is asked cheaply first (no sizes read for no movement, or for what doesn\'t scroll by its style)', () => withStyles(() => {
+  const { canScroll, canSwipe } = gestures;
+  assert.equal(canScroll(untouchable('auto'), 'x', 0, null), false, 'no movement that way');
+  assert.equal(canScroll(untouchable('visible'), 'x', -20, null), false, 'overflow visible');
+  assert.equal(canScroll(untouchable('hidden'), 'y', 20, null), false, 'overflow hidden');
+  const page = { nodeType: 1, overflow: 'visible', scrollWidth: 2000, clientWidth: 1000, scrollLeft: 500 };
+  assert.equal(canScroll(page, 'x', -20, page), true, 'the page scrolls with overflow visible');
+  assert.equal(canScroll({ ...page, overflow: 'hidden' }, 'x', -20, page), false);
+  const list = { nodeType: 1, overflow: 'auto', scrollWidth: 300, clientWidth: 200, scrollLeft: 0 };
+  assert.equal(canScroll(list, 'x', -20, null), false, 'at its start, going back');
+  assert.equal(canScroll(list, 'x', 20, null), true);
+  const doc = { scrollingElement: untouchable('visible') };
+  const vertical = { deltaX: 0, deltaY: 30, composedPath: () => [untouchable('auto'), untouchable('visible')] };
+  assert.equal(canSwipe(vertical, doc), true, 'a vertical event walks nothing');
+}));
+
+test('wheel: the guard and the swipe check walk an event\'s path once between them', () => withStyles(() => {
+  let walks = 0;
+  const doc = { scrollingElement: { nodeType: 1, overflow: 'visible', scrollWidth: 1000, clientWidth: 1000 } };
+  const win = { ...fakeWindow(), document: doc };
+  win.listeners = {};
+  win.addEventListener = (type, fn, options) => { win.listeners[type] = { fn, options }; };
+  installGestureGuard({ getSettings: () => ({ blockGestures: true }), win });
+  const event = { deltaX: -30, deltaY: 2, cancelable: true, preventDefault() { this.prevented = true; }, composedPath: () => { walks++; return []; } };
+  win.listeners.wheel.fn(event);
+  assert.equal(event.prevented, true, 'nothing scrolls sideways: Safari\'s swipe blocked');
+  assert.equal(gestures.canSwipe(event, doc), true);
+  assert.equal(walks, 1);
+}));
+
+test('wheel: the guard\'s cancelable listener is there only while blocking is on, added and removed with the same options', () => {
+  const added = [];
+  const removed = [];
+  const win = {
+    document: {},
+    visualViewport: { scale: 1 },
+    addEventListener: (type, fn, options) => { if (type === 'wheel') added.push({ fn, options }); },
+    removeEventListener: (type, fn, options) => { if (type === 'wheel') removed.push({ fn, options }); },
+  };
+  let settings = null;
+  const guard = installGestureGuard({ getSettings: () => settings, win });
+  assert.equal(added.length, 1, 'before the settings are known: on (the default)');
+  assert.deepEqual(added[0].options, { capture: true, passive: false });
+  guard.update();
+  assert.equal(added.length, 1, 'never added twice');
+  settings = { blockGestures: false };
+  guard.update();
+  assert.equal(removed.length, 1, 'off: removed');
+  assert.equal(removed[0].fn, added[0].fn);
+  assert.deepEqual(removed[0].options, added[0].options);
+  guard.update();
+  assert.equal(removed.length, 1);
+  settings = { blockGestures: true };
+  guard.update();
+  assert.equal(added.length, 2, 'on again: added again');
+  let wanted = false;
+  const other = installGestureGuard({ getSettings: () => ({ blockGestures: true }), wanted: () => wanted, win });
+  assert.equal(added.length, 2, '`wanted` decides whether it\'s there');
+  wanted = true;
+  other.update();
+  assert.equal(added.length, 3);
+});

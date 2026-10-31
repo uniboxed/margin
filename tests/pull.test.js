@@ -125,3 +125,41 @@ test('swipe: reversing un-swipes; a vertical scroll, a flick, notches or an inel
   feedX(blocked, Array(12).fill(-12), { eligible: false });
   assert.equal(blocked.end().state, 'idle');
 });
+
+// Where the gesture applies, asked lazily (content/trackpad.js passes a
+// function: answering walks the page and can cost a layout).
+test('eligibility as a function: the same results as a boolean, asked at most once per event, and not while a gesture is already out', () => {
+  let seed = 7;
+  const random = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  let asked = 0;
+  let events = 0;
+  for (const make of ['createPullTracker', 'createSwipeTracker']) {
+    for (let run = 0; run < 300; run++) {
+      const plain = pull[make]();
+      const lazy = pull[make]();
+      let time = 0;
+      for (let i = 0; i < 100; i++) {
+        time += random() < 0.08 ? 150 + random() * 300 : 8 + random() * 12;
+        const ok = random() < 0.85;
+        const e = { deltaX: Math.round((random() - 0.5) * 60), deltaY: Math.round((random() - 0.5) * 60), time };
+        if (random() < 0.3) e[make === 'createPullTracker' ? 'deltaX' : 'deltaY'] = 0;
+        let now = 0;
+        events++;
+        const expected = plain.wheel({ ...e, eligible: ok });
+        assert.deepEqual(lazy.wheel({ ...e, eligible: () => { now++; asked++; return ok; } }), expected, `${make} run ${run} event ${i}`);
+        assert.ok(now <= 1, 'asked at most once for one event');
+        if (random() < 0.03) assert.deepEqual(lazy.end(), plain.end());
+      }
+      assert.deepEqual(lazy.end(), plain.end());
+    }
+  }
+  assert.ok(asked < events, 'not asked for every event');
+
+  const t = createPullTracker();
+  let calls = 0;
+  const notHere = () => { calls++; return false; };
+  for (let i = 0; i < 5; i++) t.wheel({ deltaY: -12, time: 1000 + i * 16, atTop: notHere });
+  assert.equal(calls, 1, 'a gesture that started where it doesn\'t apply isn\'t asked again');
+  t.wheel({ deltaY: -12, time: 1000 + 5 * 16 + 200, atTop: notHere });
+  assert.equal(calls, 2, 'the next gesture is');
+});

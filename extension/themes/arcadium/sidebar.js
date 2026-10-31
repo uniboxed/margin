@@ -33,7 +33,10 @@ const letterAvatar = (doc, label) => el(doc, 'span', {
 // which doesn't carry the listener).
 /** @param {Document} doc @param {HTMLImageElement} img */
 function letterIfBroken(doc, img) {
-  const swap = () => img.replaceWith(letterAvatar(doc, img.dataset.label || '?'));
+  const swap = () => {
+    img.closest('li')?.setAttribute('data-icon-broken', ''); // drawn again next time (sidebar draw: keyed)
+    img.replaceWith(letterAvatar(doc, img.dataset.label || '?'));
+  };
   if (img.complete && img.src && !img.naturalWidth) swap();
   else img.addEventListener('error', swap, { once: true });
 }
@@ -341,6 +344,58 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   }
   let renameSelection = null;
   let shownSpaceId = null;
+  // ---- rows drawn again only when what they show changed --------------------
+  // Each row (tab, pin, folder, "+ New Tab") is kept by its key with what it
+  // was drawn from; a draw reuses the ones whose inputs are the same, builds
+  // the others as before, and moves only what's out of place. An unchanged
+  // row keeps its picture (no icon loaded again), its hover and its press.
+  // Not for the still pictures of a swipe's neighbours (drawn into the same
+  // lists, then copied): those are built afresh and kept nowhere.
+  /** @type {Map<string, { el: HTMLElement, from: any[] }>} */
+  const rowCache = new Map();
+  const usedKeys = new Set();
+  /** @type {Map<string, any[]>} */
+  const drawnFrom = new Map(); // the space title's and the chips'
+  const sameFrom = (a, b) => !!a && a.length === b.length && a.every((v, i) => v === b[i]);
+  function changed(part, from) {
+    if (sameFrom(drawnFrom.get(part), from)) return false;
+    drawnFrom.set(part, from);
+    return true;
+  }
+  /** @param {string} key @param {any[]} from @param {() => HTMLElement} build */
+  function keyed(key, from, build) {
+    if (drawingGhosts) return build();
+    if (usedKeys.has(key)) return build(); // twice in one draw (never expected): its own row
+    usedKeys.add(key);
+    const kept = rowCache.get(key);
+    // Not one whose icon didn't load: the next draw tries it again, as before.
+    if (kept && sameFrom(kept.from, from) && !kept.el.hasAttribute('data-icon-broken')) return kept.el;
+    const row = build();
+    rowCache.set(key, { el: row, from });
+    return row;
+  }
+  // `list`'s children are `rows`, in order, moving only what's out of place.
+  function place(list, rows) {
+    let at = list.firstChild;
+    for (const row of rows) {
+      if (row === at) {
+        at = at.nextSibling;
+        continue;
+      }
+      list.insertBefore(row, at);
+    }
+    while (at) {
+      const next = at.nextSibling;
+      at.remove();
+      at = next;
+    }
+  }
+  function forgetUnused() {
+    if (drawingGhosts) return;
+    for (const key of rowCache.keys()) if (!usedKeys.has(key)) rowCache.delete(key);
+    usedKeys.clear();
+  }
+  const pinFrom = (p, nested) => [nested, p.active, p.behind, p.tabId, p.folderId, p.title, p.url, V.iconFor(state, p)];
   function draw() {
     // Not while this sidebar shows a space of its own choosing (a swipe, a click on a space).
     const view = lastView = V.sidebar(viewState(), windowId, currentTabId, { newTabPending, switchingTo, justShown: justShown && !shownSpace });
@@ -352,12 +407,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
 
     const space = view.spaces.find((s) => s.id === view.spaceId);
     spaceTitle.dataset.spaceId = space?.id ?? '';
-    spaceTitle.replaceChildren(
+    if (changed('title', [space?.emoji ?? '', space?.name ?? ''])) spaceTitle.replaceChildren(
       el(doc, 'span', { class: 'emoji', 'aria-hidden': 'true', text: space?.emoji ?? '' }),
       el(doc, 'span', { class: 'title', text: space?.name ?? '' }),
     );
 
-    chips.replaceChildren(
+    if (changed('chips', [view.spaceId, ...view.spaces.flatMap((s) => [s.id, s.name, s.emoji, s.color])])) chips.replaceChildren(
       ...view.spaces.map((s) =>
         el(doc, 'button', {
           type: 'button',
@@ -374,26 +429,31 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
 
     // The pinned area: folders (their pins beneath, indented, while open;
     // a closed one shows only the pin of the tab being shown) and loose pins.
-    pins.replaceChildren(
-      ...view.pinned.flatMap((item) => {
-        if (item.kind !== 'folder') return [pinRow(item, false)];
-        return [folderRow(item), ...(item.open ? item.pins : item.peek).map((p) => pinRow(p, true))];
-      }),
-    );
+    // Each row from everything its builder reads.
+    const pinRows = [];
+    for (const item of view.pinned) {
+      if (item.kind !== 'folder') {
+        pinRows.push(keyed(`pin:${item.id}`, pinFrom(item, false), () => pinRow(item, false)));
+        continue;
+      }
+      pinRows.push(keyed(`folder:${item.id}`, [item.name, item.open, renaming?.folderId === item.id], () => folderRow(item)));
+      for (const p of item.open ? item.pins : item.peek) pinRows.push(keyed(`pin:${p.id}`, pinFrom(p, true), () => pinRow(p, true)));
+    }
+    place(pins, pinRows);
     listDivider.hidden = !view.pinned.length;
 
     // Arc: "+ New Tab" above the tabs, highlighted like a tab while the
     // new-tab page is shown (⌘T); it opens the palette.
-    const newTabRow = el(doc, 'li', {
+    const newTabRow = keyed('new-tab', [view.newTab.active, view.newTab.behind], () => el(doc, 'li', {
       class: `new-tab-row${view.newTab.active ? ' active' : ''}${view.newTab.behind ? ' behind' : ''}`,
       'data-action': 'new-tab',
       role: 'button',
       'aria-label': 'New Tab',
       'aria-current': view.newTab.active ? 'page' : null,
-    }, el(doc, 'span', { class: 'plus', 'aria-hidden': 'true' }, ICONS.plus(doc)), el(doc, 'span', { class: 'title', text: 'New Tab' }));
-    tabs.replaceChildren(
+    }, el(doc, 'span', { class: 'plus', 'aria-hidden': 'true' }, ICONS.plus(doc)), el(doc, 'span', { class: 'title', text: 'New Tab' })));
+    place(tabs, [
       newTabRow,
-      ...view.tabs.map((t) =>
+      ...view.tabs.map((t) => keyed(`tab:${t.id}`, [t.active, t.behind, t.title, t.url, V.iconFor(state, t)], () =>
         el(doc, 'li', {
           class: `tab${t.active ? ' active' : ''}${t.behind ? ' behind' : ''}`,
           'data-action': 'activate',
@@ -402,9 +462,9 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
         },
         avatar(doc, { ...t, favIconUrl: V.iconFor(state, t) }),
         el(doc, 'span', { class: 'title', text: t.title || t.url || 'New Tab' }),
-        closeButton(t.id, 'Close tab')),
-      ),
-    );
+        closeButton(t.id, 'Close tab')))),
+    ]);
+    forgetUnused();
 
     const pinned = !!state.settings?.sidebarPinnedOpen;
     keepOpen.title = pinned ? 'Auto-hide the sidebar' : 'Keep the sidebar open';

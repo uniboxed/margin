@@ -15,13 +15,21 @@ export function startTrackpad(page, { replacing }) {
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
   // Not in a copy that stood back for a newer one (content/core.js): that one's guard is enough.
-  const guardWindow = (win) => installGestureGuard({ getSettings: () => (page.dormant?.() ? { blockGestures: false } : page.state()?.settings), onPinch: (pinch) => handlePinch(pinch), win });
+  // Its wheel listener there by the setting alone: a page that stood back is
+  // asked per event (it may be shown again before its next render).
+  const guardWindow = (win) => installGestureGuard({
+    getSettings: () => (page.dormant?.() ? { blockGestures: false } : page.state()?.settings),
+    wanted: () => page.state()?.settings?.blockGestures !== false,
+    onPinch: (pinch) => handlePinch(pinch),
+    win,
+  });
   const gestureGuard = platform?.blockGestures ? guardWindow(window) : null;
   const cardGuards = [];
   if (gestureGuard) onCard((win) => cardGuards.push(guardWindow(win)));
   const updateGestureGuards = () => {
     gestureGuard?.update();
     for (const guard of cardGuards) guard.update();
+    syncWheelWatch();
   };
 
   // ---- pull to refresh (Safari builds) ---------------------------------------
@@ -95,30 +103,62 @@ export function startTrackpad(page, { replacing }) {
     return dx < 0 ? nav.canGoBack : nav.canGoForward;
   };
 
+  // The page's wheel events, while pull-to-refresh or swipe is on by the
+  // settings (synced with the guard: updateGestureGuards).
+  /** @type {() => void} */
+  let syncWheelWatch = () => {};
   if (gestureGuard) {
     const pullTracker = createPullTracker();
     const swipeTracker = createSwipeTracker();
     let endTimer = null;
     // The page's document: this one, or the card's in the fitted layout.
-    const watchWheel = (win, doc) => win.addEventListener('wheel', (event) => {
+    // Where the gesture applies is asked lazily (shared/pull.js): it walks
+    // the event's path, which can cost a layout, only while it matters.
+    const onWheelIn = (win, doc) => (/** @type {WheelEvent} */ event) => {
       if (event.ctrlKey) return; // a pinch
-      const path = event.composedPath();
       // Not over Margin's own panels; pixel deltas only (a trackpad).
-      const usable = event.deltaMode === 0 && !path.some((node) => node === host || /^margin-.*-host$/.test(node.localName ?? ''));
+      const usable = () => event.deltaMode === 0 && !event.composedPath().some((node) => node === host || /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
       const pulling = pullEnabled() && !pullRefreshing;
       const swiping = swipeEnabled();
-      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: usable && atPageTop(event, doc) }));
-      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: usable && historyAllows(event.deltaX) && canSwipe(event, doc) }));
+      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: () => usable() && atPageTop(event, doc) }));
+      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: () => usable() && historyAllows(event.deltaX) && canSwipe(event, doc) }));
       if (!pulling && !swiping) return;
       clearTimeout(endTimer);
       endTimer = setTimeout(() => {
         if (pulling) showPull(pullTracker.end());
         if (swiping) showSwipe(swipeTracker.end());
       }, PULL_DEFAULTS.GAP_MS + 20);
-    }, { capture: true, passive: true });
-    watchWheel(window, document);
-    onCard((win) => watchWheel(win, win.document));
+    };
+    const watchOptions = { capture: true, passive: true };
+    /** @type {{ win: Window, listener: (event: WheelEvent) => void }[]} */
+    const watched = [{ win: window, listener: onWheelIn(window, document) }];
+    let watching = false;
+    onCard((win) => {
+      watched.push({ win, listener: onWheelIn(win, win.document) });
+      if (watching) win.addEventListener('wheel', watched.at(-1).listener, watchOptions);
+    });
+    const watchWanted = () => {
+      const settings = page.state()?.settings;
+      return settings?.blockGestures !== false && (settings?.pullToRefresh !== false || settings?.swipeNavigation !== false);
+    };
+    syncWheelWatch = () => {
+      const on = watchWanted();
+      if (on === watching) return;
+      watching = on;
+      for (const { win, listener } of watched) {
+        if (on) win.addEventListener('wheel', listener, watchOptions);
+        else win.removeEventListener('wheel', listener, watchOptions);
+      }
+      if (on) return;
+      // A gesture under way when they went off: over.
+      clearTimeout(endTimer);
+      pullTracker.reset();
+      swipeTracker.reset();
+      showPull({ state: 'idle' });
+      showSwipe({ state: 'idle' });
+    };
+    syncWheelWatch();
   }
 
   // ---- pinch to zoom (Safari builds) -------------------------------------------

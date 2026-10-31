@@ -9,6 +9,36 @@ import { createPalette } from './palette.js';
 import { sidebarCss } from './assets.js';
 import theme, { RAIL } from './theme.js';
 
+// The room the page has in the window, as --vw and --vh for what's drawn in
+// `shadow` (styles/sidebar.css: nothing there is position: fixed). Measured
+// from an empty, invisible fixed box the size of the window (what `inset: 0`
+// covers: no classic scroll bars), in Margin's own pixels (its host is
+// scaled back by the page's zoom), whenever that changes; set in a style
+// sheet of the shadow root's own, which the page's styles can't reach.
+const SIZED = '.margin-sidebar, .frame, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe, .zoom-hud, .notice';
+function followWindow(shadow) {
+  const doc = shadow.ownerDocument;
+  const win = doc.defaultView;
+  if (!win?.ResizeObserver || typeof win.CSSStyleSheet?.prototype.replaceSync !== 'function') return; // the viewport's size (sidebar.css)
+  const probe = doc.createElement('div');
+  probe.className = 'window-probe'; // styles/sidebar.css
+  probe.setAttribute('aria-hidden', 'true');
+  shadow.prepend(probe);
+  const sheet = new win.CSSStyleSheet();
+  shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, sheet];
+  let drawn = '';
+  const measure = () => {
+    if (!probe.isConnected) return;
+    const { width, height } = win.getComputedStyle(probe);
+    if (!/px$/.test(width) || !/px$/.test(height)) return;
+    const rule = `${SIZED} { --vw: ${width}; --vh: ${height}; }`;
+    if (rule === drawn) return;
+    drawn = rule;
+    sheet.replaceSync(rule);
+  };
+  new win.ResizeObserver(measure).observe(probe);
+}
+
 registerTheme({
   id: theme.id,
   // The frame around the page card (px) and the card's corner radius: core
@@ -25,6 +55,7 @@ registerTheme({
     // Styles are bundled (assets.js) and applied synchronously, so the panel
     // is styled from the first frame (no fetch, no unstyled flash).
     adoptStyles(shadow, sidebarCss);
+    followWindow(shadow);
     asBrowserUi(shadow); // no page context menu, selection or zoom here
     // A press on the frame (its strips take the pointer) is outside the sidebar.
     chrome.frame.addEventListener('pointerdown', () => sidebar.closeMenu());

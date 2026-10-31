@@ -7,7 +7,7 @@ import * as V from '../../shared/view.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
-import { fromStorage } from '../../shared/stored.js';
+import { fromStorage, takesChanges, withChanges } from '../../shared/stored.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
 import { installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
 import { createSwitching, backgroundSwitches, NEW_TAB } from '../../shared/switching.js';
@@ -508,10 +508,21 @@ export function mount({ api, self, send, windowed = false }) {
   let pendingScroll = null; // applied by the next refresh
   let lastShown = Date.now();
   const JUST_SHOWN_MS = 2000;
+  let reading = 0; // full reads under way
   async function refresh() {
     const mine = ++version;
-    const next = fromStorage(await api.storage.local.get(null));
+    reading++;
+    let raw;
+    try {
+      raw = await api.storage.local.get(null);
+    } finally {
+      reading--;
+    }
+    const next = fromStorage(raw);
     if (mine !== version || !next.spaces?.length) return;
+    draw(next);
+  }
+  function draw(next) {
     state = next;
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
     // Just drawn or shown: its own tab's space, while the state doesn't say
@@ -527,7 +538,19 @@ export function mount({ api, self, send, windowed = false }) {
 
   // Not while hidden: it catches up when shown (below). Until its first
   // drawing it takes every change (the background may not have state yet).
-  api.storage.onChanged.addListener((_, area) => area === 'local' && (!document.hidden || !state) && refresh());
+  // Drawn, it takes what changed from the event itself, as web pages do
+  // (content/core.js), and ignores the background's note of the tab being
+  // shown (for web pages only).
+  api.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || (document.hidden && state)) return;
+    if (!state) return void refresh();
+    if (Object.keys(changes).every((key) => key === 'showing')) return;
+    if (!takesChanges(changes, { reading, openTabsBy: /** @type {any} */ (state).openTabsBy })) return void refresh();
+    const next = withChanges(state, changes);
+    if (!next.spaces?.length) return void refresh();
+    version++; // newer than any read started before it
+    draw(next);
+  });
   // Shown again (or first): the current state, at the window's scroll position.
   const shown = () => {
     lastShown = Date.now();

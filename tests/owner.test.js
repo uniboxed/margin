@@ -99,3 +99,68 @@ test('stored: a hidden page keeps its state current from the change events, igno
   assert.deepEqual(after.lostTabs, { windows: [] });
   assert.deepEqual(before.tabs, { 1: { id: 1 } }, 'not changed in place');
 });
+
+// A page already drawn takes what changed from the change events (content/core.js,
+// the new-tab page): after any run of writes, what it has is what reading all of
+// storage again would give.
+test('stored: the changes taken from the events give the state a full read would, after any run of writes', async () => {
+  const { sameStored, takesChanges } = await import('../extension/shared/stored.js');
+  let seed = 11;
+  const random = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const pick = (list) => list[Math.floor(random() * list.length)];
+  const by = { origin: 'safari-web-extension://A/', since: 5, synced: true };
+  const value = (key) => {
+    switch (key) {
+      case 'tabs': return Object.fromEntries(Array.from({ length: 1 + Math.floor(random() * 4) }, (_, i) => [i, { id: i, windowId: 1, url: `https://${i}.test/`, title: String(random()) }]));
+      case 'tabSpace': return { 0: pick(['a', 'b']) };
+      case 'activeSpaceByWindow': return { 1: pick(['a', 'b']) };
+      case 'spaces': return [{ id: 'a', name: String(random()) }, { id: 'b', name: 'B' }];
+      case 'lostTabs': return [{ url: String(random()) }];
+      default: return { n: random() };
+    }
+  };
+  const KEYS = ['tabs', 'tabSpace', 'activeSpaceByWindow', 'spaces', 'pins', 'folders', 'settings', 'favicons', 'owner', 'showing', 'pageZoom', 'lostTabs'];
+  for (let run = 0; run < 200; run++) {
+    const full = { tabs: value('tabs'), tabSpace: value('tabSpace'), activeSpaceByWindow: value('activeSpaceByWindow'), spaces: value('spaces') };
+    let stored = toStorage(full, Object.keys(full), by);
+    let page = fromStorage(stored);
+    for (let write = 0; write < 12; write++) {
+      const keys = [...new Set(Array.from({ length: 1 + Math.floor(random() * 3) }, () => pick(KEYS)))];
+      for (const key of keys) full[key] = value(key);
+      const out = toStorage(full, keys, by);
+      // As storage.onChanged reports a set(): only what's new by value.
+      const changes = Object.fromEntries(Object.entries(out).filter(([k, v]) => !sameStored(v, stored[k])).map(([k, v]) => [k, { oldValue: stored[k], newValue: v }]));
+      if (random() < 0.2) changes.tabs = { newValue: { 99: { id: 99 } } }; // another copy's write, under the old name
+      stored = { ...stored, ...out };
+      assert.equal(takesChanges(changes, { reading: 0, openTabsBy: page.openTabsBy }), true);
+      page = withChanges(page, changes);
+      const read = fromStorage(stored);
+      delete read.lostTabs2; // a full read also keeps the stored name (under its state key too)
+      const { lostTabs2: _, ...taken } = page;
+      assert.deepEqual(taken, read, `run ${run}, write ${write}`);
+    }
+  }
+});
+
+test('stored: a page reads all of storage again for a change it can\'t take: during a read, a removal, or the tabs still under their old names', async () => {
+  const { takesChanges } = await import('../extension/shared/stored.js');
+  const by = { origin: 'x', synced: true };
+  assert.equal(takesChanges({ settings: { newValue: {} } }, { reading: 0, openTabsBy: by }), true);
+  assert.equal(takesChanges({ settings: { newValue: {} } }, { reading: 1, openTabsBy: by }), false, 'a full read under way');
+  assert.equal(takesChanges({ settings: { oldValue: {} } }, { reading: 0, openTabsBy: by }), false, 'removed (storage cleared)');
+  assert.equal(takesChanges({ settings: { newValue: {} }, spaces: { oldValue: [] } }, { reading: 0, openTabsBy: by }), false);
+  assert.equal(takesChanges({ settings: { newValue: {} } }, { reading: 0, openTabsBy: null }), false, 'the tabs under the old names');
+});
+
+test('stored: values are the same when stored the same, as Safari tells a change', async () => {
+  const { sameStored } = await import('../extension/shared/stored.js');
+  const a = { 1: { id: 1, title: 'A' } };
+  assert.equal(sameStored(a, a), true);
+  assert.equal(sameStored(a, { 1: { id: 1, title: 'A' } }), true, 'rebuilt, nothing new');
+  assert.equal(sameStored(a, { 1: { id: 1, title: 'B' } }), false);
+  assert.equal(sameStored([], {}), false, 'an array isn\'t an object');
+  assert.equal(sameStored({ a: 1 }, { a: 1, b: undefined }), true, 'undefined isn\'t stored');
+  assert.equal(sameStored({ a: 1 }, { a: '1' }), false);
+  assert.equal(sameStored(undefined, undefined), true);
+  assert.equal(sameStored(undefined, null), false);
+});

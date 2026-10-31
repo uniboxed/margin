@@ -60,22 +60,26 @@ function createTracker(axis, options) {
 
   return {
     // One wheel event. `eligible` (`atTop` for a pull): the gesture applies
-    // here. Returns { state: 'idle' | 'pulling' | 'armed' | 'trigger',
-    // progress, direction }.
-    /** @param {{ deltaY?: number, deltaX?: number, time: number, eligible?: boolean, atTop?: boolean }} event */
+    // here; or a function saying so, asked only while the answer matters (a
+    // new gesture, or one still eligible), at most once per event: what it
+    // looks at in the page can cost a layout. Returns { state: 'idle' |
+    // 'pulling' | 'armed' | 'trigger', progress, direction }.
+    /** @param {{ deltaY?: number, deltaX?: number, time: number, eligible?: boolean | (() => boolean), atTop?: boolean | (() => boolean) }} event */
     wheel({ deltaY = 0, deltaX = 0, time, eligible, atTop }) {
-      const ok = eligible ?? atTop;
+      const given = eligible ?? atTop;
+      let answer = null;
+      const ok = () => (answer ??= !!(typeof given === 'function' ? given() : given));
       const primary = axis === 'y' ? deltaY : deltaX;
       const cross = axis === 'y' ? deltaX : deltaY;
       const fresh = time - lastTime > o.GAP_MS;
       lastTime = time;
       if (fresh) {
-        gesture = { start: time, last: time, events: 0, pull: 0, direction: axis === 'y' ? -1 : 0, eligible: ok, momentum: false, recent: [] };
+        gesture = { start: time, last: time, events: 0, pull: 0, direction: axis === 'y' ? -1 : 0, eligible: ok(), momentum: false, recent: [] };
       }
       const g = gesture;
       if (!g?.eligible) return idle();
       g.last = time;
-      if (!ok) { // e.g. the page scrolled, or the pointer moved over something that scrolls
+      if (!ok()) { // e.g. the page scrolled, or the pointer moved over something that scrolls
         g.eligible = false;
         return idle();
       }

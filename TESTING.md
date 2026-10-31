@@ -561,6 +561,17 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Sidebar efficiency: scrolling, redraws, wheel (2026-10-31)
+
+- [ ] **Looks the same.** With Keep open: the sidebar, the frame around the page, the card's rounded corners and shadow are where they were, at 100%, after ⌘+ and ⌘−, and after resizing the window. Hover mode: the sidebar slides in from the left edge as before. A long tab list still scrolls; a row's menu opens beside it.
+- [ ] With System Settings → Appearance → "Show scroll bars: Always" (try it, then set it back): the frame's right edge meets the page's scroll bar as before. The loading pill, the pull-to-refresh badge and the zoom readout are centred over the page card.
+- [ ] Badges and covers: reload a page (the pill at the top), pull down at the top of a page (the badge comes down, spins on reload), swipe back and forward (the round badge at the edge), pinch (the "125%" readout), switch tabs from the sidebar (the switch cover): each shows, fades out, and leaves nothing behind.
+- [ ] **Smooth-scrolling sites** (a page whose own script scrolls, e.g. one with a smooth-scroll library) with Keep open: scrolling isn't heavier than with Margin off (Activity Monitor: Safari's "Graphics and Media" process stays low while scrolling).
+- [ ] **Redraws:** with many tabs, the sidebar updates when a tab's title or icon changes, a tab opens, closes or moves, a pin or folder changes, or a space is renamed (also from another window), and the row under the pointer keeps its hover. A tab whose icon failed to load shows its letter, and the icon once it loads.
+- [ ] Rename a folder while another tab loads (its title changes): the field keeps its text and caret.
+- [ ] Swipe between spaces on the sidebar: the neighbour shows during the swipe, and the space you land on is right.
+- [ ] **Wheel:** on Margin's new-tab page → Settings, turn off "Use Margin's trackpad gestures instead of Safari's": Safari's own swipe back and pinch work again, on pages already open too; turn it on: they're Margin's again, and Margin's pull-to-refresh and swipe work.
+
 ## Pages open while Safari reloads Margin (2026-10-31)
 
 - [ ] **An update reloads Margin in Safari**, and so does opening Margin.app (the system registers the app again each time it's opened). With some pages open (one with something typed in a field), run `npm run safari`, then look at those pages: the one in front and the ones behind are loaded again within a second or two (the background's console says `tab … still had Margin from before it was reloaded: loaded again`); the one with something typed keeps it and shows no sidebar until you reload it.

@@ -41,13 +41,18 @@ const AXES = {
 };
 
 // Could `node` scroll along `axis` ('x' | 'y') by `delta` (sign = direction)?
+// Asked for every wheel event, along the event's path: the cheap questions
+// first. No movement that way asks nothing; the overflow style needs at most
+// the page's style worked out; only an element that can scroll has its sizes
+// read, which makes the browser lay out a page whose layout is out of date.
 function canScroll(node, axis, delta, scrollingElement) {
+  if (!delta) return false;
   const a = AXES[axis];
-  const max = node[`scroll${a.size}`] - node[`client${a.size}`];
-  if (max <= 1 || !delta) return false;
   const style = getComputedStyle(node);
   const overflow = style[a.overflow];
   if (node === scrollingElement ? overflow === 'hidden' || overflow === 'clip' : overflow !== 'auto' && overflow !== 'scroll') return false;
+  const max = node[`scroll${a.size}`] - node[`client${a.size}`];
+  if (max <= 1) return false;
   // scrollLeft runs 0 … max, or -max … 0 in right-to-left content.
   const [lo, hi] = axis === 'x' && style.direction === 'rtl' ? [-max, 0] : [0, max];
   return delta < 0 ? node[a.pos] > lo + 0.5 : node[a.pos] < hi - 0.5;
@@ -63,12 +68,26 @@ const canScrollX = (node, dx, scrollingElement) => canScroll(node, 'x', dx, scro
  */
 function somethingScrolls(event, axis, { doc, stopAt = null } = {}) {
   const delta = axis === 'x' ? event.deltaX : event.deltaY;
+  if (!delta) return false;
   const scrollingElement = doc ? doc.scrollingElement ?? doc.documentElement : null;
   for (const node of /** @type {Element[]} */ (event.composedPath())) {
     if (node.nodeType === 1 && canScroll(node, axis, delta, scrollingElement)) return true;
     if (node === stopAt) return false;
   }
   return !!scrollingElement && canScroll(scrollingElement, axis, delta, scrollingElement);
+}
+
+// The page-wide question (nothing to stop at) for the guard and the swipe
+// check, which both ask it of the same event: answered once per event.
+/** @type {WeakMap<Event, { doc: Document | undefined, scrolls: boolean }>} */
+const sidewaysAnswers = new WeakMap();
+/** @param {WheelEvent} event @param {Document | undefined} doc */
+function pageScrollsX(event, doc) {
+  const known = sidewaysAnswers.get(event);
+  if (known && known.doc === doc) return known.scrolls;
+  const scrolls = somethingScrolls(event, 'x', { doc });
+  sidewaysAnswers.set(event, { doc, scrolls });
+  return scrolls;
 }
 
 // Keep wheel events over `el` (a panel in a shadow root) from scrolling the
@@ -112,29 +131,49 @@ function zoomForPinch(start, scale) {
 // `getSettings()` returns the current settings (or null while unknown).
 // `onPinch({ phase: 'start' | 'change' | 'end', scale, overMargin? })` gets
 // the pinches taken from Safari (`overMargin` on the start: over one of
-// Margin's own hosts). Returns { update() }: call it when settings change
-// (adds or removes the no-bounce rule).
+// Margin's own hosts). `wanted()`: whether the guard is on by the settings
+// alone (default: getSettings says so). Returns { update() }: call it when
+// settings change (adds or removes the no-bounce rule, and the wheel
+// listener).
 /**
- * @param {{ getSettings: () => any, onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number, overMargin?: boolean }) => void, win?: Window & typeof globalThis }} options
+ * @param {{ getSettings: () => any, wanted?: () => boolean, onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number, overMargin?: boolean }) => void, win?: Window & typeof globalThis }} options
  */
-function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis.window }) {
+function installGestureGuard({ getSettings, wanted = undefined, onPinch = () => {}, win = globalThis.window }) {
   if (!win) return { update() {} };
   const doc = win.document;
   const enabled = () => getSettings()?.blockGestures !== false;
+  const wheelWanted = wanted ?? enabled;
 
   // Safari's pinch events (macOS); `scale` < 1 means pinching in.
   const zoomedIn = () => (win.visualViewport?.scale ?? 1) > 1.01;
 
-  win.addEventListener('wheel', (event) => {
+  // A cancelable (non-passive) wheel listener makes WebKit hand every wheel
+  // event of the page to the page's main thread first, and wait for it at
+  // the start of each gesture: only there while the guard is on. Added and
+  // removed when the settings change (update), never per gesture: Safari
+  // decides on a gesture's first event, and each change makes WebKit work
+  // out the page's wheel regions again. Still asked per event (another copy
+  // may have taken over without a change of settings).
+  const wheelOptions = { capture: true, passive: false };
+  const onWheel = (/** @type {WheelEvent} */ event) => {
     if (!enabled() || !event.cancelable) return;
     if (event.ctrlKey) { // a pinch reported as wheel: deltaY > 0 is pinching in
       if (event.deltaY > 0 && !zoomedIn()) event.preventDefault();
       return;
     }
     if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
-    if (somethingScrolls(event, 'x', { doc })) return;
+    if (pageScrollsX(event, doc)) return;
     event.preventDefault();
-  }, { capture: true, passive: false });
+  };
+  let listening = false;
+  const syncWheel = () => {
+    const on = wheelWanted();
+    if (on === listening) return;
+    listening = on;
+    if (on) win.addEventListener('wheel', onWheel, wheelOptions);
+    else win.removeEventListener?.('wheel', onWheel, wheelOptions);
+  };
+  syncWheel();
 
   // A pinch is Margin's if it started at normal (unmagnified) zoom.
   let ours = false;
@@ -163,6 +202,7 @@ function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis
   let sheet = null;
   let style = null;
   function update() {
+    syncWheel();
     const on = enabled();
     if (doc?.adoptedStyleSheets && typeof win.CSSStyleSheet?.prototype.replaceSync === 'function') {
       if (!sheet) {
@@ -187,6 +227,6 @@ function installGestureGuard({ getSettings, onPinch = () => {}, win = globalThis
 
 // For swipe navigation: does nothing under the pointer scroll sideways in
 // this event's direction (so the swipe is the page's to go back/forward)?
-const canSwipe = (event, doc) => !somethingScrolls(event, 'x', { doc });
+const canSwipe = (event, doc) => !pageScrollsX(event, doc);
 
 export { installGestureGuard, containScroll, atPageTop, canSwipe, zoomForPinch, ZOOM_LEVELS, canScroll, canScrollX };
