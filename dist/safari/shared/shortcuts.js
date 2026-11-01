@@ -56,7 +56,7 @@ const ACTIONS = { nextTab: 'next-tab', prevTab: 'prev-tab', nextSpace: 'next-spa
 // handled once, in one place.
 // `getSettings()` → current settings (shortcuts may change any time);
 // return null to pause, e.g. while a shortcut is being recorded.
-// `target`: the window to listen on (the card's, in the fitted layout).
+// `target`: the window to listen on.
 function installNavigation({ send, getSettings, target = globalThis }) {
   target.addEventListener('keydown', (event) => {
     const settings = getSettings();

@@ -35,8 +35,11 @@ function adoptStyles(shadow, css) {
 const HOST_CSS = `:host {
   all: initial !important;
   position: fixed !important;
-  top: var(--margin-shift-y, 0) !important; /* test build: out of the page's box */
-  left: var(--margin-shift-x, 0) !important;
+  /* The window's corner: <html> is the page's box, and what's fixed is placed
+     against it (shared/page-box.js). The top layer ignores it. */
+  /* The shifts are in the page's pixels, and this host's own zoom scales them. */
+  top: calc(var(--margin-shift-y, 0px) * var(--page-zoom, 1)) !important;
+  left: calc(var(--margin-shift-x, 0px) * var(--page-zoom, 1)) !important;
   width: 0 !important;
   height: 0 !important;
   z-index: 2147483647 !important;
@@ -45,12 +48,12 @@ const HOST_CSS = `:host {
   -webkit-user-select: none !important;
   user-select: none !important;
 }
+:host(:popover-open) { top: 0 !important; left: 0 !important; }
 :host([data-margin-off]) { display: none !important; pointer-events: none !important; }`;
 
 // Zero-size, top-most host with a closed shadow root that site CSS can't
 // touch; { host, shadow }. Hosts are named margin-*-host and live in the page's
-// one <margin-app> (mountHost). The fitted layout (content/shell.js) moves that
-// into its shell, and a later copy of Margin hides them (content/core.js).
+// one <margin-app> (mountHost). A later copy of Margin hides them (content/core.js).
 function createHost(doc, tag) {
   const host = doc.createElement(tag);
   // This copy's, seen only from its own script world (page scripts and other
@@ -131,7 +134,8 @@ function mark(host, key, value) {
 /** @param {HTMLElement} el @param {number} zoom */
 function unzoom(el, zoom) {
   const sheet = /** @type {any} */ (el).__marginZoom; // this copy's host (createHost)
-  if (sheet) return sheet.replaceSync(`:host { --page-zoom: ${zoom} !important; zoom: ${1 / zoom} !important; }`);
+  /** @type {any} */ (el).__marginZoomAt = zoom;
+  if (sheet) return sheet.replaceSync(`:host { --page-zoom: ${zoom} !important; zoom: ${1 / zoom} !important; ${pinchCss(el)} }`);
   if (zoom === 1) {
     el.style.removeProperty('zoom');
     el.style.removeProperty('--page-zoom');
@@ -139,6 +143,23 @@ function unzoom(el, zoom) {
   }
   el.style.setProperty('zoom', String(1 / zoom), 'important');
   el.style.setProperty('--page-zoom', String(zoom));
+}
+// A pinch on the page (content/pinch.js): `host` moved and scaled the opposite
+// way, so it stays where it was on screen. Nothing in it is fixed but
+// .window-probe, which sits still meanwhile (themes/arcadia/content.js).
+// Lengths in a transform are scaled by the host's own CSS zoom, so x and y
+// are written back out of it.
+/** @param {HTMLElement} el */
+function pinchCss(el) {
+  const pinch = /** @type {any} */ (el).__marginPinch;
+  if (!pinch) return '';
+  const zoom = /** @type {any} */ (el).__marginZoomAt ?? 1;
+  return `transform-origin: 0 0 !important; transform: translate(${pinch.x * zoom}px, ${pinch.y * zoom}px) scale(${pinch.scale}) !important;`;
+}
+/** @param {HTMLElement} host @param {{ x: number, y: number, scale: number } | null} pinch */
+function setHostPinch(host, pinch) {
+  /** @type {any} */ (host).__marginPinch = pinch;
+  unzoom(host, /** @type {any} */ (host).__marginZoomAt ?? 1);
 }
 // The page's zoom is now `zoom`: every Margin host in `doc` (and later ones,
 // createHost) keeps its size.
@@ -205,4 +226,4 @@ function hostOf(url) {
   }
 }
 
-export { el, adoptStyles, createHost, mountHost, marginHosts, hideHost, showHost, mark, setPageZoom, unzoom, asBrowserUi, siteModalOpen, hostOf };
+export { el, adoptStyles, createHost, mountHost, marginHosts, hideHost, showHost, mark, setPageZoom, setHostPinch, unzoom, asBrowserUi, siteModalOpen, hostOf };

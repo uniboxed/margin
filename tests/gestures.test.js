@@ -49,7 +49,7 @@ test('pinch, on a page: only what would open Safari\'s overview is cancelled (th
   assert.deepEqual(seen, [], 'Margin takes none of them');
 }));
 
-test('pinch, elsewhere: none on the new-tab page or the shell; the fitted card\'s are Margin\'s, all three stages, unless magnified', () => withScale(1, () => {
+test('pinch, elsewhere: none on the new-tab page; on a page with a box it\'s Margin\'s, all three stages, unless magnified', () => withScale(1, () => {
   const blocked = fakeWindow();
   installGestureGuard({ getSettings: () => ({}), win: blocked });
   assert.equal(start(blocked, 1.02), true, 'blocked by default, outward too');

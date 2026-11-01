@@ -218,12 +218,9 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
       if (host.matches?.(':popover-open')) host.hidePopover();
     } catch {}
     input.blur();
-    // Back to the page; in the fitted layout that's the card, not the shell.
-    // Not for a new tab loading behind the page (background/tabs.js
+    // Back to the page. Not for a new tab loading behind the page (background/tabs.js
     // openBehind): what's typed meanwhile would go into the page left.
-    const shell = globalThis.Margin?.shell;
     if (reason === 'run' && action && opensNewTab(action.type, action)) restoreFocus = null;
-    else if (shell?.card && (!restoreFocus?.isConnected || restoreFocus === document.body)) shell.focusCard();
     else if (restoreFocus?.isConnected) restoreFocus.focus?.({ preventScroll: true });
     onClose?.(reason, action);
   }

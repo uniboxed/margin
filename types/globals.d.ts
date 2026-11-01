@@ -27,15 +27,12 @@ declare var chrome: any;
 declare var Margin: {
   platform?: import('../extension/shared/platform.js').Platform;
   content?: any;
-  shell?: any;
   theme?: any; // the active theme's content part (themes/register.js)
   [key: string]: any;
 };
 
 // Expandos Margin sets in its own (isolated) world.
 interface HTMLIFrameElement {
-  __marginShellFrame?: boolean; // content/shell.js: the card
 }
 interface Function {
-  __margin?: boolean; // content/shell-main.js: History methods already wrapped
 }

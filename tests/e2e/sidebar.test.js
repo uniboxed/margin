@@ -38,12 +38,13 @@ test('sidebar is hidden by default, reveals at the left edge, hides 300ms after 
 
 test('overlay never changes the page layout', async () => {
   const page = await openPage('layout');
-  await page.mouse.move(3, 200);
-  const styles = await page.evaluate(() => {
+  const styles = () => page.evaluate(() => {
     const pick = (el) => { const cs = getComputedStyle(el); return [cs.marginLeft, cs.paddingLeft, cs.transform]; };
     return [pick(document.documentElement), pick(document.body)];
   });
-  assert.deepEqual(styles, [['0px', '0px', 'none'], ['0px', '0px', 'none']]);
+  const before = await styles();
+  await page.mouse.move(3, 200);
+  assert.deepEqual(await styles(), before);
   await page.close();
 });
 
@@ -216,8 +217,9 @@ const frameState = (page) =>
   });
 const htmlMargins = (page) =>
   page.evaluate(() => {
-    const cs = getComputedStyle(document.documentElement);
-    return { left: cs.marginLeft, right: cs.marginRight, styleAttr: document.documentElement.getAttribute('style'), styleTags: document.querySelectorAll('style').length };
+    // Where the page's box starts in the window (shared/page-box.js).
+    const left = new DOMMatrix(getComputedStyle(document.documentElement).transform).e;
+    return { left: `${left}px`, styleAttr: document.documentElement.getAttribute('style'), styleTags: document.querySelectorAll('style').length };
   });
 const setKeepOpen = (on) =>
   ctx.worker.evaluate((v) => chrome.storage.local.get('settings').then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, sidebarPinnedOpen: v } })), on);
@@ -245,20 +247,19 @@ test('hover: a floating sidebar over the page, no frame, page never moves', asyn
   await page.close();
 });
 
-test('Keep open pushes the page to start at the sidebar edge, without touching page markup; off restores it', async () => {
-  const page = await openPage('push');
+test('Keep open puts the page in its box at the sidebar edge, without touching page markup; off goes back to the frame', async () => {
+  const page = await openPage('box');
   const before = await htmlMargins(page);
   await setKeepOpen(true);
   await waitFor(async () => (await htmlMargins(page)).left === '260px');
   const pushed = await htmlMargins(page);
-  assert.equal(pushed.right, '8px');
   assert.equal(pushed.styleAttr, before.styleAttr, 'no inline style on <html>');
   assert.equal(pushed.styleTags, before.styleTags, 'no <style> injected into the page');
   const h1Left = await page.evaluate(() => document.querySelector('h1').getBoundingClientRect().left);
-  assert.ok(h1Left >= 260, `content starts after the sidebar (h1 at ${h1Left})`);
+  assert.ok(h1Left >= 0 && h1Left < 40, `the page's own coordinates start at its box (h1 at ${h1Left})`);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll');
   assert.equal((await frameState(page)).open, true);
-  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], 'frame wraps the pushed page');
+  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], 'frame wraps the page's box');
   await page.waitForTimeout(250);
   assert.deepEqual(await panelRect(page), [0, 0, 0], 'docked flush to the window');
 
@@ -267,12 +268,12 @@ test('Keep open pushes the page to start at the sidebar edge, without touching p
   await page.emulateMedia({ media: 'screen' });
 
   await setKeepOpen(false);
-  await waitFor(async () => (await htmlMargins(page)).left === '0px');
+  await waitFor(async () => (await htmlMargins(page)).left === '8px');
   assert.equal((await sidebarSnapshot(page)).open, false);
   await page.close();
 });
 
-test('Keep open: sidebar and push are in place while the page is still loading', async () => {
+test('Keep open: sidebar and box are in place while the page is still loading', async () => {
   const { createServer } = await import('node:http');
   const slow = createServer((req, res) => {
     if (req.url === '/slow.png') return setTimeout(() => res.end(), 3000); // holds the load event
@@ -301,28 +302,28 @@ test('Keep open registers the first-paint placeholder for the current width; Mar
   const placeholder = (page) =>
     page.evaluate(() => ({
       content: getComputedStyle(document.documentElement, '::after').content,
-      left: getComputedStyle(document.documentElement).marginLeft,
+      left: `${new DOMMatrix(getComputedStyle(document.documentElement).transform).e}px`,
       attr: document.documentElement.dataset.marginDocked ?? null,
     }));
 
   await setKeepOpen(true);
   await waitFor(async () => (await registered())?.endsWith('themes/arcadia/docked/w-260.css'));
   const page = await openPage('placeholder');
-  // The placeholder pushed the first paint; Margin's live push now holds the
+  // The placeholder placed the first paint; the page's own box now holds the
   // same width and the placeholder is switched off on this page.
   await waitFor(async () => (await placeholder(page)).attr === 'off');
   assert.deepEqual(await placeholder(page), { content: 'none', left: '260px', attr: 'off' });
 
   const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'placeholder').id;
   await ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
-  await waitFor(async () => (await registered()) === null);
-  await waitFor(async () => (await placeholder(page)).left === '0px');
+  await waitFor(async () => (await registered())?.endsWith('closed.css'));
+  await waitFor(async () => (await placeholder(page)).left === '8px');
 
   await setKeepOpen(true);
   await waitFor(async () => (await placeholder(page)).left === '260px');
-  await waitFor(async () => (await registered()) !== null);
+  await waitFor(async () => (await registered())?.endsWith('w-260.css'));
   await setKeepOpen(false);
-  await waitFor(async () => (await registered()) === null);
+  await waitFor(async () => (await registered())?.endsWith('closed.css'));
   await page.close();
 });
 

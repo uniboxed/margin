@@ -19,8 +19,15 @@
    (the resize handle, the tab menu, a dragged row's copy) stays inside. */
 .margin-sidebar.overlay, .frame, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe { z-index: 0; }
 /* What --vw and --vh are measured from: the one fixed box, empty and never
-   drawn (so it costs nothing as the page scrolls). */
-.window-probe { position: fixed; top: var(--margin-shift-y, 0); left: var(--margin-shift-x, 0); right: var(--margin-out-r, 0); bottom: var(--margin-out-b, 0); visibility: hidden; pointer-events: none; }
+   drawn (so it costs nothing as the page scrolls). On a page with a box,
+   the window's edges, past the box it's placed against (shared/page-box.js). */
+.window-probe {
+  position: fixed; visibility: hidden; pointer-events: none;
+  top: calc(var(--margin-shift-y, 0px) * var(--page-zoom, 1));
+  left: calc(var(--margin-shift-x, 0px) * var(--page-zoom, 1));
+  right: calc(var(--margin-out-r, 0px) * var(--page-zoom, 1));
+  bottom: calc(var(--margin-out-b, 0px) * var(--page-zoom, 1));
+}
 .margin-sidebar, .frame, .rims, .switch-cover, .startup-cover {
   /* One sidebar background for now (Arc-like neutral gray), the same in
      Light and Dark Mode; not tinted by the space or taken from the page.
@@ -81,7 +88,7 @@
   transition: transform 160ms ease;
 }
 /* Keep open: docked flush to the window and opaque, so sidebar and frame
-   read as one surface around the (pushed) page. */
+   read as one surface around the page. */
 .margin-sidebar.overlay.docked {
   top: 0;
   left: 0;
@@ -91,27 +98,6 @@
   box-shadow: none;
 }
 
-/* Keep open on a page Margin can't fit (pushed; content/layout.js): a narrow
-   rail of icons, the page pushed only by its width (off for now:
-   platform.compactRail). Resting the pointer on it expands the full sidebar
-   over the page (.rail-expanded), which doesn't move; it folds back when the
-   pointer leaves. Titles show as tooltips. */
-.margin-sidebar.overlay.rail { width: var(--rail, 52px); padding: 0 8px; }
-.margin-sidebar.rail .title, .margin-sidebar.rail .icon, .margin-sidebar.rail .editor, .margin-sidebar.rail .resizer, .margin-sidebar.rail .fit-site, .margin-sidebar.rail .folder-name, .margin-sidebar.rail .tab-menu:not(.top-layer) { display: none; }
-.margin-sidebar.rail .tab, .margin-sidebar.rail .pin, .margin-sidebar.rail .new-tab-row, .margin-sidebar.rail .folder, .margin-sidebar.rail .folder-toggle, .margin-sidebar.rail .space-title { justify-content: center; gap: 0; padding: 0; }
-.margin-sidebar.rail .pin.nested { margin-left: 0; }
-.margin-sidebar.rail .top { justify-content: center; }
-.margin-sidebar.rail .top .keep-open { margin-left: 0; }
-/* Rail and expanded rail stack the bottom bar the same way (the expanded
-   one at the rail's x), so expanding only widens the rows: nothing moves
-   from under the pointer. */
-.margin-sidebar.rail .bar, .margin-sidebar.rail-expanded .bar { display: flex; flex-direction: column; height: auto; gap: 6px; padding: 8px 0; align-items: center; }
-.margin-sidebar.rail-expanded .bar { align-items: flex-start; padding-left: 11px; }
-.margin-sidebar.rail .spaces, .margin-sidebar.rail-expanded .spaces { flex-direction: column; gap: 4px; max-height: calc(40vh * var(--page-zoom, 1)); overflow-y: auto; scrollbar-width: none; }
-/* Above the page card's edge (.card-edge, drawn over the docked sidebar),
-   which stays at the rail. */
-.margin-sidebar.overlay.rail-expanded { z-index: 1; box-shadow: 0 0 0 1px var(--border), 0 12px 40px rgba(0, 0, 0, 0.22); }
-.rail-expanded .resizer { display: none; } /* its width is the setting; the page stays at the rail */
 
 /* First render after page load: appear without animating. */
 .instant, .instant * { transition: none !important; }
@@ -234,9 +220,9 @@ ul { list-style: none; margin: 0; padding: 0; }
 .margin-sidebar :is(.keep-open, .bar-button, .icon, .new-tab-row .plus) :is(.line-icon, .fill-icon) { opacity: 0.6; }
 
 /* The top: the sidebar toggle (Keep open / Auto-hide) where Arc has it, and
-   the fit-this-site switch at the right. */
+   nothing at the right. */
 .margin-sidebar .top { flex: none; display: flex; align-items: flex-start; height: 43px; padding-top: 8.75px; }
-.margin-sidebar :is(.keep-open, .fit-site, .bar-button) {
+.margin-sidebar :is(.keep-open, .bar-button) {
   flex: none;
   display: grid;
   place-items: center;
@@ -246,10 +232,8 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 .margin-sidebar .keep-open { margin-left: 6px; }
 .margin-sidebar .toggle-icon { width: 18.5px; height: 14.5px; }
-.margin-sidebar :is(.keep-open, .fit-site, .bar-button):hover { background: var(--hover); }
-.margin-sidebar :is(.keep-open, .fit-site, .bar-button):active { background: var(--press); }
-.margin-sidebar .fit-site { font-size: 15px; color: var(--icon); }
-.margin-sidebar .fit-site[hidden] { display: none; }
+.margin-sidebar :is(.keep-open, .bar-button):hover { background: var(--hover); }
+.margin-sidebar :is(.keep-open, .bar-button):active { background: var(--press); }
 
 /* The space's name (Arc): its emoji and name, muted. */
 .margin-sidebar .space-title {
@@ -316,7 +300,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 /* A page shown again: no hover until the pointer moves (sidebar.js). */
 .margin-sidebar.hover-stale :is(.tab, .pin, .new-tab-row, .folder):not(.active):not(.behind):not(.drop-into):hover { background: none; }
 .margin-sidebar.hover-stale :is(.tab, .pin):hover .icon { visibility: hidden; }
-.margin-sidebar.hover-stale :is(.chip, .bar-button, .keep-open, .fit-site):hover { background: none; }
+.margin-sidebar.hover-stale :is(.chip, .bar-button, .keep-open):hover { background: none; }
 .margin-sidebar.hover-stale .chip:not(.active):hover { opacity: 0.55; }
 /* A folder: its icon, then its name in semibold; its pins indented beneath. */
 .margin-sidebar .folder { padding-left: 8px; font-weight: 600; }

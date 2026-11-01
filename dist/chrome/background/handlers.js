@@ -7,12 +7,12 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, openedFrom, pageBlinked, resolveTab, shownAt, shownUrl, wakeTab } from './tabs.js';
-import { clearLog, readLog, recordShown } from './diagnostics.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, resolveTab, shownAt, wakeTab } from './tabs.js';
+import { clearLog, readLog } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import * as keepReady from './keep-ready.js';
-import { iconInflight, iconUrlAllowed, learnIcon } from './site-icons.js';
+import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
@@ -216,6 +216,13 @@ export async function newTabKey(tabArg) {
   }
 }
 
+// Style sheets fetched for pages (fetchStyle), the latest few.
+const styleCache = new Map();
+const STYLE_CACHE_SIZE = 50;
+const STYLE_CACHE_CHARS = 8_000_000; // and no more than this in all
+const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
+const STYLE_MAX_CHARS = 8_000_000;
+
 export const handlers = {
   async hello(_, sender) {
     onboarding.pageLoaded();
@@ -251,16 +258,8 @@ export const handlers = {
     const id = tabId ?? (pinId ? V.pinTabId(await load(), pinId, windowId) : null);
     if (Number.isInteger(id)) void wakeTab(id, { renew });
   },
-  // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): how a page that was
-  // just shown came on screen (content/shell.js), and the log itself for the
+  // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): the log itself, for the
   // start page's "Switch log" button.
-  /** @param {{ why: string, ms: number, restoring?: boolean }} message */
-  async shellShown({ why, ms, restoring }, sender) {
-    const id = sender.tab?.id;
-    const at = shownAt.get(id);
-    if (id == null || !at || Date.now() - at > 5000) return; // not a page that was just shown
-    recordShown({ tabId: id, why: String(why).slice(0, 40), sinceStart: Math.round(ms), sinceShown: Date.now() - at, restoring: !!restoring });
-  },
   /** @param {{ clear?: boolean }} message */
   async switchLog({ clear } = {}) {
     if (clear) return void (await clearLog());
@@ -277,23 +276,11 @@ export const handlers = {
     const id = windowId ?? sender.tab?.windowId;
     if (id != null && Number.isFinite(top)) await setScroll(id, top);
   },
-  // content/shell.js, as a page starts: is this Safari loading, as it's shown,
-  // a tab it had unloaded (shown in the last few seconds, same URL)? Then
-  // nothing of the tab was on screen before, and holding the page back only
-  // kept Safari's empty view up.
-  /** @param {{ url: string }} message */
-  async restoringTab({ url }, sender) {
-    const id = sender.tab?.id;
-    const at = shownAt.get(id);
-    if (id == null || !at || Date.now() - at > 3000) return false;
-    const before = shownUrl.get(id);
-    return !before || before.split('#')[0] === String(url).split('#')[0];
-  },
   // A page that still had the previous copy of Margin (content/core.js
   // reloadWhenSafe): its URL loaded again once the content scripts a page
   // load needs are registered. A GET (a reload would send a form again), from
-  // the browser's side (the old copy's fitted layout would cancel a page's
-  // own navigation to its URL); a URL with a #fragment, where loading it
+  // the browser's side (an old copy's fitted layout would cancel a page's own
+  // navigation to its URL); a URL with a #fragment, where loading it
   // again would only scroll: the browser's reload. Answers { reloaded }, and
   // when it didn't, whether the page may ask again later (`retry`: it was
   // being shown or switched to, or its address changed) or never will.
@@ -440,24 +427,6 @@ export const handlers = {
     if (url && !spaceId && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
     const tab = await openTab({ windowId, url, spaceId });
     return { tabId: tab.id };
-  },
-  // A ⌘- or middle-clicked link in a fitted page that the page's CSP refused
-  // before Safari could open its tab (content/shell.js): opened like Safari
-  // would, in a tab after the page (later ones after earlier ones, so they
-  // keep the click order), in the background unless ⇧ was held; ⌘⌥ opens a
-  // window.
-  /** @param {{ url: string, window?: boolean, active?: boolean }} message */
-  async openLink({ url, window: inWindow, active }, sender) {
-    if (!/^https?:/i.test(url ?? '')) return;
-    markMarginOpening();
-    if (inWindow && api.windows?.create) return void (await api.windows.create({ url, focused: !!active }));
-    const opener = sender.tab;
-    if (!opener) return void (await api.tabs.create({ url, active: !!active }));
-    const last = openedFrom.get(opener.id);
-    const index = last && now() - last.at < 60_000 ? last.index + 1 : opener.index + 1;
-    const tab = await api.tabs.create({ url, active: !!active, windowId: opener.windowId, index })
-      .catch(() => api.tabs.create({ url, active: !!active }));
-    openedFrom.set(opener.id, { index: tab?.index ?? index, at: now() });
   },
   // `folderId`/`beforeId`: where the pin goes (a folder of the tab's space,
   // before a pin or folder there; dragged in the sidebar); the end of the
@@ -694,16 +663,50 @@ export const handlers = {
     await api.scripting.executeScript({ target: { tabId }, files: [themeFor(settings).content], injectImmediately: true });
     return true;
   },
-  // Fitted layout on or off for one site (the palette), then reload the
-  // page in the new layout once the registered script matches.
-  /** @param {{ origin: string, fit: boolean }} message */
-  async setFitSite({ origin, fit }, sender) {
-    if (!/^https?:\/\/[^/]+$/.test(origin ?? '')) return;
-    await mutate((s) => {
-      const except = (s.settings.fitPagesExcept ?? []).filter((o) => o !== origin);
-      return { ...s, settings: { ...s.settings, fitPagesExcept: fit ? except : [...except, origin] } };
+  // The page's script in the page's world, for a page that didn't get it from
+  // its registration (content/page-link.js): `left`, then the script, as
+  // content/page/at-<L>.js and the registration do it.
+  /** @param {{ left?: number }} message */
+  async injectPage({ left }, sender) {
+    const tabId = sender.tab?.id;
+    if (tabId == null || !api.scripting?.executeScript) return false;
+    const target = { tabId };
+    await api.scripting.executeScript({
+      target, world: 'MAIN', injectImmediately: true, args: [left ?? null],
+      func: (at) => { /** @type {any} */ (window)[Symbol.for('margin.page.start')] = { left: at ?? undefined }; },
     });
-    await queueRegistrations();
-    if (sender.tab?.id != null) await api.tabs.reload(sender.tab.id);
+    await api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, files: ['content/page.bundle.js'] });
+    return true;
+  },
+  // A style sheet the page can't read (another origin's, no CORS:
+  // content/page-link.js). No cookies, as a <link> of another origin needs none.
+  // The page gets the text, so this is only for real style sheets that it could
+  // load anyway: not a local network's unless it's on one, after any redirect.
+  // Null if it can't be had (Safari's per-site grants can refuse it): the
+  // sheet then stays as it is.
+  /** @param {{ url: string }} message */
+  async fetchStyle({ url }, sender) {
+    const pageUrl = sender?.tab?.url ?? sender?.url ?? '';
+    if (!styleUrlAllowed(url, pageUrl)) return null;
+    if (styleCache.has(url)) return styleCache.get(url);
+    const text = await fetch(url, { credentials: 'omit' }).then((res) => {
+      const css = /^text\/css\b/i.test(res.headers.get('content-type') ?? '');
+      return res.ok && css && styleUrlAllowed(res.url, pageUrl) ? res.text() : null;
+    }).catch(() => null);
+    if (text == null) return null;
+    if (text.length > STYLE_MAX_CHARS) {
+      console.warn('[margin] a style sheet too large to rewrite', url, text.length);
+      return null;
+    }
+    if (text.length > STYLE_CACHED_MAX_CHARS) return text;
+    styleCache.set(url, text);
+    let chars = 0;
+    for (const kept of styleCache.values()) chars += kept.length;
+    for (const oldest of styleCache.keys()) {
+      if (styleCache.size <= STYLE_CACHE_SIZE && chars <= STYLE_CACHE_CHARS) break;
+      chars -= styleCache.get(oldest).length;
+      styleCache.delete(oldest);
+    }
+    return text;
   },
 };

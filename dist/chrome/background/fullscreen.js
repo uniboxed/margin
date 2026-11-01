@@ -101,8 +101,8 @@ export async function isFullscreen(windowId) {
   return win?.state === 'fullscreen';
 }
 
-// Tells the window's pages when that changes. The fitted layout follows
-// whether any window is in full screen (background/registered.js syncShell).
+// Tells the window's pages when that changes. The page's box follows whether
+// any window is in full screen (background/registered.js syncPage).
 const known = new Map(); // window id → last told full screen or not
 async function tellTabs(windowId, fullscreen) {
   if (known.get(windowId) !== fullscreen) {

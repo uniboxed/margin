@@ -240,6 +240,8 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Fitted layout with Keep open (Safari 27)
 
+Retired 2026-11-01: there's no iframe now. Kept for its list of sites to try.
+
 Setup: load `dist/safari/` (Develop → Add Temporary Extension…), allow Margin on every website, turn **Keep open** on, then reload the tabs you test in. Turning Keep open on doesn't refit pages that are already open. To see why a page wasn't fitted, open its Web Inspector console with Debug messages shown: `[margin] fitted layout: …`.
 
 **Layout**
@@ -293,7 +295,7 @@ Files were added under `dist/safari/`, so re-run `scripts/make-xcode.sh`, then R
 - [ ] Switching tabs from the sidebar, palette and ⌃⌘↓/↑ (and ⌥⌘↓/↑); spaces with ⌃⌘→/←.
 - [ ] "Keep open" with fitted pages: pages load fitted, links and forms work, no blank flash.
 - [ ] Pin, close (archives), restore from the archive, create/rename/delete a space, move a tab to a space.
-- [ ] Settings on the new-tab page save (shortcuts, gestures, archive hours, fit pages).
+- [ ] Settings on the new-tab page save (shortcuts, gestures, archive hours).
 - [ ] Pull-to-refresh and two-finger swipe back/forward; pinch zoom.
 - [ ] Site icons appear for new sites.
 - [ ] After changing Margin's website access in Safari's settings, Option+K still opens the palette once (not open-then-close).
@@ -316,7 +318,7 @@ With Keep open on:
 - [ ] docs.new creates one document and opens it; no loop. Docs, Teams, Outlook and claude.ai show in the normal (pushed) layout, Teams with its top bar.
 - [ ] GitHub: open a commit through in-page navigation (repo → file → its latest commit), then click files in the commit's file tree: it scrolls to that file's diff and stays on the commit.
 - [ ] YouTube: the address bar follows videos you open; ⌘R reloads the video you're on.
-- [ ] On a fitted site, the sidebar footer shows ▢; clicking it reloads the site in the normal layout and shows ▣; clicking ▣ fits it again.
+- [ ] (Retired.) On a fitted site, the sidebar footer shows ▢; clicking it reloads the site in the normal layout and shows ▣; clicking ▣ fits it again.
 - [ ] Known (WebKit): after switching away from a fitted tab and back, its scrollbar may not draw until the next load; scrolling still works.
 
 ## Chrome: Margin full screen (2026-10-26)
@@ -343,6 +345,8 @@ Reload Margin in chrome://extensions after pulling.
 - [ ] "Use in windows too" (toast or card): Margin works in normal windows; Settings → "Use Margin only in full screen" turns it back on.
 
 ## Chrome: fitted layout (2026-10-26)
+
+Retired 2026-11-01, as above.
 
 Reload Margin in chrome://extensions after pulling. Keep open on, in Margin full screen.
 
@@ -558,22 +562,37 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
-## Frameless layout, test build (branch test/frameless-layout, 2026-11-01)
+## The page's box, on every page (2026-11-01)
 
-Keep open on, sidebar at its default width, pages reloaded after turning it on. Signed in: Outlook, Teams, Gmail, Google Docs, then sites you use. Note the site for anything wrong.
+No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.
 
-- [ ] The sidebar and frame show on all sides, the page beside them with nothing cut off, no iframe (Web Inspector: `html` has `data-margin-frameless`).
-- [ ] Right-click and dropdown menus open at the pointer. Dialogs are centred on the page, and the page doesn't scroll behind them.
-- [ ] Compose and typing work, and the caret lands where you click (Docs matters most).
-- [ ] Two-finger scroll and momentum feel normal, with no double scroll bar. Space and arrow keys scroll.
-- [ ] Swipe back and pull to refresh work, with no odd bounce.
-- [ ] Back returns to where you were. Reload keeps the place.
-- [ ] Find, full-screen video, sign-in flows, a page that failed in the fitted layout.
+- [ ] Reddit: the header's right side is all there.
+- [ ] Teams, signed in, sidebar hidden and Keep open: top bar and edges in place, nothing under the frame. Then Outlook, Gmail, Google Docs: compose and typing work, and the caret lands where you click.
+- [ ] First paint: the frame and the page's place from the first frame on loads and reloads. Nothing jumps as the sidebar arrives.
+- [ ] Keep open on and off, with the button, Option+S and the palette, on an open page: no reload needed, the place in the page kept, the slide animations as before.
+- [ ] Settings → frame off, Keep open off: pages are untouched, Safari's own pinch works. Web Inspector: `html` has no transform.
+- [ ] Two-finger scroll and momentum, with no double scroll bar. Space, arrows, Page Up/Down, Home and End scroll when nothing is focused, and don't when typing.
+- [ ] Swipe back and pull to refresh, only at the top of the page. Back returns to where you were; reload keeps the place.
+- [ ] Right-click and dropdown menus open at the pointer. Dialogs are centred on the page, side drawers open beside the sidebar rather than under it, and the page doesn't scroll behind them.
+- [ ] A site with a centred column (a blog, docs, sive.rs): the column keeps its width, before and after dragging the sidebar's edge and resizing the window.
+- [ ] A site that navigates without reloading (GitHub, Reddit): after a few clicks, images still load as you scroll, and Back returns to your place in the list.
+- [ ] In a clicked inner pane (Gmail's list, Slack's messages): Page Down and arrows move that pane. ⌘↓ and ⌥↓ with nothing clicked scroll the page.
+- [ ] Infinite scroll (Reddit, X): it loads as you near the end, not by itself at the top.
+- [ ] Find, print (no frame, full width), full-screen video and back, sign-in flows. A web game or player in element full screen fills the screen.
+- [ ] Known, small: a footer placed `position: absolute; bottom: 0` against a body that grows lands at the end of the first screen. A body wider than the window wraps to the box rather than scrolling sideways. A fetched sheet's rules arrive a moment after the page on a cold start. Say which sites show any of these.
+- [ ] ⌘+ and ⌘−: the sidebar keeps its size, the page reflows beside it.
+- [ ] Palette, switch covers, the startup cover after a relaunch, a tab Safari unloaded, a new tab from the palette: as before.
+- [ ] Drag the sidebar's edge: the page follows, its layout switches about 150 ms after you stop, and a site's scripts that listen to a media query hear it this time.
+- [ ] Chrome: outside full screen pages are untouched; in Margin full screen they have the box; leaving it puts them back.
 - [ ] How it feels against the fitted layout: first paint, tab switches, scrolling.
 
-Resize: dragging the sidebar's edge moves the page with it, the site's own layout switches about 150 ms after you stop (a site's scripts that listen for a media query may not), and new pages start at that width.
+Pinch, on a page with a box:
 
-Known, not bugs of the idea: ⌘+ and pinch scale the sidebar too, no first-paint placeholder so the sidebar arrives a moment late, and it needs a page reload after Keep open is turned on or off.
+- [ ] Pinch in and out several times at different spots: smooth, under your fingers, the sidebar and frame don't scale, on a heavy site too.
+- [ ] At rest at 2×, is text sharp? Compare with Safari's own zoom on a page with no box. If it stays soft, say so before anything else is done about it.
+- [ ] Zoomed: click a link, a menu, a field: it lands where you pressed. Two fingers move the page, then scroll it at the edges. Fixed bars scale with the page.
+- [ ] Past 3× and below 1×: it gives a little and springs back.
+- [ ] Double-tap with two fingers: Safari's smart zoom, which scales the sidebar too. Say if that's a problem.
 
 ## Pinch zoom (2026-10-31)
 
@@ -581,14 +600,6 @@ Known, not bugs of the idea: ⌘+ and pinch scale the sidebar too, no first-pain
 - [ ] Pinch in at normal size: nothing happens, and the all-tabs overview never opens, right after zooming back to normal and on quick repeated pinches too.
 - [ ] Pinch out several times: how often does one do nothing? A pinch whose very first movement is slightly inward is treated as pinching in, and it can't be recovered mid-pinch.
 - [ ] While zoomed in on such a page: hover the left edge and press Option+S. The sidebar is part of the page there, so it's magnified with it and may be out of view. Say if that's a problem.
-- [ ] A fitted page (Keep open on): pinch several times in a row, in and out, at different spots: every pinch works and stays under your fingers, the sidebar and frame don't scale, two fingers move the zoomed page, then scroll it at the edges.
-- [ ] Fitted page at 1.5×, 2× and 3×: stretched while the fingers move; about a tenth of a second after they stop it goes sharp, in one step, with lines where they were and the same spot under your fingers. Compare with Safari's own zoom on a normal page.
-- [ ] Sharp: two fingers scroll it, and it stays sharp. Fixed bars keep their size and all their items can be reached. Then pinch again from there: it stays under your fingers.
-- [ ] Sharp: click a link, a menu, a text field: the click lands where you pressed, even at the very bottom of the page, and a menu opens by what you clicked. The page goes stretched again until the next pinch. Click in the middle of a line and drag to select text: is the selection where you pressed?
-- [ ] Sharp, then resize the window, go to another tab and back, reload, go back a page, print: nothing left zoomed or jumping.
-- [ ] A right-to-left page (ar.wikipedia.org), a page with a fixed lightbox open, one with embedded videos, Gmail or Slack: nothing breaks. Hover previews on Wikipedia may land off while sharp. Videos stay small in a larger box. Apps stay stretched.
-- [ ] A busy site on a fitted page: does the pinch keep up?
-- [ ] Fitted page: double-tap with two fingers (smart zoom), then pinch out and in.
 - [ ] Pinch in over an embedded video at normal size: the overview may open (as before: Margin isn't in that frame).
 
 ## The theme renamed to Arcadia (2026-10-31)

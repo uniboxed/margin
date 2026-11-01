@@ -39,7 +39,7 @@ export function takeOver(api) {
   // same-origin frame, counts), no media playing or call going, and not done
   // in the last 30s (then it tries again after). Hidden tabs a few at a time.
   // The background loads the page's URL again once it has registered what a
-  // page load needs (the fitted layout): a GET, not a reload, which would send
+  // page load needs (the page's box): a GET, not a reload, which would send
   // a form again; WebKit doesn't add a history entry for the same URL (with a
   // #fragment, which would only scroll, the browser's reload).
   function reloadWhenSafe() {

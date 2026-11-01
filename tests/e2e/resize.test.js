@@ -31,7 +31,8 @@ const registered = () =>
 const panelWidth = (page) => evalInShadow(page, 'margin-sidebar-host', function () {
   return Math.round(this.querySelector('.margin-sidebar').getBoundingClientRect().width);
 });
-const htmlLeft = (page) => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).marginLeft));
+// Where the page's box starts in the window.
+const htmlLeft = (page) => page.evaluate(() => new DOMMatrix(getComputedStyle(document.documentElement).transform).e);
 
 async function openPage(name) {
   const page = await ctx.context.newPage();

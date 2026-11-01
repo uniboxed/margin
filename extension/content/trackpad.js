@@ -1,8 +1,8 @@
 // Margin's trackpad gestures on the page (Safari builds): the guard that keeps
 // Safari's swipe, pinch for all tabs and bounce from leaving or distorting the
 // page, and Margin's own pull-to-refresh and swipe back/forward, which the
-// theme draws (view.setPull, setSwipe), and the fitted card's pinch zoom
-// (content/shell.js). Called by content/core.js.
+// theme draws (view.setPull, setSwipe), and the pinch on a page with a box
+// (content/pinch.js). Called by content/core.js.
 import { mark } from '../shared/dom.js';
 import { installGestureGuard, atPageTop, canSwipe } from '../shared/gestures.js';
 import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.js';
@@ -13,38 +13,30 @@ import { platform } from '../shared/platform.js';
 // copy's swipe stays off (its pull-to-refresh doesn't: two reloads are one).
 /** @param {any} page @param {{ replacing: () => boolean }} options */
 export function startTrackpad(page, { replacing }) {
-  const { host, onCard } = page;
+  const { host, pinch } = page;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
   // Not in a copy that stood back for a newer one (content/core.js): that one's guard is enough.
   // Its wheel listener there by the setting alone: a page that stood back is
   // asked per event (it may be shown again before its next render).
-  const guardWindow = (win) => installGestureGuard({
+  const gestureGuard = !platform?.blockGestures ? null : installGestureGuard({
     getSettings: () => (page.dormant?.() ? { blockGestures: false } : page.state()?.settings),
     wanted: () => page.state()?.settings?.blockGestures !== false,
-    // Safari's own on a page; in the fitted layout it would magnify Margin
-    // too, and goes dead every other pinch in a frame (DECISIONS.md): the
-    // card's own zoom there, nothing over the shell around it.
-    pinch: () => (document.fullscreenElement ? 'block' : win !== window ? 'own' : globalThis.Margin?.shell ? 'block' : 'native'),
+    // Safari's own on a page left alone; on a page with a box it would
+    // magnify Margin too: Margin's own there.
+    pinch: () => (document.fullscreenElement ? 'block' : page.boxed() ? 'own' : 'native'),
     onPinch: ({ phase, scale, x, y }) => {
-      const shell = globalThis.Margin?.shell;
-      if (phase === 'start') shell?.zoomStart(x, y);
-      else if (phase === 'change') shell?.zoomTo(scale);
-      else shell?.zoomEnd();
+      if (phase === 'start') pinch.start(x, y);
+      else if (phase === 'change') pinch.move(scale);
+      else pinch.end();
     },
-    // (What the top window gets is Margin's own UI, or the frame.)
-    onWheelFirst: win === window ? undefined : (event) => !!globalThis.Margin?.shell?.zoomPan(event.deltaX, event.deltaY),
-    win,
+    onWheelFirst: (event) => pinch.pan(event.deltaX, event.deltaY),
   });
-  const gestureGuard = platform?.blockGestures ? guardWindow(window) : null;
-  const cardGuards = [];
-  if (gestureGuard) onCard((win) => cardGuards.push(guardWindow(win)));
   const updateGestureGuards = () => {
     gestureGuard?.update();
-    for (const guard of cardGuards) guard.update();
     syncWheelWatch();
-    // Gestures off, or this copy stood back: nothing could move or undo a zoomed card.
-    if (page.dormant?.() || page.state()?.settings?.blockGestures === false) globalThis.Margin?.shell?.zoomReset();
+    // Gestures off, or this copy stood back: nothing could move or undo a zoomed page.
+    if (page.dormant?.() || page.state()?.settings?.blockGestures === false) pinch.reset();
   };
 
   // ---- pull to refresh (Safari builds) ---------------------------------------
@@ -71,9 +63,7 @@ export function startTrackpad(page, { replacing }) {
       location.reload();
       // If the page stays (a cancelled "Leave page?" prompt), the next click
       // or key clears it; at the latest after 10s.
-      for (const target of [window, globalThis.Margin?.shell?.card].filter(Boolean)) {
-        for (const type of ['pointerdown', 'keydown']) target.addEventListener(type, resetPull, { capture: true, once: true });
-      }
+      for (const type of ['pointerdown', 'keydown']) addEventListener(type, resetPull, { capture: true, once: true });
     }, 300);
     pullStuckTimer = setTimeout(resetPull, 10000);
   }
@@ -126,19 +116,18 @@ export function startTrackpad(page, { replacing }) {
     const pullTracker = createPullTracker();
     const swipeTracker = createSwipeTracker();
     let endTimer = null;
-    // The page's document: this one, or the card's in the fitted layout.
     // Where the gesture applies is asked lazily (shared/pull.js): it walks
     // the event's path, which can cost a layout, only while it matters.
-    const onWheelIn = (win, doc) => (/** @type {WheelEvent} */ event) => {
+    const onWheel = (/** @type {WheelEvent} */ event) => {
       if (event.ctrlKey) return; // a pinch
       // Not over Margin's own panels; pixel deltas only (a trackpad).
       const usable = () => event.deltaMode === 0 && !event.composedPath().some((node) => node === host || /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
-      const zoomed = globalThis.Margin?.shell?.zoomed(); // the card zoomed: the wheel pans it, no gestures
+      const zoomed = pinch.zoomed(); // the wheel pans it: no gestures
       const pulling = pullEnabled() && !pullRefreshing && !zoomed;
       const swiping = swipeEnabled() && !zoomed;
-      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: () => usable() && atPageTop(event, doc) }));
-      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: () => usable() && historyAllows(event.deltaX) && canSwipe(event, doc) }));
+      if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: () => usable() && atPageTop(event, document) }));
+      if (swiping) showSwipe(swipeTracker.wheel({ ...wheel, eligible: () => usable() && historyAllows(event.deltaX) && canSwipe(event, document) }));
       if (!pulling && !swiping) return;
       clearTimeout(endTimer);
       endTimer = setTimeout(() => {
@@ -147,13 +136,7 @@ export function startTrackpad(page, { replacing }) {
       }, PULL_DEFAULTS.GAP_MS + 20);
     };
     const watchOptions = { capture: true, passive: true };
-    /** @type {{ win: Window, listener: (event: WheelEvent) => void }[]} */
-    const watched = [{ win: window, listener: onWheelIn(window, document) }];
     let watching = false;
-    onCard((win) => {
-      watched.push({ win, listener: onWheelIn(win, win.document) });
-      if (watching) win.addEventListener('wheel', watched.at(-1).listener, watchOptions);
-    });
     const watchWanted = () => {
       const settings = page.state()?.settings;
       return settings?.blockGestures !== false && (settings?.pullToRefresh !== false || settings?.swipeNavigation !== false);
@@ -162,11 +145,8 @@ export function startTrackpad(page, { replacing }) {
       const on = watchWanted();
       if (on === watching) return;
       watching = on;
-      for (const { win, listener } of watched) {
-        if (on) win.addEventListener('wheel', listener, watchOptions);
-        else win.removeEventListener('wheel', listener, watchOptions);
-      }
-      if (on) return;
+      if (on) return addEventListener('wheel', onWheel, watchOptions);
+      removeEventListener('wheel', onWheel, watchOptions);
       // A gesture under way when they went off: over.
       clearTimeout(endTimer);
       pullTracker.reset();

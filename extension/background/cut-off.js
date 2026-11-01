@@ -81,9 +81,11 @@ export async function cutOffInPage(own, quiet = false) {
         node.setAttribute('data-margin-off', ''); // what a host's own styles respect (shared/dom.js)
       }
       // The page out of sight under the old copy's arrival cover (content/core.js
-      // arriveCovered: the fitted layout's card, else the body): back.
-      const page = /** @type {any} */ (globalThis).Margin?.shell?.frame ?? document.body;
+      // arriveCovered): back.
+      const page = document.body;
       if (page?.style.getPropertyValue('opacity') === '0' && page.style.getPropertyPriority('opacity') === 'important') page.style.removeProperty('opacity');
+      // No sidebar, so no box beside it: the page has the window (content/page/box.js).
+      document.dispatchEvent(new CustomEvent('margin:box', { detail: 'off' }));
     } catch {}
   }
   return { cutOff: true, busy, hidden: document.hidden };

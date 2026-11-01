@@ -1,39 +1,41 @@
 // Where Margin sits on the page: shown on hover, toggled, peeking, or docked
-// with "Keep open" (the page pushed right, or its card placed beside the
-// sidebar in the fitted layout), the first-paint placeholder's hand-over, and
-// the show/hide shortcut. The theme draws it (view.setLayout, setWidth).
-// Called by content/core.js.
+// with "Keep open", where the page's box goes (shared/page-box.js), the
+// first-paint placeholder's hand-over, and the show/hide shortcut. The theme
+// draws it (view.setLayout, setWidth). Called by content/core.js.
 import { mark } from '../shared/dom.js';
 import * as V from '../shared/view.js';
 import * as shortcuts from '../shared/shortcuts.js';
-import { platform } from '../shared/platform.js';
 
 // Reveal zone: 10px, or 24px in a full-screen window, where Safari's own
 // sidebar opens if the cursor rests at the very edge (see view.revealZone).
 const edgePx = () =>
   V.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
 const HIDE_DELAY_MS = 300;
-// How long the pointer rests on the narrow rail before the full sidebar
-// opens over the page (a pass on the way to an icon doesn't).
-const RAIL_EXPAND_MS = 350;
 
 // `page`: see content/core.js. `loader`: content/loader.js.
 export function startLayout(page, { loader }) {
-  const { host, send, onCard } = page;
-  // The theme's frame around the page card (px): the push and the hover hit
+  const { host, send } = page;
+  // The theme's frame around the page card (px): the box and the hover hit
   // area end there.
   const inset = () => page.theme()?.geometry?.inset ?? 0;
   // Margin's sizes (the sidebar's width, the frame) stay the same on screen
   // whatever the page's zoom (shared/dom.js setPageZoom); in the page's own
-  // (zoomed) pixels, which the push, the fitted card and the pointer use,
-  // they're this.
+  // (zoomed) pixels, which the box and the pointer use, they're this.
   const pagePx = (px) => px / (page.zoom?.() ?? 1);
-  // While resizing: move the frame edge and, with "Keep open", the pushed
-  // page along with it (at most once per animation frame).
+  // The box for a left edge at `left` (Margin's pixels): inside the frame.
+  const boxAt = (left) => {
+    const frame = pagePx(inset());
+    return { left: pagePx(left), top: frame, right: frame, bottom: frame };
+  };
+  // While resizing: move the frame edge and, with "Keep open", the page's box
+  // along with it (at most once per animation frame). The page's own layout
+  // follows when it rests (content/page/box.js).
   let liveWidth = null;
   let widthFrame = null;
+  let widthDone = false;
   const onWidth = (width, { done }) => {
     liveWidth = width;
+    widthDone = done;
     if (done) return applyLiveWidth();
     widthFrame ??= requestAnimationFrame(applyLiveWidth);
   };
@@ -41,141 +43,68 @@ export function startLayout(page, { loader }) {
     widthFrame = null;
     page.view()?.setWidth(liveWidth);
     if (!wasDocked) return; // hidden, the page stays in the frame
-    if ((pushed || document.documentElement.hasAttribute('data-margin-frameless')) && !railWidth()) setPushed(true, pagePx(liveWidth)); // with the rail, the page stays at the rail
-    globalThis.Margin?.shell?.setLayout({ width: pagePx(liveWidth) });
+    page.setBox(boxAt(liveWidth), { live: !widthDone });
   }
 
   let reason = null; // 'hover' | 'toggle' | null
   let hideTimer = null;
 
   const pinnedOpen = () => !!page.state()?.settings?.sidebarPinnedOpen;
-  // A page that isn't fitted (content/shell.js skipped it, or fitting is off)
-  // is pushed. With the rail available (platform.compactRail, off for now)
-  // and compactWhenPushed (on by default) only by the theme's
-  // narrow icon rail (geometry.rail), which expands over the page when the
-  // pointer rests on it: pushing by the full sidebar puts more of such a
-  // page under it or off the right edge. Null: the full sidebar.
-  const railWidth = () => {
-    const rail = page.theme()?.geometry?.rail;
-    return rail && platform?.compactRail && !globalThis.Margin?.shell && page.state()?.settings?.compactWhenPushed !== false ? rail : null;
-  };
-  // The rail's width while it shows folded (docked, not hovered or toggled).
-  const onRail = () => (reason == null && pinnedOpen() && page.active() ? railWidth() : null);
-  // Hover: floating over the page. Keep open: docked, with the page pushed
-  // right (or, in the fitted layout, its card placed beside the sidebar).
+  // Hover: floating over the page. Keep open: docked, the page's box beside it.
   let isOpen = false;
   let wasDocked = false;
   function setOpen(open) {
     const view = page.view();
     if (!view) return;
-    if (!page.active()) open = false; // out of the way (content/core.js): no sidebar, no push
+    if (!page.active()) open = false; // out of the way (content/core.js): no sidebar, no box
     const docked = open && pinnedOpen();
     const width = view.width();
-    const rail = docked ? railWidth() : null;
     isOpen = open;
-    // Hovered or toggled over the rail: the full sidebar, over the page.
     const framed = !docked && page.active() && page.state()?.settings?.frameWhenHidden !== false;
     // Keep open turned off or on slides (the theme), only where it's seen
     // happening: not on a page hidden, just shown, or being drawn first.
     if (wasDocked !== docked && (document.hidden || page.justShown() || page.firstRender())) view.instantOnce?.();
     wasDocked = docked;
     // Hidden, the page sits inside the frame (the sidebar floats over it
-    // when it's out, and moves nothing); out of the way, it has the window.
+    // when it's out, and moves nothing). No frame, or out of the way, it's the
+    // page as it is, with no box. A copy that stood back leaves the box to the
+    // one in charge.
     const place = () => {
-      setPushed(docked || framed, pagePx(docked ? rail ?? width : inset()), framed);
-      const radius = page.theme().geometry?.radius;
-      globalThis.Margin?.shell?.setLayout({ docked: docked || framed, width: pagePx(docked ? width : inset()), inset: pagePx(inset()), radius: radius && `${pagePx(parseFloat(radius))}px` });
+      if (page.dormant()) return;
+      const box = docked ? boxAt(width) : framed ? boxAt(inset()) : null;
+      page.setBox(box);
+      mark(host, 'box', box ? String(box.left) : 'off');
     };
-    if (!view.setLayout({ open, docked, framed, width, rail: rail && { width: rail, expanded: reason != null }, place })) place();
+    if (!view.setLayout({ open, docked, framed, width, place })) place();
     mark(host, 'open', String(open)); // test/debug hook; reveals nothing private
-    mark(host, 'rail', rail ? (reason != null ? 'expanded' : 'rail') : 'off');
     if (page.state()) syncPlaceholder();
   }
 
-
-  // ---- push (only while "Keep open" is on) ---------------------------------
-  // Shifts the page right so it starts where the sidebar ends. A separate
-  // adopted stylesheet (never the page's own markup or inline styles), screen
-  // media only, removed as soon as "Keep open" is off. Known trade-offs are in
-  // DECISIONS.md: position:fixed elements don't move, 100vw elements are
-  // clipped on the right.
-  // `light`: hidden, inside the frame: only the sides. The page's overflow is
-  // left alone (on <html> it would stop sideways scrolling, and body's own
-  // overflow from reaching the window: sticky headers, scroll locks), and its
-  // height too (the frame lies over its top and bottom 8px, as with the push).
-  const pushCss = (width, light) => `@media screen {
-    html {
-      margin-left: ${width}px !important;
-      margin-right: ${pagePx(inset())}px !important;
-      width: auto !important;
-      ${light ? '' : 'overflow-x: hidden !important;'}
-    }
-  }`;
-  const canPush = document.documentElement instanceof HTMLHtmlElement;
-  let pushed = false;
-  let pushedWidth = null;
-  let pushedLight = false;
-  let pushSheet = null;
-  let pushStyle = null;
-  function setPushed(on, width, light = false) {
-    if (document.documentElement.hasAttribute('data-margin-frameless')) { // test build: content/frameless/a.js follows
-      if (on) document.documentElement.setAttribute('data-margin-left', String(width));
-      return;
-    }
-    if (!canPush || globalThis.Margin?.shell || (on === pushed && (!on || (width === pushedWidth && light === pushedLight)))) return; // the fitted layout needs no push
-    pushed = on;
-    pushedWidth = on ? width : null;
-    pushedLight = on && light;
-    if ('adoptedStyleSheets' in document && typeof CSSStyleSheet.prototype.replaceSync === 'function') {
-      pushSheet ??= new CSSStyleSheet();
-      pushSheet.replaceSync(pushCss(width, light));
-      const others = document.adoptedStyleSheets.filter((s) => s !== pushSheet);
-      document.adoptedStyleSheets = on ? [...others, pushSheet] : others;
-    } else if (on) {
-      pushStyle ??= document.createElement('style');
-      pushStyle.textContent = pushCss(width, light);
-      if (!pushStyle.isConnected) document.documentElement.appendChild(pushStyle);
-    } else {
-      pushStyle?.remove();
-    }
-    mark(host, 'pushed', String(on));
-  }
-
-  // The first-paint placeholder (content/docked/w-<width>.css, registered
-  // while "Keep open" is on) pushes and paints until Margin runs. Once it does,
-  // the live push above takes over (same frame, same width, so nothing moves)
-  // and the placeholder is switched off on this page, so it can't fight a
-  // resize or linger after "Keep open" is turned off. Only touches <html>
-  // when the placeholder is present.
+  // The first-paint placeholder (the theme's docked/w-<width>.css, registered
+  // with the page's box) places the box and paints the frame until Margin runs.
+  // Once it does, the page-world box above takes over (same frame, same width,
+  // so nothing moves) and the placeholder is switched off on this page, so it
+  // can't fight a resize or linger after "Keep open" is turned off. Only
+  // touches <html> when the placeholder is present.
   function syncPlaceholder() {
     const html = document.documentElement;
-    if (!canPush || html.dataset.marginDocked === 'off') return;
+    if (!page.link.can || html.dataset.marginDocked === 'off') return;
     if (getComputedStyle(html, '::after').content !== 'none') {
       html.dataset.marginDocked = 'off';
       if (pinnedOpen()) loader.tookOverPlaceholder(); // hidden, its placeholder has no pill
     }
   }
 
-  // Resting on the rail: where the pointer stopped, and the pending expand.
-  let railTimer = null;
-  let railRest = null;
-  const cancelRail = () => {
-    clearTimeout(railTimer);
-    railTimer = null;
-    railRest = null;
-  };
   function show(why) {
     if (!page.active()) return; // out of the way (Chrome, not in full screen): nothing to open
     clearTimeout(hideTimer);
     hideTimer = null;
-    cancelRail();
     if (!reason || reason === 'peek' || why === 'toggle') reason = why;
     setOpen(true);
   }
   function hide() {
     clearTimeout(hideTimer);
     hideTimer = null;
-    cancelRail();
     reason = null;
     setOpen(pinnedOpen());
   }
@@ -198,7 +127,6 @@ export function startLayout(page, { loader }) {
   // press; collapse them.
   let lastToggle = 0;
   function toggle() {
-    cancelRail();
     if (!page.active()) return page.offerFullscreen();
     const now = Date.now();
     if (now - lastToggle < 200) return;
@@ -235,75 +163,47 @@ export function startLayout(page, { loader }) {
     toggle();
   }, true);
   watchToggleKey(window);
-  onCard(watchToggleKey);
 
-  // `target`: this document, or the card's window in the fitted layout,
-  // whose x `toWindowX` makes the window's.
-  function watchPointer(target, toWindowX = (x) => x) {
-    target.addEventListener(
-      'mousemove',
-      (e) => {
-        const x = toWindowX(e.clientX);
-        // On the narrow rail (Keep open, a pushed page): its icons work at
-        // once; resting on it opens the full sidebar over the page.
-        const rail = onRail();
-        if (rail != null) {
-          if (x > pagePx(rail)) return cancelRail();
-          // Restarted whenever the pointer moves on (a few px of a resting
-          // hand don't count), so only a rest expands it.
-          if (railRest && Math.hypot(x - railRest.x, e.clientY - railRest.y) <= 4) return;
-          clearTimeout(railTimer);
-          railRest = { x, y: e.clientY };
-          railTimer = setTimeout(() => {
-            railTimer = null;
-            railRest = null;
-            if (onRail() != null) show('hover'); // still on the rail, still docked, nothing else open
-          }, RAIL_EXPAND_MS);
-          return;
-        }
-        if (x <= pagePx(edgePx())) return page.active() ? show('hover') : page.offerFullscreen();
-        else if (!page.view()) return;
-        else if (x > pagePx(page.view().width() + inset())) scheduleHide();
-        else if (hideTimer && isOpen) {
-          clearTimeout(hideTimer);
-          hideTimer = null;
-        }
-      },
-      { capture: true, passive: true },
-    );
-    // Cursor left the window: keep open if it left through the left edge.
-    target.addEventListener('mouseout', (e) => {
-      if (e.relatedTarget) return;
-      cancelRail(); // left the window
-      if (toWindowX(e.clientX) > pagePx(edgePx())) scheduleHide();
-    });
-    target.addEventListener(
-      'keydown',
-      (e) => {
-        if (e.key === 'Escape' && reason === 'toggle') hide();
-      },
-      true,
-    );
-    // Clicking the page closes a toggled sidebar (clicks inside are retargeted
-    // to the host). A click (on the rail's icons too) means no rest.
-    target.addEventListener('mousedown', (e) => {
-      cancelRail();
-      if (reason === 'toggle' && e.target !== host) hide();
-    }, true);
-  }
-  // Another tab now: nothing pending here.
-  document.addEventListener('visibilitychange', () => document.hidden && cancelRail());
-  watchPointer(document);
-  onCard((win) => watchPointer(win, (x) => globalThis.Margin?.shell?.cardX(x) ?? x));
+  document.addEventListener(
+    'mousemove',
+    (e) => {
+      const x = e.clientX;
+      if (x <= pagePx(edgePx())) return page.active() ? show('hover') : page.offerFullscreen();
+      else if (!page.view()) return;
+      else if (x > pagePx(page.view().width() + inset())) scheduleHide();
+      else if (hideTimer && isOpen) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    },
+    { capture: true, passive: true },
+  );
+  // Cursor left the window: keep open if it left through the left edge.
+  document.addEventListener('mouseout', (e) => {
+    if (e.relatedTarget) return;
+    if (e.clientX > pagePx(edgePx())) scheduleHide();
+  });
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key === 'Escape' && reason === 'toggle') hide();
+    },
+    true,
+  );
+  // Clicking the page closes a toggled sidebar (clicks inside are retargeted
+  // to the host).
+  document.addEventListener('mousedown', (e) => {
+    if (reason === 'toggle' && e.target !== host) hide();
+  }, true);
 
   return {
     show, hide, toggle, peek, onWidth,
-    // The page's zoom changed: the push and the card follow.
+    // The page's zoom changed: the box follows.
     rezoom: () => setOpen(isOpen),
     // After a render: back to the resting layout, unless hovered or toggled.
     // Keep open just turned on from the sidebar out over the page: it docks.
     settle: () => {
-      if (reason && pinnedOpen() && !wasDocked && !railWidth()) {
+      if (reason && pinnedOpen() && !wasDocked) {
         clearTimeout(hideTimer);
         hideTimer = null;
         reason = null;
@@ -315,7 +215,7 @@ export function startLayout(page, { loader }) {
     // The page was left for another tab: an open-over-the-page sidebar
     // closes here (the next page opens its own, content/core.js), so coming
     // back doesn't find it still open.
-    leave: () => { cancelRail(); if (reason) hide(); },
+    leave: () => { if (reason) hide(); },
     // How it's open right now ('hover' | 'toggle' | 'peek' | null).
     reason: () => reason,
   };

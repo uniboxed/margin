@@ -2,7 +2,7 @@
 
 An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It recreates the feel of Arc inside real Safari:
 
-- **Hover-reveal sidebar** on every website. Move the cursor to the left edge and the sidebar slides in as a floating card over the page. With **Keep open**, it docks: the page shifts right to start where the sidebar ends, inside an Arc-style frame.
+- **Hover-reveal sidebar** on every website. Move the cursor to the left edge and the sidebar slides in as a floating card over the page. With **Keep open**, it docks: the page sits beside it in its own box, as in a narrower window, inside an Arc-style frame.
 - **Spaces** (emoji chips) that filter the sidebar to that space's tabs, separately in each window. Create, rename, recolor, and delete them inline, and drag tabs onto a chip to move them.
 - **Pinned items** per space. A pin focuses its open tab, or reopens the page.
 - **Command palette** (default ⌥K): fuzzy search across tabs in every space, pins, and the archive, plus actions and "Open URL / Search for …".
@@ -35,15 +35,12 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
 - **Safari's own sidebar can also open at the left edge, in full-screen windows only.** Resting the cursor at the very edge of a full-screen window reveals Safari's sidebar; extensions can't disable that, and Safari has no setting for it. Avoid it by filling the screen with Window → Fill (or ⌥-click the green button) instead of full screen, or by using Keep open. In full screen, Margin opens from 24px out (10px otherwise), so the cursor rarely reaches the edge.
 - **No sidebar while the address bar has focus.** Hover reveal needs the page to receive mouse events, and page shortcuts need the page to have keyboard focus.
 - **⌘T, ⌘W, ⌘L, Ctrl+Tab and friends can't be intercepted.** Margin takes over new tabs by replacing the new-tab page instead. Safari focuses its address bar on a new tab, so the launcher field usually doesn't get focus. That's expected.
-- **"Keep open" fits pages beside the sidebar by putting them in a frame (Safari, experimental).** Safari can't shrink the page area, so Margin moves each page it loads into a frame of its own tab, sized to the space beside the sidebar. The page is laid out exactly as in a narrower window: pinned headers, full-width sections and mobile breakpoints fit. What it costs:
-  - A page appears once its HTML has fully arrived, so pages that stream lose progressive rendering. Until then Safari keeps showing the previous page.
-  - Reader, Hide Distracting Items, and other extensions that only work on the top of the page see Margin's frame instead of the page.
-  - File → Print prints the frame's view; ⌘P prints the page.
-  - Text-fragment links don't highlight. Back without Safari's page cache restores the scroll position but not typed form fields.
-  - Sites can tell they're in a frame.
-  - Popups, non-HTML documents, quirks-mode pages, pages in other text encodings, and loads where Margin starts too late keep the older push layout: the page shifted right by hand, with pinned headers partly under the sidebar and full-width sections clipped.
-  - Turning Keep open on doesn't refit pages that are already open; it applies from their next load.
-  - If a site misbehaves, use the palette's "Show this site without fitting it beside the sidebar", or turn off Settings → "With Keep open, fit pages beside the sidebar". Hover mode never moves the page. Auto-hide: ⌥S.
+- **Pages sit in a box beside the sidebar, with no iframe, by means of tricks a page can notice.** Browsers can't shrink the page area, so Margin makes `<html>` the box and scrolls `<body>` inside it, and answers what a page asks about its window for the box: its size, scrolling, pointer positions, media queries and viewport units. There's no per-site off switch: a site that breaks is a bug to report. Keep open and hidden alike, the page stays the tab's own page, so Reader, Find, print and password managers see it as usual.
+  - Style sheets from another origin that a page can't read are fetched again by Margin, without cookies, so their queries can be rewritten. Where that fails (a site not granted to Margin in Safari), that sheet's layout goes by the window's width. Under a strict CSP such a sheet moves last in the cascade.
+  - A rule on `body` that a site adds later can be masked on the few pages whose own `overflow: visible` Margin has to overrule.
+  - Framesets and non-HTML documents have no box: the sidebar floats over them.
+  - If Margin is removed while pages are open, they keep the box until they're reloaded.
+- **Pinch (Safari).** On a page with a box, Margin's own zoom: the page scales, the sidebar doesn't, and fixed bars scale with the page. A busy site may lag behind the fingers, since it runs on the page's main thread. Safari's double-tap zoom is Safari's own, and scales the sidebar too. With the frame off and Keep open off, Safari's pinch stays.
 - **Pins are URL-based.** Navigating a pinned tab to another URL makes it a regular tab again.
 - **Tabs closed with ⌘W aren't archived.** Only auto-archived tabs and tabs closed with Margin's × are.
 - **Unverified in Safari.** Everything was automated-tested in headless Chromium only. See [TESTING.md](TESTING.md) for what needs a manual check.
@@ -105,8 +102,8 @@ extension/              The one shared source, as ES modules (browsers load the 
   background.js         State owner (bundled into a classic service worker): registers every listener.
                         Tab events → pure model → storage.local; routes the UI's messages.
   background/           Its parts: store (load/mutate), handlers (the message protocol), tabs,
-                        search-engine, site-icons, registered (the theme, its placeholder, the fitted
-                        layout), archive, navigation (next/previous tab and space).
+                        search-engine, site-icons, registered (the theme, its placeholder, the page's
+                        box), archive, navigation (next/previous tab and space).
   state/model.js        Pure state functions (no browser APIs), unit tested.
   shared/view.js        Pure "what does the sidebar show for window W" derivation.
   shared/search.js      URL-vs-search, fuzzy scoring, palette ranking.
@@ -115,14 +112,17 @@ extension/              The one shared source, as ES modules (browsers load the 
   content/main.js       Content-script entry: core, then the palette's wiring once the theme is there.
   content/core.js       Margin on web pages, behavior only: startup, the theme, state and rendering,
                         icons, messages; drives the active theme's view. Its parts by job:
-  content/layout.js     Show/hide/dock, the push, the placeholder hand-over, hover, the toggle key.
-  content/trackpad.js   Gesture guard, pull-to-refresh, swipe back/forward, the card's pinch (Safari).
+  content/layout.js     Show/hide/dock, where the page's box goes, the placeholder hand-over, hover, the toggle key.
+  content/trackpad.js   Gesture guard, pull-to-refresh, swipe back/forward (Safari).
+  content/pinch.js      The pinch on a page with a box: the page scales, the sidebar doesn't (Safari).
+  content/page-link.js  Margin's side of the page's box: tells it where to be, brings its script in
+                        where it's missing, fetches style sheets a page can't read.
+  content/page/         The page's box, in the page's own world (one bundle, registered only while
+                        pages have a box): box, viewport, coords, media, sheets.
+  shared/page-box.js, page-css.js  The box's CSS and the rewrite of media queries and viewport units (pure).
   content/loader.js     The page-load pill's timing.
   content/takeover.js   Taking over from a copy of Margin left in the page by an install/update.
   content/palette.js    The palette's shortcut and wiring (the palette itself is the theme's).
-  content/shell.js      The fitted layout (registered by the background while "Keep open" is on).
-  content/docked/       Arcadia's placeholders at their old path, kept for Safari's stored
-                        registrations (generated).
   newtab/               Margin's new-tab page: the ⌘T hand-off, then the active theme's new-tab module.
   themes/               What Margin looks like. Only the active theme's code loads.
     index.js            The themes Margin ships (UI-free registry).

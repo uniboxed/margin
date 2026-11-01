@@ -32,10 +32,6 @@ const PROFILES = {
     // content/core.js). Chrome keeps hidden tabs' last frames and does not
     // need the extra storage read / script round trip.
     prepareSidebar: true,
-    // The narrow icon rail on pages Margin can't fit (content/layout.js,
-    // setting compactWhenPushed): off for now, per Tirth; such pages are
-    // pushed by the full sidebar. True brings it back.
-    compactRail: false,
     // Wheel deltas are in screen points whatever the page's zoom (WebKit's
     // WheelEvent passes the platform's deltas on as they are).
     zoomedWheel: false,
@@ -48,12 +44,6 @@ const PROFILES = {
     // No search API: the engine is learned from Safari's own searches
     // (shared/search.js).
     search: 'learn',
-    // "Keep open" fits pages beside the sidebar (content/shell.js), using
-    // Safari's early content scripts and Navigation API (26.2+).
-    shell: false, // test build
-    frameless: true,
-    // The content script writes the page into the card itself.
-    shellPageWrite: false,
     marginFullscreen: false,
     // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
     // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
@@ -78,7 +68,6 @@ const PROFILES = {
     introduceTabs: false,
     restoreTabs: false,
     prepareSidebar: false,
-    compactRail: false, // as in Safari's profile
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
     // the page's zoom).
     zoomedWheel: true,
@@ -88,12 +77,6 @@ const PROFILES = {
     blockGestures: false,
     // chrome.search.query: Chrome's default engine.
     search: 'browser',
-    // "Keep open" fits pages beside the sidebar too (content/shell.js).
-    shell: true,
-    // Chrome runs a document.write from a content script under the
-    // extension's CSP, so the page's scripts wouldn't run in the card: a
-    // page-world script writes it instead (content/shell-writer.js).
-    shellPageWrite: true,
     // "Margin full screen": full screen with no toolbar at all. In its own
     // full screen Chrome shows the toolbar for a second on every tab change
     // (BrowserView::RevealTopContainerIfNeeded); in full screen an extension

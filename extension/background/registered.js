@@ -1,10 +1,9 @@
 // Content scripts registered at runtime, following the settings: the active
-// theme, its first-paint placeholder and the fitted layout. Safari keeps
+// theme, its first-paint placeholder and the page's box. Safari keeps
 // registrations across launches and loads none of them if a file one lists
 // is missing, so a path registered once must stay in the build (see
-// scripts/build.js LEGACY_FILES).
+// scripts/build.js LEGACY_LAYOUT_FILES).
 import { platform } from '../shared/platform.js';
-import { excludePatterns, FRAME_AWARE_PATTERNS } from '../shared/shell-logic.js';
 import { themeFor } from '../themes/index.js';
 import { api } from './store.js';
 
@@ -29,49 +28,70 @@ async function syncTheme() {
 
 // ---- first-paint placeholder ------------------------------------------------
 
-// While "Keep open" is on, register the theme's placeholder CSS (Arcadia:
-// themes/arcadia/docked/w-<width>.css, one per sidebar width): the browser
-// applies it before the page's first paint, ahead of content scripts, so the
-// docked layout is there from the first frame. Feature-detected; without the
-// scripting API the sidebar simply appears when the content script runs.
-// Pages known to be pushed with the narrow rail (content/layout.js) get the
-// rail's instead, so they don't start at the full width (placeholderPlan).
+// Wherever pages have a box, register the theme's placeholder CSS (Arcadia:
+// themes/arcadia/docked/w-<width>.css, one per sidebar width, or closed.css for
+// the frame alone): the browser applies it before the page's first paint, ahead
+// of content scripts, so the box and the frame are there from the first frame.
+// Feature-detected; without the scripting API the sidebar simply appears
+// when the content script runs.
 const DOCKED_ID = 'margin-docked';
-const DOCKED_RAIL_ID = 'margin-docked-rail';
 
-// What to register: [{ id, css, matches, excludeMatches }], from the
-// settings. Pushed pages known in advance: the never-fit sites and the ones
-// turned off by hand, or every page when fitting is off (or unavailable).
-// Pages the shell skips for other reasons start full and narrow to the rail.
-// `railAvailable`: platform.compactRail (the rail is off for now).
-export function placeholderPlan(settings, { fits = !!platform?.shell, theme = themeFor(settings), railAvailable = !!platform?.compactRail, fullscreenOnly = !!platform?.marginFullscreen && settings?.fullscreenOnly !== false } = {}) {
-  const plan = (id, css, matches, excludeMatches = []) => ({ id, css: [css], matches, excludeMatches });
-  // Hidden: the frame alone (not where Margin works only in full screen: no frame in a window).
-  if (platform?.frameless && settings?.sidebarPinnedOpen) return []; // test build
-  if (!settings?.sidebarPinnedOpen) return theme.closedPlaceholder && !fullscreenOnly && settings?.frameWhenHidden !== false ? [plan(DOCKED_ID, theme.closedPlaceholder, ['<all_urls>'])] : [];
-  const full = theme.placeholder?.(settings);
-  const rail = railAvailable && settings.compactWhenPushed !== false ? theme.railPlaceholder : null;
-  if (!rail) return full ? [plan(DOCKED_ID, full, ['<all_urls>'])] : [];
-  if (!fits || settings.fitPages === false) return [plan(DOCKED_RAIL_ID, rail, ['<all_urls>'])];
-  const pushed = [...excludePatterns(settings.fitPagesExcept), ...FRAME_AWARE_PATTERNS];
-  return [...(full ? [plan(DOCKED_ID, full, ['<all_urls>'], pushed)] : []), plan(DOCKED_RAIL_ID, rail, pushed)];
+// Chrome, where Margin works only in full screen.
+const worksInWindows = (settings) => !platform?.marginFullscreen || settings?.fullscreenOnly === false;
+const anyFullscreen = async () => (await api.windows.getAll().catch(() => [])).some((win) => win.state === 'fullscreen');
+
+// What to register: [{ id, css, matches }], from the settings. Only where Margin
+// works in every window: CSS can't tell one window from another, so in Chrome's
+// full-screen-only mode the box and frame come with the page's script, which can.
+export function placeholderPlan(settings, { theme = themeFor(settings), showing = worksInWindows(settings) } = {}) {
+  if (!showing) return [];
+  const css = settings?.sidebarPinnedOpen ? theme.placeholder?.(settings) : settings?.frameWhenHidden !== false ? theme.closedPlaceholder : null;
+  return css ? [{ id: DOCKED_ID, css: [css], matches: ['<all_urls>'] }] : [];
 }
 
 async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
   const want = placeholderPlan(settings);
-  const current = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID, DOCKED_RAIL_ID] });
-  // Chrome returns the patterns sorted.
-  const sorted = (a) => [...(a ?? [])].sort();
-  const key = (list) => JSON.stringify(list.map((s) => [s.id, s.css ?? [], sorted(s.matches), sorted(s.excludeMatches)]).sort());
+  const current = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
+  const key = (list) => JSON.stringify(list.map((s) => [s.id, s.css ?? []]));
   if (key(want) === key(current)) return;
   if (current.length) await api.scripting.unregisterContentScripts({ ids: current.map((s) => s.id) });
   if (want.length) {
-    await api.scripting.registerContentScripts(want.map(({ id, css, matches, excludeMatches }) => ({
-      id, css, matches, ...(excludeMatches.length ? { excludeMatches } : {}), runAt: 'document_start', allFrames: false,
-    })));
+    await api.scripting.registerContentScripts(want.map(({ id, css, matches }) => ({ id, css, matches, runAt: 'document_start', allFrames: false })));
   }
+}
+
+// ---- the page's box ----------------------------------------------------------
+
+// Its script in the page's world (content/page/main.js), in the top frame.
+// Registered only while pages have a box, so a page Margin leaves alone loads
+// nothing there: Keep open (at the sidebar's edge), or hidden with the frame (at
+// the frame's). The file before it says where the box starts (built by
+// scripts/build.js): one file per width, because a script registered here
+// can't be given a value. Where Margin works only in full screen (Chrome):
+// only while a window is, and the script itself stays out of windows with a
+// toolbar (content/page/fullscreen-only.js). A page that misses it asks for it
+// (content/page-link.js, handlers.js injectPage).
+const PAGE_ID = 'margin-page';
+const PAGE_JS = 'content/page.bundle.js';
+const FRAME_LEFT = 8;
+const FULLSCREEN_ONLY_JS = 'content/page/fullscreen-only.js';
+/** @returns {string[] | null} the scripts, or null: no box */
+export function pagePlan(settings, { theme = themeFor(settings), showing = worksInWindows(settings) } = {}) {
+  if (!showing) return null;
+  const left = settings?.sidebarPinnedOpen ? theme.sidebarWidth?.(settings) ?? 260 : settings?.frameWhenHidden !== false ? FRAME_LEFT : null;
+  if (left == null) return null;
+  return [`content/page/at-${left}.js`, ...(worksInWindows(settings) ? [] : [FULLSCREEN_ONLY_JS]), PAGE_JS];
+}
+async function syncPage() {
+  if (!api.scripting?.registerContentScripts) return;
+  const { settings } = await api.storage.local.get('settings');
+  const want = pagePlan(settings, { showing: worksInWindows(settings) || await anyFullscreen() });
+  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [PAGE_ID] });
+  if (JSON.stringify(want) === JSON.stringify(current?.js ?? null)) return;
+  if (current) await api.scripting.unregisterContentScripts({ ids: [PAGE_ID] });
+  if (want) await api.scripting.registerContentScripts([{ id: PAGE_ID, js: want, matches: ['<all_urls>'], runAt: 'document_start', allFrames: false, world: 'MAIN' }]);
 }
 
 let registrations = Promise.resolve();
@@ -81,83 +101,20 @@ export const queueRegistrations = () => {
     .catch((err) => console.warn('[margin] theme', err))
     .then(syncDockedCss)
     .catch((err) => console.warn('[margin] docked css', err))
-    .then(() => syncFrameless())
-    .catch((err) => console.warn('[margin] frameless', err))
-    .then(() => syncShell())
-    .catch((err) => console.warn('[margin] fitted layout', err))
-    .then(() => dropProbe());
+    .then(syncPage)
+    .catch((err) => console.warn('[margin] page box', err))
+    .then(dropOld);
   return registrations;
 };
 // Settles once the registrations match the settings (reloadForUpdate).
 export const whenRegistered = () => registrations;
 
-// ---- fitted layout ----------------------------------------------------------
-
-// The fitted layout (content/shell.js): registered while "Keep open" and the
-// fitPages setting are on, except on the sites listed in fitPagesExcept.
-// Registered scripts run right after the manifest's, in the same world,
-// still before the parser adds anything to <html>. In Chrome also its
-// page-world writer (content/shell-writer.js), and only while a window is in
-// full screen when Margin works only there (content/core.js): elsewhere it
-// would put pages in a card for nothing.
-// With full screen only, the shell also gets a flag that makes it skip
-// windows still showing the toolbar (content/shell-fullscreen-only.js). Its
-// page-world writer in Chrome comes with the manifest (scripts/build.js):
-// registered scripts in the page's world run after the shell.
-const SHELL_ID = 'margin-shell';
-const SHELL_JS = ['content/shell.bundle.js']; // built by scripts/build.js
-const FULLSCREEN_ONLY_JS = 'content/shell-fullscreen-only.js';
-async function syncShell() {
-  if (!api.scripting?.registerContentScripts) return;
-  const { settings } = await api.storage.local.get('settings');
-  let on = !!platform?.shell && !!settings?.sidebarPinnedOpen && settings?.fitPages !== false;
-  const fullscreenOnly = !!platform?.marginFullscreen && settings?.fullscreenOnly !== false;
-  if (on && fullscreenOnly) on = (await api.windows.getAll().catch(() => [])).some((win) => win.state === 'fullscreen');
-  const excludeMatches = on ? [...excludePatterns(settings.fitPagesExcept), ...FRAME_AWARE_PATTERNS] : [];
-  const want = on ? { js: [...(fullscreenOnly ? [FULLSCREEN_ONLY_JS] : []), ...SHELL_JS], excludeMatches } : null;
-  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [SHELL_ID] });
-  const have = current ? { js: current.js ?? [], excludeMatches: current.excludeMatches ?? [] } : null;
-  const key = (r) => r && JSON.stringify({ js: r.js, excludeMatches: [...r.excludeMatches].sort() }); // Chrome returns them sorted
-  if (key(want) === key(have)) return;
-  if (current) await api.scripting.unregisterContentScripts({ ids: [SHELL_ID] });
-  if (want) {
-    await api.scripting.registerContentScripts([{
-      id: SHELL_ID,
-      js: want.js,
-      matches: ['<all_urls>'],
-      ...(want.excludeMatches.length ? { excludeMatches: want.excludeMatches } : {}),
-      runAt: 'document_start',
-      allFrames: false,
-    }]);
-  }
-}
-// Left registered by the injection probe (removed; its files are now empty
-// stubs, see shared/probe.js): drop it. Tried on every sync, because Safari
-// loads stored registrations asynchronously after the background starts. It
-// fails harmlessly once it's gone.
-// Test build: Keep open lays pages out without a frame (content/frameless/).
-const FRAMELESS_ID = 'margin-frameless';
-async function syncFrameless() {
-  if (!api.scripting?.registerContentScripts) return;
-  const { settings } = await api.storage.local.get('settings');
-  const on = !!platform?.frameless && !!settings?.sidebarPinnedOpen;
-  // The saved width first (written by scripts/build.js), so a page starts at it.
-  const width = /w-(\d+)/.exec(themeFor(settings).placeholder?.(settings) ?? '')?.[1] ?? '260';
-  const js = [`content/frameless/w-${width}.js`, ...['a', 'c', 'd', 'e'].map((f) => `content/frameless/${f}.js`)];
-  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [FRAMELESS_ID] });
-  if (on === !!current && (!on || current.js?.[0] === js[0])) return;
-  if (current) await api.scripting.unregisterContentScripts({ ids: [FRAMELESS_ID] });
-  if (on) {
-    await api.scripting.registerContentScripts([{
-      id: FRAMELESS_ID,
-      js,
-      matches: ['<all_urls>'],
-      runAt: 'document_start',
-      allFrames: false,
-      world: 'MAIN',
-    }]);
-  }
-}
-async function dropProbe() {
-  await api.scripting?.unregisterContentScripts?.({ ids: ['margin-probe'] }).catch(() => {});
+// Left registered by earlier versions: the injection probe, the fitted layout,
+// the frameless test build and the narrow rail. Their files stay as empty
+// stubs (scripts/build.js). Tried on every sync, because Safari loads stored
+// registrations asynchronously after the background starts; it fails
+// harmlessly once they're gone.
+const OLD_IDS = ['margin-probe', 'margin-shell', 'margin-frameless', 'margin-docked-rail'];
+async function dropOld() {
+  for (const id of OLD_IDS) await api.scripting?.unregisterContentScripts?.({ ids: [id] }).catch(() => {});
 }

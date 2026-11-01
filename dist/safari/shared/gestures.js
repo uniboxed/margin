@@ -107,7 +107,8 @@ function containScroll(el) {
 // those keep their own top)?
 function atPageTop(event, doc) {
   const scrollingElement = doc.scrollingElement ?? doc.documentElement;
-  if (scrollingElement.scrollTop > 0) return false;
+  // (In a page's box, <body> is what scrolls: content/page/box.js.)
+  if (scrollingElement.scrollTop > 0 || doc.body?.scrollTop > 0) return false;
   for (const node of event.composedPath()) {
     if (node.nodeType !== 1 || node === scrollingElement || node === doc.body) continue;
     const overflow = getComputedStyle(node).overflowY;
@@ -121,10 +122,10 @@ const NO_BOUNCE_CSS = ':root { overscroll-behavior-y: none !important; }';
 // `getSettings()` returns the current settings (or null while unknown).
 // `pinch()`, for a pinch starting in `win` with the page at its normal scale:
 // 'native' (Safari's, but for what opens its overview), 'block' (none: the
-// fitted layout's shell, the new-tab page) or 'own' (Margin's, through
-// `onPinch({ phase: 'start' | 'change' | 'end', scale, x, y })`: the fitted
-// card, where Safari's is no use). `onWheelFirst(event)`: a wheel event
-// that's taken (panning the zoomed card). `wanted()`: whether the guard is on by the settings
+// new-tab page, full screen) or 'own' (Margin's, through
+// `onPinch({ phase: 'start' | 'change' | 'end', scale, x, y })`: a page with a
+// box, where Safari's would scale the sidebar too). `onWheelFirst(event)`: a
+// wheel event that's taken (panning a zoomed page). `wanted()`: whether the guard is on by the settings
 // alone (default: getSettings says so). Returns { update() }: call it when
 // settings change (adds or removes the no-bounce rule, and the wheel
 // listener).

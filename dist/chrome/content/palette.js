@@ -14,8 +14,8 @@ import { platform } from '../shared/platform.js';
 // new tab right away, with no tab created (without it, Margin hands the
 // browser's new tab back: background/handlers.js). Capture phase, so the
 // page can't swallow it first. `run()`: open it. `target`: the window to
-// listen on (the card's, in the fitted layout). `skip()`: leave it alone
-// this time (a shortcut being recorded in Settings).
+// listen on. `skip()`: leave it alone this time (a shortcut being recorded in
+// Settings).
 /** @param {() => void} run @param {any} [target] @param {() => boolean} [skip] */
 function installNewTabKey(run, target = globalThis, skip = () => false) {
   target.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
@@ -82,7 +82,7 @@ export function wirePalette(c, createPalette) {
     send: reportingSwitches(c.send, () => c.getState().state, (id, request) => c.startSwitching?.(id, request)),
     onClose: closer.onClose,
     getState: () => c.getState().state,
-    getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen, canFit: !!platform?.shell, fitted: !!globalThis.Margin.shell }),
+    getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen }),
     onLocal: (action) => action.local === 'toggleSidebar' && c.sidebar.toggle(),
     colorScheme: c.colorScheme,
   });
@@ -114,7 +114,6 @@ export function wirePalette(c, createPalette) {
     return !c.active || c.active() ? open({ newTab: true }) : c.send('newTab', { windowId: c.getState().windowId });
   };
   installNewTabKey(newTabKey);
-  c.onCard?.((win) => installNewTabKey(newTabKey, win));
   c.paletteOpen = () => palette.isOpen();
   c.closePalette = () => palette.isOpen() && palette.close();
   const prev = c.onState;

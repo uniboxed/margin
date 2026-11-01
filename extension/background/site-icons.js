@@ -11,7 +11,9 @@ const ICON_MAX_AGE = 7 * 24 * 3600_000;
 export const iconInflight = new Map(); // origin → promise
 const iconFailed = new Set(); // `${origin} ${href}` that yielded nothing (this worker's lifetime)
 
-const PRIVATE_HOST = /^(localhost|.*\.local|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[)/i;
+// A local-network host. By name only: a public name that resolves to a private
+// address (DNS rebinding) isn't caught.
+const PRIVATE_HOST = /^([^.]+$|.*\.local$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|\[)/i;
 // The page chooses the icon URL, and the background can fetch what pages
 // can't: another site's icon must be https and not on a local network.
 export function iconUrlAllowed(href, pageUrl) {
@@ -26,6 +28,21 @@ export function iconUrlAllowed(href, pageUrl) {
   if (!/^https?:$/.test(u.protocol)) return false;
   if (u.hostname === page.hostname) return true;
   return u.protocol === 'https:' && !PRIVATE_HOST.test(u.hostname);
+}
+
+// The same care for a style sheet: a page has its sheets fetched by the
+// background (content/page-link.js) and can read what comes back, so a sheet
+// on a local network is only for a page that's on one too.
+export function styleUrlAllowed(href, pageUrl) {
+  try {
+    const u = new URL(href);
+    if (!/^https?:$/.test(u.protocol)) return false;
+    if (!PRIVATE_HOST.test(u.hostname)) return true;
+    const page = new URL(pageUrl);
+    return u.hostname === page.hostname || PRIVATE_HOST.test(page.hostname);
+  } catch {
+    return false;
+  }
 }
 
 async function shrinkIcon(bytes, type) {

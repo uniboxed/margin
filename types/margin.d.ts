@@ -54,11 +54,8 @@ export interface Settings {
   blockGestures: boolean;
   pullToRefresh: boolean;
   swipeNavigation: boolean;
-  fitPages: boolean;
-  compactWhenPushed: boolean;
   marginFullscreenAuto: boolean;
   fullscreenOnly: boolean;
-  fitPagesExcept: string[];
   shortcuts: Shortcuts;
   shortcutDefaults: string;
   theme: string; // extension/themes/index.js

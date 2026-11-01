@@ -10,7 +10,6 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { THEMES } from '../extension/themes/index.js';
-import { PROFILES } from '../extension/shared/platform.js';
 import { DOCKED_WIDTHS } from './build-styles.js';
 
 const root = new URL('../', import.meta.url);
@@ -45,7 +44,7 @@ export function buildTo(outDir, { profile, manifest = profile }) {
   cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
   writeFileSync(`${out}/shared/platform.js`, platformFileFor(profile));
   const built = manifestFor(manifest);
-  bundle(out, built, PROFILES[profile]);
+  bundle(out, built);
   writeFileSync(`${out}/manifest.json`, `${JSON.stringify(built, null, 2)}\n`);
   return out;
 }
@@ -55,22 +54,33 @@ export function buildTo(outDir, { profile, manifest = profile }) {
 // background and the new-tab page load one each, plus the theme's).
 // Minified, but with names kept so errors stay readable. extension/ holds
 // ES modules, which content scripts and Safari's service worker can't load:
-// dist/ is what browsers run. The sources stay in dist/ too: Safari keeps
-// script registrations across launches and drops all of them if a file one
-// lists is missing (DECISIONS.md, 2026-10-25), and earlier versions
-// registered these two for the fitted layout (and content/docked/w-*.css,
-// scripts/build-styles.js).
+// dist/ is what browsers run.
 const BUNDLES = {
   content: 'content/content.bundle.js',
   background: 'background.bundle.js',
-  shell: 'content/shell.bundle.js',
-  shellMain: 'content/shell-main.bundle.js',
+  page: 'content/page.bundle.js',
   newtab: 'newtab/newtab.bundle.js',
 };
-export const LEGACY_SHELL_FILES = ['shared/shell-logic.js', 'content/shell.js'];
+// Safari keeps script registrations across launches and drops all of them if a
+// file one lists is missing (DECISIONS.md, 2026-10-25). Every path an earlier
+// version registered stays, empty, until no one has those registrations
+// (background/registered.js drops them): the fitted layout, the frameless test
+// build, and early placeholders.
+export const LEGACY_LAYOUT_FILES = [
+  'shared/shell-logic.js',
+  'content/shell.js',
+  'content/shell.bundle.js',
+  'content/shell-fullscreen-only.js',
+  'content/docked.css',
+  ...['a', 'c', 'd', 'e'].map((part) => `content/frameless/${part}.js`),
+  ...DOCKED_WIDTHS.map((width) => `content/frameless/w-${width}.js`),
+  ...DOCKED_WIDTHS.map((width) => `content/docked/w-${width}.css`),
+  'themes/arcadia/docked/rail.css',
+];
 // Where earlier versions registered Arcadia, under its earlier name: empty, so
 // Safari's stored registrations stay valid until the background replaces them.
 // A page that loads one then asks for the theme (handlers.js injectTheme).
+const PAGE_LEFTS = [8, ...DOCKED_WIDTHS];
 export const LEGACY_THEME_FILES = [
   'themes/arcadium/content.bundle.js',
   'themes/arcadium/docked/closed.css',
@@ -78,7 +88,7 @@ export const LEGACY_THEME_FILES = [
   ...DOCKED_WIDTHS.map((width) => `themes/arcadium/docked/w-${width}.css`),
 ];
 
-function bundle(out, manifest, profile) {
+function bundle(out, manifest) {
   const write = (file, entries, { format = 'iife' } = {}) => buildSync({
     // A module keeps its entry's exports (a theme's new-tab mount()).
     stdin: { contents: entries.map((f) => (format === 'esm' ? `export * from './${f}';` : `import './${f}';`)).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
@@ -93,9 +103,10 @@ function bundle(out, manifest, profile) {
     logLevel: 'warning',
   });
 
-  mkdirSync(`${out}/content/frameless`, { recursive: true });
-  for (const width of DOCKED_WIDTHS) writeFileSync(`${out}/content/frameless/w-${width}.js`, `globalThis.__marginWidth = ${width};\n`);
-  for (const file of LEGACY_THEME_FILES) {
+  // Where the page's box starts (background/registered.js pagePlan): read by
+  // the page's script, and gone again.
+  for (const left of PAGE_LEFTS) writeFileSync(`${out}/content/page/at-${left}.js`, `window[Symbol.for('margin.page.start')] = { left: ${left} };\n`);
+  for (const file of [...LEGACY_LAYOUT_FILES, ...LEGACY_THEME_FILES]) {
     mkdirSync(dirname(`${out}/${file}`), { recursive: true });
     writeFileSync(`${out}/${file}`, '');
   }
@@ -108,13 +119,8 @@ function bundle(out, manifest, profile) {
   write(BUNDLES.background, [manifest.background.service_worker]);
   manifest.background.service_worker = BUNDLES.background;
 
-  // The fitted layout (registered by background.js), and its page-world
-  // part from the manifest: the card's setup in Safari, plus the writer
-  // where the profile needs one (Chrome; content/shell-writer.js).
-  write(BUNDLES.shell, ['content/shell.js']);
-  const main = manifest.content_scripts.find((c) => c.world === 'MAIN');
-  write(BUNDLES.shellMain, [...main.js, ...(profile.shellPageWrite ? ['content/shell-writer.js'] : [])]);
-  main.js = [BUNDLES.shellMain];
+  // The page's box, in the page's world (registered by the background).
+  write(BUNDLES.page, ['content/page/main.js']);
 
   // The new-tab page (a module: it awaits at the top level).
   const html = readFileSync(`${out}/newtab/newtab.html`, 'utf8');

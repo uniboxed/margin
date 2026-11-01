@@ -102,10 +102,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // "+ New Tab" and the tabs), and at the bottom the archive, the spaces and
   // "+" (a new folder or space).
   const keepOpen = el(doc, 'button', { type: 'button', class: 'keep-open', 'data-action': 'keep-open' }, ICONS.toggle(doc));
-  // With Keep open: this site fitted beside the sidebar, or shown normally
-  // (the palette has the same switch). Only where it applies.
-  const fitSite = el(doc, 'button', { type: 'button', class: 'fit-site', 'data-action': 'fit-site', hidden: true });
-  const top = el(doc, 'header', { class: 'top' }, mode === 'overlay' ? keepOpen : null, el(doc, 'span', { class: 'spacer' }), fitSite);
+  const top = el(doc, 'header', { class: 'top' }, mode === 'overlay' ? keepOpen : null, el(doc, 'span', { class: 'spacer' }));
   const spaceTitle = el(doc, 'div', { class: 'space-title' });
   const nameInput = el(doc, 'input', { class: 'name', type: 'text', placeholder: 'Space name', 'aria-label': 'Space name', maxlength: '40' });
   const emojiInput = el(doc, 'input', { class: 'emoji', type: 'text', 'aria-label': 'Space emoji', maxlength: '8' });
@@ -208,7 +205,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   let windowId = null;
   let currentTabId = null;
   let pendingEdit = null; // a just-created space opens in the editor once it arrives
-  let fit = null; // { origin, fitted, fittable }: the page's fitted layout (content/core.js)
   let newTabPending = false; // a new tab being chosen in the palette: "+ New Tab" highlighted
   let switchingTo = null; // a tab being switched to: highlighted already
   // A folder's name being edited in place ({ folderId, draft }), and a just-
@@ -238,7 +234,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       'data-action': 'open-pin',
       'data-pin-id': p.id,
       'data-folder-id': p.folderId ?? null,
-      'aria-label': p.title, // no tooltip (Arc); the rail hides the title
+      'aria-label': p.title, // no tooltip (Arc)
     },
     avatar(doc, { ...p, favIconUrl: V.iconFor(state, p) }),
     el(doc, 'span', { class: 'title', text: p.title }),
@@ -287,7 +283,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   }
   function startRename(folderId) {
     const folder = state?.folders?.find((f) => f.id === folderId);
-    if (!folder || root.classList.contains('rail')) return;
+    if (!folder) return;
     renaming = { folderId, draft: folder.name };
     if (renameInput) delete renameInput.dataset.folderId;
     render();
@@ -471,12 +467,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     keepOpen.setAttribute('aria-label', keepOpen.title);
     keepOpen.setAttribute('aria-pressed', String(pinned));
 
-    const excepted = !!fit?.origin && (state.settings?.fitPagesExcept ?? []).includes(fit.origin);
-    fitSite.hidden = !(pinned && fit?.fittable && state.settings?.fitPages !== false && (fit.fitted || excepted));
-    fitSite.textContent = fit?.fitted ? '▢' : '▣';
-    fitSite.title = fit?.fitted ? 'Show this site normally (not fitted beside the sidebar)' : 'Fit this site beside the sidebar again';
-    fitSite.setAttribute('aria-label', fitSite.title);
-
     // A space switched to: its icon in the bottom bar in view (many spaces in
     // a narrow sidebar scroll sideways). Not scrollIntoView: it can scroll the page.
     if (view.spaceId !== shownSpaceId && !drawingGhosts) {
@@ -492,10 +482,10 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     }
   }
 
-  // Open over the page (hovered, toggled, or the rail expanded): a switch
+  // Open over the page (hovered or toggled): a switch
   // made from it keeps it open on the next page (content/core.js fills in
   // how it was opened; background handlers.js carryOpen).
-  const openOverPage = () => mode === 'overlay' && root.classList.contains('open') && (!root.classList.contains('docked') || root.classList.contains('rail-expanded'));
+  const openOverPage = () => mode === 'overlay' && root.classList.contains('open') && !root.classList.contains('docked');
 
   // The tab a row brings to the front: its own, or an open pin's (in this
   // window first); null for a pin not open.
@@ -608,8 +598,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
         const box = target.getBoundingClientRect();
         return openAddMenu(box.left, box.top);
       }
-      case 'fit-site':
-        return fit?.origin && send('setFitSite', { origin: fit.origin, fit: !fit.fitted });
       case 'keep-open':
         return send('updateSettings', { patch: { sidebarPinnedOpen: !state?.settings?.sidebarPinnedOpen } });
     }
@@ -672,8 +660,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     }
     return false;
   };
-  // On a page, only while the sidebar is out (not the narrow rail).
-  const swipeUsable = () => mode !== 'overlay' || (root.classList.contains('open') && !root.classList.contains('rail'));
+  // On a page, only while the sidebar is out.
+  const swipeUsable = () => mode !== 'overlay' || root.classList.contains('open');
   function startSwipe() {
     const shown = V.activeSpaceId(viewState(), windowId);
     const at = state.spaces.findIndex((s) => s.id === shown);
@@ -932,8 +920,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
 
   let editing = null; // { spaceId, color, confirmDelete }
   function openEditor(spaceId) {
-    // Not in the narrow rail, which can't show it (content.js setLayout).
-    if (root.classList.contains('rail')) return;
     const space = state?.spaces.find((s) => s.id === spaceId);
     if (!space) return;
     editing = { spaceId, color: space.color, confirmDelete: false };
@@ -995,7 +981,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     const spaceOf = (event) => event.target.closest('.chip[data-space-id], .space-title')?.dataset.spaceId;
     where.addEventListener('contextmenu', (event) => {
       const spaceId = spaceOf(event);
-      if (!spaceId || root.classList.contains('rail')) return;
+      if (!spaceId) return;
       event.preventDefault();
       event.stopPropagation();
       openEditor(spaceId);
@@ -1135,8 +1121,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   menu.addEventListener('pointerleave', () => menu.focus({ preventScroll: true }));
   menu.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      closeMenu();
-      return globalThis.Margin?.shell?.focusCard(); // fitted layout: keys back to the page
+      return closeMenu();
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
@@ -1219,7 +1204,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     const target = /** @type {Element} */ (event.target);
     if (target.closest?.('.icon, input, .folder-name')) return;
     const row = /** @type {HTMLElement | null} */ (target.closest?.('.tab, .pin, .folder'));
-    if (!row || !root.contains(row) || root.classList.contains('rail')) return;
+    if (!row || !root.contains(row)) return;
     const key = keyOf(row);
     if (!key) return;
     const kind = /** @type {'tab' | 'pin' | 'folder'} */ (key.slice(0, key.indexOf(':')));
@@ -1542,7 +1527,6 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     isBusy: () => editing != null || renaming != null || pendingRename != null || dragging != null || resizing != null || swiping != null || !menu.hidden,
     width: () => (resizing ? resizing.width : sidebarWidth(state?.settings)),
     update(nextState, context) {
-      if (context?.fit) fit = context.fit;
       if (context && 'newTabPending' in context) newTabPending = !!context.newTabPending;
       if (context && 'switchingTo' in context) switchingTo = context.switchingTo ?? null;
       if (context && 'justShown' in context) justShown = !!context.justShown;

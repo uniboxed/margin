@@ -7,10 +7,9 @@ import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
 
-// When each tab was last shown, and its URL then (restoringTab; a
+// When each tab was last shown (a
 // diagnostic in tabs.onUpdated).
 export const shownAt = new Map(); // tabId → when it was last activated
-export const shownUrl = new Map(); // tabId → its URL then
 
 // ---- switching tabs without a black frame -----------------------------------
 // When a tab is shown, WebKit keeps the previous frame on screen until the tab
@@ -555,9 +554,8 @@ async function isInFront(tabId, updated = null) {
 // page starts (Safari restoring a tab it had unloaded) before its background
 // has said which tab it is: by this, it draws its own tab highlighted, its
 // space, and the sidebar open and scrolled as the page before, from its
-// first frame (content/core.js); the fitted layout doesn't hold the page back
-// for a previous one that isn't on screen (content/shell.js). Written by the
-// copy that owns the state only (shared/owner.js).
+// first frame (content/core.js). Written by the copy that owns the state only
+// (shared/owner.js).
 let noted = null; // { tabId, at } of the last note
 // The note goes a moment after its page has said hello (handlers.js: its
 // first storage read may still be under way), or when the switch failed:
@@ -1153,9 +1151,6 @@ async function untilLoaded(tabId, until, left, fromId) {
   }
 }
 
-// Tabs opened from a page by openLink, so the next one goes after them.
-export const openedFrom = new Map(); // opener tab id → { index, at }
-
 // A tab brought to the front runs this copy of Margin, or gets it now. A
 // tab asleep when Margin was updated (or reinstalled, as in development)
 // isn't given the new copy (injectIntoOpenTabs skips sleeping tabs), and
@@ -1322,8 +1317,7 @@ export function injectIntoOpenTabs({ retry = true } = {}) {
 }
 
 async function runOpenTabRepair(retry) {
-  // The sidebar's entry: the one not in the page's own world (that's
-  // content/shell-main.js), whatever the build named its file.
+  // The sidebar's entry, whatever the build named its file.
   const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
   if (!files?.length || !api.scripting?.executeScript) return;
   const delays = [0, ...(retry ? REPAIR_RETRY_MS : [])];

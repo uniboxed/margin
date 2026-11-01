@@ -1,45 +1,24 @@
+// What the background registers for the first paint and the page's box.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { placeholderPlan } from '../extension/background/registered.js';
-import { FRAME_AWARE_PATTERNS } from '../extension/shared/shell-logic.js';
+import { pagePlan, placeholderPlan } from '../extension/background/registered.js';
 
-const keepOpen = { sidebarPinnedOpen: true, themes: { arcadia: { sidebarWidth: 300 } } };
-const full = 'themes/arcadia/docked/w-300.css';
-const rail = 'themes/arcadia/docked/rail.css';
+const keepOpen = { sidebarPinnedOpen: true };
+const closed = 'themes/arcadia/docked/closed.css';
 
-test('placeholders: without Keep open, only the frame', () => {
-  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true, fullscreenOnly: false }), [{ id: 'margin-docked', css: ['themes/arcadia/docked/closed.css'], matches: ['<all_urls>'], excludeMatches: [] }], 'hidden: the frame alone');
-  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { fits: true, fullscreenOnly: true }), [], 'not where Margin works only in full screen');
-  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false, frameWhenHidden: false }, { fits: true, fullscreenOnly: false }), [], 'the setting off: nothing, as before');
+test('placeholders: the frame while hidden, the sidebar\'s box with Keep open, none where nothing shows', () => {
+  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { showing: true }), [{ id: 'margin-docked', css: [closed], matches: ['<all_urls>'] }]);
+  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false }, { showing: false }), [], 'not where Margin works only in full screen: CSS can\'t tell windows apart');
+  assert.deepEqual(placeholderPlan({ sidebarPinnedOpen: false, frameWhenHidden: false }, { showing: true }), [], 'the setting off: no frame');
+  assert.deepEqual(placeholderPlan(keepOpen, { showing: true })[0].css, ['themes/arcadia/docked/w-260.css']);
+  assert.deepEqual(placeholderPlan({ ...keepOpen, themes: { arcadia: { sidebarWidth: 330 } } }, { showing: true })[0].css, ['themes/arcadia/docked/w-330.css']);
+  assert.deepEqual(placeholderPlan(keepOpen, { showing: false }), []);
 });
 
-test('placeholders: the rail is off for now (platform.compactRail): the full sidebar everywhere, whatever the setting', () => {
-  const full = [{ id: 'margin-docked', css: ['themes/arcadia/docked/w-300.css'], matches: ['<all_urls>'], excludeMatches: [] }];
-  assert.deepEqual(placeholderPlan(keepOpen, { fits: true }), full);
-  assert.deepEqual(placeholderPlan({ ...keepOpen, fitPages: false }, { fits: true }), full);
-  assert.deepEqual(placeholderPlan({ ...keepOpen, compactWhenPushed: true }, { fits: false }), full);
-});
-
-test('placeholders: the full sidebar everywhere when the rail is off', () => {
-  assert.deepEqual(placeholderPlan({ ...keepOpen, compactWhenPushed: false }, { fits: true }), [
-    { id: 'margin-docked', css: [full], matches: ['<all_urls>'], excludeMatches: [] },
-  ]);
-});
-
-test('placeholders: pages known to be pushed get the rail\'s, the rest the full sidebar\'s', () => {
-  const plan = placeholderPlan({ ...keepOpen, fitPagesExcept: ['https://example.com'] }, { fits: true, railAvailable: true });
-  assert.equal(plan.length, 2);
-  const [fitted, pushed] = plan;
-  assert.deepEqual(fitted.css, [full]);
-  assert.deepEqual(fitted.matches, ['<all_urls>']);
-  assert.deepEqual(pushed.css, [rail]);
-  assert.deepEqual(pushed.matches, fitted.excludeMatches, 'one or the other, never both');
-  assert.ok(pushed.matches.includes('https://example.com/*'), 'a site turned off by hand');
-  for (const pattern of FRAME_AWARE_PATTERNS) assert.ok(pushed.matches.includes(pattern), pattern);
-});
-
-test('placeholders: every page pushed (fitting off or unavailable) gets the rail\'s', () => {
-  const only = [{ id: 'margin-docked-rail', css: [rail], matches: ['<all_urls>'], excludeMatches: [] }];
-  assert.deepEqual(placeholderPlan({ ...keepOpen, fitPages: false }, { fits: true, railAvailable: true }), only);
-  assert.deepEqual(placeholderPlan(keepOpen, { fits: false, railAvailable: true }), only);
+test('the page\'s script: one bundle after where the box starts, only while pages have a box', () => {
+  assert.equal(pagePlan({ sidebarPinnedOpen: false }, { showing: true })[0], 'content/page/at-8.js', 'hidden: the frame\'s box');
+  assert.equal(pagePlan({ ...keepOpen, frameWhenHidden: false }, { showing: true })[0], 'content/page/at-260.js', 'Keep open has its box whatever the frame does');
+  assert.equal(pagePlan({ sidebarPinnedOpen: false, frameWhenHidden: false }, { showing: true }), null, 'no frame, no Keep open: the page as it is, nothing loaded');
+  assert.equal(pagePlan(keepOpen, { showing: false }), null, 'Chrome with no window in full screen');
+  assert.equal(pagePlan(keepOpen, { showing: true }).at(-1), 'content/page.bundle.js');
 });

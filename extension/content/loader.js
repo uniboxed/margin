@@ -6,7 +6,7 @@
 import { mark } from '../shared/dom.js';
 
 export function startLoader(page, { pullRefreshing }) {
-  const { host, onCard } = page;
+  const { host } = page;
   // ---- page-load indicator --------------------------------------------------
   // Margin's script starts ~0.2s into a load in Safari (it can't draw
   // earlier). If the page is still loading by Margin's first render, show the
@@ -38,20 +38,16 @@ export function startLoader(page, { pullRefreshing }) {
   // Taking over from the placeholder's pill (content/docked/w-*.css), the
   // pill shows at once (no fade-in dip) and fades out normally, even if the
   // page has already finished loading.
-  // In the fitted layout the page loads in the card: the top document is
-  // complete long before (card hook below).
-  const pageComplete = () => (globalThis.Margin?.shell ? globalThis.Margin?.shell.card?.document.readyState === 'complete' : document.readyState === 'complete');
   function startLoader() {
-    const complete = pageComplete();
+    const complete = document.readyState === 'complete';
     if (loaderShownAt != null || (complete && !placeholderTookOver)) return;
     loaderShownAt = performance.now();
     loadPill = true;
     showPill(placeholderTookOver);
     if (complete) return stopLoader();
-    if (!globalThis.Margin?.shell) addEventListener('load', stopLoader, { once: true });
+    addEventListener('load', stopLoader, { once: true });
     loaderMaxTimer = setTimeout(stopLoader, LOADER_MAX_MS);
   }
-  onCard((win) => win.addEventListener('load', () => stopLoader(), { once: true }));
   function stopLoader() {
     clearTimeout(loaderMaxTimer);
     if (loaderShownAt == null || leaving) return;
@@ -90,16 +86,14 @@ export function startLoader(page, { pullRefreshing }) {
   });
   addEventListener('pageshow', (event) => { if (event.persisted) stayed(); });
   for (const type of ['pointerdown', 'keydown']) addEventListener(type, stayed, true);
-  onCard((win) => {
-    for (const type of ['pointerdown', 'keydown']) win.addEventListener(type, stayed, true);
-  });
 
   // Same-page navigations a site runs through the Navigation API
   // (navigation.intercept, e.g. some single-page apps): show the pill while
   // one takes longer than TRANSITION_PILL_MS, until it finishes. Without the
   // API (or for sites that don't use it) nothing changes.
   const TRANSITION_PILL_MS = 150;
-  const watchTransitions = (navigation) => navigation?.addEventListener?.('navigate', () => {
+  const { navigation } = globalThis;
+  navigation?.addEventListener?.('navigate', () => {
     setTimeout(() => { // the page decides during the event whether it intercepts
       const transition = navigation.transition;
       if (!transition?.finished || page.firstRender()) return;
@@ -119,8 +113,6 @@ export function startLoader(page, { pullRefreshing }) {
       transition.finished.then(finish, finish);
     });
   });
-  watchTransitions(globalThis.navigation);
-  onCard((win) => watchTransitions(win.navigation));
 
   // A switch to another tab taking a moment (shared/switching.js): the pill
   // until it's over. On a page that's hidden by then (the switch landed) it

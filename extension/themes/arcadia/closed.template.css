@@ -3,22 +3,19 @@
    the page is there from the first frame of every page; the real one
    (styles/sidebar.css .frame) takes over when Margin runs, and core sets
    data-margin-docked="off" on <html> as with docked.template.css. The page
-   starts inside it, at its sides only (content/layout.js pushCss, light). Keep the geometry in sync
-   with styles/sidebar.css. */
+   starts in its box, inside the frame (shared/page-box.js). scripts/build-styles.js
+   writes docked/closed.css, replacing {{BOX}}. Keep the geometry in sync with
+   styles/sidebar.css. */
 @media screen {
-  html:not([data-margin-docked="off"]) {
-    margin-left: 8px !important;
-    margin-right: 8px !important;
-    width: auto !important;
-  }
+  {{BOX}}
+  /* <html> is the box: this is against it, and its overflow is the window's. */
   html:not([data-margin-docked="off"])::after {
     content: "" !important;
     position: fixed !important;
-    top: 8px !important;
-    right: 8px !important;
-    bottom: 8px !important;
-    left: 8px !important;
+    inset: 0 !important;
     border-radius: 6.25px !important;
+    /* The card's shadow (as sidebar.css .card-edge), then the frame in the
+       same fixed color as the sidebar (sidebar.css --frame). */
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06), 0 0 0 100vmax #9c9da1 !important;
     pointer-events: none !important;
     z-index: 2147483646 !important;

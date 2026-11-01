@@ -233,7 +233,7 @@ test('sidebar preparation: a timeout is cancelled before the tab is activated', 
 
 test('sidebar preparation: a page still running an earlier copy gets the current one (and its theme) first, then is prepared', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 14, url: 'https://old-copy.test/' }]);
-  fake.contentScripts = [{ js: ['content/shell-main.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }];
+  fake.contentScripts = [{ js: ['content/other.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }];
   let added = false;
   fake.prepare = (args) => (added ? { ready: true, token: args?.[0]?.token } : { ready: false, reason: 'no current sidebar' });
   fake.scriptDelay = (_id, func) => {

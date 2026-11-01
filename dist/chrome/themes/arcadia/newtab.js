@@ -283,19 +283,6 @@ export function mount({ api, self, send, windowed = false }) {
   const frameWhenHidden = $('frame-when-hidden');
   frameWhenHidden.addEventListener('change', () => send('updateSettings', { patch: { frameWhenHidden: frameWhenHidden.checked } }));
 
-  // Fitted layout with "Keep open" (content/shell.js; Safari builds only).
-  const fitPages = $('fit-pages');
-  if (platform?.shell) {
-    $('fit-setting').hidden = false;
-    fitPages.addEventListener('change', () => send('updateSettings', { patch: { fitPages: fitPages.checked } }));
-  }
-
-  // The narrow icon rail on pages that are pushed (content/layout.js).
-  // Only while the rail is available (platform.compactRail: off for now).
-  const compactPushed = $('compact-pushed');
-  compactPushed.closest('label').hidden = !platform?.compactRail;
-  compactPushed.addEventListener('change', () => send('updateSettings', { patch: { compactWhenPushed: compactPushed.checked } }));
-
   // The note when ⌘T seems to open Safari's homepage (background/newtab-hint.js; Safari only).
   const newTabHint = $('newtab-hint');
   if (platform?.newTabHint) {
@@ -487,9 +474,7 @@ export function mount({ api, self, send, windowed = false }) {
     pullToRefresh.disabled = !blockGestures.checked;
     swipeNavigation.checked = state.settings.swipeNavigation !== false;
     swipeNavigation.disabled = !blockGestures.checked;
-    fitPages.checked = state.settings.fitPages !== false;
     frameWhenHidden.checked = state.settings.frameWhenHidden !== false;
-    compactPushed.checked = state.settings.compactWhenPushed !== false;
     newTabHint.checked = state.settings.newTabHint !== false;
     marginFullscreen.checked = state.settings.marginFullscreenAuto !== false;
     fullscreenOnly.checked = state.settings.fullscreenOnly !== false;

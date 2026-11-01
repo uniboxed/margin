@@ -7,7 +7,7 @@ import { createSidebar } from './sidebar.js';
 import { createChrome } from './chrome.js';
 import { createPalette } from './palette.js';
 import { sidebarCss } from './assets.js';
-import theme, { RAIL } from './theme.js';
+import theme from './theme.js';
 
 // The room the page has in the window, as --vw and --vh for what's drawn in
 // `shadow` (styles/sidebar.css: nothing there is position: fixed). Measured
@@ -28,7 +28,9 @@ function followWindow(shadow) {
   shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, sheet];
   let drawn = '';
   const measure = () => {
-    if (!probe.isConnected) return;
+    // A pinch moves and scales the host, which then holds the probe: the
+    // window's size hasn't changed (shared/dom.js setHostPinch).
+    if (!probe.isConnected || /** @type {any} */ (globalThis).Margin?.content?.pinched?.()) return;
     const { width, height } = win.getComputedStyle(probe);
     if (!/px$/.test(width) || !/px$/.test(height)) return;
     const rule = `${SIZED} { --vw: ${width}; --vh: ${height}; }`;
@@ -42,9 +44,8 @@ function followWindow(shadow) {
 registerTheme({
   id: theme.id,
   // The frame around the page card (px) and the card's corner radius: core
-  // pushes the page and places the fitted layout's card to match. `rail`:
-  // the narrow icon sidebar's width, for pages that are pushed.
-  geometry: { inset: 8, radius: '6.25px', rail: RAIL },
+  // places the page's box to match.
+  geometry: { inset: 8, radius: '6.25px' },
   createPalette,
   mount({ shadow, document, send, onNewTab, onWidth, onScroll, onSwitch }) {
     const sidebar = createSidebar({ document, send, mode: 'overlay', onNewTab, onWidth, onScroll, onSwitch });
@@ -86,14 +87,12 @@ registerTheme({
         chrome.setColorScheme(scheme);
       },
       // Hover: a floating card over the page. Keep open: docked, with the
-      // frame around the page. `rail` ({ width, expanded }): docked as the
-      // narrow icon rail on a pushed page, or expanded from it over the page
-      // (the frame stays at the rail).
+      // frame around the page.
       // `place`: puts the page where this layout has it. Returns true if it
       // will be called later (Keep open turned on: the floating sidebar goes
       // off to the left, the docked one comes in with the card's edge, and
       // the page moves as that starts); otherwise the caller places it.
-      setLayout({ open, docked, framed = false, width, rail = null, place }) {
+      setLayout({ open, docked, framed = false, width, place }) {
         const classes = sidebar.el.classList;
         if (arrival) {
           if (docked && open) { // drawn again on the way: it goes on, with what's new
@@ -101,32 +100,26 @@ registerTheme({
             arrival.width = width;
             if (!arrival.coming) return true;
             chrome.setLayout({ docked: true, width, arriving: true });
-            return !!globalThis.Margin?.shell;
+            return false;
           }
           clearTimeout(arrival.timer);
           arrival = null;
           classes.remove('arriving');
           chrome.arrived();
         }
-        if (open && docked && !rail && !classes.contains('docked') && !classes.contains('instant') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        if (open && docked && !classes.contains('docked') && !classes.contains('instant') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
           arrival = { place, width, coming: false, timer: null };
           const comeIn = () => {
-            // A fitted page's card moves last: until the edge is there it
-            // would leave the shell's bare canvas beside it. A pushed page's
-            // background is the window's, so it moves now.
-            const fitted = !!globalThis.Margin?.shell;
             arrival.coming = true;
             classes.add('docked');
             void sidebar.el.offsetWidth; // from off the left edge, in its docked shape
             classes.add('arriving', 'open');
             chrome.setLayout({ docked: true, width: arrival.width, arriving: true });
-            if (!fitted) arrival.place();
+            arrival.place();
             arrival.timer = setTimeout(() => {
-              const last = arrival.place;
               arrival = null;
               classes.remove('arriving');
               chrome.arrived();
-              if (fitted) last();
             }, 240);
           };
           if (classes.contains('open')) {
@@ -147,10 +140,7 @@ registerTheme({
         }
         sidebar.el.classList.toggle('open', open);
         sidebar.el.classList.toggle('docked', docked);
-        sidebar.el.classList.toggle('rail', !!rail && !rail.expanded);
-        sidebar.el.classList.toggle('rail-expanded', !!rail?.expanded);
-        if (rail) sidebar.el.style.setProperty('--rail', `${rail.width}px`);
-        chrome.setLayout({ docked, framed, width: rail ? rail.width : width });
+        chrome.setLayout({ docked, framed, width });
       },
       setWidth: chrome.setWidth,
       setLoading: chrome.setLoading,

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import * as shortcuts from '../extension/shared/shortcuts.js';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { buildAssets, buildDocked, buildLegacyDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
+import { buildAssets, buildClosed, buildDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
 import { THEMES } from '../extension/themes/index.js';
-import { WIDTH, RAIL } from '../extension/themes/arcadia/theme.js';
+import { WIDTH } from '../extension/themes/arcadia/theme.js';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
@@ -48,7 +48,6 @@ test('every file the manifest and new tab reference exists', () => {
     manifest.chrome_url_overrides.newtab,
     // Registered at runtime by background/registered.js (and by earlier versions).
     ...THEME_IDS.flatMap((id) => dockedWidths(id).map((w) => `themes/${id}/docked/w-${w}.css`)),
-    ...DOCKED_WIDTHS.map((w) => `content/docked/w-${w}.css`),
     ...THEME_IDS.flatMap((id) => [`themes/${id}/content.js`, `themes/${id}/newtab.js`]), // bundled by scripts/build.js
   ];
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
@@ -88,17 +87,13 @@ test('first-paint placeholders: one up-to-date file per sidebar width, nothing e
   for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
   assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match Arcadia\'s theme.js');
   const names = expected.map((w) => `w-${w}.css`).sort();
-  assert.deepEqual(readdirSync(new URL('themes/arcadia/docked/', root)).sort(), [...names, 'closed.css', 'rail.css'].sort());
-  // The old path stays for Safari's stored registrations (same content).
-  assert.deepEqual(readdirSync(new URL('content/docked/', root)).sort(), names);
-  // The narrow rail's (pages pushed with "Keep open", theme.js RAIL).
-  assert.equal(readFileSync(new URL('themes/arcadia/docked/rail.css', root), 'utf8'), buildDocked('arcadia', RAIL), 'rail.css is stale: run npm run styles');
+  assert.deepEqual(readdirSync(new URL('themes/arcadia/docked/', root)).sort(), [...names, 'closed.css'].sort());
+  assert.equal(readFileSync(new URL('themes/arcadia/docked/closed.css', root), 'utf8'), buildClosed('arcadia'), 'closed.css is stale: run npm run styles');
   for (const w of expected) {
     const css = readFileSync(new URL(`themes/arcadia/docked/w-${w}.css`, root), 'utf8');
     assert.equal(css, buildDocked('arcadia', w), `w-${w}.css is stale: run npm run styles`);
-    assert.equal(readFileSync(new URL(`content/docked/w-${w}.css`, root), 'utf8'), buildLegacyDocked(w), `content/docked/w-${w}.css is stale`);
-    assert.equal(css.replace(/\/\*[\s\S]*?\*\//g, '').match(new RegExp(`${w}px`, 'g')).length, 4, 'margin-left, the frame edge, and the loader pill (twice)');
-    assert.ok(!css.includes('{{WIDTH}}'));
+    assert.match(css, new RegExp(`translate\\(${w}px, 8px\\)`), 'the same box as the page\'s');
+    assert.ok(!css.includes('{{'));
   }
 });
 
@@ -109,13 +104,6 @@ test('manifest command keys are the default navigation shortcuts', async () => {
   for (const [name, action] of Object.entries(ACTIONS)) {
     assert.equal(manifest.commands[action].suggested_key.mac, toManifest(NAVIGATION[name]), name);
   }
-});
-
-test('Chrome\'s page-world writer finds the card where the shell puts it', () => {
-  const read = (f) => readFileSync(new URL(f, root), 'utf8');
-  assert.match(read('content/shell-writer.js'), /:scope > body > \[data-margin-clip\] > iframe/);
-  assert.match(read('content/shell.js'), /clip\.dataset\.marginClip = ''/);
-  assert.match(read('content/shell.js'), /clip\.append\(frame\)/);
 });
 
 test('the page card has the same corner radius and shadow wherever it is drawn', () => {
@@ -134,10 +122,8 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   const newtab = read('themes/arcadia/styles/newtab.css');
   assert.equal(decl(newtab, '#launcher, #page-card {', 'border-radius'), radius);
   assert.equal(decl(newtab, '#page-card {\n', 'box-shadow'), shadow);
-  // The fitted layout's card (content/shell.js) and the theme's geometry
-  // (content.js) agree with the CSS.
-  assert.match(read('themes/arcadia/content.js'), new RegExp(`geometry: \\{ inset: 8, radius: '${radius}', rail: RAIL \\}`));
-  assert.match(read('content/shell.js'), new RegExp(`let layout = \\{ docked: true, width: 260, inset: 8, radius: '${radius}' \\};`));
+  // The theme's geometry (content.js) agrees with the CSS.
+  assert.match(read('themes/arcadia/content.js'), new RegExp(`geometry: \\{ inset: 8, radius: '${radius}' \\}`));
   // Plain CSS only: nothing for the browser to load (no images, no url()).
   for (const css of [sidebar, docked, newtab]) assert.doesNotMatch(css, /border-image|url\(/);
 });

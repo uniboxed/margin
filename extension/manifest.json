@@ -35,17 +35,6 @@
       ],
       "run_at": "document_start",
       "all_frames": false
-    },
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content/shell-main.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": true,
-      "world": "MAIN"
     }
   ],
   "chrome_url_overrides": {

@@ -5,7 +5,8 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEGACY_SHELL_FILES, LEGACY_THEME_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
+import { DOCKED_WIDTHS } from '../scripts/build-styles.js';
+import { LEGACY_LAYOUT_FILES, LEGACY_THEME_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
 import { THEMES } from '../extension/themes/index.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -40,17 +41,16 @@ test('each build loads one bundled script per context', () => {
     assert.deepEqual(manifest.content_scripts.find((c) => c.world !== 'MAIN').js, ['content/content.bundle.js'], target);
     assert.equal(manifest.background.service_worker, 'background.bundle.js', target);
     const background = readFileSync(join(dir, 'background.bundle.js'), 'utf8');
-    assert.match(background, /\["content\/shell\.bundle\.js"\]/, `${target}: the background registers the shell bundle`);
+    assert.match(background, /content\/page\.bundle\.js/, `${target}: the background registers the page's script`);
     assert.doesNotMatch(background, /importScripts\(/, `${target}: nothing left to import`);
     const scripts = [...readFileSync(join(dir, 'newtab/newtab.html'), 'utf8').matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
     assert.deepEqual(scripts, ['newtab.bundle.js'], target);
-    for (const file of ['content/content.bundle.js', 'content/shell.bundle.js', 'newtab/newtab.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
-    // The fitted layout's page-world part: the card's setup, and only in
-    // Chrome the writer (Safari never has it listening).
-    assert.deepEqual(manifest.content_scripts.find((c) => c.world === 'MAIN').js, ['content/shell-main.bundle.js'], target);
-    const main = readFileSync(join(dir, 'content/shell-main.bundle.js'), 'utf8');
-    assert.match(main, /margin-page-ready/, `${target}: the card setup`);
-    assert.equal(/margin-shell-write/.test(main), target === 'chrome', `${target}: the writer only in Chrome`);
+    for (const file of ['content/content.bundle.js', 'content/page.bundle.js', 'newtab/newtab.bundle.js']) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}`);
+    // Nothing in the page's world from the manifest: a page Margin leaves
+    // alone loads none of it (background/registered.js).
+    assert.equal(manifest.content_scripts.find((c) => c.world === 'MAIN'), undefined, target);
+    assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), /left: 8 /);
+    for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width} `));
     // Each theme: a content bundle the background registers ('margin-theme',
     // the path from theme.js) and a new-tab module exporting mount().
     assert.match(background, /margin-theme/, `${target}: the background registers the theme`);
@@ -61,7 +61,8 @@ test('each build loads one bundled script per context', () => {
     }
     // Safari drops every registered script if a file one lists is missing, so
     // the sources an earlier version registered must still be there.
-    for (const file of LEGACY_SHELL_FILES) assert.ok(statSync(join(dir, file)).isFile(), `${target}/${file}`);
+    // Safari loads none of its registrations if a path one names is missing.
+    for (const file of LEGACY_LAYOUT_FILES) assert.equal(statSync(join(dir, file)).size, 0, `${target}/${file}: an empty stub`);
     for (const file of LEGACY_THEME_FILES) assert.equal(statSync(join(dir, file)).size, 0, `${target}/${file}: an empty stub`);
   }
 });

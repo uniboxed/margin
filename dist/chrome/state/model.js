@@ -35,21 +35,12 @@ const DEFAULT_SETTINGS = Object.freeze({
   // Safari: a note when ⌘T seems to open Safari's homepage instead of Margin
   // (background/newtab-hint.js); turned off from the note.
   newTabHint: true,
-  // Safari, with "Keep open": pages go in a frame beside the sidebar, laid
-  // out as in a narrower window (content/shell.js). Origins listed in
-  // fitPagesExcept keep the push layout.
-  fitPages: true,
-  // With "Keep open", pages that aren't fitted are pushed only by a narrow
-  // rail of icons, which expands over the page on hover (content/layout.js);
-  // off: by the whole sidebar.
-  compactWhenPushed: true,
   // Chrome: whenever a window goes full screen, Margin full screen instead
   // (no toolbar; background/fullscreen.js).
   marginFullscreenAuto: true,
   // Chrome: Margin only in full screen; in a window that isn't, it stays out
   // of the way and offers full screen when reached for (content/core.js).
   fullscreenOnly: true,
-  fitPagesExcept: [],
   // Defaults from the build's platform profile (shared/platform.js; loaded
   // before this file in the background). Editable in Settings. Fallback:
   // the Chrome profile's ⌃⌘ + arrows (e.g. in node tests).

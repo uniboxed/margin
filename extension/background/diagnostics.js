@@ -1,9 +1,8 @@
 // DEVELOPMENT DIAGNOSTICS: remove before release (with the start page's
-// "Switch log" button and the shell's `shellShown` report).
+// "Switch log" button).
 // A log of tab switches, to measure what the black-frame work does in real
 // Safari: each switch Margin makes (what asked, how the wake went, how long
-// until the tab was in front), and how each page that was just shown came on
-// screen (content/shell.js: why it was released and when). Kept in the
+// until the tab was in front). Kept in the
 // background's IndexedDB: it outlives the background's sleeps, and unlike
 // storage it notifies no page. The last MAX_ENTRIES are kept.
 const DB_NAME = 'margin-diagnostics';
@@ -83,11 +82,6 @@ export function recordCreated(tab) {
     kind: 'created', tabId: tab.id, active: !!tab.active, opener: tab.openerTabId ?? null, index: tab.index,
     scheme: String(tab.pendingUrl || tab.url || '').split(':')[0],
   });
-}
-
-/** How a page that was just shown came on screen (content/shell.js via handlers.js). */
-export function recordShown(entry) {
-  record({ kind: 'shown', ...entry });
 }
 
 /** Everything kept, oldest first. */

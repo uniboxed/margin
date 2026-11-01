@@ -1,5 +1,5 @@
 // Margin on web pages: everything it does there, whatever the theme. Renders
-// from storage.local; when to show, dock, push the page, follow gestures and
+// from storage.local; when to show, dock, place the page, follow gestures and
 // shortcuts is decided here. What it looks like is the active theme's
 // (themes/<id>/content.js, a separate script that runs right after this
 // one; see themes/register.js for what a theme provides).
@@ -7,10 +7,11 @@ import * as V from '../shared/view.js';
 import { createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHost } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
-import { frameAware } from '../shared/shell-logic.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
+import { startPageLink } from './page-link.js';
+import { startPinch } from './pinch.js';
 import { createSwitching, backgroundSwitches, NEW_TAB } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
@@ -40,7 +41,7 @@ export function startCore({ onTheme } = {}) {
   let replacing = takeover.replacing;
   // Another copy's sidebar this one hid on taking over (`ownerSeen`): a copy
   // from this protocol on, which stands back itself (its gestures too, so
-  // this copy keeps its own), but its fitted layout stays until a reload.
+  // this copy keeps its own), but a page it fitted stays so until a reload.
   let takenOver = false;
   // This copy's address: the stored tabs say whether they're this copy's
   // (shared/stored.js). A copy a newer one replaced stays out of the way
@@ -48,20 +49,6 @@ export function startCore({ onTheme } = {}) {
   // (`retired`: this one was replaced, or its Margin unloaded).
   const origin = api.runtime.getURL('');
   let dormant = false;
-
-  // Fitted layout (content/shell.js, registered while "Keep open" is on; it
-  // runs right after this script): the page moves into a frame, the "card",
-  // and this document becomes Margin's shell around it. Whatever must also
-  // hear the page (pointer, keys, wheel, pinch) registers with onCard and is
-  // attached to the card's window once the page is in it.
-  const cardHooks = [];
-  Margin.content.onCard = (fn) => {
-    cardHooks.push(fn);
-    if (Margin.shell?.card) fn(Margin.shell.card);
-  };
-  Margin.content.cardReady = (win) => {
-    for (const fn of cardHooks) fn(win);
-  };
 
   const { host, shadow } = createHost(document, 'margin-sidebar-host');
   const retired = () => dormant || host.style.getPropertyValue('display') === 'none';
@@ -236,14 +223,15 @@ export function startCore({ onTheme } = {}) {
     if (readiness.shown()) view.setStartup?.(true); // getting ready before it was there
     offerFittedReload();
   }
-  // Taking over from a copy left from before Margin was updated, on a page
-  // that copy fitted beside the sidebar: its layout (and the page's keys and
-  // gestures in it) stay with the old copy until the page loads again
+  // Taking over from a copy from before the page's box, on a page that copy
+  // fitted beside the sidebar in an iframe: that layout (and the page's keys and
+  // gestures in it) stays with the old copy until the page loads again
   // (content/takeover.js does that once it's hidden; offered when it's on
   // screen too, a few times at most).
   let fittedOffers = 0;
   function offerFittedReload() {
-    if (!(replacing || takenOver) || !view || document.hidden || fittedOffers >= 3 || !document.documentElement.hasAttribute('data-margin-shell')) return;
+    const html = document.documentElement;
+    if (!(replacing || takenOver) || !view || document.hidden || fittedOffers >= 3 || !(html.hasAttribute('data-margin-shell') || html.hasAttribute('data-margin-frameless'))) return;
     fittedOffers++;
     offerReload('Margin was updated. Reload this page to fit it beside the sidebar again.');
     // Not taken for "Margin isn't responding" told already (noAnswer).
@@ -266,6 +254,7 @@ export function startCore({ onTheme } = {}) {
   const systemDark = matchMedia('(prefers-color-scheme: dark)');
   const colorScheme = () => (systemDark.matches ? 'dark' : 'light');
   Margin.content.colorScheme = colorScheme;
+  Margin.content.pinched = () => pinch.zoomed();
   const applyColorScheme = () => view?.setColorScheme(colorScheme());
   systemDark.addEventListener?.('change', applyColorScheme);
 
@@ -300,9 +289,20 @@ export function startCore({ onTheme } = {}) {
   Margin.content.active = active;
   Margin.content.offerFullscreen = offerFullscreen;
 
+  // The page's box (content/page-link.js), and the pinch that scales it.
+  const link = startPageLink(send);
+  /** @type {{ left: number, top: number, right: number, bottom: number } | null} */
+  let box = null;
+  const pinch = startPinch({ host }, { box: () => box, link });
   const page = {
-    api, host, send,
-    onCard: Margin.content.onCard,
+    api, host, send, link, pinch,
+    // Where the box is now (content/layout.js).
+    boxed: () => !!box,
+    setBox: (next, options) => {
+      box = link.can ? next : null;
+      link.setBox(box, options);
+      pinch.follow();
+    },
     view: () => view,
     theme: () => theme,
     state: () => state,
@@ -318,8 +318,8 @@ export function startCore({ onTheme } = {}) {
 
   // ---- page zoom ---------------------------------------------------------------
   // Margin's UI keeps its size whatever the page's zoom (⌘+ / ⌘−), as a
-  // browser's does (shared/dom.js setPageZoom); the push and the
-  // fitted card follow the sidebar in the page's zoomed pixels (layout.js).
+  // browser's does (shared/dom.js setPageZoom); the page's box follows the
+  // sidebar in the page's zoomed pixels (layout.js).
   // Read at start, after a resize (a zoom change resizes the page's
   // viewport; ⌘+ sends nothing else), when shown again (a site's zoom is
   // shared by its tabs).
@@ -363,7 +363,6 @@ export function startCore({ onTheme } = {}) {
     return send(type, payload, ...rest);
   });
   shortcuts.installNavigation({ send: navSend, getSettings: navSettings });
-  Margin.content.onCard((win) => shortcuts.installNavigation({ send: navSend, getSettings: navSettings, target: win }));
   // Going in or out of full screen: Margin shows up, or gets out of the way.
   // The background tells the window's pages; a resize, or coming back to a
   // tab (moved to another window meanwhile), asks again.
@@ -387,21 +386,12 @@ export function startCore({ onTheme } = {}) {
   const layout = startLayout(page, { loader });
   Margin.content.sidebar = { show: layout.show, hide: layout.hide, toggle: layout.toggle };
   Margin.content.peek = layout.peek;
-  // Something of Margin's is taking keys (fitted layout: don't hand them to the page).
-  Margin.content.uiBusy = () => !!view?.isBusy() || !!Margin.content.paletteOpen?.();
 
   // ---- data ---------------------------------------------------------------
 
   let tabId = null;
   let helloWindowId = null;
   let windowId = null;
-
-  // Whether this page is fitted beside the sidebar (content/shell.js) and
-  // whether it could be: the theme offers "Show normally" / "Fit this site".
-  function fitState() {
-    const origin = /^https?:$/.test(location.protocol) ? location.origin : null;
-    return { origin, fitted: !!Margin.shell, fittable: !!platform?.shell && !!origin && !frameAware(location.href) };
-  }
 
   // A new tab being chosen in the palette (content/palette.js): the sidebar
   // highlights "+ New Tab", not this page's tab, until the palette closes.
@@ -473,7 +463,6 @@ export function startCore({ onTheme } = {}) {
   };
   const KEY_EVENTS = ['keydown', 'keypress', 'keyup'];
   for (const type of KEY_EVENTS) addEventListener(type, holdKeys, true);
-  Margin.content.onCard((win) => { for (const type of KEY_EVENTS) win.addEventListener(type, holdKeys, true); });
   // Safari in use: the background keeps the tabs of this space ready to show
   // while it is (background/keep-ready.js). A click, key or scroll here says
   // so, at most once a minute.
@@ -487,7 +476,6 @@ export function startCore({ onTheme } = {}) {
   };
   const USE_EVENTS = ['pointerdown', 'keydown', 'wheel'];
   for (const type of USE_EVENTS) addEventListener(type, onUse, { capture: true, passive: true });
-  Margin.content.onCard((win) => { for (const type of USE_EVENTS) win.addEventListener(type, onUse, { capture: true, passive: true }); });
   // A switch from this page called off (Escape, the palette opened again):
   // the page stays, as clicking its own tab does; a new tab loading behind it
   // stays there (background/tabs.js openBehind).
@@ -712,7 +700,7 @@ export function startCore({ onTheme } = {}) {
     // (shared/view.js). Not once a switch was asked for from here (a swipe to
     // another space: the window's space is then the one it went to).
     const justShown = (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt;
-    view.update(state, { windowId, tabId, fit: fitState(), newTabPending, switchingTo, justShown, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
+    view.update(state, { windowId, tabId, newTabPending, switchingTo, justShown, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
     Margin.content.onState?.(state, { tabId, windowId });
     wasActive = active();
@@ -804,8 +792,7 @@ export function startCore({ onTheme } = {}) {
   let coveredWhileLoading = false;
   function coverWhileLoading() {
     coveredWhileLoading = true;
-    const complete = () => (Margin.shell ? Margin.shell.card?.document.readyState === 'complete' : document.readyState === 'complete');
-    if (!view?.setCover || document.hidden || complete()) return;
+    if (!view?.setCover || document.hidden || document.readyState === 'complete') return;
     view.setCover(true, { instant: true, spinnerNow: true });
     mark(host, 'loadingCover', 'true'); // test/debug hook
     let done = false;
@@ -819,9 +806,7 @@ export function startCore({ onTheme } = {}) {
     };
     const timer = setTimeout(off, COVER_LOADING_MS);
     uncoverLoading = off;
-    // The fitted layout's top document is complete long before its card.
-    if (!Margin.shell) addEventListener('load', off, { once: true });
-    Margin.content.onCard((win) => (win.document.readyState === 'complete' ? off() : win.addEventListener('load', off, { once: true })));
+    addEventListener('load', off, { once: true });
     document.addEventListener('visibilitychange', () => document.hidden && off(), { once: true });
   }
   const SHOWING_MS = 10000;
@@ -877,8 +862,7 @@ export function startCore({ onTheme } = {}) {
     // Not a page on screen already (Safari left it in front, or the user
     // brought it there): no show is coming to bring it back.
     if (everShown || arrival || !view?.setCover || !document.hidden) return;
-    // The page: the card in the fitted layout (content/shell.js), else its body.
-    const page = Margin.shell?.frame ?? document.body;
+    const page = document.body;
     if (!page) return;
     const before = [page.style.getPropertyValue(HIDE_PROP), page.style.getPropertyPriority(HIDE_PROP)];
     // Only Margin's own change is undone (not one the page made meanwhile).
@@ -1030,7 +1014,7 @@ export function startCore({ onTheme } = {}) {
     const fmt = (n) => (n == null ? '–' : `${Math.round(n)}`);
     console.debug(
       `[margin] timing (ms) injected=${fmt(timing.injected)} storage=${fmt(timing.storage)} rendered=${fmt(timing.rendered)}` +
-        ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${!!state?.settings?.sidebarPinnedOpen} fitted=${!!Margin.shell}`,
+        ` | page DOMContentLoaded=${fmt(nav?.domContentLoadedEventStart)} load=${fmt(nav?.loadEventStart)} keepOpen=${!!state?.settings?.sidebarPinnedOpen}`,
     );
   }
   if (document.readyState === 'complete') setTimeout(logTiming);
@@ -1085,8 +1069,6 @@ export function startCore({ onTheme } = {}) {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reportIcon, { once: true });
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
-  // Icons a page adds from script, in the fitted layout (the shell copies them).
-  Margin.content.onCard((win) => win.addEventListener('load', () => setTimeout(reportIcon), { once: true }));
 
   api.runtime.onMessage.addListener((message, _, sendResponse) => {
     // Background (⌘T hand-off): open the palette here to choose a new tab, and
