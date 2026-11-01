@@ -292,16 +292,23 @@ import { platform } from '../shared/platform.js';
     const doc = win?.document;
     const html = doc?.documentElement;
     const body = doc?.body;
-    if (!html || !body || html.scrollHeight <= win.innerHeight + 1) return;
+    if (!html || !body) return;
+    // Nothing that scrolls, the document or a pane of an app's (Google's AI
+    // Mode): nothing to read at the zoom.
+    const tall = (node) => node.scrollHeight > node.clientHeight + 1 && node.clientHeight > win.innerHeight / 3 && /auto|scroll/.test(win.getComputedStyle(node).overflowY);
+    if (html.scrollHeight <= win.innerHeight + 1 && ![...body.querySelectorAll('*')].some(tall)) return log('zoom stays stretched: nothing scrolls');
     const htmlStyle = win.getComputedStyle(html);
     const bodyOverflow = win.getComputedStyle(body).overflowY;
     const scroller = htmlStyle.overflowY !== 'visible' ? htmlStyle.overflowY : bodyOverflow;
-    if (scroller === 'hidden' || scroller === 'clip') return; // scroll locked: a dialog is up
+    if (scroller === 'hidden' || scroller === 'clip') return log('zoom stays stretched: scroll locked'); // a dialog is up
     const fixed = fixedIn(win);
+    // One over most of the page, really on top (not the empty, invisible holders
+    // of a site's dialogs), is what's being read: a lightbox, or an app's shell.
     const screen = win.innerWidth * win.innerHeight;
+    const top = doc.elementFromPoint(win.innerWidth / 2, win.innerHeight / 2);
     for (const node of fixed) {
       const box = node.getBoundingClientRect();
-      if (box.width * box.height > screen / 2) return; // reading that (a lightbox): it's what's being zoomed
+      if (box.width * box.height > screen / 2 && node.contains(top)) return log('zoom stays stretched: a fixed element over the page', node);
     }
     const z = zoom.scale;
     const own = parseFloat(htmlStyle.zoom) || 1;

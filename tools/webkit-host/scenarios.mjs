@@ -344,6 +344,12 @@ export const SCENARIOS = {
     checkPage('A', 'fitted, tall: a body that scrolls for the window keeps the reading spot', `${CARD} return w.scrollY > 800`),
     { op: 'pinch', deltas: Array(70).fill(-0.05), x: 700, y: 400 }, wait(300), { op: 'pinch', deltas: Array(8).fill(-0.03), x: 700, y: 400 }, wait(300),
     checkPage('A', 'fitted, tall: and back at it', `${CARD} return Math.abs(w.scrollY - 800) < 3`),
+    // Sharp too: an invisible full-window holder of a site's dialogs, and an app that scrolls a pane.
+    { op: 'page', in: 'A', js: `${CARD} d.getElementById('tall').remove(); d.getElementById('bar').remove(); d.getElementById('end').remove(); d.body.style.cssText = ''; d.documentElement.style.height = ''; w.scrollTo(0, 0); const hold = d.createElement('div'); hold.id = 'hold'; hold.style.cssText = 'position: fixed; inset: 0; pointer-events: none'; d.body.append(hold); const pane = d.createElement('div'); pane.id = 'pane'; pane.style.cssText = 'height: 70vh; overflow-y: auto'; pane.textContent = 'word '.repeat(9000); d.body.append(pane); return String(d.documentElement.scrollHeight <= w.innerHeight + 1)` },
+    { op: 'pinch', deltas: Array(14).fill(0.05), x: 700, y: 400 }, wait(450),
+    checkPage('A', 'fitted, app: a pane that scrolls goes sharp, past an invisible full-window holder', `${CARD} return parseFloat(w.getComputedStyle(d.documentElement).zoom) > 1.5 && getComputedStyle(f).transform === 'none'`, 1000),
+    { op: 'pinch', deltas: Array(70).fill(-0.05), x: 700, y: 400 }, wait(300), { op: 'pinch', deltas: Array(8).fill(-0.03), x: 700, y: 400 }, wait(300),
+    { op: 'page', in: 'A', js: `${CARD} d.getElementById('pane').remove(); d.getElementById('hold').remove(); return 'clean'` },
     { op: 'pinch', deltas: [0.01, 0.005], x: 700, y: 400 }, wait(280),
     checkPage('A', 'fitted: a pinch that ends next to its size: no zoom left', `getComputedStyle(document.querySelector('iframe[name^=margin-]')).transform === 'none'`, 800),
     { op: 'pinch', deltas: Array(14).fill(0.04), x: 700, y: 400 },
