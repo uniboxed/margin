@@ -35,8 +35,8 @@ function adoptStyles(shadow, css) {
 const HOST_CSS = `:host {
   all: initial !important;
   position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
+  top: var(--margin-shift-y, 0) !important; /* test build: out of the page's box */
+  left: var(--margin-shift-x, 0) !important;
   width: 0 !important;
   height: 0 !important;
   z-index: 2147483647 !important;

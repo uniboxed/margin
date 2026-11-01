@@ -47,6 +47,7 @@ const DOCKED_RAIL_ID = 'margin-docked-rail';
 export function placeholderPlan(settings, { fits = !!platform?.shell, theme = themeFor(settings), railAvailable = !!platform?.compactRail, fullscreenOnly = !!platform?.marginFullscreen && settings?.fullscreenOnly !== false } = {}) {
   const plan = (id, css, matches, excludeMatches = []) => ({ id, css: [css], matches, excludeMatches });
   // Hidden: the frame alone (not where Margin works only in full screen: no frame in a window).
+  if (platform?.frameless && settings?.sidebarPinnedOpen) return []; // test build
   if (!settings?.sidebarPinnedOpen) return theme.closedPlaceholder && !fullscreenOnly && settings?.frameWhenHidden !== false ? [plan(DOCKED_ID, theme.closedPlaceholder, ['<all_urls>'])] : [];
   const full = theme.placeholder?.(settings);
   const rail = railAvailable && settings.compactWhenPushed !== false ? theme.railPlaceholder : null;
@@ -80,6 +81,8 @@ export const queueRegistrations = () => {
     .catch((err) => console.warn('[margin] theme', err))
     .then(syncDockedCss)
     .catch((err) => console.warn('[margin] docked css', err))
+    .then(() => syncFrameless())
+    .catch((err) => console.warn('[margin] frameless', err))
     .then(() => syncShell())
     .catch((err) => console.warn('[margin] fitted layout', err))
     .then(() => dropProbe());
@@ -132,6 +135,26 @@ async function syncShell() {
 // stubs, see shared/probe.js): drop it. Tried on every sync, because Safari
 // loads stored registrations asynchronously after the background starts. It
 // fails harmlessly once it's gone.
+// Test build: Keep open lays pages out without a frame (content/frameless/).
+const FRAMELESS_ID = 'margin-frameless';
+async function syncFrameless() {
+  if (!api.scripting?.registerContentScripts) return;
+  const { settings } = await api.storage.local.get('settings');
+  const on = !!platform?.frameless && !!settings?.sidebarPinnedOpen;
+  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [FRAMELESS_ID] });
+  if (on === !!current) return;
+  if (current) await api.scripting.unregisterContentScripts({ ids: [FRAMELESS_ID] });
+  if (on) {
+    await api.scripting.registerContentScripts([{
+      id: FRAMELESS_ID,
+      js: ['a', 'c', 'd', 'e'].map((f) => `content/frameless/${f}.js`),
+      matches: ['<all_urls>'],
+      runAt: 'document_start',
+      allFrames: false,
+      world: 'MAIN',
+    }]);
+  }
+}
 async function dropProbe() {
   await api.scripting?.unregisterContentScripts?.({ ids: ['margin-probe'] }).catch(() => {});
 }

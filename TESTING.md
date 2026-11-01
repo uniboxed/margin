@@ -558,6 +558,21 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Frameless layout, test build (branch test/frameless-layout, 2026-11-01)
+
+Keep open on, sidebar at its default width, pages reloaded after turning it on. Signed in: Outlook, Teams, Gmail, Google Docs, then sites you use. Note the site for anything wrong.
+
+- [ ] The sidebar and frame show on all sides, the page beside them with nothing cut off, no iframe (Web Inspector: `html` has `data-margin-frameless`).
+- [ ] Right-click and dropdown menus open at the pointer. Dialogs are centred on the page, and the page doesn't scroll behind them.
+- [ ] Compose and typing work, and the caret lands where you click (Docs matters most).
+- [ ] Two-finger scroll and momentum feel normal, with no double scroll bar. Space and arrow keys scroll.
+- [ ] Swipe back and pull to refresh work, with no odd bounce.
+- [ ] Back returns to where you were. Reload keeps the place.
+- [ ] Find, full-screen video, sign-in flows, a page that failed in the fitted layout.
+- [ ] How it feels against the fitted layout: first paint, tab switches, scrolling.
+
+Known, not bugs of the idea: fixed at 260px (resizing the sidebar won't follow), ⌘+ and pinch scale the sidebar too, no first-paint placeholder so the sidebar arrives a moment late, and it needs a page reload after Keep open is turned on or off.
+
 ## Pinch zoom (2026-10-31)
 
 - [ ] A page with Keep open off: pinch out and in. It follows your fingers smoothly, as in Safari, with no percentage, and the page doesn't re-lay out. ⌘+ / ⌘− stay a separate zoom.

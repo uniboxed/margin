@@ -20,7 +20,7 @@
 .margin-sidebar.overlay, .frame, .card-edge, .switch-cover, .startup-cover, .loader, .pull, .swipe { z-index: 0; }
 /* What --vw and --vh are measured from: the one fixed box, empty and never
    drawn (so it costs nothing as the page scrolls). */
-.window-probe { position: fixed; inset: 0; visibility: hidden; pointer-events: none; }
+.window-probe { position: fixed; top: var(--margin-shift-y, 0); left: var(--margin-shift-x, 0); right: var(--margin-out-r, 0); bottom: var(--margin-out-b, 0); visibility: hidden; pointer-events: none; }
 .margin-sidebar, .frame, .rims, .switch-cover, .startup-cover {
   /* One sidebar background for now (Arc-like neutral gray), the same in
      Light and Dark Mode; not tinted by the space or taken from the page.

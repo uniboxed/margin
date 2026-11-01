@@ -118,6 +118,7 @@ export function startLayout(page, { loader }) {
   let pushSheet = null;
   let pushStyle = null;
   function setPushed(on, width, light = false) {
+    if (document.documentElement.hasAttribute('data-margin-frameless')) return; // test build
     if (!canPush || globalThis.Margin?.shell || (on === pushed && (!on || (width === pushedWidth && light === pushedLight)))) return; // the fitted layout needs no push
     pushed = on;
     pushedWidth = on ? width : null;

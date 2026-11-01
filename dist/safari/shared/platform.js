@@ -50,7 +50,8 @@ const PROFILES = {
     search: 'learn',
     // "Keep open" fits pages beside the sidebar (content/shell.js), using
     // Safari's early content scripts and Navigation API (26.2+).
-    shell: true,
+    shell: false, // test build
+    frameless: true,
     // The content script writes the page into the card itself.
     shellPageWrite: false,
     marginFullscreen: false,
