@@ -203,3 +203,12 @@ function excludePatterns(origins) {
 }
 
 export { PARSED, LOOP, FRAME_AWARE, FRAME_AWARE_PATTERNS, frameAware, pageKey, skipReason, loopCheck, doctypeString, serialize, postFields, isBust, routable, topOnly, cardNavigatingClick, reportKey, getSubmissionUrl, excludePatterns, TEXT_TYPES };
+
+// A zoomed card's scroll positions, laid out at the zoom (`sharp`) or stretched
+// by a transform of `offset` px (content/shell.js). `origin`: where a sharp
+// page's scroll starts, below 0 right to left.
+export const sharpScroll = (scroll, zoom, offset, origin = 0) => scroll * zoom - offset + origin;
+// The scroll to go back to: `base`, where it was before, if the transform can
+// hold the rest (`room`: the card's size × (zoom - 1)), or the nearest that can.
+export const stretchedScroll = (sharp, zoom, base, room, origin = 0) => Math.max((sharp - origin - room) / zoom, Math.min((sharp - origin) / zoom, base));
+export const stretchedOffset = (scroll, zoom, sharp, origin = 0) => scroll * zoom - sharp + origin;

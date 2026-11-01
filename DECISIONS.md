@@ -970,11 +970,38 @@ Tirth's plan: tell users (on the website) which Safari feature flags give the cl
   - Removed: the stepped zoom, its levels, the percentage readout, the `setZoom` message. ⌘+ / ⌘− are Safari's alone.
   - `content/shell.js`, the fitted card: Safari's route fails there. A native pinch leaves a frame's gesture state set, since WebKit resets only root frames, so every other pinch was dead, and `event.scale` can come out with the wrong sign. It would also magnify the sidebar. So the card has its own: a transform of the iframe, inside a new clip element that holds the card's place and corners. Up to 3×, with a little give and a spring at the limits, around the fingers. Two fingers pan it, then scroll the page at its edges, with pull and swipe stood down. Reset by full screen.
 - **Trades:**
-  - Fitted pages stay as sharp as they were drawn: no way to redraw at scale is invisible to the page. Softer than Safari's at 2–3×; Tirth to judge.
+  - Sharpness on fitted pages: see the next entry.
   - The card's zoom follows the page's main thread: about 0.7 ms an event, 10 ms to the screen on Wikipedia and The Verge, slower on a busy page. No memory, nothing between pinches.
   - On a plain page Margin's sidebar and frame are in the page, so Safari's zoom magnifies them too.
   - A pinch out whose first movement is slightly inward does nothing, and can't be recovered.
   - A pinch that starts over an embedded frame isn't seen, so it can still open the overview, as before.
 - **After review** (two reviewers, each finding checked by another; 13 held up, two of them the same in both): the clip element broke Chrome's fitted layout (its page-world writer looked for the frame directly under `body`: every page would have loaded twice and ended up unfitted; the clip now has a mark of its own, and a test ties the two together); a scroll over the sidebar or palette panned the card; gestures turned off left a zoomed card stuck; hover and hide read the pointer unscaled; a pinch ending next to 100% left swipe and pull off; a left-over transition lagged panning; a page's handlers ran as well as the card's zoom; pinching in full screen. A page's own pinch on a fitted page (a map) still loses to the card's, as it lost to the stepped zoom.
 - **Verified:** `npm test` (328, new: which pinches are cancelled in each mode, three stages in the card, the wheel, the writer's selector). `npm run test:webkit`: 33 of 34 passed on the last run; `update` failed one check once ("selecting it cancels the hidden cleanup reload"), then passed 6 of 6 alone, as main did. `pinch` passed 3 of 3 alone. Real magnify events go to the host's web views (new `pinch` step, `allowsMagnification` on as in Safari): new scenario `pinch`. Not run: real Safari or a real trackpad (the predicate was read, not watched), Chrome, the end-to-end tests. Tirth to judge the feel and the fitted page's sharpness: TESTING.md.
+
+## A zoomed fitted page is drawn sharp once the fingers stop (2026-10-31)
+
+- **What Tirth saw:** zoomed on a fitted page, pixels showed: the transform stretches what was drawn.
+- **Why nothing simpler works:** a layer's raster scale is the page's scale × a root-relative factor WebKit only uses for an experimental SVG engine (`GraphicsLayerCA`). Measured at 2.5×, every CSS route stayed at 0.40 surface pixels per device pixel against 1.00 native: `will-change`, `scale`, 3D, filters, flips of compositing, repaints.
+- **Changed** (`content/shell.js`): the transform stays as the live preview. About 120 ms after the fingers stop (280 after a spring) an adopted sheet in the card lays the page out at the zoom, at the width it has, and the transform goes in the same task. `font-optical-sizing: none` holds variable fonts' widths. Two fingers are then the page's own scrolling. Fixed elements are marked (`data-margin-fixed`) and keep their size, or a bar across the page would run out of reach. A new pinch, a press in the page, a resize, full screen or leaving goes back to the transform: one layout (12–29 ms on The Verge, about 170–200 ms on a 22,000-element Wikipedia article). Safari builds only (the pinch is).
+- **Measured** (off screen, on real pages, 2.5×; pixel variance, stretched → sharp, then native): Wikipedia 361 → 1581, native 1534; The Verge after the swap 1381, native 432 at the lab's smaller crop, so compare within a run only: lab transform 65 against 426 sharp against 432 native. Layers about 10 MB more. No resize events; `innerWidth` and media queries stay. Lines: The Verge 0 of 155 moved, Wikipedia 21 of 1174; all back afterwards. GitHub and MDN were looked at in the review run, those figures weren't kept.
+- **Limits:**
+  - After a press the page is stretched again until the next pinch. While sharp, a page's measures are × the zoom, so what it places by them would land far off (a test's tooltip landed far off).
+  - Hover popups (Wikipedia's previews) will land wrong while sharp (inferred, same cause).
+  - Frames inside the page (videos, tweets, maps): the box grows, the content doesn't.
+  - Pages that don't overflow the card (Slack or Gmail shapes), that are scroll locked, or with a fixed element over half the card (a lightbox: it's what's being zoomed) stay stretched; canvas too (inferred).
+  - Fixed elements keep their size rather than growing. Those in shadow roots aren't found.
+  - A page's scroll-driven code sees `scrollY` × the zoom.
+  - The reading spot moves 1–5 device pixels at the swap.
+- **Not chosen:**
+  - `tabs.setZoom` as the commit: the cleanest for the page, but it writes Safari's saved per-site zoom (read from the binary, inferred to sync), and snaps to fixed stops.
+  - Native magnification on the card through a hit area in the top document: one dead pinch after any pointer move, and the sidebar can't follow it live.
+- **After review** (two reviewers, each finding checked by another; 25 held up, several found by both, and the first version of this had none of the fixes):
+  - Going back near the page's end jumped the view, and the press then missed: what the page's end won't hold is now the transform's (`shared/shell-logic.js`, with a test).
+  - A second pinch zoomed around the wrong point.
+  - A body that scrolls for the window lost the reading spot for good.
+  - Right-to-left pages landed on the wrong side and went blank.
+  - Percent heights and elements placed against the page's edges kept the unzoomed size: `html` has a box of its own now.
+  - Fixed elements inside fixed ones shrank twice; marks were a snapshot, so they follow the page now (a mutation observer and `scrollend`, while sharp only).
+  - A press in the delay didn't stop the swap. A page replacing its own sheets left state wrong. Printing took the zoom (the sheet is `@media screen`). A page's own `html` zoom was replaced. Classic scroll bars gave the wrong width. A wide page lost its own sideways scroll.
+- **Verified:** `npm test` (329, new: the scroll there and back). `npm run test:webkit`: 34 of 35 passed; `introduce` stopped with the test host's crash, which also hits main. New `pinch-fitted`, 3 of 3 alone, splits from `pinch` (the host's background stops after about 5 s, so Keep open has to go first): sharp at the same width, lines as they were, a fixed bar's size, the page as it was after, a press, what's pressed staying under the pointer at the page's end (within 1 px), a body that scrolls for the window, back to the same spot. Final build on saved real pages with real magnify events: Wikipedia 361 → 1602 (native 1534), pinched back to exactly where it was (scrollY 20000), The Verge likewise (3000). Not run: real Safari or a trackpad, Chrome (the pinch is Safari builds only), the end-to-end tests. Tirth to judge how the swap feels: TESTING.md.
 

@@ -152,3 +152,21 @@ test('apps that change when they\'re in a frame are never fitted (built-in list)
   assert.match(skipReason({ ...fresh, frameAware: true }) ?? '', /frame/);
   assert.ok(FRAME_AWARE_PATTERNS.includes('*://teams.microsoft.com/*') && FRAME_AWARE_PATTERNS.includes('*://*.sharepoint.com/*'));
 });
+
+test('a zoomed card\'s scroll: there and back to the same place, what the page\'s end won\'t hold left to the transform', async () => {
+  const { sharpScroll, stretchedScroll, stretchedOffset } = await import('../extension/shared/shell-logic.js');
+  // Left to right: page at 1000, the view 300 into it at 2×.
+  const sharp = sharpScroll(1000, 2, -300);
+  assert.equal(sharp, 2300);
+  assert.equal(stretchedScroll(sharp, 2, 1000, 800), 1000, 'the scroll it had, the transform holding the rest');
+  assert.equal(stretchedOffset(1000, 2, sharp), -300);
+  assert.equal(stretchedScroll(sharp, 2, 200, 800), 750, 'scrolled on while sharp: as near as the transform reaches');
+  assert.equal(stretchedScroll(sharp, 2, 1900, 800), 1150);
+  assert.equal(stretchedOffset(1150, 2, sharp), 0, 'all in the scroll');
+  // At the page's end the scroll stops short: the rest is the transform's.
+  assert.equal(stretchedOffset(900, 2, sharp), -500);
+  // Right to left: the scroll runs -800 … 0 at 2× of 800.
+  assert.equal(sharpScroll(0, 2, 0, -800), -800, 'the view on the left half');
+  assert.equal(stretchedOffset(0, 2, -800, -800), 0);
+  assert.equal(stretchedOffset(0, 2, 0, -800), -800, 'on the right half');
+});

@@ -565,7 +565,11 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Pinch out several times: how often does one do nothing? A pinch whose very first movement is slightly inward is treated as pinching in, and it can't be recovered mid-pinch.
 - [ ] While zoomed in on such a page: hover the left edge and press Option+S. The sidebar is part of the page there, so it's magnified with it and may be out of view. Say if that's a problem.
 - [ ] A fitted page (Keep open on): pinch several times in a row, in and out, at different spots: every pinch works and stays under your fingers, the sidebar and frame don't scale, two fingers move the zoomed page, then scroll it at the edges.
-- [ ] Fitted page at 1.5×, 2× and 3×: how sharp is the text? It's magnified as drawn, so softer than Safari's. This is the trade on fitted pages.
+- [ ] Fitted page at 1.5×, 2× and 3×: stretched while the fingers move; about a tenth of a second after they stop it goes sharp, in one step, with lines where they were and the same spot under your fingers. Compare with Safari's own zoom on a normal page.
+- [ ] Sharp: two fingers scroll it, and it stays sharp. Fixed bars keep their size and all their items can be reached. Then pinch again from there: it stays under your fingers.
+- [ ] Sharp: click a link, a menu, a text field: the click lands where you pressed, even at the very bottom of the page, and a menu opens by what you clicked. The page goes stretched again until the next pinch. Click in the middle of a line and drag to select text: is the selection where you pressed?
+- [ ] Sharp, then resize the window, go to another tab and back, reload, go back a page, print: nothing left zoomed or jumping.
+- [ ] A right-to-left page (ar.wikipedia.org), a page with a fixed lightbox open, one with embedded videos, Gmail or Slack: nothing breaks. Hover previews on Wikipedia may land off while sharp. Videos stay small in a larger box. Apps stay stretched.
 - [ ] A busy site on a fitted page: does the pinch keep up?
 - [ ] Fitted page: double-tap with two fingers (smart zoom), then pinch out and in.
 - [ ] Pinch in over an embedded video at normal size: the overview may open (as before: Margin isn't in that frame).

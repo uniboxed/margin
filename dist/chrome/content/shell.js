@@ -247,18 +247,154 @@ import { platform } from '../shared/platform.js';
     set('width', docked ? `calc(100% - ${width + inset}px)` : '100%');
     set('height', docked ? `calc(100% - ${2 * inset}px)` : '100%');
     set('border-radius', docked ? radius : '0');
-    if (zoom.scale !== 1) settleZoom(false); // the card's size changed
+    if (zoom.scale !== 1 && !crisp.sheet) settleZoom(false); // the card's size changed
   }
   // ---- pinch zoom of the card -------------------------------------------------
   // Safari's own pinch can't work in a frame (it would magnify the sidebar with
   // the page, and every other pinch goes dead: WebKit keeps a frame's gesture
   // state after one): the frame is moved and scaled instead, a transform of a
-  // layer that's composited already. The page never knows; it keeps its size,
-  // and nothing runs between pinches. It stays as sharp as it was drawn: a page
-  // can't be drawn again at a scale without knowing. Two fingers pan it.
+  // layer that's composited already, while the fingers move; nothing runs
+  // between pinches. Two fingers pan it. Sharp after that: below.
   const ZOOM_MAX = 3;
   const zoom = { scale: 1, x: 0, y: 0, from: 1, atX: 0, atY: 0, startX: 0, startY: 0, settling: 0 };
-  const showZoom = () => frame.style.setProperty('transform', zoom.scale === 1 ? 'none' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`, 'important');
+  const showZoom = () => frame.style.setProperty('transform', zoom.scale === 1 || crisp.sheet ? 'none' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`, 'important');
+  // Sharp once the fingers stop: a transform only stretches what was drawn, and
+  // nothing a script can do makes WebKit draw a scaled layer finer. So the page
+  // is laid out at the zoom, at the width it has (an adopted sheet: nothing
+  // else in the page changes; its media queries and innerWidth stay), and the
+  // transform goes in the same task: the two look the same, drawn sharp. Two
+  // fingers are then the page's own scrolling. Limits (DECISIONS.md): a page
+  // that has no document to scroll (an app of fixed panes) stays stretched,
+  // and what's in frames of its own doesn't grow. A press goes back to the
+  // transform: while sharp, the page's own measures are all × the zoom, and
+  // what it places by them (a menu, a tooltip) would land in the wrong place.
+  const crisp = { sheet: null, timer: 0, win: null, width: 0, x: 0, y: 0, origin: 0, wanted: false, marked: new Set(), watcher: null, rescan: 0 };
+  // Fixed elements don't scroll: at the zoom, a bar across the page would run
+  // out of reach. The outermost ones keep their size, as the page changes too.
+  function fixedIn(win) {
+    const found = new Set();
+    for (const node of win.document.body.querySelectorAll('*')) {
+      if (win.getComputedStyle(node).position !== 'fixed') continue;
+      let up = node.parentElement;
+      while (up && !found.has(up)) up = up.parentElement;
+      if (!up) found.add(node);
+    }
+    return found;
+  }
+  function markFixed(win, nodes = fixedIn(win)) {
+    for (const node of crisp.marked) if (!nodes.has(node)) node.removeAttribute('data-margin-fixed');
+    for (const node of nodes) if (!crisp.marked.has(node)) node.setAttribute('data-margin-fixed', '');
+    crisp.marked = nodes;
+  }
+  function crispOn() {
+    if (zoom.scale === 1 || crisp.sheet) return;
+    const win = frame.contentWindow;
+    const doc = win?.document;
+    const html = doc?.documentElement;
+    const body = doc?.body;
+    if (!html || !body || html.scrollHeight <= win.innerHeight + 1) return;
+    const htmlStyle = win.getComputedStyle(html);
+    const bodyOverflow = win.getComputedStyle(body).overflowY;
+    const scroller = htmlStyle.overflowY !== 'visible' ? htmlStyle.overflowY : bodyOverflow;
+    if (scroller === 'hidden' || scroller === 'clip') return; // scroll locked: a dialog is up
+    const fixed = fixedIn(win);
+    const screen = win.innerWidth * win.innerHeight;
+    for (const node of fixed) {
+      const box = node.getBoundingClientRect();
+      if (box.width * box.height > screen / 2) return; // reading that (a lightbox): it's what's being zoomed
+    }
+    const z = zoom.scale;
+    const own = parseFloat(htmlStyle.zoom) || 1;
+    const { scrollX: x, scrollY: y } = win;
+    // The size it's laid out at: without classic scroll bars, and a box of
+    // its own for what's placed against the page's edges or in percents.
+    const width = html.clientWidth;
+    const height = html.clientHeight;
+    markFixed(win, fixed);
+    const sheet = new (/** @type {any} */ (win).CSSStyleSheet)();
+    sheet.replaceSync(`@media screen {
+      html { zoom: ${own * z} !important; width: ${width / own}px !important; height: ${height / own}px !important; position: relative !important; overflow: auto !important; font-optical-sizing: none !important; }
+      ${htmlStyle.overflowY === 'visible' && bodyOverflow !== 'visible' ? 'body { overflow: visible !important; }' : 'body { overflow-x: visible !important; }'}
+      [data-margin-fixed] { zoom: ${1 / z} !important; }
+    }`);
+    Object.assign(crisp, { sheet, win, width: clip.clientWidth, x, y });
+    frame.style.setProperty('transform', 'none', 'important');
+    doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+    crisp.origin = html.getBoundingClientRect().left + win.scrollX; // < 0 right to left
+    win.scrollTo({ left: L.sharpScroll(x, z, zoom.x, crisp.origin), top: L.sharpScroll(y, z, zoom.y), behavior: 'instant' });
+    win.addEventListener('pagehide', crispGone);
+    crisp.watcher = new (/** @type {any} */ (win).MutationObserver)(watchFixed);
+    crisp.watcher.observe(doc.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] });
+    win.addEventListener('scrollend', watchFixed);
+  }
+  function watchFixed() {
+    clearTimeout(crisp.rescan);
+    crisp.rescan = setTimeout(() => { if (crisp.sheet) markFixed(crisp.win); }, 400);
+  }
+  function crispListeners(win) {
+    win.removeEventListener('pagehide', crispGone);
+    win.removeEventListener('scrollend', watchFixed);
+    crisp.watcher?.disconnect();
+    clearTimeout(crisp.rescan);
+  }
+  function crispOff() {
+    clearTimeout(crisp.timer);
+    if (!crisp.sheet) return;
+    const { win, sheet, origin } = crisp;
+    const doc = win.document;
+    crispListeners(win);
+    markFixed(win, new Set());
+    crisp.sheet = null;
+    // Its own sheets replaced by the page, ours with them: it's at its size.
+    if (!doc.adoptedStyleSheets.includes(sheet)) {
+      Object.assign(zoom, { scale: 1, x: 0, y: 0 });
+      return showZoom();
+    }
+    const { scrollX: x, scrollY: y } = win;
+    const z = zoom.scale;
+    doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter((one) => one !== sheet);
+    win.scrollTo({ left: L.stretchedScroll(x, z, crisp.x, clip.clientWidth * (z - 1), origin), top: L.stretchedScroll(y, z, crisp.y, clip.clientHeight * (z - 1)), behavior: 'instant' });
+    // What the scroll can't hold (the page's end) is the transform's.
+    zoom.x = L.stretchedOffset(win.scrollX, z, x, origin);
+    zoom.y = L.stretchedOffset(win.scrollY, z, y);
+    keepInCard();
+    showZoom();
+  }
+  // A press: what the page places by its measures would land far off while
+  // sharp (× the zoom), so it's stretched again, and stays so until a pinch.
+  // What's pressed stays under the pointer: the two layouts' heights differ
+  // a little, by the bottom of a long page by a press's worth.
+  function pressed(/** @type {Event} */ event) {
+    crisp.wanted = false;
+    const target = /** @type {any} */ (event.target);
+    const sharp = crisp.sheet && target?.getBoundingClientRect?.();
+    crispOff();
+    if (!sharp || zoom.scale === 1 || sharp.height > clip.clientHeight) return;
+    const off = sharp.top - (target.getBoundingClientRect().top * zoom.scale + zoom.y);
+    const y = zoom.y;
+    zoom.y += off;
+    keepInCard();
+    if (Math.abs(off - (zoom.y - y)) >= 1) crisp.win.scrollBy({ top: -(off - (zoom.y - y)) / zoom.scale, behavior: 'instant' });
+    showZoom();
+  }
+  const crispSoon = (ms) => {
+    clearTimeout(crisp.timer);
+    crisp.wanted = true;
+    crisp.timer = setTimeout(crispOn, ms);
+  };
+  const crispAgain = () => { if (crisp.wanted) crispSoon(200); };
+  // The page left: a new one starts at its size.
+  function crispGone() {
+    if (crisp.win) crispListeners(crisp.win);
+    Object.assign(crisp, { sheet: null, wanted: false, marked: new Set() });
+    Object.assign(zoom, { scale: 1, x: 0, y: 0 });
+    showZoom();
+  }
+  new ResizeObserver(() => {
+    if (!crisp.sheet || clip.clientWidth === crisp.width) return;
+    crispOff();
+    crispAgain();
+  }).observe(clip);
   // In the card's bounds; below its size, in the middle of it.
   const keepInCard = () => {
     const w = clip.clientWidth;
@@ -286,11 +422,22 @@ import { platform } from '../shared/platform.js';
     }
     if (scale === 1) Object.assign(zoom, { x: 0, y: 0 });
     showZoom();
+    if (!spring) return;
+    clearTimeout(crisp.timer);
+    crisp.wanted = false;
+    if (scale !== 1) crispSoon(moved ? 280 : 120);
   }
-  addEventListener('resize', () => { if (zoom.scale !== 1) settleZoom(false); });
+  addEventListener('resize', () => {
+    if (zoom.scale === 1) return;
+    crispOff();
+    settleZoom(false);
+    crispAgain();
+  });
   // Full screen shows the frame, or something in it, as it is.
   function resetZoom() {
     if (zoom.scale === 1) return;
+    crisp.wanted = false;
+    crispOff();
     clearTimeout(zoom.settling);
     frame.style.removeProperty('transition');
     Object.assign(zoom, { scale: 1, x: 0, y: 0 });
@@ -393,7 +540,7 @@ import { platform } from '../shared/platform.js';
       history.replaceState({ ...(history.state ?? {}), __marginScroll: [card.scrollX, card.scrollY] }, '');
     } catch {}
   }
-  addEventListener('pagehide', saveScroll);
+  addEventListener('pagehide', () => { crispOff(); saveScroll(); });
 
   // Top-level redo of a navigation the card started.
   /**
@@ -881,6 +1028,7 @@ import { platform } from '../shared/platform.js';
       doc.addEventListener('securitypolicyviolation', (event) => reportViolation(event), true);
       win.addEventListener('margin-page-ready', () => log('page-side script active in the card'), { once: true });
       watchPrintKey(win);
+      win.addEventListener('pointerdown', pressed, true);
       Margin.content?.cardReady?.(win, frame);
       if (platform?.shellPageWrite) writeFromPage(html);
       else {
@@ -953,9 +1101,12 @@ import { platform } from '../shared/platform.js';
     frame,
     // A pinch at (x, y) in the page. zoomTo: `scale` of where it started.
     zoomStart(x, y) {
+      const sharp = !!crisp.sheet; // (x, y) is in the card then, nothing stretched
+      crisp.wanted = false;
+      crispOff();
       clearTimeout(zoom.settling);
       frame.style.removeProperty('transition');
-      Object.assign(zoom, { from: zoom.scale, atX: x * zoom.scale + zoom.x, atY: y * zoom.scale + zoom.y, startX: zoom.x, startY: zoom.y });
+      Object.assign(zoom, { from: zoom.scale, atX: sharp ? x : x * zoom.scale + zoom.x, atY: sharp ? y : y * zoom.scale + zoom.y, startX: zoom.x, startY: zoom.y });
     },
     zoomTo(scale) {
       const wanted = zoom.from * scale;
@@ -970,10 +1121,10 @@ import { platform } from '../shared/platform.js';
     },
     zoomEnd: () => settleZoom(),
     zoomReset: resetZoom,
-    zoomed: () => zoom.scale !== 1,
+    zoomed: () => zoom.scale !== 1 && (!crisp.sheet || crisp.win.document.adoptedStyleSheets.includes(crisp.sheet)),
     // Two fingers while zoomed: moves it, until its edge. Whether it moved.
     zoomPan(dx, dy) {
-      if (zoom.scale === 1) return false;
+      if (zoom.scale === 1 || crisp.sheet) return false; // laid out at the zoom: the page's own scrolling
       const { x, y } = zoom;
       zoom.x -= dx;
       zoom.y -= dy;
@@ -991,7 +1142,7 @@ import { platform } from '../shared/platform.js';
       applyLayout();
     },
     // A pointer's x in the card as x in the window.
-    cardX: (x) => x * zoom.scale + zoom.x + (layout.docked ? layout.width : 0),
+    cardX: (x) => (crisp.sheet ? x : x * zoom.scale + zoom.x) + (layout.docked ? layout.width : 0),
     cardTop: () => (layout.docked ? layout.inset : 0),
     focusCard: () => card?.focus(),
   };
