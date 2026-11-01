@@ -571,7 +571,9 @@ Keep open on, sidebar at its default width, pages reloaded after turning it on. 
 - [ ] Find, full-screen video, sign-in flows, a page that failed in the fitted layout.
 - [ ] How it feels against the fitted layout: first paint, tab switches, scrolling.
 
-Known, not bugs of the idea: fixed at 260px (resizing the sidebar won't follow), ⌘+ and pinch scale the sidebar too, no first-paint placeholder so the sidebar arrives a moment late, and it needs a page reload after Keep open is turned on or off.
+Resize: dragging the sidebar's edge moves the page with it, the site's own layout switches about 150 ms after you stop (a site's scripts that listen for a media query may not), and new pages start at that width.
+
+Known, not bugs of the idea: ⌘+ and pinch scale the sidebar too, no first-paint placeholder so the sidebar arrives a moment late, and it needs a page reload after Keep open is turned on or off.
 
 ## Pinch zoom (2026-10-31)
 

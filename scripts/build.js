@@ -93,6 +93,8 @@ function bundle(out, manifest, profile) {
     logLevel: 'warning',
   });
 
+  mkdirSync(`${out}/content/frameless`, { recursive: true });
+  for (const width of DOCKED_WIDTHS) writeFileSync(`${out}/content/frameless/w-${width}.js`, `globalThis.__marginWidth = ${width};\n`);
   for (const file of LEGACY_THEME_FILES) {
     mkdirSync(dirname(`${out}/${file}`), { recursive: true });
     writeFileSync(`${out}/${file}`, '');

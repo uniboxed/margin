@@ -41,7 +41,7 @@ export function startLayout(page, { loader }) {
     widthFrame = null;
     page.view()?.setWidth(liveWidth);
     if (!wasDocked) return; // hidden, the page stays in the frame
-    if (pushed && !railWidth()) setPushed(true, pagePx(liveWidth)); // with the rail, the page stays at the rail
+    if ((pushed || document.documentElement.hasAttribute('data-margin-frameless')) && !railWidth()) setPushed(true, pagePx(liveWidth)); // with the rail, the page stays at the rail
     globalThis.Margin?.shell?.setLayout({ width: pagePx(liveWidth) });
   }
 
@@ -118,7 +118,10 @@ export function startLayout(page, { loader }) {
   let pushSheet = null;
   let pushStyle = null;
   function setPushed(on, width, light = false) {
-    if (document.documentElement.hasAttribute('data-margin-frameless')) return; // test build
+    if (document.documentElement.hasAttribute('data-margin-frameless')) { // test build: content/frameless/a.js follows
+      if (on) document.documentElement.setAttribute('data-margin-left', String(width));
+      return;
+    }
     if (!canPush || globalThis.Margin?.shell || (on === pushed && (!on || (width === pushedWidth && light === pushedLight)))) return; // the fitted layout needs no push
     pushed = on;
     pushedWidth = on ? width : null;

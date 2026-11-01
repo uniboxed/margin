@@ -141,13 +141,16 @@ async function syncFrameless() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
   const on = !!platform?.frameless && !!settings?.sidebarPinnedOpen;
+  // The saved width first (written by scripts/build.js), so a page starts at it.
+  const width = /w-(\d+)/.exec(themeFor(settings).placeholder?.(settings) ?? '')?.[1] ?? '260';
+  const js = [`content/frameless/w-${width}.js`, ...['a', 'c', 'd', 'e'].map((f) => `content/frameless/${f}.js`)];
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [FRAMELESS_ID] });
-  if (on === !!current) return;
+  if (on === !!current && (!on || current.js?.[0] === js[0])) return;
   if (current) await api.scripting.unregisterContentScripts({ ids: [FRAMELESS_ID] });
   if (on) {
     await api.scripting.registerContentScripts([{
       id: FRAMELESS_ID,
-      js: ['a', 'c', 'd', 'e'].map((f) => `content/frameless/${f}.js`),
+      js,
       matches: ['<all_urls>'],
       runAt: 'document_start',
       allFrames: false,

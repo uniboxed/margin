@@ -1,7 +1,7 @@
 // @ts-nocheck
 // (c) page-world shim: window.scrollY/scrollTo/innerWidth/matchMedia and friends speak for body.
-(()=>{if(top!==window)return;
- const L=260,T=8,R=8,B=8,dw=L+R,dh=T+B,html=document.documentElement,body=()=>document.body||html;
+(()=>{if(top!==window||!window.__G||window.__marginRan.c)return;window.__marginRan.c=true;
+ const G=window.__G,dh=G.T+G.B,html=document.documentElement,body=()=>document.body||html;let dw=G.L+G.R;G.on.push(()=>{dw=G.L+G.R});
  const gd=(o,p)=>{for(let x=o;x;x=Object.getPrototypeOf(x)){const d=Object.getOwnPropertyDescriptor(x,p);if(d)return d}};
  const def=(o,p,d)=>Object.defineProperty(o,p,{configurable:true,enumerable:true,...d});
  const ep=Element.prototype,N={};for(const p of ['scrollTop','scrollLeft','scrollHeight','scrollWidth','clientWidth','clientHeight'])N[p]=gd(ep,p);
@@ -17,7 +17,7 @@
  for(const m of ['scrollTo','scrollBy','scroll']){const f=ep[m];window[m]=function(...a){return f.apply(body(),a)};ep[m]=function(...a){return f.apply(this===html?body():this,a)}}
  // Window sizes in queries: a query about the page's width asks about the window's.
  const fmt=n=>String(Math.round(n*1e3)/1e3),px=(n,u)=>u==='px'?+n:n*16;
- const mq=window.__mq=t=>t&&t.replace(/\(\s*(min|max)-(width|height)\s*:\s*(-?[\d.]+)(px|em|rem)\s*\)/gi,(m,k,d,n,u)=>`(${k}-${d}: ${fmt(px(n,u.toLowerCase())+(d.toLowerCase()==='width'?dw:dh))}px)`).replace(/(-?[\d.]+)(px|em|rem)(\s*[<>]=?\s*)(width|height)\b/gi,(m,n,u,o,d)=>fmt(px(n,u.toLowerCase())+(d.toLowerCase()==='width'?dw:dh))+'px'+o+d).replace(/\b(width|height)(\s*[<>]=?\s*)(-?[\d.]+)(px|em|rem)/gi,(m,d,o,n,u)=>d+o+fmt(px(n,u.toLowerCase())+(d.toLowerCase()==='width'?dw:dh))+'px');
+ const mq=window.__mq=(t,w=dw,h=dh)=>t&&t.replace(/\(\s*(min|max)-(width|height)\s*:\s*(-?[\d.]+)(px|em|rem)\s*\)/gi,(m,k,d,n,u)=>`(${k}-${d}: ${fmt(px(n,u.toLowerCase())+(d.toLowerCase()==='width'?w:h))}px)`).replace(/(-?[\d.]+)(px|em|rem)(\s*[<>]=?\s*)(width|height)\b/gi,(m,n,u,o,d)=>fmt(px(n,u.toLowerCase())+(d.toLowerCase()==='width'?w:h))+'px'+o+d).replace(/\b(width|height)(\s*[<>]=?\s*)(-?[\d.]+)(px|em|rem)/gi,(m,d,o,n,u)=>d+o+fmt(px(n,u.toLowerCase())+(d.toLowerCase()==='width'?w:h))+'px');
  const nm=window.matchMedia;window.matchMedia=function(q){return nm.call(window,mq(String(q)))};
  // scroll on body is seen on document and window.
  addEventListener('scroll',e=>{if(e.target===document.body&&e.isTrusted)document.dispatchEvent(new Event('scroll',{bubbles:true}))},true);
