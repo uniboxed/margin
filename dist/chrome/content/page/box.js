@@ -8,6 +8,11 @@ const FRAME = 8;
 // After the last move of a drag, the page's own layout follows (sheets.js, a
 // resize event): a site's layout at every step of a drag would be too much.
 const REST_MS = 150;
+// Reading what a page says about <body>: at most this often, at most
+// 1/MEASURE_SHARE of the time, and never put off for longer than MEASURE_WAIT_MS.
+const MEASURE_GAP_MS = 200;
+const MEASURE_SHARE = 20;
+const MEASURE_WAIT_MS = 1000;
 
 export function startBox(left = DEFAULT_LEFT) {
   const html = document.documentElement;
@@ -19,16 +24,24 @@ export function startBox(left = DEFAULT_LEFT) {
   const fitSheet = sheet(); // <body>'s size in the box (measureBody)
   const paddingSheet = sheet(); // <body>'s margin as padding (measureBody)
   const zoomSheet = sheet(); // a pinch (setZoom)
-  const ours = [boxSheet, fitSheet, scrollSheet, paddingSheet, zoomSheet];
+  const stillSheet = sheet(); // no transitions while <body> is read (measureBody)
+  const ours = [boxSheet, fitSheet, scrollSheet, paddingSheet, zoomSheet, stillSheet];
   const zoom = { scale: 1, x: 0, y: 0 };
   // The browser's own, from before viewport.js speaks for the box.
-  const { computedStyleMap } = Element.prototype;
+  const { computedStyleMap, append, remove } = Element.prototype;
+  const { createElement } = Document.prototype;
+  const computed = window.getComputedStyle;
   const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
   const scrollLeft = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollLeft');
   const scrollOf = (node) => ({ x: scrollLeft.get.call(node), y: scrollTop.get.call(node) });
   function scrollTo(node, { x, y }) {
     if (scrollLeft.get.call(node) !== x) scrollLeft.set.call(node, x);
     if (scrollTop.get.call(node) !== y) scrollTop.set.call(node, y);
+  }
+  // A page's `scroll-behavior: smooth` would show as a climb from the top.
+  const { scrollTo: scrollElement } = Element.prototype;
+  function scrollInstantly(node, { x, y }) {
+    if (scrollLeft.get.call(node) !== x || scrollTop.get.call(node) !== y) scrollElement.call(node, { left: x, top: y, behavior: 'instant' });
   }
   let refused = false; // a frameset: nothing to scroll, no box
 
@@ -58,6 +71,8 @@ export function startBox(left = DEFAULT_LEFT) {
     onToggle: [],
     /** Runs when a <body> arrives, the first or one the page swapped in. @type {(() => void)[]} */
     onBody: [],
+    /** The page's styles changed: what it says about <body> is read again. */
+    bodyMayHaveChanged: measureSoon,
     set,
   };
 
@@ -68,11 +83,16 @@ export function startBox(left = DEFAULT_LEFT) {
     configurable: true,
     enumerable: true,
     get() { return adopted.get.call(this); },
-    set(list) { adopted.set.call(this, [...[...list].filter((s) => !ours.includes(s)), ...ours]); },
+    set(list) {
+      adopted.set.call(this, [...[...list].filter((s) => !ours.includes(s)), ...ours]);
+      box.bodyMayHaveChanged();
+    },
   });
   const write = () => replaceSync.call(boxSheet, box.on ? boxCss(box) : NO_BOX_CSS);
   write();
   replaceSync.call(fitSheet, bodyFitCss());
+  replaceSync.call(stillSheet, 'html > body:where(:first-of-type) { transition: none !important; }');
+  stillSheet.disabled = true;
   adopt();
 
   // ---- <body>'s scrolling and the page's locks --------------------------------
@@ -87,6 +107,7 @@ export function startBox(left = DEFAULT_LEFT) {
   function checkLocks() {
     const { body } = document;
     if (!box.on || !body || body.localName !== 'body') return;
+    if (zoom.scale !== 1) return; // a pinch clips <html>: looked at when it ends (setZoom)
     const root = getComputedStyle(html);
     // A lock that pins <body> (fixed, top: -Ypx) can't be read in computed style
     // (the box's rule holds it relative) and doesn't stop <body> scrolling: its
@@ -116,7 +137,7 @@ export function startBox(left = DEFAULT_LEFT) {
     // No weight, so the page's own rule can be seen; forced, it has to beat
     // even a page's `body { overflow: visible !important }`.
     const forced = pinned || rule.x.forced || rule.y.forced;
-    const css = parts.length ? `@media screen { ${forced ? 'html > body' : ':where(html > body)'} { ${parts.join('; ')} } }` : '';
+    const css = parts.length ? `@media screen { ${forced ? 'html > body:where(:first-of-type)' : ':where(html > body:where(:first-of-type))'} { ${parts.join('; ')} } }` : '';
     if (css !== scrollCss) replaceSync.call(scrollSheet, css);
     scrollCss = css;
     // A page's own `overflow: visible` beats a rule with no weight: said again, to win.
@@ -130,65 +151,157 @@ export function startBox(left = DEFAULT_LEFT) {
   }
 
   // <body> fills the box and scrolls, so what the page says about its size and
-  // margins is read with Margin's rules for them switched off, and comes back
-  // as a height rule and as padding. Computed values (computedStyleMap) need no
-  // layout. Only a body whose margins depend on the width needs one, to read
-  // them in pixels, and only such a body is measured again when the box or the
-  // window changes (`sized`). With no margins at all, what the page sets for
-  // its padding stays the page's.
+  // margins comes back as a height rule and as padding. Two ways to read it.
+  // measureBody takes Margin's rules off <body> to look, which sees everything
+  // but lays the page out at its own height, which on a page in use loses
+  // scroll positions and starts transitions: for when a page loads. After that,
+  // remeasure reads a stand-in, an empty <body> after the real one, in and out
+  // within this task: the page's rules reach it and Margin's don't
+  // (`:first-of-type`), and the real one doesn't move. An empty second <body>
+  // can't match `body:has(...)` and the like, so it's only believed if it
+  // agreed at load (`trusted`); if not, it only says when to look properly.
+  // Computed values (computedStyleMap) need no layout. Only a body whose
+  // margins depend on the width needs one, to read them in pixels, and only
+  // such a body is measured again when the box or the window changes (`sized`).
+  // With no margins at all, what the page sets for its padding stays the page's.
   let padded = false;
   let sized = false;
   let fit = '';
+  let paddingCss = '';
+  let trusted = false;
+  let lastSaid = '';
   const isPixels = (value) => /** @type {any} */ (value)?.unit === 'px';
   const isKeyword = (value, word) => String(value) === word;
-  function measureBody() {
-    const { body } = document;
-    if (!box.on || !body || body.localName !== 'body') return;
-    fitSheet.disabled = paddingSheet.disabled = true;
-    const said = computedStyleMap.call(body);
-    sized = !isPixels(said.get('margin-left')) || !isPixels(said.get('margin-right')) || !isKeyword(said.get('width'), 'auto') || !isKeyword(said.get('max-width'), 'none');
+  function readBody(element) {
+    const said = computedStyleMap.call(element);
+    const wide = !isPixels(said.get('margin-left')) || !isPixels(said.get('margin-right')) || !isKeyword(said.get('width'), 'auto') || !isKeyword(said.get('max-width'), 'none');
     const grows = isKeyword(said.get('height'), 'auto');
-    const style = getComputedStyle(body);
+    const style = computed(element);
     const column = /flex/.test(style.display) && style.flexDirection.startsWith('column');
-    const kept = sized ? scrollOf(body) : null; // laid out at its own height, it may not scroll
     const edges = ['Top', 'Right', 'Bottom', 'Left'];
     const margins = edges.map((edge) => parseFloat(style[`margin${edge}`]) || 0);
     const paddings = edges.map((edge) => parseFloat(style[`padding${edge}`]) || 0);
-    if (sized) {
+    if (wide) {
       // What the page's width leaves over, with margins that don't take it up.
       const borders = (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
       const inner = style.boxSizing === 'border-box' ? 0 : paddings[1] + paddings[3] + borders;
-      const spare = parseFloat(getComputedStyle(html).width) - margins[1] - margins[3] - (parseFloat(style.width) || 0) - inner;
+      const spare = parseFloat(computed(html).width) - margins[1] - margins[3] - (parseFloat(style.width) || 0) - inner;
       if (spare > 0.5 && style.direction !== 'rtl') margins[1] += spare;
     }
     // A margin can't collapse with the first child's as padding does: only what
     // it adds to the child's own stays.
-    const first = body.firstElementChild;
-    if (margins[0] && !paddings[0] && first) margins[0] = Math.max(0, margins[0] - (parseFloat(getComputedStyle(first).marginTop) || 0));
-    fitSheet.disabled = paddingSheet.disabled = false;
-    if (kept) scrollTo(body, kept);
+    const first = document.body.firstElementChild;
+    if (margins[0] && !paddings[0] && first) margins[0] = Math.max(0, margins[0] - (parseFloat(computed(first).marginTop) || 0));
+    return { sized: wide, grows, column, margins, paddings };
+  }
+  function standIn(body) {
+    const twin = createElement.call(document, 'body');
+    // `on*` on a <body> are the window's handlers. A style attribute is refused
+    // by a strict CSP, the same text through the CSSOM isn't.
+    for (const { name, value } of Array.from(body.attributes)) {
+      if (/^(on|background$|style$)/i.test(name)) continue;
+      try {
+        twin.setAttribute(name, value);
+      } catch {} // the parser keeps names that setAttribute refuses
+    }
+    twin.style.cssText = body.style.cssText;
+    const plain = { position: 'static', float: 'none', visibility: 'hidden', transition: 'none', animation: 'none' };
+    for (const [name, value] of Object.entries(plain)) twin.style.setProperty(name, value, 'important');
+    return twin;
+  }
+  // What the stand-in shows, and whether it can stand for <body> at all: in a
+  // flex or grid <html> it would be a second item, and with its width from its
+  // content it has none.
+  function readStandIn(body) {
+    const twin = standIn(body);
+    try {
+      append.call(html, twin);
+      const reading = readBody(twin);
+      const width = computedStyleMap.call(twin).get('width');
+      return { reading, said: JSON.stringify(reading), plain: computed(html).display === 'block' && !/content/.test(String(width)) };
+    } finally {
+      remove.call(twin);
+    }
+  }
+  function applyBody({ sized: wide, grows, column, margins, paddings }) {
+    sized = wide;
     const next = bodyFitCss({ grows, column });
     if (next !== fit) replaceSync.call(fitSheet, next);
     fit = next;
     padded = margins.some(Boolean);
-    replaceSync.call(paddingSheet, !padded ? '' : `@media screen { html > body { margin: 0 !important; padding: ${margins.map((n, i) => `${n + paddings[i]}px`).join(' ')} !important; } }`);
+    const padding = !padded ? '' : `@media screen { html > body:where(:first-of-type) { margin: 0 !important; padding: ${margins.map((n, i) => `${n + paddings[i]}px`).join(' ')} !important; } }`;
+    if (padding !== paddingCss) replaceSync.call(paddingSheet, padding);
+    paddingCss = padding;
+  }
+  function measureBody() {
+    const { body } = document;
+    if (!box.on || !body || body.localName !== 'body') return;
+    const kept = scrollOf(body); // laid out at its own height, it may not scroll
+    stillSheet.disabled = false; // or a read shows a transition's first step
+    fitSheet.disabled = paddingSheet.disabled = true;
+    const reading = readBody(body);
+    fitSheet.disabled = paddingSheet.disabled = false;
+    scrollInstantly(body, kept);
+    void computed(body).marginLeft; // styled again before transitions are back
+    stillSheet.disabled = true;
+    applyBody(reading);
+    const twin = readStandIn(body);
+    lastSaid = twin.said;
+    trusted = twin.plain && twin.said === JSON.stringify(reading);
+  }
+  function remeasure() {
+    const { body } = document;
+    if (!box.on || !body || body.localName !== 'body') return;
+    const twin = readStandIn(body);
+    const changed = twin.said !== lastSaid;
+    lastSaid = twin.said;
+    if (trusted && twin.plain) applyBody(twin.reading);
+    else if (changed) measureBody();
+  }
+
+  const measureNewWidth = () => (trusted ? remeasure() : measureBody());
+
+  // Apps bring their styles after `load`, by a script, so what was read may no
+  // longer be what the page says: read again when its styles change, before
+  // the next paint. Out of sight it waits to be shown.
+  let measureDue = false;
+  let measureTimer = 0;
+  let measureAt = 0;
+  let measureCost = 0;
+  function measureSoon() {
+    if (!box.on || measureTimer) return;
+    measureDue = true;
+    if (document.hidden) return;
+    const wait = Math.max(0, measureAt + Math.min(MEASURE_WAIT_MS, Math.max(MEASURE_GAP_MS, measureCost * MEASURE_SHARE)) - performance.now());
+    measureTimer = setTimeout(() => requestAnimationFrame(() => {
+      measureTimer = 0;
+      measureDue = false;
+      const started = performance.now();
+      remeasure();
+      checkLocks();
+      measureAt = performance.now();
+      measureCost = measureAt - started;
+    }), wait);
   }
 
   // What <html>'s and <body>'s class and style say can lock the page. At most
   // once a frame, and not if neither changed.
   let lockKey = '';
   let lockFrame = 0;
+  const attributesOf = (node) => (node ? Array.from(node.attributes, ({ name, value }) => `${name}=${value}`).join(' ') : '');
   const lockChanged = () => {
-    const key = `${html.className} ${html.getAttribute('style')} ${document.body?.className} ${document.body?.getAttribute('style')}`;
-    if (key === lockKey || lockFrame) return;
+    const key = `${attributesOf(html)} ${attributesOf(document.body)}`;
+    if (key === lockKey) return;
     lockKey = key;
+    measureSoon(); // any attribute can select what <body>'s size and margins are
+    if (lockFrame) return;
     lockFrame = requestAnimationFrame(() => {
       lockFrame = 0;
       checkLocks();
     });
   };
   const locks = new MutationObserver(lockChanged);
-  const LOCK_OPTIONS = { attributes: true, attributeFilter: ['class', 'style'] };
+  const LOCK_OPTIONS = { attributes: true };
   locks.observe(html, LOCK_OPTIONS);
 
   // An absolute element a page puts directly under <html> is placed against
@@ -238,7 +351,7 @@ export function startBox(left = DEFAULT_LEFT) {
     if (!sized || !event.isTrusted || resizeFrame) return;
     resizeFrame = requestAnimationFrame(() => {
       resizeFrame = 0;
-      measureBody();
+      measureNewWidth();
     });
   });
 
@@ -254,7 +367,7 @@ export function startBox(left = DEFAULT_LEFT) {
     const before = restFrom;
     restFrom = null;
     for (const fn of box.onRest) fn(before);
-    if (sized) measureBody(); // a body with auto margins is centred in the new width
+    if (sized) measureNewWidth(); // a body with auto margins is centred in the new width
     dispatchEvent(new Event('resize'));
   }
   function restSoon(before, live) {
@@ -264,7 +377,11 @@ export function startBox(left = DEFAULT_LEFT) {
     if (live) restTimer = setTimeout(rest, REST_MS);
     else rest();
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) rest(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    rest();
+    if (measureDue) measureSoon();
+  });
   // In and out of full screen, what the page's world is told changes with no
   // move of the box: its media queries and lists follow now, not after a delay.
   document.addEventListener('fullscreenchange', () => {
@@ -302,6 +419,7 @@ export function startBox(left = DEFAULT_LEFT) {
     for (const emptied of [fitSheet, scrollSheet, paddingSheet]) replaceSync.call(emptied, '');
     scrollCss = '';
     fit = '';
+    paddingCss = '';
     for (const mine of [rule.x, rule.y]) Object.assign(mine, { value: '', said: '', forced: false, force: false });
     padded = false;
     scrollTo(html, scrolled);
@@ -320,10 +438,12 @@ export function startBox(left = DEFAULT_LEFT) {
     box.scale = zoom.scale;
   }
   function setZoom(scale, x, y, moving = false) {
+    const ended = zoom.scale !== 1 && scale === 1;
     Object.assign(zoom, { scale, x, y });
     place();
     const transform = `transform: translate(${box.x}px, ${box.y}px) scale(${scale}) !important;`;
     replaceSync.call(zoomSheet, scale === 1 ? '' : `@media screen { html { ${transform} ${moving ? 'will-change: transform !important;' : ''} overflow: clip !important; } }`);
+    if (ended) checkLocks();
   }
   place();
 

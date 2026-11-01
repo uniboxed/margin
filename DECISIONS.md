@@ -1048,3 +1048,19 @@ Reviewers tried the box against fixtures and real sites (each finding reproduced
 - **Chrome's full-screen-only mode has no placeholder at all:** CSS can't tell windows apart.
 - **The `unloaded` scenario's intermittent failure** (entry above) was the host's background stopping about 5 s after it starts: the switch began at 5.3 to 5.9 s. Started sooner, it passed 6 of 6.
 - **Verified:** `npm test`, `npm run test:webkit` (new `body-size`, `in-view`, `answers`, `keys`, `history`, `top-layer`, `linked-sheet`, `update-old-layout`, more checks in `lock` and `zoom`). Fixtures of each finding in headless WebKit and Chromium with the real page bundle, full screen included. Not run: real Safari, a trackpad, signed-in sites, the end-to-end tests, Chrome as an extension.
+
+## Reading `<body>` again after `load` (2026-11-01)
+
+Tirth's Outlook showed 8 px gaps at the left, top and right and a large one at the bottom once mail had loaded. Margin read what a page says about `<body>` at its arrival, DOMContentLoaded and `load`, and Outlook's loader adds its sheets after that: the browser's default margin stayed as padding, and "no height" stayed too, which kept the app's percent heights auto. Replaying Outlook's real sheets after `load` gave the same picture and, with this change, a shell that fills the box. Signed-in Outlook wasn't run.
+
+- **Read again when styles change:** new or removed sheets, a link loading, a script's rule edits, adopted sheets, `media` on a sheet, and any attribute that really changed on `<html>` or `<body>`. At most every 200 ms and 1/20 of the time, never put off past 1 s, before a paint, and only once a hidden tab is shown.
+- **Not with Margin's rules off.** That lays `<body>` out at its own height: reviewers saw scroll positions lost, smooth pages climbing from the top, inner scrollers reset, and `transition: all` pages ending in the wrong layout.
+- **A stand-in instead:** an empty `<body>` after the real one, in and out within one task. The page's rules reach it and Margin's don't (`html > body:where(:first-of-type)`, the same weight as before, so a page's `!important` class still wins), and the real one doesn't move.
+- **Believed only if it agreed at load.** An empty second `<body>` can't match `body:has(...)` or `head + body`, and misreads a width from content or a flex `<html>`. At load both are read and compared; if they differ, the page keeps the old read, with transitions held, and the stand-in only says when to run it, and a new width does.
+- **Left as it is:**
+  - A late rule the stand-in can't see (`body:has(#app)` in a late sheet) goes unread until something else changes.
+  - So do `rule.style` edits, `sheet.disabled` and text-node edits of a `<style>`.
+  - Page observers see a `<body>` come and go on each read. An observer that changes something every time it wakes re-reads about 5 times a second, which is bounded; no library tested does.
+  - The moment the stand-in is in, `<body>` isn't `:last-child`, so a transition on that can start, and `body:empty` images load.
+  - WebKit's reads at load on a 20,000-element page total 519 ms against 403.
+- **Better on the way:** a centred, scrolled page no longer goes to the top when the sidebar's width changes, and a pinch no longer records its own clip as the page's scroll lock.

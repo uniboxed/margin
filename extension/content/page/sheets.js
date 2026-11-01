@@ -7,8 +7,10 @@ import { asksSize, hasUnits, shiftQuery, shiftUnits } from '../../shared/page-cs
 export function startSheets(box) {
   const ours = new Set(box.ours);
   const sheetProto = CSSStyleSheet.prototype;
-  const { insertRule, replace, replaceSync } = sheetProto;
+  const { insertRule, deleteRule, replace, replaceSync } = sheetProto;
+  const { addRule, removeRule } = sheetProto;
   const seen = new WeakSet();
+  let fresh = false; // a sheet of the document's not seen before
 
   // ---- media queries --------------------------------------------------------
   // Holders (a sheet or a @media rule) whose query has a size in it, with what
@@ -74,6 +76,7 @@ export function startSheets(box) {
       return; // another origin's, no CORS: content/page-link.js fetches those
     }
     seen.add(sheet);
+    fresh ||= !!sheet.ownerNode; // adopted ones say so as they're set (box.js)
     try {
       moveHolder(sheet, box.seenW(), box.seenH());
     } catch {}
@@ -103,19 +106,36 @@ export function startSheets(box) {
     visit(this);
     const at = insertRule.call(this, typeof rule === 'string' ? shiftUnits(rule) : rule, index);
     trackQueries([this.cssRules[at]]);
+    box.bodyMayHaveChanged();
     return at;
+  };
+  sheetProto.deleteRule = function (index) {
+    deleteRule.call(this, index);
+    if (!ours.has(this)) box.bodyMayHaveChanged();
+  };
+  sheetProto.addRule = function (...args) {
+    visit(this);
+    const at = addRule.apply(this, args);
+    box.bodyMayHaveChanged();
+    return at;
+  };
+  sheetProto.removeRule = function (...args) {
+    removeRule.apply(this, args);
+    box.bodyMayHaveChanged();
   };
   sheetProto.replaceSync = function (text) {
     if (ours.has(this)) return replaceSync.call(this, text);
     seen.add(this);
     replaceSync.call(this, shiftUnits(String(text)));
     trackQueries(this.cssRules);
+    box.bodyMayHaveChanged();
   };
   sheetProto.replace = function (text) {
     if (ours.has(this)) return replace.call(this, text);
     seen.add(this);
     return replace.call(this, shiftUnits(String(text))).then((sheet) => {
       trackQueries(this.cssRules);
+      box.bodyMayHaveChanged();
       return sheet;
     });
   };
@@ -151,7 +171,9 @@ export function startSheets(box) {
     frame = 0;
     waiting = false;
     if (!box.on) return;
+    fresh = false;
     visitRoot(document);
+    if (fresh || document.styleSheets.length !== sheetCount) box.bodyMayHaveChanged();
     sheetCount = document.styleSheets.length;
     for (const root of dirtyRoots) if (connected(root)) visitRoot(root);
     dirtyRoots.clear();
@@ -180,7 +202,9 @@ export function startSheets(box) {
         // record of our own write finds nothing left to rewrite, and animated
         // styles cost one test.
         const target = /** @type {any} */ (record.target);
-        if (hasUnits(target.getAttribute('style') ?? '')) shiftInline(target);
+        if (record.attributeName === 'style') {
+          if (hasUnits(target.getAttribute('style') ?? '')) shiftInline(target);
+        } else if (isStyle(target)) box.bodyMayHaveChanged();
         continue;
       }
       if (isStyle(record.target)) changed = true;
@@ -202,7 +226,7 @@ export function startSheets(box) {
     }
     if (changed || addedRoots.size || dirtyRoots.size || rescan.size || document.styleSheets.length !== sheetCount) soon();
   });
-  const WATCH = { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] };
+  const WATCH = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'media', 'disabled'] };
   const roots = new WeakSet();
   function watchRoot(root) {
     if (roots.has(root)) return;
@@ -220,7 +244,9 @@ export function startSheets(box) {
 
   // A sheet that has just loaded: rewritten before it's painted.
   document.addEventListener('load', (event) => {
-    if (/** @type {Element} */ (event.target).nodeName === 'LINK') pass();
+    if (/** @type {Element} */ (event.target).nodeName !== 'LINK') return;
+    pass();
+    box.bodyMayHaveChanged(); // another origin's sheet can't be read, but it applies
   }, true);
   // Always, hidden or not: a tab prepared behind the page is ready when it's shown.
   document.addEventListener('DOMContentLoaded', pass);

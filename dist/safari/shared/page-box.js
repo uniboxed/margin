@@ -22,9 +22,11 @@ export function boxRules(selector, { left, top, right, bottom }) {
   }`;
 }
 
-// <body>'s size in the box: its own sheet, so a single switch shows what the
-// page says about it (content/page/box.js measureBody). It fills the box and
-// is the scroller, so its scrollbar stays at the box's edge; what the page
+// <body>'s size in the box. `:first-of-type` (with no weight, a page's
+// `!important` class still wins as it would) here and in every rule on <body>:
+// a stand-in <body> is the second, and has to show what the page alone says
+// about it (content/page/box.js measureBody). <body> fills the box and is the
+// scroller, so its scrollbar stays at the box's edge; what the page
 // meant by a width comes back as padding.
 // `grows`: the page gives <body> no height, so it would grow with its content.
 // Its height stays auto, which keeps a child's percent height auto too, held
@@ -35,8 +37,8 @@ export function bodyFitCss({ grows = false, column = false } = {}) {
     ? 'height: auto !important; min-height: 100% !important; max-height: 100% !important;'
     : 'height: 100% !important; min-height: 0 !important; max-height: none !important;';
   return `@media screen {
-    html > body { width: auto !important; max-width: none !important; box-sizing: border-box !important; ${height} }
-    ${grows && column ? 'html > body > * { flex-shrink: 0 !important; flex-basis: auto !important; }' : ''}
+    html > body:where(:first-of-type) { width: auto !important; max-width: none !important; box-sizing: border-box !important; ${height} }
+    ${grows && column ? 'html > body:where(:first-of-type) > * { flex-shrink: 0 !important; flex-basis: auto !important; }' : ''}
   }`;
 }
 
@@ -53,7 +55,7 @@ export function boxCss(box) {
     :root { --margin-dw: ${dw}px; --margin-dh: ${dh}px; }
     ${boxRules('html', box)}
     /* inset: a page's scroll lock (fixed, top: -Ypx) mustn't move the scroller. */
-    html > body {
+    html > body:where(:first-of-type) {
       position: relative !important; inset: auto !important;
       scroll-padding: inherit !important; scroll-behavior: inherit !important; scroll-snap-type: inherit !important; overscroll-behavior: inherit !important;
     }

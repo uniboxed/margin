@@ -26,6 +26,17 @@ const BOX_CSS = `#wide { color: rgb(9, 9, 9); }
 const BOX_BODY = '<h1 id=wide>Tall</h1><div id=full></div><div style="width: 400px"><div id=bleed></div></div><div id=inline style="height: 100vh"></div><div style="height: 3000px">end</div>';
 const TALL = '<div style="height: 5000px">tall</div>';
 const FIXTURES = {
+  // Apps that say what <body> is only after `load`, by a <style>, a <link>, a rule a script inserts, a class.
+  'late-style': `<script>addEventListener('load', () => setTimeout(() => { const s = document.createElement('style'); s.textContent = 'html, body { margin: 0; height: 100% } #app { height: 100% }'; document.head.append(s); }, 300));</script><div id=app>Mail</div>`,
+  'late-link': `<script>addEventListener('load', () => setTimeout(() => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'data:text/css,html, body { margin: 0; height: 100%25 } %23app { height: 100%25 }'; document.head.append(l); }, 300));</script><div id=app>Mail</div>`,
+  'late-rule': `<style id=s></style><script>addEventListener('load', () => setTimeout(() => { const sheet = document.getElementById('s').sheet; sheet.insertRule('#app { height: 100% }'); sheet.insertRule('html, body { margin: 0; height: 100% }'); }, 300));</script><div id=app>Mail</div>`,
+  'late-class': `<style>body.ready { margin: 0; height: 100% } #app { height: 100% }</style><script>addEventListener('load', () => setTimeout(() => document.body.classList.add('ready'), 300));</script><div id=app>Mail</div>`,
+  'late-scrolled': `<style>html { scroll-behavior: smooth } body { transition: all 1s; margin: 40px } aside { position: absolute; top: 0; height: 200px; width: 100px; overflow: auto } </style><aside id=pane><div style="height: 3000px"></div></aside><div id=tall style="height: 5000px"></div>`,
+  'body-has': `<style>html { height: 100% } body:has(#app) { margin: 0; height: 100% } #app { height: 100% }</style><div id=app>Mail</div>`,
+  'body-fit': `<style>body { width: fit-content; max-width: 600px; margin: 0 auto }</style><p id=p>Some words that take up the width of the column they sit in, more than one line of them, and then some more.</p>`,
+  'html-flex': `<style>html { display: flex; height: 100% } body { margin: auto; width: 500px }</style><p id=p>Centred both ways.</p>`,
+  'observer': `<script>new MutationObserver(() => document.documentElement.dataset.seen = '1').observe(document, { childList: true, subtree: true });</script><div id=app>Mail</div>`,
+  'body-has-moving': `<style>body:has(main) { max-width: 600px; margin: 0 auto; transition: all 1s }</style><main id=h>Centred</main>`,
   'center-max': `<style>body { max-width: 600px; margin: 0 auto }</style><h1 id=h>Centred</h1>${TALL}`,
   'center-width': `<style>body { width: 600px; margin: 40px auto }</style><h1 id=h style="margin: 0">Centred</h1>${TALL}`,
   'flex-column': '<style>body { margin: 0; display: flex; flex-direction: column; min-height: 100vh } section { height: 800px; overflow: hidden; flex: 0 1 auto } footer { height: 80px }</style><section id=a>a</section><section>b</section><footer id=f>f</footer>',

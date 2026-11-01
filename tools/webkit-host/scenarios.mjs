@@ -210,6 +210,48 @@ export const SCENARIOS = {
     { op: 'open', name: 'Q', url: '/x/app', active: true }, boxed('Q', 360),
     checkPage('Q', 'Q: an app that fills the window still does', `return ${rect('app')}[3] === innerHeight`, 2000),
   ],
+  // An app whose reset comes after `load`: <body>'s default margin and auto
+  // height mustn't stay what Margin read first.
+  'late-body': [
+    ...startBoxed('A', '/p/A'),
+    { op: 'open', name: 'S', url: '/x/late-style', active: true }, boxed('S'),
+    checkPage('S', 'S: a <style> after load: the app fills the box', `const r = ${rect('app')}; return r[0] === 0 && r[1] === 0 && r[2] === innerWidth && r[3] === innerHeight`, 2000),
+    { op: 'open', name: 'L', url: '/x/late-link', active: true }, boxed('L'),
+    checkPage('L', 'L: a <link> after load: the app fills the box', `const r = ${rect('app')}; return r[0] === 0 && r[1] === 0 && r[2] === innerWidth && r[3] === innerHeight`, 2000),
+    { op: 'open', name: 'R', url: '/x/late-rule', active: true }, boxed('R'),
+    checkPage('R', 'R: a rule a script inserts: the app fills the box', `const r = ${rect('app')}; return r[0] === 0 && r[1] === 0 && r[2] === innerWidth && r[3] === innerHeight`, 2000),
+    { op: 'open', name: 'C', url: '/x/late-class', active: true }, boxed('C'),
+    checkPage('C', 'C: a class on <body>: the app fills the box', `const r = ${rect('app')}; return r[0] === 0 && r[1] === 0 && r[2] === innerWidth && r[3] === innerHeight`, 2000),
+    // What the stand-in can't see is still read from <body> itself.
+    { op: 'open', name: 'H', url: '/x/body-has', active: true }, boxed('H'),
+    checkPage('H', 'H: body:has(): the app fills the box', `const r = ${rect('app')}; return r[0] === 0 && r[1] === 0 && r[3] === innerHeight`, 2000),
+    { op: 'open', name: 'F', url: '/x/body-fit', active: true }, boxed('F'),
+    checkPage('F', 'F: a width from its content stays that width, centred', `const r = ${rect('p')}; return r[2] === 600 && ${near('r[0]', '(innerWidth - 600) / 2')}`, 2000),
+    { op: 'page', in: 'F', js: `document.head.append(Object.assign(document.createElement('style'), { textContent: '.nothing { color: red }' })); return 'styled'` },
+    wait(400),
+    checkPage('F', 'F: and after a late sheet', `const r = ${rect('p')}; return r[2] === 600 && ${near('r[0]', '(innerWidth - 600) / 2')}`, 500),
+    { op: 'open', name: 'X', url: '/x/html-flex', active: true }, boxed('X'),
+    checkPage('X', 'X: <html> a flex box: <body> still centred', `return ${near(`${rect('p')}[0]`, '(innerWidth - 500) / 2')}`, 2000),
+    { op: 'open', name: 'M', url: '/x/body-has-moving', active: true }, boxed('M'),
+    wait(300),
+    { op: 'page', in: 'M', js: `document.head.append(Object.assign(document.createElement('style'), { textContent: 'body { padding-bottom: 3px }' })); return 'styled'` },
+    wait(500),
+    checkPage('M', 'M: read from <body> with a transition: still centred', `const r = ${rect('h')}; return r[2] === 600 && ${near('r[0]', '(innerWidth - 600) / 2')}`, 500),
+    { op: 'eval', in: 'M', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { themes: { arcadia: { sidebarWidth: 360 } } } }))' },
+    boxed('M', 360),
+    checkPage('M', 'M: and in a new width', `const r = ${rect('h')}; return r[2] === 600 && ${near('r[0]', '(innerWidth - 600) / 2')}`, 2000),
+    // A page that reacts to what it sees added doesn't set off reading for ever.
+    { op: 'open', name: 'O', url: '/x/observer', active: true }, boxed('O', 360),
+    wait(600),
+    { op: 'page', in: 'O', js: `window.__bodies = 0; new MutationObserver((records) => { for (const r of records) for (const n of r.addedNodes) if (n.localName === 'body') __bodies++; }).observe(document.documentElement, { childList: true }); return 'watching'` },
+    wait(800),
+    checkPage('O', 'O: nothing changed, nothing read', `__bodies === 0`, 200),
+    // Reading again moves nothing on a page in use.
+    { op: 'open', name: 'T', url: '/x/late-scrolled', active: true }, boxed('T', 360),
+    { op: 'page', in: 'T', js: `document.getElementById('pane').scrollTop = 900; document.scrollingElement.scrollTo({ top: 3000, behavior: 'instant' }); ${tick} window.__scrolls = 0; addEventListener('scroll', () => __scrolls++, true); window.__moved = 0; addEventListener('transitionrun', () => __moved++); document.head.append(Object.assign(document.createElement('style'), { textContent: '.nothing { color: red }' })); return 'styled'` },
+    wait(600),
+    checkPage('T', 'T: a late sheet: both scrollers where they were, no scroll, no transition, one <body>', `document.scrollingElement.scrollTop === 3000 && document.getElementById('pane').scrollTop === 900 && __scrolls === 0 && __moved === 0 && document.querySelectorAll('body').length === 1 && getComputedStyle(document.body).paddingLeft === '40px'`, 500),
+  ],
   // What a page asks about what's in view, with no root of its own.
   'in-view': [
     ...startBoxed('V', '/x/views'),

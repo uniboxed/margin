@@ -25,6 +25,7 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 | `update` | Margin updated while a page with a typed draft is open: the new copy takes over, the draft stays, one sidebar shows |
 | `box`, `hidden-box`, `toggle` | The page's box with Keep open and hidden, live toggling, the scroll handed over, media queries and viewport units, no box and nothing loaded |
 | `csp`, `lock` | A strict CSP; a page's scroll locks (a body pinned with `position: fixed` too), modals, stray absolute elements |
+| `late-body` | Styles for `<body>` that arrive after `load`, read again; what a stand-in can't see; nothing moves on a page in use. |
 | `body-size` | `<body>`'s own size in the box: centred columns before and after a sidebar resize, flex columns and percent heights that grow, an app that fills the window |
 | `in-view` | IntersectionObserver with no root: fixed targets, `<body>`, the page's margin, entries in the page's coordinates, the box going off, a swapped `<body>` |
 | `answers` | `offsetHeight`, `caretPositionFromPoint`, viewport units a script sets on elements already there |
