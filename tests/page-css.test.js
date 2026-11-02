@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksSize, hasUnits, shiftQuery, shiftUnits } from '../extension/shared/page-css.js';
-import { NO_BOX_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
+import { readFileSync } from 'node:fs';
+import { FITTED_BODY, HOLD_ELEMENT, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
 
 test('a query about the window\'s size moves by the room the page doesn\'t have', () => {
   assert.equal(shiftQuery('(max-width: 900px)', 268, 16), '(max-width: 1168px)');
@@ -70,9 +71,43 @@ test('the body: nothing the placeholders share, its width in a sheet of its own,
   assert.doesNotMatch(boxCss(box), /max-width: none !important; box-sizing: border-box !important; height/);
   assert.match(boxCss(box), /position: relative !important; inset: auto !important/);
   assert.match(bodyFitCss(), /width: auto !important; max-width: none !important/);
-  assert.match(bodyFitCss(), /height: 100% !important; min-height: 0 !important/);
-  assert.match(bodyFitCss({ grows: true }), /height: auto !important; min-height: 100% !important; max-height: 100% !important/);
+  assert.match(bodyFitCss(), /box-sizing: border-box !important; height: 100% !important;/);
+  assert.match(bodyFitCss({ grows: true }), /box-sizing: border-box !important; height: auto !important;/);
+  for (const options of [{}, { grows: true }]) assert.match(bodyFitCss(options).split('\n')[1], /^\s*html > body:where\(:first-of-type\) \{ min-height: 100% !important; max-height: 100% !important; \}/, 'kept through a read, not behind it: a layout during one must not shrink <body> past its scroll');
   assert.doesNotMatch(bodyFitCss({ grows: true }), /flex-shrink/);
   assert.match(bodyFitCss({ grows: true, column: true }), /flex-shrink: 0 !important/);
   assert.doesNotMatch(bodyFitCss({ column: true }), /flex-shrink/, 'a body the page holds at the box\'s height lets its children shrink, as in a window');
+});
+
+test('a read leaves nothing in the page, and is held against what a page says', () => {
+  assert.ok(FITTED_BODY.includes(`:nth-last-child(1 of body:first-of-type, ${READ_ELEMENT})`), 'on with nothing there: a page\'s new <html> or a stray <body> changes nothing');
+  assert.ok(STILL_CSS.includes(`:nth-last-child(1 of body:first-of-type, ${HOLD_ELEMENT})`));
+  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS}`, /:state\(/, 'the element has no custom state: nothing to define, nothing a page can refuse');
+  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS}`, /~ body|\+ body/, 'after <body>, not before: `:nth-child` and `head:first-child + body` stay the page\'s');
+  const source = readFileSync(new URL('../extension/content/page/box.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /customElements|attachInternals/, 'a page can patch or refuse the registry');
+  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS}`, /:has\(/, 'it costs every page in Chromium as children are added');
+  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS} ${SAID_CSS}`, /data-margin|\[data-/);
+  assert.match(STILL_CSS, /:not\(#m#m#m#m#m\)/, 'the weight of five ids: a page\'s `html body#b { transition: all !important }` loses');
+  assert.match(STILL_CSS, /::before.*::after/, 'pseudo-elements inherit from <body>');
+  assert.match(bodyFitCss({ held: true }), /\* \{ transition-duration: 0s !important/);
+  assert.doesNotMatch(bodyFitCss(), /\* \{ transition-duration/, 'only on a page that needs it: it restyles the whole page');
+});
+
+test('the rule that reads top margins depends on no sibling, and stays off real backdrops', () => {
+  assert.doesNotMatch(SAID_CSS, /:(first|last|only)-child|:nth-/, 'a structural pseudo-class costs every parent on each child added or removed');
+  assert.match(SAID_CSS, /:not\(dialog, \[popover\], :fullscreen\)::backdrop/);
+});
+
+test('a rule on <html>\'s size has to outweigh nothing to hide the flags', () => {
+  for (const flag of [READ_ELEMENT, HOLD_ELEMENT]) assert.ok(STILL_CSS.includes(`${flag}:not(#m#m#m#m#m)`), 'a page\'s `:root :not(#z#z) { display: block !important }` must not show one');
+});
+
+test('the box follows a page\'s zoom on <html>', () => {
+  const box = { left: 300, top: 10, right: 10, bottom: 10 };
+  assert.ok(boxRules('html', box).includes('calc(100vw - 310px)'), 'with no zoom, as ever');
+  const zoomed = boxCss(box, 2);
+  assert.ok(zoomed.includes('calc(50vw - 155px)'));
+  assert.ok(zoomed.includes('translate(150px, 5px)'));
+  assert.ok(zoomed.includes('--margin-dw: 155px'));
 });

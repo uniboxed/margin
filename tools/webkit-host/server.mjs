@@ -25,6 +25,8 @@ const BOX_CSS = `#wide { color: rgb(9, 9, 9); }
 .locked { overflow: hidden; }`;
 const BOX_BODY = '<h1 id=wide>Tall</h1><div id=full></div><div style="width: 400px"><div id=bleed></div></div><div id=inline style="height: 100vh"></div><div style="height: 3000px">end</div>';
 const TALL = '<div style="height: 5000px">tall</div>';
+// A read is a <margin-read> in <html> for a moment: this counts them.
+const COUNT_READS = `<script>window.__reads = 0; new MutationObserver((records) => { for (const r of records) for (const n of r.addedNodes) if (n.localName === 'margin-read') __reads++; }).observe(document.documentElement, { childList: true });</script>`;
 const FIXTURES = {
   // Apps that say what <body> is only after `load`, by a <style>, a <link>, a rule a script inserts, a class.
   'late-style': `<script>addEventListener('load', () => setTimeout(() => { const s = document.createElement('style'); s.textContent = 'html, body { margin: 0; height: 100% } #app { height: 100% }'; document.head.append(s); }, 300));</script><div id=app>Mail</div>`,
@@ -37,6 +39,53 @@ const FIXTURES = {
   'html-flex': `<style>html { display: flex; height: 100% } body { margin: auto; width: 500px }</style><p id=p>Centred both ways.</p>`,
   'observer': `<script>new MutationObserver(() => document.documentElement.dataset.seen = '1').observe(document, { childList: true, subtree: true });</script><div id=app>Mail</div>`,
   'body-has-moving': `<style>body:has(main) { max-width: 600px; margin: 0 auto; transition: all 1s }</style><main id=h>Centred</main>`,
+  // What a read of the real <body> reaches, and what edits a sheet with no new sheet.
+  'late-has': `<script>addEventListener('load', () => setTimeout(() => { const s = document.createElement('style'); s.textContent = 'html { height: 100% } body:has(#app) { margin: 0; height: 100% } #app { height: 100% }'; document.head.append(s); }, 300));</script><div id=app>Mail</div>`,
+  'late-text': `<style id=s>.nothing { color: red }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').firstChild.data = 'html, body { margin: 0; height: 100% } #app { height: 100% }'; }, 300));</script><div id=app>Mail</div>`,
+  'late-disabled': `<style>html, body { margin: 0; height: 100% } #app { height: 100% }</style><style id=s>body { margin: 40px }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').sheet.disabled = true; }, 300));</script><div id=app>Mail</div>`,
+  'late-rule-style': `<style>html, body { height: 100% } #app { height: 100% }</style><style id=s>body { margin: 40px }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').sheet.cssRules[0].style.margin = '0'; }, 300));</script><div id=app>Mail</div>`,
+  'late-selector': `<style>html, body { height: 100% } #app { height: 100% }</style><style id=s>.nothing { margin: 0 }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').sheet.cssRules[0].selectorText = 'body'; }, 300));</script><div id=app>Mail</div>`,
+  'calc-width': `<style>body { width: calc(100% - 100px); margin: 0 auto }</style><h1 id=h style="margin: 0">Centred</h1>${TALL}`,
+  'percent-pad': `<style>body { margin: 0; padding: 0 5% }</style><h1 id=h style="margin: 0">Padded</h1>`,
+  'rtl-width': `<style>body { direction: rtl; width: 600px; margin: 0 }</style><h1 id=h style="margin: 0">Right</h1>`,
+  'first-margin': `<h1 id=h>Top</h1><style>body { margin: 30px } #h { margin: 1% 0 0 }</style>`,
+  'first-dialog': `<dialog id=d>Open</dialog><style>body { margin: 30px } dialog { margin: 100px auto }</style><p id=p style="margin: 0">Under it</p>`,
+  'moving': `<style>body { background: rgb(255, 255, 255); transition: background-color 1s } body.dark { background: rgb(0, 0, 0) }</style><p id=p>Fades</p>`,
+  'column-moving': `<style>html, body { height: 100% } body { display: flex; flex-direction: column; height: auto; min-height: 100vh } body > * { transition: all .5s; flex: 1 1 0 }</style><section id=a>a</section><section>b</section>`,
+  // A body whose margin moves; a first child's margin; rules and lists a script edits.
+  'read-drawer': `<style>body { margin: 0; transition: margin-left .4s linear } body.open { margin-left: 300px }</style><p id=h style="margin: 0">Page</p>${TALL}`,
+  'read-key': `${COUNT_READS}<style>body { margin: 8px }</style><div id=a>First</div><p id=h style="margin: 0">Next</p>`,
+  'read-wrapper': `<style>body { margin: 8px }</style><div id=w><h1 id=h style="margin: 40px 0 0; height: 30px">Top</h1></div>`,
+  'read-neg-child': `<style>body { margin: 8px }</style><div id=h style="margin-top: -5px; height: 20px">Top</div>`,
+  'read-border-top': `<style>body { margin: 8px; border-top: 2px solid }</style><div id=h style="margin-top: 20px; height: 20px">Top</div>`,
+  'read-flex': `<style>body { margin: 8px; display: flex }</style><div id=h style="margin-top: 20px; height: 20px">Top</div>`,
+  'read-abs-first': `<style>body { margin: 8px }</style><div style="position: absolute; margin-top: 30px"></div><div id=h style="height: 20px">Top</div>`,
+  'read-neg-body': `<style>body { margin: 0 0 0 -20px }</style><div id=h style="height: 20px">Top</div>`,
+  'read-zoom-body': `<style>body { zoom: 1.5; max-width: 400px; margin: 0 auto }</style><div id=h style="height: 20px">Top</div>`,
+  'read-zoom-html': `<style>html { zoom: 1.25 } body { max-width: 400px; margin: 0 auto }</style><div id=h style="height: 20px">Top</div>`,
+  'read-border-box': `<style>body { box-sizing: border-box; width: 500px; padding: 0 20px; border: 0 solid; border-width: 0 5px; margin: 0 auto }</style><div id=h style="height: 20px">Top</div>`,
+  'read-query': `<style>body { margin: 40px } @media (max-width: 800px) { body { margin: 0 } }</style><div id=h style="height: 20px">Top</div>`,
+  'read-vw': `<style>body { margin: 0 5vw }</style><div id=h style="height: 20px">Top</div>`,
+  'read-sheets': `${COUNT_READS}<style id=m>body { margin: 40px }</style><style id=l>body { margin-top: 40px }</style><style id=q>@media screen { body { padding-top: 7px } }</style><div id=h style="height: 20px">Top</div>`,
+  'read-has': `${COUNT_READS}<style>body:has(.on) { margin: 33px } .card:has(img) { color: red }</style><div id=h style="height: 20px">Top</div><div id=x></div>`,
+  'read-container': `<style>body { margin: 0 } .c { container-type: inline-size } @container (min-width: 1px) { p { color: rgb(1, 1, 1) } }</style><div class=c id=c>${TALL}${TALL}</div>`,
+  'read-strong': `<style>html body#b { transition: all .5s !important; max-width: 600px; margin: 0 auto } body::before { content: ''; display: block; padding: inherit; margin: inherit; transition: all .3s }</style><p id=h>Page</p>`,
+  'read-dialog': `<dialog id=d>Open</dialog><style>dialog { margin-top: 90px; transition: overlay .5s allow-discrete, display .5s allow-discrete, opacity .5s; opacity: 1 } dialog::backdrop { transition: all .5s }</style><p id=h>Page</p>`,
+  'read-fit-smooth': `<style>body { width: fit-content; min-width: 600px; scroll-behavior: smooth }</style><div id=h>${TALL}${TALL}</div>`,
+  'read-echo': `${COUNT_READS}<script>new MutationObserver((records) => { if (records.some((r) => r.attributeName !== 'data-sync')) document.documentElement.dataset.sync = String(Math.random()); }).observe(document.documentElement, { attributes: true });</script><p id=h>Page</p>`,
+  'read-idle': `${COUNT_READS}<style>body { margin: 12px }</style><p id=h style="margin: 0">Page</p>${TALL}`,
+  // What a page finds in its own document, and lengths that move by other routes.
+  'shape-nth': `<div id=h style="height: 20px">Top</div>`,
+  'shape-html': `<style>body { max-width: 700px; margin: 0 auto }</style><div id=h style="height: 20px">Top</div><script>window.__parsed = [...document.documentElement.children].map((c) => c.localName).join();</script>`,
+  'shape-zoom': `<style>.z { zoom: 1.5 } body { margin: 20px }</style><div id=h style="height: 20px">Top</div>`,
+  'shape-text': `<style>body { margin: 8px }</style><div>hello<p id=h style="margin-top: 40px">Below</p></div>`,
+  'shape-contain': `<style>body { margin: 8px }</style><div id=h style="contain: layout; margin-top: 40px; height: 20px">Top</div>`,
+  'shape-unhide': `<style>body { margin: 8px }</style><div id=b hidden style="margin-top: 40px; height: 10px"></div><div id=h style="height: 20px">Top</div>`,
+  'shape-script': `<script>window.__frames = 0; { const raf = window.requestAnimationFrame; window.requestAnimationFrame = function (fn) { __frames++; return raf.call(window, fn); }; }</script><div>First</div><ul id=l></ul>`,
+  'shape-moving': `<style>body { margin: 8px } #h { height: 20px; transition: margin-top .3s } #h.o { margin-top: 60px }</style><div id=h>Top</div>`,
+  'shape-em': `<style>body { margin: 1em; transition: font-size .3s } body.o { font-size: 40px }</style><div id=h style="height: 20px">Top</div>`,
+  'shape-var': `<style>@property --g { syntax: "<length>"; inherits: true; initial-value: 0px } body { margin: 0 0 0 var(--g); transition: --g .3s } body.o { --g: 90px }</style><div id=h style="height: 20px">Top</div>`,
+  'shape-rules': `<style id=s></style><style>html, body { margin: 0 } body:has(.two) { margin-left: 44px }</style><div id=h style="height: 20px">Top</div>`,
   'center-max': `<style>body { max-width: 600px; margin: 0 auto }</style><h1 id=h>Centred</h1>${TALL}`,
   'center-width': `<style>body { width: 600px; margin: 40px auto }</style><h1 id=h style="margin: 0">Centred</h1>${TALL}`,
   'flex-column': '<style>body { margin: 0; display: flex; flex-direction: column; min-height: 100vh } section { height: 800px; overflow: hidden; flex: 0 1 auto } footer { height: 80px }</style><section id=a>a</section><section>b</section><footer id=f>f</footer>',

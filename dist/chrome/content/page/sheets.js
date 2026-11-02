@@ -9,6 +9,11 @@ export function startSheets(box) {
   const sheetProto = CSSStyleSheet.prototype;
   const { insertRule, deleteRule, replace, replaceSync } = sheetProto;
   const { addRule, removeRule } = sheetProto;
+  const { matches } = Element.prototype;
+  const disabled = Object.getOwnPropertyDescriptor(StyleSheet.prototype, 'disabled');
+  const mediaText = Object.getOwnPropertyDescriptor(MediaList.prototype, 'mediaText');
+  const ruleStyle = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'style');
+  const selectorText = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'selectorText');
   const seen = new WeakSet();
   let fresh = false; // a sheet of the document's not seen before
 
@@ -25,7 +30,7 @@ export function startSheets(box) {
     const text = list.mediaText;
     if (!asksSize(text)) return;
     const next = shiftQuery(text, dw - applied.dw, dh - applied.dh);
-    if (next !== text) list.mediaText = next;
+    if (next !== text) mediaText.set.call(list, next);
     moved.set(holder, { dw, dh });
   }
   function moveAll(dw, dh) {
@@ -53,9 +58,13 @@ export function startSheets(box) {
     for (const rule of Array.from(rules)) {
       try {
         if (rule instanceof CSSMediaRule) moveHolder(rule, box.seenW(), box.seenH());
-        const { style } = /** @type {any} */ (rule);
+        const plain = rule instanceof CSSStyleRule;
+        const style = plain ? ruleStyle.get.call(rule) : /** @type {any} */ (rule).style;
+        // One serialization for both questions.
+        const said = units && (plain ? rule.cssText : style?.cssText);
+        if (said && plain && said.includes(HAS)) noteHas(selectorText.get.call(rule));
         // Over a copy of the names: a property set moves to the end of the live list.
-        if (units && style && hasUnits(style.cssText)) {
+        if (said && hasUnits(said)) {
           for (const name of Array.from(style)) {
             const value = style.getPropertyValue(name);
             const next = shiftUnits(value);
@@ -77,6 +86,8 @@ export function startSheets(box) {
     }
     seen.add(sheet);
     fresh ||= !!sheet.ownerNode; // adopted ones say so as they're set (box.js)
+    // Only a <style>'s own text is watched: edits of text elsewhere cost nothing.
+    if (sheet.ownerNode?.localName === 'style') watch.observe(sheet.ownerNode, STYLE_TEXT);
     try {
       moveHolder(sheet, box.seenW(), box.seenH());
     } catch {}
@@ -85,6 +96,7 @@ export function startSheets(box) {
     const text = sheet.ownerNode?.localName === 'style' ? sheet.ownerNode.textContent : '';
     const units = !text || hasUnits(text);
     if (units || /@(media|import)/i.test(text)) walkRules(rules, units);
+    if (text.includes(HAS)) collectHas(rules);
   }
   const visitRoot = (root) => {
     for (const sheet of Array.from(root.styleSheets)) visit(sheet);
@@ -101,21 +113,49 @@ export function startSheets(box) {
       } catch {}
     }
   }
+  // What a rule can do to <body>'s reading: only what applies to <body>, to
+  // <html> above it or to the first children, whose margins collapse with it. A
+  // rule that matches none of them can't, and is the end of it: a class that
+  // makes it match later changes something that's watched. Rules are looked at
+  // together once the script's turn is over, when what it did to the page goes
+  // with them, in one selector: thousands of them cost one match, and anything
+  // that isn't a plain rule, or that a browser won't take, is simply read for.
+  const edited = new Set();
+  let judging = 0;
+  function judge() {
+    judging = 0;
+    const rules = [...edited];
+    edited.clear();
+    try {
+      if (rules.some((rule) => !(rule instanceof CSSStyleRule) || rule.cssRules?.length)) return box.bodyMayHaveChanged();
+      const selector = rules.map((rule) => selectorText.get.call(rule)).join();
+      if (box.reachable().some((node) => node && matches.call(node, selector))) box.bodyMayHaveChanged();
+    } catch {
+      box.bodyMayHaveChanged();
+    }
+  }
+  function ruleChanged(rule) {
+    box.rulesEdited();
+    edited.add(rule);
+    judging ||= setTimeout(judge);
+  }
   sheetProto.insertRule = function (rule, index = 0) {
     if (ours.has(this)) return insertRule.call(this, rule, index);
     visit(this);
     const at = insertRule.call(this, typeof rule === 'string' ? shiftUnits(rule) : rule, index);
     trackQueries([this.cssRules[at]]);
-    box.bodyMayHaveChanged();
+    ruleChanged(this.cssRules[at]);
+    if (String(rule).includes(HAS)) collectHas([this.cssRules[at]]);
     return at;
   };
   sheetProto.deleteRule = function (index) {
+    if (!ours.has(this)) ruleChanged(this.cssRules[index]);
     deleteRule.call(this, index);
-    if (!ours.has(this)) box.bodyMayHaveChanged();
   };
   sheetProto.addRule = function (...args) {
     visit(this);
     const at = addRule.apply(this, args);
+    noteHas(String(args[0]));
     box.bodyMayHaveChanged();
     return at;
   };
@@ -128,6 +168,7 @@ export function startSheets(box) {
     seen.add(this);
     replaceSync.call(this, shiftUnits(String(text)));
     trackQueries(this.cssRules);
+    if (String(text).includes(HAS)) collectHas(this.cssRules);
     box.bodyMayHaveChanged();
   };
   sheetProto.replace = function (text) {
@@ -135,10 +176,140 @@ export function startSheets(box) {
     seen.add(this);
     return replace.call(this, shiftUnits(String(text))).then((sheet) => {
       trackQueries(this.cssRules);
+      if (String(text).includes(HAS)) collectHas(this.cssRules);
       box.bodyMayHaveChanged();
       return sheet;
     });
   };
+  // Inside a @media or the like.
+  const groupProto = CSSGroupingRule.prototype;
+  const { insertRule: insertInGroup, deleteRule: deleteFromGroup } = groupProto;
+  groupProto.insertRule = function (rule, index = 0) {
+    const at = insertInGroup.call(this, rule, index);
+    ruleChanged(this.cssRules[at]);
+    if (String(rule).includes(HAS)) collectHas([this.cssRules[at]]);
+    return at;
+  };
+  groupProto.deleteRule = function (index) {
+    ruleChanged(this.cssRules[index]);
+    deleteFromGroup.call(this, index);
+  };
+  const reread = (proto, name) => {
+    const own = Object.getOwnPropertyDescriptor(proto, name);
+    Object.defineProperty(proto, name, {
+      ...own,
+      set(value) {
+        own.set.call(this, value);
+        if (!ours.has(this)) box.bodyMayHaveChanged();
+      },
+    });
+  };
+  for (const proto of [StyleSheet.prototype, HTMLStyleElement.prototype, HTMLLinkElement.prototype]) reread(proto, 'disabled');
+  reread(MediaList.prototype, 'mediaText');
+  for (const name of ['appendMedium', 'deleteMedium']) {
+    const own = MediaList.prototype[name];
+    MediaList.prototype[name] = { [name](medium) {
+      own.apply(this, arguments);
+      box.bodyMayHaveChanged();
+    } }[name];
+  }
+  // A script reaching for a rule's `style` is about to edit it, and an inline
+  // style never comes this way, so `element.style` costs nothing. The read comes
+  // after the script's turn. A `style` kept and written to much later isn't seen.
+  Object.defineProperty(CSSStyleRule.prototype, 'style', {
+    ...ruleStyle,
+    get() {
+      ruleChanged(this);
+      return ruleStyle.get.call(this);
+    },
+    set(value) {
+      ruleStyle.set.call(this, value);
+      box.bodyMayHaveChanged();
+    },
+  });
+  const styleMap = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'styleMap');
+  if (styleMap) {
+    Object.defineProperty(CSSStyleRule.prototype, 'styleMap', {
+      ...styleMap,
+      get() {
+        ruleChanged(this);
+        return styleMap.get.call(this);
+      },
+    });
+  }
+  Object.defineProperty(CSSStyleRule.prototype, 'selectorText', {
+    ...selectorText,
+    set(value) {
+      selectorText.set.call(this, value);
+      noteHas(String(value));
+      box.bodyMayHaveChanged();
+    },
+  });
+
+  // ---- :has() ----------------------------------------------------------------
+  // A rule on <html> or <body> that says `:has()` turns on with no change to
+  // either, or to any sheet. Only such a rule's own selector is asked, once a
+  // frame and only on a page that has one: no read unless its answer changed.
+  const HAS = ':has(';
+  const hasRules = new Set();
+  /** @type {string[]} */
+  let aboutBody = [];
+  let answers = '';
+  let hasFrame = 0;
+  let watchingHas = false;
+  // The selector without its `:has(...)`: does it name <html> or <body> at all?
+  function withoutHas(selector) {
+    let out = selector;
+    for (let at = out.indexOf(HAS); at >= 0; at = out.indexOf(HAS)) {
+      let depth = 0;
+      let end = at + HAS.length - 1;
+      do {
+        if (out[end] === '(') depth++;
+        else if (out[end] === ')') depth--;
+        end++;
+      } while (depth && end < out.length);
+      out = `${out.slice(0, at)}${/[\w)\]-]$/.test(out.slice(0, at)) ? '' : '*'}${out.slice(end)}`;
+    }
+    return out;
+  }
+  // A 1 for each of <html> and <body> that it matches.
+  function ask(selector) {
+    try {
+      return box.reachable().slice(0, 2).map((node) => (node && matches.call(node, selector) ? 1 : 0)).join('');
+    } catch {
+      return '';
+    }
+  }
+  const answersNow = () => aboutBody.map(ask).join();
+  const hasWatch = new MutationObserver(() => {
+    hasFrame ||= requestAnimationFrame(() => {
+      hasFrame = 0;
+      if (answersNow() !== answers) box.bodyMayHaveChanged();
+    });
+  });
+  function noteHas(selector) {
+    if (!selector.includes(HAS) || hasRules.has(selector)) return;
+    hasRules.add(selector);
+    box.bodyMayHaveChanged();
+  }
+  function collectHas(rules) {
+    for (const rule of Array.from(rules)) {
+      try {
+        if (rule instanceof CSSStyleRule) noteHas(selectorText.get.call(rule));
+        if (/** @type {any} */ (rule).cssRules?.length) collectHas(/** @type {any} */ (rule).cssRules);
+      } catch {}
+    }
+  }
+  box.onRead.push(() => {
+    if (!hasRules.size) return;
+    aboutBody = [...hasRules].filter((selector) => ask(withoutHas(selector)).includes('1'));
+    answers = answersNow();
+    const wanted = aboutBody.length > 0;
+    if (wanted === watchingHas) return;
+    watchingHas = wanted;
+    if (wanted) hasWatch.observe(document, { childList: true, subtree: true, attributes: true });
+    else hasWatch.disconnect();
+  });
 
   // ---- style attributes ------------------------------------------------------
   const INLINE = '[style*="vw"], [style*="vh"], [style*="vmin"], [style*="vmax"]';
@@ -196,7 +367,12 @@ export function startSheets(box) {
     if (!box.on) return;
     const hidden = document.hidden;
     let changed = false;
+    box.childrenChanged();
     for (const record of records) {
+      if (record.type === 'characterData') { // a <style>'s text: a new sheet
+        changed = true;
+        continue;
+      }
       if (record.type === 'attributes') {
         // A style attribute a script wrote: done here, before it's painted. A
         // record of our own write finds nothing left to rewrite, and animated
@@ -210,7 +386,7 @@ export function startSheets(box) {
       if (isStyle(record.target)) changed = true;
       let added = false;
       for (const node of record.addedNodes) {
-        if (node.nodeType !== 1) continue;
+        if (node.nodeType !== 1 || box.ownFlag(node)) continue;
         added = true;
         const element = /** @type {Element} */ (node);
         // Looked through once, from the topmost added.
@@ -226,6 +402,7 @@ export function startSheets(box) {
     }
     if (changed || addedRoots.size || dirtyRoots.size || rescan.size || document.styleSheets.length !== sheetCount) soon();
   });
+  const STYLE_TEXT = { characterData: true, subtree: true };
   const WATCH = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'media', 'disabled'] };
   const roots = new WeakSet();
   function watchRoot(root) {
@@ -244,13 +421,19 @@ export function startSheets(box) {
 
   // A sheet that has just loaded: rewritten before it's painted.
   document.addEventListener('load', (event) => {
-    if (/** @type {Element} */ (event.target).nodeName !== 'LINK') return;
+    if (!isStyle(event.target)) return; // a <style> says so too, once its @imports are in
     pass();
     box.bodyMayHaveChanged(); // another origin's sheet can't be read, but it applies
   }, true);
   // Always, hidden or not: a tab prepared behind the page is ready when it's shown.
-  document.addEventListener('DOMContentLoaded', pass);
-  addEventListener('load', pass);
+  document.addEventListener('DOMContentLoaded', () => {
+    pass();
+    box.loaded();
+  });
+  addEventListener('load', () => {
+    pass();
+    box.loaded(); // a site's own reset, late
+  });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && waiting) pass(); });
   box.onMove.push(() => { if (box.on) soon(); });
   addedRoots.add(document.documentElement); // injected late: what's there already
