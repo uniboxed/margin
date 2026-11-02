@@ -1065,7 +1065,7 @@ export function startCore({ onTheme } = {}) {
   // again only when an event can't be taken (shared/stored.js takesChanges),
   // before its first drawing, and whenever it's shown.
   let changedWhileHidden = false;
-  api.storage.onChanged.addListener((changes, area) => {
+  const onStorageChanged = (changes, area) => {
     if (area !== 'local' || dormant) return;
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!firstRender && onlyShowing(changes)) return;
@@ -1091,7 +1091,8 @@ export function startCore({ onTheme } = {}) {
     // The trackpad's listeners follow the settings now, not at the next
     // drawing: a swipe right after this page is shown is already guarded.
     if ('settings' in changes) trackpad.update();
-  });
+  };
+  api.storage.onChanged.addListener(onStorageChanged);
 
   // One debug-level line per page (hidden unless the console shows Debug
   // messages), once it has loaded: where the time before the sidebar
@@ -1159,7 +1160,7 @@ export function startCore({ onTheme } = {}) {
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
 
-  api.runtime.onMessage.addListener((message, _, sendResponse) => {
+  const onMessage = (message, _, sendResponse) => {
     // Background (⌘T hand-off): open the palette here to choose a new tab, and
     // say whether it could (not before the theme is mounted, or while Margin
     // is out of the way; then the new-tab page opens its own instead).
@@ -1217,6 +1218,26 @@ export function startCore({ onTheme } = {}) {
     // here too (background handlers.js carryOpen).
     else if (message.command === 'carry-open') carryOpen(message.why);
     else Margin.content.onCommand?.(message.command);
+  };
+  api.runtime.onMessage.addListener(onMessage);
+  // Off as the page is left, back on if it comes back from the back/forward
+  // cache (pageshow above has shown() read storage again). WebKit holds a
+  // listener on a browser.* event, and with it the page's whole document,
+  // after that page has gone into the cache and been dropped from it: in a
+  // tab that stays on one site, every page left stayed in memory until the
+  // tab's process ended.
+  let listening = true;
+  addEventListener('pagehide', () => {
+    if (!listening) return;
+    listening = false;
+    api.storage.onChanged.removeListener(onStorageChanged);
+    api.runtime.onMessage.removeListener(onMessage);
+  });
+  addEventListener('pageshow', (event) => {
+    if (!event.persisted || listening) return;
+    listening = true;
+    api.storage.onChanged.addListener(onStorageChanged);
+    api.runtime.onMessage.addListener(onMessage);
   });
   mountTheme(); // if the theme's script ran first
   return true;

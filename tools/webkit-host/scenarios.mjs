@@ -795,6 +795,19 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2).map((e) => ({ introduced: e.introduced, unseen: e.unseen, shownAfter: e.shownAfter })))` },
     check('A', 'A: its return to the new page not introduced, not taken as unseen', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('A2')); return log.length > 0 && log.every((e) => e.introduced !== true && !e.unseen && !e.error)`),
   ],
+  // A page left takes its listeners off browser.* events (WebKit kept them, and
+  // the page, after it went through the back/forward cache); back from the
+  // cache, it has them again: a change in storage reaches it.
+  bfcache: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), themed('A'),
+    { op: 'page', in: 'A', js: `window.__before = 1; setTimeout(() => { location.href = '/p/A2'; }); return 'navigating'` },
+    checkPage('A', 'A: at its next page', `location.pathname === '/p/A2'`, 2000), drawn('A'),
+    { op: 'page', in: 'A', js: `setTimeout(() => history.back()); return 'back'` },
+    checkPage('A', 'A: back to its first page, from the back/forward cache', `location.pathname === '/p/A' && window.__before === 1`, 2000),
+    wait(600),
+    { op: 'eval', in: 'A', js: `const { settings } = await browser.storage.local.get('settings'); await browser.storage.local.set({ settings: { ...settings, sidebarPinnedOpen: true } }); return 'kept open in storage'` },
+    boxed('A'),
+  ],
   // A switch to a tab Safari unloaded (background/tabs.js restoreTab): loaded
   // behind the page first (brought to the front and the page straight back, in
   // one run loop turn: Safari loads a tab as it's selected), the page staying

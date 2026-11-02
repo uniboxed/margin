@@ -600,6 +600,14 @@ Pages read less of Margin's storage, a hidden tab finishes its page's work befor
 - [ ] Switching feels no slower on heavy sites (a big web app, a long page) than before, and the sidebar you switched from (hovered open) is still open on them as they come up. If one is slow or closes it: Start page → Settings → Switch log (development) → Copy; the switch's `preparation` says how long it took (`timeout` past 0.9 s).
 - [ ] **Chrome, Margin only in full screen** (the default): in an ordinary window nothing of Margin shows, as before. Make it full screen: the sidebar is there at once with every tab, the right space and width, Keep open as it was; hover the left edge in auto-hide: it slides in with its rows, no empty sidebar first. Leave full screen and come back: the same. With Keep open on, the docked sidebar has its site icons as it comes in, not empty slots or letters filling in. With "Use in windows too" from the notice, the sidebar works in the window at once.
 
+## Pages left don't stay in memory (2026-11-02)
+
+Margin's listeners come off as a page is left and go back on if you come back to it with Back or Forward.
+
+- [ ] Memory: in one tab, follow 20 or so links on one site (Wikipedia, a docs site). Activity Monitor → Memory, the tab's process (`Safari Web Content` with its address, or `ps` with the pid from `/usr/bin/log`): it goes up and down with each page, but doesn't keep climbing by about a page's size each time. If it climbs: turn Margin off, do the same, and note both.
+- [ ] Back and Forward: follow a link, change something in another tab's sidebar (rename a space, pin a tab, turn Keep open on or off), come back to the first tab and press Back: the page comes back at once and its sidebar shows the change. Switching from it with the sidebar, ⌘T and ⌃⌘↓ work as before.
+- [ ] Chrome: the same Back test.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.
