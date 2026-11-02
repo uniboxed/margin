@@ -328,3 +328,28 @@ test('keep ready: the tabs set aside outlast the background (Safari stops it whe
   assert.deepEqual(again.keepReadyState().noPage, [10]);
   again.resetKeepReady();
 });
+
+test('keep ready: a tab taken back before the read of the tabs set aside is dropped from storage.session too, so the next background start doesn\'t set it aside again', async () => {
+  keepReady.resetKeepReady();
+  await setUpMany();
+  const t0 = Date.now();
+  fake.noPage = new Set();
+  fake.session.keepReadyNoPage = { 10: t0 + 10 * MIN };
+  fake.session.keepReadyUsedAt = t0;
+  // Started by the switch to tab 10 (Safari loads it as it's shown), before the read.
+  const second = await import('../extension/background/keep-ready.js?taken-back');
+  second.shown(10);
+  await second.tick(t0 + 5_000);
+  await settle();
+  await settle();
+  assert.deepEqual(second.keepReadyState().noPage, []);
+  assert.deepEqual(fake.session.keepReadyNoPage, {}, 'storage.session forgets it too');
+  // Safari stops that background; the alarm starts another.
+  const third = await import('../extension/background/keep-ready.js?taken-back-again');
+  fake.scripts = [];
+  await third.tick(t0 + 70_000);
+  await settle();
+  assert.ok(held().includes(10), `tab 10 held (held ${JSON.stringify(held())})`);
+  second.resetKeepReady();
+  third.resetKeepReady();
+});

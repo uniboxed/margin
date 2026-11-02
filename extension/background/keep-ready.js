@@ -73,7 +73,8 @@ const minutesOf = (s) => {
 };
 // What the background before this one knew: when Safari was last used, and
 // the tabs set aside. Read once per background run; a tab whose page changed
-// or that was shown before the read isn't set aside again by it.
+// or that was shown before the read isn't set aside again by it, and is
+// dropped from storage.session too (the next background would read it there).
 /** @type {Promise<void> | null} */
 let sessionRead = null;
 let sessionDone = false;
@@ -81,12 +82,15 @@ const putBack = new Set();
 function fromSession() {
   return (sessionRead ??= Promise.resolve(api.storage.session?.get([USED_KEY, NO_PAGE_KEY])).catch(() => null).then((stored) => {
     if (Number.isFinite(stored?.[USED_KEY])) usedAt = Math.max(usedAt, stored[USED_KEY]);
+    let takenBack = false;
     for (const [id, retryAt] of Object.entries(stored?.[NO_PAGE_KEY] ?? {})) {
       const tabId = Number(id);
-      if (Number.isFinite(retryAt) && !putBack.has(tabId) && !noPage.has(tabId)) noPage.set(tabId, retryAt);
+      if (putBack.has(tabId)) takenBack = true;
+      else if (Number.isFinite(retryAt) && !noPage.has(tabId)) noPage.set(tabId, retryAt);
     }
     sessionDone = true;
     putBack.clear();
+    if (takenBack) saveNoPage();
   }));
 }
 let saving = false;
