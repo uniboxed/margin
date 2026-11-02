@@ -58,6 +58,9 @@ const rowAt = (name) => `${ID} const root = __shadowOf(document.querySelector('m
 const countSends = { op: 'eval', in: 'A', js: `const runtime = (globalThis.browser ?? chrome).runtime; const send = runtime.sendMessage.bind(runtime); globalThis.__sent = []; runtime.sendMessage = (m, ...rest) => { if (m?.type === 'activateTab') __sent.push(m.tabId); return send(m, ...rest); }; return 'counting'` };
 const keepOpenIn = (tab) => ({ op: 'eval', in: tab, js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { sidebarPinnedOpen: true } }))' });
 const keepOpen = keepOpenIn('A');
+// Nothing Margin did reached the page's own error listeners (a ResizeObserver
+// loop error from a paint barrier, say: host.swift's page log).
+const noPageErrors = (tab) => checkPage(tab, `${tab}: no error reached the page`, `!(window.__pageLog ?? []).some((l) => l.startsWith('uncaught'))`);
 const reload = (tab) => ({ op: 'page', in: tab, js: 'location.reload(); return "reloading"' });
 // In a page step: where <html> sits in the window, from the transform itself
 // (the page's own getBoundingClientRect answers for the box).
@@ -693,6 +696,39 @@ export const SCENARIOS = {
     switchTo('A', 'C'), shown('C'), drawn('C'),
     switchTo('C', 'B'), shown('B'), drawn('B'),
   ],
+  // The tab in front at a Safari relaunch loads with its view in the window
+  // before its process exists: WebKit never marks it as having been in a
+  // window, and its first return showed Safari's empty view until it painted
+  // (here 6–14 ms without the introduction, 3 runs; 40–87 ms in an earlier
+  // host test; four shows of 49–155 ms in Tirth's Safari). Its page, made from
+  // the tab's saved history as Safari makes it, says it started visible and
+  // never came into view from hidden (content/core.js windowSeen), so Margin
+  // introduces it before that return: its content there within a few ms
+  // (1–2 ms with it). Within about 4 s of the restart (README.md).
+  unseen: [
+    { op: 'open', name: 'H', url: '/p/H2', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('H'), wait(1500),
+    { op: 'restart' }, drawn('H'),
+    checkPage('H', 'H: loaded in front at the relaunch, from its saved history (as Safari restores a tab)', `window.__vis[0][0] === 'shown' && performance.getEntriesByType('navigation')[0].type === 'back_forward'`),
+    check('H', 'H: Margin ready, its copy matched to the tabs', `return document.querySelector('margin-sidebar-host')?.dataset.startup !== 'true' && (await ${STATE}('openTabsBy')).openTabsBy?.synced === true`, 3000),
+    switchTo('H', 'B'), shown('B'),
+    { op: 'probeShow', name: 'H', nth: 2 }, // the first is its introduction
+    switchTo('B', 'H2'), shown('H'),
+    { op: 'checkProbe', name: 'H', maxMs: 4, label: 'H: its content there on its first return (introduced first)' },
+    check('H', 'H: the switch says its page was unseen and it introduced it', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.introduced === true && e.unseen === true && !e.error)`),
+    noPageErrors('H'),
+  ],
+  // A page that navigated in front (a link, the address bar), in a tab WebKit
+  // had already seen in the window: its first return isn't introduced, as
+  // WebKit holds the page before for its paint (only a tab Safari restored as
+  // it was shown, or in front at a launch, needs it: unseen above).
+  navigated: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(300),
+    { op: 'page', in: 'A', js: `location.href = '/p/A2'; return 'navigating'` }, checkPage('A', 'A: at its new address', `location.pathname === '/p/A2'`, 2000), drawn('A'),
+    switchTo('A', 'B'), shown('B'),
+    switchTo('B', 'A2'), shown('A'),
+    { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2).map((e) => ({ introduced: e.introduced, unseen: e.unseen, shownAfter: e.shownAfter })))` },
+    check('A', 'A: its return to the new page not introduced, not taken as unseen', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('A2')); return log.length > 0 && log.every((e) => e.introduced !== true && !e.unseen && !e.error)`),
+  ],
   // A switch to a tab Safari unloaded (background/tabs.js restoreTab): loaded
   // behind the page first (brought to the front and the page straight back, in
   // one run loop turn: Safari loads a tab as it's selected), the page staying
@@ -875,7 +911,7 @@ export const SCENARIOS = {
     check('A', 'A: covered while S loads behind', `const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.switchCover === 'true'`, 1500),
     checkPage('S', 'S: loading behind', `document.hidden && document.readyState !== 'complete'`, 1500),
     checkPage('A', 'A: left once S had loaded', 'document.hidden', 3000), shown('S'),
-    checkPage('S', 'S: shown once it had loaded', `const nav = performance.getEntriesByType('navigation')[0]; const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && nav.loadEventEnd > 0 && performance.timeOrigin + nav.loadEventEnd <= shownAt + 5`),
+    checkPage('S', 'S: shown once it had painted (its document parsed: here, with its load)', `const nav = performance.getEntriesByType('navigation')[0]; const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && nav.loadEventEnd > 0 && performance.timeOrigin + nav.loadEventEnd <= shownAt + 5`),
   ],
   // Safari putting off the load of a tab it restores until its selection
   // update is over (it then loads the tab selected by then): nothing loads
@@ -886,6 +922,17 @@ export const SCENARIOS = {
     switchTo('A', 'D'), shown('D'), drawn('D'),
     checkPage('D', 'D: loaded as it was shown (nothing loaded it behind)', `window.__vis[0][0] === 'shown'`),
     check('D', 'D: drawn as the tab shown from its first render', `(globalThis.__marginLog ?? []).some((l) => /drawn as tab \\d+, the one being shown/.test(l))`, 3000),
+  ],
+  // A tab Safari unloaded, shown without loading it behind first (here, too
+  // little of the page's wait is left for it: a 1.9 s deadline), whose page is
+  // all there at once but loads late (an image that takes 3 s): it loads in
+  // front under the switch's cover (content/core.js coverWhileLoading), which
+  // lifts once it has painted, not at its load.
+  loadcover: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'Z', url: '/p/Z2', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
+    { op: 'eval', in: 'A', js: `${ID} return JSON.stringify(await Margin.content.send('activateTab', { tabId: id('Z2'), deadline: Date.now() + 1900 }) ?? null)` }, shown('Z'),
+    checkPage('Z', 'Z: loaded as it was shown (nothing loaded it behind)', `window.__vis[0][0] === 'shown'`),
+    check('Z', 'Z: under the switch\'s cover as it loaded, lifted once it had painted, well before its load', `const h = document.querySelector('margin-sidebar-host'); return h.dataset.loadingCover === 'false' && performance.getEntriesByType('paint').some((e) => e.name === 'first-contentful-paint') && document.readyState !== 'complete'`, 1500),
   ],
   // Two copies of Margin loaded at once in one controller (as Safari would
   // load a new one while the old one still runs): they share one script world
@@ -914,7 +961,25 @@ export const SCENARIOS = {
     checkPage('S', 'S: loading behind', `document.hidden && document.readyState !== 'complete'`, 1500),
     check('A', 'A: still in front, covered, S highlighted', `${ID} const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.switchingTo === String(id('S1')) && h.dataset.switchCover === 'true'`),
     checkPage('S', 'S is the tab shown', '!document.hidden', 5000), checkPage('A', 'A: left (the switch landed)', 'document.hidden'),
-    checkPage('S', 'S: shown once it had loaded', `const nav = performance.getEntriesByType('navigation')[0]; const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && nav.loadEventEnd > 0 && performance.timeOrigin + nav.loadEventEnd <= shownAt + 5`),
+    checkPage('S', 'S: shown once it had painted (its document parsed: here, with its load)', `const nav = performance.getEntriesByType('navigation')[0]; const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && nav.loadEventEnd > 0 && performance.timeOrigin + nav.loadEventEnd <= shownAt + 5`),
+  ],
+  // A tab Safari unloaded whose page is all there at once but loads late (an
+  // image that takes 3 s): loaded behind the page, shown once it has painted
+  // (shared/page-ready.js), well before its load, introduced first: its
+  // content there as it's shown. (Waiting for its load event, it was shown at
+  // the 2.5 s limit.)
+  unloadedlate: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'Z', url: '/p/Z1', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(250),
+    { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
+    { op: 'probeShow', name: 'Z', nth: 3 }, // restored, introduced, shown
+    { op: 'eval', in: 'A', js: `${ID} const request = Margin.content.send('activateTab', { tabId: id('Z1') }); Margin.content.startSwitching(id('Z1'), request); return 'asked for Z'` },
+    checkPage('A', 'A: left', 'document.hidden', 3000), shown('Z'),
+    { op: 'checkProbe', name: 'Z', maxMs: 10, label: 'Z: its content there as it\'s shown' },
+    checkPage('Z', 'Z: loaded behind, shown before its load (its image still on its way)', `const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; const nav = performance.getEntriesByType('navigation')[0]; return window.__vis[0][0] === 'hidden' && !!shownAt && (!nav.loadEventEnd || performance.timeOrigin + nav.loadEventEnd > shownAt)`),
+    checkPage('Z', 'Z: shown well under 1.5 s from its load\'s start', `const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return shownAt - performance.timeOrigin < 1000`),
+    check('Z', 'Z: well under 1.5 s from the click, waiting for its paint, introduced, its page drawn before the show (the log\'s barriers)', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.restored === 'painted' && e.introduced === true && !e.error && e.shownAfter < 1000 && e.barrier?.length > 0 && e.barrier.every((b) => b.how === 'drawn'))`),
+    noPageErrors('Z'),
+    checkPage('A', 'A: hidden once (the switch), not by the restore or the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
   ],
   // An address chosen in the palette (⌘T): the tab opens behind the page,
   // whose sidebar has its row highlighted and which stays covered while it
@@ -937,6 +1002,52 @@ export const SCENARIOS = {
     checkPage('new1', 'first shown covered, the page out of sight under the cover', `__arrival.some(([why, hidden, cover, vis]) => why === 'shown' && !hidden && cover === 'true' && vis === '0')`, 1000),
     checkPage('new1', 'then the page back and the cover lifted', `const h = document.querySelector('margin-sidebar-host'); return h.dataset.arrivalCover === 'false' && document.body.style.opacity === ''`, 1500),
     checkPage('A', 'A is behind', `document.hidden`),
+  ],
+  // ⌘T with a page all there at once that loads late (an image that takes
+  // 3 s): it comes to the front once it has painted, still loading, not once
+  // loaded; introduced first, its content there as it's shown.
+  behindlate: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),
+    { op: 'probeShow', name: 'new1', nth: 2 }, // the first time is the introduction
+    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/Z3' }); Margin.content.startSwitching(-1, request); return 1` },
+    checkPage('new1', 'the new tab comes to the front at its first paint, still loading (its image on its way)', `!document.hidden && document.readyState !== 'complete'`, 2500),
+    { op: 'checkProbe', name: 'new1', maxMs: 10, label: 'its content there as it\'s shown' },
+    checkPage('new1', 'shown well under 1.5 s from its start', `const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && shownAt - performance.timeOrigin < 1000`),
+    checkPage('new1', 'then the page back and the cover lifted', `const h = document.querySelector('margin-sidebar-host'); return h.dataset.arrivalCover === 'false' && document.body.style.opacity === ''`, 1500),
+  ],
+  // An app's page (/p/Y…): parsed at once with an empty body, its own content
+  // drawn by its script 0.25 s later, its load at 3 s. Margin's own UI in the
+  // page (its sidebar, kept open; the switch cover's spinner) counts for the
+  // browser's first contentful paint, so the show and the loading cover wait
+  // for the page's own content (shared/page-ready.js): not before it, and not
+  // until the time limit either. (Before, such a page was shown at Margin's
+  // paint, 60 ms in, empty.) Each as soon after install as it can be: the
+  // background here can stall from about 1 s after it starts (README.md). A
+  // tab Safari unloaded, restored behind:
+  shelllate: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'Y', url: '/p/Y1', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), keepOpen, wait(100),
+    { op: 'eval', in: 'A', js: `${ID} const request = Margin.content.send('activateTab', { tabId: id('Y1') }); Margin.content.startSwitching(id('Y1'), request); return 'asked for Y'` },
+    checkPage('A', 'A: left', 'document.hidden', 3000), shown('Y'),
+    { op: 'page', in: 'Y', js: `return JSON.stringify({ paints: performance.getEntriesByType('paint').map((e) => e.name + '@' + Math.round(e.startTime)), textAt: Math.round(__textAt - performance.timeOrigin), shownAt: Math.round(window.__vis.find((e) => e[0] === 'shown')[1] - performance.timeOrigin) })` },
+    checkPage('Y', 'Y: shown once its own content was there, soon after it, not at the limit', `const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return window.__vis[0][0] === 'hidden' && !!shownAt && __textAt > 0 && shownAt >= __textAt && shownAt - __textAt < 600`),
+    check('Y', 'Y: the switch log says it waited for its paint', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.restored === 'painted' && !e.error)`),
+  ],
+  // One shown without loading it behind first (a 1.9 s deadline): the loading
+  // cover lifts once the page's own content is there.
+  shellcover: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'Y', url: '/p/Y2', asleep: true }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(200),
+    { op: 'eval', in: 'A', js: `${ID} return JSON.stringify(await Margin.content.send('activateTab', { tabId: id('Y2'), deadline: Date.now() + 1900 }) ?? null)` }, shown('Y'),
+    checkPage('Y', 'Y: loaded as it was shown (nothing loaded it behind)', `window.__vis[0][0] === 'shown'`),
+    checkPage('Y', 'Y: its loading cover lifted once its own content was there, soon after it', `!!window.__liftAt && __textAt > 0 && __liftAt >= __textAt && __liftAt - __textAt < 400 && document.readyState !== 'complete'`, 2500),
+  ],
+  // A new tab from the palette, the sidebar kept open: to the front once the
+  // page's own content is there.
+  shellbehind: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), keepOpen, wait(100),
+    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/Y3' }); Margin.content.startSwitching(-1, request); return 1` },
+    check('A', 'the new tab opened (its row in the sidebar)', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs ?? {}).some((t) => t.url.endsWith('/p/Y3'))`, 3000),
+    checkPage('new1', 'the new tab is the one shown', '!document.hidden', 3000),
+    checkPage('new1', 'shown once its own content was there, soon after it, not at the limit', `const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && __textAt > 0 && shownAt >= __textAt && shownAt - __textAt < 600`),
   ],
   // The same with Keep open: the page under the cover has its box.
   behindbox: [

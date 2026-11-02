@@ -4,12 +4,16 @@
 //   /p/<Name>  a plain page titled <Name> ("F…": with a textarea; "P…": with a POST form; "S…": still loading for 1.5s;
 //              "H…": heavy to paint, on a dark background, as a busy site is; "G…": a field with autofocus;
 //              "T…": tall, with rules about the window's size for the box to answer;
-//              "B…": busy, as a site with ads and animations is: a timer every 50ms doing work, a CSS animation, a frame loop)
+//              "B…": busy, as a site with ads and animations is: a timer every 50ms doing work, a CSS animation, a frame loop;
+//              "Z…": all there at once, but its load comes late: an image that takes 3s;
+//              "Y…": an app's page: parsed at once with an empty body, its own content drawn by its script 0.25s
+//              later (window.__textAt), its load at 3s; window.__liftAt: when Margin's loading cover lifted)
 //   /csp/<Name>  a page under a strict CSP, its sheet from /box.css
 //   /x/<name>  a fixture for the box (FIXTURES: pages with one thing a box has to get right)
 //   /other.css  a sheet of another origin, no CORS (on localhost: the page is on 127.0.0.1)
 //   /box.css   rules about the window's size
 //   /posted    where the POST form goes
+//   /slow?ms=N an image that arrives N ms after it's asked for
 //   POST /log  one log line, printed with a timestamp
 import { createServer } from 'node:http';
 
@@ -106,6 +110,8 @@ const page = (name) => {
     return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;background:#202124;color:#e8eaed;font:14px sans-serif;display:flex;flex-wrap:wrap;gap:4px}.b{width:150px;height:60px;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,.6),inset 0 0 12px rgba(255,255,255,.25);filter:drop-shadow(0 0 3px #000);overflow:hidden}</style></head><body>${Array.from({ length: 3000 }, (_, i) => box(i)).join('')}</body></html>`;
   }
   if (name.startsWith('B')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>@keyframes s{to{transform:rotate(360deg)}}.s{width:80px;height:80px;background:#48c;animation:s 1s linear infinite}</style></head><body><h1>Busy ${name}</h1><div class=s></div><p id=n>0</p><script>let n=0;setInterval(()=>{let x=0;for(let i=0;i<20000;i++)x+=Math.sqrt(i);document.getElementById('n').textContent=++n},50);(function f(){requestAnimationFrame(f)})()</script></body></html>`;
+  if (name.startsWith('Z')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><h1>Late ${name}</h1><p>${'text '.repeat(200)}</p><img src="/slow?ms=3000&n=${Date.now()}"></body></html>`;
+  if (name.startsWith('Y')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><script>window.__textAt=0;setTimeout(()=>{document.body.insertAdjacentHTML('beforeend','<h1>Shell ${name}</h1><p>'+'text '.repeat(200)+'</p>');window.__textAt=performance.timeOrigin+performance.now()},250);let on=false;const w=setInterval(()=>{const c=document.querySelector('margin-sidebar-host')?.dataset.loadingCover;if(c==='true')on=true;else if(on&&c==='false'){window.__liftAt=performance.timeOrigin+performance.now();clearInterval(w)}},5)</script><img src="/slow?ms=3000&n=${Date.now()}"></body></html>`;
   if (name.startsWith('G')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body><h1>Focus ${name}</h1><textarea id=t autofocus></textarea></body></html>`;
   if (name.startsWith('F')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body><h1>Form ${name}</h1><textarea id=t></textarea></body></html>`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><h1>Page ${name}</h1><p>${'text '.repeat(200)}</p></body></html>`;
@@ -145,6 +151,13 @@ createServer((req, res) => {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     res.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'");
     return res.end(`<!doctype html><html><head><meta charset="utf-8"><title>${strict[1]}</title><link rel=stylesheet href=/box.css></head><body>${BOX_BODY.replaceAll(/ style="[^"]*"/g, '')}</body></html>`);
+  }
+  const slow = /^\/slow\?ms=(\d+)/.exec(req.url);
+  if (slow) {
+    return setTimeout(() => {
+      res.setHeader('content-type', 'image/gif');
+      res.end(Buffer.from('R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==', 'base64'));
+    }, Number(slow[1]));
   }
   if (req.url.startsWith('/posted')) {
     console.log(`${stamp()} SERVER ${req.method} ${req.url}`);

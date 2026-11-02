@@ -460,7 +460,7 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Meanwhile, click your own tab's row: you stay; the new tab stays in the sidebar, loaded, and shows when clicked. Same if you pick another tab in Safari's tab bar.
 - [ ] Meanwhile, close the new row with its ×: nothing comes to the front, no notice.
 - [ ] In a text field (a comment box), ⌘T, an address, Enter, then type: nothing goes into the field; Escape: you stay, the new tab stays behind. ⌘T again while it loads: the palette opens and the new tab stays behind.
-- [ ] A site that keeps loading (or a very slow one): it comes to the front after about 5 seconds, as far as it got.
+- [ ] A site that keeps loading and draws nothing (or a very slow one): it comes to the front after about 5 seconds, as far as it got. (2026-11-02: a site that has drawn comes to the front then, loaded or not.)
 - [ ] ⌘T, Enter, then switch to another app or window before it loads: Margin doesn't pull the window forward; back in it, the new tab is in front.
 - [ ] From Margin's start page (`#launcher`) "+ New Tab": an address there behaves the same.
 - [ ] In a fitted site (Keep open + Fit pages beside the sidebar): the same, the cover over the page only.
@@ -541,7 +541,7 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] An unloaded tab in another window, picked in the palette: that window comes forward at once, covered, and the tab comes up once loaded.
 - [ ] The tab keeps its history: Back goes where it went before the relaunch; it's scrolled where you left it.
 - [ ] While it loads, nothing flickers: not the page you're on, its cover, nor Safari's tab bar or address bar if they're showing.
-- [ ] A slow site (youtube.com) unloaded: it comes up after it has loaded, or after about 2.5 s as far as it got.
+- [ ] A slow site (youtube.com) unloaded: it comes up once it has drawn (2026-11-02; it waited for the load before), or about 1.5 s after it started loading, as far as it got.
 - [ ] ⌘-click a link to a slow site, then click its row at once: the page you're on stays covered until it has loaded, then it comes up drawn.
 - [ ] If a dark window still shows: Start page → Settings → Switch log (development) → Copy, and look at `restored` and `introduced` on those switches (`not loaded`: Safari didn't load it behind; after two of those Margin stops trying until Safari restarts). Safari's log (Console, process Safari) around them: `restoreFromSessionState`, `Not dispatching`, `hideContentUntilPendingUpdate`.
 
@@ -561,6 +561,23 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Quit and reopen Safari: Margin is still on, with your spaces and pins; no "Allow Unsigned Extensions" needed.
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
+
+## Switching at first paint, fewer dark frames (2026-11-02)
+
+Quit and reopen Safari with tabs in a few spaces, so most come back unloaded. Record the screen while you try these, and step through it frame by frame if anything flickers.
+
+- [ ] Click rows of tabs you haven't opened since the relaunch, busy sites too (YouTube, a news site, Gmail): the page you're on is covered with the spinner, and the tab comes up about as fast as Safari shows such a tab by itself, under a second on most sites, drawn, maybe with images still coming in. No dark window.
+- [ ] A site that shows nothing while its scripts start (some web apps), Keep open on and off: it comes up once its own content is drawn (not an empty page with only Margin's sidebar), or at most about 1.5 s after it starts loading, as far as it got.
+- [ ] The tab that was in front when Safari opened: switch away from it with the sidebar, then back with the sidebar. No dark flash on the way back.
+- [ ] Click a link in a tab, switch to another tab with the sidebar, then back: as quick as any loaded tab (its switch log line has no `unseen`).
+- [ ] A local dev site with an error overlay (webpack, Vite, Next), or a site you know reports errors: switching to it from an unloaded or never-shown state shows no "ResizeObserver loop" error.
+- [ ] A tab you opened by clicking it in Safari's own tab bar (it loaded as it was shown), then left: back to it from the sidebar, no dark flash.
+- [ ] ⌘T, a slow site (youtube.com), Enter: it comes to the front as soon as something is drawn, not once it has finished loading. A Google search the same. No dark frame as it comes up; typing goes into its field.
+- [ ] From a PDF in front, ⌃⌘↓ to an unloaded tab: it loads in front under Margin's cover, which lifts as soon as the page is drawn, not when it has finished loading.
+- [ ] Switching to busy pages from the sidebar (a video playing, a big web app): no slower than before, no dark flash.
+- [ ] After a long while, a tab Safari unloaded to save memory (it reloads when clicked): the same as after a relaunch.
+- [ ] Chrome: ⌘T, a slow site, Enter: it comes to the front once loaded, as before.
+- [ ] If a dark flash or a slow switch shows: Start page → Settings → Switch log (development) → Copy. On those switches, `restored` or `loadWait` says `painted` when Margin waited for the first paint, `unseen: true` when it introduced a tab whose page had never been on screen, a new tab's wait says what it ended on in `ready`, and `barrier` says whether the page drew before the show (`drawn`) or Margin gave up waiting (`timeout`, and how long). Safari's log around them: `DidFirstVisuallyNonEmptyLayoutForFrame`, `hideContentUntilPendingUpdate`, `Selecting tab`.
 
 ## The page's box, on every page (2026-11-01)
 

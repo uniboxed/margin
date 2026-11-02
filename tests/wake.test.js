@@ -23,6 +23,30 @@ const fake = {
   // What a page's sidebar answers when asked to prepare (default: ready).
   prepare: (args) => ({ ready: true, token: args?.[0]?.token }),
   contentScripts: undefined, // the manifest's
+  // Pages that have painted (readyInPage answers 'painted'; 'loaded' once
+  // their status says complete), and pages whose document has never come into
+  // view from hidden (pageThere answers 'unseen').
+  painted: new Set(),
+  unseen: new Set(),
+  // Tabs going from a loaded page to another: the old page's document, loaded,
+  // answers until the new one commits (readyInPage: 'loaded' at once).
+  oldDocument: new Set(),
+  // How long a page takes to go through a rendering update (paintBarrierInPage).
+  barrierMs: () => 60,
+};
+// readyInPage, as a page answers it: 'loaded' once its status says complete,
+// 'painted' once it has painted, 'timeout' at its limit.
+const readiness = async (tabId, [ms]) => {
+  if (fake.oldDocument.has(tabId)) return 'loaded';
+  const until = Date.now() + ms;
+  for (;;) {
+    const tab = fake.tabs.get(tabId);
+    if (!tab) return new Promise(() => {}); // gone with its page
+    if (tab.status === 'complete') return 'loaded';
+    if (fake.painted.has(tabId)) return 'painted';
+    if (Date.now() >= until) return 'timeout';
+    await sleep(5);
+  }
 };
 globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ version: '0', content_scripts: fake.contentScripts }) },
@@ -61,7 +85,9 @@ globalThis.chrome = {
       if (fake.scriptError?.(target.tabId)) return sleep(1).then(() => [{ result: null, error: 'Failed to execute script.' }]);
       const delay = fake.scriptDelay(target.tabId, func);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
-      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : true;
+      if (func?.name === 'readyInPage') return sleep(delay).then(() => readiness(target.tabId, args)).then((result) => [{ result }]);
+      if (func?.name === 'paintBarrierInPage') return sleep(delay + fake.barrierMs(target.tabId)).then(() => [{ result: 'drawn' }]);
+      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : func?.name === 'pageThere' && fake.unseen.has(target.tabId) ? 'unseen' : true;
       return sleep(delay).then(() => [{ result }]);
     },
   },
@@ -77,7 +103,7 @@ globalThis.chrome = {
   },
 };
 
-const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, pageThere, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided, load } = await import('../extension/background/store.js');
@@ -86,6 +112,10 @@ const { navigate, showSpace } = await import('../extension/background/navigation
 
 function reset(tabs) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
+  fake.painted = new Set();
+  fake.unseen = new Set();
+  fake.oldDocument = new Set();
+  fake.barrierMs = () => 60;
   fake.scriptError = null;
   fake.cutOff = null;
   fake.reply = true;
@@ -588,6 +618,18 @@ test('openBehind: told the tab at once (created), its row titled meanwhile (labe
   await shown;
 });
 
+test('openBehind: the new tab comes to the front once its page has painted, before it has loaded (a page that paints nothing still waits for the limit: above)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const started = Date.now();
+  const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
+  setTimeout(() => fake.painted.add(2), 200);
+  assert.deepEqual(await shown, { tabId: 2, shown: 2 });
+  const took = Date.now() - started;
+  assert.ok(took >= 195 && took < 700, `shown at its first paint (${took}ms), not at its load or the limit`);
+  assert.equal(fake.tabs.get(2).status, 'loading', 'still loading as it was shown');
+});
+
 test('arriving covered: a tab opened behind is prepared to arrive covered; an ordinary switch isn\'t', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 3, url: 'https://c.test/' }]);
   fake.scriptDelay = () => 1;
@@ -604,6 +646,8 @@ test('arriving covered: a tab opened behind is prepared to arrive covered; an or
 // ---- a tab shown for the first time (tabs.js introduceTab) ----------------------
 
 const keepAwakes = (id) => fake.scripts.filter((x) => x.tabId === id && x.func === keepAwake);
+const barriers = (id) => fake.scripts.filter((x) => x.tabId === id && x.func.name === 'paintBarrierInPage');
+const scriptsNamed = (id, name) => fake.scripts.filter((x) => x.tabId === id && x.func.name === name);
 const prepares = (id) => fake.scripts.filter((x) => x.tabId === id && x.func.name === 'prepareSidebarInPage');
 // Margin's state has `id` in front of window 1 (as onActivated left it).
 const knownInFront = (id) => mutate((s) => M.activateTab(M.upsertTab(s, fake.tabs.get(id), Date.now()), id, 1, Date.now()));
@@ -662,7 +706,8 @@ test('introducing: a tab never in front, loaded, is brought to the front and the
     }, () => focusTab(30));
     assert.deepEqual(fake.updates.map((u) => u.id), [30, 1, 30]);
     assert.deepEqual(startedWhile.slice(0, 2), [0, 1], 'the two sent together, not one after the other\'s answer');
-    assert.ok(fake.updates[2].at - fake.updates[1].at >= 55, 'shown once its process has drawn');
+    const drawn = barriers(30).filter((x) => x.at >= fake.updates[1].at);
+    assert.ok(drawn.length >= 1 && fake.updates[2].at - drawn[0].at >= 55, 'shown once its page has drawn after the introduction (paintBarrierInPage)');
     assert.deepEqual(events, [[30, true], [1, true], [30, false]], 'only the real switch is told as one');
     assert.deepEqual(introduced, [30], 'keep-ready hears of it (its hold ended)');
     const holds = keepAwakes(30);
@@ -964,6 +1009,120 @@ test('introducing: a user\'s activation of the tab left out after the updates we
 });
 
 
+test('introducing: shown once its page has drawn after the introduction (a rendering update there), not after a fixed wait: at once for a quick page, later for a busy one', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 160, url: 'https://quick.test/' }, { id: 161, url: 'https://busy.test/' }], [160, 161]);
+  try {
+    fake.barrierMs = (id) => (id === 160 ? 5 : 150);
+    await focusTab(160);
+    assert.deepEqual(fake.updates.map((u) => u.id), [160, 1, 160]);
+    const quick = fake.updates[2].at - fake.updates[1].at;
+    assert.ok(quick < 45, `a quick page shown ${quick}ms after its introduction`);
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    await focusTab(161);
+    assert.deepEqual(fake.updates.map((u) => u.id), [161, 1, 161]);
+    const busy = fake.updates[2].at - fake.updates[1].at;
+    assert.ok(busy >= 145, `a busy page shown once it drew (${busy}ms)`);
+  } finally {
+    done();
+  }
+});
+
+test('introducing: a tab never shown whose page is too busy to answer its wake in time is introduced all the same (only no page means no page)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 162, url: 'https://busy.test/' }], [162]);
+  try {
+    fake.scriptDelay = (id, func) => (id === 162 && (func === keepAwake || func?.name === 'pageThere') ? 600 : 1);
+    const result = await focusTab(162);
+    assert.equal(result.tab?.id, 162);
+    assert.deepEqual(fake.updates.map((u) => u.id), [162, 1, 162], 'introduced, then shown');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: a tab shown before whose page started visible and never came into view from hidden (in front at a launch, loaded as it was shown) is introduced once, prepared after its introduction, with no arrival cover', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 163, url: 'https://launch.test/' }, { id: 164, url: 'https://seen.test/' }], []);
+  try {
+    fake.unseen.add(163);
+    const result = await focusTab(163, { covered: true });
+    assert.equal(result.tab?.id, 163);
+    assert.deepEqual(fake.updates.map((u) => u.id), [163, 1, 163], 'introduced, then shown');
+    const [early, after, ...more] = prepares(163);
+    assert.ok(early && after && !more.length, 'prepared beside its wake, then again after its introduction');
+    assert.ok(after.at >= fake.updates[1].at && after.at < fake.updates[2].at, 'the second between its introduction and its show');
+    assert.notEqual(after.args[0].token, early.args[0].token, 'under a token of its own (a late answer to the first isn\'t taken for it)');
+    const cancels = scriptsNamed(163, 'cancelSidebarInPage').filter((x) => x.args[0] === early.args[0].token);
+    assert.ok(cancels.some((x) => x.at <= fake.updates[0].at), 'the early preparation called off before the introduction');
+    assert.ok(cancels.some((x) => x.at >= early.at), 'and after it went out');
+    assert.equal(result.preparation.token, after.args[0].token, 'the one after it goes with the show');
+    assert.equal(scriptsNamed(163, 'coverArrivalInPage').length, 0, 'no arrival cover: it has painted on screen before');
+    // Once until it's shown: asked again (say the switch didn't land), not introduced again.
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    await focusTab(163);
+    assert.deepEqual(fake.updates.map((u) => u.id), [163]);
+    // A page that has come into view from hidden: not introduced.
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    await focusTab(164);
+    assert.deepEqual(fake.updates.map((u) => u.id), [164]);
+  } finally {
+    tabShown(163);
+    done();
+  }
+});
+
+test('introducing: an unseen tab whose early preparation is slow: waited for 150 ms at most before its introduction, called off then, and again once it answers; the show goes with the preparation made after the introduction', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 170, url: 'https://slowearly.test/' }], []);
+  try {
+    fake.unseen.add(170);
+    let calls = 0;
+    fake.scriptDelay = (id, func) => (id === 170 && func?.name === 'prepareSidebarInPage' && calls++ === 0 ? 300 : 1);
+    const result = await focusTab(170);
+    assert.equal(result.tab?.id, 170);
+    assert.deepEqual(fake.updates.map((u) => u.id), [170, 1, 170], 'introduced, then shown');
+    const [early] = prepares(170);
+    const waited = fake.updates[0].at - early.at;
+    assert.ok(waited >= 140 && waited < 280, `introduced ${waited}ms after the early preparation went out (waited for it, 150 ms at most)`);
+    assert.ok(result.preparation.token.endsWith(':introduced'), 'the show goes with the preparation after the introduction');
+    await sleep(Math.max(0, early.at + 330 - Date.now()));
+    const cancels = scriptsNamed(170, 'cancelSidebarInPage').filter((x) => x.args[0] === early.args[0].token);
+    assert.ok(cancels.some((x) => x.at <= fake.updates[0].at), 'called off before the introduction');
+    assert.ok(cancels.some((x) => x.at >= early.at + 295), 'and again once it answered (a late answer could otherwise land after the first call-off)');
+  } finally {
+    tabShown(170);
+    done();
+  }
+});
+
+test('wake: a page says whether it ever came into view from hidden (unseen); one with an earlier copy, or none, counts as seen; the empty page a tab starts with is no page', async () => {
+  const vm = await import('node:vm');
+  const ask = (href, Margin) => vm.runInContext(`(${pageThere})()`, vm.createContext({ location: { href }, ...(Margin ? { Margin } : {}) }));
+  assert.equal(ask('https://a.test/', { content: { windowSeen: () => false } }), 'unseen');
+  assert.equal(ask('https://a.test/', { content: { windowSeen: () => true } }), true);
+  assert.equal(ask('https://a.test/', { content: {} }), true, 'an earlier copy (no windowSeen)');
+  assert.equal(ask('https://a.test/', null), true, 'no copy in this world');
+  assert.equal(ask('about:blank', { content: { windowSeen: () => false } }), false);
+});
+
+test('openBehind: a new tab shown at its first paint, still loading, is introduced all the same (it was never in a window)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }], []);
+  try {
+    const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 }, created: (tab) => tabOpened({ id: tab.id, active: false }) });
+    setTimeout(() => fake.painted.add(fake.created[0].id), 150);
+    const { tabId, shown: id } = await shown;
+    assert.equal(id, tabId);
+    assert.deepEqual(fake.updates.map((u) => u.id), [tabId, 1, tabId], 'introduced, then shown');
+    assert.equal(fake.tabs.get(tabId).status, 'loading');
+    tabShown(tabId);
+  } finally {
+    done();
+  }
+});
+
 // ---- a tab not ready to show (tabs.js restoreTab, waitLoaded) --------------------
 
 // Tabs Safari unloaded: no page (scripts fail at once), and their status says
@@ -1038,7 +1197,8 @@ test('restoring: a tab Safari unloaded is loaded behind the page (to the front a
     assert.deepEqual(fake.updates.map((u) => u.id), [60, 1, 60, 1, 60], 'restored, introduced, shown');
     assert.ok(fake.updates[1].at - fake.updates[0].at < 5, 'the two sent together');
     assert.ok(fake.updates[2].at - asked >= 190, `introduced once it had loaded (${fake.updates[2].at - asked}ms)`);
-    assert.ok(fake.updates[4].at - fake.updates[3].at >= 55, 'shown once its process has drawn');
+    const drawn = barriers(60).filter((x) => x.at >= fake.updates[3].at);
+    assert.ok(drawn.length >= 1 && fake.updates[4].at - drawn[0].at >= 55, 'shown once its page has drawn after the introduction (paintBarrierInPage)');
     assert.deepEqual(events.map(([, left]) => left), [true, true, true, true, false], 'only the real switch is told as one');
     assert.equal(front(), 60);
     // (A first try, beside the wake, found no page.)
@@ -1204,6 +1364,21 @@ test('restoring: a tab never shown that\'s still loading (a ⌘-clicked link) is
   }
 });
 
+test('restoring: a tab never shown going from a loaded page to another: the old page, loaded, isn\'t taken for the new one (its load waited for)', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 171, url: 'https://redirect.test/', status: 'loading' }], {});
+  try {
+    tabOpened({ id: 171, active: false });
+    fake.oldDocument.add(171);
+    setTimeout(() => { fake.oldDocument.delete(171); fake.tabs.get(171).status = 'complete'; }, 250);
+    const asked = Date.now();
+    await focusTab(171);
+    assert.deepEqual(fake.updates.map((u) => u.id), [171, 1, 171]);
+    assert.ok(fake.updates[0].at - asked >= 240, `introduced once the tab said it had loaded (${fake.updates[0].at - asked}ms), not at the old page's answer`);
+  } finally {
+    done();
+  }
+});
+
 test('restoring: another switch while it loads stands; the tab stays behind, loaded, and is introduced when it\'s shown later', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 76, url: 'https://unloaded.test/' }, { id: 77, url: 'https://e.test/' }], { 76: { loadMs: 300 } });
   try {
@@ -1328,14 +1503,14 @@ test('restoring: the page in front hidden for an instant just after the two upda
   }
 });
 
-test('restoring: a page that keeps loading is shown at the limit (2.5 s for a sidebar click\'s 7 s wait), introduced as far as it got, covered', async () => {
+test('restoring: a page that keeps loading and paints nothing is shown at the limit (1.5 s from its load\'s start), introduced as far as it got, covered', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 87, url: 'https://slow.test/' }], { 87: { loadMs: 8000 } });
   try {
     const asked = Date.now();
     const result = await focusTab(87, { deadline: asked + 7000 });
     assert.equal(result.tab?.id, 87);
     const shownAt = fake.updates.at(-1).at - asked;
-    assert.ok(shownAt >= 2450 && shownAt < 3300, `shown at the limit (${shownAt}ms)`);
+    assert.ok(shownAt >= 1450 && shownAt < 1900, `shown at the limit (${shownAt}ms)`);
     assert.deepEqual(fake.updates.map((u) => u.id), [87, 1, 87, 1, 87], 'introduced still loading (rather than shown empty)');
     assert.deepEqual(prepares(87).filter((x) => x.at > fake.updates[0].at).map((x) => x.args[0].covered), [true]);
   } finally {
@@ -1638,6 +1813,90 @@ test('restoring: a held key passes over tabs Safari unloaded (nothing shown for 
 
 // Pages cut off from Margin (background/cut-off.js): Safari reloaded Margin
 // and kept its world in them, bound to the copy that's gone.
+test('restoring: a page that paints at once but loads late (a slow image) is introduced and shown once it has painted, not once loaded', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 165, url: 'https://late.test/' }], { 165: { loadMs: 3000 } });
+  try {
+    const asked = Date.now();
+    setTimeout(() => fake.painted.add(165), 200);
+    const result = await focusTab(165, { carry: 'hover' });
+    assert.equal(result.tab?.id, 165);
+    assert.deepEqual(fake.updates.map((u) => u.id), [165, 1, 165, 1, 165], 'restored, introduced, shown');
+    assert.ok(fake.updates[2].at - asked >= 195, 'introduced once painted');
+    const shownAt = fake.updates[4].at - asked;
+    assert.ok(shownAt < 500, `shown ${shownAt}ms after the click, at its first paint (it loads at 3 s)`);
+    assert.equal(fake.tabs.get(165).status, 'loading', 'still loading as it was shown');
+    assert.deepEqual(prepares(165).filter((x) => x.at > fake.updates[0].at).map((x) => x.args[0].covered), [true], 'prepared to arrive covered');
+  } finally {
+    done();
+  }
+});
+
+test('restoring: whether it has painted is asked again until the question reaches the page\'s own document (before its load commits: an error in place of a result)', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 166, url: 'https://commit.test/' }], { 166: { loadMs: 3000 } });
+  try {
+    const asked = Date.now();
+    const scriptError = fake.scriptError;
+    fake.scriptError = (id) => (id === 166 && Date.now() - asked < 250) || scriptError(id);
+    fake.painted.add(166);
+    await focusTab(166);
+    assert.deepEqual(fake.updates.map((u) => u.id), [166, 1, 166, 1, 166]);
+    assert.ok(scriptsNamed(166, 'readyInPage').length >= 3, 'asked again until it ran there');
+    assert.ok(fake.updates[2].at - asked >= 245 && fake.updates[4].at - asked < 700, `introduced once it answered (${fake.updates[2].at - asked}ms), shown soon after`);
+  } finally {
+    done();
+  }
+});
+
+test('restoring: once painted, its wake is renewed and its arrival cover asked for together (not one after the other on a busy page), both before its introduction', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 167, url: 'https://busy.test/' }], { 167: { loadMs: 3000 } });
+  try {
+    fake.painted.add(167);
+    // Busy once its load has started: a wake takes 200 ms to answer.
+    fake.scriptDelay = (id, func) => (noPage.has(id) ? null : id === 167 && func?.name === 'pageThere' ? 200 : 1);
+    await focusTab(167);
+    assert.deepEqual(fake.updates.map((u) => u.id), [167, 1, 167, 1, 167]);
+    const renew = scriptsNamed(167, 'pageThere').filter((x) => x.at > fake.updates[1].at).at(0);
+    const [arrival] = scriptsNamed(167, 'coverArrivalInPage');
+    assert.ok(renew && arrival, 'a fresh wake and the arrival cover');
+    assert.ok(Math.abs(arrival.at - renew.at) < 100, `sent together (${arrival.at - renew.at}ms apart; one after the other: 200)`);
+    assert.ok(arrival.at < fake.updates[2].at, 'the cover asked for before the introduction');
+  } finally {
+    done();
+  }
+});
+
+test('restoring: a page just loaded behind gets 500 ms for its preparation; one slower is shown unprepared, its preparation called off', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 168, url: 'https://slowprep.test/' }], { 168: { loadMs: 3000 } });
+  try {
+    fake.painted.add(168);
+    fake.scriptDelay = (id, func) => (noPage.has(id) ? null : id === 168 && func?.name === 'prepareSidebarInPage' ? 800 : 1);
+    const result = await focusTab(168);
+    assert.equal(result.tab?.id, 168);
+    assert.equal(result.preparation.outcome, 'timeout');
+    const waited = fake.updates[4].at - fake.updates[3].at;
+    assert.ok(waited >= 480 && waited < 700, `shown ${waited}ms after its introduction`);
+    assert.ok(scriptsNamed(168, 'cancelSidebarInPage').some((x) => x.at <= fake.updates[4].at), 'its preparation called off before the show');
+  } finally {
+    done();
+  }
+});
+
+test('restoring: the last thing before the show is the page drawing (a barrier after a preparation slower than the first)', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 169, url: 'https://draw.test/' }], { 169: { loadMs: 3000 } });
+  try {
+    fake.painted.add(169);
+    fake.barrierMs = () => 20;
+    fake.scriptDelay = (id, func) => (noPage.has(id) ? null : id === 169 && func?.name === 'prepareSidebarInPage' ? 150 : 1);
+    await focusTab(169);
+    const [prepared] = prepares(169).filter((x) => x.at > fake.updates[1].at);
+    const last = barriers(169).at(-1);
+    assert.ok(last.at >= prepared.at + 150, 'a barrier once the preparation answered');
+    assert.ok(fake.updates.at(-1).at >= last.at + 20, 'the show once it answered');
+  } finally {
+    done();
+  }
+});
+
 test('cut off: a page not in use is loaded again (a GET of its address; with a #fragment, the browser\'s reload)', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 40, url: 'https://cut.test/x' }, { id: 41, url: 'https://cut.test/y#part' }]);
   fake.scriptDelay = () => 1;

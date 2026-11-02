@@ -15,6 +15,7 @@ import { startPinch } from './pinch.js';
 import { createSwitching, backgroundSwitches, NEW_TAB } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
+import { readyInPage } from '../shared/page-ready.js';
 import { fromStorage, openTabsCurrent, takesChanges, withChanges } from '../shared/stored.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
@@ -785,10 +786,14 @@ export function startCore({ onTheme } = {}) {
   let uncoverLoading = null;
   // A tab Safari loads as it's shown, brought to the front by Margin: the
   // switch's cover stays over the page (its spinner already turning, as on
-  // the page before) until the page has loaded, at most COVER_LOADING_MS
-  // (then it shows as far as it got), so the switch reads as one wait rather
-  // than a page building up.
-  const COVER_LOADING_MS = 2500;
+  // the page before) until the page has painted something of its own (its
+  // document parsed and its own content drawn: shared/page-ready.js; not the
+  // cover's spinner, which is the page's first contentful paint here) or
+  // loaded, at most COVER_LOADING_MS (then it shows as far as it got), so the
+  // switch reads as one wait rather than a page building up. Until its load
+  // event, at first: in Tirth's log a page painted at 130 ms and loaded at
+  // 2334 ms, all that time under the cover.
+  const COVER_LOADING_MS = 1500;
   let coveredWhileLoading = false;
   function coverWhileLoading() {
     coveredWhileLoading = true;
@@ -807,6 +812,8 @@ export function startCore({ onTheme } = {}) {
     const timer = setTimeout(off, COVER_LOADING_MS);
     uncoverLoading = off;
     addEventListener('load', off, { once: true });
+    // In front, a page records its paints in either browser.
+    void readyInPage(COVER_LOADING_MS).then((how) => how !== 'timeout' && off());
     document.addEventListener('visibilitychange', () => document.hidden && off(), { once: true });
   }
   const SHOWING_MS = 10000;
@@ -845,6 +852,44 @@ export function startCore({ onTheme } = {}) {
     clearTimeout(seenTimer);
     if (!document.hidden) seenTimer = setTimeout(() => { everShown = true; }, SEEN_MS);
   });
+  // False for a document that started visible in a tab whose page may have
+  // just been made, and hasn't come into view from hidden since (for any time
+  // at all): the tab in front at a launch, one Safari loaded as it was shown.
+  // Its tab's view may have gone into the window before it had a process:
+  // WebKit then never marked it as having been in a window, and its first
+  // return shows Safari's empty view until it paints. The background
+  // introduces such a tab first (background/tabs.js pageThere, mayIntroduce).
+  // Safari makes those pages from the tab's saved history (in its log, all four
+  // such returns with Safari's empty view in the 00:32 session were tabs it
+  // restored with no process yet: restoreFromSessionState, then
+  // goToBackForwardItem, "PID=0"), so their document's navigation is
+  // 'back_forward'; or the first document of a tab opened in front (a link
+  // from another app: Safari also starts loads with no process,
+  // "loadRequest … PID=0"). A link, the address bar or a reload in a tab WebKit
+  // has seen in the window is neither: WebKit's mark stays with the tab's page
+  // for good, and such a page, introduced all the same, took 80 ms to come
+  // back in the WebKit host against 10 (the host's `navigated`). A copy that
+  // came into the page after its start (Margin installed or updated meanwhile)
+  // doesn't know how it started: taken as seen, as a page with an earlier copy
+  // is (in the WebKit host, a page open at install was otherwise introduced on
+  // its first switch, 70 ms more for nothing). One that started hidden is a
+  // tab opened behind, which the background knows of (or takes as shown
+  // before).
+  const madeAfresh = (() => {
+    try {
+      return /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType('navigation')[0])?.type === 'back_forward' || history.length === 1;
+    } catch {
+      return false;
+    }
+  })();
+  const startedVisible = !document.hidden && document.readyState === 'loading' && madeAfresh;
+  let wasHidden = !startedVisible;
+  let windowSeen = !startedVisible;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) wasHidden = true;
+    else if (wasHidden) windowSeen = true;
+  });
+  Margin.content.windowSeen = () => windowSeen;
   // Never longer than this hidden (a switch that didn't happen, or a page
   // shown without its frames running).
   const ARRIVAL_MAX_MS = 3000;

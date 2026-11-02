@@ -47,8 +47,9 @@ globalThis.chrome = {
         fake.disabled.push(target.tabId);
         return Promise.resolve([{ result: true }]);
       }
-      // ensureCurrent's question: is Margin's current copy there?
-      if (String(func).includes('Margin?.content')) {
+      // ensureCurrent's question: is Margin's current copy there? (Not the
+      // wake's, which asks the copy there something else.)
+      if (func?.name !== 'pageThere' && String(func).includes('Margin?.content')) {
         fake.probes++;
         if (fake.probeHangs) return new Promise(() => {});
         return sleep(2).then(() => [{ result: fake.current.has(target.tabId) }]);

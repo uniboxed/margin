@@ -61,9 +61,10 @@ function record(entry) {
 }
 
 /** A switch Margin made (background/tabs.js focusTab, background/navigation.js). */
-export function recordSwitch({ source, tabId, asked, wake = null, preparation = null, introduced = null, restored = null, loadWait = null, shownAfter = null, error = null }) {
+/** `ready`: what a wait for a page loading behind ended on ('painted', 'loaded', or why it stopped); `unseen`: the tab was introduced because its page started visible and hadn't come into view from hidden since (background/tabs.js mayIntroduce); `barrier`: each paint barrier before the show, [{ how: 'drawn' | 'timeout' | 'none', ms }] (background/tabs.js paintBarrier). */
+export function recordSwitch({ source, tabId, asked, wake = null, preparation = null, introduced = null, unseen = null, restored = null, loadWait = null, ready = null, barrier = null, shownAfter = null, error = null }) {
   record({
-    kind: 'switch', source, tabId, introduced, restored, loadWait,
+    kind: 'switch', source, tabId, introduced, unseen, restored, loadWait, ready, barrier,
     wake: wake && { outcome: wake.outcome, ms: wake.ms, early: wake.startedAt < asked ? asked - wake.startedAt : 0 },
     preparation: preparation && { outcome: preparation.outcome, ms: preparation.ms, reason: preparation.reason ?? null },
     waited: wake ? Math.max(0, wake.startedAt + wake.ms - asked) : 0,

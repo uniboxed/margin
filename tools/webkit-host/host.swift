@@ -41,6 +41,11 @@ let pageRecorder = """
   // Session storage to give back when the tab loads again after a relaunch (Safari restores a
   // tab's sessionStorage with it): origin → [[key, value]]. See the "restart" step.
   var restoredSession: [String: [[String]]] = [:]
+  // A web page's history as the tab had it when it went to sleep (WKWebView.interactionState):
+  // it loads again from it, as Safari restores a tab it unloaded or had at a launch
+  // (restoreFromSessionState, then goToBackForwardItem, in Safari's log), so its document's
+  // navigation is 'back_forward', as in Safari.
+  var savedState: Any?
   init(name: String, url: URL) { self.name = name; self.url = url }
   // `load: false`: the web view only (no process yet), loaded with loadNow().
   func makeWebView(load: Bool = true) {
@@ -82,7 +87,11 @@ let pageRecorder = """
     ]
     if load { loadNow() }
   }
-  func loadNow() { webView?.load(URLRequest(url: url)) }
+  func loadNow() {
+    if let state = savedState, let wv = webView { savedState = nil; wv.interactionState = state } else { webView?.load(URLRequest(url: url)) }
+  }
+  // Its history kept (savedState) as its web view goes away.
+  func keepState() { if madeFor == nil, let wv = webView, wv.url != nil { savedState = wv.interactionState } }
   // Every navigation, so reload loops and redirects show in the log.
   func webView(_ wv: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
     let frame = action.targetFrame.map { $0.isMainFrame ? "top" : "frame" } ?? "new window"
@@ -112,6 +121,7 @@ let pageRecorder = """
   func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
     log("delegate: load \(name) \(url.absoluteString)"); self.url = url
     unloaded = false
+    savedState = nil
     // A web view is made for a web page or for one copy's pages (its configuration): going to
     // another's (or from a copy that's gone to the current one), it's made again, as Safari does.
     let base = host.context?.baseURL.absoluteString
@@ -387,6 +397,7 @@ Task { @MainActor in
     case "sleep":
       // Safari unloading a hidden tab: its web view goes away.
       let t = host.tab(step["name"] as! String)!
+      t.keepState()
       t.webView?.removeFromSuperview(); t.webView = nil; t.unloaded = false; t.loadingObs = []
       log("put \(t.name) to sleep")
     case "install": try! await host.install(sameId: (step["sameId"] as? Bool) == true)
@@ -450,9 +461,9 @@ Task { @MainActor in
       host.unloadTwin()
       // New tab objects, as a relaunched Safari has (WebKit maps a page to its tab through them).
       let frontName = host.window.active?.name
-      for t in host.window.tabs { t.webView?.removeFromSuperview(); t.webView = nil; t.unloaded = false; t.loadingObs = [] }
+      for t in host.window.tabs { t.keepState(); t.webView?.removeFromSuperview(); t.webView = nil; t.unloaded = false; t.loadingObs = [] }
       host.window.tabs = host.window.tabs.map { old in
-        let t = Tab(name: old.name, url: old.url); t.window = host.window; t.restoredSession = old.restoredSession; return t
+        let t = Tab(name: old.name, url: old.url); t.window = host.window; t.restoredSession = old.restoredSession; t.savedState = old.savedState; return t
       }
       host.window.active = nil
       let front = frontName.flatMap { host.tab($0) }

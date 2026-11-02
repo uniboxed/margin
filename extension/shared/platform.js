@@ -32,6 +32,10 @@ const PROFILES = {
     // content/core.js). Chrome keeps hidden tabs' last frames and does not
     // need the extra storage read / script round trip.
     prepareSidebar: true,
+    // A page loading hidden still paints and records its first contentful
+    // paint (WebKit: shared/page-ready.js), so a tab loading behind is shown
+    // once that has come and something of its own is drawn.
+    hiddenPaints: true,
     // Wheel deltas are in screen points whatever the page's zoom (WebKit's
     // WheelEvent passes the platform's deltas on as they are).
     zoomedWheel: false,
@@ -68,6 +72,7 @@ const PROFILES = {
     introduceTabs: false,
     restoreTabs: false,
     prepareSidebar: false,
+    hiddenPaints: false, // Chrome doesn't paint a hidden tab (no paint entry comes for it): one loading behind is shown once loaded
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
     // the page's zoom).
     zoomedWheel: true,
