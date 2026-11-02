@@ -112,14 +112,21 @@ export async function readForPage(get, page, seen = []) {
   // The open tabs only under their old names (just updated from a build
   // before them): a full read knows them (fromStorage).
   if (!(OPEN_TABS in raw)) return get(null);
-  if (raw[FAVICONS_MARK] !== before[FAVICONS_MARK]) {
+  // Against the icons the page has, not the mark it was last told: a page can
+  // take the mark's event after a read that came before the icons were
+  // stored (between the background's two writes), and would keep old icons
+  // under the new mark for good. A store with no mark (icons a build before
+  // it wrote, until the background writes it): as the page had it.
+  const mine = FAVICONS_MARK in raw ? faviconsMark(before[FAVICONS]) : before[FAVICONS_MARK];
+  if (raw[FAVICONS_MARK] !== mine) {
     // Newer than the mark read, if anything: the mark kept is then older
     // than the icons, and they're read again next time, never the other way.
     return { ...raw, ...(await get([FAVICONS])) };
   }
   const now = page() ?? before;
   const { [FAVICONS_MARK]: _, ...rest } = raw;
-  return { ...rest, ...(FAVICONS in now ? { [FAVICONS]: now[FAVICONS] } : {}), ...(FAVICONS_MARK in now ? { [FAVICONS_MARK]: now[FAVICONS_MARK] } : {}) };
+  const kept = FAVICONS_MARK in raw ? faviconsMark(now[FAVICONS]) : now[FAVICONS_MARK];
+  return { ...rest, ...(FAVICONS in now ? { [FAVICONS]: now[FAVICONS] } : {}), ...(kept !== undefined ? { [FAVICONS_MARK]: kept } : {}) };
 }
 
 /**

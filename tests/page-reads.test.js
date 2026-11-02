@@ -260,3 +260,20 @@ test('page reads: a new mark is stored only once its icons are, whatever order S
   assert.deepEqual(calls[iconsAt + 1], ['faviconsMark'], 'the mark in a set() of its own, after the icons');
   assert.ok(calls.every((keys) => !(keys.includes('favicons') && keys.includes('faviconsMark'))), 'never in the same one');
 });
+
+test('page reads: a page that took the icons\' mark from its event but read the icons before they were stored (between the background\'s two writes) still gets the new icons at its next read', async () => {
+  const F0 = { 'https://a.test': { data: 'A', at: 1 } };
+  const F1 = { ...F0, 'https://b.test': { data: 'B', at: 2 } };
+  const storage = fakeStorage(toStorage({ ...STATE, favicons: F0 }, Object.keys(STATE), by));
+  let state = fromStorage(await readForPage(storage.get, () => null));
+  // The background's first write: the icons. The page can't take their event
+  // (a read under way) and reads again; that read lands before the mark.
+  const { faviconsMark: mark, ...values } = toStorage({ favicons: F1 }, ['favicons'], by);
+  storage.set(values);
+  state = fromStorage(await readForPage(storage.get, () => state));
+  // The second write, the mark: its event taken straight into the page's state.
+  storage.set({ faviconsMark: mark });
+  state = withChanges(state, { faviconsMark: { newValue: mark } });
+  state = fromStorage(await readForPage(storage.get, () => state));
+  assert.deepEqual(Object.keys(state.favicons), ['https://a.test', 'https://b.test']);
+});
