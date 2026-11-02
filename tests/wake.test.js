@@ -359,12 +359,51 @@ test('wake: a page slow to come back is waited for, up to the cap', async () => 
 
 test('sidebar preparation: a timeout is cancelled before the tab is activated', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 13, url: 'https://slow-sidebar.test/' }]);
-  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 950 : 5; // past its 900ms cap
+  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 950 : 5; // past its cap (900 ms; 250 for a tab awake: below)
   const focused = await focusTab(13);
   assert.equal(focused.preparation.outcome, 'timeout');
   const cancel = fake.scripts.find((s) => s.func.name === 'cancelSidebarInPage');
   assert.ok(cancel, 'the late preparation is invalidated');
   assert.ok(cancel.at <= fake.updates[0].at, 'invalidated before activation');
+});
+
+test('sidebar preparation: a tab whose wake answered awake gets 250 ms from that answer; one later is called off before the show; a tab whose wake didn\'t answer keeps 900 ms', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 230, url: 'https://awake-busy.test/' }]);
+  fake.scriptDelay = (_id, func) => (func.name === 'prepareSidebarInPage' ? 400 : 5);
+  const { result, entry } = await logged(230, () => focusTab(230));
+  const [prepared] = prepares(230);
+  assert.equal(result.preparation.outcome, 'timeout');
+  assert.equal(entry.preparation.reason, 'awake budget');
+  const shown = fake.updates[0].at - prepared.at;
+  assert.ok(shown >= 240 && shown < 330, `shown ${shown} ms after its preparation went out`);
+  const cancels = cancelsOf(230, prepared.args[0].token);
+  assert.ok(cancels.some((x) => x.at <= fake.updates[0].at), 'called off before the show');
+
+  // Its wake slower than WAKE_MAX_MS (not known to be awake): its own 900 ms.
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 231, url: 'https://not-answering.test/' }]);
+  fake.scriptDelay = (_id, func) => (func.name === 'prepareSidebarInPage' ? 600 : func.name === 'pageThere' ? 450 : 5);
+  const slow = await focusTab(231);
+  assert.equal(slow.preparation.outcome, 'ready', 'waited for');
+  const [late] = prepares(231);
+  assert.ok(fake.updates[0].at - late.at >= 590, 'shown once it was prepared');
+
+  // Its wake answering late (a process Safari resumed slowly answers both
+  // scripts together, the preparation just behind): 250 ms from that answer.
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 233, url: 'https://resumed.test/' }]);
+  fake.scriptDelay = (_id, func) => (func.name === 'prepareSidebarInPage' ? 330 : func.name === 'pageThere' ? 300 : 5);
+  const resumed = await focusTab(233);
+  assert.equal(resumed.preparation.outcome, 'ready', 'not cut off just behind its wake');
+});
+
+test('sidebar preparation: the page is told the state\'s last write (store.js stateRev), so one that saw it draws without reading storage', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 232, url: 'https://knows.test/' }]);
+  fake.scriptDelay = () => 5;
+  await mutate((st) => ({ ...st, settings: { ...st.settings, sidebarWidth: 271 } }));
+  const written = fake.local.stateRev;
+  assert.equal(typeof written?.id, 'string', 'stamped with the write');
+  await focusTab(232);
+  const [prepared] = prepares(232);
+  assert.equal(prepared.args[0].rev, written.id);
 });
 
 test('sidebar preparation: a page still running an earlier copy gets the current one (and its theme) first, then is prepared', async () => {

@@ -1,6 +1,6 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
-import { api, cached, isOwner, mutate, now, thisCopy } from './store.js';
+import { api, cached, isOwner, mutate, now, stateRev, thisCopy } from './store.js';
 import { recordSwitch } from './diagnostics.js';
 import { hasNoPage, hiddenFor, isHeld, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
@@ -50,6 +50,15 @@ const PREPARE_MAX_MS = 900;
 // the 60 ms meant). One that misses it is shown unprepared: it has said hello
 // by then, and draws its own tab.
 const PREPARE_LOADED_MS = 500;
+// A tab whose wake answered (its process running), neither kicked nor
+// introduced: its preparation gets this long from that answer. The page
+// draws from the state it has, without reading storage, when it saw the last
+// write (content/core.js prepareForShow): a few ms after the script reaches
+// it. One later than this is a page busy with its own work, or a read stuck
+// behind a loaded Safari (11 of 45 such switches waited 529–1017 ms for it
+// in Tirth's log): it's called off, and the page draws
+// as it's shown, inside WebKit's hold, as with Safari's own tab bar.
+const PREPARE_AWAKE_MS = 250;
 // How long a tab about to be introduced waits for the preparation started
 // beside its wake to land, at most, before calling it off (mayIntroduce's
 // `unseen`).
@@ -292,8 +301,10 @@ async function prepareTabForShow(tab, { token, carry = null, scroll = null, budg
       target: { tabId: tab.id },
       injectImmediately: true,
       func: prepareSidebarInPage,
+      // `rev`: the state's last write (store.js stateRev), as the script goes
+      // out: a page that saw it draws without reading storage.
       // `sentAt`: DEVELOPMENT DIAGNOSTICS (the page's `timings`, in the switch log).
-      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered, until: at + budget, sentAt: Date.now() }],
+      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered, until: at + budget, rev: stateRev(), sentAt: Date.now() }],
     }).then((rows) => {
       const answer = rows?.[0]?.result;
       return answer?.ready ? { ...result('ready'), timings: answer.timings ?? null } : result('not ready', answer?.reason ?? 'no answer');
@@ -566,6 +577,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   let prepToken = token;
   /** @type {Promise<Preparation> | null} */
   let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered }) : null;
+  const earlyAt = Date.now();
   /** @type {Wait} */
   const wait = { gen, since: asked, until: Math.min(asked + RESTORE_MAX_MS, (deadline ?? Infinity) - RESTORE_RESERVE_MS), hurry };
   let loading = !loadWaited && !!platform?.restoreTabs && neverShown.has(tabId) && live.status === 'loading';
@@ -786,12 +798,16 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // subsequent tabs.update. A tab just introduced (or kicked): its page's
   // paint for that instant landed (paintBarrier), in place of a fixed wait.
   // A tab whose wake is stuck: nothing waited for, its preparation called off
-  // (now: below, and once it answers).
+  // (now: below, and once it answers). The preparation sent beside the wake,
+  // for a tab neither kicked nor introduced: PREPARE_AWAKE_MS at most once its
+  // wake says it's awake (awakeBudget).
   if (stuck) void early?.then((late) => cancelPreparation(tabId, late));
+  const woken = wake && !stuck ? wakeTab(tabId, { renew: !!introduced || waited }) : null;
+  const prepared = early && woken && !kick && !introduced && !waited ? awakeBudget(early, woken, earlyAt, prepToken) : early;
   /** @type {[Wake | null, Preparation, unknown]} */
   let [woke, preparation] = stuck ? [stuck, early ? { outcome: 'timeout', ms: Date.now() - asked, reason: 'stuck', token: prepToken } : skipped, null] : await Promise.all([
-    wake ? step('wake', wakeTab(tabId, { renew: !!introduced || waited })) : null,
-    step('preparation', early ?? (wake ? prepareTabForShow(live, { token: prepToken, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)))),
+    woken ? step('wake', woken) : null,
+    step('preparation', prepared ?? (wake ? prepareTabForShow(live, { token: prepToken, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)))),
     introduced || resumed ? step('barrier', barrier(Math.min(BARRIER_MAX_MS, Math.max(0, kickEnd - Date.now())))) : null,
   ]);
   // A page still running an earlier copy of Margin (it slept through an
@@ -1302,6 +1318,18 @@ const mayKick = async (tab, deadline) => !!platform?.introduceTabs && !windowBus
 // still be introduced later: mayIntroduce). Whether the page in front is back.
 /** @param {any} tab @param {number} gen @param {() => void} sending */
 const kickTab = (tab, gen, sending) => forwardAndBack(tab, gen, sending);
+// The preparation `prep`, sent at `since`, once the tab's wake has said its
+// page is awake (before the preparation answered): its answer within
+// PREPARE_AWAKE_MS of then, else a timeout, called off before the show as any
+// (focusTabNow). From the wake's answer, not from `since`: a process Safari
+// resumed slowly answers both scripts at once, the preparation just behind.
+// A wake that didn't answer that way leaves it its own time.
+/** @param {Promise<Preparation>} prep @param {Promise<Wake>} woken @param {number} since @param {string} token @returns {Promise<Preparation>} */
+async function awakeBudget(prep, woken, since, token) {
+  const first = await Promise.race([prep.then(() => null), woken]);
+  if (first?.outcome !== 'awake') return prep;
+  return (await answerBy(prep, Date.now() + PREPARE_AWAKE_MS)) ?? { outcome: 'timeout', ms: Date.now() - since, reason: 'awake budget', token };
+}
 // `promise`'s answer if it comes by `until`, else null.
 /** @template T @param {Promise<T>} promise @param {number} until @returns {Promise<T | null>} */
 async function answerBy(promise, until) {

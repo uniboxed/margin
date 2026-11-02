@@ -82,12 +82,45 @@ export function toStorage(state, keys, { origin, since, synced }) {
 /** Only the icons' mark changed: nothing to draw (the icons came before it). @param {Record<string, unknown>} changes */
 export const onlyMark = (changes) => Object.keys(changes).every((key) => key === FAVICONS_MARK);
 
+// Which write of the state storage has (`stateRev`: { id, after }), in the
+// same set() as the state's keys (background/store.js flush), so one change
+// event brings both: `id` a new one for every write, `after` the one before
+// it. A page that heard every write since its last read knows the stored
+// state already: the background passes the id of its last write when it
+// prepares the page for a show (background/tabs.js), and a page that saw it
+// draws from what it has instead of reading storage (content/core.js
+// prepareForShow). Events reach a page in the order they were sent, and
+// before a script sent after them (one connection to its process), so a page
+// that saw the id last written saw everything up to it. Any doubt (a write it
+// may have missed, a read under way) and it reads, as before.
+export const STATE_REV = 'stateRev';
+/** The id of the write a read found (null: none). @param {Record<string, any>} raw */
+export const revOf = (raw) => (typeof raw?.[STATE_REV]?.id === 'string' ? raw[STATE_REV].id : null);
+/**
+ * The write a page knows of after a change event that brings one: its id if
+ * it follows the one the page knew (none was missed), else null (not known:
+ * the next preparation reads). A page that knew none knows none.
+ * @param {string | null} known @param {{ newValue?: any } | undefined} change
+ */
+export function revAfter(known, change) {
+  const rev = change?.newValue;
+  return known != null && typeof rev?.id === 'string' && rev.after === known ? rev.id : null;
+}
+/**
+ * Whether a page may draw for a show from the state it has (no read): the
+ * background's last write (`rev`) is the one the page knows, and nothing
+ * since may have put an older value back (no read under way, none that
+ * missed a change: content/core.js staleRead).
+ * @param {string | null | undefined} rev @param {{ known: string | null, reading: number, staleRead: boolean }} page
+ */
+export const knowsState = (rev, { known, reading, staleRead }) => typeof rev === 'string' && rev === known && reading === 0 && !staleRead;
+
 // What a page reads besides the icons, whatever it has seen so far: the open
 // tabs and what the sidebar, the palette and the page's own start use. Keys
 // seen in a read or a change event are read too. Never the old names of the
 // open tabs (read in full when `openTabs` isn't there), lostTabs (only the
 // background's), or the envelope an old development build kept.
-const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', FAVICONS_MARK]);
+const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', FAVICONS_MARK, STATE_REV]);
 const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup']);
 /** @param {Iterable<string>} seen storage keys a page has seen @returns {string[]} */
 export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key));

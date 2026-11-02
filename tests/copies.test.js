@@ -140,7 +140,7 @@ test('store: a change with nothing new isn\'t written; a real one is, with the t
   await copy.mutate((s) => s);
   assert.deepEqual(written, [], 'not written');
   await copy.mutate((s) => ({ ...s, tabs: { ...s.tabs, 5: { ...s.tabs[5], title: 'E2' } } }));
-  assert.deepEqual(written, [['openTabs']], 'a new title: written');
+  assert.deepEqual(written, [['openTabs', 'stateRev']], 'a new title: written (with the write\'s stamp: shared/stored.js STATE_REV)');
   assert.equal(storedTabs().tabs[5].title, 'E2');
   assert.deepEqual(storedTabs().tabSpace, { 5: 'personal' }, 'with the tabs\' spaces');
 
@@ -153,7 +153,174 @@ test('store: a change with nothing new isn\'t written; a real one is, with the t
   written.length = 0;
   await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 301 } }));
   await copy.mutate((s) => ({ ...s, settings: { ...s.settings } })); // nothing new: the failed write still goes
-  assert.deepEqual(written, [['settings']]);
+  assert.deepEqual(written, [['settings', 'stateRev']]);
   assert.equal(local.get('settings').sidebarWidth, 301);
   chrome.storage.local.set = set;
+});
+
+// Each write of the state is stamped (shared/stored.js STATE_REV) in the same
+// set() as the state's keys: a page prepared for a show draws without reading
+// storage if it saw the last one (content/core.js prepareForShow).
+test('store: each write of the state carries its stamp in the same set(), following the one before; stateRev() is the last that went through, none after a failed one; a background starting again follows the stored one', async () => {
+  local.clear();
+  const copy = await startCopy('safari-web-extension://REV/');
+  await copy.load();
+  const set = chrome.storage.local.set;
+  const sets = [];
+  chrome.storage.local.set = async (values) => { sets.push(structuredClone(values)); return set(values); };
+  await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 280 } }));
+  const first = local.get('stateRev');
+  assert.deepEqual(Object.keys(sets.at(-1)).sort(), ['settings', 'stateRev'], 'in the same set() as the state');
+  assert.equal(typeof first.id, 'string');
+  assert.equal(copy.stateRev(), first.id);
+  await copy.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://e.test/', index: 0 } }, tabSpace: { 5: 'personal' } }));
+  const second = local.get('stateRev');
+  assert.deepEqual(Object.keys(sets.at(-1)).sort(), ['openTabs', 'stateRev']);
+  assert.equal(second.after, first.id, 'follows the one before');
+  assert.notEqual(second.id, first.id);
+  assert.equal(copy.stateRev(), second.id);
+  // A write that fails: not known which keys went through.
+  let fail = true;
+  chrome.storage.local.set = async (values) => {
+    sets.push(structuredClone(values));
+    if (fail) { fail = false; throw new Error('busy'); }
+    return set(values);
+  };
+  await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 290 } }));
+  const failed = sets.at(-1).stateRev;
+  assert.equal(copy.stateRev(), null, 'none known while a write failed');
+  await copy.mutate((s) => ({ ...s, pins: [{ id: 'p', url: 'https://p.test/', title: 'P' }] }));
+  const after = local.get('stateRev');
+  assert.equal(after.after, failed.id, 'the next follows the failed one (a page that saw it knows the next; one that didn\'t reads)');
+  assert.equal(copy.stateRev(), after.id);
+  chrome.storage.local.set = set;
+  // Its background started again (same copy): the stored write is the last one known.
+  const session = new Map([['since', (await chrome.storage.session.get('since')).since]]);
+  globalThis.chrome = /** @type {any} */ ({ ...fakeApi('safari-web-extension://REV/'), storage: { ...fakeApi('safari-web-extension://REV/').storage, session: { get: async () => ({ since: session.get('since') }), set: async () => {} } } });
+  const again = await import('../extension/background/store.js?copy=rev-again');
+  await again.decided();
+  assert.equal(again.stateRev(), after.id, 'before any write of its own');
+  const own = [];
+  const setAgain = chrome.storage.local.set;
+  chrome.storage.local.set = async (values) => { if (values.stateRev) own.push(values.stateRev); return setAgain(values); };
+  await again.load();
+  await again.mutate((s) => ({ ...s, pins: [] }));
+  assert.ok(own.length > 0);
+  assert.equal(own[0].after, after.id, 'its first write follows it');
+  chrome.storage.local.set = setAgain;
+  // A newer copy's claim marks the stored tabs unmatched: stamped too, a chain
+  // of its own (pages read once more: another copy's writes never reached them).
+  await again.markSynced();
+  const before = local.get('stateRev').id;
+  await sleep(5);
+  const newer = await startCopy('safari-web-extension://REV-NEWER/');
+  assert.equal(local.get('openTabs').synced, false);
+  assert.notEqual(local.get('stateRev').id, before);
+  assert.equal(local.get('stateRev').after, null);
+  assert.equal(newer.stateRev(), local.get('stateRev').id);
+});
+
+// A page prepared for a show reads storage unless the background knows the
+// last write is through (background/store.js stateRev): its read then comes
+// behind a write still waiting or under way, and gets it.
+test('store: no write is known while one waits for the owner check, while its set() is under way, or while the icons\' mark after it is', async () => {
+  local.clear();
+  const copy = await startCopy('safari-web-extension://INFLIGHT/');
+  await copy.load();
+  await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 280 } }));
+  assert.equal(copy.stateRev(), local.get('stateRev').id);
+  const { get, set } = chrome.storage.local;
+  const gate = () => {
+    let open;
+    const shut = new Promise((resolve) => { open = resolve; });
+    return { shut, open: () => open() };
+  };
+  // The keys changed, the owner check before the set() not answered yet.
+  const check = gate();
+  let holdCheck = true;
+  chrome.storage.local.get = async (keys) => {
+    if (holdCheck && [].concat(keys).includes('owner')) {
+      holdCheck = false;
+      await check.shut;
+    }
+    return get(keys);
+  };
+  const sent = gate();
+  let holdSet = true;
+  chrome.storage.local.set = async (values) => {
+    if (holdSet && values.stateRev) {
+      holdSet = false;
+      await sent.shut;
+    }
+    return set(values);
+  };
+  const writing = copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 290 } }));
+  await sleep(5);
+  assert.equal(copy.stateRev(), null, 'waiting');
+  check.open();
+  await sleep(5);
+  assert.equal(local.get('settings').sidebarWidth, 280, 'the set() is under way');
+  assert.equal(copy.stateRev(), null, 'under way');
+  sent.open();
+  await writing;
+  assert.equal(copy.stateRev(), local.get('stateRev').id, 'through');
+  // An icon learned: the icons, then their mark in a set() of its own.
+  const marked = gate();
+  let holdMark = true;
+  chrome.storage.local.set = async (values) => {
+    if (holdMark && 'faviconsMark' in values) {
+      holdMark = false;
+      await marked.shut;
+    }
+    return set(values);
+  };
+  const icons = copy.mutate((s) => ({ ...s, favicons: { ...s.favicons, 'https://new.test': { data: 'data:image/png;base64,AAAA', href: 'https://new.test/f.png', at: 1 } } }));
+  await sleep(5);
+  assert.ok(local.get('favicons')['https://new.test'], 'the icons are stored');
+  assert.equal(copy.stateRev(), null, 'their mark isn\'t yet');
+  marked.open();
+  await icons;
+  assert.equal(copy.stateRev(), local.get('stateRev').id);
+  chrome.storage.local.get = get;
+  chrome.storage.local.set = set;
+});
+
+test('store: a copy that claims the state knows no write until its own first stamped one is through, at its start or claiming back', async () => {
+  local.clear();
+  const first = await startCopy('safari-web-extension://CLAIM-A/');
+  await first.load();
+  await first.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 280 } }));
+  assert.notEqual(storedTabs()?.synced, true, 'the stored tabs not matched: the claim writes nothing stamped');
+  const theirs = local.get('stateRev').id;
+  await sleep(5);
+  const second = await startCopy('safari-web-extension://CLAIM-B/');
+  assert.equal(second.isOwner(), true);
+  assert.equal(second.stateRev(), null, 'not the other copy\'s last write: its pages never heard this one\'s');
+  const stamps = [];
+  const setOwn = chrome.storage.local.set;
+  chrome.storage.local.set = async (values) => { if (values.stateRev) stamps.push(values.stateRev); return setOwn(values); };
+  await second.load();
+  await second.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 300 } }));
+  chrome.storage.local.set = setOwn;
+  assert.equal(stamps[0]?.after, null, 'a chain of its own');
+  assert.ok(stamps.every((rev) => rev.after !== theirs));
+  assert.equal(second.stateRev(), local.get('stateRev').id);
+  // An older copy claimed over it (they started together) and wrote: claimed
+  // back, with its tabs written again (queued: not waited for).
+  await second.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://n.test/', index: 0 } } }));
+  await second.markSynced();
+  const mine = second.stateRev();
+  local.set('owner', { origin: 'safari-web-extension://CLAIM-OLDER/', since: 1 });
+  local.set('openTabs', { ...storedTabs(), origin: 'safari-web-extension://CLAIM-OLDER/', since: 1, tabs: { 99: { id: 99 } } });
+  local.set('stateRev', { id: 'older', after: null });
+  const { set } = chrome.storage.local;
+  const sets = [];
+  chrome.storage.local.set = async (values) => { sets.push(Object.keys(values)); return set(values); };
+  assert.equal(await second.recheck(), 'owner');
+  assert.equal(second.stateRev(), null, `not ${mine}: its pages know that one, and not what the older copy wrote`);
+  await sleep(20);
+  chrome.storage.local.set = set;
+  assert.ok(sets.some((keys) => keys.includes('openTabs') && keys.includes('stateRev')), 'its tabs written again, stamped');
+  assert.equal(local.get('stateRev').after, null);
+  assert.equal(second.stateRev(), local.get('stateRev').id);
 });

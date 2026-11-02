@@ -649,6 +649,21 @@ A switch with the sidebar to a tab you haven't been to for a while brings it to 
 - [ ] Hold ⌃⌘↓ through tabs you haven't used for a while: the tabs passed through aren't flipped to and back (no flicker), as before. The tab you stop on comes up as a click does.
 - [ ] Chrome: switching behaves as before.
 
+## A loaded tab is prepared without reading storage (2026-11-02)
+
+Switching to a tab that's loaded no longer waits for that tab's page to read Margin's storage: it draws from what it already has. A page busy with its own work is shown after about a quarter second instead of up to almost a second.
+
+- [ ] Go back and forth among five or six tabs you've used in the last minute, with the sidebar (click rows, ⌃⌘↓/↑). Each comes up about as fast as Safari's own tab bar shows it, with no flash.
+- [ ] On each tab as it comes up: the sidebar has that tab highlighted, the right space, and the list scrolled where the tab before had it, from the first frame. No row jumping or highlight moving a moment later.
+- [ ] Change something in one tab's sidebar (rename a space, pin a tab, turn Keep open on or off, change the sidebar's width), then switch with the sidebar to tabs that were behind: each shows the change from its first frame.
+- [ ] Hover the sidebar open, click a row: the next tab comes up with its sidebar open the same way, as before.
+- [ ] A busy page (a big web app, a video page while it loads): switching to it isn't slower than before. Its sidebar may catch up a moment after it shows. Note it if that's often.
+- [ ] Two windows: switch in one, then in the other. Each window's sidebar shows its own tabs and highlight.
+- [ ] Change something in the sidebar and switch at once, within a second (pin a tab, then click another tab's row right away; open a link in a new tab behind, then switch): the tab you land on shows the change from its first frame.
+- [ ] Click quickly through several rows, one after another, before each tab has come up, then stop on one. Go back to a tab you passed with Safari's tab bar or ⌃Tab: its sidebar isn't left open, and its rows are current from the first frame.
+- [ ] Switch log (Start page → Settings → Switch log (development) → Copy): switches to loaded tabs have `preparation.timings.known: 1` and `readMs: 0` most of the time, and a small `preparation.ms` (under about 60). `known: 0` now and then is expected (right after Margin starts or is updated, a change that failed to save, or a switch right after a change, while it's still being saved: then `revSent: 0`); on most switches it should be 1. `reason: "awake budget"` means the page took over 250 ms. Send the log along with what felt slow.
+- [ ] Chrome: switching behaves as before.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.

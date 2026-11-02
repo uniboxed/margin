@@ -754,6 +754,35 @@ export const SCENARIOS = {
     check('H', 'H: the switch says its page was unseen and it introduced it', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.introduced === true && e.unseen === true && !e.error)`),
     noPageErrors('H'),
   ],
+  // A hidden tab prepared from the state it has: it heard every write since its
+  // last read (the background's `rev` is the one it saw last), so it draws
+  // without reading storage (content/core.js prepareForShow, timings.known),
+  // and its first shown frame has its own row highlighted and a setting
+  // changed in another tab while it was hidden. A preparation with a rev it
+  // didn't see reads.
+  prepared: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
+    wait(800), { op: 'install', sameId: true }, drawn('A'), themed('A'), drawn('B'), drawn('C'),
+    { op: 'eval', in: 'B', js: `${ID} const me = String(id('B')); const root = __shadowOf(document.querySelector('margin-sidebar-host')); globalThis.__atShow = null; document.addEventListener('visibilitychange', () => { if (!document.hidden && !__atShow) __atShow = { me, active: root.querySelector('.tab.active')?.dataset.tabId ?? null, open: document.querySelector('margin-sidebar-host')?.dataset.open }; }, true); return 'recording'` },
+    // Each switch a moment after the one before, as a person makes them. One
+    // asked while the last one's write is still under way (a loaded Mac) reads,
+    // as before: no rev sent (store.js stateRev).
+    keepOpen, wait(150),
+    switchTo('A', 'B'), shown('B'),
+    { op: 'eval', in: 'B', js: 'return JSON.stringify(__atShow)' },
+    check('B', 'B: its first shown frame has its own row highlighted, and Keep open (changed while it was hidden)', `__atShow?.active === __atShow?.me && __atShow?.open === 'true'`),
+    wait(150), switchTo('B', 'C'), shown('C'),
+    wait(150), switchTo('C', 'A'), shown('A'),
+    { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').map((e) => ({ tabId: e.tabId, outcome: e.preparation?.outcome, ms: e.preparation?.ms, timings: e.preparation?.timings, shownAfter: e.shownAfter })))` },
+    check('A', 'A: the three switches were prepared from the state each page had (no storage read), but where the last write was still under way', `const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-3); return log.length === 3 && log.every((e) => !e.error && e.preparation?.outcome === 'ready' && (e.preparation.timings?.known === 1 ? e.preparation.timings.readMs === 0 : e.preparation.timings?.revSent === 0)) && log.some((e) => e.preparation.timings.known === 1)`),
+    check('B', 'B: a preparation with a rev it didn\'t see reads storage', `const { tabId, windowId } = Margin.content.getState(); const answer = await Margin.content.prepareForShow({ token: 'other', tabId, windowId, rev: 'not-seen' }); Margin.content.cancelPreparedShow('other'); return answer.ready === true && answer.timings.known === 0`),
+    // Called off before it took the page (the background's cancel for a switch
+    // superseded, or past its budget, landing during the preparation's first
+    // turn): it stops there, its carried sidebar never opened and no token
+    // left for shown() to take (a second cancel finds none). Last, so it
+    // doesn't shift the switches above in time.
+    check('C', 'C: a preparation called off as soon as it was sent stops, and leaves nothing for a later show', `const { tabId, windowId } = Margin.content.getState(); const pending = Margin.content.prepareForShow({ token: 'off', tabId, windowId, carry: 'hover', rev: 'not-seen' }); Margin.content.cancelPreparedShow('off'); const answer = await pending; await new Promise((r) => setTimeout(r, 50)); return answer.ready === false && Margin.content.cancelPreparedShow('off') === false`),
+  ],
   // A hidden tab whose page's world put work off until it's in sight: a sheet
   // added while hidden (its query not yet rewritten for the box, and a read of
   // <body> it asks for), and its box moved by the preparation itself (Keep open

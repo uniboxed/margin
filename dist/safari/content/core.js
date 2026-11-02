@@ -16,7 +16,7 @@ import { createSwitching, backgroundSwitches, NEW_TAB } from '../shared/switchin
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
 import { readyInPage } from '../shared/page-ready.js';
-import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.js';
+import { STATE_REV, fromStorage, knowsState, onlyMark, openTabsCurrent, readForPage, revAfter, revOf, takesChanges, withChanges } from '../shared/stored.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -597,6 +597,11 @@ export function startCore({ onTheme } = {}) {
   // with another asynchronous storage/scroll round trip.
   /** @type {{ token: string, at: number, carry: 'hover' | 'toggle' | null } | null} */
   let preparedShow = null;
+  // Preparations called off before they took `preparedShow` (the cancel came
+  // during prepareForShow's first turn, or before its script ran): they stop
+  // there instead of finishing for a switch the background let go of. The
+  // last few only; each token is used once.
+  const calledOff = new Set();
   // Once `drawn` (the state read started with it) has rendered, so the
   // position isn't applied to the old, shorter list and clamped there.
   function restoreScroll(drawn) {
@@ -766,6 +771,12 @@ export function startCore({ onTheme } = {}) {
   // Storage keys this page has seen, in reads and change events: read again
   // with the rest (shared/stored.js pageKeys).
   const seenKeys = new Set();
+  // The last write of the state this page's `state` has (shared/stored.js
+  // STATE_REV): from its last read and every change event since, each
+  // following the one before. Null when not known (a write it may have
+  // missed, a change sent to a read instead): a preparation then reads.
+  /** @type {string | null} */
+  let knownRev = null;
   // DEVELOPMENT DIAGNOSTICS: the last refresh's read and render, in ms (the
   // switch log's preparation timings: prepareForShow).
   let refreshTimes = { readMs: 0, renderMs: 0 };
@@ -795,6 +806,7 @@ export function startCore({ onTheme } = {}) {
     timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
     if (!missed) staleRead = false; // what's drawn now is storage as read (the icons as the events kept them), newer than any change taken before
+    knownRev = missed ? null : revOf(raw);
     // Brought to the front without preparation (a tab Safari restores as it's
     // shown): until `hello` says which tab this is, the background's note does
     // (background/tabs.js noteShowing), with how the page before had the
@@ -817,6 +829,19 @@ export function startCore({ onTheme } = {}) {
     if (noted && !coveredWhileLoading) coverWhileLoading();
     requestTheme(); // only if it isn't here by now
     refreshTimes = { readMs, renderMs: msSince(renderFrom) }; // DEVELOPMENT DIAGNOSTICS
+    return true;
+  }
+  // The state the page has, drawn for a show as a read would draw it
+  // (prepareForShow: the page knows the last write).
+  /** @param {{ tabId: number, windowId: number }} show */
+  function drawKnown(show) {
+    const renderFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
+    state = stateForShow(state, show);
+    const zoom = /** @type {any} */ (state).pageZoom;
+    if (!zoomAnswered) applyZoom(Number((zoom?.[location.origin] ?? zoom?.['*'])?.[0] ?? 1));
+    render();
+    requestTheme(); // only if it isn't here by now
+    refreshTimes = { readMs: 0, renderMs: msSince(renderFrom) }; // DEVELOPMENT DIAGNOSTICS
     return true;
   }
   let carriedNoted = false;
@@ -1012,20 +1037,52 @@ export function startCore({ onTheme } = {}) {
   // `sentAt`, and the answer's `timings`: DEVELOPMENT DIAGNOSTICS (the switch
   // log: lagMs from the background's call to this running, then the storage
   // read, the render, the catch-up and the forced layout, in ms).
-  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean, until?: number, sentAt?: number }} [context] */
-  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false, until, sentAt } = {}) => {
+  // `rev`: the state's last write as the background sent this (shared/stored.js
+  // STATE_REV): one this page knows, and it draws from the state it has, at
+  // once, rather than reading storage first (in Tirth's Safari that read was
+  // most of a median 70 ms, up to 0.7 s, on every switch to a loaded tab,
+  // the switch waiting for it). Events reach the page in order, and before
+  // this script, so it has seen every write up to that one. The rest is as
+  // before (shown()'s refresh 250 ms after the show if no change came
+  // included); `timings.known` says which way it went, `timings.revSent`
+  // whether the background knew its last write was through.
+  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean, until?: number, rev?: string | null, sentAt?: number }} [context] */
+  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false, until, rev = null, sentAt } = {}) => {
     const lagMs = Number.isFinite(sentAt) ? Date.now() - /** @type {number} */ (sentAt) : null; // DEVELOPMENT DIAGNOSTICS
     if (!token || !Number.isInteger(targetId) || targetWindow == null) return { ready: false, reason: 'bad context' };
+    // What the page was told before this came runs first: WebKit queues a
+    // visibilitychange as a task, so an introduction's (the tab to the front
+    // and straight back: background/tabs.js) can still be waiting, and its
+    // hide would close the sidebar this opens (layout.leave). The storage
+    // read gave it that turn; drawn from the state the page has, it needs one
+    // of its own. A message to itself, which WebKit doesn't hold back in a
+    // hidden page as it may a timer (seen in the WebKit host: the `unloaded`
+    // scenario, the carried sidebar closed in about half the runs without it).
+    await new Promise((resolve) => {
+      const turn = new MessageChannel();
+      turn.port1.onmessage = () => {
+        turn.port1.close();
+        resolve(undefined);
+      };
+      turn.port2.postMessage(null);
+    });
     // A newer preparation owns this hidden page. Undo only the transient open
     // state from the older one; ordinary Keep open is restored by hide().
     if (preparedShow?.carry) layout.hide();
+    // Called off meanwhile (cancelPreparedShow): as if the cancel had come
+    // just after this took the page, which it can't now hear of.
+    if (calledOff.delete(token)) {
+      preparedShow = null;
+      return { ready: false, reason: 'superseded' };
+    }
     preparedShow = { token, at: Date.now(), carry: null };
     tabId = targetId;
     helloWindowId = targetWindow;
     switching.end();
     newTabPending = false;
     if (Number.isFinite(scroll)) pendingScroll = Math.max(0, scroll);
-    const rendered = await refresh({ tabId: targetId, windowId: targetWindow });
+    const known = !firstRender && !!state?.spaces?.length && knowsState(rev, { known: knownRev, reading, staleRead });
+    const rendered = known ? drawKnown({ tabId: targetId, windowId: targetWindow }) : await refresh({ tabId: targetId, windowId: targetWindow });
     if (preparedShow?.token !== token) return { ready: false, reason: 'superseded' };
     if (!rendered || !state || !view || windowId !== targetWindow) {
       preparedShow = null;
@@ -1048,7 +1105,7 @@ export function startCore({ onTheme } = {}) {
     // crosses back to Safari's UI process. Hidden pages do not reliably run
     // requestAnimationFrame, so an animation-frame acknowledgement would hang.
     host.getBoundingClientRect();
-    return { ready: true, token, timings: { lagMs, readMs, renderMs, catchUpMs, layoutMs: msSince(layoutFrom) } };
+    return { ready: true, token, timings: { lagMs, readMs, renderMs, catchUpMs, layoutMs: msSince(layoutFrom), known: known ? 1 : 0, revSent: typeof rev === 'string' ? 1 : 0 } };
   };
   // Covered before the background introduces the tab (background/tabs.js
   // coverArrival), its style and layout done now: the paint WebKit asks for in
@@ -1059,7 +1116,14 @@ export function startCore({ onTheme } = {}) {
     return !!arrival;
   };
   Margin.content.cancelPreparedShow = (token) => {
-    if (!preparedShow || preparedShow.token !== token) return false;
+    if (!preparedShow || preparedShow.token !== token) {
+      // Perhaps a preparation that hasn't taken the page yet (above).
+      if (typeof token === 'string') {
+        calledOff.add(token);
+        if (calledOff.size > 8) calledOff.delete(calledOff.values().next().value);
+      }
+      return false;
+    }
     const { carry } = preparedShow;
     preparedShow = null;
     arrival?.finish({ fade: false });
@@ -1086,13 +1150,21 @@ export function startCore({ onTheme } = {}) {
     if (area !== 'local' || dormant) return;
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!firstRender && onlyShowing(changes)) return;
-    if (firstRender || !state) return void refresh();
+    // The write this brings, if the state takes it (one read instead: the
+    // read says).
+    const rev = STATE_REV in changes ? revAfter(knownRev, changes[STATE_REV]) : knownRev;
+    const read = () => {
+      knownRev = null;
+      void refresh();
+    };
+    if (firstRender || !state) return read();
     if (!document.hidden) {
-      if (tabId == null || staleRead || !takesChanges(changes, { reading, openTabsBy: /** @type {any} */ (state).openTabsBy })) return void refresh();
+      if (tabId == null || staleRead || !takesChanges(changes, { reading, openTabsBy: /** @type {any} */ (state).openTabsBy })) return read();
       const next = withChanges(state, changes);
-      if (!next.spaces?.length) return void refresh();
+      if (!next.spaces?.length) return read();
       version++; // newer than any read started before it
       state = next;
+      knownRev = rev;
       if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
       if (onlyMark(changes)) return;
       if (!zoomAnswered && 'pageZoom' in changes) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
@@ -1103,6 +1175,7 @@ export function startCore({ onTheme } = {}) {
     if (reading) changedDuringRead++;
     const next = withChanges(state, changes);
     state = next;
+    knownRev = rev;
     changedWhileHidden = true;
     if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
     // The trackpad's listeners follow the settings now, not at the next
@@ -1247,6 +1320,7 @@ export function startCore({ onTheme } = {}) {
   addEventListener('pagehide', () => {
     if (!listening) return;
     listening = false;
+    knownRev = null; // the changes made meanwhile won't reach it
     api.storage.onChanged.removeListener(onStorageChanged);
     api.runtime.onMessage.removeListener(onMessage);
   });

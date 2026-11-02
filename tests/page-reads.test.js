@@ -3,7 +3,7 @@
 // unless their mark changed, and never a state other than a full read's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { faviconsMark, fromStorage, readForPage, sameStored, toStorage, withChanges } from '../extension/shared/stored.js';
+import { STATE_REV, faviconsMark, fromStorage, knowsState, pageKeys, readForPage, revAfter, revOf, sameStored, toStorage, withChanges } from '../extension/shared/stored.js';
 
 const by = { origin: 'safari-web-extension://A/', since: 5, synced: true };
 const icon = (i, at) => ({ data: `data:image/png;base64,${'iVBORw0KGgo'.repeat(220)}${i}`, href: `https://site${i}.test/f.png`, at });
@@ -276,4 +276,91 @@ test('page reads: a page that took the icons\' mark from its event but read the 
   state = withChanges(state, { faviconsMark: { newValue: mark } });
   state = fromStorage(await readForPage(storage.get, () => state));
   assert.deepEqual(Object.keys(state.favicons), ['https://a.test', 'https://b.test']);
+});
+
+// Which write of the state a page knows (shared/stored.js STATE_REV): from a
+// read, then each change event that follows it. A page prepared for a show
+// with the background's last write draws without reading (content/core.js
+// prepareForShow); any doubt and it reads.
+test('page reads: a write the page knows follows from its read and each event after it; a gap, or none known, is not known', () => {
+  assert.ok(pageKeys().includes(STATE_REV), 'read with the rest');
+  assert.equal(revOf({ [STATE_REV]: { id: 'r1', after: null } }), 'r1');
+  assert.equal(revOf({}), null);
+  assert.equal(revAfter('r1', { newValue: { id: 'r2', after: 'r1' } }), 'r2');
+  assert.equal(revAfter('r1', { newValue: { id: 'r3', after: 'r2' } }), null, 'one missed');
+  assert.equal(revAfter(null, { newValue: { id: 'r2', after: 'r1' } }), null, 'none known: still none');
+  assert.equal(revAfter('r1', { newValue: undefined }), null, 'removed (storage cleared)');
+  assert.equal(revAfter('r1', { newValue: { id: 'r2', after: null } }), null, 'a chain started afresh (another copy\'s claim, say)');
+  const page = { known: 'r2', reading: 0, staleRead: false };
+  assert.equal(knowsState('r2', page), true);
+  assert.equal(knowsState('r3', page), false, 'a newer write than it knows');
+  assert.equal(knowsState(null, page), false, 'the background knows of none (one failed, or Chrome)');
+  assert.equal(knowsState(undefined, page), false, 'an older background, no rev');
+  assert.equal(knowsState(null, { ...page, known: null }), false, 'neither knows: not the same');
+  assert.equal(knowsState('r2', { ...page, reading: 1 }), false, 'a read under way (it may put older values back)');
+  assert.equal(knowsState('r2', { ...page, staleRead: true }), false, 'a read that missed a change');
+});
+
+test('page reads: a page that heard every write since its read knows the stored state as the background passes its last write: no read; one that missed a write reads, and knows it again from that read', async () => {
+  const local = new Map();
+  /** @type {((changes: Record<string, any>, area: string) => void)[]} */
+  const listeners = [];
+  let drop = false; // the next change event doesn't reach the page (Safari suspended it, say)
+  const area = {
+    get: async (keys) => {
+      const list = keys == null ? [...local.keys()] : [].concat(keys);
+      return Object.fromEntries(list.filter((k) => local.has(k)).map((k) => [k, structuredClone(local.get(k))]));
+    },
+    set: async (values) => {
+      const changes = {};
+      for (const [k, v] of Object.entries(values)) {
+        if (sameStored(local.get(k), v)) continue;
+        changes[k] = { oldValue: local.get(k), newValue: structuredClone(v) };
+        local.set(k, structuredClone(v));
+      }
+      if (drop) drop = false;
+      else if (Object.keys(changes).length) for (const fn of listeners) fn(changes, 'local');
+    },
+    remove: async (keys) => { for (const k of [].concat(keys)) local.delete(k); },
+  };
+  globalThis.chrome = /** @type {any} */ ({ runtime: { getURL: (path) => `safari-web-extension://REVS/${path}` }, storage: { local: area, session: { get: async () => ({}), set: async () => {} }, onChanged: { addListener() {} } } });
+  const store = await import('../extension/background/store.js?revs');
+  await store.load();
+  await store.mutate((s) => ({ ...s, spaces: [{ id: 'personal', name: 'Personal' }] }));
+  // A page as content/core.js keeps one, hidden: a read, then every event taken.
+  const page = { state: null, known: null, reading: 0, staleRead: false, reads: 0 };
+  const read = async () => {
+    page.reads++;
+    const raw = await readForPage(area.get, () => page.state);
+    page.state = fromStorage(raw);
+    page.known = revOf(raw);
+  };
+  listeners.push((changes) => {
+    page.known = STATE_REV in changes ? revAfter(page.known, changes[STATE_REV]) : page.known;
+    page.state = withChanges(page.state, changes);
+  });
+  const prepare = async () => {
+    if (!knowsState(store.stateRev(), page)) await read();
+    return page.state;
+  };
+  await read();
+  const reads = page.reads;
+  await store.mutate((s) => ({ ...s, spaces: [...s.spaces, { id: 'work', name: 'Work' }] }));
+  await store.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarPinnedOpen: true } }));
+  let drawn = await prepare();
+  assert.equal(page.reads, reads, 'drawn from what it had');
+  assert.deepEqual(drawn.spaces.map((x) => x.id), ['personal', 'work']);
+  assert.equal(drawn.settings.sidebarPinnedOpen, true);
+  // One write's event lost: the next one doesn't follow the write it knows.
+  drop = true;
+  await store.mutate((s) => ({ ...s, spaces: [...s.spaces, { id: 'lost', name: 'Lost' }] }));
+  await store.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarPinnedOpen: false } }));
+  drawn = await prepare();
+  assert.equal(page.reads, reads + 1, 'read');
+  assert.deepEqual(drawn.spaces.map((x) => x.id), ['personal', 'work', 'lost'], 'with the write it missed');
+  // And knows the state again from that read.
+  await store.mutate((s) => ({ ...s, pins: [{ id: 'p1', url: 'https://p.test/', title: 'P' }] }));
+  drawn = await prepare();
+  assert.equal(page.reads, reads + 1, 'no read');
+  assert.equal(drawn.pins.length, 1);
 });

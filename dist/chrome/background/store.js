@@ -5,7 +5,8 @@
 // never writes.
 import * as M from '../state/model.js';
 import * as O from '../shared/owner.js';
-import { FAVICONS, FAVICONS_MARK, OPEN_TABS, OPEN_TABS_KEYS, fromStorage, openTabsCurrent, sameStored, storedName, toStorage } from '../shared/stored.js';
+import { FAVICONS, FAVICONS_MARK, OPEN_TABS, OPEN_TABS_KEYS, STATE_REV, fromStorage, openTabsCurrent, revOf, sameStored, storedName, toStorage } from '../shared/stored.js';
+import { platform } from '../shared/platform.js';
 import { recordEmptyStart } from './diagnostics.js';
 /** @import { State } from '../../types/margin' */
 
@@ -58,7 +59,11 @@ async function decide() {
 async function decideOnce() {
   // A failed read isn't a first start (that would make this copy the newest).
   const session = api.storage.session ? await api.storage.session.get('since') : null;
-  const { owner, [OPEN_TABS]: open } = await api.storage.local.get(['owner', OPEN_TABS]);
+  const raw = await api.storage.local.get(['owner', OPEN_TABS, STATE_REV]);
+  const { owner, [OPEN_TABS]: open } = raw;
+  // The last write of the state, as this background starts: its pages saw it,
+  // and the next write follows it (below).
+  lastRev = doneRev = revOf(raw);
   // Whether this is the copy's first start (not its background waking): only
   // then may it claim a record from a clock that was ahead (shared/owner.js).
   let first = false;
@@ -95,8 +100,19 @@ async function settle(stored, open = null, { starting = false, back = false } = 
   role = 'owner';
   if (decision === 'claim') {
     if (!back) synced = false;
+    // Its writes start a chain of their own (STATE_REV, below): pages read once
+    // more, whatever another copy wrote meanwhile that they never heard. Until
+    // its first stamped write goes through, no write is known (a claim back
+    // writes nothing stamped here: recheck queues it).
+    lastRev = doneRev = null;
     await api.storage.local.set({ owner: { ...me } });
-    if (open?.synced) await api.storage.local.set({ [OPEN_TABS]: { ...open, synced: false } }).catch((err) => console.warn('[margin] marking the stored tabs unmatched failed:', err?.message ?? err));
+    if (open?.synced) {
+      const rev = nextRev();
+      await api.storage.local.set({ [OPEN_TABS]: { ...open, synced: false }, ...(rev ? { [STATE_REV]: rev } : {}) }).then(() => { doneRev = rev?.id ?? null; }, (err) => {
+        doneRev = null;
+        console.warn('[margin] marking the stored tabs unmatched failed:', err?.message ?? err);
+      });
+    }
     // The envelope a development build kept (workspace, workspaceBackup):
     // nothing reads it.
     void Promise.resolve().then(() => api.storage.local.remove(['workspace', 'workspaceBackup'])).catch(() => {});
@@ -138,6 +154,29 @@ export async function markSynced() {
   if (synced || role !== 'owner') return;
   synced = true;
   await write(OPEN_TABS_KEYS);
+}
+
+// ---- which write of the state pages have seen ------------------------------------
+// Each write of the state says which it is, and which it follows, in the same
+// set() (shared/stored.js STATE_REV): a page prepared for a show draws from
+// what it has if it saw the last one (content/core.js prepareForShow). Only
+// where pages are prepared (Safari: platform.prepareSidebar).
+let lastRev = null; // the last write sent: the next one follows it
+let doneRev = null; // the last that went through; null while one failed, or none known
+// What the background passes when it prepares a page (background/tabs.js).
+// None while a write is waiting (keys changed, not yet sent) or under way
+// (sent, not yet through): a page's read then comes behind it in Safari's
+// storage and gets it, where a page drawing from what it has wouldn't, its
+// event landing after the script.
+export const stateRev = () => (unsaved.size || lastRev !== doneRev ? null : doneRev);
+// The next write's stamp, or null where pages aren't prepared. Sent or not,
+// the one after follows it: a page that saw it knows the write after, and one
+// that didn't finds the write after doesn't follow the one it knows, and reads.
+function nextRev() {
+  if (!platform?.prepareSidebar) return null;
+  const rev = { id: newId(), after: lastRev };
+  lastRev = rev.id;
+  return rev;
 }
 
 // ---- reading and writing ---------------------------------------------------------
@@ -199,10 +238,15 @@ async function flush() {
     // fails, so a new mark could land over the old icons, and a page holding
     // them would never read the new ones (shared/stored.js readForPage).
     const { [FAVICONS_MARK]: mark, ...values } = toStorage(cache, keys, { origin: me.origin, since: me.since, synced });
-    await api.storage.local.set(values);
+    const rev = nextRev();
+    await api.storage.local.set(rev ? { ...values, [STATE_REV]: rev } : values);
+    // Through once the icons' mark is too (a page that read before it would
+    // keep the old icons).
     if (mark !== undefined) await api.storage.local.set({ [FAVICONS_MARK]: mark });
+    doneRev = rev?.id ?? null;
     retryMs = 250;
   } catch (err) {
+    doneRev = null; // not known which keys went through: pages read until the next write does
     console.warn('[margin] saving', keys.join(', '), `failed; trying again in ${retryMs}ms:`, err?.message ?? err);
     for (const key of keys) if (!unsaved.has(key)) unsaved.add(key);
     clearTimeout(retryTimer);
