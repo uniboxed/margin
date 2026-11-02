@@ -622,6 +622,19 @@ Margin's listeners come off as a page is left and go back on if you come back to
 - [ ] Back and Forward: follow a link, change something in another tab's sidebar (rename a space, pin a tab, turn Keep open on or off), come back to the first tab and press Back: the page comes back at once and its sidebar shows the change. Switching from it with the sidebar, ⌘T and ⌃⌘↓ work as before.
 - [ ] Chrome: the same Back test.
 
+## Keep-ready holds end when they're no longer wanted (2026-11-02)
+
+Keep-ready still keeps the six tabs used last running, but no more than six at any time, and a tab that drops out of the six is let go at once instead of after 75 s.
+
+- [ ] Switch through ten or more tabs quickly (the sidebar, Safari's tab bar, ⌃⌘↓ held down), then stop and read for a minute. Activity Monitor → CPU, the `Safari Web Content` processes: their total falls back within a few seconds of stopping, not after a minute or more.
+- [ ] Safari's log after ten minutes of normal use: `/usr/bin/log show --last 10m --predicate 'process == "Safari" AND eventMessage CONTAINS "didChangeThrottleState: type="'`. At most about six hidden processes stay at `type=2` (foreground) for long; others go to `type=0` or `type=1`.
+- [ ] Going back and forth among the five or six tabs used last, with the sidebar and with Safari's tab bar: no dark flash, as before.
+- [ ] A tab you go back to after switching through many others may show dark for a moment (it was let go and suspended). Note how often. The next change targets it.
+- [ ] Holding ⌃⌘↓ through a space and stopping: the tab you stop on, and the one you started from, come back with no flash, also after passing more than six tabs. The ones passed through may not.
+- [ ] Change space, wait 10–60 s, change back: the tab you left there shows with no flash. Wait more than 75 s and it may flash.
+- [ ] Leave Margin's start page and a Safari settings page for a tab, a few times: the tabs you used just before still come back with no flash.
+- [ ] Switch log (Start page → Settings → Switch log (development) → Copy): each switch has `heldAtAsk`, `hiddenForMs`, and under `preparation` a `timings` object (`lagMs`, `readMs`, `renderMs`, `catchUpMs`, `layoutMs`). Send it along with what felt slow.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.

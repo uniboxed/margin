@@ -103,7 +103,9 @@ globalThis.chrome = {
   },
 };
 
-const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { tapLog } = await import('../extension/background/diagnostics.js');
+const { keepReadyState, noteLeft } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided, load } = await import('../extension/background/store.js');
@@ -170,6 +172,7 @@ function fakePage() {
   globalThis.removeEventListener = off('window');
   globalThis.document = { visibilityState: 'hidden', addEventListener: on('document'), removeEventListener: off('document') };
   const fire = (where, type) => [...(listeners[where][type] ?? [])].forEach((fn) => fn());
+  globalThis.dispatchEvent = (event) => fire('window', event.type);
   const count = () => Object.values(listeners).flatMap((l) => Object.values(l)).reduce((n, set) => n + set.size, 0);
   return { fire, count, show() { globalThis.document.visibilityState = 'visible'; fire('document', 'visibilitychange'); } };
 }
@@ -178,6 +181,7 @@ test('keepAwake: finishes after its time, when the page goes away, or once it\'s
   t.after(() => {
     delete globalThis.addEventListener;
     delete globalThis.removeEventListener;
+    delete globalThis.dispatchEvent;
     delete globalThis.document;
   });
   let page = fakePage();
@@ -208,12 +212,83 @@ test('keepAwake: finishes after its time, when the page goes away, or once it\'s
   assert.equal(page.count(), 0);
 });
 
+test('keepAwake: a hold with a key also ends when a release names it, and cleans up; a release naming another hold, or one with no key (a wake\'s), leaves it running', async (t) => {
+  t.after(() => {
+    delete globalThis.addEventListener;
+    delete globalThis.removeEventListener;
+    delete globalThis.dispatchEvent;
+    delete globalThis.document;
+  });
+  const page = fakePage();
+  const ended = new Set();
+  const older = keepAwake(5000, 'older').then(() => ended.add('older'));
+  const newer = keepAwake(5000, 'newer').then(() => ended.add('newer'));
+  const wake = keepAwake(5000).then(() => ended.add('wake'));
+  await sleep(0);
+  releaseInPage(['older']); // a late release: the hold placed after it runs on
+  await sleep(10);
+  assert.deepEqual([...ended], ['older']);
+  page.fire('window', 'margin-release:newer'); // the page itself: only that hold ends early
+  await sleep(10);
+  assert.deepEqual([...ended].sort(), ['newer', 'older']);
+  page.show();
+  await Promise.all([older, newer, wake]);
+  assert.equal(page.count(), 0, 'no listeners left in the page');
+});
+
+test('releaseInPage: self-contained (executeScript sends only its source), and safe in a page that broke dispatchEvent', async () => {
+  const vm = await import('node:vm');
+  const seen = [];
+  vm.runInContext(`(${releaseInPage})(['a', 'b'])`, vm.createContext({ Event, dispatchEvent: (e) => seen.push(e.type) }));
+  assert.deepEqual(seen, ['margin-release:a', 'margin-release:b']);
+  vm.runInContext(`(${releaseInPage})(['a'])`, vm.createContext({ Event, dispatchEvent: () => { throw new Error('page wrapper'); } }));
+});
+
+test('release: in the page\'s own world, naming the holds; nothing while a switch to the tab is under way (it ends them as it shows it)', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 13, url: 'https://release.test/' }]);
+  fake.scriptDelay = () => 40;
+  const focusing = focusTab(13);
+  assert.equal(releaseTab(13, ['k1']), false);
+  assert.equal(fake.scripts.filter((x) => x.func === releaseInPage).length, 0);
+  await focusing;
+  fake.scripts = [];
+  assert.equal(releaseTab(13, ['k1', 'k2']), true);
+  const sent = fake.scripts.filter((x) => x.func === releaseInPage);
+  assert.deepEqual(sent.map((x) => [x.tabId, x.world, x.args[0]]), [[13, 'MAIN', ['k1', 'k2']]]);
+});
+
+test('switch log: whether keep-ready held the tab and how long it had been hidden as the switch was asked for, and where the preparation\'s time went in the page', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 14, url: 'https://log.test/' }]);
+  fake.scriptDelay = () => 5;
+  const timings = { lagMs: 3, readMs: 4.5, renderMs: 2, catchUpMs: 1, layoutMs: 0.5 };
+  let sentAt = null;
+  fake.prepare = (args) => {
+    sentAt = args?.[0]?.sentAt;
+    return { ready: true, token: args?.[0]?.token, timings };
+  };
+  noteLeft(14, Date.now() - 5000);
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  const before = Date.now();
+  try {
+    await focusTab(14, { source: 'test' });
+  } finally {
+    tapLog(null);
+  }
+  const entry = entries.find((e) => e.kind === 'switch' && e.tabId === 14);
+  assert.equal(entry.heldAtAsk, false);
+  assert.ok(entry.hiddenForMs >= 5000 && entry.hiddenForMs < 5500, `hidden for ${entry.hiddenForMs} ms`);
+  assert.deepEqual(entry.preparation.timings, timings);
+  assert.ok(sentAt >= before && sentAt <= Date.now(), 'the call says when it was sent');
+});
+
 test('keepAwake: still finishes when the page broke setTimeout, Promise or addEventListener', async (t) => {
   const real = { setTimeout: globalThis.setTimeout, Promise: globalThis.Promise };
   t.after(() => {
     Object.assign(globalThis, real);
     delete globalThis.addEventListener;
     delete globalThis.removeEventListener;
+    delete globalThis.dispatchEvent;
     delete globalThis.document;
   });
   fakePage();
@@ -2026,4 +2101,22 @@ test('introducing: a tab whose page started in front with no process (a launch) 
     tabShown(302);
     done();
   }
+});
+
+test('keys: the tabs a held key only passes through are marked for keep-ready (not held for them once left, counted by their use before); not the tab the key stops on or started from', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 190, url: 'https://k1.test/' }, { id: 191, url: 'https://k2.test/' }, { id: 192, url: 'https://k3.test/' }]);
+  fake.scriptDelay = () => 1;
+  await mutate(() => {
+    let st = M.defaultState();
+    for (const id of [1, 190, 191, 192]) st = M.upsertTab(st, { ...fake.tabs.get(id), index: id }, Date.now());
+    return M.activateTab(st, 1, 1, Date.now());
+  });
+  const s = await load();
+  const step = (from) => V.cycleTab(s, 1, from, 1);
+  const first = step(1), second = step(first), last = step(second);
+  navigate('next-tab', 'key', 1); // a held key: the presses queue
+  navigate('next-tab', 'key', 1);
+  await navigate('next-tab', 'key', 1);
+  assert.equal(front(), last);
+  assert.deepEqual(keepReadyState().passed, [first, second]);
 });

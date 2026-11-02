@@ -86,6 +86,12 @@ const ARROW_UP = [126, 0xF700];
 const PAGE_DOWN = [121, 0xF72D];
 const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return ${JSON.stringify(at)}` }, { op: 'mouse', in: tab, type: 'up' }];
 
+// keep-ready-cap: ten tabs, and in each page's own world a count of the
+// keepAwake holds waiting there (tabs.js keepAwake listens for pageswap; the
+// test pages have no listener of their own).
+const HOLD_TABS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+const COUNT_HOLDS = `const live = new Set(); const add = addEventListener, remove = removeEventListener; window.addEventListener = function (type, fn, options) { if (type === 'pageswap') live.add(fn); return add.call(this ?? window, type, fn, options); }; window.removeEventListener = function (type, fn, options) { if (type === 'pageswap') live.delete(fn); return remove.call(this ?? window, type, fn, options); }; window.__holds = () => live.size; return 'counting holds'`;
+
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core, the background
   // the theme); switching through Margin, including to a tab Safari unloaded.
@@ -95,7 +101,7 @@ export const SCENARIOS = {
     drawn('A'), themed('A'), drawn('B'),
     switchTo('A', 'B', { show: 'hover' }), shown('B'),
     checkPage('B', 'B: the carried sidebar is open on its first shown frame', `document.querySelector('margin-sidebar-host')?.dataset.open === 'true'`),
-    check('B', 'B: hidden sidebar preparation acknowledged before activation', `(await Margin.content.send('switchLog')).some((entry) => entry.source === 'activateTab' && entry.preparation?.outcome === 'ready')`),
+    check('B', 'B: hidden sidebar preparation acknowledged before activation; the switch log has where its time went, and whether keep-ready held the tab', `(await Margin.content.send('switchLog')).some((entry) => entry.source === 'activateTab' && entry.preparation?.outcome === 'ready' && ['lagMs', 'readMs', 'renderMs', 'catchUpMs', 'layoutMs'].every((k) => Number.isFinite(entry.preparation.timings?.[k])) && typeof entry.heldAtAsk === 'boolean')`),
     switchTo('B', 'D'), shown('D'), drawn('D'), themed('D'),
     switchTo('D', 'C'), shown('C'), { op: 'state' },
   ],
@@ -1235,6 +1241,24 @@ export const SCENARIOS = {
     { op: 'page', in: 'N', js: `const i = document.querySelector('[data-shortcut="nextSpace"]'); i.focus(); return 'focused ' + (document.activeElement === i)` },
     { op: 'key', in: 'N', chars: String.fromCharCode(0xF703), keyCode: 124, mods: ['command', 'option'] }, wait(500),
     { op: 'page', in: 'N', js: `return 'nextSpace field: ' + JSON.stringify(document.querySelector('[data-shortcut="nextSpace"]').value)` },
+  ],
+  // Keep-ready's holds (background/keep-ready.js) through a run of switches
+  // in Safari's own tab bar: each tab left is held at once, but never more
+  // than six (MAX_HELD): past them, the tab used longest ago lets go at once
+  // (before, every hold stayed its 75 s, and a run of switches held them all).
+  // A hold is a keepAwake waiting in the page's own world: its pageswap
+  // listener, counted there.
+  'keep-ready-cap': [
+    ...HOLD_TABS.map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
+    ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),
+    { op: 'install' }, drawn('A'),
+    ...HOLD_TABS.slice(1).flatMap((name) => [{ op: 'show', name }, wait(120)]),
+    wait(300),
+    { op: 'page', in: 'J', js: 'return "holds counted in each tab next"' },
+    ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: `return '${name}: ' + __holds()` })),
+    ...['A', 'B', 'C'].map((name) => checkPage(name, `${name}: left first, let go once six later tabs were held`, '__holds() === 0', 1500)),
+    ...['D', 'E', 'F', 'G', 'H', 'I'].map((name) => checkPage(name, `${name}: among the six left last, held`, '__holds() >= 1', 1500)),
+    checkPage('J', 'J: the tab in front holds nothing', '__holds() === 0', 1500),
   ],
   // A picture of a page in its box, for a look (build/screenshot.png).
   screenshot: [

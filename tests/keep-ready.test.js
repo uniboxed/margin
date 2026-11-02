@@ -3,10 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const fake = { local: {}, session: {}, scripts: [], alarms: [], noPage: new Set(), tabs: new Map() };
+// `contains`: how the permission check answers (default: yes, at once).
+const fake = { local: {}, session: {}, scripts: [], alarms: [], noPage: new Set(), tabs: new Map(), ends: new Map(), contains: null };
 globalThis.chrome = /** @type {any} */ ({
   runtime: { getURL: (path) => `safari-web-extension://test/${path}` },
-  permissions: { contains: async () => true },
+  permissions: { contains: async (query) => (fake.contains ? fake.contains(query) : true) },
   tabs: {
     get: async (id) => {
       const tab = fake.tabs.get(id);
@@ -16,10 +17,12 @@ globalThis.chrome = /** @type {any} */ ({
   },
   scripting: {
     executeScript: async ({ target, world, func, args }) => {
-      fake.scripts.push({ tabId: target.tabId, world, func: func.name, ms: args?.[0] });
+      fake.scripts.push({ tabId: target.tabId, world, func: func.name, ms: args?.[0], args });
       if (fake.noPage.has(target.tabId)) throw new Error('Could not execute script on this tab');
-      // A hold runs until its time is up (or its page is shown): pending here.
-      return new Promise(() => {});
+      if (func.name === 'releaseInPage') return [{ result: undefined }];
+      // A hold runs until its time is up (or its page is shown): pending here,
+      // until a test ends it (`fake.ends`, by its key).
+      return new Promise((resolve) => { if (typeof args?.[1] === 'string') fake.ends.set(args[1], () => resolve([{ result: undefined }])); });
     },
   },
   alarms: {
@@ -62,6 +65,10 @@ async function setUp({ minutes = 30 } = {}) {
   await markSynced(); // its ids matched to the open tabs
 }
 const held = () => fake.scripts.filter((x) => x.func === 'keepAwake' && x.world === 'MAIN').map((x) => x.tabId);
+// The releases sent: [tabId, the keys named].
+const released = () => fake.scripts.filter((x) => x.func === 'releaseInPage' && x.world === 'MAIN').map((x) => [x.tabId, x.args[0]]);
+// The key of each hold placed in a tab, in order.
+const keysOf = (tabId) => fake.scripts.filter((x) => x.func === 'keepAwake' && x.tabId === tabId).map((x) => x.args[1]);
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 // The same where setTimeout is mocked.
 const settleNow = async () => { for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve)); };
@@ -352,4 +359,368 @@ test('keep ready: a tab taken back before the read of the tabs set aside is drop
   assert.ok(held().includes(10), `tab 10 held (held ${JSON.stringify(held())})`);
   second.resetKeepReady();
   third.resetKeepReady();
+});
+
+test('keep ready: a hold that leaves the six ends at once (one script, naming that hold), not after 75 s; the tabs chosen again keep theirs', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 90_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  fake.scripts = [];
+  await keepReady.tick(t0);
+  await settleNow();
+  const key5 = keysOf(5);
+  assert.equal(key5.length, 1);
+  assert.equal(typeof key5[0], 'string', 'each hold has a key');
+  assert.equal(new Set([5, 6, 7, 8, 9, 10].map((id) => keysOf(id)[0])).size, 6, 'a key of its own');
+  t.mock.timers.tick(10_000);
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 4: { ...s.tabs[4], lastActive: 100 } } }));
+  await keepReady.tick();
+  await settleNow();
+  assert.deepEqual(released(), [[5, key5]], 'tab 5 let go, and only it');
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [4, 6, 7, 8, 9, 10]);
+  assert.equal(keepReady.keepReadyState().holds[5], undefined, 'forgotten');
+  await keepReady.tick(t0 + 20_000);
+  await settleNow();
+  assert.deepEqual(released(), [[5, key5]], 'not again');
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: a run of switches never holds more than six: past them, the tab used longest ago lets go at once', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 91_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  fake.scripts = [];
+  // Tabs 1, 4, 3, 2 left one after the other, each used just before.
+  let at = t0;
+  for (const id of [1, 4, 3, 2]) {
+    at += 300;
+    await mutate((s) => ({ ...s, tabs: { ...s.tabs, [id]: { ...s.tabs[id], lastActive: at } } }));
+    keepReady.holdNow(id, at);
+    await settleNow(); // the hold sent
+    t.mock.timers.tick(250); // and not failed
+    assert.ok(keepReady.keepReadyState().held.length <= 6, `${keepReady.keepReadyState().held.length} held after tab ${id} was left`);
+  }
+  assert.deepEqual(held(), [1, 4, 3, 2]);
+  assert.deepEqual(released().map(([id]) => id), [5, 6, 7, 8], 'the ones used longest ago, in turn');
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [1, 2, 3, 4, 9, 10]);
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: turned off, every hold still running ends at once', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 92_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  const keys = Object.fromEntries([5, 6, 7, 8, 9, 10].map((id) => [id, keysOf(id)]));
+  fake.scripts = [];
+  await mutate((s) => ({ ...s, settings: { ...s.settings, keepTabsReadyMinutes: 0 } }));
+  await keepReady.tick(t0 + 5_000);
+  await settleNow();
+  assert.deepEqual(Object.fromEntries(released().map(([id, named]) => [id, named])), keys);
+  assert.deepEqual(keepReady.keepReadyState().held, []);
+  assert.deepEqual(keepReady.keepReadyState().holds, {});
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: a release names every hold of the tab still running (a renewal overlaps the hold before), never one already over; a late answer from an older hold doesn\'t forget the newer', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 93_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  // Tab 10 shown and left again: its first hold ended as it was shown (its
+  // script answers late), and it's held afresh.
+  keepReady.shown(10);
+  keepReady.holdNow(10, t0 + 15_000);
+  await settleNow();
+  const [first, second] = keysOf(10);
+  fake.ends.get(first)();
+  await settleNow();
+  assert.ok(keepReady.keepReadyState().held.includes(10), 'the newer hold is still known');
+  assert.deepEqual(keepReady.keepReadyState().holds[10], [second]);
+  // Tab 9 renewed: its first hold runs on 20 s more beside the new one.
+  await keepReady.tick(t0 + 60_000);
+  await settleNow();
+  const nine = keysOf(9);
+  assert.equal(nine.length, 2, 'renewed');
+  assert.equal(keysOf(10).length, 2, 'not tab 10 (30 s left)');
+  fake.scripts = [];
+  // Tabs 2–7 now the most recent: 8, 9 and 10 leave the six.
+  await mutate((s) => ({ ...s, tabs: Object.fromEntries(Object.entries(s.tabs).map(([id, tab]) => [id, Number(id) >= 2 && Number(id) <= 7 ? { ...tab, lastActive: 2000 + Number(id) } : tab])) }));
+  await keepReady.tick(t0 + 61_000);
+  await settleNow();
+  const named = Object.fromEntries(released().map(([id, keys]) => [id, keys]));
+  assert.deepEqual(Object.keys(named).map(Number), [8, 9, 10]);
+  assert.deepEqual(named[9], nine, 'both holds of tab 9');
+  assert.deepEqual(named[10], [second], 'tab 10\'s running hold only');
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: whether a tab is held, and how long since it was left, for the switch log', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 94_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  keepReady.noteLeft(2, t0);
+  keepReady.holdNow(2, t0);
+  await settleNow(); // the hold sent
+  assert.deepEqual(keepReady.switchFacts(2, t0 + 4_000), { heldAtAsk: true, hiddenForMs: 4_000 });
+  assert.deepEqual(keepReady.switchFacts(3, t0 + 4_000), { heldAtAsk: false, hiddenForMs: null });
+  assert.equal(keepReady.switchFacts(2, t0 + 74_500).heldAtAsk, false, 'not a hold about to end');
+  keepReady.resetKeepReady();
+  assert.equal(keepReady.switchFacts(2, t0 + 5_000).heldAtAsk, false, 'released');
+});
+
+test('keep ready: a background started again releases the holds the one before it placed once they aren\'t chosen (they ran out by themselves before)', async () => {
+  keepReady.resetKeepReady();
+  await setUpMany();
+  const t0 = Date.now();
+  keepReady.noteUsed(t0);
+  await keepReady.tick(t0);
+  await settle();
+  await settle();
+  // The holds this background placed are in storage.session.
+  assert.deepEqual(Object.keys(fake.session.keepReadyHolds ?? {}).map(Number).sort((a, b) => a - b), [5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(fake.session.keepReadyHolds[7], { [keysOf(7)[0]]: [t0 + 75_000, 0, 0] }, 'its end, not sure to run (a first hold of a tab left a while ago), not a tab just left');
+  // Another, earlier run's: tab 2 (not chosen now) and tab 7 (chosen, sure),
+  // and one long over.
+  fake.session.keepReadyHolds = { 2: { old2: [t0 + 60_000, 1] }, 7: { old7: [t0 + 60_000, 1] }, 3: { over: [t0 - 1, 1] } };
+  fake.session.keepReadyUsedAt = t0;
+  const again = await import('../extension/background/keep-ready.js?holds-again');
+  fake.scripts = [];
+  await again.tick(t0 + 5_000);
+  await settle();
+  assert.deepEqual(released(), [[2, ['old2']]]);
+  assert.equal(again.switchFacts(7, t0 + 5_000).heldAtAsk, true, 'held, by the run before');
+  again.resetKeepReady();
+  await settle();
+  assert.deepEqual(released().find(([id]) => id === 7)?.[1].sort(), ['old7', keysOf(7).at(-1)].sort(), 'stopped: the earlier run\'s holds end too');
+});
+
+// Window 1 shows space "a" (tabs 1 in front, 2–6); space "b" has 7–13 (13
+// used last). Each tab's last use is its id (1: 1000).
+async function setUpSpaces() {
+  fake.scripts = []; fake.alarms = []; fake.noPage = new Set();
+  const tabs = {};
+  for (let id = 1; id <= 13; id++) tabs[id] = { id, windowId: 1, index: id, url: `https://t${id}.test/`, title: '', favIconUrl: '', active: id === 1, lastActive: id === 1 ? 1000 : id };
+  fake.tabs = new Map(Object.values(tabs).map((t) => [t.id, t]));
+  await mutate((s) => ({
+    ...s,
+    spaces: [{ id: 'a', name: 'A', emoji: '', color: '' }, { id: 'b', name: 'B', emoji: '', color: '' }],
+    tabs,
+    tabSpace: Object.fromEntries(Object.keys(tabs).map((id) => [id, Number(id) <= 6 ? 'a' : 'b'])),
+    activeSpaceByWindow: { 1: 'a' },
+    settings: { ...s.settings, keepTabsReadyMinutes: 30 },
+  }));
+  await markSynced();
+}
+// A switch in window 1 as background.js activated sees it: `to` shown, the
+// tab in front left (held at once), then the state's activation.
+async function switchTo(to, at, { space = null } = {}) {
+  const left = Object.values((await load()).tabs).find((t) => t.active && t.id !== to);
+  keepReady.shown(to, at);
+  if (left) keepReady.holdNow(left.id, at);
+  await mutate((s) => ({ ...M.activateTab(s, to, 1, at), ...(space ? { activeSpaceByWindow: { 1: space } } : {}) }));
+}
+const M = await import('../extension/state/model.js');
+
+test('keep ready: the tab left for another space stays held among the six used last (a change of space and back returns to it); the other holds of the space left end, and it isn\'t renewed', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 95_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpSpaces();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [2, 3, 4, 5, 6]);
+  fake.scripts = [];
+  // To space b's tab 13.
+  t.mock.timers.tick(1000);
+  await switchTo(13, t0 + 1000, { space: 'b' });
+  await settleNow();
+  t.mock.timers.tick(1500);
+  await keepReady.tick(t0 + 2500);
+  await settleNow();
+  assert.equal(held()[0], 1, 'tab 1 at once');
+  assert.deepEqual(held().slice(1).sort((a, b) => a - b), [8, 9, 10, 11, 12], 'then space b\'s used last');
+  assert.deepEqual(released().map(([id]) => id).sort((a, b) => a - b), [2, 3, 4, 5, 6], 'not tab 1');
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [1, 8, 9, 10, 11, 12], 'six in all: tab 7 waits');
+  assert.deepEqual(keepReady.keepReadyState().lingering, [1]);
+  // Tab 1's hold runs its 75 s and isn't renewed; just after it ends, tab 7
+  // takes its place.
+  fake.scripts = [];
+  t.mock.timers.tick(60_000);
+  await settleNow();
+  assert.ok(!held().includes(1), 'tab 1 not renewed (space b\'s are)');
+  const [key1] = keepReady.keepReadyState().holds[1];
+  fake.ends.get(key1)();
+  await settleNow();
+  t.mock.timers.tick(15_000);
+  for (let i = 0; i < 4; i++) await settleNow(); // the tick the timer started
+  assert.ok(!held().includes(1), 'tab 1 not held again');
+  assert.ok(held().includes(7), 'tab 7 held once tab 1\'s hold ended');
+  assert.ok(keepReady.keepReadyState().held.length <= 6);
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: a held key run counts the tabs it passes by their use before: the tab it started from stays held, the tabs passed aren\'t held, and the ones held before keep their holds', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 96_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpSpaces();
+  // All thirteen in space a.
+  await mutate((s) => ({ ...s, tabSpace: Object.fromEntries(Object.keys(s.tabs).map((id) => [id, 'a'])) }));
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [8, 9, 10, 11, 12, 13]);
+  fake.scripts = [];
+  // From tab 1 through 2–6 (shown in passing: navigation.js), stopping on 7.
+  let at = t0;
+  for (const id of [2, 3, 4, 5, 6, 7]) {
+    at += 100;
+    t.mock.timers.tick(100);
+    if (id !== 7) keepReady.passing(id, (await load()).tabs[id].lastActive, at);
+    await switchTo(id, at);
+  }
+  await settleNow();
+  t.mock.timers.tick(250);
+  assert.deepEqual(held(), [1], 'only the tab the run started from, at once');
+  t.mock.timers.tick(1500);
+  await keepReady.tick(at + 1500);
+  await settleNow();
+  assert.deepEqual(held(), [1], 'none of the tabs passed');
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [1, 9, 10, 11, 12, 13]);
+  assert.deepEqual(released().map(([id]) => id), [8], 'the one used longest ago, for tab 1');
+  // Tab 4 shown again, not in passing, then left: held as any tab.
+  fake.scripts = [];
+  await switchTo(4, at + 5000);
+  await switchTo(7, at + 6000);
+  await settleNow();
+  assert.deepEqual(held(), [7, 4]);
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: past six, a tab left that can\'t be held (Margin\'s start page, a tab being closed) costs no held tab its hold', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 97_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 1: { ...s.tabs[1], url: 'safari-web-extension://test/newtab.html' } } }));
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  fake.scripts = [];
+  // The start page left for tab 2.
+  await switchTo(2, t0 + 100);
+  await settleNow();
+  t.mock.timers.tick(1000);
+  await settleNow();
+  assert.deepEqual(released(), [], 'the start page');
+  // ⌘W on tab 2: Safari brings tab 1 to the front before the removal comes.
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 1: { ...s.tabs[1], url: 'https://t1.test/' } } }));
+  fake.tabs.delete(2); fake.noPage.add(2);
+  await switchTo(1, t0 + 2000);
+  await settleNow();
+  t.mock.timers.tick(1000);
+  await settleNow();
+  assert.deepEqual(released(), [], 'a tab being closed');
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [5, 6, 7, 8, 9, 10]);
+  keepReady.resetKeepReady();
+  fake.noPage = new Set();
+});
+
+test('keep ready: a release that comes while a hold is still on its way (its permission check answering late) calls it off: no hold sent after it, left to run 75 s', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 98_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 7: { ...s.tabs[7], url: 'https://slow-permission.test/' } } }));
+  /** @type {(yes: boolean) => void} */
+  let answer = () => {};
+  fake.contains = ({ origins }) => (origins?.some((o) => o.includes('slow-permission')) ? new Promise((resolve) => { answer = resolve; }) : true);
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  assert.ok(!held().includes(7), 'still on its way');
+  // Turned off before the answer: everything released.
+  await mutate((s) => ({ ...s, settings: { ...s.settings, keepTabsReadyMinutes: 0 } }));
+  await keepReady.tick(t0 + 1000);
+  await settleNow();
+  assert.ok(!released().some(([id]) => id === 7), 'nothing to release there yet');
+  answer(true);
+  await settleNow();
+  assert.ok(!held().includes(7), 'not sent after');
+  assert.deepEqual(keepReady.keepReadyState().holds, {});
+  fake.contains = null;
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: held for the switch log only once the hold has gone out to a process known to be running: the tab just left, or held without a break since; not a first hold of a tab left a while ago (maybe behind its resume), nor one shown since', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 99_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  assert.ok(held().includes(9));
+  assert.equal(keepReady.switchFacts(9, t0 + 100).heldAtAsk, false, 'a first hold of a tab left a while ago');
+  // Tab 1 left: sure once sent; a renewal keeps it sure.
+  keepReady.shown(2, t0);
+  keepReady.holdNow(1, t0);
+  assert.equal(keepReady.switchFacts(1, t0).heldAtAsk, false, 'not sent yet');
+  await mutate((s) => M.activateTab(s, 2, 1, t0));
+  await settleNow();
+  assert.equal(keepReady.switchFacts(1, t0 + 100).heldAtAsk, true);
+  await keepReady.tick(t0 + 60_000);
+  await settleNow();
+  assert.equal(keysOf(1).length, 2, 'renewed');
+  fake.ends.get(keysOf(1)[0])(); // the first ran out
+  await settleNow();
+  assert.equal(keepReady.switchFacts(1, t0 + 76_000).heldAtAsk, true, 'the renewal');
+  keepReady.shown(1, t0 + 77_000);
+  assert.equal(keepReady.switchFacts(1, t0 + 77_000).heldAtAsk, false, 'shown since');
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: a background started again keeps the hold of the tab left for another space (Safari stops an idle background)', async () => {
+  keepReady.resetKeepReady();
+  await setUpSpaces();
+  await mutate((s) => ({ ...s, activeSpaceByWindow: { 1: 'b' }, tabs: { ...s.tabs, 1: { ...s.tabs[1], active: false, lastActive: 5000 }, 13: { ...s.tabs[13], active: true, lastActive: 5000 } } }));
+  const t0 = Date.now();
+  // The run before held tab 1 as it was left, then stopped.
+  fake.session.keepReadyHolds = { 1: { left1: [t0 + 60_000, 1, 1] }, 2: { old2: [t0 + 60_000, 0, 0] } };
+  fake.session.keepReadyUsedAt = t0;
+  const again = await import('../extension/background/keep-ready.js?left-again');
+  fake.scripts = [];
+  await again.tick(t0);
+  await settle();
+  assert.deepEqual(released(), [[2, ['old2']]], 'not tab 1');
+  assert.deepEqual(again.keepReadyState().lingering, [1]);
+  assert.ok(!held().includes(1), 'nor held again');
+  assert.equal(again.switchFacts(1, t0).heldAtAsk, true);
+  again.resetKeepReady();
 });

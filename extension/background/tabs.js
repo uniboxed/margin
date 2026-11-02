@@ -2,6 +2,7 @@
 import * as M from '../state/model.js';
 import { api, cached, isOwner, mutate, now, thisCopy } from './store.js';
 import { recordSwitch } from './diagnostics.js';
+import { switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
@@ -92,8 +93,14 @@ export function wakeTab(tabId, { renew = false } = {}) {
 // promise is the engine's (an async function's), whatever window.Promise is.
 // Left open only if the page both cancels pagehide and blocks pageswap
 // before navigating away. Self-contained: executeScript sends its source.
-/** @param {number} ms */
-export async function keepAwake(ms) {
+// `key`: a hold keep-ready.js placed also ends when releaseInPage names it
+// (the tab no longer kept ready), not only at its end. Each hold has a key of
+// its own, a random one, so a release never ends a newer hold than it means,
+// whatever order the scripts land in, and the page sees nothing it could tell
+// Margin's copy or another site by. A page that dispatches the event itself
+// only ends that hold early.
+/** @param {number} ms @param {string | null} [key] */
+export async function keepAwake(ms, key = null) {
   await {
     then(/** @type {() => void} */ resolve) {
       /** @type {(() => void)[]} */
@@ -118,7 +125,7 @@ export async function keepAwake(ms) {
         timed = true;
       } catch {}
       if (!timed) return resolve(); // no clock at all: no hold
-      for (const type of ['pagehide', 'pageswap']) {
+      for (const type of ['pagehide', 'pageswap', ...(typeof key === 'string' ? [`margin-release:${key}`] : [])]) {
         try {
           addEventListener(type, done);
           undo.push(() => removeEventListener(type, done));
@@ -192,13 +199,39 @@ const hasPage = (woke) => woke?.outcome === 'awake' || woke?.outcome === 'timeou
 
 // Keeps a hidden tab's process running for `ms` (keepAwake), without waiting
 // for it: background/keep-ready.js. False if it can't (no page: Safari
-// unloaded it, and a hold doesn't load it; no access to the site).
-/** @param {number} tabId @param {number} ms @returns {Promise<boolean>} */
-export async function holdTab(tabId, ms) {
+// unloaded it, and a hold doesn't load it; no access to the site). Answers
+// once the hold is over. `key`: what releaseTab names it by. `sending`, just
+// before the script goes out (after the round trips above): false calls it
+// off (released meanwhile), and the answer is false.
+/** @param {number} tabId @param {number} ms @param {string | null} [key] @param {(() => boolean) | null} [sending] @returns {Promise<boolean>} */
+export async function holdTab(tabId, ms, key = null, sending = null) {
   if (!platform?.wakeTabs || !api.scripting?.executeScript) return false;
   const tab = cached()?.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
   if (!tab || !(await mayAccessCached(tab.url))) return false;
-  return api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [ms] }).then(ranAtAll, () => false);
+  if (sending && !sending()) return false;
+  return api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [ms, key] }).then(ranAtAll, () => false);
+}
+// The holds `keys` names end now, not at their end (keep-ready.js: the tab
+// is no longer one of those kept ready): WebKit lets the process go as the
+// script answers. A held process runs at foreground priority, so in Tirth's
+// Safari each one kept a hidden site's own work going at about 18% of a core
+// (2026-11-02). The wakes' own holds aren't named (they have no key) and run
+// on. Not while a switch to the tab is under way (it's shown in a moment,
+// which ends them): false then, and nothing is sent. The process is running
+// (held), so the script is quick.
+/** @param {number} tabId @param {string[]} keys @returns {boolean} */
+export function releaseTab(tabId, keys) {
+  if (isFocusing(tabId)) return false;
+  if (!keys.length || !platform?.wakeTabs || !api.scripting?.executeScript) return true;
+  api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: releaseInPage, args: [keys] }).catch(() => {});
+  return true;
+}
+// In the page's own world, as keepAwake. Self-contained.
+/** @param {string[]} keys */
+export function releaseInPage(keys) {
+  for (const key of keys) {
+    try { dispatchEvent(new Event(`margin-release:${key}`)); } catch {}
+  }
 }
 
 // Executed in the destination's current isolated extension world. Keeping
@@ -223,7 +256,7 @@ export function cancelSidebarInPage(token) {
   }
 }
 
-/** @typedef {{ outcome: 'ready' | 'not ready' | 'unavailable' | 'timeout' | 'skipped', ms: number, reason?: string, token: string | null }} Preparation */
+/** @typedef {{ outcome: 'ready' | 'not ready' | 'unavailable' | 'timeout' | 'skipped', ms: number, reason?: string, token: string | null, timings?: Record<string, number> | null }} Preparation `timings`: DEVELOPMENT DIAGNOSTICS, where the page's time went (content/core.js prepareForShow) */
 
 /**
  * `covered`: the page before is covered (a switch it asked for): a page shown
@@ -246,10 +279,11 @@ async function prepareTabForShow(tab, { token, carry = null, scroll = null, budg
       target: { tabId: tab.id },
       injectImmediately: true,
       func: prepareSidebarInPage,
-      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered, until: at + budget }],
+      // `sentAt`: DEVELOPMENT DIAGNOSTICS (the page's `timings`, in the switch log).
+      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered, until: at + budget, sentAt: Date.now() }],
     }).then((rows) => {
       const answer = rows?.[0]?.result;
-      return answer?.ready ? result('ready') : result('not ready', answer?.reason ?? 'no answer');
+      return answer?.ready ? { ...result('ready'), timings: answer.timings ?? null } : result('not ready', answer?.reason ?? 'no answer');
     }, (error) => result('unavailable', String(error?.message ?? error)));
   })();
   const answer = await Promise.race([
@@ -457,6 +491,10 @@ const SHOW_MS = 150;
 
 async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front) {
   const asked = Date.now();
+  // DEVELOPMENT DIAGNOSTICS: whether keep-ready held the tab, and how long it
+  // had been hidden, as the switch was asked for (a hold ends as it's shown).
+  const facts = switchFacts(tabId, asked);
+  const logSwitch = (/** @type {Record<string, unknown>} */ entry) => recordSwitch({ source, tabId, asked, ...facts, ...entry });
   const token = `${instanceId}:${gen}:${tabId}`;
   /** @type {Preparation} */
   const skipped = { outcome: 'skipped', ms: 0, token: null };
@@ -474,7 +512,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     live = await api.tabs.get(tabId).catch(() => null);
   }
   if (!live) {
-    recordSwitch({ source, tabId, asked, error: 'no such tab' });
+    logSwitch({ error: 'no such tab' });
     throw new Error(`No tab with id ${tabId}`);
   }
   movedOn(live.windowId);
@@ -496,7 +534,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // would wait under its cover for a show that has happened).
   const inFront = async (/** @type {any} */ now, /** @type {Record<string, unknown>} */ how) => {
     if (gen !== focusGen) return { tab: null, preparation: skipped, superseded: true };
-    recordSwitch({ source, tabId, asked, ...how, shownAfter: Date.now() - asked });
+    logSwitch({ ...how, shownAfter: Date.now() - asked });
     if (raise) await focusWindow(now.windowId);
     return { tab: now, preparation: skipped };
   };
@@ -538,12 +576,12 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     }
     how = loading ? { loadWait: behind } : { restored: behind };
     if (behind === 'left' || behind === 'hurried') {
-      recordSwitch({ source, tabId, asked, ...how, error: 'superseded' });
+      logSwitch({ ...how, error: 'superseded' });
       return { tab: null, preparation: skipped, superseded: true, hurried: behind === 'hurried' };
     }
     const now = await api.tabs.get(tabId).catch(() => null);
     if (!now) {
-      recordSwitch({ source, tabId, asked, ...how, error: 'no such tab' });
+      logSwitch({ ...how, error: 'no such tab' });
       throw new Error(`No tab with id ${tabId}`);
     }
     if (now.active) {
@@ -678,7 +716,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // front, say): the latest wins.
   if (gen !== focusGen) {
     cancelPreparation(tabId, preparation);
-    recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: 'superseded' });
+    logSwitch({ wake: woke, preparation, introduced, ...how, error: 'superseded' });
     return { tab: null, preparation, superseded: true };
   }
   // A timeout only bounds how long the old page stays covered. Stop the late
@@ -687,7 +725,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   if (preparation.outcome === 'timeout') cancelPreparation(tabId, preparation);
   if (Number.isFinite(deadline) && Date.now() > deadline - 250) {
     cancelPreparation(tabId, preparation);
-    recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: 'expired' });
+    logSwitch({ wake: woke, preparation, introduced, ...how, error: 'expired' });
     throw new Error('Too late: the page stopped waiting for this switch');
   }
   // A tab Safari unloaded (no page to wake or prepare): its page starts as
@@ -697,7 +735,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   const fail = (err) => {
     cancelPreparation(tabId, preparation);
     forgetShowing(tabId);
-    recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: String(err) });
+    logSwitch({ wake: woke, preparation, introduced, ...how, error: String(err) });
     throw err;
   };
   const ended = endIntroduction(tabId, gen);
@@ -713,7 +751,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     await api.tabs.update(tabId, { active: true }).catch(fail);
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
-  recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, shownAfter: Date.now() - asked });
+  logSwitch({ wake: woke, preparation, introduced, ...how, shownAfter: Date.now() - asked });
   if (ended?.lateTab) void hooks.activated?.({ tabId, windowId: live.windowId }); // as in focusTab
   if (tab && raise) await focusWindow(tab.windowId);
   return { tab, preparation };

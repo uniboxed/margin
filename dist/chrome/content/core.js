@@ -766,10 +766,15 @@ export function startCore({ onTheme } = {}) {
   // Storage keys this page has seen, in reads and change events: read again
   // with the rest (shared/stored.js pageKeys).
   const seenKeys = new Set();
+  // DEVELOPMENT DIAGNOSTICS: the last refresh's read and render, in ms (the
+  // switch log's preparation timings: prepareForShow).
+  let refreshTimes = { readMs: 0, renderMs: 0 };
+  const msSince = (/** @type {number} */ since) => Math.round((performance.now() - since) * 10) / 10;
   async function refresh(show = null) {
     const mine = ++version;
     reading++;
     const missedBefore = changedDuringRead;
+    const readFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     let raw;
     try {
       // All of storage the first time; then all but the site icons, unless
@@ -781,6 +786,7 @@ export function startCore({ onTheme } = {}) {
     } finally {
       reading--;
     }
+    const readMs = msSince(readFrom), renderFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     for (const key of Object.keys(raw)) seenKeys.add(key);
     const missed = changedDuringRead !== missedBefore;
     if (missed) staleRead = true;
@@ -810,6 +816,7 @@ export function startCore({ onTheme } = {}) {
     }
     if (noted && !coveredWhileLoading) coverWhileLoading();
     requestTheme(); // only if it isn't here by now
+    refreshTimes = { readMs, renderMs: msSince(renderFrom) }; // DEVELOPMENT DIAGNOSTICS
     return true;
   }
   let carriedNoted = false;
@@ -1002,8 +1009,12 @@ export function startCore({ onTheme } = {}) {
   // the destination's first frame is committed before this promise answers.
   // `until`: when the background stops waiting for the answer (a late one is
   // cancelled).
-  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean, until?: number }} [context] */
-  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false, until } = {}) => {
+  // `sentAt`, and the answer's `timings`: DEVELOPMENT DIAGNOSTICS (the switch
+  // log: lagMs from the background's call to this running, then the storage
+  // read, the render, the catch-up and the forced layout, in ms).
+  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean, until?: number, sentAt?: number }} [context] */
+  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false, until, sentAt } = {}) => {
+    const lagMs = Number.isFinite(sentAt) ? Date.now() - /** @type {number} */ (sentAt) : null; // DEVELOPMENT DIAGNOSTICS
     if (!token || !Number.isInteger(targetId) || targetWindow == null) return { ready: false, reason: 'bad context' };
     // A newer preparation owns this hidden page. Undo only the transient open
     // state from the older one; ordinary Keep open is restored by hide().
@@ -1030,12 +1041,14 @@ export function startCore({ onTheme } = {}) {
     // box, the drawing above's included, and reads its styles asked for):
     // done now, so the first frame shown has it (content/page/box.js catchUp).
     // Not with little time left: done as it's shown then, as before.
+    const { readMs, renderMs } = refreshTimes, catchUpFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     if (document.hidden && !(Number.isFinite(until) && /** @type {number} */ (until) - Date.now() < CATCH_UP_MS)) link.catchUp();
+    const catchUpMs = msSince(catchUpFrom), layoutFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     // Force style/layout in this WebProcess before the executeScript result
     // crosses back to Safari's UI process. Hidden pages do not reliably run
     // requestAnimationFrame, so an animation-frame acknowledgement would hang.
     host.getBoundingClientRect();
-    return { ready: true, token };
+    return { ready: true, token, timings: { lagMs, readMs, renderMs, catchUpMs, layoutMs: msSince(layoutFrom) } };
   };
   // Covered before the background introduces the tab (background/tabs.js
   // coverArrival), its style and layout done now: the paint WebKit asks for in

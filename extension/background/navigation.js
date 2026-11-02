@@ -3,6 +3,7 @@ import * as V from '../shared/view.js';
 import { api, load, mutate, now } from './store.js';
 import { activating, anyFocusing, focusTab, openTab, tellPage, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
+import { passing as keepReadyPassing, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
@@ -66,19 +67,23 @@ async function runNavigation(action, windowId) {
       // waited for long, so the switching stops when the key does.
       if (passing) {
         const asked = Date.now();
+        const facts = switchFacts(next, asked); // DEVELOPMENT DIAGNOSTICS
         const wake = await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
         userSwitched(null, windowId); // a switch still waiting for its wake doesn't land after this one
         // A tab Safari unloaded isn't shown in passing (its empty view, and its
         // load in front, for an instant): the highlight moves on, and the tab
         // the key stops on is loaded behind the page (background/tabs.js restoreTab).
         if (wake?.outcome === 'no page' && platform?.restoreTabs) {
-          recordSwitch({ source: action, tabId: next, asked, wake, error: 'passed over' });
+          recordSwitch({ source: action, tabId: next, asked, ...facts, wake, error: 'passed over' });
           void told('switch-done');
           return;
         }
         activating(next);
+        // Keep-ready doesn't hold it for this once it's left, and counts it by
+        // its use before (background/keep-ready.js passing).
+        keepReadyPassing(next, s.tabs[next]?.lastActive);
         await api.tabs.update(next, { active: true });
-        recordSwitch({ source: action, tabId: next, asked, wake, shownAfter: Date.now() - asked });
+        recordSwitch({ source: action, tabId: next, asked, ...facts, wake, shownAfter: Date.now() - asked });
       } else {
         // The last key in a run is the frame the user keeps. Give it the same
         // hidden render acknowledgement as a click; intermediate held-key

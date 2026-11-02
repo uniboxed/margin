@@ -36,8 +36,15 @@ const done = (/** @type {IDBTransaction} */ tx) => new Promise((resolve, reject)
 });
 
 let writes = Promise.resolve();
+/** @type {((entry: Record<string, unknown>) => void) | null} */
+let tap = null; // for tests: each entry as it's recorded
+/** @param {((entry: Record<string, unknown>) => void) | null} fn */
+export function tapLog(fn) {
+  tap = fn;
+}
 /** @param {Record<string, unknown>} entry */
 function record(entry) {
+  tap?.(entry);
   if (!globalThis.indexedDB) return;
   writes = writes.then(async () => {
     const tx = (await open()).transaction(STORE, 'readwrite');
@@ -61,12 +68,12 @@ function record(entry) {
 }
 
 /** A switch Margin made (background/tabs.js focusTab, background/navigation.js). */
-/** `ready`: what a wait for a page loading behind ended on ('painted', 'loaded', or why it stopped); `unseen`: the tab was introduced because its page started visible and hadn't come into view from hidden since (background/tabs.js mayIntroduce); `barrier`: each paint barrier before the show, [{ how: 'drawn' | 'timeout' | 'none', ms }] (background/tabs.js paintBarrier). */
-export function recordSwitch({ source, tabId, asked, wake = null, preparation = null, introduced = null, unseen = null, restored = null, loadWait = null, ready = null, barrier = null, shownAfter = null, error = null }) {
+/** `ready`: what a wait for a page loading behind ended on ('painted', 'loaded', or why it stopped); `unseen`: the tab was introduced because its page started visible and hadn't come into view from hidden since (background/tabs.js mayIntroduce); `barrier`: each paint barrier before the show, [{ how: 'drawn' | 'timeout' | 'none', ms }] (background/tabs.js paintBarrier); `heldAtAsk`: keep-ready held the tab as the switch was asked for; `hiddenForMs`: since it was last left (null: not known to this background); the preparation's `timings`: where the page's time went (content/core.js prepareForShow: lagMs from the call to the page running it, then readMs, renderMs, catchUpMs, layoutMs). */
+export function recordSwitch({ source, tabId, asked, heldAtAsk = null, hiddenForMs = null, wake = null, preparation = null, introduced = null, unseen = null, restored = null, loadWait = null, ready = null, barrier = null, shownAfter = null, error = null }) {
   record({
-    kind: 'switch', source, tabId, introduced, unseen, restored, loadWait, ready, barrier,
+    kind: 'switch', source, tabId, heldAtAsk, hiddenForMs, introduced, unseen, restored, loadWait, ready, barrier,
     wake: wake && { outcome: wake.outcome, ms: wake.ms, early: wake.startedAt < asked ? asked - wake.startedAt : 0 },
-    preparation: preparation && { outcome: preparation.outcome, ms: preparation.ms, reason: preparation.reason ?? null },
+    preparation: preparation && { outcome: preparation.outcome, ms: preparation.ms, reason: preparation.reason ?? null, ...(preparation.timings ? { timings: preparation.timings } : {}) },
     waited: wake ? Math.max(0, wake.startedAt + wake.ms - asked) : 0,
     shownAfter, error,
   });

@@ -44,6 +44,7 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 | `bfcache` | A page back from the back/forward cache has its listeners on `browser.*` events again (they come off as a page is left): a change in storage reaches it |
 | `reloaded` | Safari reloading Margin while pages are open (an update, or Margin.app opened): it keeps Margin's content-script world in those pages, still bound to the copy that's gone (the `uninstall` step's `keepWorld`). The page in front and the ones behind are loaded again, one with a draft typed keeps it (its dead sidebar put away); switches from the sidebar lift every cover, a new tab from the palette loads and comes to the front, the sidebar keeps every tab |
 | `reloaded-newtab` | The same reload with Margin's new-tab page open: that page, at the old copy's address, answers nothing; it's loaded again at this copy's (`?again`, so ⌘T's hand-off doesn't close it) and shows every tab |
+| `keep-ready-cap` | Keep-ready's holds through nine switches in the host's tab bar: the six tabs left last are held, the first three let go at once (each hold counted in its page's own world as the `pageswap` listener `keepAwake` waits on) |
 | `screenshot` | A page in its box, saved to `build/screenshot.png` to look at |
 
 ## Real websites
