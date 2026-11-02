@@ -74,6 +74,11 @@ test('Safari profile: shortcuts, icons, and the destination sidebar is prepared 
     await ctx.worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), id);
     await waitFor(async () => (await activeTitle()) === 'safari-a');
     await waitFor(async () => (await sidebarSnapshot(a)).tabs.includes('safari-b'));
+    // Chromium's new headless mode currently reports every tab as visible,
+    // even while chrome.tabs identifies only one as active. In that host the
+    // production safety guard must reject a hidden-page token; real Safari and
+    // the focused unit races exercise the ready path.
+    const modelsBackgroundVisibility = await b.evaluate(() => document.visibilityState === 'hidden');
     await a.mouse.move(400, 200);
     await a.mouse.move(3, 200);
     await waitFor(async () => (await sidebarSnapshot(a)).open);
@@ -85,7 +90,8 @@ test('Safari profile: shortcuts, icons, and the destination sidebar is prepared 
       const entry = (await switchLog(ctx)).findLast((item) => item.kind === 'switch' && item.source === 'activateTab');
       return entry?.preparation && entry;
     });
-    assert.equal(clickLog.preparation.outcome, 'ready', JSON.stringify(clickLog));
+    if (modelsBackgroundVisibility) assert.equal(clickLog.preparation.outcome, 'ready', JSON.stringify(clickLog));
+    else assert.deepEqual([clickLog.preparation.outcome, clickLog.preparation.reason], ['not ready', 'already shown'], JSON.stringify(clickLog));
 
     await ctx.worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), id);
     await waitFor(async () => (await activeTitle()) === 'safari-a');
@@ -100,7 +106,8 @@ test('Safari profile: shortcuts, icons, and the destination sidebar is prepared 
       const entry = (await switchLog(ctx)).findLast((item) => item.kind === 'switch' && item.source === 'next-tab');
       return entry?.preparation && entry;
     });
-    assert.equal(log.preparation.outcome, 'ready', JSON.stringify(log));
+    if (modelsBackgroundVisibility) assert.equal(log.preparation.outcome, 'ready', JSON.stringify(log));
+    else assert.deepEqual([log.preparation.outcome, log.preparation.reason], ['not ready', 'already shown'], JSON.stringify(log));
     assert.ok(log.preparation.ms < 300, JSON.stringify(log));
     await b.close();
     await a.close();

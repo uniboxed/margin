@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, evalInShadow, waitFor, buildSafariProfile, paletteSnapshot, gotoLauncher } from './helpers.js';
+import { launch, evalInShadow, boxInShadow, waitFor, buildSafariProfile, paletteSnapshot, gotoLauncher } from './helpers.js';
 
 // Progressive enhancements (DECISIONS.md "Arc-closer with newer Safari
 // features"): each is used only where supported; otherwise Margin behaves as
@@ -63,7 +63,7 @@ test('plain rounded corners even where corner-shape is supported (no squircles y
   }));
   assert.deepEqual(styles.hole, { radius: '6.25px', shape: 'round' });
   assert.deepEqual(styles.edge, { radius: '6.25px', shape: 'round' });
-  assert.deepEqual(styles.row, { radius: '8px', shape: 'round' });
+  assert.deepEqual(styles.row, { radius: '12px', shape: 'round' });
   await setSettings({ sidebarPinnedOpen: false });
   await page.close();
 });
@@ -97,14 +97,14 @@ test('the palette opens in the top layer, above a site\'s own popover; not while
 
 test('the tab right-click menu opens in the top layer, at the pointer', async () => {
   const page = await open('menu-layer');
-  const menu = await evalInShadow(page, 'margin-sidebar-host', function () {
+  const isOpen = await evalInShadow(page, 'margin-sidebar-host', function () {
     const row = this.querySelector('.tab');
     row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, composed: true, cancelable: true, clientX: 60, clientY: 90 }));
     const m = this.querySelector('.tab-menu');
-    const r = m.getBoundingClientRect();
-    return { open: m.matches(':popover-open'), left: Math.round(r.left), top: Math.round(r.top) };
+    return m.matches(':popover-open');
   });
-  assert.deepEqual(menu, { open: true, left: 60, top: 90 });
+  const menu = await boxInShadow(page, 'margin-sidebar-host', '.tab-menu');
+  assert.deepEqual({ open: isOpen, left: Math.round(menu.left), top: Math.round(menu.top) }, { open: true, left: 60, top: 90 });
   await page.keyboard.press('Escape').catch(() => {});
   await evalInShadow(page, 'margin-sidebar-host', function () {
     this.querySelector('.tab-menu').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));

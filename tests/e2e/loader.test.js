@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { launch, evalInShadow, waitFor, gotoLauncher } from './helpers.js';
+import { launch, evalInShadow, boxInShadow, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, base, server, control;
 const reports = [];
@@ -36,12 +36,18 @@ const setSettings = async ({ sidebarWidth, ...patch }) => {
   if (Object.keys(patch).length) await control.evaluate((p) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: p }), patch);
   if (sidebarWidth != null) await control.evaluate((w) => chrome.runtime.sendMessage({ type: 'updateThemeSettings', themeId: 'arcadia', patch: { sidebarWidth: w } }), sidebarWidth);
 };
-const loaderState = (page) =>
-  evalInShadow(page, 'margin-sidebar-host', function () {
+const loaderState = async (page) => {
+  const state = await evalInShadow(page, 'margin-sidebar-host', function () {
     const el = this.querySelector('.loader');
-    const r = el.getBoundingClientRect();
-    return { on: el.classList.contains('on'), inFrame: el.classList.contains('in-frame'), centerX: Math.round(r.left + r.width / 2), top: Math.round(r.top), vw: innerWidth };
+    return { on: el.classList.contains('on'), inFrame: el.classList.contains('in-frame') };
   });
+  if (!state) return state;
+  const [loader, frame] = await Promise.all([
+    boxInShadow(page, 'margin-sidebar-host', '.loader'),
+    boxInShadow(page, 'margin-sidebar-host', '.frame'),
+  ]);
+  return { ...state, centerX: Math.round(loader.left + loader.width / 2), top: Math.round(loader.top), vw: Math.round(frame.width) };
+};
 
 async function load(path) {
   const page = await ctx.context.newPage();
@@ -58,7 +64,7 @@ test('auto-hide: the pill shows centered at the top while the page loads, then g
     return v?.on && v;
   });
   assert.equal(await page.evaluate(() => document.readyState !== 'complete'), true, 'still loading');
-  assert.equal(s.inFrame, false);
+  assert.equal(s.inFrame, true, 'the always-on page frame also owns the loading pill');
   assert.ok(Math.abs(s.centerX - s.vw / 2) <= 1, `centered on the window (${s.centerX} vs ${s.vw / 2})`);
   assert.equal(s.top, 2);
   await page.waitForLoadState('load');

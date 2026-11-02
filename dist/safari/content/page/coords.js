@@ -13,7 +13,7 @@ const find = (object, name) => {
 };
 
 export function startCoords(box) {
-  const html = document.documentElement;
+  const root = () => box.root();
   const element = Element.prototype;
   const range = Range.prototype;
   const doc = Document.prototype;
@@ -48,7 +48,7 @@ export function startCoords(box) {
   const scrollWidth = find(element, 'scrollWidth').get;
   element.getBoundingClientRect = function () {
     // <html> and <body> as a document's: the page's whole height, moved by its scroll.
-    if (boxed() && (this === html || this === document.body) && document.body) {
+    if (boxed() && (this === root() || this === document.body) && document.body) {
       const { body } = document;
       return new DOMRect(-scrollLeft.call(body), -scrollTop.call(body), scrollWidth.call(body), scrollHeight.call(body));
     }
@@ -88,6 +88,6 @@ export function startCoords(box) {
   });
   define('x', function () { return this.clientX; });
   define('y', function () { return this.clientY; });
-  define('pageX', function () { return this.clientX + scrollLeft.call(box.on ? box.body() : html); });
-  define('pageY', function () { return this.clientY + scrollTop.call(box.on ? box.body() : html); });
+  define('pageX', function () { return this.clientX + scrollLeft.call(box.on ? box.body() : root()); });
+  define('pageY', function () { return this.clientY + scrollTop.call(box.on ? box.body() : root()); });
 }

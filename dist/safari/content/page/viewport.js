@@ -13,7 +13,7 @@ const find = (object, name) => {
 const define = (object, name, descriptor) => Object.defineProperty(object, name, { configurable: true, enumerable: true, ...descriptor });
 
 export function startViewport(box) {
-  const html = document.documentElement;
+  const root = () => box.root();
   const element = Element.prototype;
   const native = {};
   for (const name of ['scrollTop', 'scrollLeft', 'scrollHeight', 'scrollWidth', 'clientWidth', 'clientHeight']) native[name] = find(element, name);
@@ -21,8 +21,8 @@ export function startViewport(box) {
   const innerWidth = find(window, 'innerWidth');
   const innerHeight = find(window, 'innerHeight');
   // The scroller for `node`: <html> speaks for <body> while there's a box.
-  const scroller = (node) => (box.on && node === html ? box.body() : node);
-  const scroll = () => (box.on ? box.body() : html);
+  const scroller = (node) => (box.on && node === root() ? box.body() : node);
+  const scroll = () => (box.on ? box.body() : root());
 
   // ---- size --------------------------------------------------------------------
   define(window, 'innerWidth', { get: () => innerWidth.get.call(window) - box.seenW(), set() {} });
@@ -34,7 +34,7 @@ export function startViewport(box) {
     define(VisualViewport.prototype, 'width', { get() { return width.get.call(this) - box.seenW() / this.scale; } });
     define(VisualViewport.prototype, 'height', { get() { return height.get.call(this) - box.seenH() / this.scale; } });
   }
-  define(element, 'clientWidth', { get() { return box.boxed() && this === html ? native.clientWidth.get.call(box.body()) : native.clientWidth.get.call(this); } });
+  define(element, 'clientWidth', { get() { return box.boxed() && this === root() ? native.clientWidth.get.call(box.body()) : native.clientWidth.get.call(this); } });
   // <html>'s is the viewport's; <body> reports the page's height, as it does
   // when it grows with its content. So `innerHeight + scrollY >= body.offsetHeight`
   // still means the end of the page. Heights only: in a window these elements'
@@ -43,12 +43,12 @@ export function startViewport(box) {
   define(element, 'clientHeight', {
     get() {
       if (!box.boxed()) return native.clientHeight.get.call(this);
-      if (this === html) return native.clientHeight.get.call(box.body());
+      if (this === root()) return native.clientHeight.get.call(box.body());
       return this === document.body ? pageHeight() : native.clientHeight.get.call(this);
     },
   });
   define(HTMLElement.prototype, 'offsetHeight', {
-    get() { return box.boxed() && (this === html || this === document.body) ? pageHeight() : offsetHeight.get.call(this); },
+    get() { return box.boxed() && (this === root() || this === document.body) ? pageHeight() : offsetHeight.get.call(this); },
   });
 
   // ---- scrolling ---------------------------------------------------------------
@@ -100,7 +100,7 @@ export function startViewport(box) {
   // Does a pane around what was pressed, short of <body>, take this key?
   function paneTakes(body, down) {
     if (!pressed?.isConnected) return false;
-    for (let node = pressed; node && node !== body && node !== html; node = node.parentNode ?? node.host) {
+    for (let node = pressed; node && node !== body && node !== root(); node = node.parentNode ?? node.host) {
       if (node.nodeType === 1 && /auto|scroll/.test(getComputedStyle(node).overflowY) && canMove(node, down)) return true;
     }
     return false;
@@ -108,7 +108,7 @@ export function startViewport(box) {
   addEventListener('keydown', (event) => {
     if (!box.on || event.defaultPrevented || event.ctrlKey) return;
     const focused = document.activeElement;
-    if ((focused && focused !== document.body && focused !== html) || document.body?.isContentEditable || document.designMode === 'on') return;
+    if ((focused && focused !== document.body && focused !== root()) || document.body?.isContentEditable || document.designMode === 'on') return;
     const body = box.body();
     const step = pagingStep(event, native.clientHeight.get.call(body));
     if (step == null || getComputedStyle(body).overflowY === 'hidden') return;

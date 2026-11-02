@@ -23,33 +23,37 @@ export function boxRules(selector, { left, top, right, bottom }, zoom = 1) {
   }`;
 }
 
-// What takes Margin's size rules off <body> for a read (content/page/box.js
-// readWithout), within one task: an element of Margin's after <body> while the
-// page's own rules show (`read`), and one while <body> is held still (`hold`).
-// Neither is ever in the page outside that task, so nothing a page keeps,
-// hydrates or serializes has them in it, and being after <body> they leave
-// `head + body`, `:first-child` and `:nth-child` as the page wrote them.
-// An element is the cheapest of what was tried: `sheet.disabled` makes WebKit
-// rebuild every rule of the page (52 ms against 4 on 20,000 rows). Not
-// `html:has(...)`: any `:has()` makes adding a child to <body> cost 4 times as
-// much in Chromium, on every page. The price is one observer callback for a
-// page that watches <html>'s children.
-export const READ_ELEMENT = 'margin-read';
-export const HOLD_ELEMENT = 'margin-hold';
 const BODY = 'html > body:where(:first-of-type)'; // one <body>, not a stray second
-// <body> with no such element after it.
-const none = (element) => `:nth-last-child(1 of body:first-of-type, ${element})`;
-// <body>, while no read is looking. `:where`: no weight, a page's `!important`
-// class still wins as it would.
-export const FITTED_BODY = `${BODY}:where(${none(READ_ELEMENT)})`;
-
-// <body> held still during a read. Duration and delay, not `transition: none`,
-// which would cancel a transition already running. Five ids of weight: a
-// page's `html body#b { transition: all 1s !important }` mustn't start one. Its
-// pseudo-elements with it, which can inherit what a read changes, at no cost.
-const WEIGHT = ':not(#m#m#m#m#m)';
-const STILL = `${BODY}:not(${none(HOLD_ELEMENT)})${WEIGHT}`;
+export const FITTED_BODY = BODY;
+// Five ids of specificity, but an impossible argument. Margin has to win the
+// authored `!important` size/margin after it has read and translated it;
+// otherwise the authored margin and Margin's equivalent padding both apply.
+// Repeating only `#m` would make :not() false on `<body id="m">`.
+const WEIGHT = ':not(#m#m#m#m#n)';
+// WebKit's fast body-read switch lives on <head>, not <body>: changing an
+// attribute there avoids invalidating the page's whole body subtree, while
+// leaving `head + body`, `body:last-child`, hydration and serialization tree
+// shape exactly as the page made them. Blink uses the empty-attribute form
+// and switches the private fit sheet instead (content/page/box.js).
+// Keep the engine gate's specificity at zero; the explicit impossible-id
+// weight below, rather than the transaction mechanism, owns the cascade.
+const headedBody = (readAttribute, state) => `html > :where(head:first-of-type${state}) ~ body:where(:first-of-type)`;
+export const fittedBody = (readAttribute = '') => `${readAttribute ? headedBody(readAttribute, `:not([${readAttribute}="read"])`) : BODY}${WEIGHT}`;
+// Kept during a body read. Some pages make layout unavoidable (intrinsic body
+// width or a size container); the guard keeps their scroller at the box's
+// height while the remaining fit declarations are temporarily disabled.
+export const BODY_GUARD_CSS = `@media screen {
+  ${BODY}${WEIGHT} { min-height: 100% !important; max-height: 100% !important; }
+}`;
+const WEIGHTED_BODY = `${BODY}${WEIGHT}`;
 const NO_TRANSITION = 'transition-duration: 0s !important; transition-delay: 0s !important;';
+
+// Enabled only while a never-shown tab paints Margin's arrival cover. Kept in
+// a private constructed sheet so hiding the page creates no authored inline
+// style mutation and cannot trip a site's MutationObserver feedback.
+export const BODY_COVER_CSS = `@media screen {
+  ${WEIGHTED_BODY} { opacity: 0 !important; ${NO_TRANSITION} }
+}`;
 
 // <body>'s size in the box. <body> fills the box and is the scroller, so its
 // scrollbar stays at the box's edge; what the page meant by a width comes back
@@ -60,21 +64,29 @@ const NO_TRANSITION = 'transition-duration: 0s !important; transition-delay: 0s 
 // read: a layout during one (a query container makes a browser lay out to
 // style it) finds <body> the box's height, and its scroll position survives.
 // `column`: such a body is a flex column, which in a window never shrinks its
-// children, so they're kept from shrinking here, and held still while a read
-// takes that away. `held`: a page whose elements inherit from <body> started
-// transitions in a read (content/page/box.js): all of them are held from then on.
-export function bodyFitCss({ grows = false, column = false, held = false } = {}) {
+// children, so they're kept from shrinking here.
+export function bodyFitCss({ grows = false, column = false } = {}, readAttribute = '') {
+  const fitted = fittedBody(readAttribute);
   const height = grows ? 'height: auto !important;' : 'height: 100% !important;';
   return `@media screen {
-    html > body:where(:first-of-type) { min-height: 100% !important; max-height: 100% !important; }
-    ${FITTED_BODY} { width: auto !important; max-width: none !important; box-sizing: border-box !important; ${height} }
-    ${grows && column ? `${FITTED_BODY} > * { flex-shrink: 0 !important; flex-basis: auto !important; } ${STILL} > * { ${NO_TRANSITION} }` : ''}
-    ${held ? `${STILL} * { ${NO_TRANSITION} }` : ''}
+    ${fitted} { width: auto !important; max-width: none !important; box-sizing: border-box !important; ${height} }
+    ${grows && column ? `${fitted} > * { flex-shrink: 0 !important; flex-basis: auto !important; }` : ''}
   }`;
 }
 
-export const STILL_CSS = `${STILL}, ${STILL}::before, ${STILL}::after { ${NO_TRANSITION} }
-  ${READ_ELEMENT}${WEIGHT}, ${HOLD_ELEMENT}${WEIGHT} { display: none !important; }`;
+// Enabled only for the synchronous body-read transaction. Duration and delay,
+// not `transition: none`, which would cancel a transition already running.
+// Five ids of weight: a page's `html body#b { transition: all !important }`
+// must not start one while Margin removes and restores its fit declarations.
+export function bodyHoldCss({ grows = false, column = false, held = false } = {}, readAttribute = '') {
+  const selected = readAttribute ? headedBody(readAttribute, `[${readAttribute}]`) : BODY;
+  const heldBody = `${selected}${WEIGHT}`;
+  return `@media screen {
+    ${heldBody}, ${heldBody}::before, ${heldBody}::after { ${NO_TRANSITION} }
+    ${grows && column ? `${heldBody} > * { ${NO_TRANSITION} }` : ''}
+    ${held ? `${heldBody} * { ${NO_TRANSITION} }` : ''}
+  }`;
+}
 
 // What the page says about <body>, without a layout: `::backdrop` has no box,
 // so what it inherits reads back as the page wrote it (`10%`, `auto`, `50%`),

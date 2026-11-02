@@ -2,8 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksSize, hasUnits, shiftQuery, shiftUnits } from '../extension/shared/page-css.js';
+import { hasStatefulPseudo } from '../extension/content/page/sheets.js';
 import { readFileSync } from 'node:fs';
-import { FITTED_BODY, HOLD_ELEMENT, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
+import { BODY_COVER_CSS, BODY_GUARD_CSS, FITTED_BODY, NO_BOX_CSS, SAID_CSS, bodyFitCss, bodyHoldCss, boxCss, boxRules } from '../extension/shared/page-box.js';
 
 test('a query about the window\'s size moves by the room the page doesn\'t have', () => {
   assert.equal(shiftQuery('(max-width: 900px)', 268, 16), '(max-width: 1168px)');
@@ -73,34 +74,84 @@ test('the body: nothing the placeholders share, its width in a sheet of its own,
   assert.match(bodyFitCss(), /width: auto !important; max-width: none !important/);
   assert.match(bodyFitCss(), /box-sizing: border-box !important; height: 100% !important;/);
   assert.match(bodyFitCss({ grows: true }), /box-sizing: border-box !important; height: auto !important;/);
-  for (const options of [{}, { grows: true }]) assert.match(bodyFitCss(options).split('\n')[1], /^\s*html > body:where\(:first-of-type\) \{ min-height: 100% !important; max-height: 100% !important; \}/, 'kept through a read, not behind it: a layout during one must not shrink <body> past its scroll');
+  assert.match(BODY_GUARD_CSS, /min-height: 100% !important; max-height: 100% !important;/, 'kept through a read: a layout during one must not shrink <body> past its scroll');
+  assert.doesNotMatch(bodyFitCss(), /min-height:/, 'the fit selector can turn off without removing the height guard');
   assert.doesNotMatch(bodyFitCss({ grows: true }), /flex-shrink/);
   assert.match(bodyFitCss({ grows: true, column: true }), /flex-shrink: 0 !important/);
   assert.doesNotMatch(bodyFitCss({ column: true }), /flex-shrink/, 'a body the page holds at the box\'s height lets its children shrink, as in a window');
+  const source = readFileSync(new URL('../extension/content/page/box.js', import.meta.url), 'utf8');
+  assert.match(source, /inlineLocked = Array\.from\(body\.style\)/, 'inline important geometry is not translated a second time into padding');
 });
 
-test('a read leaves nothing in the page, and is held against what a page says', () => {
-  assert.ok(FITTED_BODY.includes(`:nth-last-child(1 of body:first-of-type, ${READ_ELEMENT})`), 'on with nothing there: a page\'s new <html> or a stray <body> changes nothing');
-  assert.ok(STILL_CSS.includes(`:nth-last-child(1 of body:first-of-type, ${HOLD_ELEMENT})`));
-  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS}`, /:state\(/, 'the element has no custom state: nothing to define, nothing a page can refuse');
-  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS}`, /~ body|\+ body/, 'after <body>, not before: `:nth-child` and `head:first-child + body` stay the page\'s');
+test('WebKit reads through transient head state without changing tree shape; Blink can stay private', () => {
+  const readAttribute = 'data-margin-read-test';
+  const fitted = bodyFitCss({}, readAttribute);
+  const held = bodyHoldCss({}, readAttribute);
+  assert.equal(FITTED_BODY, 'html > body:where(:first-of-type)');
+  assert.match(fitted, /:where\(head:first-of-type:not\(\[data-margin-read-test="read"\]\)\) ~ body/);
+  assert.match(held, /:where\(head:first-of-type\[data-margin-read-test\]\) ~ body/);
+  assert.doesNotMatch(`${fitted} ${held}`, /:state\(|body[^,{]*:(last|only)-child|body[^,{]*:nth-/, 'body structural selectors stay exactly as authored');
   const source = readFileSync(new URL('../extension/content/page/box.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /customElements|attachInternals/, 'a page can patch or refuse the registry');
-  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS}`, /:has\(/, 'it costs every page in Chromium as children are added');
-  assert.doesNotMatch(`${bodyFitCss()} ${STILL_CSS} ${SAID_CSS}`, /data-margin|\[data-/);
-  assert.match(STILL_CSS, /:not\(#m#m#m#m#m\)/, 'the weight of five ids: a page\'s `html body#b { transition: all !important }` loses');
-  assert.match(STILL_CSS, /::before.*::after/, 'pseudo-elements inherit from <body>');
-  assert.match(bodyFitCss({ held: true }), /\* \{ transition-duration: 0s !important/);
-  assert.doesNotMatch(bodyFitCss(), /\* \{ transition-duration/, 'only on a page that needs it: it restyles the whole page');
+  assert.doesNotMatch(source, /createElement\(READ|createElement\(HOLD|append\.call\(html/, 'no child marker can affect structural selectors, hydration or custom elements');
+  assert.doesNotMatch(`${fitted} ${held}`, /:has\(/, 'it costs every page in Chromium as children are added');
+  assert.match(held, /:not\(#m#m#m#m#n\)/, 'five ids of weight with an impossible argument: even `<body id="m">` still matches');
+  assert.match(held, /::before.*::after/, 'pseudo-elements inherit from <body>');
+  assert.match(bodyHoldCss({ held: true }), /\* \{ transition-duration: 0s !important/);
+  assert.doesNotMatch(bodyFitCss(), /transition-duration/, 'the selected hold sheet owns transition suppression');
+});
+
+test('the arrival cover uses a private fast path with a verified inline fallback', () => {
+  assert.match(BODY_COVER_CSS, /opacity: 0 !important/);
+  assert.match(BODY_COVER_CSS, /transition-duration: 0s !important/);
+  const core = readFileSync(new URL('../extension/content/core.js', import.meta.url), 'utf8');
+  assert.match(core, /link\.setCovered\(true\)/);
+  assert.match(core, /getComputedStyle\(page\)\.opacity !== HIDE_VALUE/, 'a losing private author rule falls back before the page is presented');
+  assert.match(core, /if \(!privatelyCovered\) page\.style\.setProperty/, 'inline style covers an older page script or an authored stronger opacity rule');
+  assert.match(core, /preparingShow\.arrival/, 'an unpublished preparation still owns and can cancel its arrival cover');
+});
+
+test('a hidden destination reconciles sheets and geometry before its acknowledgement layout', () => {
+  const main = readFileSync(new URL('../extension/content/page/main.js', import.meta.url), 'utf8');
+  const core = readFileSync(new URL('../extension/content/core.js', import.meta.url), 'utf8');
+  assert.ok(main.indexOf('sheets.flush()') < main.indexOf('box.prepare(sheets.flush)'), 'viewport rewrites precede the one pending body reading, and resize-handler writes are flushed again');
+  assert.ok(core.indexOf('geometryReady = link.prepare()') < core.indexOf('host.getBoundingClientRect()'), 'the final forced layout acknowledges page-world geometry too');
+});
+
+test('dynamic rule hooks do not replace the inline-style hot path', () => {
+  const sheets = readFileSync(new URL('../extension/content/page/sheets.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(sheets, /declarationProto\.(setProperty|removeProperty)\s*=/, 'element.style methods stay native');
+  assert.doesNotMatch(sheets, /styleMapProto\[name\]\s*=/, 'inline Typed OM methods stay native');
+  assert.match(sheets, /Object\.setPrototypeOf\(declaration, declarationPrototype\(\)\)/, 'retained rule declarations share one lightweight child prototype');
+  assert.match(sheets, /Object\.create\(declarationProto, descriptors\)/, 'the complete property table is allocated once per page, not once per rule');
+  assert.match(sheets, /value === null \? '' : String\(value\)/, 'rule declarations preserve native null-to-empty-string conversion');
+  assert.match(sheets, /for \(const name in probe\)/, 'the browser supplies the complete version-specific CSS property list');
+  assert.match(sheets, /for \(let owner = probe; owner; owner = Object\.getPrototypeOf\(owner\)\)/, 'inherited WebKit properties keep their native enumeration shape');
+  assert.match(sheets, /nativeSet\.call\(this, shifted\)/, 'WebKit vendor aliases use the engine\'s own named-property setters');
+  assert.match(sheets, /queueHasRebuild\(\); \/\/ a removed grouping rule/, 'deleting a rule rebuilds nested :has() metadata');
+});
+
+test('sheet observation stays scoped while preflight can drain every style source', () => {
+  const sheets = readFileSync(new URL('../extension/content/page/sheets.js', import.meta.url), 'utf8');
+  assert.match(sheets, /const WATCH = \{[^\n]+attributeFilter: \['style'\]/, 'the document-wide observer sees no generic href/type/disabled churn');
+  assert.match(sheets, /const STYLE_ATTRIBUTES = \{[^\n]+\['media', 'disabled', 'href', 'rel', 'type'\]/, 'activation attributes are watched only on style and link nodes');
+  assert.match(sheets, /styleAttributeWatch\.takeRecords\(\)/, 'destination preflight drains targeted style-attribute records too');
+  assert.match(sheets, /let shadowHasRoots = new Set\(\)/, 'shadow :has() work is bounded to roots that actually contain such selectors');
+});
+
+test('only stateful :has selectors need page-interaction hooks', () => {
+  assert.equal(hasStatefulPseudo('body:has(.modal > [open])'), false);
+  assert.equal(hasStatefulPseudo('body:not(:has(input:checked))'), true);
+  assert.equal(hasStatefulPseudo(':host-context(body:hover) article:has(.ready)'), true);
+  assert.equal(hasStatefulPseudo('body:has([data-copy=":hover"] .ready)'), false, 'attribute text is not a pseudo-class');
+  assert.equal(hasStatefulPseudo('body:has(.focus-visible-copy)'), false, 'class names are not pseudo-classes');
+  const sheets = readFileSync(new URL('../extension/content/page/sheets.js', import.meta.url), 'utf8');
+  assert.match(sheets, /listenForHasState\(documentHasState \|\| shadowHasStateRoots\.size > 0\)/, 'structural-only :has() keeps global interaction listeners off');
 });
 
 test('the rule that reads top margins depends on no sibling, and stays off real backdrops', () => {
   assert.doesNotMatch(SAID_CSS, /:(first|last|only)-child|:nth-/, 'a structural pseudo-class costs every parent on each child added or removed');
   assert.match(SAID_CSS, /:not\(dialog, \[popover\], :fullscreen\)::backdrop/);
-});
-
-test('a rule on <html>\'s size has to outweigh nothing to hide the flags', () => {
-  for (const flag of [READ_ELEMENT, HOLD_ELEMENT]) assert.ok(STILL_CSS.includes(`${flag}:not(#m#m#m#m#m)`), 'a page\'s `:root :not(#z#z) { display: block !important }` must not show one');
 });
 
 test('the box follows a page\'s zoom on <html>', () => {

@@ -49,8 +49,8 @@ test('each build loads one bundled script per context', () => {
     // Nothing in the page's world from the manifest: a page Margin leaves
     // alone loads none of it (background/registered.js).
     assert.equal(manifest.content_scripts.find((c) => c.world === 'MAIN'), undefined, target);
-    assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), /left: 8 /);
-    for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width} `));
+    assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), new RegExp(`left: 8, profile: '${target}'`));
+    for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width}, profile: '${target}'`));
     // Each theme: a content bundle the background registers ('margin-theme',
     // the path from theme.js) and a new-tab module exporting mount().
     assert.match(background, /margin-theme/, `${target}: the background registers the theme`);

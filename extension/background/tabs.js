@@ -1,6 +1,6 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
-import { api, cached, isOwner, mutate, now, thisCopy } from './store.js';
+import { api, cached, isOwner, isSynced, mutate, now, thisCopy } from './store.js';
 import { recordSwitch } from './diagnostics.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
@@ -141,13 +141,17 @@ async function startWake(tabId, at) {
   // ignores the key and runs it right away anyway). The permission check
   // counts toward the wait too (it can be slow while Safari starts).
   const target = { tabId };
+  let expired = false;
   const ran = (async () => {
     if (!(await mayAccessCached(tab.url))) return 'no access';
+    // A permissions answer can arrive after the wake budget. By then the
+    // switch has gone on without it; do not inject a late hold into the page.
+    if (expired || Date.now() - at >= WAKE_MAX_MS) return 'timeout';
     api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [KEEP_AWAKE_MS] }).catch(() => {});
     return api.scripting.executeScript({ target, injectImmediately: true, func: pageThere }).then((rows) => (ranThere(rows) ? 'awake' : 'no page'), () => 'no page');
   })();
   let timer;
-  const outcome = await Promise.race([ran, new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), WAKE_MAX_MS); })]);
+  const outcome = await Promise.race([ran, new Promise((resolve) => { timer = setTimeout(() => { expired = true; resolve('timeout'); }, WAKE_MAX_MS); })]);
   clearTimeout(timer);
   return result(/** @type {Wake['outcome']} */ (outcome));
 }
@@ -188,9 +192,13 @@ export async function prepareSidebarInPage(context) {
   }
 }
 
-export function cancelSidebarInPage(token) {
+export function cancelSidebarInPage(token, keep = false, before = Infinity) {
   try {
-    return globalThis.Margin?.content?.cancelPreparedShow?.(token) ?? false;
+    // A retry revocation can cross the background's activation deadline while
+    // this suspended process wakes. Once that happens the timeout path owns
+    // the prepared frame; do not clear it after the tab may already be shown.
+    if (!keep && Number.isFinite(before) && Date.now() >= before) return false;
+    return globalThis.Margin?.content?.cancelPreparedShow?.(token, { keep }) ?? false;
   } catch {
     return false;
   }
@@ -198,36 +206,167 @@ export function cancelSidebarInPage(token) {
 
 /** @typedef {{ outcome: 'ready' | 'not ready' | 'unavailable' | 'timeout' | 'skipped', ms: number, reason?: string, token: string | null }} Preparation */
 
+// The part of the authoritative background state needed to draw a sidebar.
+// Passing it with the already-required executeScript avoids a storage read on
+// every switch without trusting a hidden page's cache: Safari can suspend a
+// page long enough for it to miss storage.onChanged entirely. Favicons are the
+// only large state, so only those visible in the destination's space travel.
+function sidebarStateForPage(state, tab) {
+  if (!state) return null;
+  const spaceId = state.tabSpace?.[tab.id] ?? state.activeSpaceByWindow?.[tab.windowId] ?? state.spaces?.[0]?.id;
+  const urls = [
+    ...Object.values(state.tabs ?? {}).filter((item) => item.windowId === tab.windowId && state.tabSpace?.[item.id] === spaceId).map((item) => item.url),
+    ...(state.pins ?? []).filter((pin) => pin.spaceId === spaceId).map((pin) => pin.url),
+  ];
+  const origins = new Set(urls.map((url) => {
+    try { return new URL(url).origin; } catch { return null; }
+  }).filter(Boolean));
+  const favicons = Object.fromEntries([...origins].filter((origin) => state.favicons?.[origin]).map((origin) => [origin, state.favicons[origin]]));
+  const copy = thisCopy();
+  let zoomOrigin = null;
+  try { zoomOrigin = new URL(tab.url).origin; } catch {}
+  const pageZoom = {};
+  if (state.pageZoom?.['*']) pageZoom['*'] = state.pageZoom['*'];
+  if (zoomOrigin && zoomOrigin !== 'null' && state.pageZoom?.[zoomOrigin]) pageZoom[zoomOrigin] = state.pageZoom[zoomOrigin];
+  return {
+    spaces: state.spaces,
+    activeSpaceByWindow: state.activeSpaceByWindow,
+    tabSpace: state.tabSpace,
+    pins: state.pins,
+    folders: state.folders,
+    settings: state.settings,
+    tabs: state.tabs,
+    owner: { ...copy },
+    openTabsBy: { ...copy, synced: isSynced() },
+    // Empty is authoritative too: a suspended page may have missed a stored
+    // zoom reset and must not merge its stale per-site value back in.
+    pageZoom,
+    faviconOrigins: [...origins],
+    favicons,
+  };
+}
+
 /**
  * `covered`: the page before is covered (a switch it asked for): a page shown
  * for the first time arrives covered too (content/core.js arriveCovered).
  * @param {any} tab
- * @param {{ token?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, budget?: number, covered?: boolean }} [options]
+ * @param {{ token?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, budget?: number, covered?: boolean, stillWanted?: () => boolean }} [options]
  * @returns {Promise<Preparation>}
  */
-async function prepareTabForShow(tab, { token, carry = null, scroll = null, budget = PREPARE_MAX_MS, covered = false } = {}) {
+async function prepareTabForShow(tab, { token, carry = null, scroll = null, budget = PREPARE_MAX_MS, covered = false, stillWanted = () => true } = {}) {
   const at = Date.now();
+  const expiresAt = at + Math.max(0, budget);
   const result = (outcome, reason) => ({ outcome, ms: Date.now() - at, ...(reason ? { reason } : {}), token: token ?? null });
   if (!platform?.prepareSidebar || !api.scripting?.executeScript || !tab?.id || tab.windowId == null || !token) return result('skipped');
   let timer;
+  let expired = false;
   const run = (async () => {
     // Not a page Margin may not run on (asking would only fail, or make
     // Safari ask for access).
-    if (!(await mayAccessCached(tab.url))) return result('unavailable', 'no access');
-    const top = Number.isFinite(scroll) ? scroll : await getScroll(tab.windowId).catch(() => 0);
-    return api.scripting.executeScript({
-      target: { tabId: tab.id },
-      injectImmediately: true,
-      func: prepareSidebarInPage,
-      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered }],
-    }).then((rows) => {
+    // Permission and scroll are independent browser/storage calls, so neither
+    // adds its whole round trip to the other. The remembered site zoom in the
+    // snapshot is already maintained by the page's ordinary zoom reader; an
+    // extra tabs.getZoom here would only lengthen every switch.
+    const [access, top] = await Promise.all([
+      mayAccessCached(tab.url),
+      Number.isFinite(scroll) ? scroll : getScroll(tab.windowId).catch(() => 0),
+    ]);
+    // The race below may already have answered while a browser/storage call
+    // was pending. Do not start page work after its activation deadline.
+    if (expired || Date.now() >= expiresAt) return result('timeout');
+    if (!stillWanted()) return result('not ready', 'cancelled');
+    if (!access) return result('unavailable', 'no access');
+    // A tab event can update the cache while the first snapshot crosses into
+    // the destination. Retry once with the newer object; ordinary immutable
+    // model changes make the identity check a cheap generation test.
+    let published = false;
+    const revokePublished = async () => {
+      if (!published) return true;
+      // A transient scripting failure must not leave the first, older snapshot
+      // consumable while reporting that it was revoked. Try the keyed tombstone
+      // once more and confirm the page accepted it. If both attempts fail, the
+      // coherent first snapshot is an explicit fallback.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (expired || Date.now() >= expiresAt || !stillWanted()) return false;
+        try {
+          const rows = await api.scripting.executeScript({
+            target: { tabId: tab.id }, injectImmediately: true, func: cancelSidebarInPage, args: [token, false, expiresAt],
+          });
+          if (rows?.[0]?.result === true) {
+            published = false;
+            return true;
+          }
+        } catch {}
+      }
+      return false;
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const source = cached();
+      const sidebarState = sidebarStateForPage(source, tab);
+      if (expired || Date.now() >= expiresAt) {
+        await revokePublished();
+        return result('timeout');
+      }
+      if (!stillWanted()) return result('not ready', 'cancelled');
+      let rows;
+      try {
+        rows = await api.scripting.executeScript({
+          target: { tabId: tab.id },
+          injectImmediately: true,
+          func: prepareSidebarInPage,
+          args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered, sidebarState, expiresAt }],
+        });
+      } catch (error) {
+        // The outer race may already have continued with this prepared frame,
+        // or a newer switch may have cancelled it. Its keyed cancellation owns
+        // that state now; a late retry failure must not undo geometry after
+        // activation.
+        if (expired || Date.now() >= expiresAt) return result('timeout');
+        if (!stillWanted()) return result('not ready', 'cancelled');
+        // Attempt one may already have published this token. If the fresher
+        // retry never reached the page, revoke that older snapshot before it
+        // can be consumed by activation.
+        const revoked = await revokePublished();
+        if (!revoked) {
+          if (expired || Date.now() >= expiresAt) return result('timeout');
+          if (!stillWanted()) return result('not ready', 'cancelled');
+          return result('ready', 'retained prior snapshot after cancellation failed');
+        }
+        return result('unavailable', String(error?.message ?? error));
+      }
+      if (expired || Date.now() >= expiresAt) return result('timeout');
+      if (!stillWanted()) return result('not ready', 'cancelled');
       const answer = rows?.[0]?.result;
-      return answer?.ready ? result('ready') : result('not ready', answer?.reason ?? 'no answer');
-    }, (error) => result('unavailable', String(error?.message ?? error)));
+      if (answer?.ready && source !== cached()) {
+        published = true;
+        if (attempt === 0) continue;
+        // The bounded retry also raced a newer cache generation. Do not
+        // knowingly activate a frame the background already knows is stale;
+        // revoke it and let the ordinary show path consume the latest state.
+        const revoked = await revokePublished();
+        if (!revoked) {
+          if (expired || Date.now() >= expiresAt) return result('timeout');
+          if (!stillWanted()) return result('not ready', 'cancelled');
+          return result('ready', 'retained prior snapshot after cancellation failed');
+        }
+        return result('not ready', 'state changed during preparation');
+      }
+      if (answer?.ready) return result('ready');
+      if (published) {
+        const revoked = await revokePublished();
+        if (!revoked) {
+          if (expired || Date.now() >= expiresAt) return result('timeout');
+          if (!stillWanted()) return result('not ready', 'cancelled');
+          return result('ready', 'retained prior snapshot after cancellation failed');
+        }
+      }
+      return result('not ready', answer?.reason ?? 'no answer');
+    }
+    return result('not ready', 'state changed during preparation');
   })();
   const answer = await Promise.race([
     run,
-    new Promise((resolve) => { timer = setTimeout(() => resolve(result('timeout')), budget); }),
+    new Promise((resolve) => { timer = setTimeout(() => { expired = true; resolve(result('timeout')); }, budget); }),
   ]);
   clearTimeout(timer);
   return answer;
@@ -259,9 +398,18 @@ async function coverArrival(tab) {
   return /** @type {boolean} */ (covered);
 }
 
-function cancelPreparation(tabId, preparation) {
-  if (!preparation?.token || preparation.outcome === 'skipped' || !api.scripting?.executeScript) return;
-  api.scripting.executeScript({ target: { tabId }, injectImmediately: true, func: cancelSidebarInPage, args: [preparation.token] }).catch(() => {});
+async function cancelPreparationToken(tabId, token, { keep = false } = {}) {
+  if (!token || !api.scripting?.executeScript) return false;
+  // A suspended page can transiently reject scripting even though the
+  // preparation already reached it. Confirm the keyed tombstone, retrying
+  // once, so an aborted switch cannot leave a fresh-looking frame behind.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const rows = await api.scripting.executeScript({ target: { tabId }, injectImmediately: true, func: cancelSidebarInPage, args: [token, keep] });
+      if (rows?.[0]?.result === true) return true;
+    } catch {}
+  }
+  return false;
 }
 
 // Activate a tab, and focus its window only if it isn't already: re-focusing
@@ -350,6 +498,32 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   const token = `${instanceId}:${gen}:${tabId}`;
   /** @type {Preparation} */
   const skipped = { outcome: 'skipped', ms: 0, token: null };
+  // Preparation starts before restore/introduction work so it can overlap that
+  // wait. Keep its token independently of its eventual result: a superseded or
+  // failed switch can leave before the promise is awaited, and that late page
+  // work must not be consumed by a later activation.
+  let preparationStarted = false;
+  let preparationFinished = false;
+  let preparationCancelled = false;
+  /** @type {Promise<boolean> | null} */
+  let keptCancellation = null;
+  /** @type {Promise<boolean> | null} */
+  let droppedCancellation = null;
+  const beginPreparation = (tab, options) => {
+    preparationStarted = true;
+    return prepareTabForShow(tab, { ...options, stillWanted: () => !preparationCancelled && gen === focusGen });
+  };
+  const cancelStartedPreparation = ({ keep = false } = {}) => {
+    if (!preparationStarted || preparationFinished) return Promise.resolve(true);
+    preparationCancelled = true;
+    if (keep) return (keptCancellation ??= cancelPreparationToken(tabId, token, { keep: true }));
+    droppedCancellation ??= cancelPreparationToken(tabId, token).then((confirmed) => {
+      if (confirmed) preparationFinished = true;
+      return confirmed;
+    });
+    return droppedCancellation;
+  };
+  try {
   // The tab as the browser has it now: whether it's still there, its window,
   // whether it's in front already (then there's nothing to wake or prepare).
   let live = await api.tabs.get(tabId).catch(() => null);
@@ -401,7 +575,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   /** @type {Record<string, Behind>} */
   let how = {};
   /** @type {Promise<Preparation> | null} */
-  let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered }) : null;
+  let early = wake && !neverShown.has(tabId) ? beginPreparation(live, { token, carry, scroll, covered }) : null;
   /** @type {Wait} */
   const wait = { gen, since: asked, until: Math.min(asked + RESTORE_MAX_MS, (deadline ?? Infinity) - RESTORE_RESERVE_MS), hurry };
   const loading = !loadWaited && !!platform?.restoreTabs && neverShown.has(tabId) && live.status === 'loading';
@@ -470,7 +644,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // subsequent tabs.update.
   let [woke, preparation] = await Promise.all([
     wake ? wakeTab(tabId, { renew: !!introduced || waited }) : null,
-    early ?? (wake ? prepareTabForShow(live, { token, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped))),
+    early ?? (wake ? beginPreparation(live, { token, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped))),
     introduced ? new Promise((resolve) => setTimeout(resolve, INTRODUCED_SETTLE_MS)) : null,
   ]);
   // A page still running an earlier copy of Margin (it slept through an
@@ -480,21 +654,21 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   const left = () => PREPARE_MAX_MS - (Date.now() - asked);
   if (preparation.outcome === 'not ready' && preparation.reason === 'no current sidebar' && gen === focusGen && left() > 200) {
     const added = await Promise.race([addCurrentCopy(live), new Promise((resolve) => setTimeout(() => resolve(false), Math.min(400, left() - 100)))]);
-    if (added && gen === focusGen && left() > 50) preparation = await prepareTabForShow(live, { token, carry, scroll, budget: Math.min(left(), budget()), covered: covered || waited });
+    if (added && gen === focusGen && left() > 50) preparation = await beginPreparation(live, { token, carry, scroll, budget: Math.min(left(), budget()), covered: covered || waited });
   }
   // Another switch was asked for while this one waited (back to the tab in
   // front, say): the latest wins.
   if (gen !== focusGen) {
-    cancelPreparation(tabId, preparation);
+    cancelStartedPreparation();
     recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: 'superseded' });
     return { tab: null, preparation, superseded: true };
   }
   // A timeout only bounds how long the old page stays covered. Stop the late
   // preparation before activating, otherwise it could finish over the live
   // destination and leave a token for some later switch to consume.
-  if (preparation.outcome === 'timeout') cancelPreparation(tabId, preparation);
+  if (preparation.outcome === 'timeout') cancelStartedPreparation({ keep: true });
   if (Number.isFinite(deadline) && Date.now() > deadline - 250) {
-    cancelPreparation(tabId, preparation);
+    cancelStartedPreparation();
     recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: 'expired' });
     throw new Error('Too late: the page stopped waiting for this switch');
   }
@@ -503,7 +677,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // is; this says it (content/core.js `showing`).
   if (woke?.outcome === 'no page') await noteShowing(live, { carry, scroll });
   const fail = (err) => {
-    cancelPreparation(tabId, preparation);
+    cancelStartedPreparation();
     forgetShowing(tabId);
     recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: String(err) });
     throw err;
@@ -512,6 +686,13 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     let timer;
     await Promise.race([cutting, new Promise((resolve) => { timer = setTimeout(resolve, CUT_OFF_SWITCH_MS); })]);
     clearTimeout(timer);
+  }
+  // noteShowing and cut-off repair both await browser work. A newer request
+  // made during either wait wins; never let this older one activate afterward.
+  if (gen !== focusGen) {
+    cancelStartedPreparation();
+    recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, error: 'superseded' });
+    return { tab: null, preparation, superseded: true };
   }
   const ended = endIntroduction(tabId, gen);
   activating(tabId);
@@ -526,10 +707,19 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     await api.tabs.update(tabId, { active: true }).catch(fail);
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
+  // The destination is confirmed in front. Its visibilitychange now owns the
+  // prepared frame; the scope guard below must not revoke it.
+  preparationFinished = true;
   recordSwitch({ source, tabId, asked, wake: woke, preparation, introduced, ...how, shownAfter: Date.now() - asked });
   if (ended?.lateTab) void hooks.activated?.({ tabId, windowId: live.windowId }); // as in focusTab
   if (tab && raise) await focusWindow(tab.windowId);
   return { tab, preparation };
+  } finally {
+    // Successful switches set preparationFinished before reaching here. An
+    // aborted one does not return until its token is tombstoned (or both
+    // bounded attempts failed), closing the race with an in-flight prepare.
+    await cancelStartedPreparation();
+  }
 }
 // The window comes forward only if it isn't already (see focusTab).
 async function focusWindow(windowId) {

@@ -14,6 +14,7 @@ export function startPageLink(send) {
 
   // Cancelled by the page's world: it heard. Nothing there means no script yet.
   const say = (detail) => !document.dispatchEvent(new CustomEvent('margin:box', { detail, cancelable: true }));
+  const ask = (type, detail) => !document.dispatchEvent(new CustomEvent(type, { detail, cancelable: true }));
 
   let last = null; // the last message, sent again when the script arrives
   let asked = false;
@@ -42,6 +43,15 @@ export function startPageLink(send) {
   function setZoom(box, { scale, x, y, moving }) {
     if (can) say(JSON.stringify({ ...box, scale, tx: x, ty: y, moving }));
   }
+  // Before Safari swaps a hidden destination into the window, reconcile the
+  // page world's pending sheets and body geometry synchronously. Hidden pages
+  // don't reliably receive animation frames, so waiting for visibility here
+  // can expose one stale-sized frame.
+  const prepare = () => !can || !boxed() || ask('margin:box-prepare');
+  // A never-shown page can paint its cheap extension cover before Safari
+  // introduces it. The page-world sheet keeps this out of authored inline
+  // style and therefore out of the site's MutationObservers.
+  const setCovered = (covered) => can && ask('margin:box-cover', covered ? 'on' : 'off');
 
   // ---- sheets the page can't read ---------------------------------------------
   // Another origin's, with no CORS: unreadable to any script here, so media
@@ -147,5 +157,5 @@ export function startPageLink(send) {
   }, true);
   document.addEventListener('DOMContentLoaded', () => { if (boxed()) fetchUnreadable(); });
 
-  return { setBox, setZoom, can };
+  return { setBox, setZoom, prepare, setCovered, can };
 }

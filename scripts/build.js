@@ -44,7 +44,7 @@ export function buildTo(outDir, { profile, manifest = profile }) {
   cpSync(fileURLToPath(SOURCE), out, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
   writeFileSync(`${out}/shared/platform.js`, platformFileFor(profile));
   const built = manifestFor(manifest);
-  bundle(out, built);
+  bundle(out, built, profile);
   writeFileSync(`${out}/manifest.json`, `${JSON.stringify(built, null, 2)}\n`);
   return out;
 }
@@ -88,7 +88,7 @@ export const LEGACY_THEME_FILES = [
   ...DOCKED_WIDTHS.map((width) => `themes/arcadium/docked/w-${width}.css`),
 ];
 
-function bundle(out, manifest) {
+function bundle(out, manifest, profile) {
   const write = (file, entries, { format = 'iife' } = {}) => buildSync({
     // A module keeps its entry's exports (a theme's new-tab mount()).
     stdin: { contents: entries.map((f) => (format === 'esm' ? `export * from './${f}';` : `import './${f}';`)).join('\n'), resolveDir: out, sourcefile: 'margin-bundle-entry.js' },
@@ -105,7 +105,7 @@ function bundle(out, manifest) {
 
   // Where the page's box starts (background/registered.js pagePlan): read by
   // the page's script, and gone again.
-  for (const left of PAGE_LEFTS) writeFileSync(`${out}/content/page/at-${left}.js`, `window[Symbol.for('margin.page.start')] = { left: ${left} };\n`);
+  for (const left of PAGE_LEFTS) writeFileSync(`${out}/content/page/at-${left}.js`, `window[Symbol.for('margin.page.start')] = { left: ${left}, profile: '${profile}' };\n`);
   for (const file of [...LEGACY_LAYOUT_FILES, ...LEGACY_THEME_FILES]) {
     mkdirSync(dirname(`${out}/${file}`), { recursive: true });
     writeFileSync(`${out}/${file}`, '');

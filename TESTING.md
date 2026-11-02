@@ -586,6 +586,18 @@ No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-sc
 - [ ] Chrome: outside full screen pages are untouched; in Margin full screen they have the box; leaving it puts them back.
 - [ ] How it feels against the fitted layout: first paint, tab switches, scrolling.
 
+## Prepared page boxes and switches (2026-11-01)
+
+Use Keep open, leave several ordinary and heavy tabs hidden for a few minutes, then record the window at 60 fps or faster while switching.
+
+- [ ] Switch with a sidebar row, a pin, the palette, and ⌃⌘↓/↑. From the first destination frame the page has the current sidebar and tab highlight, and its usable area is inset 260 px left and 8 px on the other three sides. There is no full-width, stale-width, blank, or double-sized frame.
+- [ ] Switch rapidly A → B → C, then click A while B is still being prepared. The last choice wins; no earlier tab appears later, no carried-open sidebar is left on the wrong tab, and a later switch does not reuse B's preparation.
+- [ ] On Gmail, Outlook, Docs, Reddit, and a page with a centred column, resize the sidebar and window, switch away, then back. Content width, centring, scroll position, fixed headers, and the single page scrollbar are correct immediately, with no second snap.
+- [ ] On a page that adds or replaces styles after load, changes a media query, or uses a shadow-root component, switch away during the change and back. The destination is already at its final size; it does not repair itself one frame later.
+- [ ] Repeat with Safari's own tab bar or ⌃Tab. Loaded tabs should still repair synchronously, but note any first frame from a tab Safari had frozen, discarded, or selected without Margin's preflight; include which switch route was used.
+- [ ] Start page → Settings → Switch log: ordinary loaded destinations say `preparation.outcome: "ready"`; superseded/expired preparations are cancelled and do not affect a later switch. Copy the log with any visible flicker.
+- [ ] Activity Monitor after one minute idle, then while switching continuously for 30 seconds: Safari Web Content and Graphics usage settle again after switching; no process keeps a core busy and memory does not continue climbing after several cycles.
+
 Pinch, on a page with a box:
 
 - [ ] Pinch in and out several times at different spots: smooth, under your fingers, the sidebar and frame don't scale, on a heavy site too.

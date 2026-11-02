@@ -596,6 +596,32 @@ export function startCore({ onTheme } = {}) {
   // with another asynchronous storage/scroll round trip.
   /** @type {{ token: string, at: number, carry: 'hover' | 'toggle' | null } | null} */
   let preparedShow = null;
+  // A preparation which armed transient UI but could not publish its geometry.
+  // It remains token-owned so a superseding/failed switch can remove the cover
+  // immediately instead of leaving it over a later manual activation.
+  /** @type {{ token: string, carry: 'hover' | 'toggle' | null, arrival: boolean } | null} */
+  let preparingShow = null;
+  // An asynchronous storage fallback must never publish a half-prepared
+  // destination. Only the latest generation is allowed to commit below.
+  let preparationGeneration = 0;
+  // A preparation can time out in the background before its executeScript
+  // reaches this suspended page. Remember cancellation briefly so that late
+  // work cannot redraw a destination after a newer switch has won.
+  const CANCELLED_PREPARE_MS = 15_000;
+  /** @type {Map<string, { at: number, keep: boolean }>} */
+  const cancelledPreparations = new Map();
+  function rememberCancelledPreparation(token, keep) {
+    const now = Date.now();
+    for (const [known, cancel] of cancelledPreparations) if (now - cancel.at > CANCELLED_PREPARE_MS) cancelledPreparations.delete(known);
+    cancelledPreparations.set(token, { at: now, keep });
+    while (cancelledPreparations.size > 16) cancelledPreparations.delete(cancelledPreparations.keys().next().value);
+  }
+  const cancelledPreparation = (token) => {
+    const cancel = cancelledPreparations.get(token);
+    if (!cancel || Date.now() - cancel.at <= CANCELLED_PREPARE_MS) return cancel ?? null;
+    cancelledPreparations.delete(token);
+    return null;
+  };
   // Once `drawn` (the state read started with it) has rendered, so the
   // position isn't applied to the old, shorter list and clamped there.
   function restoreScroll(drawn) {
@@ -626,10 +652,19 @@ export function startCore({ onTheme } = {}) {
     offerFittedReload();
     const prepared = preparedShow;
     preparedShow = null;
+    const incomplete = preparingShow;
+    preparingShow = null;
+    if (incomplete?.carry) layout.hide();
     // Prepared for this switch (it can land up to its deadline later; an
     // older preparation is one that never landed).
     const fresh = prepared && Date.now() - prepared.at < 7500;
     if (fresh) {
+      // A storage event can land after the authoritative preflight rendered
+      // but before Safari makes this page visible. Hidden listeners update the
+      // state without drawing; consume that newer state synchronously now so
+      // the prepared DOM is never shown for a frame and refreshed 250 ms later.
+      if (changedWhileHidden && state) render();
+      changedWhileHidden = false;
       // onActivated writes the authoritative active tab/space just after the
       // browser switch. storage.onChanged normally brings it in; this is only
       // a fallback when that event is late or absent.
@@ -863,15 +898,26 @@ export function startCore({ onTheme } = {}) {
     // brought it there): no show is coming to bring it back.
     if (everShown || arrival || !view?.setCover || !document.hidden) return;
     const page = document.body;
-    if (!page) return;
-    const before = [page.style.getPropertyValue(HIDE_PROP), page.style.getPropertyPriority(HIDE_PROP)];
-    // Only Margin's own change is undone (not one the page made meanwhile).
+    let privatelyCovered = link.setCovered(true);
+    // Inline !important and stronger author rules can beat a constructed author
+    // sheet. Verify the actual cascade before trusting the private cover; only
+    // the losing edge case uses the preserved inline fallback below.
+    if (privatelyCovered && page && getComputedStyle(page).opacity !== HIDE_VALUE) {
+      link.setCovered(false);
+      privatelyCovered = false;
+    }
+    if (!privatelyCovered && !page) return;
+    const before = page ? [page.style.getPropertyValue(HIDE_PROP), page.style.getPropertyPriority(HIDE_PROP)] : ['', ''];
+    // Prefer the page world's private constructed sheet. The inline fallback
+    // is only for an older/missing page script and preserves update safety.
     const showPage = () => {
+      if (privatelyCovered) return void link.setCovered(false);
+      if (!page) return;
       if (page.style.getPropertyValue(HIDE_PROP) !== HIDE_VALUE || page.style.getPropertyPriority(HIDE_PROP) !== 'important') return;
       if (before[0]) page.style.setProperty(HIDE_PROP, before[0], before[1]);
       else page.style.removeProperty(HIDE_PROP);
     };
-    page.style.setProperty(HIDE_PROP, HIDE_VALUE, 'important');
+    if (!privatelyCovered) page.style.setProperty(HIDE_PROP, HIDE_VALUE, 'important');
     view.setCover(true, { instant: true, spinnerNow: true });
     setCovered(true);
     mark(host, 'arrivalCover', 'true'); // test/debug hook
@@ -917,35 +963,108 @@ export function startCore({ onTheme } = {}) {
   // world (background/tabs.js), not tabs.sendMessage: Safari can leave an old
   // content-script listener behind after an update. Everything necessary for
   // the destination's first frame is committed before this promise answers.
-  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean }} [context] */
-  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false } = {}) => {
+  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean, sidebarState?: any, expiresAt?: number }} [context] */
+  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false, sidebarState = null, expiresAt = Infinity } = {}) => {
     if (!token || !Number.isInteger(targetId) || targetWindow == null) return { ready: false, reason: 'bad context' };
+    const alreadyShown = () => document.visibilityState === 'visible';
+    const expired = () => Number.isFinite(expiresAt) && Date.now() >= expiresAt;
+    // A user or another switch can bring this tab forward while the background
+    // is preparing it. Never publish a hidden-page token after its show already
+    // happened; shown() must take the ordinary authoritative refresh path.
+    if (alreadyShown()) return { ready: false, reason: 'already shown' };
+    if (expired()) return { ready: false, reason: 'expired' };
+    if (cancelledPreparation(token)) return { ready: false, reason: 'cancelled' };
     // A newer preparation owns this hidden page. Undo only the transient open
     // state from the older one; ordinary Keep open is restored by hide().
     if (preparedShow?.carry) layout.hide();
-    preparedShow = { token, at: Date.now(), carry: null };
+    preparedShow = null;
+    if (preparingShow) {
+      if (preparingShow.arrival) arrival?.finish({ fade: false });
+      if (preparingShow.carry && document.hidden) layout.hide();
+      preparingShow = null;
+    }
+    const mine = ++preparationGeneration;
     tabId = targetId;
     helloWindowId = targetWindow;
     switching.end();
     newTabPending = false;
     if (Number.isFinite(scroll)) pendingScroll = Math.max(0, scroll);
-    const rendered = await refresh({ tabId: targetId, windowId: targetWindow });
-    if (preparedShow?.token !== token) return { ready: false, reason: 'superseded' };
+    // Safari can suspend a page long enough for it to miss storage.onChanged,
+    // so target presence is not a freshness proof. The background sends the
+    // authoritative sidebar-sized slice of its state in this same round trip.
+    // Only a worker which has not loaded state yet falls back to storage.
+    const fromSnapshot = !!state && !!sidebarState && sidebarState.tabs?.[targetId]?.windowId === targetWindow;
+    let rendered;
+    if (fromSnapshot) {
+      version++; // supersede a full read which started before this preparation
+      const { faviconOrigins = [], favicons: freshFavicons = {}, ...freshState } = sidebarState;
+      const favicons = { ...state.favicons };
+      for (const origin of faviconOrigins) delete favicons[origin];
+      Object.assign(favicons, freshFavicons);
+      state = stateForShow({ ...state, ...freshState, favicons }, { tabId: targetId, windowId: targetWindow });
+      staleRead = false;
+      const preparedState = /** @type {any} */ (state);
+      ownerSeen(preparedState.owner, preparedState.openTabsBy);
+      if (preparedState.pageZoom) {
+        const preparedZoom = Number((preparedState.pageZoom[location.origin] ?? preparedState.pageZoom['*'])?.[0] ?? 1);
+        if (Number.isFinite(preparedZoom) && preparedZoom > 0) {
+          zoomAnswered = true;
+          screenScale = devicePixelRatio / preparedZoom;
+          applyZoom(preparedZoom);
+        }
+      }
+      render();
+      requestTheme(); // a stored state can exist before Safari runs the registered theme script
+      changedWhileHidden = false;
+      rendered = true;
+    } else {
+      rendered = await refresh({ tabId: targetId, windowId: targetWindow });
+    }
+    if (mine !== preparationGeneration) return { ready: false, reason: 'superseded' };
+    if (cancelledPreparation(token)) return { ready: false, reason: 'cancelled' };
+    if (alreadyShown()) return { ready: false, reason: 'already shown' };
+    if (expired()) return { ready: false, reason: 'expired' };
     if (!rendered || !state || !view || windowId !== targetWindow) {
-      preparedShow = null;
       return { ready: false, reason: !view ? 'theme not ready' : 'state not ready' };
     }
+    preparingShow = { token, carry: null, arrival: false };
+    let preparedCarry = null;
     if (carry === 'hover' || carry === 'toggle') {
       view.instantOnce?.();
       layout.show(carry);
-      preparedShow.carry = carry;
+      preparedCarry = carry;
+      preparingShow.carry = carry;
     }
-    if (covered) arriveCovered();
-    // Force style/layout in this WebProcess before the executeScript result
-    // crosses back to Safari's UI process. Hidden pages do not reliably run
-    // requestAnimationFrame, so an animation-frame acknowledgement would hang.
-    host.getBoundingClientRect();
-    return { ready: true, token };
+    if (covered) {
+      arriveCovered();
+      preparingShow.arrival = !!arrival;
+    }
+    let geometryReady;
+    try {
+      geometryReady = link.prepare();
+      // Force style/layout in this WebProcess before the executeScript result
+      // crosses back to Safari's UI process. Hidden pages do not reliably run
+      // requestAnimationFrame, so an animation-frame acknowledgement would hang.
+      host.getBoundingClientRect();
+    } catch (error) {
+      if (preparedCarry && document.hidden) {
+        layout.hide();
+        if (preparingShow?.token === token) preparingShow.carry = null;
+      }
+      throw error;
+    }
+    if (!geometryReady) {
+      if (preparedCarry && document.hidden) {
+        layout.hide();
+        if (preparingShow?.token === token) preparingShow.carry = null;
+      }
+      return { ready: false, token, reason: 'page box not ready' };
+    }
+    // Publish only after state, carried layout, cover and page geometry have
+    // all committed in this task. `shown()` can now safely skip its first read.
+    preparedShow = { token, at: Date.now(), carry: preparedCarry };
+    preparingShow = null;
+    return { ready: true, token, fromSnapshot };
   };
   // Covered before the background introduces the tab (background/tabs.js
   // coverArrival), its style and layout done now: the paint WebKit asks for in
@@ -955,11 +1074,21 @@ export function startCore({ onTheme } = {}) {
     host.getBoundingClientRect();
     return !!arrival;
   };
-  Margin.content.cancelPreparedShow = (token) => {
-    if (!preparedShow || preparedShow.token !== token) return false;
-    const { carry } = preparedShow;
-    preparedShow = null;
-    arrival?.finish({ fade: false });
+  Margin.content.cancelPreparedShow = (token, { keep = false } = {}) => {
+    if (!token) return false;
+    rememberCancelledPreparation(token, keep);
+    const pending = preparingShow?.token === token ? preparingShow : null;
+    if ((!preparedShow || preparedShow.token !== token) && !pending) return true;
+    if (keep) return true;
+    const carry = pending?.carry ?? preparedShow?.carry ?? null;
+    if (pending) {
+      preparingShow = null;
+      if (pending.arrival) arrival?.finish({ fade: false });
+    }
+    if (preparedShow?.token === token) {
+      preparedShow = null;
+      arrival?.finish({ fade: false });
+    }
     if (carry && document.visibilityState !== 'visible') layout.hide();
     void refresh();
     return true;

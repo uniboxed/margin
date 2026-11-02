@@ -672,8 +672,8 @@ export const handlers = {
     if (tabId == null || !api.scripting?.executeScript) return false;
     const target = { tabId };
     await api.scripting.executeScript({
-      target, world: 'MAIN', injectImmediately: true, args: [left ?? null],
-      func: (at) => { /** @type {any} */ (window)[Symbol.for('margin.page.start')] = { left: at ?? undefined }; },
+      target, world: 'MAIN', injectImmediately: true, args: [left ?? null, platform.name],
+      func: (at, profile) => { /** @type {any} */ (window)[Symbol.for('margin.page.start')] = { left: at ?? undefined, profile }; },
     });
     await api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, files: ['content/page.bundle.js'] });
     return true;

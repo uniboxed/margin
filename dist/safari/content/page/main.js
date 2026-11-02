@@ -35,13 +35,31 @@ import { startSheets } from './sheets.js';
   if (start?.fullscreenOnly && outerHeight - innerHeight * (outerWidth / innerWidth || 1) > 40) return;
   Object.defineProperty(window, RAN, { value: true });
 
-  const box = startBox(start?.left);
+  // Blink can switch the private fit sheet cheaply; WebKit cannot, so its
+  // measured fast path uses a transient attribute on <head>. The at-<L>
+  // bootstrap is generated per build, which keeps this choice out of UA
+  // sniffing and makes the Safari-profile Chromium tests exercise Safari's
+  // path too. An older bootstrap has no profile and safely takes that path.
+  const box = startBox(start?.left, { privateReads: start?.profile === 'chrome' });
   startViewport(box);
   startCoords(box);
   startInView(box);
   startTopLayer(box);
   startMedia(box);
-  startSheets(box);
+  const sheets = startSheets(box);
+  // Safari's hidden destination is prepared before activation. Reconcile
+  // styles first, then consume the one resulting body measurement, all in the
+  // same task so no partially updated geometry can be painted.
+  document.addEventListener('margin:box-prepare', (event) => {
+    sheets.flush();
+    if (box.prepare(sheets.flush)) event.preventDefault();
+  });
+  document.addEventListener('margin:box-cover', (event) => {
+    const covered = /** @type {CustomEvent} */ (event).detail;
+    if (covered !== 'on' && covered !== 'off') return;
+    box.setCovered(covered === 'on');
+    event.preventDefault();
+  });
   // Injected late, after the page's sheets: said so, and the isolated side
   // sends what the box should be (content/page-link.js).
   document.dispatchEvent(new CustomEvent('margin:box-ready'));

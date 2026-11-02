@@ -41,6 +41,27 @@ export async function launch({ extensionPath: built = EXTENSION_PATH } = {}) {
   let [worker] = context.serviceWorkers();
   worker ??= await context.waitForEvent('serviceworker');
   const extensionId = new URL(worker.url()).host;
+  // E2E drives ordinary headless windows. Chrome builds default to Margin's
+  // full-screen-only mode, where the launcher becomes a notice and page
+  // content scripts stay dormant. Send the setting through the background's
+  // real handler (not storage.local directly, which would desynchronise its
+  // in-memory store) before any test page opens.
+  const setup = await context.newPage();
+  try {
+    await setup.goto(`chrome-extension://${extensionId}/newtab/newtab.html#launcher`);
+    await setup.evaluate(async () => {
+      for (let i = 0; i < 200; i++) {
+        try {
+          const answer = await chrome.runtime.sendMessage({ type: 'updateSettings', patch: { fullscreenOnly: false } });
+          if (answer?.ok) return;
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error('Margin background did not accept the E2E settings');
+    });
+  } finally {
+    await setup.close();
+  }
   return { context, worker, extensionId };
 }
 
@@ -75,6 +96,37 @@ export async function evalInShadow(page, hostTag, fn, ...args) {
     });
     if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
     return result.value;
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// The page-box intentionally virtualizes DOM geometry in the page world. Use
+// DevTools' layout model when a test needs the pixels actually painted by an
+// extension node inside its closed shadow root.
+export async function boxInShadow(page, hostTag, selector) {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true });
+    const host = findNode(root, (node) => node.localName === hostTag);
+    if (!host?.shadowRoots?.length) return undefined;
+    const { object } = await cdp.send('DOM.resolveNode', { backendNodeId: host.shadowRoots[0].backendNodeId });
+    const { result, exceptionDetails } = await cdp.send('Runtime.callFunctionOn', {
+      objectId: object.objectId,
+      functionDeclaration: 'function (selector) { return this.querySelector(selector); }',
+      arguments: [{ value: selector }],
+      returnByValue: false,
+    });
+    if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
+    if (!result.objectId || result.subtype === 'null') return undefined;
+    const { model } = await cdp.send('DOM.getBoxModel', { objectId: result.objectId });
+    const xs = model.border.filter((_, index) => index % 2 === 0);
+    const ys = model.border.filter((_, index) => index % 2 === 1);
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+    const right = Math.max(...xs);
+    const bottom = Math.max(...ys);
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
   } finally {
     await cdp.detach();
   }
@@ -150,6 +202,20 @@ export const launcherUrl = (ctx) => `chrome-extension://${ctx.extensionId}/newta
 export async function gotoLauncher(page, ctx) {
   await page.goto(launcherUrl(ctx));
   await page.waitForSelector('#launcher');
+}
+
+// Change settings through the background's model, using a short-lived
+// extension page as the sender. Writing storage directly leaves its in-memory
+// state stale and makes subsequent registration/layout assertions racy.
+export async function updateSettings(ctx, patch) {
+  const control = await ctx.context.newPage();
+  try {
+    await gotoLauncher(control, ctx);
+    const answer = await control.evaluate((next) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: next }), patch);
+    if (!answer?.ok) throw new Error(`updateSettings failed: ${JSON.stringify(answer)}`);
+  } finally {
+    await control.close();
+  }
 }
 
 // One key of Margin's state, from the worker. The open tabs, their spaces and

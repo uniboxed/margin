@@ -289,12 +289,14 @@ export const SCENARIOS = {
     { op: 'page', in: 'W', js: `window.__moved = 0; addEventListener('transitionrun', () => __moved++); document.head.append(Object.assign(document.createElement('style'), { textContent: 'html { outline: 0 }' })); return 'styled'` },
     wait(500),
     checkPage('W', 'W: children of a flex column stay still through a read', `__moved === 0`, 200),
-    // Nothing is put in the page to read it, and a page that keeps poking gets fewer reads.
+    // No child marker is put in the page to read it. WebKit's one-task head
+    // gate is observable as an attribute, and a page that keeps poking still
+    // gets fewer reads once its authored states are known.
     { op: 'open', name: 'O', url: '/x/observer', active: true }, boxed('O'),
     wait(600),
-    { op: 'page', in: 'O', js: `window.__bodies = 0; window.__records = 0; window.__flips = 0; window.__stayed = 0; new MutationObserver((records) => { if (document.querySelector('margin-read, margin-hold')) __stayed++; for (const r of records) { if (r.type === 'attributes' && r.attributeName !== 'data-seen') __records++; for (const n of r.addedNodes) { if (n.localName === 'body') __bodies++; if (n.localName === 'margin-read') __flips++; } } }).observe(document, { childList: true, subtree: true, attributes: true }); document.head.append(Object.assign(document.createElement('style'), { textContent: '.nothing { color: red }' })); return 'watching'` },
+    { op: 'page', in: 'O', js: `window.__bodies = 0; window.__records = 0; window.__flips = 0; window.__stayed = 0; new MutationObserver((records) => { if (document.querySelector('margin-read, margin-hold')) __stayed++; for (const r of records) { if (r.type === 'attributes' && r.attributeName?.startsWith('data-margin-read-')) { if (r.oldValue == null) __flips++; continue; } if (r.type === 'attributes' && r.attributeName !== 'data-seen') __records++; for (const n of r.addedNodes) if (n.localName === 'body') __bodies++; } }).observe(document, { childList: true, subtree: true, attributes: true, attributeOldValue: true }); document.head.append(Object.assign(document.createElement('style'), { textContent: 'body { margin-left: 11px }' })); return 'watching'` },
     wait(500),
-    checkPage('O', 'O: a read: gone before any observer runs, and not one attribute written', `__flips >= 1 && __flips <= 2 && __stayed === 0 && !document.querySelector('margin-read, margin-hold') && __bodies === 0 && __records === 0`, 200),
+    checkPage('O', 'O: a read changes no children; any transient head state is gone before observers finish', `getComputedStyle(document.body).paddingLeft === '11px' && __flips <= 2 && __stayed === 0 && !document.querySelector('margin-read, margin-hold') && __bodies === 0 && __records === 0 && ![...document.head.attributes].some((a) => a.name.startsWith('data-margin-read-'))`, 200),
     { op: 'page', in: 'O', js: `window.__late = document.head.appendChild(document.createElement('style')).sheet; return 'sheet'` },
     wait(1300),
     { op: 'page', in: 'O', js: `window.__flips = 0; for (let i = 0; i < 50; i++) __late.insertRule('.none' + i + ' { margin: 3px }'); return 'inserted'` },
@@ -466,6 +468,10 @@ export const SCENARIOS = {
     // First children: what stands in the way, and what's stepped over.
     { op: 'open', name: 'T', url: '/x/shape-text', active: true }, boxed('T'),
     checkPage('T', 'T: text before a nested child: its margin doesn\'t reach <body>\'s', `return ${rect('h')}[1] === 66`, 2000),
+    { op: 'page', in: 'T', js: `document.getElementById('h').parentNode.firstChild.data = '   '; return 'text became whitespace'` },
+    checkPage('T', 'T: editing the same leading text to whitespace updates margin collapse', `return ${rect('h')}[1] === 40`, 1200),
+    { op: 'page', in: 'T', js: `document.getElementById('h').parentNode.firstChild.data = 'hello'; return 'text returned'` },
+    checkPage('T', 'T: editing the text back blocks collapse again', `return ${rect('h')}[1] === 66`, 1200),
     { op: 'open', name: 'C', url: '/x/shape-contain', active: true }, boxed('C'),
     checkPage('C', 'C: a first child with layout containment keeps its margin', `return ${rect('h')}[1] === 48`, 2000),
     { op: 'open', name: 'U', url: '/x/shape-unhide', active: true }, boxed('U'),
@@ -501,6 +507,132 @@ export const SCENARIOS = {
     { op: 'page', in: 'R', js: `document.getElementById('h').className = 'two'; return 'class'` },
     checkPage('R', 'R: and through selectorText', `return ${rect('h')}[0] === 44`, 3000),
     checkPage('R', 'R: appendMedium and deleteMedium with no argument throw, as a browser\'s do', `const { media } = document.getElementById('s').sheet; const threw = (name) => { try { media[name](); return false; } catch (e) { return e instanceof TypeError; } }; return threw('appendMedium') && threw('deleteMedium') && MediaList.prototype.appendMedium.length === 1 && MediaList.prototype.appendMedium.name === 'appendMedium'`, 200),
+  ],
+  // Adversarial cases found after the in-place reader landed. These are kept
+  // in one red/green gate so a replacement read protocol and the CSSOM hooks
+  // are exercised by the same checks in Chromium and WebKit.
+  'page-box-regressions': [
+    // These pages exist before installation: their custom-element registry,
+    // constructed sheet and open shadow root predate every Margin hook.
+    { op: 'open', name: 'A', url: '/p/A', active: true },
+    { op: 'open', name: 'C', url: '/x/regress-custom-elements' },
+    { op: 'open', name: 'P', url: '/x/regress-prebuilt' },
+    { op: 'open', name: 'S', url: '/x/regress-shadow-existing' },
+    wait(800), { op: 'install' }, drawn('A'), themed('A'), keepOpen, boxed('A'),
+
+    { op: 'show', name: 'C' }, boxed('C'), wait(500),
+    checkPage('C', 'C: a page-defined old marker name is never connected or allowed to change the reading', `const r = ${rect('h')}; return __connections === 0 && r[2] === 500 && ${near('r[0]', '(innerWidth - 500) / 2')}`, 1000),
+
+    { op: 'open', name: 'L', url: '/x/regress-last-child', active: true }, boxed('L'),
+    checkPage('L', 'L: body:last-child stays true throughout a read', `const r = ${rect('h')}; return r[0] === 100 && r[2] === 500`, 1500),
+    { op: 'page', in: 'L', js: `window.__afterBody = document.documentElement.appendChild(document.createElement('aside')); return 'added after body'` },
+    checkPage('L', 'L: a direct root child invalidates structural body selectors', `return ${rect('h')}[0] === 10`, 800),
+    { op: 'page', in: 'L', js: `window.__afterBody.remove(); return 'removed after body'` },
+    checkPage('L', 'L: removing the root child restores body:last-child geometry', `const r = ${rect('h')}; return r[0] === 100 && r[2] === 500`, 800),
+
+    { op: 'open', name: 'O', url: '/x/regress-observer-echo', active: true }, boxed('O'), wait(2600),
+    checkPage('O', 'O: a site reacting to the first head-gated read is moved to private reads, so feedback stops', `__echoes === 1 && document.documentElement.dataset.echo === '1'`, 300),
+
+    { op: 'open', name: 'X', url: '/x/regress-head-lifecycle', active: true }, boxed('X'),
+    { op: 'page', in: 'X', js: `document.documentElement.append(document.head); return 'head after body'` }, wait(300),
+    checkPage('X', 'X: moving head after body switches to the private path without losing the fit', `const r = ${rect('h')}; return r[2] === 500 && ${near('r[0]', '(innerWidth - 500) / 2')}`, 800),
+    { op: 'page', in: 'X', js: `const head = document.head; document.documentElement.insertBefore(head, document.body); window.__headReads = 0; new MutationObserver((records) => { __headReads += records.filter((r) => r.attributeName?.startsWith('data-margin-read-')).length; }).observe(head, { attributes: true }); head.append(Object.assign(document.createElement('style'), { textContent: 'body { margin-left: 33px !important; margin-right: 0 !important; max-width: none !important }' })); return 'head restored'` }, wait(500),
+    checkPage('X', 'X: the safety switch is permanent; later reads do not expose another head transaction', `return ${rect('h')}[0] === 33 && __headReads === 0`, 800),
+
+    // CSS 2's over-constrained width equation preserves the requested width
+    // and lets the used margin on the direction's start side become negative.
+    { op: 'open', name: 'W', url: '/x/regress-wide-ltr', active: true }, boxed('W'),
+    checkPage('W', 'W: an over-wide fixed body overflows instead of shrinking', `const r = ${rect('h')}; return r[0] === 20 && r[2] === 1000`, 1000),
+    { op: 'open', name: 'U', url: '/x/regress-wide-auto', active: true }, boxed('U'),
+    checkPage('U', 'U: over-wide auto margins become zero and preserve the width', `const r = ${rect('h')}; return r[0] === 0 && r[2] === 1000`, 1000),
+    { op: 'open', name: 'V', url: '/x/regress-wide-rtl', active: true }, boxed('V'),
+    checkPage('V', 'V: RTL resolves the over-constraint on the left and preserves the width', `const r = ${rect('h')}; return r[0] === innerWidth - 1020 && r[2] === 1000`, 1000),
+
+    { op: 'open', name: 'Y', url: '/x/regress-inline-important', active: true }, boxed('Y'),
+    checkPage('Y', 'Y: inline important body geometry is not also translated into padding', `const r = ${rect('h')}, s = getComputedStyle(document.body); return r[0] === 100 && s.marginLeft === '100px' && s.paddingLeft === '0px'`, 1200),
+
+    { op: 'open', name: 'G', url: '/x/regress-group-rule', active: true }, boxed('G'),
+    { op: 'page', in: 'G', js: `document.getElementById('s').sheet.cssRules[0].insertRule('#h { display: block; width: 100vw }'); return document.getElementById('s').sheet.cssRules[0].cssRules[0].cssText` },
+    checkPage('G', 'G: a rule inserted inside a grouping rule uses the virtual viewport', `return ${near(`${rect('h')}[2]`, 'innerWidth', 1)}`, 1000),
+
+    { op: 'open', name: 'H', url: '/x/regress-has-state', active: true }, boxed('H'), wait(1800),
+    { op: 'page', in: 'H', js: `window.__before = __reads; document.getElementById('c').checked = true; return document.getElementById('c').matches(':checked')` },
+    checkPage('H', 'H: a state-only :has(input:checked) change is reflected', `return ${rect('h')}[0] === 100`, 1500),
+
+    { op: 'open', name: 'D', url: '/x/regress-has-delete', active: true }, boxed('D'), wait(900),
+    { op: 'page', in: 'D', js: `document.getElementById('s').sheet.deleteRule(1); return 'deleted'` }, wait(1200),
+    { op: 'page', in: 'D', js: `window.__before = __reads; document.body.append(Object.assign(document.createElement('i'), { className: 'ghost' })); return __before` }, wait(1500),
+    checkPage('D', 'D: deleting a :has() rule removes its matcher and does not provoke a read', `return __reads === __before && ${rect('h')}[0] === 0`, 300),
+
+    { op: 'open', name: 'R', url: '/x/regress-root', active: true }, boxed('R'),
+    { op: 'page', in: 'R', js: `const next = document.createElement('html'); next.innerHTML = document.documentElement.innerHTML; document.replaceChild(next, document.documentElement); const root = document.documentElement, r = root.getBoundingClientRect(); window.__rootImmediate = root.clientWidth === innerWidth && r.width === document.body.scrollWidth && r.height === document.body.scrollHeight && r.height >= 3000; return 'replaced: ' + __rootImmediate` },
+    checkPage('R', 'R: every viewport and coordinate shim follows a replacement root in the replacement task', `const root = document.documentElement; const r = root.getBoundingClientRect(); return __rootImmediate && root.clientWidth === innerWidth && r.width === document.body.scrollWidth && r.height === document.body.scrollHeight && r.height >= 3000`, 2000),
+
+    { op: 'show', name: 'P' }, boxed('P'),
+    { op: 'page', in: 'P', js: `document.adoptedStyleSheets = [...document.adoptedStyleSheets, __prebuilt]; return __prebuilt.cssRules[0].cssText` },
+    checkPage('P', 'P: a prebuilt sheet adopted after injection is reconciled before paint', `return ${near(`${rect('h')}[2]`, 'innerWidth', 1)}`, 1200),
+
+    { op: 'show', name: 'S' }, boxed('S'),
+    checkPage('S', 'S: a pre-existing open shadow root uses the virtual viewport', `const r = document.getElementById('host').shadowRoot.getElementById('h').getBoundingClientRect(); return ${near('r.width', 'innerWidth', 1)}`, 1200),
+
+    { op: 'open', name: 'T', url: '/x/regress-retained-style', active: true }, boxed('T'),
+    { op: 'page', in: 'T', js: `window.__retained = document.getElementById('s').sheet.cssRules[0].style; return __retained.margin` }, wait(1200),
+    { op: 'page', in: 'T', js: `__retained.marginLeft = '100px'; return __retained.cssText` },
+    checkPage('T', 'T: a retained CSSStyleDeclaration remains observable when edited later', `return ${rect('h')}[0] === 100`, 1500),
+    { op: 'page', in: 'T', js: `__retained.marginInlineStart = '120px'; __retained.inlineSize = 'calc(100vw - 20px)'; return __retained.cssText` },
+    checkPage('T', 'T: modern logical declaration properties are observed and viewport-relative values rewritten', `return ${rect('h')}[0] === 120 && __retained.inlineSize.includes('--margin-dw')`, 1500),
+    { op: 'page', in: 'T', js: `window.__mediaLifecycle = new CSSStyleSheet(); __mediaLifecycle.replaceSync('@media (max-width: 900px) { body { color: red } }'); document.adoptedStyleSheets = [...document.adoptedStyleSheets, __mediaLifecycle]; return __mediaLifecycle.cssRules[0].media.mediaText` },
+    checkPage('T', 'T: a document adopted sheet receives one media-query shift', `return __mediaLifecycle.cssRules[0].media.mediaText === '(max-width: 1168px)'`, 800),
+    { op: 'page', in: 'T', js: `document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== __mediaLifecycle); return __mediaLifecycle.cssRules[0].media.mediaText` },
+    checkPage('T', 'T: a removed document adopted sheet regains its authored query', `return __mediaLifecycle.cssRules[0].media.mediaText === '(max-width: 900px)'`, 800),
+    { op: 'page', in: 'T', js: `document.adoptedStyleSheets = [...document.adoptedStyleSheets, __mediaLifecycle]; return __mediaLifecycle.cssRules[0].media.mediaText` },
+    checkPage('T', 'T: the same document sheet is reconciled when re-adopted', `return __mediaLifecycle.cssRules[0].media.mediaText === '(max-width: 1168px)'`, 800),
+    { op: 'page', in: 'T', js: `window.__oldMediaRules = []; for (let i = 0; i < 40; i++) { __oldMediaRules.push(__mediaLifecycle.cssRules[0]); __mediaLifecycle.replaceSync('@media (max-width: 900px) { body { color: rgb(' + i + ', 0, 0) } }'); } return __mediaLifecycle.cssRules[0].media.mediaText` },
+    checkPage('T', 'T: replacing a live sheet restores every detached retained media rule', `return __mediaLifecycle.cssRules[0].media.mediaText === '(max-width: 1168px)' && __oldMediaRules.every((rule) => rule.parentStyleSheet === null && rule.media.mediaText === '(max-width: 900px)')`, 800),
+
+    { op: 'open', name: 'I', url: '/x/regress-import-media', active: true }, boxed('I'),
+    checkPage('I', 'I: an imported child sheet receives the box query shift', `const child = document.getElementById('s').sheet.cssRules[0].styleSheet; return child?.cssRules[0]?.media.mediaText === '(max-width: 1168px)'`, 2000),
+    { op: 'page', in: 'I', js: `document.dispatchEvent(new CustomEvent('margin:box', { detail: 'off', cancelable: true })); return 'off'` },
+    checkPage('I', 'I: turning the box off restores the imported query', `const child = document.getElementById('s').sheet.cssRules[0].styleSheet; return child.cssRules[0].media.mediaText === '(max-width: 900px)'`, 800),
+    { op: 'page', in: 'I', js: `document.body.append(document.createElement('i')); return 'mutated while off'` }, wait(300),
+    { op: 'page', in: 'I', js: `document.dispatchEvent(new CustomEvent('margin:box', { detail: JSON.stringify({ left: 260, top: 8, right: 8, bottom: 8 }), cancelable: true })); return 'on'` },
+    checkPage('I', 'I: a full scan revisits the imported child after restoring it', `const child = document.getElementById('s').sheet.cssRules[0].styleSheet; return child.cssRules[0].media.mediaText === '(max-width: 1168px)'`, 1200),
+
+    { op: 'open', name: 'M', url: '/x/regress-media', active: true }, boxed('M'),
+    { op: 'page', in: 'M', js: `document.getElementById('s').sheet.media.mediaText = '(max-width: 1000px)'; return document.getElementById('s').sheet.media.mediaText` },
+    checkPage('M', 'M: a MediaList changed to a size query uses the virtual viewport', `return ${rect('h')}[2] === 100`, 1200),
+
+    { op: 'open', name: 'J', url: '/x/regress-shadow-adopted', active: true }, boxed('J'),
+    { op: 'page', in: 'J', js: `__shadow.adoptedStyleSheets = [...__shadow.adoptedStyleSheets, __shadowSheet]; return __shadowSheet.cssRules[0].cssText` },
+    checkPage('J', 'J: a prebuilt sheet adopted into a shadow root after injection uses the virtual viewport', `const r = __shadow.getElementById('h').getBoundingClientRect(); return ${near('r.width', 'innerWidth', 1)}`, 1200),
+    { op: 'page', in: 'J', js: `window.__shadowMedia = new CSSStyleSheet(); __shadowMedia.replaceSync('@media (max-width: 900px) { #h { color: red } }'); __shadow.adoptedStyleSheets = [...__shadow.adoptedStyleSheets, __shadowMedia]; return __shadowMedia.cssRules[0].media.mediaText` },
+    checkPage('J', 'J: a shadow adopted sheet receives one media-query shift', `return __shadowMedia.cssRules[0].media.mediaText === '(max-width: 1168px)'`, 800),
+    { op: 'page', in: 'J', js: `__shadow.adoptedStyleSheets = __shadow.adoptedStyleSheets.filter((sheet) => sheet !== __shadowMedia); return __shadowMedia.cssRules[0].media.mediaText` },
+    checkPage('J', 'J: a removed shadow adopted sheet regains its authored query', `return __shadowMedia.cssRules[0].media.mediaText === '(max-width: 900px)'`, 800),
+    { op: 'page', in: 'J', js: `__shadow.adoptedStyleSheets = [...__shadow.adoptedStyleSheets, __shadowMedia]; return __shadowMedia.cssRules[0].media.mediaText` },
+    checkPage('J', 'J: the same shadow sheet is reconciled when re-adopted', `return __shadowMedia.cssRules[0].media.mediaText === '(max-width: 1168px)'`, 800),
+
+    { op: 'open', name: 'K', url: '/x/regress-shadow-text', active: true }, boxed('K'),
+    { op: 'page', in: 'K', js: `__shadow.getElementById('s').textContent = '#h { display:block; width:100vw; height:20px }'; return __shadow.getElementById('s').textContent` },
+    checkPage('K', 'K: replaced text in an existing shadow style is revisited', `const r = __shadow.getElementById('h').getBoundingClientRect(); return ${near('r.width', 'innerWidth', 1)}`, 1200),
+
+    { op: 'open', name: 'N', url: '/x/regress-has-negated', active: true }, boxed('N'),
+    checkPage('N', 'N: a negated :has() rule is part of the body reading', `return ${rect('h')}[0] === 100`, 1200),
+    { op: 'page', in: 'N', js: `document.body.append(Object.assign(document.createElement('i'), { id: 'ghost', className: 'ghost' })); return 'added'` },
+    checkPage('N', 'N: negated :has() turning false updates the box', `return ${rect('h')}[0] === 0`, 1500),
+    { op: 'page', in: 'N', js: `document.getElementById('ghost').remove(); return 'removed'` },
+    checkPage('N', 'N: negated :has() turning true again updates the box', `return ${rect('h')}[0] === 100`, 1500),
+
+    { op: 'open', name: 'E', url: '/x/regress-media-throw', active: true }, boxed('E'),
+    checkPage('E', 'E: the shifted media query applies before its failed edit', `return ${rect('h')}[2] === 100`, 1000),
+    { op: 'page', in: 'E', js: `const media = document.getElementById('s').sheet.media; const before = media.mediaText; let threw = false; try { media.deleteMedium('(min-width: 1px)'); } catch { threw = true; } window.__mediaThrow = { before, after: media.mediaText, threw }; return JSON.stringify(__mediaThrow)` },
+    checkPage('E', 'E: a throwing MediaList edit restores Margin\'s query shift', `return __mediaThrow.threw && __mediaThrow.before === __mediaThrow.after && ${rect('h')}[2] === 100`, 1000),
+
+    { op: 'open', name: 'F', url: '/x/regress-dynamic-rules', active: true }, boxed('F'),
+    { op: 'page', in: 'F', js: `document.getElementById('s').sheet.addRule('#h', 'width: 100vw'); return document.getElementById('s').sheet.cssRules[0].cssText` },
+    checkPage('F', 'F: addRule declarations use the virtual viewport', `return ${near(`${rect('h')}[2]`, 'innerWidth', 1)}`, 1000),
+    { op: 'page', in: 'F', js: `const frames = document.getElementById('k').sheet.cssRules[0]; window.__keyframesAppend = typeof frames.appendRule === 'function'; if (__keyframesAppend) frames.appendRule('to { transform: translateX(100vw) }'); return __keyframesAppend ? frames.cssRules[0].cssText : 'unsupported'` },
+    checkPage('F', 'F: appendRule in keyframes rewrites viewport units where the API exists', `return !__keyframesAppend || document.getElementById('k').sheet.cssRules[0].cssRules[0].cssText.includes('var(--margin-dw)')`, 500),
   ],
   // What a page asks about what's in view, with no root of its own.
   'in-view': [
@@ -932,7 +1064,7 @@ export const SCENARIOS = {
     // Shown for the first time, it arrives covered with the page hidden under
     // the cover (its first paint cheap: content/core.js arriveCovered), then
     // brings the page back and lifts the cover.
-    { op: 'page', in: 'new1', js: `window.__arrival = []; const note = (why) => { const h = document.querySelector('margin-sidebar-host'); __arrival.push([why, document.hidden, h?.dataset.arrivalCover ?? '', document.body?.style.opacity ?? '']); }; document.addEventListener('visibilitychange', () => note('shown')); new MutationObserver(() => note('cover')).observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['data-arrival-cover'] }); return 'recording'` },
+    { op: 'page', in: 'new1', js: `window.__arrival = []; const note = (why) => { const h = document.querySelector('margin-sidebar-host'); __arrival.push([why, document.hidden, h?.dataset.arrivalCover ?? '', document.body ? getComputedStyle(document.body).opacity : '']); }; document.addEventListener('visibilitychange', () => note('shown')); new MutationObserver(() => note('cover')).observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['data-arrival-cover'] }); return 'recording'` },
     checkPage('new1', 'then comes to the front, loaded', `!document.hidden && document.readyState === 'complete'`, 4000),
     checkPage('new1', 'first shown covered, the page out of sight under the cover', `__arrival.some(([why, hidden, cover, vis]) => why === 'shown' && !hidden && cover === 'true' && vis === '0')`, 1000),
     checkPage('new1', 'then the page back and the cover lifted', `const h = document.querySelector('margin-sidebar-host'); return h.dataset.arrivalCover === 'false' && document.body.style.opacity === ''`, 1500),
@@ -943,7 +1075,7 @@ export const SCENARIOS = {
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), keepOpen, boxed('A'),
     { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/S5' }); Margin.content.startSwitching(-1, request); return 1` }, wait(300),
     checkPage('new1', 'the new tab loads behind, in its box', `document.hidden && location.pathname === '/p/S5' && document.scrollingElement === document.body`, 1500),
-    { op: 'page', in: 'new1', js: `window.__arrival = []; const note = (why) => { const h = document.querySelector('margin-sidebar-host'); __arrival.push([why, document.hidden, h?.dataset.arrivalCover ?? '', document.body.style.opacity]); }; document.addEventListener('visibilitychange', () => note('shown')); return 'recording'` },
+    { op: 'page', in: 'new1', js: `window.__arrival = []; const note = (why) => { const h = document.querySelector('margin-sidebar-host'); __arrival.push([why, document.hidden, h?.dataset.arrivalCover ?? '', getComputedStyle(document.body).opacity]); }; document.addEventListener('visibilitychange', () => note('shown')); return 'recording'` },
     checkPage('new1', 'then comes to the front', `!document.hidden`, 3000),
     checkPage('new1', 'first shown covered, the page hidden under the cover', `__arrival.some(([why, hidden, cover, vis]) => why === 'shown' && !hidden && cover === 'true' && vis === '0')`, 1000),
     checkPage('new1', 'then the page back and the cover lifted', `document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'false' && document.body.style.opacity !== '0'`, 1500),
@@ -981,16 +1113,27 @@ export const SCENARIOS = {
   // screen already (Safari left it in front: no show would bring it back),
   // still for one visible only for an instant (an introduction).
   arrival: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, wait(800), { op: 'install' }, drawn('A'), drawn('B'), drawn('C'), wait(300),
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, wait(800), { op: 'install' }, drawn('A'), drawn('B'), drawn('C'), keepOpen, boxed('A'), wait(300),
     // C just brought to the front by Safari (within the 200 ms it takes to count as shown).
     { op: 'show', name: 'C' },
     { op: 'eval', in: 'C', js: `${ID} return JSON.stringify(await Margin.content.prepareForShow({ token: 'on-screen', tabId: id('C'), windowId: Object.values(tabs).find((t) => t.id === id('C')).windowId, covered: true }))` },
-    checkPage('C', 'a page on screen asked to arrive covered isn\'t covered', `!document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover !== 'true' && document.body.style.opacity !== '0'`, 300), // (the cover would lift by itself after 3 s)
+    checkPage('C', 'a page on screen asked to arrive covered isn\'t covered', `!document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover !== 'true' && getComputedStyle(document.body).opacity !== '0'`, 300), // (the cover would lift by itself after 3 s)
     { op: 'flip', to: 'B', back: 'C' }, wait(50),
     { op: 'eval', in: 'B', js: `${ID} return JSON.stringify(await Margin.content.prepareForShow({ token: 'instant', tabId: id('B'), windowId: Object.values(tabs).find((t) => t.id === id('B')).windowId, covered: true }))` },
-    checkPage('B', 'one visible for an instant still arrives covered', `document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'true' && document.body.style.opacity === '0'`),
+    checkPage('B', 'one visible for an instant still arrives covered without mutating authored inline style', `document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'true' && getComputedStyle(document.body).opacity === '0' && document.body.style.opacity === ''`),
     { op: 'eval', in: 'B', js: `return String(Margin.content.cancelPreparedShow('instant'))` },
     checkPage('B', 'and is uncovered when the switch is called off', `document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'false' && document.body.style.opacity === ''`),
+    { op: 'page', in: 'B', js: `document.body.style.setProperty('opacity', '1', 'important'); return document.body.style.cssText` },
+    { op: 'eval', in: 'B', js: `${ID} return JSON.stringify(await Margin.content.prepareForShow({ token: 'strong-cover', tabId: id('B'), windowId: Object.values(tabs).find((t) => t.id === id('B')).windowId, covered: true }))` },
+    checkPage('B', 'an inline important opacity falls back to a verified inline cover', `document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'true' && getComputedStyle(document.body).opacity === '0' && document.body.style.opacity === '0' && document.body.style.getPropertyPriority('opacity') === 'important'`),
+    { op: 'eval', in: 'B', js: `return String(Margin.content.cancelPreparedShow('strong-cover'))` },
+    checkPage('B', 'the fallback cover restores the authored inline important opacity', `document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'false' && document.body.style.opacity === '1' && document.body.style.getPropertyPriority('opacity') === 'important'`),
+    { op: 'page', in: 'B', js: `window.__blockPrepare = document.body.animate([{ marginLeft: '0px' }, { marginLeft: '20px' }], { duration: 10000 }); document.body.classList.toggle('block-prepare'); return new Promise((resolve) => setTimeout(() => resolve(__blockPrepare.playState), 0))` },
+    { op: 'eval', in: 'B', js: `${ID} const result = await Margin.content.prepareForShow({ token: 'failed-box', tabId: id('B'), windowId: Object.values(tabs).find((t) => t.id === id('B')).windowId, covered: true }); if (result.ready || result.reason !== 'page box not ready') throw new Error('expected a rejected geometry preflight: ' + JSON.stringify(result)); return JSON.stringify(result)` },
+    checkPage('B', 'a failed geometry preparation still owns the cover it armed', `document.hidden && document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'true'`),
+    { op: 'eval', in: 'B', js: `return String(Margin.content.cancelPreparedShow('failed-box'))` },
+    checkPage('B', 'cancelling that unpublished preparation removes its cover immediately', `document.querySelector('margin-sidebar-host').dataset.arrivalCover === 'false'`),
+    { op: 'page', in: 'B', js: `__blockPrepare.cancel(); return 'animation cancelled'` },
   ],
   behindleft: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),

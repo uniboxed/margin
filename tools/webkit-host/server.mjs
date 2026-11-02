@@ -25,8 +25,9 @@ const BOX_CSS = `#wide { color: rgb(9, 9, 9); }
 .locked { overflow: hidden; }`;
 const BOX_BODY = '<h1 id=wide>Tall</h1><div id=full></div><div style="width: 400px"><div id=bleed></div></div><div id=inline style="height: 100vh"></div><div style="height: 3000px">end</div>';
 const TALL = '<div style="height: 5000px">tall</div>';
-// A read is a <margin-read> in <html> for a moment: this counts them.
-const COUNT_READS = `<script>window.__reads = 0; new MutationObserver((records) => { for (const r of records) for (const n of r.addedNodes) if (n.localName === 'margin-read') __reads++; }).observe(document.documentElement, { childList: true });</script>`;
+// WebKit gates a read with a random data-margin-read-* attribute on <head>.
+// Its first record has no old value; count that once per transaction.
+const COUNT_READS = `<script>window.__reads = 0; new MutationObserver((records) => { for (const r of records) if (r.attributeName?.startsWith('data-margin-read-') && r.oldValue == null) __reads++; }).observe(document.head, { attributes: true, attributeOldValue: true });</script>`;
 const FIXTURES = {
   // Apps that say what <body> is only after `load`, by a <style>, a <link>, a rule a script inserts, a class.
   'late-style': `<script>addEventListener('load', () => setTimeout(() => { const s = document.createElement('style'); s.textContent = 'html, body { margin: 0; height: 100% } #app { height: 100% }'; document.head.append(s); }, 300));</script><div id=app>Mail</div>`,
@@ -72,8 +73,32 @@ const FIXTURES = {
   'read-strong': `<style>html body#b { transition: all .5s !important; max-width: 600px; margin: 0 auto } body::before { content: ''; display: block; padding: inherit; margin: inherit; transition: all .3s }</style><p id=h>Page</p>`,
   'read-dialog': `<dialog id=d>Open</dialog><style>dialog { margin-top: 90px; transition: overlay .5s allow-discrete, display .5s allow-discrete, opacity .5s; opacity: 1 } dialog::backdrop { transition: all .5s }</style><p id=h>Page</p>`,
   'read-fit-smooth': `<style>body { width: fit-content; min-width: 600px; scroll-behavior: smooth }</style><div id=h>${TALL}${TALL}</div>`,
-  'read-echo': `${COUNT_READS}<script>new MutationObserver((records) => { if (records.some((r) => r.attributeName !== 'data-sync')) document.documentElement.dataset.sync = String(Math.random()); }).observe(document.documentElement, { attributes: true });</script><p id=h>Page</p>`,
+  'read-echo': `${COUNT_READS}<script>new MutationObserver((records) => { if (records.some((r) => r.attributeName?.startsWith('data-margin-read-'))) document.documentElement.dataset.sync = String(Math.random()); }).observe(document.head, { attributes: true });</script><p id=h>Page</p>`,
   'read-idle': `${COUNT_READS}<style>body { margin: 12px }</style><p id=h style="margin: 0">Page</p>${TALL}`,
+  // Adversarial cases found while hardening the in-place body reader. Kept
+  // together under page-box-regressions so each engine has the same oracle.
+  'regress-last-child': `<style>body { margin: 10px } body:last-child { margin-left: 100px; max-width: 500px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-custom-elements': `<script>window.__connections = 0; for (const name of ['margin-read', 'margin-hold']) customElements.define(name, class extends HTMLElement { connectedCallback() { __connections++; this.remove(); } });</script><style>body { max-width: 500px; margin: 0 auto }</style><div id=h style="height:20px">Page</div>`,
+  'regress-observer-echo': `<script>window.__echoes = 0; addEventListener('load', () => { new MutationObserver((records) => { if (!records.some((r) => r.attributeName?.startsWith('data-margin-read-'))) return; __echoes++; document.documentElement.dataset.echo = String(__echoes); }).observe(document.head, { attributes: true }); setTimeout(() => document.head.append(Object.assign(document.createElement('style'), { textContent: 'body { margin-left: 1px }' })), 50); });</script><div id=h style="height:20px">Page</div>`,
+  'regress-head-lifecycle': `<style>body { max-width: 500px; margin: 0 auto }</style><div id=h style="height:20px">Page</div>`,
+  'regress-wide-ltr': `<style>body { width: 1000px; margin: 0 20px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-wide-auto': `<style>body { width: 1000px; margin: 0 auto }</style><div id=h style="height:20px">Page</div>`,
+  'regress-wide-rtl': `<style>body { direction: rtl; width: 1000px; margin: 0 20px 0 30px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-inline-important': `<script>document.body.style.setProperty('margin-left', '100px', 'important');</script><div id=h style="height:20px">Page</div>`,
+  'regress-import-media': `<style id=s>@import url('/import-media.css');</style><div id=h style="height:20px">Page</div>`,
+  'regress-group-rule': `<style id=s>@media all {}</style><div id=h style="height:20px">Page</div>`,
+  'regress-has-state': `${COUNT_READS}<style>body { margin: 8px } body:has(input:checked) { margin-left: 100px }</style><input id=c type=checkbox><div id=h style="height:20px">Page</div>`,
+  'regress-has-delete': `${COUNT_READS}<style id=s>body { margin: 0 } body:has(.ghost) { margin-left: 100px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-root': `<style>body { margin: 0 }</style><div id=h style="height:3000px">Page</div>`,
+  'regress-prebuilt': `<script>window.__prebuilt = new CSSStyleSheet(); __prebuilt.replaceSync('#h { width: 100vw }');</script><div id=h style="height:20px">Page</div>`,
+  'regress-shadow-existing': `<div id=host></div><script>const root = host.attachShadow({ mode: 'open' }); root.innerHTML = '<style>#h { display:block; width:100vw; height:20px }</style><span id=h>Page</span>';</script>`,
+  'regress-retained-style': `<style id=s>body { margin: 8px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-media': `<style id=s media=print>#h { width: 100px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-shadow-adopted': `<div id=host></div><script>window.__shadow = host.attachShadow({ mode: 'open' }); __shadow.innerHTML = '<span id=h style="display:block;height:20px">Page</span>'; window.__shadowSheet = new CSSStyleSheet(); __shadowSheet.replaceSync('#h { width: 100vw }');</script>`,
+  'regress-shadow-text': `<div id=host></div><script>window.__shadow = host.attachShadow({ mode: 'open' }); __shadow.innerHTML = '<style id=s>#h { display:block; width:100px; height:20px }</style><span id=h>Page</span>';</script>`,
+  'regress-has-negated': `<style>body { margin: 0 } body:not(:has(.ghost)) { margin-left: 100px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-media-throw': `<style id=s media="(max-width: 1000px)">#h { width: 100px }</style><div id=h style="height:20px">Page</div>`,
+  'regress-dynamic-rules': `<style id=s></style><style id=k>@keyframes slide {}</style><div id=h style="display:block;height:20px">Page</div>`,
   // What a page finds in its own document, and lengths that move by other routes.
   'shape-nth': `<div id=h style="height: 20px">Top</div>`,
   'shape-html': `<style>body { max-width: 700px; margin: 0 auto }</style><div id=h style="height: 20px">Top</div><script>window.__parsed = [...document.documentElement.children].map((c) => c.localName).join();</script>`,
@@ -130,6 +155,10 @@ createServer((req, res) => {
   if (req.url === '/other.css') {
     res.setHeader('content-type', 'text/css');
     return res.end('@media (max-width: 1000px) { #w { color: rgb(1, 2, 3); } }');
+  }
+  if (req.url === '/import-media.css') {
+    res.setHeader('content-type', 'text/css');
+    return res.end('@media (max-width: 900px) { body { color: rgb(1, 2, 3); } }');
   }
   const fixture = /^\/x\/([\w-]+)/.exec(req.url);
   if (fixture && FIXTURES[fixture[1]]) {

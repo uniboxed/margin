@@ -13,6 +13,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const fake = {
   tabs: new Map(),
   scriptDelay: () => 0,
+  scriptReject: null,
   scripts: [],
   updates: [],
   messages: [],
@@ -33,6 +34,7 @@ globalThis.chrome = {
       if (!tab) throw new Error('no tab');
       return { ...tab };
     },
+    getZoom: async () => 1,
     // `fake.activated`: told as Safari tells onActivated, as it brings the tab
     // to the front (before it answers).
     update: async (id, change) => {
@@ -58,6 +60,8 @@ globalThis.chrome = {
   scripting: {
     executeScript: ({ target, world, func, args, files }) => {
       fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func: func ?? { name: 'files' }, args, files });
+      const rejectAfter = fake.scriptReject?.(target.tabId, func, args);
+      if (rejectAfter) return sleep(rejectAfter === true ? 0 : rejectAfter).then(() => { throw new Error('Could not execute script on this tab'); });
       if (fake.scriptError?.(target.tabId)) return sleep(1).then(() => [{ result: null, error: 'Failed to execute script.' }]);
       const delay = fake.scriptDelay(target.tabId, func);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
@@ -87,6 +91,7 @@ const { navigate, showSpace } = await import('../extension/background/navigation
 function reset(tabs) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
   fake.scriptError = null;
+  fake.scriptReject = null;
   fake.cutOff = null;
   fake.reply = true;
   fake.contentScripts = undefined;
@@ -96,6 +101,14 @@ function reset(tabs) {
   fake.messages = [];
   fake.created = [];
   fake.activated = null;
+}
+
+function assertPreparedTokenCancelled(tabId, message, { keep = false } = {}) {
+  const prepared = fake.scripts.find((script) => script.tabId === tabId && script.func.name === 'prepareSidebarInPage');
+  assert.ok(prepared, `${message}: preparation started`);
+  const token = prepared.args[0].token;
+  const cancelled = fake.scripts.find((script) => script.tabId === tabId && script.func.name === 'cancelSidebarInPage' && script.args[0] === token && script.args[1] === keep);
+  assert.ok(cancelled, `${message}: token ${token} was cancelled`);
 }
 
 test('wake: a running page answers at once and the switch goes ahead then', async () => {
@@ -110,7 +123,212 @@ test('wake: a running page answers at once and the switch goes ahead then', asyn
   const prepared = fake.scripts.find((s) => s.func.name === 'prepareSidebarInPage');
   assert.equal(prepared.args[0].scroll, 42);
   assert.equal(prepared.args[0].carry, 'hover');
+  assert.ok(Number.isFinite(prepared.args[0].expiresAt) && prepared.args[0].expiresAt > started, 'the page can reject preparation after the background deadline');
   assert.ok(prepared.at <= fake.updates[0].at, 'the hidden page prepares before activation');
+});
+
+test('sidebar preparation carries authoritative state instead of trusting a suspended page cache', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 22, url: 'https://fresh.test/' }]);
+  fake.scriptDelay = () => 5;
+  await decided();
+  await mutate((state) => ({
+    ...M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(22), Date.now()),
+    pageZoom: { ...state.pageZoom, 'https://fresh.test': [1.25, Date.now()] },
+  }));
+  fake.prepare = ([context]) => ({
+    ready: context.sidebarState?.tabs?.[22]?.url === 'https://fresh.test/',
+    token: context.token,
+    reason: 'missing authoritative state',
+  });
+  const getZoom = chrome.tabs.getZoom;
+  let zoomReads = 0;
+  chrome.tabs.getZoom = async () => { zoomReads++; throw new Error('preparation should use remembered zoom'); };
+  let focused;
+  try {
+    focused = await focusTab(22);
+  } finally {
+    chrome.tabs.getZoom = getZoom;
+  }
+  assert.equal(focused.preparation.outcome, 'ready');
+  assert.equal(zoomReads, 0, 'preparation adds no browser zoom round trip');
+  const prepared = fake.scripts.find((script) => script.func.name === 'prepareSidebarInPage');
+  assert.equal(prepared.args[0].sidebarState.tabs[22].url, 'https://fresh.test/');
+  assert.ok(prepared.args[0].sidebarState.settings, 'the rendered settings travel in the same round trip');
+  for (const key of ['owner', 'openTabsBy', 'pageZoom']) assert.ok(key in prepared.args[0].sidebarState, `${key} travels with first-frame state`);
+  assert.equal(prepared.args[0].sidebarState.pageZoom['https://fresh.test'][0], 1.25, 'the remembered target zoom travels beside preparation');
+});
+
+test('sidebar preparation carries an authoritative empty zoom map after a reset', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 220, url: 'https://zoom-reset.test/' }]);
+  fake.scriptDelay = () => 1;
+  await mutate((state) => ({
+    ...M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(220), Date.now()),
+    pageZoom: {},
+  }));
+  const focused = await focusTab(220);
+  assert.equal(focused.preparation.outcome, 'ready');
+  const prepared = fake.scripts.find((script) => script.func.name === 'prepareSidebarInPage');
+  assert.deepEqual(prepared.args[0].sidebarState.pageZoom, {}, 'omission cannot preserve a suspended page\'s stale zoom');
+});
+
+test('sidebar preparation retries once with state that changed while the hidden page rendered', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 221, url: 'https://retry-state.test/', title: 'before' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(221), Date.now()));
+  const focusing = focusTab(221);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  fake.tabs.get(221).title = 'latest';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(221), Date.now()));
+  const focused = await focusing;
+  assert.equal(focused.preparation.outcome, 'ready');
+  const attempts = fake.scripts.filter((script) => script.func.name === 'prepareSidebarInPage');
+  assert.equal(attempts.length, 2, 'one newer snapshot replaces the in-flight one');
+  assert.equal(attempts[1].args[0].sidebarState.tabs[221].title, 'latest');
+});
+
+test('sidebar preparation revokes a published snapshot if its fresher retry cannot reach the page', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 222, url: 'https://retry-fails.test/', title: 'before' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  let preparations = 0;
+  fake.scriptReject = (_id, func) => func?.name === 'prepareSidebarInPage' && ++preparations === 2;
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(222), Date.now()));
+  const focusing = focusTab(222);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  fake.tabs.get(222).title = 'latest';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(222), Date.now()));
+  const focused = await focusing;
+  assert.equal(focused.preparation.outcome, 'unavailable');
+  const attempts = fake.scripts.filter((script) => script.func.name === 'prepareSidebarInPage');
+  assert.equal(attempts.length, 2);
+  const revoked = fake.scripts.find((script) => script.func.name === 'cancelSidebarInPage' && script.args[1] === false);
+  assert.ok(revoked, 'the first published token is cleared');
+  assert.ok(revoked.at <= fake.updates[0].at, 'revoked before activation');
+});
+
+test('sidebar preparation retries a transient failure to revoke its older snapshot', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 224, url: 'https://revoke-retry.test/', title: 'before' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  let preparations = 0;
+  let revocations = 0;
+  fake.scriptReject = (_id, func) => {
+    if (func?.name === 'prepareSidebarInPage') return ++preparations === 2;
+    if (func?.name === 'cancelSidebarInPage') return ++revocations === 1;
+    return false;
+  };
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(224), Date.now()));
+  const focusing = focusTab(224);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  fake.tabs.get(224).title = 'latest';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(224), Date.now()));
+  const focused = await focusing;
+  assert.equal(focused.preparation.outcome, 'unavailable');
+  assert.equal(revocations, 2, 'the keyed tombstone is retried once');
+  const cancels = fake.scripts.filter((script) => script.func.name === 'cancelSidebarInPage');
+  assert.equal(cancels.length, 2);
+  assert.ok(cancels[1].at <= fake.updates[0].at, 'revocation is confirmed before activation');
+});
+
+test('sidebar preparation explicitly keeps its coherent first snapshot when revocation is unreachable', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 225, url: 'https://revoke-fallback.test/', title: 'before' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  let preparations = 0;
+  fake.scriptReject = (_id, func) => func?.name === 'prepareSidebarInPage' ? ++preparations === 2 : func?.name === 'cancelSidebarInPage';
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(225), Date.now()));
+  const focusing = focusTab(225);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  fake.tabs.get(225).title = 'latest';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(225), Date.now()));
+  const focused = await focusing;
+  assert.equal(focused.preparation.outcome, 'ready');
+  assert.match(focused.preparation.reason, /retained prior snapshot/);
+  assert.equal(fake.scripts.filter((script) => script.func.name === 'cancelSidebarInPage').length, 2, 'revocation is bounded');
+  assert.ok(fake.updates[0], 'the coherent prepared frame remains usable for activation');
+});
+
+test('sidebar preparation revokes its first snapshot when a fresher retry answers not ready', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 226, url: 'https://retry-not-ready.test/', title: 'before' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  let preparations = 0;
+  fake.prepare = (args) => ++preparations === 1 ? { ready: true, token: args?.[0]?.token } : { ready: false, reason: 'theme not ready' };
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(226), Date.now()));
+  const focusing = focusTab(226);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  fake.tabs.get(226).title = 'latest';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(226), Date.now()));
+  const focused = await focusing;
+  assert.equal(focused.preparation.outcome, 'not ready');
+  assert.equal(focused.preparation.reason, 'theme not ready');
+  assert.equal(fake.scripts.filter((script) => script.func.name === 'cancelSidebarInPage').length, 1);
+});
+
+test('sidebar preparation does not revoke an applied frame when its fresher retry fails after activation', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 227, url: 'https://late-retry.test/', title: 'before' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  let preparations = 0;
+  fake.scriptReject = (_id, func) => func?.name === 'prepareSidebarInPage' && ++preparations === 2 ? 950 : false;
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(227), Date.now()));
+  const focusing = focusTab(227);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  fake.tabs.get(227).title = 'latest';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(227), Date.now()));
+  const focused = await focusing;
+  assert.equal(focused.preparation.outcome, 'timeout');
+  assert.equal(fake.scripts.filter((script) => script.func.name === 'prepareSidebarInPage').length, 2);
+  const token = fake.scripts.find((script) => script.func.name === 'prepareSidebarInPage').args[0].token;
+  const cancels = () => fake.scripts.filter((script) => script.func.name === 'cancelSidebarInPage' && script.args[0] === token);
+  assert.equal(cancels().length, 1, 'the timeout owns the token cancellation');
+  assert.equal(cancels()[0].args[1], true, 'the prepared geometry stays for the activation');
+  assert.ok(cancels()[0].at <= fake.updates[0].at, 'the timeout is settled before activation');
+  await sleep(150); // the second executeScript now rejects after activation
+  assert.equal(cancels().length, 1, 'the late retry failure does not undo the active frame');
+});
+
+test('sidebar preparation does not retry an obsolete snapshot after a newer switch wins', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 223, url: 'https://retry-superseded.test/', title: 'before' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(223), Date.now()));
+  const focusing = focusTab(223);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  fake.tabs.get(223).title = 'latest';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(223), Date.now()));
+  userSwitched(999, 1);
+  const focused = await focusing;
+  assert.equal(focused.superseded, true);
+  assert.equal(fake.scripts.filter((script) => script.func.name === 'prepareSidebarInPage').length, 1, 'no stale retry is sent');
+  assertPreparedTokenCancelled(223, 'superseded snapshot');
+});
+
+test('sidebar preparation revokes the final bounded snapshot if state changes twice', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 228, url: 'https://twice-stale.test/', title: 'first' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  await mutate((state) => M.upsertTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), fake.tabs.get(228), Date.now()));
+  const focusing = focusTab(228);
+  while (fake.scripts.filter((script) => script.func.name === 'prepareSidebarInPage').length < 1) await sleep(1);
+  fake.tabs.get(228).title = 'second';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(228), Date.now()));
+  while (fake.scripts.filter((script) => script.func.name === 'prepareSidebarInPage').length < 2) await sleep(1);
+  fake.tabs.get(228).title = 'third';
+  await mutate((state) => M.upsertTab(state, fake.tabs.get(228), Date.now()));
+  const focused = await focusing;
+  assert.equal(focused.preparation.outcome, 'not ready');
+  assert.equal(focused.preparation.reason, 'state changed during preparation');
+  const cancels = fake.scripts.filter((script) => script.func.name === 'cancelSidebarInPage');
+  assert.equal(cancels.length, 1, 'the knowingly stale final frame is revoked');
+  assert.ok(cancels[0].at <= fake.updates[0].at, 'revocation is confirmed before activation');
+});
+
+test('supersession retries and confirms a transiently rejected token cancellation', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 229, url: 'https://cancel-retry.test/' }]);
+  fake.scriptDelay = (_id, func) => func?.name === 'prepareSidebarInPage' ? 40 : 1;
+  let cancellations = 0;
+  fake.scriptReject = (_id, func) => func?.name === 'cancelSidebarInPage' && ++cancellations === 1;
+  const focusing = focusTab(229);
+  while (!fake.scripts.some((script) => script.func.name === 'prepareSidebarInPage')) await sleep(1);
+  userSwitched(999, 1);
+  const focused = await focusing;
+  assert.equal(focused.superseded, true);
+  assert.equal(cancellations, 2, 'the first transient cancellation rejection is retried');
+  assert.equal(fake.scripts.filter((script) => script.func.name === 'cancelSidebarInPage').length, 2);
 });
 
 test('focus intent: a destination is protected from cleanup until activation finishes', async () => {
@@ -228,7 +446,26 @@ test('sidebar preparation: a timeout is cancelled before the tab is activated', 
   assert.equal(focused.preparation.outcome, 'timeout');
   const cancel = fake.scripts.find((s) => s.func.name === 'cancelSidebarInPage');
   assert.ok(cancel, 'the late preparation is invalidated');
+  assert.equal(cancel.args[1], true, 'already-applied preparation stays in place for the activation which follows the timeout');
+  const prepared = fake.scripts.find((s) => s.func.name === 'prepareSidebarInPage');
+  assert.ok(prepared.args[0].expiresAt <= fake.updates[0].at, 'the page-side expiry has elapsed before activation');
   assert.ok(cancel.at <= fake.updates[0].at, 'invalidated before activation');
+  await sleep(100); // the original page call has now answered too
+  assert.equal(fake.scripts.filter((s) => s.func.name === 'cancelSidebarInPage').length, 1, 'one keyed cancellation is enough');
+});
+
+test('switch prerequisites: an access answer after the budget starts no late wake or preparation', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 131, url: 'https://slow-prerequisite.test/' }]);
+  const contains = chrome.permissions.contains;
+  chrome.permissions.contains = async () => { await sleep(1000); return true; };
+  try {
+    const focused = await focusTab(131);
+    assert.equal(focused.preparation.outcome, 'timeout');
+    await sleep(150); // let the access promise answer after activation
+    assert.equal(fake.scripts.some((script) => [keepAwake.name, 'pageThere', 'prepareSidebarInPage'].includes(script.func.name)), false, 'expired browser calls do not inject page work later');
+  } finally {
+    chrome.permissions.contains = contains;
+  }
 });
 
 test('sidebar preparation: a page still running an earlier copy gets the current one (and its theme) first, then is prepared', async () => {
@@ -274,6 +511,28 @@ test('switch: one Safari didn\'t bring to the front is asked once more, then fai
   }
 });
 
+test('switch preparation: supersession while Safari verifies activation cancels the prepared token', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 151, url: 'https://superseded-after-update.test/' }]);
+  fake.scriptDelay = () => 1;
+  const update = chrome.tabs.update;
+  let switched = false;
+  chrome.tabs.update = async (id, change) => {
+    fake.updates.push({ id, change, at: Date.now() });
+    if (!switched) {
+      switched = true;
+      setTimeout(() => userSwitched(999, 1), 10);
+    }
+    return { ...fake.tabs.get(id), active: false }; // Safari answered, but did not select it
+  };
+  try {
+    const result = await focusTab(151);
+    assert.equal(result.superseded, true);
+    assertPreparedTokenCancelled(151, 'post-update supersession');
+  } finally {
+    chrome.tabs.update = update;
+  }
+});
+
 test('switch: a tab Safari unloaded, shown without loading it behind first (restores off), is noted before it\'s shown, so its page draws the right sidebar from its first frame', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 16, url: 'https://unloaded.test/' }]);
   await decided(); // the copy that owns the state notes it
@@ -300,6 +559,37 @@ test('switch: a tab Safari unloaded, shown without loading it behind first (rest
   assert.equal(showing.carry, 'toggle');
   assert.equal(showing.scroll, 120);
   assert.ok(notedAt && notedAt <= fake.updates[0].at, 'noted before the switch');
+});
+
+test('switch: a newer user choice during the pre-activation showing note wins', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 161, url: 'https://unloaded-note.test/' }]);
+  await decided();
+  fake.scriptDelay = () => null;
+  fake.session.restoresOff = true;
+  resetRestores();
+  await mutate((state) => M.activateTab(M.upsertTab(state, fake.tabs.get(1), Date.now()), 1, 1, Date.now()));
+  const set = chrome.storage.local.set;
+  let noteStarted;
+  const started = new Promise((resolve) => { noteStarted = resolve; });
+  chrome.storage.local.set = async (items) => {
+    if (items.showing) {
+      noteStarted();
+      await sleep(80);
+    }
+    return set(items);
+  };
+  try {
+    const first = focusTab(161);
+    await started;
+    userSwitched(999, 1);
+    const result = await first;
+    assert.equal(result.superseded, true);
+    assert.deepEqual(fake.updates, [], 'the obsolete request never activates its tab');
+  } finally {
+    chrome.storage.local.set = set;
+    delete fake.session.restoresOff;
+    resetRestores();
+  }
 });
 
 test('switch: a row\'s tab id from before (another copy\'s, the last session\'s) is found by its address and place', async () => {
@@ -643,6 +933,9 @@ async function withUpdate(replacement, run) {
 test('introducing: a tab never in front, loaded, is brought to the front and the page in front straight back (sent together), then shown', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 30, url: 'https://new.test/' }], [30]);
   try {
+    // background.js records onCreated before a real switch; the focused test
+    // harness calls tabs.js directly, so mirror that authoritative entry.
+    await mutate((state) => M.upsertTab(state, fake.tabs.get(30), Date.now()));
     const events = [];
     fake.activated = (info) => events.push([info.tabId, isIntroduction(info)]);
     const introduced = [];
@@ -665,6 +958,7 @@ test('introducing: a tab never in front, loaded, is brought to the front and the
     assert.ok(fake.updates[2].at - fake.updates[1].at >= 55, 'shown once its process has drawn');
     assert.deepEqual(events, [[30, true], [1, true], [30, false]], 'only the real switch is told as one');
     assert.deepEqual(introduced, [30], 'keep-ready hears of it (its hold ended)');
+    assert.equal(prepares(30)[0]?.args[0].sidebarState?.tabs?.[30]?.url, 'https://new.test/', 'a never-shown page receives the authoritative first-frame state too');
     const holds = keepAwakes(30);
     assert.equal(holds.length, 2, 'woken first, and held afresh after (the instant in front ended the first hold)');
     assert.ok(holds[0].at <= fake.updates[0].at && holds[1].at >= fake.updates[1].at);
@@ -1242,11 +1536,13 @@ test('restoring: a key press after it (hurry) stops the wait at once, the tab le
     assert.ok(Date.now() - asked < 300, `given up at once (${Date.now() - asked}ms)`);
     assert.equal(fake.tabs.get(78).status, 'loading', 'left behind, loading');
     assert.deepEqual(fake.updates.map((u) => u.id), [78, 1]);
+    assertPreparedTokenCancelled(78, 'preparation overtaken by a later key press');
     putInFront(1);
     fake.updates = [];
     const skipped = await focusTab(79, { hurry: () => true });
     assert.equal(skipped.hurried, true);
     assert.deepEqual(fake.updates, [], 'not even restored');
+    assertPreparedTokenCancelled(79, 'preparation skipped by an already-later key press');
   } finally {
     done();
   }
@@ -1287,6 +1583,7 @@ test('restoring: Safari leaving the tab in front: the switch is done (it loads t
     assert.equal(result.tab?.id, 83);
     assert.equal(front(), 83);
     assert.deepEqual(fake.updates.map((u) => u.id), [83, 1]);
+    assertPreparedTokenCancelled(83, 'preparation raced with Safari leaving the tab in front');
     assert.equal(fake.local.showing?.tabId, 83, 'its page told which tab it is');
     assert.equal(fake.session.introductionsOff, true);
     putInFront(1);
@@ -1423,6 +1720,8 @@ test('restoring: a switch called off while asking whether its tab has a page (sl
     await sleep(100);
     await focusTab(1); // Escape on the page (cancelSwitch: its own tab)
     assert.equal((await first).superseded, true);
+    assert.equal(prepares(93).length, 0, 'no late preparation is injected after the access answer');
+    assert.ok(fake.scripts.some((script) => script.tabId === 93 && script.func.name === 'cancelSidebarInPage' && script.args[1] === false), 'the pending token is tombstoned');
     assert.deepEqual(toldFront(), [], 'not covered after it was called off');
     assert.deepEqual(fake.updates, [], 'nor restored');
     const one = focusTab(94);
@@ -1505,6 +1804,7 @@ test('restoring: a key press, or the tab closed, while Safari puts its load off:
     await sleep(100);
     fake.tabs.delete(100);
     await assert.rejects(closed, /No tab with id 100/);
+    assertPreparedTokenCancelled(100, 'preparation for a tab closed during restore');
     assert.equal(fake.session.restoreMisses, undefined);
   } finally {
     done();

@@ -73,8 +73,17 @@ test('⌘N: a new window starts in the same space, with the palette open on the 
   const windowId = await launcher.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const { result } = await launcher.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Work' }), windowId);
   await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === result.spaceId);
+  const originId = (await tabsInBrowser(ctx.worker)).find((tab) => tab.title === 'cmd-n-origin').id;
+  await launcher.evaluate(({ tabId, spaceId }) => chrome.runtime.sendMessage({ type: 'moveTabToSpace', tabId, spaceId }), { tabId: originId, spaceId: result.spaceId });
+  // Make the web tab the explicit most-recent tab after moving it. Merely
+  // closing the launcher lets Chromium choose the successor without always
+  // emitting a fresh activation event in headless mode.
+  await ctx.worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), originId);
+  await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((tab) => tab.active)?.id === originId);
+  await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === result.spaceId);
   await launcher.close();
   await page.bringToFront();
+  await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === result.spaceId);
 
   // What Safari does on ⌘N with "New windows open with: Margin".
   const opened = ctx.context.waitForEvent('page');

@@ -65,6 +65,12 @@ test('⌃⌘→ / ⌃⌘← switch the space and peek the sidebar; the page itse
   await gotoLauncher(nt, ctx);
   const { result } = await nt.evaluate(() => chrome.runtime.sendMessage({ type: 'createSpace', name: 'Work', emoji: '💼' }));
   const work = result.spaceId;
+  // A space with no web tab opens Margin's new-tab page, so there would be no
+  // destination content sidebar to peek. Give Work a real destination.
+  const workPage = await openPage('nav-work');
+  const workTabId = (await tabsInBrowser(ctx.worker)).find((tab) => tab.title === 'nav-work').id;
+  await nt.evaluate(({ tabId, spaceId }) => chrome.runtime.sendMessage({ type: 'moveTabToSpace', tabId, spaceId }), { tabId: workTabId, spaceId: work });
+  await waitFor(async () => (await storage('tabSpace'))[workTabId] === work);
   await nt.close();
   await focus(page, 'nav-space');
   await waitFor(async () => (await sidebarSnapshot(page)).chips.length >= 2);
@@ -73,16 +79,22 @@ test('⌃⌘→ / ⌃⌘← switch the space and peek the sidebar; the page itse
     // Count the arrow presses only: the ⌘/⌥ presses themselves always reach the page.
     addEventListener('keydown', (e) => e.key.startsWith('Arrow') && window.__pageKeys++);
   });
+  await workPage.evaluate(() => {
+    window.__pageKeys = 0;
+    addEventListener('keydown', (e) => e.key.startsWith('Arrow') && window.__pageKeys++);
+  });
 
   await page.keyboard.press('Control+Meta+ArrowRight');
   await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === work);
-  await waitFor(async () => (await sidebarSnapshot(page)).open, { timeout: 1000 });
-  assert.equal((await sidebarSnapshot(page)).chips.find((c) => c.active).id, work);
-  await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 2500 }); // peek ends
+  await waitFor(async () => (await activeTitle()) === 'nav-work');
+  await waitFor(async () => (await sidebarSnapshot(workPage)).open, { timeout: 1000 });
+  assert.equal((await sidebarSnapshot(workPage)).chips.find((c) => c.active).id, work);
+  await waitFor(async () => !(await sidebarSnapshot(workPage)).open, { timeout: 2500 }); // peek ends
 
-  await page.keyboard.press('Control+Meta+ArrowLeft');
+  await workPage.keyboard.press('Control+Meta+ArrowLeft');
   await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === 'personal');
-  assert.equal(await page.evaluate(() => window.__pageKeys), 0, 'the arrow keys of the shortcuts are not passed on to the page');
+  assert.equal((await page.evaluate(() => window.__pageKeys)) + (await workPage.evaluate(() => window.__pageKeys)), 0, 'the arrow keys of the shortcuts are not passed on to either page');
+  await workPage.close();
   await page.close();
 });
 

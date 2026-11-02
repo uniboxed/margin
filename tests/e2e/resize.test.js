@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, evalInShadow, sidebarSnapshot, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, evalInShadow, boxInShadow, sidebarSnapshot, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -28,9 +28,7 @@ const setSettings = async (patch) => {
 };
 const registered = () =>
   ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r[0]?.css?.[0] ?? null));
-const panelWidth = (page) => evalInShadow(page, 'margin-sidebar-host', function () {
-  return Math.round(this.querySelector('.margin-sidebar').getBoundingClientRect().width);
-});
+const panelWidth = async (page) => Math.round((await boxInShadow(page, 'margin-sidebar-host', '.margin-sidebar')).width);
 // Where the page's box starts in the window.
 const htmlLeft = (page) => page.evaluate(() => new DOMMatrix(getComputedStyle(document.documentElement).transform).e);
 
@@ -68,15 +66,15 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
   await waitFor(async () => (await settings()).themes.arcadia.sidebarWidth === 330, { timeout: 2000 });
   assert.equal(await panelWidth(page), 330, 'snapped to 10px');
   assert.equal(await htmlLeft(page), 330);
-  const hole = await evalInShadow(page, 'margin-sidebar-host', function () {
-    return this.querySelector('.frame .hole').getBoundingClientRect().left;
-  });
-  assert.equal(hole, 330, 'frame edge follows');
-  const edge = await evalInShadow(page, 'margin-sidebar-host', function () {
+  const hole = await boxInShadow(page, 'margin-sidebar-host', '.frame .hole');
+  assert.equal(Math.round(hole.left), 330, 'frame edge follows');
+  const edgeStyle = await evalInShadow(page, 'margin-sidebar-host', function () {
     const e = this.querySelector('.card-edge');
     const s = getComputedStyle(e);
-    return { left: e.getBoundingClientRect().left, open: e.classList.contains('open'), radius: s.borderTopLeftRadius, shadow: s.boxShadow !== 'none', opacity: s.opacity };
+    return { open: e.classList.contains('open'), radius: s.borderTopLeftRadius, shadow: s.boxShadow !== 'none', opacity: s.opacity };
   });
+  const edgeBox = await boxInShadow(page, 'margin-sidebar-host', '.card-edge');
+  const edge = { left: Math.round(edgeBox.left), ...edgeStyle };
   assert.deepEqual(edge, { left: 330, open: true, radius: '6.25px', shadow: true, opacity: '1' }, 'card shadow follows');
   await waitFor(async () => (await registered())?.endsWith('themes/arcadia/docked/w-330.css'));
 
@@ -104,13 +102,16 @@ test('the resize handle: a light pill just inside the sidebar edge, shown on hov
   const page = await openPage('resize-handle');
   await page.bringToFront();
   await waitFor(async () => (await htmlLeft(page)) === 260);
-  const pill = () => evalInShadow(page, 'margin-sidebar-host', function () {
+  const pill = async () => {
+    const style = await evalInShadow(page, 'margin-sidebar-host', function () {
     const handle = this.querySelector('.margin-sidebar .resizer');
-    const r = handle.getBoundingClientRect();
     const s = getComputedStyle(handle, '::after');
-    const left = r.right - parseFloat(s.right) - parseFloat(s.width);
-    return { opacity: s.opacity, left, right: left + parseFloat(s.width), top: r.top + parseFloat(s.top), bottom: r.bottom - parseFloat(s.bottom), radius: s.borderRadius, vh: innerHeight };
+      return { opacity: s.opacity, right: parseFloat(s.right), width: parseFloat(s.width), top: parseFloat(s.top), bottom: parseFloat(s.bottom), radius: s.borderRadius };
   });
+    const handle = await boxInShadow(page, 'margin-sidebar-host', '.margin-sidebar .resizer');
+    const left = handle.right - style.right - style.width;
+    return { opacity: style.opacity, left, right: left + style.width, top: handle.top + style.top, bottom: handle.bottom - style.bottom, radius: style.radius, vh: Math.round((await boxInShadow(page, 'margin-sidebar-host', '.frame')).height) };
+  };
   await page.mouse.move(600, 400);
   assert.equal((await pill()).opacity, '0', 'hidden until hovered');
   await page.mouse.move(258, 400); // inside the hit area
@@ -138,12 +139,13 @@ test('hover mode: resizing keeps the sidebar open and never moves the page', asy
   await drag(page, 268, 408);
   await waitFor(async () => (await settings()).themes.arcadia.sidebarWidth === 400);
   assert.equal((await sidebarSnapshot(page)).open, true, 'stayed open through the drag');
-  assert.equal(await htmlLeft(page), 0);
+  assert.equal(await htmlLeft(page), 8, 'the always-on frame remains while the sidebar floats');
   await page.mouse.move(900, 300);
   await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 1500 });
-  assert.equal(await evalInShadow(page, 'margin-sidebar-host', function () {
-    return this.querySelector('.card-edge').classList.contains('open');
-  }), false, 'no card edge in auto-hide mode');
+  assert.deepEqual(await evalInShadow(page, 'margin-sidebar-host', function () {
+    const edge = this.querySelector('.card-edge');
+    return { open: edge.classList.contains('open'), around: edge.classList.contains('around') };
+  }), { open: true, around: true }, 'the card edge returns to the always-on frame');
   await setSettings({ sidebarWidth: 260 });
   await page.close();
 });

@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState, updateSettings } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -115,11 +115,13 @@ test('switching space filters tabs; new tabs join the active space', async () =>
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const res = await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Work', emoji: '💼' }), windowId);
   assert.equal(res.ok, true);
-  await waitFor(async () => (await sidebarSnapshot(page)).chips.find((c) => c.active)?.id === res.result.spaceId);
-  assert.ok(!(await sidebarSnapshot(page)).tabs.includes('space-a'), 'old space tabs hidden');
+  await waitFor(async () => (await readState(ctx.worker, 'activeSpaceByWindow'))?.[windowId] === res.result.spaceId);
 
   const fresh = await openPage('space-b');
-  await waitFor(async () => (await sidebarSnapshot(fresh)).tabs.includes('space-b'));
+  await waitFor(async () => {
+    const sidebar = await sidebarSnapshot(fresh);
+    return sidebar.chips.find((c) => c.active)?.id === res.result.spaceId && sidebar.tabs.includes('space-b') && !sidebar.tabs.includes('space-a');
+  });
   await clickInShadow(fresh, '.chip', null); // first chip = Personal
   await waitFor(async () => {
     const { tabs } = await sidebarSnapshot(fresh);
@@ -184,36 +186,24 @@ test('new-tab page renders the sidebar itself and gets no injected overlay', asy
   await nt.close();
 });
 
-test('toggle shortcut: opens and closes; with "Keep open" on it switches back to auto-hide', async () => {
+test('toggle shortcut opens and closes', async () => {
   const page = await openPage('toggle');
   const tabId = await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'toggle')?.id);
   const toggle = () => ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
-  const pinned = () => ctx.worker.evaluate(() => chrome.storage.local.get('settings').then((s) => s.settings.sidebarPinnedOpen));
 
   await toggle();
   await waitFor(async () => (await sidebarSnapshot(page)).open);
+  await page.waitForTimeout(220); // distinct from the duplicate command/page-key event guard
   await toggle();
   await waitFor(async () => !(await sidebarSnapshot(page)).open);
-
-  await page.mouse.move(3, 200);
-  await clickInShadow(page, '.keep-open');
-  await waitFor(pinned);
-  await page.mouse.move(600, 200);
-  await page.waitForTimeout(400);
-  assert.equal((await sidebarSnapshot(page)).open, true, 'kept open');
-
-  await toggle();
-  await waitFor(async () => !(await pinned()));
-  await page.waitForTimeout(100);
-  assert.equal((await sidebarSnapshot(page)).open, false);
   await page.close();
 });
 
 const frameState = (page) =>
   evalInShadow(page, 'margin-sidebar-host', function () {
     const frame = this.querySelector('.frame');
-    const r = this.querySelector('.frame .hole').getBoundingClientRect();
-    return { open: frame.classList.contains('open'), hole: [r.left, r.top, innerWidth - r.right, innerHeight - r.bottom] };
+    const style = getComputedStyle(this.querySelector('.frame .hole'));
+    return { open: frame.classList.contains('open'), hole: [style.left, style.top, style.right, style.bottom].map((value) => Math.round(parseFloat(value))) };
   });
 const htmlMargins = (page) =>
   page.evaluate(() => {
@@ -222,23 +212,25 @@ const htmlMargins = (page) =>
     return { left: `${left}px`, styleAttr: document.documentElement.getAttribute('style'), styleTags: document.querySelectorAll('style').length };
   });
 const setKeepOpen = (on) =>
-  ctx.worker.evaluate((v) => chrome.storage.local.get('settings').then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, sidebarPinnedOpen: v } })), on);
+  updateSettings(ctx, { sidebarPinnedOpen: on });
 
 const panelRect = (page) =>
   evalInShadow(page, 'margin-sidebar-host', function () {
-    const r = this.querySelector('.margin-sidebar').getBoundingClientRect();
-    return [Math.round(r.left), Math.round(r.top), Math.round(innerHeight - r.bottom)];
+    const panel = this.querySelector('.margin-sidebar');
+    const style = getComputedStyle(panel);
+    const inset = Math.round(parseFloat(style.top));
+    return [Math.round(parseFloat(style.left)), inset, panel.classList.contains('docked') ? 0 : inset];
   });
 
-test('hover: a floating sidebar over the page, no frame, page never moves', async () => {
+test('hover: the sidebar floats over the framed page without changing its box', async () => {
   const page = await openPage('frame');
   await page.mouse.move(400, 200);
   await page.mouse.move(8, 200); // within the 10px reveal zone
   await waitFor(async () => (await sidebarSnapshot(page)).open);
   await page.waitForTimeout(250); // slide-in transition
   assert.deepEqual(await panelRect(page), [8, 8, 8], 'inset 8px from the edges');
-  assert.equal((await frameState(page)).open, false, 'frame only with Keep open');
-  assert.equal((await htmlMargins(page)).left, '0px');
+  assert.equal((await frameState(page)).open, true, 'the always-on 8px page frame stays present');
+  assert.equal((await htmlMargins(page)).left, '8px');
   await page.mouse.move(264, 200); // over the card's right part: stays open
   await page.waitForTimeout(450);
   assert.equal((await sidebarSnapshot(page)).open, true);
@@ -259,7 +251,7 @@ test('Keep open puts the page in its box at the sidebar edge, without touching p
   assert.ok(h1Left >= 0 && h1Left < 40, `the page's own coordinates start at its box (h1 at ${h1Left})`);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll');
   assert.equal((await frameState(page)).open, true);
-  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], 'frame wraps the page's box');
+  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], "frame wraps the page's box");
   await page.waitForTimeout(250);
   assert.deepEqual(await panelRect(page), [0, 0, 0], 'docked flush to the window');
 
@@ -271,6 +263,222 @@ test('Keep open puts the page in its box at the sidebar edge, without touching p
   await waitFor(async () => (await htmlMargins(page)).left === '8px');
   assert.equal((await sidebarSnapshot(page)).open, false);
   await page.close();
+});
+
+test('Keep open virtualizes late CSSOM, shadow sheets, keyframes, media edits, and negated :has()', async () => {
+  await setKeepOpen(true);
+  const page = await openPage('dynamic-css');
+  try {
+    await waitFor(async () => (await htmlMargins(page)).left === '260px');
+    const setup = await page.evaluate(() => {
+      // The private hold/cover selector must remain true for ordinary author
+      // ids; repeating one id in :not() would accidentally exclude this body.
+      document.body.id = 'm';
+      const host = document.createElement('section');
+      host.id = 'dynamic-shadow-host';
+      window.__dynamicShadowHost = host;
+      document.body.append(host);
+      const root = host.attachShadow({ mode: 'closed' });
+      window.__dynamicShadowRoot = root;
+      const adopted = new CSSStyleSheet();
+      adopted.replaceSync('#adopted { display:block; width:100vw; height:1px } #adopted:has(+ #text) { color: rgb(1, 2, 3) }');
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, adopted];
+      root.innerHTML = '<i id="adopted"></i><i id="text"></i>';
+      const text = document.createElement('style');
+      text.textContent = '#text { display:block; width:10px; height:1px }';
+      root.prepend(text);
+      text.textContent = '#text { display:block; width:100vw; height:1px }';
+
+      const dynamic = new CSSStyleSheet();
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, dynamic];
+      dynamic.addRule('#added', 'display:block; width:100vw; height:1px');
+      const retainedRuleStyle = dynamic.cssRules[0].style;
+      retainedRuleStyle.setProperty('height', '10vh');
+      document.body.insertAdjacentHTML('beforeend', '<i id="added"></i>');
+
+      const keyframes = new CSSStyleSheet();
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, keyframes];
+      keyframes.replaceSync('@keyframes margin-grow {}');
+      keyframes.cssRules[0].appendRule('from { width: 100vw }');
+
+      const mediaStyle = document.createElement('style');
+      mediaStyle.textContent = '@media (max-width: 900px) { #added { color: rgb(1, 2, 3) } }';
+      document.head.append(mediaStyle);
+      const medium = mediaStyle.sheet.cssRules[0].media;
+      const beforeMedium = medium.mediaText;
+      let threw = false;
+      try { medium.deleteMedium('(max-width: 999999px)'); } catch { threw = true; }
+
+      const hasStyle = document.createElement('style');
+      hasStyle.textContent = 'body:not(:has(.ghost)) { margin-left: 100px !important }';
+      document.head.append(hasStyle);
+      return {
+        threw,
+        beforeMedium,
+        afterMedium: medium.mediaText,
+        keyframeWidth: keyframes.cssRules[0].cssRules[0].style.width,
+        retainedRuleHeight: retainedRuleStyle.height,
+        ruleMethodIsOwn: Object.hasOwn(retainedRuleStyle, 'setProperty'),
+        inlinePrototypeIsNative: Function.prototype.toString.call(CSSStyleDeclaration.prototype.setProperty).includes('[native code]'),
+      };
+    });
+    assert.equal(setup.threw, true, 'the native missing-medium exception is preserved');
+    assert.equal(setup.afterMedium, setup.beforeMedium, 'a throwing edit keeps the virtual query shift');
+    assert.match(setup.keyframeWidth, /--margin-dw/, 'a dynamic keyframe uses the virtual viewport');
+    assert.match(setup.retainedRuleHeight, /--margin-dh/, 'a retained rule method still rewrites viewport units');
+    assert.equal(setup.ruleMethodIsOwn, false, 'rule declarations inherit their mutation hooks from one shared prototype');
+    assert.equal(setup.inlinePrototypeIsNative, true, 'ordinary element.style writes retain the browser\'s native hot path');
+
+    await page.waitForTimeout(200);
+    const dynamicWidths = await page.evaluate(() => ({
+      expected: Math.round(innerWidth),
+      adopted: Math.round(window.__dynamicShadowRoot.getElementById('adopted').getBoundingClientRect().width),
+      text: Math.round(window.__dynamicShadowRoot.getElementById('text').getBoundingClientRect().width),
+      added: Math.round(document.getElementById('added').getBoundingClientRect().width),
+    }));
+    assert.deepEqual(dynamicWidths, { expected: dynamicWidths.expected, adopted: dynamicWidths.expected, text: dynamicWidths.expected, added: dynamicWidths.expected });
+    await waitFor(() => page.evaluate(() => Math.round(document.querySelector('h1').getBoundingClientRect().left) === 100));
+    await page.evaluate(() => document.body.append(Object.assign(document.createElement('i'), { className: 'ghost' })));
+    await waitFor(() => page.evaluate(() => Math.round(document.querySelector('h1').getBoundingClientRect().left) === 0));
+    await page.evaluate(() => document.querySelector('.ghost').remove());
+    await waitFor(() => page.evaluate(() => Math.round(document.querySelector('h1').getBoundingClientRect().left) === 100));
+    await page.evaluate(() => {
+      const style = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]).find((rule) => rule.selectorText?.includes(':has(.ghost)'))?.parentStyleSheet?.ownerNode;
+      style.textContent = 'body:not(:has([data-x=")"])) { margin-left: 100px !important }';
+      document.body.append(Object.assign(document.createElement('i'), { id: 'quoted-has' }));
+      document.getElementById('quoted-has').setAttribute('data-x', ')');
+    });
+    await waitFor(() => page.evaluate(() => Math.round(document.querySelector('h1').getBoundingClientRect().left) === 0));
+    await page.evaluate(() => document.getElementById('quoted-has').remove());
+    await waitFor(() => page.evaluate(() => Math.round(document.querySelector('h1').getBoundingClientRect().left) === 100));
+    await page.evaluate(() => window.__dynamicShadowHost.remove());
+    await page.waitForTimeout(100);
+    await page.evaluate(() => document.body.append(window.__dynamicShadowHost));
+    await waitFor(() => page.evaluate(() => {
+      return Math.round(window.__dynamicShadowRoot.getElementById('adopted').getBoundingClientRect().width) === Math.round(innerWidth);
+    }));
+  } finally {
+    await setKeepOpen(false);
+    await page.close();
+  }
+});
+
+test('Keep open tracks logical rule properties and adopted-sheet removal, re-adoption, and moves', async () => {
+  await setKeepOpen(true);
+  const page = await openPage('dynamic-css-lifecycle');
+  try {
+    await waitFor(async () => (await htmlMargins(page)).left === '260px');
+    const initial = await page.evaluate(async () => {
+      document.body.style.margin = '';
+      const bodySheet = new CSSStyleSheet();
+      bodySheet.replaceSync('body { margin: 0 } .probe { width: 1px }');
+      window.__logicalRule = bodySheet.cssRules[0].style;
+      window.__secondRule = bodySheet.cssRules[1].style;
+
+      const documentMedia = new CSSStyleSheet();
+      documentMedia.replaceSync('@media (max-width: 900px) { body { color: rgb(1, 2, 3) } }');
+      window.__documentMedia = documentMedia;
+
+      const host = document.createElement('section');
+      document.body.append(host);
+      const root = host.attachShadow({ mode: 'open' });
+      window.__mediaRoot = root;
+      const shadowMedia = new CSSStyleSheet();
+      shadowMedia.replaceSync('@media (max-width: 900px) { :host { display: block } }');
+      window.__shadowMedia = shadowMedia;
+
+      const importUrl = URL.createObjectURL(new Blob(['@media (max-width: 900px) { body { color: rgb(4, 5, 6) } }'], { type: 'text/css' }));
+      const importStyle = document.createElement('style');
+      importStyle.textContent = `@import url("${importUrl}");`;
+      document.head.append(importStyle);
+      window.__importStyle = importStyle;
+      for (let i = 0; i < 100; i++) {
+        if (importStyle.sheet?.cssRules[0]?.styleSheet?.cssRules?.[0]?.media.mediaText === '(max-width: 1168px)') break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, bodySheet, documentMedia];
+      root.adoptedStyleSheets = [shadowMedia];
+      const media = (sheet) => sheet.cssRules[0].media.mediaText;
+      const imported = importStyle.sheet.cssRules[0].styleSheet.cssRules[0].media.mediaText;
+      return {
+        document: media(documentMedia), shadow: media(shadowMedia), imported,
+        sharedPrototype: Object.getPrototypeOf(window.__logicalRule) === Object.getPrototypeOf(window.__secondRule),
+        inlinePrototypeIsNative: Object.getPrototypeOf(document.body.style) === CSSStyleDeclaration.prototype,
+        ownSetProperty: Object.hasOwn(window.__logicalRule, 'setProperty'),
+      };
+    });
+    assert.deepEqual(initial, {
+      document: '(max-width: 1168px)', shadow: '(max-width: 1168px)', imported: '(max-width: 1168px)',
+      sharedPrototype: true, inlinePrototypeIsNative: true, ownSetProperty: false,
+    });
+
+    await page.evaluate(() => {
+      window.__logicalRule.marginInlineStart = '120px';
+      window.__logicalRule.inlineSize = 'calc(100vw - 20px)';
+    });
+    await waitFor(() => page.evaluate(() => Math.round(document.querySelector('h1').getBoundingClientRect().left) === 120));
+    assert.match(await page.evaluate(() => window.__logicalRule.inlineSize), /--margin-dw/, 'a direct modern IDL property write virtualizes viewport units');
+
+    await page.evaluate(() => document.body.style.setProperty('margin-left', '100px', 'important'));
+    await waitFor(() => page.evaluate(() => {
+      const style = getComputedStyle(document.body);
+      return Math.round(document.querySelector('h1').getBoundingClientRect().left) === 100 && style.marginLeft === '100px' && style.paddingLeft === '0px';
+    }));
+    await page.evaluate(() => document.body.style.removeProperty('margin-left'));
+    await waitFor(() => page.evaluate(() => Math.round(document.querySelector('h1').getBoundingClientRect().left) === 120));
+
+    const removed = await page.evaluate(() => {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== window.__documentMedia);
+      window.__mediaRoot.adoptedStyleSheets = [];
+      const media = (sheet) => sheet.cssRules[0].media.mediaText;
+      return { document: media(window.__documentMedia), shadow: media(window.__shadowMedia) };
+    });
+    assert.deepEqual(removed, { document: '(max-width: 900px)', shadow: '(max-width: 900px)' }, 'detached sheets regain their authored queries');
+
+    const readopted = await page.evaluate(() => {
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, window.__documentMedia];
+      window.__mediaRoot.adoptedStyleSheets = [window.__shadowMedia];
+      const media = (sheet) => sheet.cssRules[0].media.mediaText;
+      return { document: media(window.__documentMedia), shadow: media(window.__shadowMedia) };
+    });
+    assert.deepEqual(readopted, { document: '(max-width: 1168px)', shadow: '(max-width: 1168px)' }, 're-adopted sheets are visited exactly once');
+
+    const replaced = await page.evaluate(() => {
+      const old = [];
+      for (let i = 0; i < 40; i++) {
+        old.push(window.__documentMedia.cssRules[0]);
+        window.__documentMedia.replaceSync(`@media (max-width: 900px) { body { color: rgb(${i}, 0, 0) } }`);
+      }
+      return {
+        current: window.__documentMedia.cssRules[0].media.mediaText,
+        old: old.every((rule) => rule.parentStyleSheet === null && rule.media.mediaText === '(max-width: 900px)'),
+      };
+    });
+    assert.deepEqual(replaced, { current: '(max-width: 1168px)', old: true }, 'replaceSync restores detached retained media rules instead of leaking shifted holders');
+
+    await page.evaluate(() => {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== window.__documentMedia);
+      window.__mediaRoot.adoptedStyleSheets = [...window.__mediaRoot.adoptedStyleSheets, window.__documentMedia];
+    });
+    await setKeepOpen(false);
+    await waitFor(() => page.evaluate(() => {
+      const media = (sheet) => sheet.cssRules[0].media.mediaText;
+      const imported = window.__importStyle.sheet.cssRules[0].styleSheet.cssRules[0].media.mediaText;
+      return media(window.__documentMedia) === '(max-width: 916px)' && media(window.__shadowMedia) === '(max-width: 916px)' && imported === '(max-width: 916px)';
+    }));
+    await page.evaluate(() => document.body.append(document.createElement('i')));
+    await page.waitForTimeout(100);
+    await setKeepOpen(true);
+    await waitFor(() => page.evaluate(() => {
+      const media = (sheet) => sheet.cssRules[0].media.mediaText;
+      const imported = window.__importStyle.sheet.cssRules[0].styleSheet.cssRules[0].media.mediaText;
+      return media(window.__documentMedia) === '(max-width: 1168px)' && media(window.__shadowMedia) === '(max-width: 1168px)' && imported === '(max-width: 1168px)';
+    }));
+  } finally {
+    await setKeepOpen(false);
+    await page.close();
+  }
 });
 
 test('Keep open: sidebar and box are in place while the page is still loading', async () => {

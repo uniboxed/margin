@@ -1,1 +1,1 @@
-window[Symbol.for('margin.page.start')] = { left: 190 };
+window[Symbol.for('margin.page.start')] = { left: 190, profile: 'chrome' };
