@@ -23,6 +23,22 @@ const lastNav = { action: null, source: null, at: 0 };
 export const navTarget = new Map(); // windowId → { tabId, at }
 let navQueue = Promise.resolve();
 let queued = 0; // presses waiting their turn
+// The last tab woken ahead of a press (below): whether its page answered in
+// time (null until it has, or ran out of time), and the tab a press since
+// would wake ahead once it has.
+/** @typedef {{ at: number, answered: boolean | null, next: number | null }} Ahead */
+/** @type {Ahead | null} */
+let ahead = null;
+/** @param {number} tabId */
+function wakeAhead(tabId) {
+  /** @type {Ahead} */
+  const mark = { at: now(), answered: null, next: null };
+  ahead = mark;
+  void wakeTab(tabId).then((woke) => woke.outcome !== 'timeout', () => true).then((answered) => {
+    mark.answered = answered;
+    if (answered && mark.next != null && ahead === mark) wakeAhead(mark.next);
+  });
+}
 
 export function navigate(action, source, windowId) {
   const t = now();
@@ -103,9 +119,17 @@ async function runNavigation(action, windowId) {
     told('switch-done');
     await mutate((st) => M.activateTab(st, next, windowId, now()));
     // Presses come in runs: the tab after this one is woken now, so the
-    // next press doesn't wait for it (background/tabs.js wakeTab).
+    // next press doesn't wait for it (background/tabs.js wakeTab). Only once
+    // the one woken ahead before answered in time (or in another run of
+    // presses): one that didn't was a process Safari suspended, resumed at
+    // background priority, and another wake would only queue behind it. One
+    // that hasn't answered yet (a held key's presses come faster than a busy
+    // page answers): this one goes out as it does, if it does in time.
     const after = V.cycleTab(await load(), windowId, next, action === 'next-tab' ? 1 : -1);
-    if (after != null && after !== current) void wakeTab(after);
+    if (after != null && after !== current) {
+      if (!ahead || ahead.answered || now() - ahead.at >= NAV_CHAIN_MS) wakeAhead(after);
+      else if (ahead.answered === null) ahead.next = after;
+    }
   } else if (action === 'next-space' || action === 'prev-space') {
     const spaceId = V.cycleSpace(s, windowId, action === 'next-space' ? 1 : -1);
     if (spaceId == null) return;

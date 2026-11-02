@@ -10,7 +10,7 @@ import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mut
 import * as keepReady from './background/keep-ready.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, isIntroduction, resolveTab, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, injectIntoOpenTabs, isIntroduction, resolveTab, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -149,6 +149,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   }
   // A tab keep-ready found no page in may have one now (background/keep-ready.js).
   if (change.status || change.url) keepReady.pageChanged(tabId);
+  // Its page going away ends a wake's hold there (background/tabs.js wakeTab).
+  if (change.status === 'loading') forgetWake(tabId);
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
   }

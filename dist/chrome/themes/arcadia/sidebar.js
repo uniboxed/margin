@@ -854,17 +854,21 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
 
   // A tab or open pin under the pointer, or pressed: its process is woken
   // and kept awake (background/tabs.js wakeTab), so a click switches with
-  // nothing left to wait for. Resting HOVER_WAKE_MS on a row starts it; it's
-  // renewed every HOVER_RENEW_MS while the pointer stays (each wake keeps the
-  // process awake a little longer than that).
-  const HOVER_WAKE_MS = 80;
-  const HOVER_RENEW_MS = 500;
+  // nothing left to wait for. Resting HOVER_WAKE_MS on a row starts it (a
+  // pointer only passing over rows wakes nothing: each wake can resume a
+  // process Safari suspended); its hold is renewed every HOVER_RENEW_MS while
+  // the pointer stays (each hold runs 2 s: background/tabs.js
+  // HOVER_KEEP_AWAKE_MS), the hold alone once its page has answered.
+  const HOVER_WAKE_MS = 150;
+  const HOVER_RENEW_MS = 1500;
   const HOVER_IDLE_MS = 10000; // the pointer resting longer without moving: stop
   let hoverWake = null; // { key, selector, timer, until }
-  const prewakeRow = (row, renew = false) => {
+  // `how`: { hover } for the pointer resting on it, { hover, holdOnly } for a
+  // renewal; nothing for a press.
+  const prewakeRow = (row, how = {}) => {
     if (!row?.isConnected || row.classList.contains('active')) return;
-    if (row.dataset.tabId) send('prewake', { tabId: Number(row.dataset.tabId), renew });
-    else if (row.dataset.pinId && row.classList.contains('open')) send('prewake', { pinId: row.dataset.pinId, windowId, renew });
+    if (row.dataset.tabId) send('prewake', { tabId: Number(row.dataset.tabId), ...how });
+    else if (row.dataset.pinId && row.classList.contains('open')) send('prewake', { pinId: row.dataset.pinId, windowId, ...how });
   };
   const stopHoverWake = () => {
     if (hoverWake) clearTimeout(hoverWake.timer);
@@ -884,7 +888,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     const tick = () => {
       if (hoverWake !== wake) return;
       if (doc.hidden || Date.now() > wake.until) return stopHoverWake();
-      prewakeRow(root.querySelector(selector), !first); // renewals: a fresh wake
+      prewakeRow(root.querySelector(selector), first ? { hover: true } : { hover: true, holdOnly: true });
       first = false;
       wake.timer = setTimeout(tick, HOVER_RENEW_MS);
     };

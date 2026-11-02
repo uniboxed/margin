@@ -664,6 +664,18 @@ Switching to a tab that's loaded no longer waits for that tab's page to read Mar
 - [ ] Switch log (Start page → Settings → Switch log (development) → Copy): switches to loaded tabs have `preparation.timings.known: 1` and `readMs: 0` most of the time, and a small `preparation.ms` (under about 60). `known: 0` now and then is expected (right after Margin starts or is updated, a change that failed to save, or a switch right after a change, while it's still being saved: then `revSent: 0`); on most switches it should be 1. `reason: "awake budget"` means the page took over 250 ms. Send the log along with what felt slow.
 - [ ] Chrome: switching behaves as before.
 
+## No wasted wakes (2026-11-02)
+
+Margin wakes fewer tabs it doesn't then show: a pointer passing over sidebar rows wakes none, a pointer resting on a row sends one small script every 1.5 s instead of two every half second, and a switch reuses a wake for longer.
+
+- [ ] Rest the pointer on a row a moment, then click it: it comes up as fast as before, with no flash. Also after resting there 5–10 s.
+- [ ] Move the pointer quickly down the sidebar and click a row you only just reached: it comes up with no flash, as before.
+- [ ] ⌘-click a link so it opens in a tab behind, rest the pointer on that tab's row about a second, then click it: it comes up with no flash. Same for a tab that was hidden a while when Margin was just updated (its page still has the old copy).
+- [ ] Hold ⌃⌘↓ through a space and stop, then press it again a few times, one press at a time: each tab comes up as before, including on a space of busy pages (mail, chat).
+- [ ] Move the pointer up and down over a long sidebar for a few seconds without clicking. Activity Monitor → CPU: the `Safari Web Content` processes stay quiet (before, hidden tabs under the pointer woke up).
+- [ ] Safari's log after ten minutes of normal use: `/usr/bin/log show --last 10m --predicate 'process == "Safari" AND eventMessage CONTAINS "sending ProcessDidResume"'`. Fewer resumes with the reason `WebFrame_GetFrameInfo` than before, for the same use.
+- [ ] Chrome: hovering and switching behave as before.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.

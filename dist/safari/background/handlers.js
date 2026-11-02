@@ -254,11 +254,10 @@ export const handlers = {
   // About to be shown, probably (a press on a sidebar row, the palette
   // resting on a row): its process is woken now, so the switch that follows
   // doesn't wait for it (background/tabs.js wakeTab). A pin wakes its open tab.
-  /** @param {{ tabId?: number, pinId?: string, windowId?: number }} message */
-  /** @param {{ tabId?: number, pinId?: string, windowId?: number, renew?: boolean }} message `renew`: a fresh wake (a hover renewal) */
-  async prewake({ tabId, pinId, windowId, renew = false }) {
+  /** @param {{ tabId?: number, pinId?: string, windowId?: number, renew?: boolean, holdOnly?: boolean, hover?: boolean }} message `hover`: the pointer resting on a row (the sidebar's longer hold); `holdOnly`: its renewal, the hold alone where the page has answered; `renew`: a fresh wake */
+  async prewake({ tabId, pinId, windowId, renew = false, holdOnly = false, hover = false }) {
     const id = tabId ?? (pinId ? V.pinTabId(await load(), pinId, windowId) : null);
-    if (Number.isInteger(id)) void wakeTab(id, { renew });
+    if (Number.isInteger(id)) void wakeTab(id, { renew, holdOnly, hover });
   },
   // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): the log itself, for the
   // start page's "Switch log" button.
