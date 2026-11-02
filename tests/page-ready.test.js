@@ -17,7 +17,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // observers, and what's in its <body>, in document order (`add`: an element
 // or a text, `in` an element; each element laid out at `rect` [left, top,
 // width, height] in a 1200 × 800 window, `visible` as checkVisibility has it).
-function fakePage({ href = 'https://a.test/', readyState = 'loading' } = {}) {
+// `bodyOpacity`: <body>'s own (inline) opacity; `arrival`: Margin's arrival
+// cover on (content/core.js arrivalHides). An element `underBody` is hidden
+// by <body>'s opacity only (checkVisibility says so only when asked about
+// opacity); `opacity`: its own, as getComputedStyle has it.
+function fakePage({ href = 'https://a.test/', readyState = 'loading', bodyOpacity = '', arrival = false } = {}) {
   const listeners = new Map();
   const observers = new Set();
   const changes = new Set();
@@ -33,7 +37,7 @@ function fakePage({ href = 'https://a.test/', readyState = 'loading' } = {}) {
     NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 },
     document: {
       readyState,
-      body: {},
+      body: { style: { getPropertyValue: (name) => (name === 'opacity' ? bodyOpacity : '') } },
       documentElement: {},
       // Over `nodes`, as a TreeWalker goes: a rejected node's own nodes left out with it.
       createTreeWalker: (root, what, filter) => {
@@ -72,17 +76,19 @@ function fakePage({ href = 'https://a.test/', readyState = 'loading' } = {}) {
       observe() { changes.add(this); }
       disconnect() { changes.delete(this); }
     },
+    Margin: { content: { arrivalHides: () => arrival } },
+    getComputedStyle: (el) => ({ opacity: el.opacity ?? '1' }),
     setTimeout,
     clearTimeout,
     setInterval: (fn, ms) => { const id = setInterval(fn, ms); intervals.add(id); return id; },
     clearInterval: (id) => { intervals.delete(id); clearInterval(id); },
   };
-  const element = (localName, { rect = [10, 10, 300, 20], visible = true, parent = null, ...more } = {}) => ({
+  const element = (localName, { rect = [10, 10, 300, 20], visible = true, underBody = false, parent = null, ...more } = {}) => ({
     nodeType: 1,
     localName,
     parentElement: parent,
     getBoundingClientRect: () => ({ left: rect[0], top: rect[1], width: rect[2], height: rect[3], right: rect[0] + rect[2], bottom: rect[1] + rect[3] }),
-    checkVisibility: () => visible,
+    checkVisibility: (options) => visible && !(underBody && (options?.opacityProperty || options?.checkOpacity)),
     ...more,
   });
   return {
@@ -92,6 +98,10 @@ function fakePage({ href = 'https://a.test/', readyState = 'loading' } = {}) {
       page.document.readyState = next;
       listeners.get('document:readystatechange')?.();
       if (next === 'complete') listeners.get('window:load')?.();
+    },
+    // The page going away (`pagehide`, `pageswap`): its own timers die with it.
+    leave(type = 'pagehide') {
+      listeners.get(key('window', type))?.();
     },
     paint(name = 'first-contentful-paint') {
       paints.push({ name });
@@ -215,4 +225,51 @@ test('paintBarrierInPage: answers at the second rendering update (an observation
   assert.ok(disconnected >= 2, 'both observers let go');
   assert.equal(await vm.runInContext(`(${paintBarrierInPage})(50)`, context(null)), 'timeout');
   assert.equal(await vm.runInContext(`(${paintBarrierInPage})(50)`, vm.createContext({ document: { documentElement: {} }, setTimeout, clearTimeout })), 'none', 'no ResizeObserver');
+});
+
+test('readyInPage and paintBarrierInPage: a page going away before they answer (a script redirect, a link) ends them, nothing left listening: their timers die with it, and the script would wait for a garbage collection', async () => {
+  for (const type of ['pagehide', 'pageswap']) {
+    const page = fakePage({ readyState: 'interactive' });
+    const asked = answer(page, 5000);
+    await sleep(20);
+    assert.equal(asked.how, null);
+    page.leave(type);
+    await sleep(0);
+    assert.equal(asked.how, 'blank', `${type}: asked again of the next document`);
+    assert.equal(page.listening(), 0);
+  }
+  for (const type of ['pagehide', 'pageswap']) {
+    const listeners = new Map();
+    const context = vm.createContext({
+      document: { documentElement: {} },
+      setTimeout,
+      clearTimeout,
+      MessageChannel,
+      ResizeObserver: class { observe() {} disconnect() {} },
+      addEventListener: (name, fn) => listeners.set(name, fn),
+      removeEventListener: (name) => listeners.delete(name),
+    });
+    const drawn = vm.runInContext(`(${paintBarrierInPage})(5000)`, context);
+    await sleep(10);
+    listeners.get(type)?.();
+    const how = await Promise.race([drawn, sleep(100).then(() => 'still waiting')]);
+    assert.equal(how, 'none', type);
+    assert.equal(listeners.size, 0);
+  }
+});
+
+test('readyInPage: <body> hidden by Margin\'s own arrival cover (a tab shown for the first time waiting for its show) is looked past; by the page itself, or with the page\'s own content faded out under it, it isn\'t', async () => {
+  const covered = fakePage({ readyState: 'interactive', bodyOpacity: '0', arrival: true });
+  covered.paint();
+  covered.add('#text', { data: 'Inbox', parent: covered.add('h1', { underBody: true }) });
+  assert.equal(await ready(covered, 300), 'painted');
+  const own = fakePage({ readyState: 'interactive', bodyOpacity: '0' });
+  own.paint();
+  own.add('#text', { data: 'Inbox', parent: own.add('h1', { underBody: true }) });
+  assert.equal(await ready(own, 150), 'timeout', 'the page fading itself in');
+  const fading = fakePage({ readyState: 'interactive', bodyOpacity: '0', arrival: true });
+  fading.paint();
+  const app = fading.add('div', { underBody: true, opacity: '0' });
+  fading.add('#text', { data: 'Inbox', parent: fading.add('h1', { underBody: true, parent: app }) });
+  assert.equal(await ready(fading, 150), 'timeout', 'its own content still faded out under the cover');
 });

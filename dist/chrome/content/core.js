@@ -906,7 +906,9 @@ export function startCore({ onTheme } = {}) {
   // is (in the WebKit host, a page open at install was otherwise introduced on
   // its first switch, 70 ms more for nothing). One that started hidden is a
   // tab opened behind, which the background knows of (or takes as shown
-  // before).
+  // before). The mark is the tab's, so the page says so as it starts (hello):
+  // the background goes on counting the tab as unseen through the pages it
+  // goes to in front, until it sees it shown (background/tabs.js pageStarted).
   const madeAfresh = (() => {
     try {
       return /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType('navigation')[0])?.type === 'back_forward' || history.length === 1;
@@ -991,6 +993,8 @@ export function startCore({ onTheme } = {}) {
     const limit = setTimeout(() => finish({ fade: !document.hidden }), ARRIVAL_MAX_MS);
     arrival = { finish };
   }
+  // Whether the arrival cover is on (shared/page-ready.js looks past it).
+  Margin.content.arrivalHides = () => !!arrival;
 
   // Called through scripting.executeScript in the current isolated extension
   // world (background/tabs.js), not tabs.sendMessage: Safari can leave an old
@@ -1110,7 +1114,7 @@ export function startCore({ onTheme } = {}) {
   if (document.readyState === 'complete') setTimeout(logTiming);
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
   restoreScroll(refresh());
-  send('hello').then((ctx) => {
+  send('hello', windowSeen ? {} : { unseen: true }).then((ctx) => {
     if (dormant) return;
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
     helloAnswered = true;

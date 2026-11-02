@@ -103,7 +103,7 @@ globalThis.chrome = {
   },
 };
 
-const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, pageThere, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided, load } = await import('../extension/background/store.js');
@@ -1932,4 +1932,98 @@ test('cut off: a page bound to this copy isn\'t, and isn\'t asked again; a switc
   await focusTab(44);
   assert.equal(fake.scripts.filter((x) => x.func.name === 'cutOffInPage').length, 1);
   assert.equal(await repairCutOff({ id: 45, url: 'safari-web-extension://test/newtab/newtab.html' }), false, 'not a web page: not asked');
+});
+
+// ---- after the branch's review --------------------------------------------------
+
+test('restoring: a question about its paint that its document never answers (the document went away: a script redirect still loading) doesn\'t take the whole wait; the next document is asked', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 300, url: 'https://redirect.test/', status: 'loading' }], {});
+  const exec = chrome.scripting.executeScript;
+  let loads;
+  try {
+    tabOpened({ id: 300, active: false });
+    let first = true;
+    chrome.scripting.executeScript = (opts) => {
+      if (opts.target.tabId === 300 && opts.func?.name === 'readyInPage' && first) {
+        first = false;
+        fake.scripts.push({ tabId: 300, at: Date.now(), func: opts.func, args: opts.args });
+        return new Promise(() => {}); // its world went with the page
+      }
+      return exec(opts);
+    };
+    setTimeout(() => fake.painted.add(300), 150);
+    loads = setTimeout(() => { fake.tabs.get(300).status = 'complete'; }, 1400);
+    const asked = Date.now();
+    await focusTab(300);
+    const introducedAt = fake.updates[0].at - asked;
+    assert.ok(scriptsNamed(300, 'readyInPage').length >= 2, 'asked again');
+    assert.ok(introducedAt < 700, `introduced at ${introducedAt}ms: painted at 150 ms, loaded at 1.4 s`);
+    assert.equal(fake.tabs.get(300).status, 'loading', 'shown before its load');
+  } finally {
+    clearTimeout(loads);
+    chrome.scripting.executeScript = exec;
+    tabShown(300);
+    done();
+  }
+});
+
+test('restoring: a page whose document hasn\'t committed by 1.5 s from its load\'s start (a slow server) is waited for up to 2.5 s from the click, then introduced and shown, not shown with no page', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 301, url: 'https://slowserver.test/' }], { 301: { loadMs: 6000 } });
+  try {
+    delete fake.local.showing;
+    const asked = Date.now();
+    const scriptError = fake.scriptError;
+    let committedAt = Infinity;
+    fake.scriptError = (id) => (id === 301 && Date.now() - asked < 1900) || scriptError(id);
+    setTimeout(() => { committedAt = Date.now() - asked; }, 1900);
+    const result = await focusTab(301, { deadline: asked + 7000 });
+    assert.equal(result.tab?.id, 301);
+    const shownAt = fake.updates.at(-1).at - asked;
+    assert.ok(shownAt > committedAt, `shown at ${shownAt}ms, its page committed at ${committedAt}ms`);
+    assert.ok(shownAt < 3000, `within the wait (${shownAt}ms)`);
+    assert.deepEqual(fake.updates.map((u) => u.id), [301, 1, 301, 1, 301], 'restored, introduced, shown');
+    assert.equal(fake.local.showing?.tabId ?? null, null, 'not shown as a tab with no page');
+  } finally {
+    done();
+  }
+});
+
+test('openBehind: a new tab whose server is slow to answer (no document for 3 s) is asked whether it has painted less and less often meanwhile', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.scriptDelay = () => 1;
+  const started = Date.now();
+  fake.scriptError = () => Date.now() - started < 3000;
+  setTimeout(() => fake.painted.add(2), 3000);
+  assert.deepEqual(await openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } }), { tabId: 2, shown: 2 });
+  const took = Date.now() - started;
+  const asked = scriptsNamed(2, 'readyInPage').filter((x) => x.at - started < 3000).length;
+  assert.ok(asked <= 30, `${asked} questions before its document came (58 at one every 50 ms)`);
+  assert.ok(took >= 3000 && took < 3400, `shown soon after it painted (${took}ms)`);
+});
+
+test('introducing: a tab whose page started in front with no process (a launch) that then went to another page in front is still introduced on its first return (WebKit\'s mark is the tab\'s, not the page\'s)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 302, url: 'https://launch.test/next' }, { id: 303, url: 'https://seen.test/next' }], []);
+  try {
+    // Its first page said so as it started (hello); the page there now (a link
+    // followed in front) doesn't know.
+    pageStarted(302, { unseen: true });
+    pageStarted(303, { unseen: false });
+    await focusTab(302, { covered: true });
+    assert.deepEqual(fake.updates.map((u) => u.id), [302, 1, 302], 'introduced, then shown');
+    // Shown (its activation): not again.
+    tabShown(302);
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    await focusTab(302);
+    assert.deepEqual(fake.updates.map((u) => u.id), [302]);
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    await focusTab(303);
+    assert.deepEqual(fake.updates.map((u) => u.id), [303], 'a tab whose pages never said so: not introduced');
+  } finally {
+    tabShown(302);
+    done();
+  }
 });

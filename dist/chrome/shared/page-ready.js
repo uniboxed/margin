@@ -18,8 +18,12 @@
 // its first contentful paint at 54 ms, Margin's, and was shown then, empty
 // (the host's `shelllate`, `shellcover`, `shellbehind`). 'loaded': its load
 // event. 'timeout': neither within `ms`. 'blank': the empty document a tab
-// starts with, or one Margin's script reached before the real one committed
-// (asked again: background/tabs.js untilPainted).
+// starts with, one Margin's script reached before the real one committed, or
+// one that went away before it painted (a script redirect still loading, a
+// link): asked again of the next (background/tabs.js untilPainted). Without
+// that end its timer, in Margin's world, died with the page, and WebKit kept
+// the tab's process awake for the script until a garbage collection
+// (background/tabs.js keepAwake).
 //
 // WebKit records the first contentful paint of a page loading hidden (behind
 // the page, in the WebKit host: 'first-contentful-paint' about 180 ms after
@@ -43,7 +47,7 @@ export function readyInPage(ms) {
     /** @type {(() => void)[]} */
     const undo = [];
     let over = false;
-    const done = (/** @type {'painted' | 'loaded' | 'timeout'} */ how) => {
+    const done = (/** @type {'painted' | 'loaded' | 'timeout' | 'blank'} */ how) => {
       if (over) return;
       over = true;
       for (const step of undo) try { step(); } catch {}
@@ -56,12 +60,29 @@ export function readyInPage(ms) {
         return false;
       }
     };
+    // Margin's own arrival cover, if it's what hides <body> (content/core.js
+    // arriveCovered: opacity 0 on it while a tab shown for the first time
+    // waits for its show), is looked past: a second switch to that tab
+    // otherwise found nothing drawn. Each element's own opacity up to <body>
+    // is then looked at instead (once per look).
+    let pastCover = false;
+    /** @type {Map<Element, boolean>} */
+    const faded = new Map();
+    const fadedOut = (/** @type {Element} */ el) => {
+      for (let node = /** @type {Element | null} */ (el); node && node !== document.body; node = node.parentElement) {
+        let zero = faded.get(node);
+        if (zero === undefined) faded.set(node, (zero = getComputedStyle(node).opacity === '0'));
+        if (zero) return true;
+      }
+      return false;
+    };
     const inView = (/** @type {Element | null} */ el) => {
       if (!el) return false;
       const r = el.getBoundingClientRect();
       if (!(r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth)) return false;
       try {
         // Not faded out or hidden by its styles (an app that shows its content once it's ready).
+        if (pastCover) return (/** @type {any} */ (el).checkVisibility?.({ visibilityProperty: true, checkVisibilityCSS: true }) ?? true) && !fadedOut(el);
         return /** @type {any} */ (el).checkVisibility?.({ opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true }) ?? true;
       } catch {
         return true;
@@ -70,6 +91,12 @@ export function readyInPage(ms) {
     const ownContent = () => {
       const body = document.body;
       if (!body) return false;
+      try {
+        pastCover = /** @type {any} */ (globalThis).Margin?.content?.arrivalHides?.() === true && body.style.getPropertyValue('opacity') === '0';
+      } catch {
+        pastCover = false;
+      }
+      faded.clear();
       const walker = document.createTreeWalker(body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
         acceptNode: (node) => (SKIP.has(/** @type {Element} */ (node).localName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
       });
@@ -106,6 +133,11 @@ export function readyInPage(ms) {
     undo.push(() => clearTimeout(later));
     const timer = setTimeout(() => done('timeout'), ms);
     undo.push(() => clearTimeout(timer));
+    const gone = () => done('blank');
+    for (const type of ['pagehide', 'pageswap']) {
+      addEventListener(type, gone);
+      undo.push(() => removeEventListener(type, gone));
+    }
     document.addEventListener('readystatechange', look);
     undo.push(() => document.removeEventListener('readystatechange', look));
     addEventListener('load', look);

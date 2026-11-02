@@ -795,6 +795,25 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2).map((e) => ({ introduced: e.introduced, unseen: e.unseen, shownAfter: e.shownAfter })))` },
     check('A', 'A: its return to the new page not introduced, not taken as unseen', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('A2')); return log.length > 0 && log.every((e) => e.introduced !== true && !e.unseen && !e.error)`),
   ],
+  // The tab in front at a relaunch (unseen above) going to another page in
+  // front before it's first left (a link, a reload, a script's redirect): the
+  // new page doesn't know the tab started unseen (it navigated in front), but
+  // WebKit's mark is the tab's and still unset. The background remembers it
+  // from the first page's start (background/tabs.js pageStarted), so its first
+  // return is introduced all the same. Within about 4 s of the restart.
+  unseennav: [
+    { op: 'open', name: 'H', url: '/p/H2', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('H'), wait(1500),
+    { op: 'restart' }, drawn('H'),
+    checkPage('H', 'H: loaded in front at the relaunch, from its saved history', `window.__vis[0][0] === 'shown' && performance.getEntriesByType('navigation')[0].type === 'back_forward'`),
+    { op: 'page', in: 'H', js: `location.href = '/p/H3'; return 'navigating'` }, checkPage('H', 'H: at its new address, loaded in front', `location.pathname === '/p/H3' && performance.getEntriesByType('navigation')[0].type === 'navigate'`, 2000), drawn('H'),
+    check('H', 'H: its new page counts itself as seen (it navigated in front)', `globalThis.Margin.content.windowSeen() === true`),
+    check('H', 'H: Margin ready, its copy matched to the tabs', `return document.querySelector('margin-sidebar-host')?.dataset.startup !== 'true' && (await ${STATE}('openTabsBy')).openTabsBy?.synced === true`, 3000),
+    switchTo('H', 'B'), shown('B'),
+    { op: 'probeShow', name: 'H', nth: 2 }, // the first is its introduction
+    switchTo('B', 'H3'), shown('H'),
+    { op: 'checkProbe', name: 'H', maxMs: 4, label: 'H: its content there on its first return (introduced first)' },
+    check('H', 'H: the switch introduced it as unseen', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.introduced === true && e.unseen === true && !e.error)`),
+  ],
   // A page left takes its listeners off browser.* events (WebKit kept them, and
   // the page, after it went through the back/forward cache); back from the
   // cache, it has them again: a change in storage reaches it.

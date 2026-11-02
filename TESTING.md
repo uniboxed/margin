@@ -562,6 +562,20 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Speed, flicker and memory: the quick check (2026-11-02)
+
+Start here. It covers what the sections below check in detail. Run `npm run safari` first, then quit and reopen Safari with 15 or more tabs in a few spaces, so most come back unloaded. Record the screen (⇧⌘5) while you switch, and step through it frame by frame if anything looks off.
+
+- [ ] **Unloaded tabs:** click rows of tabs you haven't opened since the relaunch. Each comes up in under a second on most sites, about as fast as Safari's own tab bar shows such a tab. The page you're on keeps a spinner until then. No dark window at any point.
+- [ ] **New tabs:** ⌘T, type a site (youtube.com), Enter. It comes to the front as soon as something is drawn, not when it has finished loading. Then a Google search, the same.
+- [ ] **The tab that was in front at the relaunch:** click a link in it first, then switch away with the sidebar and back. No dark flash on the way back.
+- [ ] **App pages:** Gmail, YouTube and Outlook (or another web app that builds itself with scripts), each from an unloaded state. Each comes up with its own content drawn, not an empty page with only Margin's sidebar. A slow one may show its own loading screen. Click such a row twice quickly: it still comes up as fast.
+- [ ] **A slow server or a redirect:** a link from Gmail (it goes through google.com/url), a t.co link, or a site that sends you to a login page. ⌘-click it, then pick its row. It comes up drawn, with no dark frame.
+- [ ] **Loaded tabs:** go back and forth among the six tabs you used last, with the sidebar and with Safari's tab bar. Instant, no flash.
+- [ ] **Memory and CPU:** after 10 minutes of normal use, open Activity Monitor. In the CPU tab, Safari Web Content processes for tabs you're not looking at sit near 0%. In the Memory tab, the Safari Web Content total isn't far above what the same tabs use with Margin turned off (Safari → Settings → Extensions; turn it back on after). Follow 20 links on one site in one tab: that tab's memory goes up and down, but doesn't keep climbing.
+- [ ] **Chrome:** the same clicks on loaded tabs and ⌘T. Chrome shows a new tab once it has loaded, as before. Chrome's Task Manager (⋮ → More tools) shows no Margin process using CPU while you read a page.
+- [ ] **If something is off:** Start page → Settings → Switch log (development) → Copy, and note the time. The fields are described in the next section.
+
 ## Switching at first paint, fewer dark frames (2026-11-02)
 
 Quit and reopen Safari with tabs in a few spaces, so most come back unloaded. Record the screen while you try these, and step through it frame by frame if anything flickers.

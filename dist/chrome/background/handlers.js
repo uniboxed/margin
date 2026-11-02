@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, resolveTab, shownAt, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageStarted, resolveTab, shownAt, wakeTab } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -224,8 +224,10 @@ const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
 const STYLE_MAX_CHARS = 8_000_000;
 
 export const handlers = {
-  async hello(_, sender) {
+  /** @param {{ unseen?: boolean }} message `unseen`: the page started visible in a tab whose page may have just been made (background/tabs.js pageStarted) */
+  async hello({ unseen = false } = {}, sender) {
     onboarding.pageLoaded();
+    pageStarted(sender.tab?.id, { unseen });
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
     // Only to a page in front: one loading behind (background/tabs.js
