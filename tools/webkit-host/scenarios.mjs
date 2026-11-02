@@ -717,6 +717,72 @@ export const SCENARIOS = {
     check('H', 'H: the switch says its page was unseen and it introduced it', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.introduced === true && e.unseen === true && !e.error)`),
     noPageErrors('H'),
   ],
+  // A hidden tab whose page's world put work off until it's in sight: a sheet
+  // added while hidden (its query not yet rewritten for the box, and a read of
+  // <body> it asks for), and its box moved by the preparation itself (Keep open
+  // turned on in another tab). Done in the preparation (content/page/box.js
+  // catchUp), so all of it is there as the tab comes into view, before any of
+  // Margin's own show handlers run, not a frame or more after.
+  catchup: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'), keepOpen, boxed('A'),
+    { op: 'page', in: 'B', js: `document.body.insertAdjacentHTML('beforeend', '<div id=x>x</div>'); window.__mq = matchMedia('(min-width: 1100px)'); window.__resized = 0; addEventListener('resize', () => __resized++); addEventListener('visibilitychange', () => { if (!document.hidden && !window.__atShow) window.__atShow = { at: performance.now(), resized: __resized, mq: __mq.matches, width: innerWidth, pad: getComputedStyle(document.body).paddingLeft, color: getComputedStyle(document.getElementById('x')).color }; }, true); document.head.append(Object.assign(document.createElement('style'), { textContent: 'body { margin: 0 0 0 40px } @media (max-width: 1000px) { #x { color: rgb(1, 2, 3) } }' })); return document.hidden ? 'hidden, styled' : 'shown?'` },
+    wait(300),
+    switchTo('A', 'B'), shown('B'),
+    { op: 'page', in: 'B', js: 'return JSON.stringify(window.__atShow)' },
+    checkPage('B', 'B: its box moved and rested before it came into view (the media list followed, one resize)', `__atShow.mq === false && __atShow.resized === 1 && __atShow.width === 1200 - 260 - 8`, 1000),
+    checkPage('B', 'B: the sheet added while hidden was rewritten for the box before it came into view', `__atShow.color === 'rgb(1, 2, 3)'`, 1000),
+    checkPage('B', 'B: the read it asked for was made before it came into view', `__atShow.pad === '40px'`, 1000),
+    checkPage('B', 'B: and as it stays', `__resized === 1 && getComputedStyle(document.body).paddingLeft === '40px' && getComputedStyle(document.getElementById('x')).color === 'rgb(1, 2, 3)'`, 1000),
+    { op: 'eval', in: 'B', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').map((e) => e.preparation))` },
+  ],
+  // The same move of a hidden tab's box, on a page whose own resize listener
+  // takes 1.2 s (longer than any preparation may): the page's listeners run
+  // in a task of their own, not in the preparation the background waits for,
+  // so it answers in time and the sidebar carried is open as the tab comes
+  // into view (a late one is cancelled, which closes it).
+  'catchup-slow': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'), keepOpen, boxed('A'),
+    { op: 'page', in: 'B', js: `window.__resized = 0; addEventListener('resize', () => { if (__resized++) return; const until = performance.now() + 1200; while (performance.now() < until); }); const open = () => document.querySelector('margin-sidebar-host')?.dataset.open; addEventListener('visibilitychange', () => { if (document.hidden || window.__atShow) return; window.__atShow = { open: open() }; requestAnimationFrame(() => requestAnimationFrame(() => { __atShow.later = open(); })); }, true); return document.hidden ? 'hidden, slow' : 'shown?'` },
+    { op: 'eval', in: 'B', js: `const cancel = Margin.content.cancelPreparedShow; globalThis.__cancelled = 0; Margin.content.cancelPreparedShow = (token) => { __cancelled++; return cancel(token); }; return 'counting'` },
+    wait(300),
+    switchTo('A', 'B', { show: 'hover' }), shown('B'),
+    checkPage('B', 'B: the sidebar it carried is open as it comes into view, and a frame after', `__atShow.open === 'true' && __atShow.later === 'true'`, 3000),
+    check('B', 'B: its preparation wasn\'t cancelled (late)', `__cancelled === 0`),
+    checkPage('B', 'B: its own resize listener ran, once', `__resized === 1`, 3000),
+    { op: 'page', in: 'B', js: 'return JSON.stringify(window.__atShow)' },
+  ],
+  // A preparation with little time left before the background stops waiting
+  // leaves the catch-up to the show; one with time does it, the page's resize
+  // event in a task right after the answer.
+  'catchup-late': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'), keepOpen, boxed('A'), wait(300),
+    { op: 'page', in: 'B', js: `window.__resized = 0; addEventListener('resize', () => __resized++); return document.hidden ? 'hidden' : 'shown?'` },
+    { op: 'eval', in: 'B', js: `const { windowId, tabId } = Margin.content.getState(); const answer = await Margin.content.prepareForShow({ token: 'late', tabId, windowId, until: Date.now() + 100 }); Margin.content.cancelPreparedShow('late'); return JSON.stringify(answer)` },
+    wait(200),
+    checkPage('B', 'B: prepared with 100 ms left: no catch-up (the page not yet told of its box)', `document.hidden && __resized === 0`, 500),
+    { op: 'eval', in: 'B', js: `const { windowId, tabId } = Margin.content.getState(); let during = 0; const count = () => during++; addEventListener('resize', count); const answer = await Margin.content.prepareForShow({ token: 'early', tabId, windowId, until: Date.now() + 900 }); removeEventListener('resize', count); globalThis.__resizedDuring = during; Margin.content.cancelPreparedShow('early'); return JSON.stringify({ answer, during })` },
+    check('B', 'B: prepared with time: the page\'s resize event not inside the preparation', `__resizedDuring === 0`),
+    checkPage('B', 'B: and right after it, still hidden, once', `document.hidden && __resized === 1`, 1000),
+  ],
+  // A tab loaded behind the page and shown for the first time (opened after
+  // Margin started: introduced, arriving covered, as real tabs are): what
+  // changed on its <html> or <body> while it was hidden (Margin's own mark,
+  // the placeholder handed over: content/layout.js syncPlaceholder; a page's
+  // class; the cover's style) asks for a read of <body>. Made in the
+  // preparation, not as it comes into view (1 ms after the show, before its
+  // first frame, in 3 runs before).
+  'catchup-loaded': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'),
+    { op: 'open', name: 'B', url: '/p/B' }, drawn('B'), wait(300),
+    { op: 'page', in: 'B', js: `window.__ev = []; new MutationObserver((r) => { for (const x of r) for (const n of x.addedNodes) if (n.localName === 'margin-read') __ev.push(['read', performance.now(), document.hidden]); }).observe(document.documentElement, { childList: true }); addEventListener('visibilitychange', () => __ev.push([document.hidden ? 'hidden' : 'shown', performance.now()]), true); return 'watching'` },
+    { op: 'eval', in: 'A', js: `${ID} const request = Margin.content.send('activateTab', { tabId: id('B') }); Margin.content.startSwitching(id('B'), request); return JSON.stringify(await request)` },
+    shown('B'),
+    check('B', 'B: introduced first, then prepared covered', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.introduced === true && e.preparation?.outcome === 'ready' && !e.error)`, 2000),
+    wait(300),
+    { op: 'page', in: 'B', js: 'return JSON.stringify(__ev.map(([what, at, hidden]) => [what, Math.round(at), hidden]))' },
+    checkPage('B', 'B: its <html> marked while hidden (the placeholder handed over)', `document.documentElement.dataset.marginDocked === 'off'`),
+    checkPage('B', 'B: the read made while hidden, none as it came into view', `const shownAt = __ev.findLast((e) => e[0] === 'shown')?.[1]; return shownAt > 0 && __ev.some(([what, at, hidden]) => what === 'read' && hidden && at < shownAt) && !__ev.some(([what, at]) => what === 'read' && at >= shownAt && at < shownAt + 100)`, 300),
+  ],
   // A page that navigated in front (a link, the address bar), in a tab WebKit
   // had already seen in the window: its first return isn't introduced, as
   // WebKit holds the page before for its paint (only a tab Safari restored as

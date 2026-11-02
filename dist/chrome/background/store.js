@@ -5,7 +5,7 @@
 // never writes.
 import * as M from '../state/model.js';
 import * as O from '../shared/owner.js';
-import { OPEN_TABS, OPEN_TABS_KEYS, fromStorage, openTabsCurrent, sameStored, storedName, toStorage } from '../shared/stored.js';
+import { FAVICONS, FAVICONS_MARK, OPEN_TABS, OPEN_TABS_KEYS, fromStorage, openTabsCurrent, sameStored, storedName, toStorage } from '../shared/stored.js';
 import { recordEmptyStart } from './diagnostics.js';
 /** @import { State } from '../../types/margin' */
 
@@ -152,10 +152,13 @@ async function read() {
   await decided();
   const names = M.STATE_KEYS.map(storedName);
   // The old names too, for a first start after an update (shared/stored.js).
-  const raw = await api.storage.local.get([...new Set([...names, ...M.STATE_KEYS])]);
+  const raw = await api.storage.local.get([...new Set([...names, ...M.STATE_KEYS, FAVICONS_MARK])]);
   const next = M.normalizeState(fromStorage(raw));
   // First run: persist defaults so readers (content scripts) see a full state.
   const missing = M.STATE_KEYS.filter((key) => !(storedName(key) in raw));
+  // Icons kept by a build before their mark: written again with it, once, so
+  // pages read them only when they change (shared/stored.js readForPage).
+  if (FAVICONS in raw && !(FAVICONS_MARK in raw)) missing.push(FAVICONS);
   if (!('spaces' in raw) && role === 'owner') {
     console.info('[margin] storage was empty at start (a first install, or Safari cleared Margin\'s data): starting from the open tabs');
     recordEmptyStart();
@@ -191,7 +194,13 @@ async function flush() {
   const keys = [...unsaved];
   unsaved.clear();
   try {
-    await api.storage.local.set(toStorage(cache, keys, { origin: me.origin, since: me.since, synced }));
+    // The icons' mark in a set() of its own, once the icons are stored: Safari
+    // writes one set()'s keys in no set order and stops at the first that
+    // fails, so a new mark could land over the old icons, and a page holding
+    // them would never read the new ones (shared/stored.js readForPage).
+    const { [FAVICONS_MARK]: mark, ...values } = toStorage(cache, keys, { origin: me.origin, since: me.since, synced });
+    await api.storage.local.set(values);
+    if (mark !== undefined) await api.storage.local.set({ [FAVICONS_MARK]: mark });
     retryMs = 250;
   } catch (err) {
     console.warn('[margin] saving', keys.join(', '), `failed; trying again in ${retryMs}ms:`, err?.message ?? err);

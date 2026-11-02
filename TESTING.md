@@ -590,6 +590,16 @@ Keep-ready now holds the six tabs you used last in the space shown, not every ta
 - [ ] If they stay high: whether they come in bursts about a minute apart (Margin's background started again by its alarm each minute: an extension's background start shows as `WebPageProxy::loadServiceWorker` in `/usr/bin/log show --last 5m --predicate 'process == "Safari" AND eventMessage CONTAINS "loadServiceWorker"'`), or right after tab updates for tabs Safari hasn't loaded. Either way, note it: keep-ready should still leave those tabs alone.
 - [ ] A tab Safari unloaded still loads only when you click it, and once you've been to it and left, switching back has no flash.
 
+## Lighter page work (2026-11-02)
+
+Pages read less of Margin's storage, a hidden tab finishes its page's work before it's shown, and Chrome doesn't draw the sidebar where it can't be seen.
+
+- [ ] **Icons:** visit a site you haven't been to with Margin, then go to a tab you'd left a while ago (behind, maybe suspended) and back: the new site's icon is in both sidebars, not its letter. The same after a Safari relaunch, and after updating Margin with `npm run safari`.
+- [ ] Icons, tabs, spaces, pins and settings look right in every tab after switching around for a while, with Keep open on and off; and on Margin's new-tab page (⌘T).
+- [ ] **Switching to tabs left behind:** with Keep open on, change the sidebar's width in one tab, then switch with the sidebar to tabs that were behind: each comes up at the new width with its page laid out for it in its first frame, with no shift, jump or flash after it. The same on sites with a layout that changes with the window's width (a news site, a docs site), and on a tab loaded behind (⌘-click a link) shown for the first time.
+- [ ] Switching feels no slower on heavy sites (a big web app, a long page) than before, and the sidebar you switched from (hovered open) is still open on them as they come up. If one is slow or closes it: Start page → Settings → Switch log (development) → Copy; the switch's `preparation` says how long it took (`timeout` past 0.9 s).
+- [ ] **Chrome, Margin only in full screen** (the default): in an ordinary window nothing of Margin shows, as before. Make it full screen: the sidebar is there at once with every tab, the right space and width, Keep open as it was; hover the left edge in auto-hide: it slides in with its rows, no empty sidebar first. Leave full screen and come back: the same. With Keep open on, the docked sidebar has its site icons as it comes in, not empty slots or letters filling in. With "Use in windows too" from the notice, the sidebar works in the window at once.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.

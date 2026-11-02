@@ -42,6 +42,11 @@ export function startPageLink(send) {
   function setZoom(box, { scale, x, y, moving }) {
     if (can) say(JSON.stringify({ ...box, scale, tx: x, ty: y, moving }));
   }
+  // A hidden tab about to be shown: the page's world does now what it put off
+  // until then (content/page/box.js catchUp). Nothing to do with no box.
+  function catchUp() {
+    if (can && shown != null) say('catch-up');
+  }
 
   // ---- sheets the page can't read ---------------------------------------------
   // Another origin's, with no CORS: unreadable to any script here, so media
@@ -147,5 +152,5 @@ export function startPageLink(send) {
   }, true);
   document.addEventListener('DOMContentLoaded', () => { if (boxed()) fetchUnreadable(); });
 
-  return { setBox, setZoom, can };
+  return { setBox, setZoom, catchUp, can };
 }

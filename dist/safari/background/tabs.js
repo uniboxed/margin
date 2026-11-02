@@ -246,7 +246,7 @@ async function prepareTabForShow(tab, { token, carry = null, scroll = null, budg
       target: { tabId: tab.id },
       injectImmediately: true,
       func: prepareSidebarInPage,
-      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered }],
+      args: [{ token, tabId: tab.id, windowId: tab.windowId, scroll: top, carry, covered, until: at + budget }],
     }).then((rows) => {
       const answer = rows?.[0]?.result;
       return answer?.ready ? result('ready') : result('not ready', answer?.reason ?? 'no answer');

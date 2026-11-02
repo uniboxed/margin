@@ -281,11 +281,12 @@ export function startSheets(box) {
     }
   }
   const answersNow = () => aboutBody.map(ask).join();
+  function hasCheck() {
+    hasFrame = 0;
+    if (answersNow() !== answers) box.bodyMayHaveChanged();
+  }
   const hasWatch = new MutationObserver(() => {
-    hasFrame ||= requestAnimationFrame(() => {
-      hasFrame = 0;
-      if (answersNow() !== answers) box.bodyMayHaveChanged();
-    });
+    hasFrame ||= requestAnimationFrame(hasCheck);
   });
   function noteHas(selector) {
     if (!selector.includes(HAS) || hasRules.has(selector)) return;
@@ -363,7 +364,7 @@ export function startSheets(box) {
     else frame = requestAnimationFrame(pass);
   }
   const isStyle = (node) => node.nodeName === 'STYLE' || node.nodeName === 'style' || node.nodeName === 'LINK';
-  const watch = new MutationObserver((records) => {
+  function observed(records) {
     if (!box.on) return;
     const hidden = document.hidden;
     let changed = false;
@@ -401,7 +402,8 @@ export function startSheets(box) {
       else if (root !== document && root instanceof ShadowRoot) dirtyRoots.add(root);
     }
     if (changed || addedRoots.size || dirtyRoots.size || rescan.size || document.styleSheets.length !== sheetCount) soon();
-  });
+  }
+  const watch = new MutationObserver(observed);
   const STYLE_TEXT = { characterData: true, subtree: true };
   const WATCH = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'media', 'disabled'] };
   const roots = new WeakSet();
@@ -435,6 +437,19 @@ export function startSheets(box) {
     box.loaded(); // a site's own reset, late
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && waiting) pass(); });
+  // Before a hidden tab is shown, rather than after (box.js catchUp): what
+  // changed in this very turn, then the pass and the `:has()` answers a hidden
+  // tab puts off, or a frame it never got to.
+  box.onCatchUp.push(() => {
+    const told = watch.takeRecords();
+    if (told.length) observed(told);
+    if (frame) cancelAnimationFrame(frame);
+    if (frame || waiting) pass();
+    if (hasWatch.takeRecords().length || hasFrame) {
+      cancelAnimationFrame(hasFrame);
+      hasCheck();
+    }
+  });
   box.onMove.push(() => { if (box.on) soon(); });
   addedRoots.add(document.documentElement); // injected late: what's there already
   document.addEventListener('margin:sheets', pass); // content/page-link.js

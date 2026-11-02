@@ -16,7 +16,7 @@ import { createSwitching, backgroundSwitches, NEW_TAB } from '../shared/switchin
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
 import { readyInPage } from '../shared/page-ready.js';
-import { fromStorage, openTabsCurrent, takesChanges, withChanges } from '../shared/stored.js';
+import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -691,18 +691,41 @@ export function startCore({ onTheme } = {}) {
     layout.show(why === 'toggle' ? 'toggle' : 'hover');
   }
 
-  function render() {
+  function drawRows() {
     if (!state || !view) return;
-    if (fullscreenOnly() && fullscreen === null) return; // until the background says (above)
-    // Known tab → its window. Until the background answers `hello`, guess, so
-    // the sidebar draws straight from storage instead of waiting for it.
-    windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
     // Just shown (or started): its own tab's space while the state catches up
     // (shared/view.js). Not once a switch was asked for from here (a swipe to
     // another space: the window's space is then the one it went to).
     const justShown = (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt;
     view.update(state, { windowId, tabId, newTabPending, switchingTo, justShown, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
     pendingScroll = null;
+  }
+  let idleRows = 0;
+  function drawRowsIdle() {
+    if (idleRows) return;
+    const run = () => {
+      idleRows = 0;
+      if (!active() && !document.hidden) drawRows();
+    };
+    idleRows = typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 200);
+  }
+  function render() {
+    if (!state || !view) return;
+    if (fullscreenOnly() && fullscreen === null) return; // until the background says (above)
+    // Known tab → its window. Until the background answers `hello`, guess, so
+    // the sidebar draws straight from storage instead of waiting for it.
+    windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
+    // Chrome, a window that isn't full screen: the sidebar can't be seen, and
+    // its rows aren't drawn as part of this (a draw on every load and every
+    // change, in every tab). With Keep open, the tab in sight draws them once
+    // its page is idle, so the sidebar it shows as Margin comes in has its
+    // icons there (drawn in that very turn, they were empty for 3–4 frames in
+    // headless Chrome, icons 40 ms away); the others, and without Keep open
+    // (the sidebar comes in closed), as Margin comes in (setFullscreen, hello,
+    // the setting turned off all render), in the same turn, before the layout
+    // shows it.
+    if (!fullscreenOnly() || fullscreen === true) drawRows();
+    else if (!document.hidden && state.settings?.sidebarPinnedOpen) drawRowsIdle();
     Margin.content.onState?.(state, { tabId, windowId });
     wasActive = active();
     layout.settle();
@@ -734,29 +757,38 @@ export function startCore({ onTheme } = {}) {
   }
 
   /** @param {{ tabId: number, windowId: number } | null} [show] */
-  let reading = 0; // full reads under way
+  let reading = 0; // reads of storage under way
   // A change taken (hidden) while a read was under way: that read may be
   // older than it and put the old value back, so the page reads again before
   // it takes changes from events once more.
   let staleRead = false;
-  let changedDuringRead = 0; // hidden changes taken while a full read was under way
+  let changedDuringRead = 0; // hidden changes taken while a read was under way
+  // Storage keys this page has seen, in reads and change events: read again
+  // with the rest (shared/stored.js pageKeys).
+  const seenKeys = new Set();
   async function refresh(show = null) {
     const mine = ++version;
     reading++;
     const missedBefore = changedDuringRead;
     let raw;
     try {
-      raw = await api.storage.local.get(null);
+      // All of storage the first time; then all but the site icons, unless
+      // they changed (shared/stored.js readForPage): otherwise some 300 KB of
+      // icons, 6–18 ms in the page in the WebKit host, at every preparation
+      // and every show.
+      // The icons not read are the ones the change events kept current.
+      raw = await readForPage((keys) => api.storage.local.get(keys), () => state, seenKeys);
     } finally {
       reading--;
     }
+    for (const key of Object.keys(raw)) seenKeys.add(key);
     const missed = changedDuringRead !== missedBefore;
     if (missed) staleRead = true;
     const next = fromStorage(raw);
     if (mine === version) ownerSeen(next.owner, next.openTabsBy);
     timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
-    if (!missed) staleRead = false; // what's drawn now is all of storage, newer than any change taken before
+    if (!missed) staleRead = false; // what's drawn now is storage as read (the icons as the events kept them), newer than any change taken before
     // Brought to the front without preparation (a tab Safari restores as it's
     // shown): until `hello` says which tab this is, the background's note does
     // (background/tabs.js noteShowing), with how the page before had the
@@ -893,6 +925,8 @@ export function startCore({ onTheme } = {}) {
   // Never longer than this hidden (a switch that didn't happen, or a page
   // shown without its frames running).
   const ARRIVAL_MAX_MS = 3000;
+  // A preparation's catch-up, at most this close to the background's limit.
+  const CATCH_UP_MS = 150;
   // Out of sight but still there: unlike visibility or display, opacity keeps
   // the page's focus (a field it focused, or autofocus, as it's shown).
   const HIDE_PROP = 'opacity';
@@ -962,8 +996,10 @@ export function startCore({ onTheme } = {}) {
   // world (background/tabs.js), not tabs.sendMessage: Safari can leave an old
   // content-script listener behind after an update. Everything necessary for
   // the destination's first frame is committed before this promise answers.
-  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean }} [context] */
-  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false } = {}) => {
+  // `until`: when the background stops waiting for the answer (a late one is
+  // cancelled).
+  /** @param {{ token?: string, tabId?: number, windowId?: number, scroll?: number, carry?: 'hover' | 'toggle' | null, covered?: boolean, until?: number }} [context] */
+  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, scroll, carry, covered = false, until } = {}) => {
     if (!token || !Number.isInteger(targetId) || targetWindow == null) return { ready: false, reason: 'bad context' };
     // A newer preparation owns this hidden page. Undo only the transient open
     // state from the older one; ordinary Keep open is restored by hide().
@@ -986,6 +1022,11 @@ export function startCore({ onTheme } = {}) {
       preparedShow.carry = carry;
     }
     if (covered) arriveCovered();
+    // What the page's world put off until the tab is in sight (a move of its
+    // box, the drawing above's included, and reads its styles asked for):
+    // done now, so the first frame shown has it (content/page/box.js catchUp).
+    // Not with little time left: done as it's shown then, as before.
+    if (document.hidden && !(Number.isFinite(until) && /** @type {number} */ (until) - Date.now() < CATCH_UP_MS)) link.catchUp();
     // Force style/layout in this WebProcess before the executeScript result
     // crosses back to Safari's UI process. Hidden pages do not reliably run
     // requestAnimationFrame, so an animation-frame acknowledgement would hang.
@@ -1020,12 +1061,14 @@ export function startCore({ onTheme } = {}) {
   const onlyShowing = (changes) => Object.keys(changes).every((key) => key === 'showing');
   // Hidden, a page keeps its state current from the change events (they
   // carry the values) without drawing it: shown() draws it at once. Shown,
-  // it takes them the same way and draws them; it reads all of storage
+  // it takes them the same way and draws them; it reads storage
   // again only when an event can't be taken (shared/stored.js takesChanges),
   // before its first drawing, and whenever it's shown.
   let changedWhileHidden = false;
   api.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || dormant || (!firstRender && onlyShowing(changes))) return;
+    if (area !== 'local' || dormant) return;
+    for (const key of Object.keys(changes)) seenKeys.add(key);
+    if (!firstRender && onlyShowing(changes)) return;
     if (firstRender || !state) return void refresh();
     if (!document.hidden) {
       if (tabId == null || staleRead || !takesChanges(changes, { reading, openTabsBy: /** @type {any} */ (state).openTabsBy })) return void refresh();
@@ -1034,6 +1077,7 @@ export function startCore({ onTheme } = {}) {
       version++; // newer than any read started before it
       state = next;
       if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
+      if (onlyMark(changes)) return;
       if (!zoomAnswered && 'pageZoom' in changes) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
       render();
       requestTheme(); // only if it isn't here by now

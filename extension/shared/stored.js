@@ -24,6 +24,19 @@ export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByW
 export const OPEN_TABS = 'openTabs';
 /** Other state keys stored under another name. */
 const RENAMED = Object.freeze({ lostTabs: 'lostTabs2' });
+// Site icons, nearly all of what's stored (some 300 KB of 305 with 120 sites),
+// and a short mark of them, written once they're stored (background/store.js
+// flush): a page reads the icons once, then again only when the mark has
+// changed (readForPage).
+export const FAVICONS = 'favicons';
+export const FAVICONS_MARK = 'faviconsMark';
+/** @param {Record<string, { at?: number }> | null | undefined} favicons */
+export function faviconsMark(favicons) {
+  const icons = Object.values(favicons ?? {});
+  // Every icon learned or fetched again has a new time, and one dropped
+  // (the cap) goes with a newer one learned.
+  return `${icons.length}:${icons.reduce((sum, icon) => sum + (Number(icon?.at) || 0), 0)}`;
+}
 
 /** @param {string} key a state key @returns {string} the storage key it's kept under */
 export const storedName = (key) => (OPEN_TABS_KEYS.includes(key) ? OPEN_TABS : /** @type {Record<string, string>} */ (RENAMED)[key] ?? key);
@@ -61,7 +74,52 @@ export function toStorage(state, keys, { origin, since, synced }) {
   if (keys.some((key) => OPEN_TABS_KEYS.includes(key))) {
     out[OPEN_TABS] = { origin, since, synced, ...Object.fromEntries(OPEN_TABS_KEYS.map((key) => [key, state[key]])) };
   }
+  // Written in a set() of its own after the rest (background/store.js flush):
+  // never a new mark over old icons.
+  if (keys.includes(FAVICONS)) out[FAVICONS_MARK] = faviconsMark(state[FAVICONS]);
   return out;
+}
+/** Only the icons' mark changed: nothing to draw (the icons came before it). @param {Record<string, unknown>} changes */
+export const onlyMark = (changes) => Object.keys(changes).every((key) => key === FAVICONS_MARK);
+
+// What a page reads besides the icons, whatever it has seen so far: the open
+// tabs and what the sidebar, the palette and the page's own start use. Keys
+// seen in a read or a change event are read too. Never the old names of the
+// open tabs (read in full when `openTabs` isn't there), lostTabs (only the
+// background's), or the envelope an old development build kept.
+const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', FAVICONS_MARK]);
+const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup']);
+/** @param {Iterable<string>} seen storage keys a page has seen @returns {string[]} */
+export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key));
+
+/**
+ * What a page reads of storage.local (content/core.js refresh), as storage
+ * would return it for fromStorage: all of it the first time (`page()`, the
+ * state the page has, is null), then pageKeys, and the icons only when their
+ * mark isn't the one the page had as the read started. Not read, they're the
+ * page's own, as it has them once the read is back: it keeps them current
+ * from the change events, with their mark, and a page that missed one (Safari
+ * suspends hidden tabs) finds the mark changed.
+ * @param {(keys: string[] | null) => Promise<Record<string, any>>} get storage.local.get
+ * @param {() => Record<string, any> | null} page
+ * @param {Iterable<string>} [seen] storage keys the page has seen
+ * @returns {Promise<Record<string, any>>}
+ */
+export async function readForPage(get, page, seen = []) {
+  const before = page();
+  if (!before) return get(null);
+  const raw = await get(pageKeys(seen));
+  // The open tabs only under their old names (just updated from a build
+  // before them): a full read knows them (fromStorage).
+  if (!(OPEN_TABS in raw)) return get(null);
+  if (raw[FAVICONS_MARK] !== before[FAVICONS_MARK]) {
+    // Newer than the mark read, if anything: the mark kept is then older
+    // than the icons, and they're read again next time, never the other way.
+    return { ...raw, ...(await get([FAVICONS])) };
+  }
+  const now = page() ?? before;
+  const { [FAVICONS_MARK]: _, ...rest } = raw;
+  return { ...rest, ...(FAVICONS in now ? { [FAVICONS]: now[FAVICONS] } : {}), ...(FAVICONS_MARK in now ? { [FAVICONS_MARK]: now[FAVICONS_MARK] } : {}) };
 }
 
 /**
@@ -106,8 +164,8 @@ export const sameStored = (a, b) => a === b || JSON.stringify(a) === JSON.string
 
 /**
  * Whether a page already drawn can take what storage.onChanged reported
- * straight into its state (withChanges), rather than reading all of storage
- * again (some 300 KB, most of it site icons). Not while a full read is under
+ * straight into its state (withChanges), rather than reading storage again
+ * (readForPage). Not while a read is under
  * way (the event may be older or newer than what it brings), for a removal
  * (no newValue: storage was cleared), or while the open tabs are still under
  * their old names (only a full read knows them then).

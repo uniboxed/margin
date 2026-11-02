@@ -7,7 +7,7 @@ import * as V from '../../shared/view.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
-import { fromStorage, takesChanges, withChanges } from '../../shared/stored.js';
+import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../../shared/stored.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
 import { installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
 import { createSwitching, backgroundSwitches, NEW_TAB } from '../../shared/switching.js';
@@ -497,13 +497,15 @@ export function mount({ api, self, send, windowed = false }) {
   let pendingScroll = null; // applied by the next refresh
   let lastShown = Date.now();
   const JUST_SHOWN_MS = 2000;
-  let reading = 0; // full reads under way
+  let reading = 0; // reads of storage under way
   async function refresh() {
     const mine = ++version;
     reading++;
     let raw;
     try {
-      raw = await api.storage.local.get(null);
+      // All but the site icons once drawn, unless they changed (as web pages:
+      // shared/stored.js readForPage).
+      raw = await readForPage((keys) => api.storage.local.get(keys), () => state);
     } finally {
       reading--;
     }
@@ -538,7 +540,8 @@ export function mount({ api, self, send, windowed = false }) {
     const next = withChanges(state, changes);
     if (!next.spaces?.length) return void refresh();
     version++; // newer than any read started before it
-    draw(next);
+    if (onlyMark(changes)) state = next;
+    else draw(next);
   });
   // Shown again (or first): the current state, at the window's scroll position.
   const shown = () => {
