@@ -206,7 +206,7 @@ const activated = owned(({ tabId, windowId }) => {
   const left = Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === windowId && t.active && t.id !== tabId);
   keepReady.noteUsed();
   keepReady.shown(tabId);
-  if (left) keepReady.noteLeft(left.id); // DEVELOPMENT DIAGNOSTICS
+  if (left) keepReady.noteLeft(left.id); // (a switch back to it may find it suspended: background/tabs.js likelySuspended)
   if (left) keepReady.holdNow(left.id); // (not one a held key only passed through)
   userSwitched(tabId, windowId);
   tabShown(tabId);

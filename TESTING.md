@@ -635,6 +635,20 @@ Keep-ready still keeps the six tabs used last running, but no more than six at a
 - [ ] Leave Margin's start page and a Safari settings page for a tab, a few times: the tabs you used just before still come back with no flash.
 - [ ] Switch log (Start page → Settings → Switch log (development) → Copy): each switch has `heldAtAsk`, `hiddenForMs`, and under `preparation` a `timings` object (`lagMs`, `readMs`, `renderMs`, `catchUpMs`, `layoutMs`). Send it along with what felt slow.
 
+## A tab Safari suspended is kicked awake (2026-11-02)
+
+A switch with the sidebar to a tab you haven't been to for a while brings it to the front and straight back first, out of sight, so Safari wakes it at full speed. If it doesn't wake in time, the tab is shown at once instead of after almost a second.
+
+- [ ] Leave a few tabs alone for 10 minutes or more (more than six tabs in the space, so keep-ready doesn't hold them all), then click them in the sidebar one at a time. No flash of another tab, no black, and no slower than clicking them in Safari's tab bar.
+- [ ] The tab you click from never flickers or goes blank for an instant as you click. If it does even once, note it: Margin turns the kick off for the rest of the Safari session when it notices (the background console then says "no more introductions until Safari restarts").
+- [ ] Switch log (Start page → Settings → Switch log (development) → Copy): switches to tabs left a while have `kicked` with `outcome: "resumed"` and a small `wakeMs` (under about 60). `kickMs` is how long Safari took to answer the kick: about 110 is normal; near 250 means Safari held its window waiting for that tab's page to draw. `"stuck"`, or `stuck: true` with no `kicked`, means the tab was shown without waiting. Send the log along with how those switches looked.
+- [ ] While clicking tabs left alone a while: Safari never freezes for an instant (scrolling the page you're on, or the sidebar, stops responding for a moment as you click). If it does, note it with the switch log (`kickMs` near 250 on those switches): the kick would then cost more than it saves.
+- [ ] Right after relaunching Safari, click tabs that haven't loaded yet: the page you're on stays, covered by the empty screen with its spinner, then the tab comes up drawn: never Safari's dark empty view, and no flip to the tab and back before the cover.
+- [ ] Safari's log, right after such a switch: `/usr/bin/log show --last 2m --predicate 'process == "Safari" AND (eventMessage CONTAINS "sending ProcessDidResume" OR eventMessage CONTAINS "processDidResume")'`. For a kicked tab, the resume's reason should be a visibility or foreground one, not `WebFrame_GetFrameInfo`, and it should come before the tab's final selection.
+- [ ] Sites in tabs you come back to (a chat, a mail tab) behave as before: no messages marked read, no sound starting, for being kicked.
+- [ ] Hold ⌃⌘↓ through tabs you haven't used for a while: the tabs passed through aren't flipped to and back (no flicker), as before. The tab you stop on comes up as a click does.
+- [ ] Chrome: switching behaves as before.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.

@@ -92,6 +92,37 @@ const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return 
 const HOLD_TABS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 const COUNT_HOLDS = `const live = new Set(); const add = addEventListener, remove = removeEventListener; window.addEventListener = function (type, fn, options) { if (type === 'pageswap') live.add(fn); return add.call(this ?? window, type, fn, options); }; window.removeEventListener = function (type, fn, options) { if (type === 'pageswap') live.delete(fn); return remove.call(this ?? window, type, fn, options); }; window.__holds = () => live.size; return 'counting holds'`;
 
+// kick, kick-stuck: a switch to a tab whose wake hasn't answered 60 ms after
+// it went out kicks it first (tabs.js kickTab: to the front and the page in
+// front straight back, in one turn), as Safari's resume of a suspended
+// process makes it wait. The host never suspends a process, so here the
+// page's main thread is busy for `ms` from the moment the wake's hold reaches
+// it (keepAwake listens for pageswap). The kick must not hide the page in
+// front (its one hide is the real switch), and comes before the real show;
+// the tab woken again in time ('resumed') is prepared and drawn before it's
+// shown; not ('stuck'), it's shown at once. B is shown once first, in the
+// host's tab bar: only a tab Margin knows has a page (left in its time) is
+// kicked or shown without its wake.
+const BUSY_AT_HOLD = (ms) => `let armed = true; const add = addEventListener; window.addEventListener = function (type, fn, options) { if (armed && type === 'pageswap') { armed = false; const until = performance.now() + ${ms}; while (performance.now() < until); } return add.call(this ?? window, type, fn, options); }; return 'busy at the next hold'`;
+const kicked = (ms, outcome, label, entry) => [
+  { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+  wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),
+  // (Keep-ready off: a tab it holds isn't kicked.)
+  { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepTabsReadyMinutes: 0 } }))' },
+  { op: 'show', name: 'B' }, wait(300), { op: 'show', name: 'A' }, wait(300),
+  { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
+  { op: 'page', in: 'B', js: `window.__from = __vis.length; ${BUSY_AT_HOLD(ms)}` },
+  switchTo('A', 'B'), shown('B'),
+  { op: 'eval', in: 'B', js: `${ID} return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1))` },
+  { op: 'page', in: 'B', js: `return JSON.stringify(__vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]))` },
+  checkPage('A', 'A: hidden once (the switch), not by the kick', `JSON.stringify(__visibility) === '["hidden"]'`),
+  // (The kick's two changes, then its real show: a page busy as they come
+  // reads its state once it gets to them.)
+  checkPage('B', 'B: its visibility changed twice for the kick, before its real show', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.length === 3 && v[2] === 'shown'`),
+  check('B', `B: kicked, ${outcome}: ${label}`, `${ID} const e = (await Margin.content.send('switchLog')).filter((x) => x.kind === 'switch' && x.tabId === id('B')).at(-1); return !!e && !e.error && e.kicked?.outcome === '${outcome}' && e.kicked.at < e.shownAfter && (${entry})`),
+  noPageErrors('B'),
+];
+
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core, the background
   // the theme); switching through Margin, including to a tab Safari unloaded.
@@ -1248,6 +1279,8 @@ export const SCENARIOS = {
   // (before, every hold stayed its 75 s, and a run of switches held them all).
   // A hold is a keepAwake waiting in the page's own world: its pageswap
   // listener, counted there.
+  kick: kicked(150, 'resumed', 'woken again in time, prepared and drawn before it was shown', `e.preparation?.outcome === 'ready' && e.barrier?.some((b) => b.how === 'drawn') && !e.stuck`),
+  'kick-stuck': kicked(700, 'stuck', 'not woken again in time, shown at once', `e.stuck === true && !e.barrier`),
   'keep-ready-cap': [
     ...HOLD_TABS.map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
     ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),

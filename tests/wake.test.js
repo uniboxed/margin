@@ -33,7 +33,32 @@ const fake = {
   oldDocument: new Set(),
   // How long a page takes to go through a rendering update (paintBarrierInPage).
   barrierMs: () => 60,
+  // Tabs whose process Safari suspended (suspend()): their scripts wait for
+  // its resume.
+  suspended: new Map(),
+  // Keep-ready's holds (a keepAwake with a key) run on until the test ends.
+  holdsRun: false,
 };
+// A tab's process suspended: a script there waits until WebKit resumes it, at
+// background priority `backgroundMs` after the first script reached it, or
+// once the tab is brought to the front (its view in the window: a foreground
+// resume, `shownMs` later), unless `shownResumes` is false (a kick that
+// doesn't resume it).
+function suspend(tabId, { backgroundMs = 2000, shownMs = 5, shownResumes = true } = {}) {
+  let resume = () => {};
+  const resumed = new Promise((resolve) => { resume = resolve; });
+  let timer = null;
+  const done = () => { clearTimeout(timer); fake.suspended.delete(tabId); resume(); };
+  fake.suspended.set(tabId, {
+    wait() {
+      timer ??= setTimeout(done, backgroundMs);
+      return resumed;
+    },
+    shown() {
+      if (shownResumes) setTimeout(done, shownMs);
+    },
+  });
+}
 // readyInPage, as a page answers it: 'loaded' once its status says complete,
 // 'painted' once it has painted, 'timeout' at its limit.
 const readiness = async (tabId, [ms]) => {
@@ -61,6 +86,7 @@ globalThis.chrome = {
     // to the front (before it answers).
     update: async (id, change) => {
       fake.updates.push({ id, change, at: Date.now() });
+      if (change.active) fake.suspended.get(id)?.shown();
       const tab = fake.tabs.get(id);
       const was = tab.active;
       for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
@@ -80,8 +106,11 @@ globalThis.chrome = {
     reload: async (id) => { fake.updates.push({ id, change: { reload: true }, at: Date.now() }); },
   },
   scripting: {
-    executeScript: ({ target, world, func, args, files }) => {
-      fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func: func ?? { name: 'files' }, args, files });
+    executeScript: ({ target, world, func, args, files, again = false }) => {
+      if (!again) fake.scripts.push({ tabId: target.tabId, at: Date.now(), world, func: func ?? { name: 'files' }, args, files });
+      if (fake.holdsRun && func === keepAwake && typeof args?.[1] === 'string') return new Promise(() => {});
+      const suspended = fake.suspended.get(target.tabId);
+      if (suspended) return suspended.wait().then(() => chrome.scripting.executeScript({ target, world, func, args, files, again: true }));
       if (fake.scriptError?.(target.tabId)) return sleep(1).then(() => [{ result: null, error: 'Failed to execute script.' }]);
       const delay = fake.scriptDelay(target.tabId, func);
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
@@ -103,12 +132,12 @@ globalThis.chrome = {
   },
 };
 
-const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { repairCutOff, wakeTab, focusTab, isFocusing, isIntroduction, isNeverShown, likelySuspended, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const { tapLog } = await import('../extension/background/diagnostics.js');
-const { keepReadyState, noteLeft } = await import('../extension/background/keep-ready.js');
+const { holdNow, keepReadyState, noteLeft, noteUsed, resetKeepReady, switchFacts } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
-const { mutate, decided, load } = await import('../extension/background/store.js');
+const { mutate, decided, load, markSynced } = await import('../extension/background/store.js');
 const V = await import('../extension/shared/view.js');
 const { navigate, showSpace } = await import('../extension/background/navigation.js');
 
@@ -120,6 +149,8 @@ function reset(tabs) {
   fake.barrierMs = () => 60;
   fake.scriptError = null;
   fake.cutOff = null;
+  fake.suspended = new Map();
+  fake.holdsRun = false;
   fake.reply = true;
   fake.contentScripts = undefined;
   fake.tabs = new Map(tabs.map((t) => [t.id, { windowId: 1, status: 'complete', active: false, ...t }]));
@@ -454,15 +485,16 @@ test('wake: nothing to wake for the tab in front, a page Margin can\'t reach, or
 
 test('wake: a switch right after an early wake (a press, the palette) reuses it', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 7, url: 'https://g.test/' }]);
-  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 5 : 200;
+  // (Answering within 60 ms of going out: one slower is kicked, below.)
+  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 5 : 50;
   const early = wakeTab(7);
-  await sleep(150);
+  await sleep(30);
   const started = Date.now();
   const focused = await focusTab(7);
   assert.equal(fake.scripts.length, 3, 'no second wake; only the sidebar preparation is added');
   assert.equal(focused.preparation.outcome, 'ready');
   const waited = fake.updates[0].at - started;
-  assert.ok(waited < 120, `only the rest of the early wake: ${waited}ms`);
+  assert.ok(waited < 45, `only the rest of the early wake: ${waited}ms`);
   assert.equal((await early).outcome, 'awake');
 });
 
@@ -1634,11 +1666,11 @@ test('restoring: not a page Margin can\'t run in; nor, with restores off, is an 
 test('restoring: the check for a tab with no page doesn\'t hold up a switch to one whose process is slow to wake (its preparation starts meanwhile)', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 92, url: 'https://asleep.test/' }], {});
   try {
-    fake.scriptDelay = () => 300; // a suspended process, back in 300ms
+    fake.scriptDelay = () => 50; // a slow process (one slower than 60 ms is kicked: below)
     const asked = Date.now();
     await focusTab(92);
-    assert.ok(prepares(92)[0].at - asked < 50, 'preparation started with the wake');
-    assert.ok(fake.updates[0].at - asked < 420, `switched once both were done (${fake.updates[0].at - asked}ms)`);
+    assert.ok(prepares(92)[0].at - asked < 20, 'preparation started with the wake');
+    assert.ok(fake.updates[0].at - asked < 95, `switched once both were done (${fake.updates[0].at - asked}ms)`);
     assert.deepEqual(fake.updates.map((u) => u.id), [92]);
   } finally {
     done();
@@ -2119,4 +2151,399 @@ test('keys: the tabs a held key only passes through are marked for keep-ready (n
   await navigate('next-tab', 'key', 1);
   assert.equal(front(), last);
   assert.deepEqual(keepReadyState().passed, [first, second]);
+});
+
+// ---- a tab whose process Safari suspended (tabs.js kickTab) ----------------------
+
+// The switch log's entry for the last switch to `tabId`, from a run of `run`.
+async function logged(tabId, run) {
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  try {
+    const result = await run();
+    return { result, entry: entries.filter((e) => e.kind === 'switch' && e.tabId === tabId).at(-1) };
+  } finally {
+    tapLog(null);
+  }
+}
+const cancelsOf = (id, token) => scriptsNamed(id, 'cancelSidebarInPage').filter((x) => x.args[0] === token);
+
+test('kick: a tab Safari has likely suspended (left 8 s ago or more, not held) is brought to the front and the page in front straight back 40 ms after its wake went out, then woken again, prepared under a token of its own and drawn before it\'s shown', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 200, url: 'https://slept.test/' }], []);
+  try {
+    const events = [];
+    fake.activated = (info) => events.push([info.tabId, isIntroduction(info)]);
+    noteLeft(200, Date.now() - 10_000);
+    suspend(200);
+    const asked = Date.now();
+    const { result, entry } = await logged(200, () => focusTab(200));
+    assert.equal(result.tab?.id, 200);
+    assert.deepEqual(fake.updates.map((u) => u.id), [200, 1, 200], 'kicked, then shown');
+    assert.deepEqual(events, [[200, true], [1, true], [200, false]], 'only the real switch is told as one');
+    const [first, renewed, ...more] = keepAwakes(200);
+    const kickedAfter = fake.updates[0].at - first.at;
+    assert.ok(kickedAfter >= 35 && kickedAfter < 65, `kicked ${kickedAfter} ms after its wake went out (a running process answers by then)`);
+    assert.ok(renewed && !more.length && renewed.at >= fake.updates[1].at, 'woken again after the kick (its hold ended as it was shown)');
+    const [beside, prepared, ...others] = prepares(200);
+    assert.ok(beside && beside.at < fake.updates[0].at, 'a preparation beside the wake, as for any tab (one awake after all is prepared meanwhile)');
+    assert.ok(cancelsOf(200, beside.args[0].token).some((x) => x.at <= fake.updates[2].at), 'called off after the kick');
+    assert.ok(prepared && !others.length && prepared.at >= fake.updates[1].at && prepared.args[0].token.endsWith(':kicked'), 'prepared again after the kick');
+    assert.equal(result.preparation.outcome, 'ready');
+    assert.equal(result.preparation.token, prepared.args[0].token);
+    const [drawn] = barriers(200);
+    assert.ok(drawn && drawn.at >= fake.updates[1].at, 'its paint barrier after the kick');
+    assert.ok(fake.updates[2].at - drawn.at >= 55, 'shown once it has drawn');
+    assert.ok(fake.updates[2].at - asked < 250, `shown ${fake.updates[2].at - asked} ms after the ask (its background resume: 2 s)`);
+    assert.equal(entry.kicked?.outcome, 'resumed');
+    assert.ok(entry.kicked.at < 65 && entry.kicked.wakeMs < 40 && entry.kicked.kickMs < 20, JSON.stringify(entry.kicked));
+    assert.equal(entry.stuck, null);
+  } finally {
+    tabShown(200);
+    done();
+  }
+});
+
+test('kick: a tab not known to be suspended whose wake hasn\'t answered 60 ms after it went out is kicked then; the preparation sent beside its wake is called off (now, and once it answers) and made again', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 201, url: 'https://slow.test/' }], []);
+  try {
+    noteLeft(201, Date.now() - 1_000); // (a page there: it was in front)
+    suspend(201);
+    const { result, entry } = await logged(201, () => focusTab(201));
+    assert.deepEqual(fake.updates.map((u) => u.id), [201, 1, 201]);
+    const [first] = keepAwakes(201);
+    const kickedAfter = fake.updates[0].at - first.at;
+    assert.ok(kickedAfter >= 55 && kickedAfter < 110, `kicked ${kickedAfter} ms after its wake went out`);
+    const [early, after, ...more] = prepares(201);
+    assert.ok(early && after && !more.length && early.at < fake.updates[0].at && after.at >= fake.updates[1].at);
+    assert.ok(after.args[0].token.endsWith(':kicked'));
+    assert.equal(result.preparation.token, after.args[0].token);
+    await sleep(20);
+    const cancels = cancelsOf(201, early.args[0].token);
+    assert.ok(cancels.length === 2 && cancels[0].at <= fake.updates[2].at, 'the early one called off before the show, and once it answered');
+    assert.equal(entry.kicked?.outcome, 'resumed');
+  } finally {
+    tabShown(201);
+    done();
+  }
+});
+
+test('kick: an early wake (a press, the palette) that ran out of time without an answer counts as stuck: the tab is kicked as the switch starts', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 209, url: 'https://pressed.test/' }], []);
+  try {
+    noteLeft(209, Date.now() - 1_000);
+    suspend(209);
+    assert.equal((await wakeTab(209)).outcome, 'timeout');
+    const asked = Date.now();
+    const { entry } = await logged(209, () => focusTab(209));
+    assert.deepEqual(fake.updates.map((u) => u.id), [209, 1, 209]);
+    assert.ok(fake.updates[0].at - asked < 30, `kicked ${fake.updates[0].at - asked} ms after the ask`);
+    assert.equal(entry.kicked?.outcome, 'resumed');
+  } finally {
+    tabShown(209);
+    done();
+  }
+});
+
+test('stuck: with introductions off, a wake not answered 150 ms after it went out isn\'t waited for: the preparation is called off and the tab shown at once (its show resumes it)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 202, url: 'https://stuck.test/' }], []);
+  try {
+    fake.session.introductionsOff = true;
+    resetIntroductions();
+    noteLeft(202, Date.now() - 1_000);
+    suspend(202);
+    const { result, entry } = await logged(202, () => focusTab(202));
+    assert.equal(result.tab?.id, 202);
+    assert.deepEqual(fake.updates.map((u) => u.id), [202], 'not kicked');
+    const [first] = keepAwakes(202);
+    const shownAfter = fake.updates[0].at - first.at;
+    assert.ok(shownAfter >= 140 && shownAfter < 230, `shown ${shownAfter} ms after its wake went out (its background resume: 2 s)`);
+    const [early] = prepares(202);
+    assert.ok(cancelsOf(202, early.args[0].token).some((x) => x.at <= fake.updates[0].at), 'its preparation called off before the show');
+    assert.equal(entry.stuck, true);
+    assert.equal(entry.kicked, null);
+    assert.equal(entry.wake.outcome, 'timeout');
+  } finally {
+    tabShown(202);
+    done();
+  }
+});
+
+test('stuck: a kick that doesn\'t resume the process (no answer 150 ms after it): the tab is shown at once, the preparation made after the kick called off', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 203, url: 'https://deep.test/' }], []);
+  try {
+    noteLeft(203, Date.now() - 60_000);
+    suspend(203, { shownResumes: false });
+    const asked = Date.now();
+    const { result, entry } = await logged(203, () => focusTab(203));
+    assert.equal(result.tab?.id, 203);
+    assert.deepEqual(fake.updates.map((u) => u.id), [203, 1, 203]);
+    const after = fake.updates[2].at - fake.updates[0].at;
+    assert.ok(after >= 140 && after < 230, `shown ${after} ms after the kick`);
+    assert.ok(fake.updates[2].at - asked < 280);
+    const [prepared] = prepares(203);
+    assert.ok(cancelsOf(203, prepared.args[0].token).some((x) => x.at <= fake.updates[2].at), 'called off before the show');
+    assert.equal(barriers(203).length, 0, 'no paint barrier (it would wait behind the resume too)');
+    assert.equal(entry.kicked?.outcome, 'stuck');
+    assert.equal(entry.kicked.wakeMs, null);
+    assert.equal(entry.stuck, true);
+  } finally {
+    tabShown(203);
+    done();
+  }
+});
+
+test('kick: none with too little time left before the page stops waiting: the tab is shown at once instead', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 208, url: 'https://late.test/' }], []);
+  try {
+    noteLeft(208, Date.now() - 10_000);
+    suspend(208);
+    const { result, entry } = await logged(208, () => focusTab(208, { deadline: Date.now() + 500 }));
+    assert.equal(result.tab?.id, 208);
+    assert.deepEqual(fake.updates.map((u) => u.id), [208]);
+    assert.equal(entry.stuck, true);
+  } finally {
+    tabShown(208);
+    done();
+  }
+});
+
+test('kick: the page in front hidden for an instant during a kick turns kicks off with introductions for the session; the next stuck wake isn\'t kicked', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 206, url: 'https://k1.test/' }, { id: 207, url: 'https://k2.test/' }], []);
+  try {
+    for (const id of [206, 207]) {
+      noteLeft(id, Date.now() - 10_000);
+      suspend(id);
+    }
+    await focusTab(206);
+    assert.deepEqual(fake.updates.map((u) => u.id), [206, 1, 206]);
+    pageBlinked(1, { hiddenAt: fake.updates[1].at + 2, shownAt: fake.updates[1].at + 10 });
+    await sleep(0);
+    assert.equal(fake.session.introductionsOff, true);
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    const { entry } = await logged(207, () => focusTab(207));
+    assert.deepEqual(fake.updates.map((u) => u.id), [207]);
+    assert.equal(entry.stuck, true);
+  } finally {
+    tabShown(206);
+    tabShown(207);
+    done();
+  }
+});
+
+test('kick: never a tab keep-ready holds (its process runs: a slow wake there is a busy page), nor a page loading; their wakes are waited for as before', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 204, url: 'https://held.test/' }, { id: 205, url: 'https://loading.test/', status: 'loading' }], []);
+  try {
+    await decided();
+    await markSynced();
+    await mutate((st) => M.upsertTab(st, fake.tabs.get(204), Date.now() - 60_000));
+    fake.holdsRun = true;
+    noteUsed();
+    for (const id of [204, 205]) noteLeft(id, Date.now() - 10_000);
+    holdNow(204);
+    await sleep(10);
+    assert.equal(switchFacts(204).heldAtAsk, true, 'held');
+    fake.scriptDelay = (id, func) => ([204, 205].includes(id) && func?.name === 'pageThere' ? 250 : 1);
+    for (const id of [204, 205]) {
+      putInFront(1);
+      await knownInFront(1);
+      fake.updates = [];
+      const asked = Date.now();
+      const { entry } = await logged(id, () => focusTab(id));
+      assert.deepEqual(fake.updates.map((u) => u.id), [id], `tab ${id}: not kicked`);
+      assert.ok(fake.updates[0].at - asked >= 240, `tab ${id}: its wake waited for`);
+      assert.equal(entry.kicked, null);
+      assert.equal(entry.stuck, null);
+    }
+  } finally {
+    resetKeepReady();
+    tabShown(204);
+    tabShown(205);
+    done();
+  }
+});
+
+test('kick: a held key passing through tabs Safari suspended doesn\'t kick them (only the tab it stops on goes through focusTab)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 210, url: 'https://p1.test/' }, { id: 211, url: 'https://p2.test/' }, { id: 212, url: 'https://p3.test/' }], []);
+  try {
+    await mutate(() => {
+      let st = M.defaultState();
+      for (const id of [1, 210, 211, 212]) st = M.upsertTab(st, { ...fake.tabs.get(id), index: id }, Date.now());
+      return M.activateTab(st, 1, 1, Date.now());
+    });
+    const s = await load();
+    const step = (from) => V.cycleTab(s, 1, from, 1);
+    const first = step(1), second = step(first), last = step(second);
+    for (const id of [first, second]) {
+      noteLeft(id, Date.now() - 10_000);
+      suspend(id);
+    }
+    navigate('next-tab', 'key', 1);
+    navigate('next-tab', 'key', 1);
+    await navigate('next-tab', 'key', 1);
+    assert.equal(front(), last);
+    assert.deepEqual(fake.updates.map((u) => u.id), [first, second, last], 'each shown once, none kicked');
+  } finally {
+    for (const id of [210, 211, 212]) tabShown(id);
+    done();
+  }
+});
+
+test('likely suspended: hidden 8 s or more, shown before, at rest, not held, no wake answered there in the last 1.5 s; not known how long: no', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 220, url: 'https://l1.test/' }, { id: 221, url: 'https://l2.test/' }, { id: 222, url: 'https://l3.test/' }], [222]);
+  try {
+    const now = Date.now();
+    const tab = (id, extra = {}) => ({ ...fake.tabs.get(id), ...extra });
+    noteLeft(220, now - 7_900);
+    assert.equal(likelySuspended(tab(220), now), false, 'left 7.9 s ago');
+    assert.equal(likelySuspended(tab(220), now + 100), true, 'left 8 s ago');
+    assert.equal(likelySuspended(tab(220, { status: 'loading' }), now + 100), false, 'loading');
+    assert.equal(likelySuspended(tab(221), now), false, 'not known when it was left');
+    noteLeft(222, now - 10_000);
+    assert.equal(likelySuspended(tab(222), now), false, 'never shown (introduced instead)');
+    await wakeTab(220, { renew: true });
+    assert.equal(likelySuspended(tab(220), Date.now() + 1_400), false, 'its wake answered 1.4 s ago');
+    assert.equal(likelySuspended(tab(220), Date.now() + 1_600), true, '1.6 s ago');
+  } finally {
+    for (const id of [220, 221]) tabShown(id);
+    done();
+  }
+});
+
+test('kick: with Safari\'s answer to the two updates taking 110 ms, or 260 ms (WebKit holding the window for the tab\'s page to draw), the new wake still has its 150 ms: a kick that resumed the process comes out resumed, prepared and drawn', async () => {
+  for (const [answerMs, id] of [[110, 213], [260, 214]]) {
+    const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: 'https://slept.test/' }], []);
+    try {
+      noteLeft(id, Date.now() - 10_000);
+      suspend(id, { shownMs: 5 });
+      fake.scriptDelay = (tabId) => (tabId === id ? 40 : 1); // the resumed page answers in 40 ms
+      const { result, entry } = await logged(id, () => withUpdate(async (update, tabId, change) => {
+        const answer = await update(tabId, change);
+        await sleep(answerMs);
+        return answer;
+      }, () => focusTab(id)));
+      assert.deepEqual(fake.updates.map((u) => u.id), [id, 1, id]);
+      assert.equal(entry.kicked?.outcome, 'resumed', `${answerMs} ms: ${JSON.stringify(entry.kicked)}`);
+      assert.ok(entry.kicked.kickMs >= answerMs, `the kick's own time in the switch log (${entry.kicked.kickMs} ms)`);
+      assert.ok(entry.kicked.wakeMs >= 35 && entry.kicked.wakeMs < 80, `the new wake's answer, from Safari's (${entry.kicked.wakeMs} ms)`);
+      assert.equal(entry.stuck, null);
+      assert.equal(result.preparation.outcome, 'ready');
+      assert.ok(barriers(id).some((x) => x.at >= fake.updates[1].at && x.at < fake.updates[2].at), 'drawn before the show');
+    } finally {
+      tabShown(id);
+      done();
+    }
+  }
+});
+
+test('kick: a tab awake after all (hidden 10 s, its wake answering in 30 ms) isn\'t kicked, and its preparation goes out beside its wake', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 215, url: 'https://running.test/' }], []);
+  try {
+    noteLeft(215, Date.now() - 10_000);
+    fake.scriptDelay = (_id, func) => (func?.name === 'pageThere' || func?.name === 'prepareSidebarInPage' ? 30 : 5);
+    const asked = Date.now();
+    const { result, entry } = await logged(215, () => focusTab(215));
+    assert.deepEqual(fake.updates.map((u) => u.id), [215], 'not kicked');
+    assert.equal(entry.kicked, null);
+    const [prepared, ...more] = prepares(215);
+    assert.ok(prepared && !more.length && prepared.at - asked < 10, 'prepared beside its wake, once');
+    assert.equal(result.preparation.outcome, 'ready');
+    assert.ok(fake.updates[0].at - asked < 60, `shown ${fake.updates[0].at - asked} ms after the ask`);
+  } finally {
+    tabShown(215);
+    done();
+  }
+});
+
+test('kick: one Safari leaves in front calls off the preparation sent beside the wake (it would land on the page on screen)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 216, url: 'https://kept.test/' }], []);
+  try {
+    setIntroductionHooks({ activated: () => {} });
+    fake.activated = (info) => isIntroduction(info);
+    noteLeft(216, Date.now() - 1_000);
+    suspend(216);
+    // Safari answers the page in front's update without bringing it back.
+    const result = await withUpdate(async (update, id, change) => (id === 1 ? (fake.updates.push({ id, change, at: Date.now() }), { ...fake.tabs.get(1), active: true }) : update(id, change)), () => focusTab(216));
+    assert.deepEqual(fake.updates.map((u) => u.id), [216, 1]);
+    assert.equal(front(), 216);
+    assert.equal(result.tab?.id, 216);
+    const [early] = prepares(216);
+    assert.ok(early && cancelsOf(216, early.args[0].token).length >= 1, 'called off');
+  } finally {
+    tabShown(216);
+    done();
+  }
+});
+
+test('kick: a wake that fails before its scripts go out (its permission check throws) fails the switch, as before, rather than leaving it waiting', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 217, url: 'https://throws.test/' }], []);
+  const contains = chrome.permissions.contains;
+  chrome.permissions.contains = () => { throw new Error('boom'); };
+  // (The same rejection reaches promises that aren't this test's: the
+  // preparation beside the wake, the permission cache. Kept out of the runner.)
+  const listeners = process.listeners('unhandledRejection');
+  process.removeAllListeners('unhandledRejection');
+  process.on('unhandledRejection', () => {});
+  try {
+    noteLeft(217, Date.now() - 1_000);
+    const outcome = await Promise.race([focusTab(217).then(() => 'shown', (err) => `failed: ${err.message}`), sleep(1500).then(() => 'still waiting')]);
+    assert.equal(outcome, 'failed: boom');
+    assert.equal(isFocusing(217), false);
+    await sleep(20);
+  } finally {
+    process.removeAllListeners('unhandledRejection');
+    for (const listener of listeners) process.on('unhandledRejection', listener);
+    chrome.permissions.contains = contains;
+    tabShown(217);
+    done();
+  }
+});
+
+// A tab Safari unloaded whose scripts fail only after 200 ms (its UI process
+// busy, as just after a relaunch), from restoring() (below).
+function slowNoPage(id) {
+  const run = chrome.scripting.executeScript;
+  chrome.scripting.executeScript = (options) => {
+    const slow = options.target.tabId === id && noPage.has(id);
+    const ran = run(options);
+    return slow ? ran.then((rows) => sleep(200).then(() => rows), (err) => sleep(200).then(() => { throw err; })) : ran;
+  };
+  return () => { chrome.scripting.executeScript = run; };
+}
+
+test('kick: none for a tab not known to have a page (Safari unloaded it, and says so slowly): restored behind the covered page, as before', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 218, url: 'https://unloaded.test/' }], { 218: { loadMs: 300, startMs: 80 } });
+  const undo = slowNoPage(218);
+  try {
+    const { result, entry } = await logged(218, () => focusTab(218));
+    assert.equal(result.tab?.id, 218);
+    assert.equal(entry.kicked, null);
+    assert.equal(entry.stuck, null);
+    assert.ok(['painted', 'loaded'].includes(entry.restored), `restored: ${entry.restored}`);
+    assert.deepEqual(fake.updates.map((u) => u.id), [218, 1, 218, 1, 218], 'restored, introduced, shown');
+    assert.deepEqual(toldFront(), [['switching', 218, 'now'], ['switch-done', 218, null]]);
+  } finally {
+    undo();
+    done();
+  }
+});
+
+test('kick: a tab left before whose page has gone since (no answer before or after the kick, which starts its load) is waited for behind the covered page once found loading, not shown at once', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 219, url: 'https://gone.test/' }], { 219: { loadMs: 300, startMs: 80 } });
+  const undo = slowNoPage(219);
+  try {
+    noteLeft(219, Date.now() - 1_000);
+    const { result, entry } = await logged(219, () => focusTab(219));
+    assert.equal(result.tab?.id, 219);
+    assert.equal(entry.kicked?.outcome, 'stuck');
+    assert.equal(entry.stuck, null, 'not shown at once');
+    assert.ok(['painted', 'loaded'].includes(entry.loadWait), `waited for: ${entry.loadWait}`);
+    assert.deepEqual(fake.updates.map((u) => u.id), [219, 1, 219, 1, 219], 'kicked, introduced once loaded, shown');
+    assert.equal(fake.tabs.get(219).status, 'complete');
+    assert.deepEqual(toldFront(), [['switching', 219, 'now'], ['switch-done', 219, null]], 'the page in front covered meanwhile');
+  } finally {
+    undo();
+    done();
+  }
 });

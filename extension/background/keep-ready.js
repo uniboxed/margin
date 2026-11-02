@@ -76,8 +76,8 @@ const NO_PAGE_KEY = 'keepReadyNoPage';
 // The holds placed and not known to be over (their keys and ends), in
 // storage.session too: a background that started again releases those a run
 // before it placed, once they aren't chosen (it would otherwise leave them to
-// run out, 75 s). And when each tab was last left (DEVELOPMENT DIAGNOSTICS: the
-// switch log's hiddenForMs).
+// run out, 75 s). And when each tab was last left (tabs.js likelySuspended, and
+// the switch log's hiddenForMs).
 const HOLDS_KEY = 'keepReadyHolds';
 const LEFT_KEY = 'keepReadyLeftAt';
 export const KEEP_READY_ALARM = 'margin-keep-ready'; // ticks if the background was stopped meanwhile
@@ -108,7 +108,7 @@ let lingering = new Set(); // left holds kept though their tab isn't chosen (ano
 const passed = new Map();
 const noPage = new Map(); // tabId → when to try it again: a hold found no page there
 const pageEvents = new Map(); // tabId → how many times its page changed while a hold was on its way
-const leftAt = new Map(); // tabId → when it was last left (DEVELOPMENT DIAGNOSTICS)
+const leftAt = new Map(); // tabId → when it was last left (hiddenFor)
 
 /** @param {import('../../types/margin').State} s */
 const minutesOf = (s) => {
@@ -309,20 +309,27 @@ function release(tabId, s, now) {
   return true;
 }
 
-// DEVELOPMENT DIAGNOSTICS: when a tab was left (background.js activated), for
-// the switch log's hiddenForMs; whether keep-ready holds a tab, as a switch
-// to it is asked for (heldAtAsk; a hold ends as its tab is shown).
+// When a tab was left (background.js activated): how long it has been hidden
+// tells a switch to it whether Safari has likely suspended it (tabs.js
+// likelySuspended), whether keep-ready is on or not; and the switch log's
+// hiddenForMs. Whether keep-ready holds a tab, as a switch to it is asked for
+// (heldAtAsk; a hold ends as its tab is shown).
 export function noteLeft(tabId, now = Date.now()) {
   if (!platform?.keepTabsReady) return;
   leftAt.set(tabId, now);
   save(LEFT_KEY);
 }
+/** @param {number} tabId @returns {number | null} null: not known to this background (nor the one before it) */
+export const hiddenFor = (tabId, now = Date.now()) => (leftAt.has(tabId) ? now - /** @type {number} */ (leftAt.get(tabId)) : null);
+// A hold found no page there (Safari unloaded the tab), and nothing has said
+// it has one since.
+export const hasNoPage = (/** @type {number} */ tabId) => noPage.has(tabId);
 // A hold sure to be running (sent to a running process: `sure`, holdKeys)
 // that runs at least a second more. Not one still on its way or only sent to
 // a tab left a while ago: that may be waiting behind a suspended process's
 // resume, and the tab shows dark all the same.
 export const isHeld = (/** @type {number} */ tabId, now = Date.now()) => [...(holdKeys.get(tabId)?.values() ?? [])].some((h) => h.sent && h.sure && h.until > now + 1000);
-export const switchFacts = (/** @type {number} */ tabId, now = Date.now()) => ({ heldAtAsk: platform?.keepTabsReady ? isHeld(tabId, now) : null, hiddenForMs: leftAt.has(tabId) ? now - leftAt.get(tabId) : null });
+export const switchFacts = (/** @type {number} */ tabId, now = Date.now()) => ({ heldAtAsk: platform?.keepTabsReady ? isHeld(tabId, now) : null, hiddenForMs: hiddenFor(tabId, now) }); // DEVELOPMENT DIAGNOSTICS
 
 // The tab just left, at once: Safari can suspend it within a second, before
 // the set comes round again. It had a page in front. Not before this copy's
