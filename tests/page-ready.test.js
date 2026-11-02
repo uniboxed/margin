@@ -103,8 +103,9 @@ function fakePage({ href = 'https://a.test/', readyState = 'loading', bodyOpacit
     leave(type = 'pagehide') {
       listeners.get(key('window', type))?.();
     },
-    paint(name = 'first-contentful-paint') {
-      paints.push({ name });
+    // A paint entry, dated now (`ago` ms back), on the page's clock (performance.now()).
+    paint(name = 'first-contentful-paint', ago = 0) {
+      paints.push({ name, startTime: Date.now() - ago });
       for (const o of observers) o.fn();
     },
     // An element (`localName`, options as above) or, with `text`, a text in `parent`.
@@ -172,6 +173,55 @@ test('readyInPage: a first contentful paint that is Margin\'s (its sidebar, the 
     drawn.add(localName, options);
     assert.equal(await ready(drawn, 300), 'painted', localName);
   }
+});
+
+test('readyInPage: still parsing (its parser held by a script at the end of its body), its own content drawn: painted once its first contentful paint is 150 ms old, not before; an app\'s empty shell still parsing isn\'t', async () => {
+  const article = 'An article whose parser waits on a script at the end of its body. '.repeat(4);
+  const page = fakePage();
+  page.add('#text', { data: 'Article', parent: page.add('h1') });
+  page.add('#text', { data: article, parent: page.add('p') });
+  page.paint();
+  const asked = answer(page, 2000);
+  const started = Date.now();
+  await sleep(60);
+  assert.equal(asked.how, null, 'a few lines painted a moment ago');
+  await asked.done;
+  assert.equal(asked.how, 'painted');
+  assert.ok(Date.now() - started >= 140 && Date.now() - started < 400, `once its paint was 150 ms old (${Date.now() - started}ms)`);
+  assert.equal(page.listening(), 0);
+  const old = fakePage();
+  old.add('#text', { data: article, parent: old.add('p') });
+  old.paint('first-contentful-paint', 400);
+  assert.equal(await ready(old, 300), 'painted', 'painted long ago: at once');
+  const shell = fakePage();
+  shell.paint('first-contentful-paint', 400); // Margin's
+  shell.add('div', { rect: [0, 0, 1200, 800] });
+  assert.equal(await ready(shell, 300), 'timeout', 'nothing of its own drawn');
+  assert.equal(shell.listening(), 0);
+});
+
+test('readyInPage: still parsing, a scrap of its own drawn (a site\'s header: a menu word, a small logo) isn\'t painted, as WebKit takes it (over 200 characters or 32 × 32 px drawn while parsing); once parsed, it is', async () => {
+  const header = fakePage();
+  header.add('#text', { data: 'Menu  Sign in', parent: header.add('nav') });
+  header.add('svg', { rect: [10, 10, 24, 24] }); // its logo
+  header.paint('first-contentful-paint', 400);
+  const asked = answer(header, 400);
+  await sleep(250);
+  assert.equal(asked.how, null, 'its header alone, still parsing');
+  header.state('interactive');
+  await asked.done;
+  assert.equal(asked.how, 'painted', 'parsed: its header is what it has');
+  assert.equal(header.listening(), 0);
+  const hero = fakePage();
+  hero.add('#text', { data: 'Menu', parent: hero.add('nav') });
+  hero.add('img', { rect: [0, 40, 1200, 400], complete: true, naturalWidth: 1200 });
+  hero.paint('first-contentful-paint', 400);
+  assert.equal(await ready(hero, 300), 'painted', 'a large image drawn, still parsing');
+  const long = fakePage();
+  const text = 'A long enough paragraph of the page\'s own text. ';
+  for (let i = 0; i < 6; i++) long.add('#text', { data: text, parent: long.add('p') });
+  long.paint('first-contentful-paint', 400);
+  assert.equal(await ready(long, 300), 'painted', 'over 200 characters, still parsing');
 });
 
 test('readyInPage: loaded on its load event, at once if it has; a timeout at the limit; the empty page a tab starts with is blank', async () => {

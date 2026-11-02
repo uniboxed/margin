@@ -2124,7 +2124,7 @@ test('restoring: once painted, its wake is renewed and its arrival cover asked f
   }
 });
 
-test('restoring: a page just loaded behind gets 500 ms for its preparation; one slower is shown unprepared, its preparation called off', async () => {
+test('restoring: a page just loaded behind gets 300 ms for its preparation; one slower is shown unprepared, its preparation called off', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 168, url: 'https://slowprep.test/' }], { 168: { loadMs: 3000 } });
   try {
     fake.painted.add(168);
@@ -2133,8 +2133,214 @@ test('restoring: a page just loaded behind gets 500 ms for its preparation; one 
     assert.equal(result.tab?.id, 168);
     assert.equal(result.preparation.outcome, 'timeout');
     const waited = fake.updates[4].at - fake.updates[3].at;
-    assert.ok(waited >= 480 && waited < 700, `shown ${waited}ms after its introduction`);
+    assert.ok(waited >= 280 && waited < 500, `shown ${waited}ms after its introduction`);
     assert.ok(scriptsNamed(168, 'cancelSidebarInPage').some((x) => x.at <= fake.updates[4].at), 'its preparation called off before the show');
+  } finally {
+    done();
+  }
+});
+
+// Its document not there yet (a server slow to answer): every script there
+// fails until `commitMs` after `asked` (it has a view, no page of its own).
+const commitsAt = (id, asked, commitMs) => {
+  const scriptError = fake.scriptError;
+  fake.scriptError = (tabId) => (tabId === id && Date.now() - asked < commitMs) || scriptError(tabId);
+};
+
+test('restoring: a tab whose own document hasn\'t answered by the 2.5 s limit (a server slow to answer) stays behind the covered page until it does, then is introduced and shown; the switch log says when it committed', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 180, url: 'https://slowserver.test/' }], { 180: { loadMs: 8000 } });
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  try {
+    const asked = Date.now();
+    commitsAt(180, asked, 3000);
+    fake.painted.add(180); // painted as soon as it's there
+    const result = await focusTab(180);
+    assert.equal(result.tab?.id, 180);
+    assert.deepEqual(fake.updates.map((u) => u.id), [180, 1, 180, 1, 180], 'restored, introduced once there, shown');
+    assert.ok(fake.updates[2].at - asked >= 2950, `not shown with no document at 2.5 s (introduced at ${fake.updates[2].at - asked}ms)`);
+    assert.ok(fake.updates[4].at - asked < 3500, `shown soon after it answered (${fake.updates[4].at - asked}ms)`);
+    assert.deepEqual(toldFront(), [['switching', 180, 'now'], ['switch-done', 180, null]], 'the page in front covered all along');
+    const logged = entries.find((e) => e.kind === 'switch' && e.tabId === 180);
+    assert.equal(logged?.restored, 'painted');
+    assert.ok(logged.committed >= 2950 && logged.committed < 3400, `committed at ${logged.committed}ms`);
+  } finally {
+    tapLog(null);
+    done();
+  }
+});
+
+test('restoring: a tab whose document never answers is shown at the hard limit (5 s, or what the page that asked waits less the switch\'s own time), not before', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 182, url: 'https://deadserver.test/' }], { 182: { loadMs: 20000 } });
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  try {
+    const asked = Date.now();
+    commitsAt(182, asked, 60000);
+    const result = await focusTab(182, { deadline: asked + 5200 });
+    assert.equal(result.tab?.id, 182);
+    const shownAt = fake.updates.at(-1).at - asked;
+    assert.ok(shownAt >= 3650 && shownAt < 4300, `shown at the page's deadline less the switch's own time (${shownAt}ms)`);
+    assert.deepEqual(fake.updates.map((u) => u.id), [182, 1, 182], 'nothing to introduce: shown as it is');
+    const logged = entries.find((e) => e.kind === 'switch' && e.tabId === 182);
+    assert.deepEqual([logged?.restored, logged?.committed], ['loading', null]);
+  } finally {
+    tapLog(null);
+    done();
+  }
+});
+
+test('restoring: past the 2.5 s limit with no document yet, Escape or another click (a newer switch) and a key press still end the wait at once', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 183, url: 'https://slow1.test/' }, { id: 184, url: 'https://slow2.test/' }], { 183: { loadMs: 20000 }, 184: { loadMs: 20000 } });
+  try {
+    let asked = Date.now();
+    commitsAt(183, asked, 60000);
+    const first = focusTab(183);
+    const firstEnded = first.then(() => Date.now());
+    await sleep(3000);
+    const escaped = Date.now();
+    await focusTab(1); // Escape on the page (cancelSwitch: its own tab)
+    assert.equal((await first).superseded, true, 'not shown at 2.5 s');
+    assert.ok(await firstEnded - escaped < 150, `ended at once (${await firstEnded - escaped}ms)`);
+    assert.deepEqual(fake.updates.map((u) => u.id), [183, 1]);
+    assert.equal(front(), 1);
+    fake.updates = [];
+    asked = Date.now();
+    commitsAt(184, asked, 60000);
+    let pressed = false;
+    setTimeout(() => { pressed = true; }, 2800);
+    const hurried = await focusTab(184, { hurry: () => pressed });
+    assert.deepEqual([hurried.tab, hurried.hurried], [null, true]);
+    assert.ok(Date.now() - asked < 3000, `given up at the press (${Date.now() - asked}ms)`);
+  } finally {
+    done();
+  }
+});
+
+test('restoring: its wake renewed and its arrival cover asked for as soon as its own document answers, while its paint is still waited for: on its paint it\'s introduced at once', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 181, url: 'https://overlap.test/' }], { 181: { loadMs: 3000 } });
+  try {
+    const asked = Date.now();
+    let paintedAt = 0;
+    setTimeout(() => { fake.painted.add(181); paintedAt = Date.now(); }, 700);
+    await focusTab(181);
+    assert.deepEqual(fake.updates.map((u) => u.id), [181, 1, 181, 1, 181]);
+    const arrivals = scriptsNamed(181, 'coverArrivalInPage');
+    assert.equal(arrivals.length, 1, 'asked for once');
+    assert.ok(arrivals[0].at - asked < 400, `asked for as its document answered (${arrivals[0].at - asked}ms), not after its paint`);
+    const renew = scriptsNamed(181, 'pageThere').filter((x) => x.at > fake.updates[1].at).at(0);
+    assert.ok(renew && Math.abs(renew.at - arrivals[0].at) < 50, 'its wake renewed with it');
+    assert.ok(fake.updates[2].at - paintedAt < 80, `introduced once painted (${fake.updates[2].at - paintedAt}ms after)`);
+  } finally {
+    done();
+  }
+});
+
+test('restoring: its wake answering after its page has drawn doesn\'t call for a second paint barrier (the wake changes nothing in the page)', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 185, url: 'https://slowwake.test/' }], { 185: { loadMs: 3000 } });
+  try {
+    fake.painted.add(185);
+    fake.scriptDelay = (id, func) => (noPage.has(id) ? null : id === 185 && func?.name === 'pageThere' ? 150 : 1);
+    await focusTab(185);
+    assert.deepEqual(fake.updates.map((u) => u.id), [185, 1, 185, 1, 185]);
+    const after = barriers(185).filter((x) => x.at >= fake.updates[3].at);
+    assert.equal(after.length, 1, 'one barrier, beside the preparation and the wake');
+    assert.ok(fake.updates[4].at - fake.updates[3].at < 220, `shown once the wake answered (${fake.updates[4].at - fake.updates[3].at}ms after the introduction)`);
+  } finally {
+    done();
+  }
+});
+
+test('restoring: a tab that didn\'t answer when the open tabs were checked (not loaded yet after a relaunch), restored behind: its page is this copy\'s, and isn\'t given a second paint barrier for the cut-off check', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 186, url: 'https://suspect.test/' }], { 186: { loadMs: 3000 } });
+  try {
+    assert.equal(await repairCutOff(fake.tabs.get(186)), false); // no page to ask: a suspect
+    fake.painted.add(186);
+    await focusTab(186);
+    assert.deepEqual(fake.updates.map((u) => u.id), [186, 1, 186, 1, 186]);
+    assert.equal(barriers(186).filter((x) => x.at >= fake.updates[3].at).length, 1);
+  } finally {
+    done();
+  }
+});
+
+test('restoring: its renewed wake running out of time after its page drew (the page busy with a task of its own) calls for a fresh paint barrier just before the show', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 191, url: 'https://wakelate.test/' }], { 191: { loadMs: 3000 } });
+  try {
+    fake.painted.add(191);
+    // Its page busy from its introduction on: its wake's script gets there only after WAKE_MAX_MS.
+    fake.scriptDelay = (id, func) => (noPage.has(id) ? null : id === 191 && func?.name === 'pageThere' && fake.updates.length >= 4 ? 700 : 1);
+    await focusTab(191);
+    assert.deepEqual(fake.updates.map((u) => u.id), [191, 1, 191, 1, 191]);
+    const after = barriers(191).filter((x) => x.at >= fake.updates[3].at);
+    assert.equal(after.length, 2, 'one beside the preparation and the wake, one after the wake ran out of time');
+    assert.ok(fake.updates[4].at - after[1].at < 150, `shown once its page drew again (${fake.updates[4].at - after[1].at}ms after the second barrier was asked)`);
+  } finally {
+    done();
+  }
+});
+
+test('restoring: a document that arrives past the 2.5 s limit is given time to paint (1 s from its arrival, within the hard limit), not shown at once with nothing drawn', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 190, url: 'https://latecommit.test/' }], { 190: { loadMs: 8000 } });
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  try {
+    const asked = Date.now();
+    commitsAt(190, asked, 3000);
+    let paintedAt = Infinity;
+    setTimeout(() => { fake.painted.add(190); paintedAt = Date.now() - asked; }, 3500);
+    const result = await focusTab(190);
+    assert.equal(result.tab?.id, 190);
+    const shownAt = fake.updates.at(-1).at - asked;
+    assert.ok(shownAt > paintedAt, `shown once painted (${shownAt}ms, painted at ${paintedAt}ms)`);
+    assert.ok(shownAt < 3900, `soon after (${shownAt}ms)`);
+    const logged = entries.find((e) => e.kind === 'switch' && e.tabId === 190);
+    assert.equal(logged?.restored, 'painted');
+    assert.ok(logged.committed >= 2950 && logged.committed < 3400, `committed at ${logged.committed}ms`);
+  } finally {
+    tapLog(null);
+    done();
+  }
+});
+
+test('restoring: a page with its document, too busy to answer a question in time, isn\'t taken for one with no document: its late answer that it has painted ends the wait; one that paints nothing is shown at the usual limit, not the hard one', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 193, url: 'https://busy.test/' }, { id: 194, url: 'https://busyblank.test/' }], { 193: { loadMs: 8000, busyMs: 700 }, 194: { loadMs: 8000, busyMs: 600 } });
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  try {
+    let asked = Date.now();
+    fake.painted.add(193);
+    assert.equal((await focusTab(193)).tab?.id, 193);
+    assert.deepEqual(fake.updates.map((u) => u.id), [193, 1, 193, 1, 193]);
+    assert.ok(fake.updates[2].at - asked < 1800, `introduced once its late answer said it had painted (${fake.updates[2].at - asked}ms)`);
+    let logged = entries.find((e) => e.kind === 'switch' && e.tabId === 193);
+    assert.equal(logged?.restored, 'painted');
+    assert.ok(logged.committed != null && logged.committed < 1300, `its document there (${logged.committed}ms)`);
+    fake.updates = [];
+    putInFront(1);
+    asked = Date.now();
+    assert.equal((await focusTab(194)).tab?.id, 194);
+    const shownAt = fake.updates.at(-1).at - asked;
+    assert.ok(shownAt < 3500, `shown at the usual limit, not 5 s (${shownAt}ms)`);
+    logged = entries.find((e) => e.kind === 'switch' && e.tabId === 194);
+    assert.equal(logged?.restored, 'loading');
+    assert.ok(logged.committed != null, 'its document there');
+  } finally {
+    tapLog(null);
+    done();
+  }
+});
+
+test('restoring: a preparation past its time is called off before the show with its page\'s arrival cover kept (the show lifts it)', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 195, url: 'https://slowprep2.test/' }], { 195: { loadMs: 3000 } });
+  try {
+    fake.painted.add(195);
+    fake.scriptDelay = (id, func) => (noPage.has(id) ? null : id === 195 && func?.name === 'prepareSidebarInPage' ? 450 : 1);
+    const result = await focusTab(195);
+    assert.equal(result.preparation.outcome, 'timeout');
+    const cancels = scriptsNamed(195, 'cancelSidebarInPage').filter((x) => x.at <= fake.updates.at(-1).at);
+    assert.equal(cancels.length, 1);
+    assert.deepEqual(cancels[0].args, [result.preparation.token, true], 'its arrival cover kept');
   } finally {
     done();
   }
@@ -2226,7 +2432,7 @@ test('restoring: a question about its paint that its document never answers (the
   }
 });
 
-test('restoring: a page whose document hasn\'t committed by 1.5 s from its load\'s start (a slow server) is waited for up to 2.5 s from the click, then introduced and shown, not shown with no page', async () => {
+test('restoring: a page whose document hasn\'t committed by 1.5 s from its load\'s start (a slow server) is waited for, then given 1 s from its commit to paint (past the 2.5 s from the click), then introduced and shown, not shown with no page', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 301, url: 'https://slowserver.test/' }], { 301: { loadMs: 6000 } });
   try {
     delete fake.local.showing;
@@ -2238,8 +2444,8 @@ test('restoring: a page whose document hasn\'t committed by 1.5 s from its load\
     const result = await focusTab(301, { deadline: asked + 7000 });
     assert.equal(result.tab?.id, 301);
     const shownAt = fake.updates.at(-1).at - asked;
-    assert.ok(shownAt > committedAt, `shown at ${shownAt}ms, its page committed at ${committedAt}ms`);
-    assert.ok(shownAt < 3000, `within the wait (${shownAt}ms)`);
+    assert.ok(shownAt > committedAt + 950, `shown at ${shownAt}ms, its page committed at ${committedAt}ms`);
+    assert.ok(shownAt < committedAt + 1500, `nothing painted 1 s after its commit: shown as far as it got (${shownAt}ms)`);
     assert.deepEqual(fake.updates.map((u) => u.id), [301, 1, 301, 1, 301], 'restored, introduced, shown');
     assert.equal(fake.local.showing?.tabId ?? null, null, 'not shown as a tab with no page');
   } finally {

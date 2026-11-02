@@ -965,16 +965,20 @@ export function startCore({ onTheme } = {}) {
   // the page's focus (a field it focused, or autofocus, as it's shown).
   const HIDE_PROP = 'opacity';
   const HIDE_VALUE = '0';
-  /** @type {{ finish: (options?: { fade?: boolean }) => void } | null} */
+  /** @type {{ finish: (options?: { fade?: boolean }) => void, renew: () => void } | null} */
   let arrival = null;
   const frames = (/** @type {number} */ n) => new Promise((resolve) => {
     const step = () => (n-- <= 0 ? resolve(undefined) : requestAnimationFrame(step));
     requestAnimationFrame(step);
   });
   function arriveCovered() {
+    // Covered already (asked for as its document first answered, while it
+    // loads behind: background/tabs.js waitLoaded): its limit counts from
+    // now, the show still to come, so it doesn't run out just before it.
+    if (arrival) return arrival.renew();
     // Not a page on screen already (Safari left it in front, or the user
     // brought it there): no show is coming to bring it back.
-    if (everShown || arrival || !view?.setCover || !document.hidden) return;
+    if (everShown || !view?.setCover || !document.hidden) return;
     const page = document.body;
     if (!page) return;
     const before = [page.style.getPropertyValue(HIDE_PROP), page.style.getPropertyPriority(HIDE_PROP)];
@@ -1022,8 +1026,14 @@ export function startCore({ onTheme } = {}) {
       else void onShown();
     };
     document.addEventListener('visibilitychange', onVisibility);
-    const limit = setTimeout(() => finish({ fade: !document.hidden }), ARRIVAL_MAX_MS);
-    arrival = { finish };
+    const expire = () => finish({ fade: !document.hidden });
+    let limit = setTimeout(expire, ARRIVAL_MAX_MS);
+    const renew = () => {
+      if (done || !document.hidden) return;
+      clearTimeout(limit);
+      limit = setTimeout(expire, ARRIVAL_MAX_MS);
+    };
+    arrival = { finish, renew };
   }
   // Whether the arrival cover is on (shared/page-ready.js looks past it).
   Margin.content.arrivalHides = () => !!arrival;
@@ -1115,8 +1125,17 @@ export function startCore({ onTheme } = {}) {
     host.getBoundingClientRect();
     return !!arrival;
   };
-  Margin.content.cancelPreparedShow = (token) => {
+  // `keepCover`: the show follows at once (a preparation past its time): the
+  // arrival cover stays for the show to lift, so the show's first paint is
+  // the cover's. Cancelled again without it (the switch failed after all),
+  // the cover is lifted then.
+  let coverKeptFor = null;
+  Margin.content.cancelPreparedShow = (token, { keepCover = false } = {}) => {
     if (!preparedShow || preparedShow.token !== token) {
+      if (!keepCover && token != null && token === coverKeptFor) {
+        coverKeptFor = null;
+        if (document.hidden) arrival?.finish({ fade: false });
+      }
       // Perhaps a preparation that hasn't taken the page yet (above).
       if (typeof token === 'string') {
         calledOff.add(token);
@@ -1126,7 +1145,8 @@ export function startCore({ onTheme } = {}) {
     }
     const { carry } = preparedShow;
     preparedShow = null;
-    arrival?.finish({ fade: false });
+    coverKeptFor = keepCover ? token : null;
+    if (!keepCover) arrival?.finish({ fade: false });
     if (carry && document.visibilityState !== 'visible') layout.hide();
     void refresh();
     return true;

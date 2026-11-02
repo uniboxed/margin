@@ -7,8 +7,13 @@
 // same log, showed such tabs at their first layout (281–1331 ms, median 600).
 //
 // 'painted': the document is parsed (readyState past 'loading', so the page
-// isn't a few lines of its head), the browser has a first contentful paint
-// for it, and something of the page's own is drawn in view: text, a loaded
+// isn't a few lines of its head) or its first contentful paint is PARSED_MS
+// old and more than a scrap of its own is drawn (a page whose parser waits on
+// a script at the end of its body has drawn the rest long before: Safari
+// shows it at its first visually non-empty layout, which takes as much), the
+// browser has a first contentful paint for it, and something of the page's
+// own is drawn in view (that, not the parse, is what tells an app's empty
+// shell from its content: below): text, a loaded
 // image, an svg, a canvas, a video or a field inside <body>, laid out, in the
 // window and not hidden by its styles. The paint alone isn't enough: Margin's
 // own UI is in the page's document (its sidebar, drawn in a page loading
@@ -41,6 +46,9 @@ export function readyInPage(ms) {
   return new Promise((resolve) => {
     if (/^about:/.test(location.href)) return resolve('blank');
     const LOOK_MS = 50;
+    const PARSED_MS = 150;
+    const PARSING_CHARS = 200; // WebKit's visualCharacterThreshold
+    const PARSING_AREA = 32 * 32; // and its visualPixelThreshold
     const NODES_MAX = 4000; // a page with that much in it has something to show
     const SKIP = new Set(['script', 'style', 'noscript', 'template']);
     const DRAWN = new Set(['img', 'svg', 'canvas', 'video', 'input', 'textarea', 'select']);
@@ -53,11 +61,13 @@ export function readyInPage(ms) {
       for (const step of undo) try { step(); } catch {}
       resolve(how);
     };
-    const painted = () => {
+    // When the first contentful paint came (performance.now()'s clock), if it has.
+    const paintedAt = () => {
       try {
-        return performance.getEntriesByType('paint').some((entry) => entry.name === 'first-contentful-paint');
+        const entry = performance.getEntriesByType('paint').find((one) => one.name === 'first-contentful-paint');
+        return entry ? (Number.isFinite(entry.startTime) ? entry.startTime : performance.now()) : null;
       } catch {
-        return false;
+        return null;
       }
     };
     // Margin's own arrival cover, if it's what hides <body> (content/core.js
@@ -88,9 +98,16 @@ export function readyInPage(ms) {
         return true;
       }
     };
-    const ownContent = () => {
+    // `parsing`: still parsing, it needs more than a scrap, as WebKit does
+    // before its first visually non-empty layout while a document is still
+    // parsing (LocalFrameView qualifiesAsVisuallyNonEmpty): over
+    // PARSING_CHARS characters of text in view, or a drawn element over
+    // PARSING_AREA px (a site's header alone, its parser held by a script,
+    // isn't the page).
+    const ownContent = (parsing = false) => {
       const body = document.body;
       if (!body) return false;
+      let chars = 0;
       try {
         pastCover = /** @type {any} */ (globalThis).Margin?.content?.arrivalHides?.() === true && body.style.getPropertyValue('opacity') === '0';
       } catch {
@@ -104,24 +121,41 @@ export function readyInPage(ms) {
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         if (++seen > NODES_MAX) return true;
         if (node.nodeType === Node.TEXT_NODE) {
-          if (/\S/.test(/** @type {Text} */ (node).data) && inView(node.parentElement)) return true;
+          const data = /** @type {Text} */ (node).data;
+          if (!/\S/.test(data) || !inView(node.parentElement)) continue;
+          if (!parsing || (chars += data.replace(/\s+/g, '').length) > PARSING_CHARS) return true;
           continue;
         }
         const el = /** @type {Element} */ (node);
         if (!DRAWN.has(el.localName)) continue;
         if (el.localName === 'img' && !(/** @type {HTMLImageElement} */ (el).complete && /** @type {HTMLImageElement} */ (el).naturalWidth > 0)) continue;
-        if (inView(el)) return true;
+        if (!inView(el)) continue;
+        if (!parsing) return true;
+        const r = el.getBoundingClientRect();
+        if (r.width * r.height > PARSING_AREA) return true;
       }
       return false;
     };
     let lastLook = -Infinity;
+    /** @type {any} */
+    let aged = null; // a look once the first contentful paint is PARSED_MS old (still parsing then)
     const look = () => {
       if (over) return;
       if (document.readyState === 'complete') return done('loaded');
-      if (document.readyState === 'loading' || !painted()) return;
+      const at = paintedAt();
+      if (at == null) return;
+      const parsing = document.readyState === 'loading';
+      if (parsing) {
+        const wait = at + PARSED_MS - performance.now();
+        if (wait > 0) {
+          if (aged == null) aged = setTimeout(() => { aged = null; look(); }, wait);
+          return;
+        }
+      }
       lastLook = performance.now();
-      if (ownContent()) done('painted');
+      if (ownContent(parsing)) done('painted');
     };
+    undo.push(() => clearTimeout(aged));
     /** @type {any} */
     let later = null;
     const soon = () => {

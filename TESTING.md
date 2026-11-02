@@ -664,6 +664,21 @@ Switching to a tab that's loaded no longer waits for that tab's page to read Mar
 - [ ] Switch log (Start page → Settings → Switch log (development) → Copy): switches to loaded tabs have `preparation.timings.known: 1` and `readMs: 0` most of the time, and a small `preparation.ms` (under about 60). `known: 0` now and then is expected (right after Margin starts or is updated, a change that failed to save, or a switch right after a change, while it's still being saved: then `revSent: 0`); on most switches it should be 1. `reason: "awake budget"` means the page took over 250 ms. Send the log along with what felt slow.
 - [ ] Chrome: switching behaves as before.
 
+## Restores: never shown with no document (2026-11-02)
+
+A tab Safari unloaded (after a relaunch, or one left a long time) is loaded behind the page and shown once it has drawn. It's now never shown before its page has arrived, and it comes up sooner after it has drawn.
+
+- [ ] Relaunch Safari with many tabs, then click tabs that haven't loaded yet in the sidebar. The page you're on stays, covered, with its spinner, then the tab comes up drawn. Never Safari's dark empty view, and no flip to the tab and back.
+- [ ] Do the same a while after the relaunch (not in the first five minutes), with tabs Safari unloaded on its own. Each comes up about as soon as it has drawn, sooner than before.
+- [ ] A slow site (a server that takes a few seconds to answer): the spinner stays up to about 5 seconds, then the tab comes up as far as it got. Once the site does answer, it gets up to a second more to draw, so it comes up drawn, not white. Press Escape during the wait: you stay on your page at once. Click another row during the wait: that one wins at once.
+- [ ] Right after a relaunch, a heavy site (Gmail, YouTube, a big news site) that's slow to get going: it comes up within about 2.5 seconds, not 5. In the switch log its `committed` is a number, not `null`.
+- [ ] A site that draws most of its page and then waits on a script (a news site, a long article): it comes up once a good part of its top is drawn, not once it's done parsing, and not with only its header (a menu bar, a logo) over an empty page.
+- [ ] Heavy pages restored behind (big images, an app): once a tab is shown, its spinner lifts within a moment (about a tenth of a second) and the page is there under it. A spinner that hangs on a shown tab, or a page that's still drawing after the spinner lifts, is worth a note.
+- [ ] An app that builds itself after it loads (Gmail, Slack, Linear, after a relaunch): it doesn't come up as an empty shell.
+- [ ] A PDF in a tab Safari unloaded: it comes up within about 5 seconds. Note how it looks.
+- [ ] Switch log (Start page → Settings → Switch log (development) → Copy): restores (`restored`) have `committed`, the ms from the click to its page arriving. None should be `null` unless the site was down. `barrier` should mostly have one entry. Send the log with any restore that showed dark.
+- [ ] Chrome: switching to tabs Chrome unloaded behaves as before.
+
 ## No wasted wakes (2026-11-02)
 
 Margin wakes fewer tabs it doesn't then show: a pointer passing over sidebar rows wakes none, a pointer resting on a row sends one small script every 1.5 s instead of two every half second, and a switch reuses a wake for longer.
