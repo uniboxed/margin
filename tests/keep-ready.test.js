@@ -33,8 +33,8 @@ globalThis.chrome = /** @type {any} */ ({
       remove: async () => {},
     },
     session: {
-      get: async (key) => (key in fake.session ? { [key]: fake.session[key] } : {}),
-      set: async (items) => { Object.assign(fake.session, items); },
+      get: async (keys) => Object.fromEntries([].concat(keys).filter((k) => k in fake.session).map((k) => [k, structuredClone(fake.session[k])])),
+      set: async (items) => { Object.assign(fake.session, structuredClone(items)); },
     },
   },
 });
@@ -63,6 +63,8 @@ async function setUp({ minutes = 30 } = {}) {
 }
 const held = () => fake.scripts.filter((x) => x.func === 'keepAwake' && x.world === 'MAIN').map((x) => x.tabId);
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+// The same where setTimeout is mocked.
+const settleNow = async () => { for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve)); };
 
 test('keep ready: the tabs of the space each window shows, not the one in front, most recently used first', async () => {
   await setUp();
@@ -112,21 +114,80 @@ test('keep ready: the tab just left is held at once', async () => {
   assert.deepEqual(held(), [4]);
 });
 
-test('keep ready: a tab with no page (Safari unloaded it) isn\'t loaded by a hold, and is tried again later', async () => {
+test('keep ready: a tab with no page (Safari unloaded it) isn\'t loaded by a hold, and isn\'t tried again for ten minutes', async () => {
   await setUp();
   const t0 = 30_000_000;
   fake.noPage.add(2);
   keepReady.noteUsed(t0);
   await keepReady.tick(t0);
   await settle();
+  assert.deepEqual(keepReady.keepReadyState().noPage, [2]);
   fake.scripts = [];
+  for (const at of [5_000, 61_000, 5 * MIN, 9 * MIN]) {
+    keepReady.noteUsed(t0 + at);
+    await keepReady.tick(t0 + at);
+    await settle();
+    assert.ok(!held().includes(2), `not tried again ${at / 1000} s later (every 40 s before)`);
+  }
   fake.noPage.clear();
+  await keepReady.tick(t0 + 10 * MIN + 1);
+  await settle();
+  assert.ok(held().includes(2), 'tried again after ten minutes, if no event came');
+});
+
+test('keep ready: a tab with no page is tried again as soon as a tab event says its page changed', async () => {
+  await setUp();
+  const t0 = 31_000_000;
+  fake.noPage.add(2);
+  keepReady.noteUsed(t0);
+  await keepReady.tick(t0);
+  await settle();
+  fake.noPage.clear(); // Margin restored it behind, say
+  fake.scripts = [];
+  keepReady.pageChanged(2); // tabs.onUpdated: status or address (background.js)
+  assert.deepEqual(keepReady.keepReadyState().noPage, []);
   await keepReady.tick(t0 + 5_000);
   await settle();
-  assert.deepEqual(held(), [], 'not tried at every tick');
-  await keepReady.tick(t0 + 61_000);
+  assert.deepEqual(held(), [2]);
+});
+
+test('keep ready: a tab with no page is forgotten once shown (Safari loads it then)', async () => {
+  await setUp();
+  const t0 = 32_000_000;
+  fake.noPage.add(3);
+  keepReady.noteUsed(t0);
+  await keepReady.tick(t0);
   await settle();
-  assert.ok(held().includes(2), 'tried again after a minute');
+  assert.deepEqual(keepReady.keepReadyState().noPage, [3]);
+  keepReady.shown(3);
+  assert.deepEqual(keepReady.keepReadyState().noPage, []);
+});
+
+test('keep ready: a page event while a hold was on its way: the tab isn\'t set aside (its page may have come just after)', async () => {
+  await setUp();
+  const t0 = 33_000_000;
+  let reject;
+  const executeScript = chrome.scripting.executeScript;
+  chrome.scripting.executeScript = async (call) => {
+    if (call.target.tabId !== 2) return executeScript(call);
+    fake.scripts.push({ tabId: 2, world: call.world, func: call.func.name, ms: call.args?.[0] });
+    return new Promise((_, no) => { reject = no; });
+  };
+  try {
+    keepReady.noteUsed(t0);
+    await keepReady.tick(t0);
+    await settle();
+    keepReady.pageChanged(2); // its load started meanwhile
+    reject(new Error('Could not execute script on this tab'));
+    await settle();
+    assert.deepEqual(keepReady.keepReadyState().noPage, []);
+    fake.scripts = [];
+    await keepReady.tick(t0 + 5_000);
+    await settle();
+    assert.deepEqual(held(), [2], 'held at the next tick');
+  } finally {
+    chrome.scripting.executeScript = executeScript;
+  }
 });
 
 test('keep ready: a tab shown and left again is held afresh at once (its hold ended as it was shown)', async () => {
@@ -155,4 +216,115 @@ test('keep ready: a hold placed between ticks is renewed before it ends', async 
   await keepReady.tick(t0 + 66_000); // what the schedule sets: end − 20 s + 0.5 s
   await settle();
   assert.ok(held().includes(3), 'renewed in time');
+});
+
+// Window 1 shows space "a": tab 1 in front, tabs 2–10 behind, used in that
+// order (10 last).
+async function setUpMany() {
+  fake.scripts = []; fake.alarms = []; fake.noPage = new Set();
+  const tabs = {};
+  for (let id = 1; id <= 10; id++) tabs[id] = { id, windowId: 1, index: id, url: `https://t${id}.test/`, title: '', favIconUrl: '', active: id === 1, lastActive: id === 1 ? 1000 : id };
+  fake.tabs = new Map(Object.values(tabs).map((t) => [t.id, t]));
+  await mutate((s) => ({
+    ...s,
+    spaces: [{ id: 'a', name: 'A', emoji: '', color: '' }],
+    tabs,
+    tabSpace: Object.fromEntries(Object.keys(tabs).map((id) => [id, 'a'])),
+    activeSpaceByWindow: { 1: 'a' },
+    settings: { ...s.settings, keepTabsReadyMinutes: 30 },
+  }));
+  await markSynced();
+}
+
+test('keep ready: at most six, the ones used last (beyond them, Safari suspends as it would)', async () => {
+  await setUpMany();
+  assert.deepEqual(keepReady.chooseTabs(await load()), [10, 9, 8, 7, 6, 5]);
+  assert.deepEqual(keepReady.chooseTabs(await load(), new Set([9, 7])), [10, 8, 6, 5, 4, 3], 'tabs with no page don\'t count');
+});
+
+test('keep ready: tabs with no page don\'t count toward the six: the next with a page takes their place at once', async (t) => {
+  keepReady.resetKeepReady(); // no tick soon left over from the tests before
+  const t0 = 60_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  fake.noPage = new Set([10, 8]);
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady(); // not noteUsed's tick soon: the one the failures ask for
+  await keepReady.tick(t0);
+  await settleNow();
+  assert.deepEqual(held().sort((a, b) => a - b), [5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(keepReady.keepReadyState().noPage.sort((a, b) => a - b), [8, 10]);
+  fake.scripts = [];
+  t.mock.timers.tick(1500); // the tick soon the two failures asked for
+  await settleNow();
+  assert.deepEqual(held().sort((a, b) => a - b), [3, 4], 'two more in their place');
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [3, 4, 5, 6, 7, 9]);
+});
+
+test('keep ready: a background start holds nothing at once (a first switch may be on its way), the set a moment later', async (t) => {
+  keepReady.resetKeepReady();
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 70_000_000 });
+  await setUpMany();
+  keepReady.noteUsed(Date.now() - 60_000); // used a minute ago (as storage.session tells a new background)
+  keepReady.resetKeepReady(); // only the time it was used is known
+  fake.scripts = [];
+  keepReady.tickSoon(); // background.js, after the first sync
+  await settleNow();
+  assert.deepEqual(held(), []);
+  t.mock.timers.tick(1500);
+  await settleNow();
+  assert.deepEqual(held().sort((a, b) => a - b), [5, 6, 7, 8, 9, 10]);
+});
+
+test('keep ready: a hold that leaves the six is forgotten (it ends by itself), and doesn\'t set ticks a second apart until it ends', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 80_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  keepReady.noteUsed(t0);
+  keepReady.resetKeepReady(); // not noteUsed's tick soon
+  await keepReady.tick(t0);
+  await settleNow();
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [5, 6, 7, 8, 9, 10]);
+  // Ten seconds later tab 4 is used: tab 5 leaves the six.
+  t.mock.timers.tick(10_000);
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 4: { ...s.tabs[4], lastActive: 100 } } }));
+  await keepReady.tick();
+  await settleNow();
+  assert.deepEqual(keepReady.keepReadyState().held.sort((a, b) => a - b), [4, 6, 7, 8, 9, 10], 'tab 5 forgotten');
+  const before = keepReady.keepReadyState().ticks;
+  for (let s = 0; s < 70; s++) {
+    t.mock.timers.tick(1000);
+    await settleNow();
+  }
+  // Up to +80 s: the renewals of the five (+55.5 s) and of tab 4 (+65.5 s),
+  // not a tick a second from +55.5 s on for tab 5's hold (about 25).
+  assert.ok(keepReady.keepReadyState().ticks - before <= 3, `${keepReady.keepReadyState().ticks - before} ticks`);
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: the tabs set aside outlast the background (Safari stops it when idle and the alarm starts it again)', async () => {
+  keepReady.resetKeepReady();
+  await setUpMany();
+  const t0 = Date.now();
+  fake.noPage = new Set([10]);
+  keepReady.noteUsed(t0);
+  await keepReady.tick(t0);
+  await settle();
+  await settle();
+  assert.deepEqual(fake.session.keepReadyNoPage, { 10: t0 + 10 * MIN });
+  keepReady.resetKeepReady(); // stop(): nothing set aside any more
+  await settle();
+  assert.deepEqual(fake.session.keepReadyNoPage, {});
+  // A background that started again: its memory is empty, storage.session isn't.
+  fake.session.keepReadyNoPage = { 10: t0 + 10 * MIN, 9: t0 + 10 * MIN };
+  fake.session.keepReadyUsedAt = t0;
+  const again = await import('../extension/background/keep-ready.js?started-again');
+  again.shown(9); // shown before the read: Safari loaded it
+  fake.scripts = [];
+  await again.tick(t0 + 5_000);
+  await settle();
+  assert.deepEqual(held().sort((a, b) => a - b), [4, 5, 6, 7, 8, 9], 'tab 10 not tried again; tab 9, shown since, is');
+  assert.deepEqual(again.keepReadyState().noPage, [10]);
+  again.resetKeepReady();
 });

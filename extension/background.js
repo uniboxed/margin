@@ -95,7 +95,13 @@ async function startWorkDue() {
 }
 firstSync.then(async () => {
   if (!isOwner() || !isSynced()) return;
-  void keepReady.tick(); // the tabs of the space in front, if Safari was used recently (a background started again)
+  // The tabs of the space in front, if Safari was used recently (a background
+  // started again): in a moment, not beside the switch or click that may have
+  // started it. A background that stopped and started again holds that
+  // switch's tab left at once all the same (holdNow: its tabs are matched as
+  // soon as it knows it owns the state). A copy's first start can't (its ids
+  // aren't the open tabs' until this sync): the set holds that tab, 1.5 s on.
+  keepReady.tickSoon();
   if (!(await startWorkDue())) return;
   void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
@@ -141,6 +147,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
     if (!change.url || V.isNewTabPage(change.url)) return;
     handingOff.delete(tabId);
   }
+  // A tab keep-ready found no page in may have one now (background/keep-ready.js).
+  if (change.status || change.url) keepReady.pageChanged(tabId);
   if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
     mutate((s) => M.upsertTab(s, tab, now()));
   }

@@ -579,6 +579,17 @@ Quit and reopen Safari with tabs in a few spaces, so most come back unloaded. Re
 - [ ] Chrome: ⌘T, a slow site, Enter: it comes to the front once loaded, as before.
 - [ ] If a dark flash or a slow switch shows: Start page → Settings → Switch log (development) → Copy. On those switches, `restored` or `loadWait` says `painted` when Margin waited for the first paint, `unseen: true` when it introduced a tab whose page had never been on screen, a new tab's wait says what it ended on in `ready`, and `barrier` says whether the page drew before the show (`drawn`) or Margin gave up waiting (`timeout`, and how long). Safari's log around them: `DidFirstVisuallyNonEmptyLayoutForFrame`, `hideContentUntilPendingUpdate`, `Selecting tab`.
 
+## Keep-ready: six tabs (2026-11-02)
+
+Keep-ready now holds the six tabs you used last in the space shown, not every tab of it, and doesn't keep trying tabs Safari unloaded.
+
+- [ ] Use five or six tabs of a space, leaving each for a minute or more, then go back and forth among them with Safari's own tab bar or ⌃Tab, and with the sidebar: no dark flash.
+- [ ] With ten or more tabs in the space, all used, wait two minutes, then switch with Safari's tab bar to the one you used longest ago: it may show dark for a moment, as in plain Safari (it was suspended). The six used last still show with no flash.
+- [ ] Hidden tabs beyond six are suspended: after using Safari for a few minutes with many tabs loaded, `/usr/bin/log show --last 3m --predicate 'process == "Safari" AND eventMessage CONTAINS "didChangeThrottleState: type="'` shows web content processes going to `type=0` (suspended) or `type=1`; at most about six hidden ones stay at `type=2` (foreground) for minutes.
+- [ ] Few failed scripts: after a relaunch (most tabs unloaded), switch a few times, then read one page for five minutes without switching tabs. `/usr/bin/log show --last 5m --predicate 'process == "Safari" AND eventMessage CONTAINS "Could not execute script"' | wc -l` shows a few at most: about one for each unloaded tab of the spaces shown every 10 minutes (it was 16–46 a minute). Switching to unloaded tabs still makes some (Margin asks whether the page has painted while it loads).
+- [ ] If they stay high: whether they come in bursts about a minute apart (Margin's background started again by its alarm each minute: an extension's background start shows as `WebPageProxy::loadServiceWorker` in `/usr/bin/log show --last 5m --predicate 'process == "Safari" AND eventMessage CONTAINS "loadServiceWorker"'`), or right after tab updates for tabs Safari hasn't loaded. Either way, note it: keep-ready should still leave those tabs alone.
+- [ ] A tab Safari unloaded still loads only when you click it, and once you've been to it and left, switching back has no flash.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.
