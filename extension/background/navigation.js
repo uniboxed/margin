@@ -213,5 +213,5 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
   const startPage = api.runtime.getURL('newtab/newtab.html#launcher');
   const untouched = shown && (shown.url === startPage || V.isNewTabPage(shown.url || shown.pendingUrl));
   if (untouched) await mutate((st) => M.moveTab(st, shown.id, spaceId));
-  else await openTab({ windowId, url: startPage, spaceId });
+  else await openTab({ windowId, url: startPage, spaceId, deadline });
 }

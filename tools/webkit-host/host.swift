@@ -35,6 +35,10 @@ let pageRecorder = """
   // Asleep with a view already (made as Safari selected it, its load put off): no page yet, and
   // WebKit answers a script there with an error in place of a result, as in Safari.
   var unloaded = false
+  // The tab's next activation by the extension (tabs.update) is carried out and answered only
+  // this long after it's asked (ms): Safari's update of a tab whose process hangs, answered as
+  // the process recovers (Tirth's Safari, 2026-11-03).
+  var stallMs = 0
   var asleep: Bool { webView == nil || unloaded }
   weak var window: Win?
   var loadingObs: [NSKeyValueObservation] = []
@@ -115,7 +119,14 @@ let pageRecorder = """
     webView?.pageZoom = CGFloat(zoomFactor); completionHandler(nil)
   }
   func activate(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-    log("delegate: activate \(name) (asleep=\(asleep), turn \(runLoopTurn))"); window?.show(self); completionHandler(nil)
+    log("delegate: activate \(name) (asleep=\(asleep), turn \(runLoopTurn))")
+    if stallMs > 0 {
+      let ms = stallMs; stallMs = 0
+      log("  \(name) stalled: shown and answered \(ms) ms from now")
+      DispatchQueue.main.asyncAfter(deadline: .now() + Double(ms) / 1000) { MainActor.assumeIsolated { self.window?.show(self); log("  \(self.name) shown after its stall"); completionHandler(nil) } }
+      return
+    }
+    window?.show(self); completionHandler(nil)
   }
   // tabs.update with an address.
   func loadURL(_ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
@@ -414,6 +425,9 @@ Task { @MainActor in
       try! await host.installTwin(dir: URL(fileURLWithPath: dir))
     case "deferLoads":
       deferLoads = true; log("loads of tabs asleep put off to the end of the turn that shows them")
+    case "stall":
+      // { op: 'stall', name, ms }: the tab's next tabs.update to the front answers ms later (Tab.stallMs).
+      host.tab(step["name"] as! String)!.stallMs = step["ms"] as! Int; log("stalling \(step["name"] as! String)")
     case "show":
       // Safari itself bringing a tab to the front (its tab bar, its own shortcuts).
       host.window.show(host.tab(step["name"] as! String)!); log("showed \(step["name"] as! String)")

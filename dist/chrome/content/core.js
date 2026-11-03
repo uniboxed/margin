@@ -8,6 +8,7 @@ import { createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHo
 import * as shortcuts from '../shared/shortcuts.js';
 import { asksBackground, platform } from '../shared/platform.js';
 import { watchAway } from '../shared/away.js';
+import { copyAlive, mayNotice } from '../shared/no-answer.js';
 import { listenForHolds } from './hold.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
@@ -165,16 +166,20 @@ export function startCore({ onTheme } = {}) {
   Margin.content.send = send;
   // The background didn't answer this page in time: the request is given up
   // (a switch stops waiting), and if there's still no answer after
-  // STALE_MS (a slow cold start answers well before), and the page is the
-  // one in front with Margin on it, the page says how to fix it (once), and
-  // takes that back if the answer comes after all. The background also puts
-  // the current copy into a tab brought to the front (background/tabs.js
-  // ensureCurrent), so this is the rare case left.
+  // STALE_MS (a slow cold start answers well before; a switch is answered
+  // before its deadline however slow: background.js), the page is the one
+  // in front with Margin on it, and this copy of Margin is found gone (not
+  // only slow: shared/no-answer.js), the page says how to fix it (once), and
+  // takes that back if the answer comes after all. Not for a request nobody
+  // waits on. The background also puts the current copy into a tab brought
+  // to the front (background/tabs.js ensureCurrent), so this is the rare
+  // case left.
   const STALE_MS = 8000;
   let toldNoAnswer = false;
   let noticeUp = false;
   function noAnswer(type, reply) {
     console.warn('[margin]', type, 'no answer from the background (yet)');
+    if (!mayNotice(type)) return; // (shared/no-answer.js)
     let answered = false;
     reply?.then(() => {
       answered = true;
@@ -184,8 +189,11 @@ export function startCore({ onTheme } = {}) {
         view?.showNotice?.(null);
       }
     }, () => {});
-    setTimeout(() => {
-      if (answered || toldNoAnswer || document.hidden || !view?.showNotice || !active()) return;
+    const shown = () => !answered && !toldNoAnswer && !document.hidden && !!view?.showNotice && active();
+    setTimeout(async () => {
+      if (!shown()) return;
+      if (await copyAlive(api)) return void console.warn('[margin]', type, 'still unanswered, but this copy of Margin is alive: its background is slow');
+      if (!shown()) return;
       offerReload('Margin isn’t responding on this page (it was probably updated). Reload the page to fix it.');
     }, STALE_MS - (SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default));
   }

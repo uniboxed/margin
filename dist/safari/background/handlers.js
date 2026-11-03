@@ -274,6 +274,16 @@ export async function newTabKey(tabArg) {
   }
 }
 
+// What a space's switch waits, at most, to carry the sidebar open to the tab
+// it brought, before it answers (setSpace).
+const CARRY_WAIT_MS = 250;
+// ...and never past this long before the page's deadline: focusTab answers
+// by 0.8 s before it at the latest (background/tabs.js ANSWER_BY_MS), and
+// background.js answers that the switch didn't happen 0.5 s before it, so a
+// carry wait after a late answer would leave a background running late (its
+// timers fire late on a loaded Mac) no time to send the real one first.
+const CARRY_ENDS_MS = 800;
+
 // Style sheets fetched for pages (fetchStyle), the latest few.
 const styleCache = new Map();
 const STYLE_CACHE_SIZE = 50;
@@ -304,7 +314,7 @@ export const handlers = {
   // gone, or the browser didn't show it (the page then says so).
   /** @param {{ tabId: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it) */
   async activateTab({ tabId, hint, show, sidebarTop, deadline }, sender) {
-    const target = await resolveTab(tabId, hint, sender.tab?.windowId);
+    const target = await resolveTab(tabId, hint, sender.tab?.windowId, { deadline });
     if (!target) throw new Error('That tab is no longer open');
     const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline });
     return { shown: result?.superseded ? null : target.id };
@@ -489,7 +499,7 @@ export const handlers = {
       return openBehind({ windowId, url, from, deadline, created: (tab) => ownSearchTabs.set(tab.id, own) });
     }
     // Else marked before it navigates: created blank, then the search loads.
-    const tab = await openTab({ windowId, url: 'about:blank' });
+    const tab = await openTab({ windowId, url: 'about:blank', deadline });
     ownSearchTabs.set(tab.id, own);
     await api.tabs.update(tab.id, { url });
   },
@@ -498,7 +508,7 @@ export const handlers = {
   /** @param {{ windowId?: number, url?: string, spaceId?: string, deadline?: number }} message */
   async newTab({ windowId, url, spaceId, deadline }, sender) {
     if (url && !spaceId && sender?.tab?.id != null) return openBehind({ windowId, url, from: sender.tab, deadline });
-    const tab = await openTab({ windowId, url, spaceId });
+    const tab = await openTab({ windowId, url, spaceId, deadline });
     return { tabId: tab.id };
   },
   // `folderId`/`beforeId`: where the pin goes (a folder of the tab's space,
@@ -598,7 +608,7 @@ export const handlers = {
       const result = await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop, deadline });
       return { shown: result?.superseded ? null : existing.id };
     }
-    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId });
+    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline });
     return { shown: tab.id };
   },
   /** @param {{ windowId: number, spaceId: string }} message */
@@ -614,8 +624,16 @@ export const handlers = {
     const done = { shown: result?.tab?.id ?? null };
     if (!show || win == null) return done;
     if (result?.preparation?.outcome === 'ready') return done;
-    const [front] = await api.tabs.query({ active: true, windowId: win });
-    if (front && front.id !== sender?.tab?.id) await carryIfSameWindow(front.id, show, sender?.tab?.windowId);
+    // Before the answer, as a rule (the page shown says hello soon after),
+    // but not past CARRY_WAIT_MS: Safari slow to answer doesn't hold the
+    // page's answer (it waits for it until its deadline).
+    const carrying = api.tabs.query({ active: true, windowId: win }).then(([front]) => {
+      if (front && front.id !== sender?.tab?.id) return carryIfSameWindow(front.id, show, sender?.tab?.windowId);
+    }).catch(() => {});
+    let timer;
+    const carryMs = Math.max(0, Math.min(CARRY_WAIT_MS, (Number.isFinite(deadline) ? /** @type {number} */ (deadline) - CARRY_ENDS_MS : Infinity) - Date.now()));
+    await Promise.race([carrying, new Promise((resolve) => { timer = setTimeout(resolve, carryMs); })]);
+    clearTimeout(timer);
     return done;
   },
   /** @param {{ windowId?: number, name?: string, emoji?: string, color?: string }} message */

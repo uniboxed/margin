@@ -28,6 +28,8 @@
 //                              world) returning [x, y] (the last point if left out); a drag moves there
 //                              from the last point in `steps` moves (12) a frame apart; a drag and a
 //                              release go where the press did
+//   { op: 'stall', name, ms }  the tab's next activation by Margin (tabs.update) is carried out and
+//                              answered only ms later (Safari's update of a tab whose process hangs)
 //   { op: 'deferLoads' }       from now on, a tab asleep loads only if it's still the one shown
 //                              once the run loop turn is over (Safari putting its load off); its
 //                              view is made as it's selected all the same (no page: a script there
@@ -184,6 +186,20 @@ export const SCENARIOS = {
     check('B', 'B: hidden sidebar preparation acknowledged before activation; the switch log has where its time went, and whether keep-ready held the tab', `(await Margin.content.send('switchLog')).some((entry) => entry.source === 'activateTab' && entry.preparation?.outcome === 'ready' && ['lagMs', 'readMs', 'renderMs', 'catchUpMs', 'layoutMs'].every((k) => Number.isFinite(entry.preparation.timings?.[k])) && typeof entry.heldAtAsk === 'boolean')`),
     switchTo('B', 'D'), shown('D'), drawn('D'), themed('D'),
     switchTo('D', 'C'), shown('C'), { op: 'state' },
+  ],
+  // Safari's update of the tab asked for answers only 4 s later (its process
+  // hung, as in Tirth's Safari on 2026-11-03): the page that asked is
+  // answered before it stops waiting (3 s here: the host's background lives
+  // about 5 s), that the tab is shown (background/tabs.js focusTab), and the
+  // tab comes up when Safari gets to it.
+  stalled: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), drawn('B'),
+    { op: 'stall', name: 'B', ms: 4000 },
+    { op: 'eval', in: 'A', js: `${ID} const asked = Date.now(); globalThis.__answer = null; Margin.content.send('activateTab', { tabId: id('B'), deadline: asked + 3000 }).then((r) => { __answer = { r: r ?? null, ms: Date.now() - asked }; }); return 'asked'` },
+    check('A', 'A: answered before its 3 s deadline, that B is shown', `${ID} return !!__answer && __answer.ms < 3000 && __answer.r?.shown === id('B')`, 3500),
+    { op: 'eval', in: 'A', js: `${ID} return JSON.stringify({ ...__answer, log: (await Margin.content.send('switchLog'))?.filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1) ?? null })` },
+    checkPage('B', 'B: shown once Safari got to it', '!document.hidden', 3000),
   ],
   // Margin updated while a page with a typed draft is open: the new copy
   // takes over, the draft stays, one sidebar.

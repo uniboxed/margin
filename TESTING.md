@@ -562,6 +562,18 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## "Margin isn't responding" fix: check this first (2026-11-03)
+
+This build fixes the notice that came up on nearly every switch this morning, and the blanks after it. Run `npm run safari`. Then do the 20-minute check below, with these added. The worst case is right after a reboot or a Safari relaunch, when every tab is unloaded, so do the first part then.
+
+- [ ] Right after quitting and reopening Safari (Margin turned on again if Safari asks), switch through Margin's sidebar to 10 tabs you haven't opened since. Each one either comes up within about 6 seconds, or Margin says "Margin couldn't show that tab. Try again." "Margin isn't responding on this page" should never appear.
+- [ ] None of those switches leaves the page covered or blank for 7 seconds, then nothing.
+- [ ] A space's icon right after the relaunch: the same.
+- [ ] To see the real notice: run `npm run safari` again while a page is open, and click a row in that page's sidebar without switching tabs first. The notice can still appear there, since that page's copy of Margin really is gone. If Margin has already put the new copy in, there's no notice, which is fine.
+- [ ] Right after the relaunch, click a tab that's slow to come up, then at once another one. The second one stays in front: the first doesn't jump back in front of it a few seconds later.
+- [ ] Open an address from the palette for a slow site: it comes to the front without a dark flash, as before this round.
+- [ ] In the Switch log, look for entries with `stuckAt`. `forced: true` means Margin showed the tab as it was because time ran out. `unconfirmed: true` means Safari hadn't answered the show yet when Margin answered the page. Send me those with the rest of the log.
+
 ## This round: the 20-minute check (2026-11-03)
 
 Start here. Run `npm run safari`, then use Safari as you normally do for about 20 minutes, on battery, with your usual tabs and spaces. Don't judge the first 5 minutes after quitting and reopening Safari.

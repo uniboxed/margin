@@ -1172,8 +1172,19 @@ test('introducing: a switch called off or out of time after its introduction lea
     assert.equal((await focusTab(42)).superseded, true);
     assert.deepEqual(fake.updates.map((u) => u.id), [42, 1]);
     fake.updates = [];
-    await assert.rejects(focusTab(43, { deadline: Date.now() + 300 }), /Too late/);
-    assert.deepEqual(fake.updates.map((u) => u.id), [43, 1], 'introduced, then out of time');
+    // Safari slow to answer the introduction's updates (a hung process): the
+    // page's deadline comes first, and the tab is shown as it is
+    // (background/tabs.js focusTab), its introduction over.
+    const late = await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (id === 1) await sleep(1500);
+      return answer;
+    }, () => focusTab(43, { deadline: Date.now() + 2700 }));
+    assert.equal(late.forced, true);
+    assert.deepEqual(fake.updates.map((u) => u.id), [43, 1, 43], 'introduced, then out of time: shown as it is');
+    await sleep(1600); // (the introduction's answers come)
+    putInFront(1);
+    await knownInFront(1);
     fake.updates = [];
     await focusTab(44);
     assert.deepEqual(fake.updates.map((u) => u.id), [44, 1, 44]);
@@ -1471,6 +1482,23 @@ test('openBehind: a new tab shown at its first paint, still loading, is introduc
     assert.equal(fake.tabs.get(tabId).status, 'loading');
     tabShown(tabId);
   } finally {
+    done();
+  }
+});
+
+test('openBehind: a new tab that hasn\'t painted by its limit, on a busy page (its scripts take 260 ms), is still introduced before it\'s shown', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }], []);
+  try {
+    fake.scriptDelay = (id) => (id === 1 ? 1 : 260);
+    const entries = [];
+    tapLog((e) => entries.push(e));
+    const result = await openBehind({ url: 'https://endless.test/', from: { id: 1, windowId: 1 }, maxMs: 400, created: (tab) => tabOpened(tab) });
+    tapLog(null);
+    assert.deepEqual(result, { tabId: 2, shown: 2 });
+    assert.deepEqual(fake.updates.map((u) => u.id), [2, 1, 2], 'introduced, then shown');
+    assert.equal(entries.filter((e) => e.kind === 'switch' && e.source === 'new tab').at(-1)?.introduced, true);
+  } finally {
+    tabShown(2);
     done();
   }
 });
@@ -1874,9 +1902,9 @@ test('restoring: a shorter wait left by the page that asked bounds it; with too 
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 88, url: 'https://slow.test/' }, { id: 89, url: 'https://late.test/' }], { 88: { loadMs: 8000 }, 89: {} });
   try {
     let asked = Date.now();
-    await focusTab(88, { deadline: asked + 2300 });
+    await focusTab(88, { deadline: asked + 4100 });
     const shownAt = fake.updates.at(-1).at - asked;
-    assert.ok(shownAt >= 750 && shownAt < 1300, `shown at the page's deadline less the switch's own time (${shownAt}ms)`);
+    assert.ok(shownAt >= 1250 && shownAt < 1900, `shown at the page's deadline less the switch's own time (2.8 s: ${shownAt}ms)`);
     putInFront(1);
     await knownInFront(1);
     fake.updates = [];
@@ -2264,7 +2292,7 @@ test('restoring: a tab whose own document hasn\'t answered by the 2.5 s limit (a
   }
 });
 
-test('restoring: a tab whose document never answers is shown at the hard limit (5 s, or what the page that asked waits less the switch\'s own time), not before', async () => {
+test('restoring: a tab whose document never answers is shown at the hard limit (4 s, or what the page that asked waits less the switch\'s own time), not before', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 182, url: 'https://deadserver.test/' }], { 182: { loadMs: 20000 } });
   const entries = [];
   tapLog((entry) => entries.push(entry));
@@ -2274,7 +2302,7 @@ test('restoring: a tab whose document never answers is shown at the hard limit (
     const result = await focusTab(182, { deadline: asked + 5200 });
     assert.equal(result.tab?.id, 182);
     const shownAt = fake.updates.at(-1).at - asked;
-    assert.ok(shownAt >= 3650 && shownAt < 4300, `shown at the page's deadline less the switch's own time (${shownAt}ms)`);
+    assert.ok(shownAt >= 2350 && shownAt < 3000, `shown at the page's deadline less the switch's own time (2.8 s: ${shownAt}ms)`);
     assert.deepEqual(fake.updates.map((u) => u.id), [182, 1, 182], 'nothing to introduce: shown as it is');
     const logged = entries.find((e) => e.kind === 'switch' && e.tabId === 182);
     assert.deepEqual([logged?.restored, logged?.committed], ['loading', null]);
@@ -2747,7 +2775,7 @@ test('wait: with too little time left before the page stops waiting, the tab is 
     noteLeft(208, Date.now() - 10_000);
     suspend(208);
     const asked = Date.now();
-    const { result, entry } = await logged(208, () => focusTab(208, { deadline: Date.now() + 500 }));
+    const { result, entry } = await logged(208, () => focusTab(208, { deadline: Date.now() + 1700 }));
     assert.equal(result.tab?.id, 208);
     assert.deepEqual(fake.updates.map((u) => u.id), [208]);
     assert.ok(fake.updates[0].at - asked < 60, `shown ${fake.updates[0].at - asked} ms after the ask`);
@@ -3179,7 +3207,7 @@ test('wait: a wake already answered counts with no time left to wait (a switch c
     noteLeft(334, Date.now() - 10_000);
     await wakeTab(334, { hover: true, by: 'hover' });
     await sleep(300);
-    const { result, entry } = await logged(334, () => focusTab(334, { deadline: Date.now() + 600 }));
+    const { result, entry } = await logged(334, () => focusTab(334, { deadline: Date.now() + 2000 }));
     assert.equal(result.tab?.id, 334);
     assert.equal(entry.wakeOutcome, 'awake');
     assert.equal(entry.wakeStartedBy, 'hover');

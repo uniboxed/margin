@@ -624,10 +624,95 @@ function unmark(tabId, at) {
   if (activatedByMargin.get(tabId) === at) activatedByMargin.delete(tabId);
 }
 export function userSwitched(tabId = null, windowId = null) {
-  if (tabId != null && (isFocusing(tabId) || Date.now() - (activatedByMargin.get(tabId) ?? 0) < OWN_ACTIVATION_MS)) return;
+  if (tabId != null && (isFocusing(tabId) || unanswered.has(tabId) || Date.now() - (activatedByMargin.get(tabId) ?? 0) < OWN_ACTIVATION_MS)) return;
   focusGen++;
   movedOn(windowId);
 }
+
+// ---- every switch answers its page in time ---------------------------------------
+// A page that asks for a switch waits for the answer until its `deadline` (7 s:
+// content/core.js), then says the switch didn't happen. Each of the switch's
+// own waits is capped (focusTabNow), but Safari's calls (tabs.get, tabs.query,
+// tabs.update, windows.*) aren't, and one can wait on a tab's hung process: on
+// 2026-11-03, just after a reboot and a Safari relaunch (load average about
+// 50, every tab unloaded), a restore's introduction went out 7.33 s after its
+// switch began, 14 ms before the tab's process answered again, and the switch
+// was dropped as too late, its answer after the page had stopped waiting (and
+// the page then said Margin wasn't responding). So the whole run is held to
+// the deadline here, whatever Safari does: a switch not shown FORCE_SHOW_MS
+// before it is shown as it is (its own steps stand down, as for another
+// switch: no flip or show of theirs goes out after), and focusTab answers
+// ANSWER_BY_MS before it at the latest (a show that went out and isn't
+// answered yet is taken as made: Safari carries it out). The page's answer
+// doesn't wait on another tab's script or message past that. A switch asked
+// with less than REFUSE_MS left doesn't start (it would land after its page
+// said it didn't). Its own steps plan to have shown the tab SHOW_BEFORE_MS
+// before the deadline (the budgets in focusTabNow).
+// (The answer's own way back to the page, and timers that fire late in a
+// background Safari runs at low priority: about 100 ms late in the WebKit
+// host at a load average of 3, more on a Mac as loaded as Tirth's was.)
+const SHOW_BEFORE_MS = 1800;
+const FORCE_SHOW_MS = 1500;
+const ANSWER_BY_MS = 800;
+const REFUSE_MS = 1000;
+const TOO_LATE = 'Too late: the page stopped waiting for this switch';
+// Nothing that can't be taken back (a tab opened) within REFUSE_MS of the
+// page's deadline: it would come after its page was told it didn't happen.
+/** @param {number | undefined} deadline */
+function tooLate(deadline) {
+  if (Number.isFinite(deadline) && Date.now() > /** @type {number} */ (deadline) - REFUSE_MS) throw new Error(TOO_LATE);
+}
+// A show answered to its page before Safari had answered it (focusTab:
+// `unconfirmed`) is carried out whenever Safari gets to it, and if its tab's
+// process hung, Safari may hold that update alone while it carries out a
+// newer switch (the user's, or Margin's): the tab would then jump back in
+// front of the one the user went to since. So once it's answered, if the
+// window's activations since it went out (sawActivation) include another
+// tab, and this one is in front, the last of those is brought back. Until
+// then, its activation isn't taken as the user's (userSwitched: it would call
+// off a switch under way), for UNANSWERED_MS at most.
+const UNANSWERED_MS = 10_000;
+const RECENT_ACTIVATIONS = 8;
+/** @type {Map<number, number>} */
+const unanswered = new Map(); // tabId → when its show went out
+/** @type {Map<number, number>} */
+const showAsked = new Map(); // tabId → when a switch to it was last asked for (focusTab)
+/** @type {Map<number, { tabId: number, at: number }[]>} */
+const recentActivations = new Map(); // windowId → its last activations (not an introduction's), oldest first
+/** background.js: an activation that isn't an introduction's. @param {{ tabId: number, windowId: number }} info */
+export function sawActivation({ tabId, windowId }) {
+  const list = recentActivations.get(windowId) ?? [];
+  list.push({ tabId, at: Date.now() });
+  if (list.length > RECENT_ACTIVATIONS) list.shift();
+  recentActivations.set(windowId, list);
+}
+/** @param {Promise<{ tab?: any, err?: any }>} update @param {number} tabId @param {number | null | undefined} windowId @param {number} sentAt */
+function answeredLate(update, tabId, windowId, sentAt) {
+  unanswered.set(tabId, sentAt);
+  const forget = () => { if (unanswered.get(tabId) === sentAt) unanswered.delete(tabId); };
+  const timer = setTimeout(forget, UNANSWERED_MS);
+  void update.then(async (answer) => {
+    clearTimeout(timer);
+    forget();
+    if (answer?.err || windowId == null) return;
+    activating(tabId); // (its activation can come just after the answer: Margin's)
+    if ((showAsked.get(tabId) ?? 0) > sentAt) return; // asked for again since
+    // (After its activation, which Safari sends first, has reached
+    // background.js: activations are handled in the order they come.)
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const newer = (recentActivations.get(windowId) ?? []).filter((a) => a.at > sentAt && a.tabId !== tabId).at(-1);
+    if (!newer) return;
+    const [now] = await api.tabs.query({ active: true, windowId }).catch(() => []);
+    if (now?.id !== tabId) return;
+    console.warn(`[margin] Safari showed tab ${tabId} ${Date.now() - sentAt} ms after it was asked, after tab ${newer.tabId} was chosen: tab ${newer.tabId} brought back`);
+    activating(newer.tabId);
+    await api.tabs.update(newer.tabId, { active: true }).catch(() => {});
+  });
+}
+/** @type {Preparation} */
+const NOT_PREPARED = { outcome: 'skipped', ms: 0, token: null };
+/** @typedef {{ stage: string, sent: boolean, sentAt: number, update: Promise<{ tab?: any, err?: any }> | null, taken: boolean, tab: any, noPage: boolean, preparation: Preparation | null, prepToken: string | null, early: Promise<Preparation> | null, facts: Record<string, unknown> }} Run what focusTabNow has got to, for focusTab's deadline: `stage`, the step it's at (the switch log says where a switch was stuck); `sent`: its show went out (at `sentAt`, `update` its answer); `taken`: focusTab showed the tab itself (focusTabNow logs nothing more) */
+
 // `deadline`: when the page that asked stops waiting (it then says the switch
 // didn't happen): no switch after it. `raise: false`: the window isn't
 // brought forward (a switch the user didn't just ask for: openBehind).
@@ -639,20 +724,25 @@ export function userSwitched(tabId = null, windowId = null) {
 // is closed meanwhile (showSpace): that isn't told to the page as a failure.
 /** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, raise?: boolean, covered?: boolean, hurry?: (() => boolean) | null, loadWaited?: boolean, retry?: boolean }} [options] */
 export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline, raise = true, covered = false, hurry = null, loadWaited = false, retry = false } = {}) {
+  const timed = Number.isFinite(deadline);
+  const asked = Date.now();
+  if (timed && asked > /** @type {number} */ (deadline) - REFUSE_MS) {
+    recordSwitch({ source, tabId, asked, error: 'expired', stuckAt: 'before' });
+    throw new Error(TOO_LATE);
+  }
   focusing.set(tabId, (focusing.get(tabId) ?? 0) + 1);
+  showAsked.set(tabId, asked);
   const gen = ++focusGen;
-  // The page in front, if the switch covered it while its tab got ready: told how it went.
+  // The page in front, if the switch covered it while its tab got ready: told how it went (once).
   /** @type {{ uncover: ((shown: boolean | null, reason?: string | null) => void) | null }} */
   const front = { uncover: null };
-  try {
-    const result = await focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front);
-    front.uncover?.(result?.tab ? true : null);
-    return result;
-  } catch (err) {
-    const gone = retry && /No tab with id/.test(String(err?.message ?? err));
-    front.uncover?.(gone ? null : false, gone ? null : String(err?.message ?? err));
-    throw err;
-  } finally {
+  let told = false;
+  const tell = (/** @type {boolean | null} */ shown, /** @type {string | null} */ reason = null) => {
+    if (told || !front.uncover) return;
+    told = true;
+    front.uncover(shown, reason);
+  };
+  const finish = () => {
     // An activation of the tab left out after its introduction was answered
     // (the user's, or Safari's late): told if the tab is in front (Margin's
     // own update of it then made none).
@@ -660,17 +750,88 @@ export async function focusTab(tabId, { wake = true, source = 'other', carry = n
     const left = (focusing.get(tabId) ?? 1) - 1;
     if (left > 0) focusing.set(tabId, left);
     else focusing.delete(tabId);
+  };
+  /** @param {{ result?: any, err?: any }} outcome */
+  const conclude = ({ result, err }) => {
+    if (!err) {
+      tell(result?.tab ? true : null);
+      return result;
+    }
+    const gone = retry && /No tab with id/.test(String(err?.message ?? err));
+    tell(gone ? null : false, gone ? null : String(err?.message ?? err));
+    throw err;
+  };
+  /** @type {Run} */
+  const run = { stage: 'start', sent: false, sentAt: 0, update: null, taken: false, tab: null, noPage: false, preparation: null, prepToken: null, early: null, facts: {} };
+  /** @type {Promise<{ result?: any, err?: any }>} */
+  const settled = focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front, run).then((result) => ({ result }), (err) => ({ err }));
+  const inTime = timed ? await answerBy(settled, /** @type {number} */ (deadline) - FORCE_SHOW_MS) : await settled;
+  if (inTime) {
+    finish();
+    return conclude(inTime);
   }
+  // Time's up. Whatever the steps still waiting on Safari do, they end here
+  // (the cover put up meanwhile, if any, is lifted then: told once).
+  void settled.then(() => {
+    finish();
+    tell(run.taken || run.sent ? true : null);
+  });
+  const stuck = { source, tabId, asked, ...run.facts, stuckAt: run.stage };
+  if (run.sent) {
+    // Its show went out: its answer, until the page's.
+    const late = await answerBy(settled, /** @type {number} */ (deadline) - ANSWER_BY_MS);
+    if (late) return conclude(late);
+    recordSwitch({ ...stuck, unconfirmed: true, shownAfter: Date.now() - asked });
+    tell(true);
+    if (run.update) answeredLate(run.update, tabId, run.tab?.windowId ?? cached()?.tabs[tabId]?.windowId, run.sentAt);
+    return { tab: { ...(run.tab ?? {}), id: tabId, active: true }, preparation: run.preparation ?? NOT_PREPARED, unconfirmed: true };
+  }
+  // Another switch asked for since: that one stands.
+  if (gen !== focusGen) return { tab: null, preparation: NOT_PREPARED, superseded: true };
+  // Shown as it is now. Its steps stand down (the next one each takes sees
+  // another switch), its introduction is over (an activation from here is the
+  // show's), and its preparation, if it isn't ready, is called off (now, and
+  // once it answers), its page's arrival cover kept: its show lifts it.
+  focusGen++;
+  run.taken = true;
+  // (Its updates, if Safari hasn't carried them out yet, still left out as
+  // they come: endIntroduction `linger`.)
+  if (endIntroduction(tabId, gen, { linger: true })?.lateTab) void api.tabs.get(tabId).then((t) => t.active && hooks.activated?.({ tabId, windowId: t.windowId }), () => {});
+  if (run.preparation?.outcome !== 'ready') {
+    for (const token of new Set([`${instanceId}:${gen}:${tabId}`, run.prepToken])) if (token) cancelPreparation(tabId, { outcome: 'timeout', ms: 0, token }, { keepCover: true });
+    void run.early?.then((prep) => cancelPreparation(tabId, prep, { keepCover: true }), () => {});
+  }
+  // A tab Safari unloaded: noted, as focusTabNow does (not waited for).
+  if (run.noPage && run.tab) void noteShowing(run.tab, { carry, scroll }).catch(() => {});
+  activating(tabId);
+  run.sent = true;
+  const sentAt = Date.now();
+  /** @type {Promise<{ tab?: any, err?: any }>} */
+  const update = api.tabs.update(tabId, { active: true }).then((tab) => ({ tab: tab ?? null }), (err) => ({ err }));
+  const shown = await answerBy(update, /** @type {number} */ (deadline) - ANSWER_BY_MS);
+  if (shown?.err) {
+    forgetShowing(tabId);
+    recordSwitch({ ...stuck, forced: true, error: String(shown.err?.message ?? shown.err) });
+    return conclude({ err: shown.err });
+  }
+  recordSwitch({ ...stuck, forced: true, unconfirmed: !shown, shownAfter: Date.now() - asked });
+  tell(true);
+  const windowId = shown?.tab?.windowId ?? run.tab?.windowId ?? cached()?.tabs[tabId]?.windowId;
+  if (!shown) answeredLate(update, tabId, windowId, sentAt);
+  if (raise) void focusWindow(windowId);
+  return { tab: { ...(run.tab ?? {}), ...(shown?.tab ?? {}), id: tabId, active: true }, preparation: run.preparation ?? NOT_PREPARED, forced: true, ...(shown ? {} : { unconfirmed: true }) };
 }
 
 // A restore or introduction of another switch's under way in the window, its
 // updates not answered yet: waited for this long at most (below).
 const UNDER_WAY_MS = 400;
-// What showing a tab takes once it's ready (tabs.update: ~110 ms in Safari).
-const SHOW_MS = 150;
+// An introduction (tabs.update twice: ~110 ms in Safari) and the drawing
+// after it (paintBarrier, BARRIER_MAX_MS at most), before the show.
+const INTRODUCE_MIN_MS = 500;
 const SESSION_WAIT_MS = 200;
 
-async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front) {
+/** @param {number} tabId @param {number} gen @param {any} options @param {{ uncover: ((shown: boolean | null, reason?: string | null) => void) | null }} front @param {Run} run */
+async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front, run) {
   const asked = Date.now();
   // What the background before this one knew of which tabs are held
   // (keep-ready.js sessionKnown: read as this one started): a tab held isn't
@@ -681,13 +842,23 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // DEVELOPMENT DIAGNOSTICS: whether keep-ready held the tab, and how long it
   // had been hidden, as the switch was asked for (a hold ends as it's shown).
   const facts = switchFacts(tabId, asked);
-  const logSwitch = (/** @type {Record<string, unknown>} */ entry) => recordSwitch({ source, tabId, asked, ...facts, ...entry });
+  run.facts = facts;
+  // (Not once focusTab has shown the tab itself: it says how that went.)
+  const logSwitch = (/** @type {Record<string, unknown>} */ entry) => run.taken || recordSwitch({ source, tabId, asked, ...facts, ...entry });
+  // When the page that asked stops waiting, less the show's own time: what
+  // the steps below plan within (focusTab holds the whole run to it).
+  const showBy = Number.isFinite(deadline) ? /** @type {number} */ (deadline) - SHOW_BEFORE_MS : Infinity;
   const token = `${instanceId}:${gen}:${tabId}`;
   /** @type {Preparation} */
   const skipped = { outcome: 'skipped', ms: 0, token: null };
   // The tab as the browser has it now: whether it's still there, its window,
   // whether it's in front already (then there's nothing to wake or prepare).
+  run.stage = 'tab';
   let live = await api.tabs.get(tabId).catch(() => null);
+  run.tab = live;
+  // Shown by focusTab meanwhile (the request came with little time left):
+  // nothing of this switch's goes out.
+  if (run.taken) return { tab: null, preparation: skipped, superseded: true };
   // Another switch's restore or introduction in its window whose updates
   // Safari hasn't answered yet (a second click on the same row): its answer
   // first, so the tab isn't taken as one with no page, nor the window as busy.
@@ -697,6 +868,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     await Promise.race([under.done, new Promise((resolve) => { timer = setTimeout(resolve, UNDER_WAY_MS); })]);
     clearTimeout(timer);
     live = await api.tabs.get(tabId).catch(() => null);
+    run.tab = live;
   }
   if (!live) {
     logSwitch({ error: 'no such tab' });
@@ -752,9 +924,11 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // its page changed since): drawn before it's shown, as a tab waited for is
   // (`late`, below), not shown as Safari's empty view.
   const trusted = wake && !waits && !loading && !loadWaited && !!platform?.wakeTabs && live.status === 'complete';
-  const earlyBudget = waits ? Math.min(WAIT_AWAKE_MAX_MS + PREPARE_AWAKE_MS, Number.isFinite(deadline) ? Math.max(0, /** @type {number} */ (deadline) - 250 - SHOW_MS - Date.now()) : Infinity) : undefined;
+  const earlyBudget = waits ? Math.min(WAIT_AWAKE_MAX_MS + PREPARE_AWAKE_MS, Math.max(0, showBy - Date.now())) : undefined;
   /** @type {Promise<Preparation> | null} */
   let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered, ...(earlyBudget != null ? { budget: earlyBudget } : {}) }) : null;
+  run.early = early;
+  run.prepToken = token;
   const earlyAt = Date.now();
   /** @type {Wait} */
   const wait = { gen, since: asked, until: Math.min(asked + RESTORE_MAX_MS, (deadline ?? Infinity) - RESTORE_RESERVE_MS), hardUntil: Math.min(asked + RESTORE_HARD_MAX_MS, (deadline ?? Infinity) - RESTORE_RESERVE_MS), hurry, arrival: null, thereAt: null };
@@ -786,7 +960,11 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     void wakeTab(tabId);
     const entry = wakes.get(tabId);
     const answer = wakeAnswer(tabId);
-    const until = Math.min(asked + WAIT_AWAKE_MAX_MS, Number.isFinite(deadline) ? /** @type {number} */ (deadline) - 250 - SHOW_MS - PREPARE_AWAKE_MS : Infinity);
+    run.stage = 'wake';
+    // (Until focusTab's own show, less the preparation's time after an
+    // answer: a tab with no page answers within milliseconds, and is then
+    // noted and shown as Safari loads it, not taken as one too busy to answer.)
+    const until = Math.min(asked + WAIT_AWAKE_MAX_MS, (Number.isFinite(deadline) ? /** @type {number} */ (deadline) - FORCE_SHOW_MS : Infinity) - PREPARE_AWAKE_MS);
     const waitFrom = Date.now();
     /** @type {'left' | 'hurried' | null} */
     let stop = null;
@@ -848,6 +1026,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       // would show nothing happening for the whole wait. Shown as before.
       else if (cover.covered) {
         early = null; // prepared once it has loaded
+        run.stage = loading ? 'load' : 'restore';
         behind = loading ? await waitLoaded(tabId, wait) : await restoreTab(live, wait);
       }
     }
@@ -859,6 +1038,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       logSwitch({ ...how, error: 'superseded' });
       return { tab: null, preparation: skipped, superseded: true, hurried: behind === 'hurried' };
     }
+    run.stage = 'restored';
     const now = await api.tabs.get(tabId).catch(() => null);
     if (!now) {
       logSwitch({ ...how, error: 'no such tab' });
@@ -871,6 +1051,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       return inFront(now, how);
     }
     live = now;
+    run.tab = live;
   }
   // Loaded behind just now (painted, loaded, or as far as it got by the time
   // limit; here, or by the caller: a new tab from the palette, openBehind):
@@ -885,8 +1066,12 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // (its wake says `unseen`).
   /** @type {boolean | null} */
   let introduced = null;
+  // Time left for an introduction and the drawing after it, before the show
+  // the page's wait leaves room for: none, and it's shown as it is.
+  const roomToIntroduce = () => showBy - Date.now() >= INTRODUCE_MIN_MS;
   if (wake && platform?.introduceTabs && gen === focusGen && !capped && !(await isOff())) {
     let tried = false;
+    run.stage = 'introduce';
     if (waited) {
       // Its wake renewed and its arrival cover asked for together, not one
       // after the other on a page busy with its start (the cover answering
@@ -899,7 +1084,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       if (mayIntroduce(live, { loading: true })) {
         const [early, earlyCovered] = (await wait.arrival) ?? [null, false];
         const [renewed, arrived] = await Promise.all([early && hasPage(early) ? early : wakeTab(tabId, { renew: true }), earlyCovered || coverArrival(live)]);
-        if ((arrived || hasPage(renewed)) && gen === focusGen) {
+        if ((arrived || hasPage(renewed)) && gen === focusGen && roomToIntroduce()) {
           tried = true;
           introduced = await introduceTab(live, gen, { loading: true });
         }
@@ -912,7 +1097,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       // Unseen if its page says so, or one before it in the tab did (pageStarted).
       const [woke, knownUnseen] = await Promise.all([wakeTab(tabId), isUnseen(tabId)]);
       const unseen = (!!woke.unseen || knownUnseen) && !neverShown.has(tabId);
-      if (hasPage(woke) && mayIntroduce(live, { unseen }) && gen === focusGen) {
+      if (hasPage(woke) && mayIntroduce(live, { unseen }) && gen === focusGen && roomToIntroduce()) {
         if (unseen && early) {
           // It has painted on screen before (no arrival cover), but that
           // instant on screen would take a preparation (content/core.js
@@ -928,6 +1113,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
           void stale.then((late) => cancelPreparation(tabId, late));
           early = null;
           prepToken = `${token}:introduced`;
+          run.prepToken = prepToken;
         }
         // Arriving covered: out of sight under its cover before that instant
         // (coverArrival), so the paint it asks for is the cover's, quick.
@@ -944,7 +1130,8 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // show's own): past that the switch would fail as too late. Less for a page
   // that has just loaded behind (PREPARE_LOADED_MS).
   const most = waited ? PREPARE_LOADED_MS : PREPARE_MAX_MS;
-  const budget = () => (Number.isFinite(deadline) ? Math.max(0, Math.min(most, deadline - 250 - SHOW_MS - Date.now())) : most);
+  const budget = () => Math.max(0, Math.min(most, showBy - Date.now()));
+  run.stage = 'prepare';
   // Which of the steps run together that change or draw the page answered
   // last: the paint barrier after the preparation means the page has just
   // drawn what the show needs, and nothing else is waited for after it. The
@@ -982,13 +1169,17 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   const budgeted = !!early && wake && !capped && !introduced && !waited;
   const woken = wake && !capped ? wakeTab(tabId, { renew: !!introduced || waited, need: budgeted && !cutting ? HOLD_LEFT_MS : SWITCH_HOLD_MS }) : null;
   const prepared = budgeted && woken ? awakeBudget(/** @type {Promise<Preparation>} */ (early), answered ? Promise.resolve(answered) : woken, earlyAt, prepToken) : early;
+  const preparing = capped ? null : prepared ?? (wake ? prepareTabForShow(live, { token: prepToken, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)));
+  run.early = preparing;
   /** @type {[Wake | null, Preparation, unknown]} */
   let [woke, preparation] = capped ? [{ outcome: 'timeout', ms: Date.now() - asked, startedAt: asked }, early ? { outcome: 'timeout', ms: Date.now() - asked, reason: 'capped', token: prepToken } : skipped, null] : await Promise.all([
     woken?.then((w) => { if (w?.outcome !== 'awake') lastStep = 'wake'; return w; }) ?? null,
-    step('preparation', prepared ?? (wake ? prepareTabForShow(live, { token: prepToken, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)))),
+    step('preparation', /** @type {Promise<Preparation>} */ (preparing)),
     introduced ? step('barrier', barrier(BARRIER_MAX_MS)) : null,
   ]);
   if (trusted && !introduced && woke?.outcome === 'timeout') late = true;
+  run.preparation = preparation;
+  run.noPage = woke?.outcome === 'no page';
   // A page still running an earlier copy of Margin (it slept through an
   // update or a rebuild): the current copy goes in now, theme and all, and
   // is prepared in what's left of the wait, so the page doesn't show the old
@@ -999,7 +1190,10 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     lastStep = '';
     if (wake) void wakeTab(tabId, { need: SWITCH_HOLD_MS });
     const added = await Promise.race([addCurrentCopy(live), new Promise((resolve) => setTimeout(() => resolve(false), Math.min(400, left() - 100)))]);
-    if (added && gen === focusGen && left() > 50) preparation = await prepareTabForShow(live, { token: prepToken, carry, scroll, budget: Math.min(left(), budget()), covered: covered || waited });
+    if (added && gen === focusGen && left() > 50) {
+      run.early = prepareTabForShow(live, { token: prepToken, carry, scroll, budget: Math.min(left(), budget()), covered: covered || waited });
+      run.preparation = preparation = await run.early;
+    }
   }
   if (cutting) {
     let timer;
@@ -1019,7 +1213,8 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // WebKit hid its content as it was suspended, until the page draws again:
   // hideContentUntilPendingUpdate), by WAIT_DRAWN_MAX_MS from the ask.
   const fragile = wake && !capped && hasPage(woke) && ((!!platform?.introduceTabs && (waited || !!introduced || neverShown.has(tabId))) || late);
-  const barrierMs = Math.min(Number.isFinite(deadline) ? Math.min(BARRIER_MAX_MS, deadline - 250 - SHOW_MS - Date.now()) : BARRIER_MAX_MS, late && !introduced && !waited ? asked + WAIT_DRAWN_MAX_MS - Date.now() : Infinity);
+  run.stage = 'barrier';
+  const barrierMs = Math.min(BARRIER_MAX_MS, showBy - Date.now(), late && !introduced && !waited ? asked + WAIT_DRAWN_MAX_MS - Date.now() : Infinity);
   if (fragile && lastStep !== 'barrier' && barrierMs > 0 && gen === focusGen) await barrier(barrierMs);
   if (barriers.length) how = { ...how, barrier: barriers };
   // Another switch was asked for while this one waited (back to the tab in
@@ -1032,7 +1227,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   if (Number.isFinite(deadline) && Date.now() > deadline - 250) {
     cancelPreparation(tabId, preparation);
     logSwitch({ wake: woke, preparation, introduced, ...how, error: 'expired' });
-    throw new Error('Too late: the page stopped waiting for this switch');
+    throw new Error(TOO_LATE);
   }
   // A timeout only bounds how long the old page stays covered. Stop the late
   // preparation before activating, otherwise it could finish over the live
@@ -1047,6 +1242,8 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // it's shown and draws Margin before its background has said which tab it
   // is; this says it (content/core.js `showing`).
   if (woke?.outcome === 'no page') await noteShowing(live, { carry, scroll });
+  // Shown by focusTab meanwhile (its page's deadline came first).
+  if (run.taken) return { tab: null, preparation, superseded: true };
   const fail = (err) => {
     cancelPreparation(tabId, preparation);
     forgetShowing(tabId);
@@ -1055,19 +1252,26 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   };
   const ended = endIntroduction(tabId, gen);
   activating(tabId);
-  const tab = await api.tabs.update(tabId, { active: true }).catch(fail);
+  run.stage = 'show';
+  run.sent = true;
+  run.sentAt = Date.now();
+  const showing = api.tabs.update(tabId, { active: true });
+  run.update = showing.then((t) => ({ tab: t ?? null }), (err) => ({ err }));
+  const tab = await showing.catch(fail);
+  run.stage = 'shown';
   // Safari can answer without having brought the tab to the front: checked,
   // and asked once more. A switch that didn't happen says so (the page shows
   // it, instead of its highlight going back as if nothing was asked).
   if (!(await isInFront(tabId, tab))) {
     if (gen !== focusGen) return { tab: null, preparation, superseded: true }; // another switch took the front meanwhile
-    if (Number.isFinite(deadline) && Date.now() > deadline - 250) fail(new Error('Too late: the page stopped waiting for this switch'));
+    if (Number.isFinite(deadline) && Date.now() > deadline - 250) fail(new Error(TOO_LATE));
     activating(tabId);
     await api.tabs.update(tabId, { active: true }).catch(fail);
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
   logSwitch({ wake: woke, preparation, introduced, ...how, shownAfter: Date.now() - asked });
   if (ended?.lateTab) void hooks.activated?.({ tabId, windowId: live.windowId }); // as in focusTab
+  run.stage = 'window';
   if (tab && raise) await focusWindow(tab.windowId);
   return { tab, preparation };
 }
@@ -1128,11 +1332,24 @@ async function noteShowing(tab, { carry = null, scroll = null } = {}) {
 // The id itself stands only if the page drew this copy's tab ids, matched to
 // the open tabs (`hint.from`: whose they were, shared/stored.js); ids from
 // another copy or another Safari session can name a different tab now.
-/** @param {number} tabId @param {{ url?: string, index?: number, title?: string, from?: { origin?: string, since?: number, synced?: boolean } | null } | null | undefined} hint @param {number | null | undefined} preferWindow */
-export async function resolveTab(tabId, hint, preferWindow) {
+// `deadline`: a switch's (when its page stops waiting). Safari's tabs.get can
+// wait on the tab's hung process (2026-11-03): past RESOLVE_LEAVES_MS before
+// it, the tab as Margin's state has it stands in, so the switch itself
+// starts with time left to show it (focusTab), rather than its page being
+// told it didn't happen.
+const RESOLVE_LEAVES_MS = 2000;
+/** @param {number} tabId @param {{ url?: string, index?: number, title?: string, from?: { origin?: string, since?: number, synced?: boolean } | null } | null | undefined} hint @param {number | null | undefined} preferWindow @param {{ deadline?: number }} [options] */
+export async function resolveTab(tabId, hint, preferWindow, { deadline } = {}) {
   const me = thisCopy();
   const ours = !hint || ('from' in hint ? hint.from?.origin === me.origin && (hint.from.since == null || hint.from.since === me.since) && hint.from.synced !== false : true);
-  const live = Number.isInteger(tabId) && ours ? await api.tabs.get(tabId).catch(() => null) : null;
+  let live = null;
+  if (Number.isInteger(tabId) && ours) {
+    /** @type {Promise<{ tab: any }>} */
+    const asking = api.tabs.get(tabId).then((tab) => ({ tab: tab ?? null }), () => ({ tab: null }));
+    const answered = Number.isFinite(deadline) ? await answerBy(asking, /** @type {number} */ (deadline) - RESOLVE_LEAVES_MS) : await asking;
+    if (!answered) console.warn(`[margin] Safari hasn't said where tab ${tabId} is in time: switching to it as Margin last saw it`);
+    live = answered ? answered.tab : (cached()?.tabs[tabId] ?? null);
+  }
   if (live || !hint?.url) return live;
   const key = M.normalizeUrl(hint.url);
   let candidates = (await api.tabs.query({}).catch(() => [])).filter((t) => M.normalizeUrl(t.url || t.pendingUrl || '') === key);
@@ -1208,8 +1425,11 @@ export async function inPage(tabId, url, func, args = [], ms = 300) {
   ]);
 }
 
-/** @param {{ windowId?: number, url?: string, spaceId?: string }} options */
-export async function openTab({ windowId, url, spaceId }) {
+// `deadline`: when the page that asked stops waiting (it's then told it
+// didn't happen: background.js): no tab opens past REFUSE_MS before it.
+/** @param {{ windowId?: number, url?: string, spaceId?: string, deadline?: number }} options */
+export async function openTab({ windowId, url, spaceId, deadline }) {
+  tooLate(deadline);
   focusGen++; // a switch still waiting for its wake doesn't land after this
   movedOn(windowId);
   markMarginOpening();
@@ -1218,6 +1438,7 @@ export async function openTab({ windowId, url, spaceId }) {
   // it there, instead of in the space shown before and then moving it (the
   // window could stay on the other one).
   if (spaceId && windowId != null) await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
+  tooLate(deadline);
   const tab = await api.tabs.create({ windowId, url, active: true });
   if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));
   return tab;
@@ -1324,9 +1545,16 @@ function stopIntroductions(why) {
 // tabs.update; should they come later, they're still left out.
 /** @typedef {{ tabId: number, windowId: number }} Activation */
 /** @typedef {{ from: number, until: number }} Span when an introduction's updates were sent, and when it ended (its real switch sent, or over) */
-/** @typedef {{ tabId: number, gen: number, frontId: number | null, frontMark: number, expected: number[], seen: Activation[], answered: boolean, lateTab: boolean, span: Span | null, done: Promise<void>, settled: () => void }} Introduction `done`: once Safari has answered its updates, or it's over */
+/** @typedef {{ tabId: number, gen: number, frontId: number | null, frontMark: number, expected: number[], seen: Activation[], answered: boolean, lateTab: boolean, taken?: boolean, span: Span | null, done: Promise<void>, settled: () => void }} Introduction `done`: once Safari has answered its updates, or it's over; `taken`: a forced show ended it before Safari had answered them */
 /** @type {Map<number, Introduction>} */
 const introductions = new Map();
+// One a forced show ended (focusTab) before Safari had carried out its
+// updates: its activations, still to come, left out as they come, ahead of
+// the show's own (Safari carries out updates in order), until shortly after
+// Safari answers them.
+/** @type {Map<number, Introduction>} */
+const lingering = new Map();
+const LINGER_MS = 500;
 /** @type {Map<number, Span>} */
 const lastSpan = new Map(); // per window, its last introduction's
 // background.js: `activated` handles an activation left out after all (Safari
@@ -1340,7 +1568,8 @@ export function setIntroductionHooks(given) {
 }
 /** @param {Activation} info */
 export function isIntroduction(info) {
-  const pending = introductions.get(info.windowId);
+  const left = lingering.get(info.windowId);
+  const pending = left?.expected.length ? left : introductions.get(info.windowId);
   if (!pending?.expected.length) return false;
   if (pending.expected[0] !== info.tabId) {
     pending.expected = []; // something else came first: from here, as it comes
@@ -1355,10 +1584,15 @@ export function isIntroduction(info) {
 }
 // The tab is being shown by the switch that introduced it (`gen`), or that
 // switch is over: its activation from here is the real one. The one ended, if any.
-function endIntroduction(tabId, gen) {
+/** @param {number} tabId @param {number} gen @param {{ linger?: boolean }} [options] */
+function endIntroduction(tabId, gen, { linger = false } = {}) {
   for (const [windowId, pending] of introductions) {
     if (pending.tabId !== tabId || pending.gen !== gen) continue;
     introductions.delete(windowId);
+    if (linger && !pending.answered) {
+      pending.taken = true;
+      if (pending.expected.length) lingering.set(windowId, pending);
+    }
     if (pending.span) pending.span.until = Math.min(pending.span.until, Date.now());
     pending.settled();
     return pending;
@@ -1428,6 +1662,12 @@ async function forwardAndBack(tab, gen, sending = () => {}) {
   resumedBehind.delete(tab.id); // in the window for that instant: visible, and drawn for it
   settled();
   void hooks.introduced?.(tab.id);
+  // Its switch showed the tab meanwhile, out of time (focusTab): the front
+  // is that show's, nothing of this one's to tell.
+  if (pending.taken) {
+    setTimeout(() => { if (lingering.get(windowId) === pending) lingering.delete(windowId); }, LINGER_MS);
+    return false;
+  }
   if (pending.seen.some((info) => info.tabId === front.id)) return true; // both seen: the page is back
   const [now] = await api.tabs.query({ active: true, windowId }).catch(() => []);
   if (now?.id === front.id) return true; // back (its activation still on its way, or none)
@@ -1588,10 +1828,15 @@ export function pageBlinked(windowId, { hiddenAt, shownAt } = {}) {
 // the Safari session. A key press after it (`hurry`) cuts the wait short.
 const RESTORE_START_MS = 600;
 const RESTORE_MAX_MS = 2500;
-const RESTORE_HARD_MAX_MS = 5000; // for a tab whose own document hasn't answered (within the page's wait, as RESTORE_MAX_MS)
+const RESTORE_HARD_MAX_MS = 4000; // for a tab whose own document hasn't answered (within the page's wait, as RESTORE_MAX_MS)
 const COMMITTED_PAINT_MS = 1000; // from a document's late arrival, for its paint (most of the commit-to-first-layout times in Tirth's log, 61 ms–1.1 s)
 const READY_MAX_MS = 1500; // from its load's start to its show, at most, for a page there that doesn't paint
-const RESTORE_RESERVE_MS = 1500; // the page's wait left for the switch after it (introduction, preparation, tabs.update)
+// The page's wait left for the switch after it (introduction, preparation,
+// paint barrier: 1 s, then focusTab's SHOW_BEFORE_MS for the show). 1500 ms
+// until 2026-11-03: with a 5 s wait for a document, a restore plus its
+// introduction used nearly all the page's 7 s, and Safari's calls after it
+// (waiting on a hung process) took it past.
+const RESTORE_RESERVE_MS = 2800;
 const RESTORE_POLL_MS = 40;
 const RESTORE_BLINK_MS = 60; // a hide dated this late after the answers is still the restore's (a busy page dates it late)
 const RESTORE_MISSES = 2;
@@ -1859,7 +2104,11 @@ export const tellPage = (/** @type {{ id: number }} */ page, /** @type {any} */ 
 // behind, loaded, as a ⌘-clicked link would. `then(tab)`: what loads it,
 // after the row is in (a search: background/handlers.js); else `url`.
 const LOADED_MAX_MS = 5000;
-const FOCUS_MS = 2500; // what bringing it to the front may take, within the page's deadline
+// What bringing it to the front may take, within the page's deadline: focusTab
+// plans its show SHOW_BEFORE_MS before its deadline, so this leaves its steps
+// (an introduction, the preparation, a paint barrier) the 2.1 s they had
+// before 2026-11-03 (2.5 s then, less the 0.4 s it kept).
+const FOCUS_MS = 2100 + SHOW_BEFORE_MS;
 const POLL_MS = 100;
 /**
  * `deadline`: when the page that asked stops waiting. `created(tab)`: told
@@ -1873,6 +2122,7 @@ export async function openBehind({ windowId, url, from, then, created, label, de
   focusGen++; // a switch still waiting for its wake doesn't land after this
   const gen = movedOn(win);
   markMarginOpening();
+  tooLate(deadline);
   const tab = await api.tabs.create({ windowId: win, url: then ? 'about:blank' : url, active: false });
   created?.(tab);
   // In the window's space (model.js assignTab), drawn before the page is told.

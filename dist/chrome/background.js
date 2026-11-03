@@ -10,7 +10,7 @@ import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mut
 import * as keepReady from './background/keep-ready.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, injectIntoOpenTabs, isIntroduction, keepHandedOff, resolveTab, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, injectIntoOpenTabs, isIntroduction, keepHandedOff, resolveTab, sawActivation, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -84,7 +84,15 @@ const firstSync = (async () => {
     }
   }
 })();
-const untilSynced = () => (isSynced() ? null : Promise.race([firstSync, new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_MS))]));
+// A request that says when its page stops waiting (`deadline`: a switch)
+// waits only so long that SYNC_LEAVES_MS is left for the switch itself.
+const SYNC_LEAVES_MS = 2500;
+const untilSynced = (deadline = Infinity) => {
+  if (isSynced()) return null;
+  const ms = Math.max(0, Math.min(SYNC_WAIT_MS, deadline - SYNC_LEAVES_MS - Date.now()));
+  let timer;
+  return Promise.race([firstSync, new Promise((resolve) => { timer = setTimeout(resolve, ms); })]).finally(() => clearTimeout(timer));
+};
 // A background Safari stops and starts again (idle 30 s, then the next event)
 // doesn't redo this each time: once per START_WORK_MS.
 const START_WORK_MS = 10 * 60_000;
@@ -249,7 +257,11 @@ const activated = owned(async ({ tabId, windowId }, left) => {
 // (background/keep-ready.js frontChanged); so is a tab closed or moved away
 // from the front, in order with them.
 const onActivation = (/** @type {{ tabId: number, windowId: number }} */ info) => activated(info, handingOff.has(info.tabId) ? null : keepReady.frontChanged(info.windowId, info.tabId, cached()));
-api.tabs.onActivated.addListener((info) => (isIntroduction(info) ? undefined : onActivation(info)));
+api.tabs.onActivated.addListener((info) => {
+  if (isIntroduction(info)) return undefined;
+  sawActivation(info); // (tabs.js answeredLate)
+  return onActivation(info);
+});
 api.tabs.onRemoved.addListener((tabId) => keepReady.frontGone(tabId));
 api.tabs.onDetached?.addListener((tabId) => keepReady.frontGone(tabId));
 // An activation left out after all (Safari left the tab in front); a tab whose
@@ -288,7 +300,7 @@ api.windows?.onRemoved.addListener(owned((windowId) =>
 // fails if the tab is gone (no other tab is closed or moved for it).
 async function withTab(message, sender) {
   if (!Number.isInteger(message?.tabId) || !message.hint) return message;
-  const target = await resolveTab(message.tabId, message.hint, sender.tab?.windowId);
+  const target = await resolveTab(message.tabId, message.hint, sender.tab?.windowId, { deadline: message.deadline });
   if (!target) throw new Error('That tab is no longer open');
   return { ...message, tabId: target.id, hint: null };
 }
@@ -296,20 +308,47 @@ async function withTab(message, sender) {
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
 const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme', 'injectPage', 'fetchStyle']);
+// Requests whose page stops waiting at their `deadline` (content/core.js
+// TIMED_REQUESTS) are answered before it, whatever is still under way: by
+// REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
+// won't now: background/tabs.js focusTab doesn't start one past its
+// deadline). A switch under way answers sooner itself (focusTab), so this
+// is for a wait before it: the background starting (decided, the first
+// sync), a slow storage (a space's write queued behind others), or a Safari
+// call that doesn't answer. Unanswered, the page said the switch didn't
+// happen, and a second later that Margin wasn't responding (2026-11-03).
+const TIMED = new Set(['activateTab', 'openPin', 'setSpace', 'newTab', 'search']);
+const REPLY_GUARD_MS = 500;
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;
+  const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
+  let answered = false;
+  let guard = null;
+  const answer = (/** @type {any} */ reply) => {
+    if (answered) return;
+    answered = true;
+    clearTimeout(guard);
+    sendResponse(reply);
+  };
+  if (deadline !== Infinity) {
+    guard = setTimeout(() => {
+      if (answered) return;
+      console.warn(`[margin] ${message.type} still under way at its page's deadline: answered that it didn't happen`);
+      answer({ ok: false, error: 'Too late: Margin took too long to answer' });
+    }, Math.max(0, deadline - REPLY_GUARD_MS - Date.now()));
+  }
   // A page starting asks whether this copy still owns the state (a newer
   // one may have taken over since: copies don't hear each other's writes).
   decided()
     .then(() => (message.type === 'hello' || message.type === 'owner' ? recheck() : null))
-    .then(() => (isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced() : null))
+    .then(() => (isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced(deadline) : null))
     .then(() => (isOwner() ? withTab(message, sender) : null))
     .then((request) => (isOwner() ? handler(request, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' }))
     // A change made while a newer copy took over wasn't written (store.js
     // mutate). Only a copy known not to own the state says `stale` (its pages
     // then stand down for good): a storage error while deciding is an error.
-    .then(sendResponse, (err) => sendResponse(err instanceof StaleError || isStale() ? { ok: false, stale: true, error: String(err?.message ?? err) } : { ok: false, error: String(err?.message ?? err) }));
+    .then(answer, (err) => answer(err instanceof StaleError || isStale() ? { ok: false, stale: true, error: String(err?.message ?? err) } : { ok: false, error: String(err?.message ?? err) }));
   return true;
 });
 
