@@ -254,11 +254,11 @@ test('keep ready: the tab left is the one the activations put in front, though t
   keepReady.resetKeepReady();
 });
 
-test('keep ready: a page\'s word that Safari was left doesn\'t count when Safari was seen in use after it lost focus, when it comes from another window than the one focused last, or from a tab no longer in front', async (t) => {
+test('keep ready: a page\'s word that Safari was left doesn\'t count when Safari was seen in use after it lost focus, when it comes from another window than the one focused last, or from a tab no longer in front; one that counts lets go 15 s later (Safari\'s own find bar brings it too)', async (t) => {
   keepReady.resetKeepReady();
   const t0 = 4_800_000;
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
-  await setUpMany();
+  await setUpMany({ minutes: 2 });
   const s = await load();
   keepReady.noteFocused(1, t0); // window 1 focused
   t.mock.timers.tick(100);
@@ -271,7 +271,7 @@ test('keep ready: a page\'s word that Safari was left doesn\'t count when Safari
   t.mock.timers.tick(250);
   assert.deepEqual(held(), [1]);
   const nothingLetGo = async (why) => {
-    t.mock.timers.tick(5000);
+    t.mock.timers.tick(keepReady.PAGE_AWAY_MS + 1000);
     await settleNow();
     assert.deepEqual(released(), [], why);
     assert.equal(keepReady.keepReadyState().away, false, why);
@@ -291,7 +291,10 @@ test('keep ready: a page\'s word that Safari was left doesn\'t count when Safari
   keepReady.noteFocused(1);
   t.mock.timers.tick(10);
   keepReady.noteAway({ at: Date.now(), tabId: 2, windowId: 1 });
-  t.mock.timers.tick(3000);
+  t.mock.timers.tick(keepReady.PAGE_AWAY_MS - 100);
+  await settleNow();
+  assert.deepEqual(released(), [], 'a search typed in Safari\'s find bar, say');
+  t.mock.timers.tick(100);
   await settleNow();
   assert.deepEqual(released(), [[1, keysOf(1)]]);
   assert.equal(keepReady.keepReadyState().away, true);
@@ -308,7 +311,7 @@ test('keep ready: Safari left for another app: every hold ends 3 s later, none i
   await settleNow();
   t.mock.timers.tick(1250);
   const keys = { 1: keysOf(1), 2: keysOf(2) };
-  keepReady.noteAway(); // windows.onFocusChanged with WINDOW_ID_NONE, or the page in front's blur
+  keepReady.noteAway(); // windows.onFocusChanged with WINDOW_ID_NONE
   t.mock.timers.tick(2900);
   await settleNow();
   assert.deepEqual(released(), [], 'not at once');
@@ -376,6 +379,43 @@ test('keep ready: a background started again knows the holds the one before it p
   await settleNow();
   assert.deepEqual(released().map(([id, keys]) => [id, keys.length]).sort(), [[1, 1], [9, 1]]);
   assert.deepEqual(released().find(([id]) => id === 9)[1], ['old9']);
+  keepReady.resetKeepReady();
+  fake.session = {};
+});
+
+test('keep ready: a hold whose page changed, or that has ended, isn\'t taken as running by a background started again (a switch to its tab would skip the wait then, and show Safari\'s empty view)', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 7_500_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUpMany();
+  await switchTo(2, t0);
+  await switchTo(3, t0 + 1000);
+  await settleNow();
+  assert.equal(keepReady.isHeld(1, t0 + 1100), true);
+  assert.equal(keepReady.isHeld(2, t0 + 1100), true);
+  // Tab 1: a link clicked there just before the switch, its new page in
+  // (its hold may have ended with the page before, its answer not here yet).
+  keepReady.pageChanged(1);
+  // Tab 2: its hold over (its page shown elsewhere, or gone).
+  fake.ends.get(keysOf(2)[0])();
+  await settleNow();
+  keepReady.startedAgain();
+  await keepReady.sessionKnown();
+  assert.equal(keepReady.isHeld(1, t0 + 1200), false, 'its page changed');
+  assert.equal(keepReady.isHeld(2, t0 + 1200), false, 'over');
+  assert.deepEqual(keepReady.keepReadyState().held, [1], 'still counted (it may run): released with the rest');
+  keepReady.resetKeepReady();
+  fake.session = {};
+});
+
+test('keep ready: the activation that starts a background Safari stopped comes before its state is read: the tab left isn\'t known yet (not "none"), and the state read after says which', async () => {
+  keepReady.resetKeepReady();
+  await setUp();
+  keepReady.startedAgain();
+  assert.equal(keepReady.frontChanged(1, 2, null), undefined, 'not known yet');
+  assert.equal(keepReady.leftIn(await load(), 1, 2), 1, 'the state says tab 1 was in front');
+  assert.equal(keepReady.frontChanged(1, 3, null), 2, 'the next activation knows (from the one before)');
+  assert.equal(keepReady.frontChanged(2, 6, await load()), 5, 'a window not seen yet, the state read');
   keepReady.resetKeepReady();
   fake.session = {};
 });

@@ -7,7 +7,9 @@ const listeners = new Map();
 const page = { focus: true, visibility: 'visible' };
 globalThis.window = globalThis;
 globalThis.addEventListener = (type, fn) => listeners.set(type, [...(listeners.get(type) ?? []), fn]);
-globalThis.document = /** @type {any} */ ({ hasFocus: () => page.focus, get visibilityState() { return page.visibility; } });
+const docListeners = new Map();
+globalThis.document = /** @type {any} */ ({ hasFocus: () => page.focus, get visibilityState() { return page.visibility; }, addEventListener: (type, fn) => docListeners.set(type, [...(docListeners.get(type) ?? []), fn]) });
+const visibility = (state) => { page.visibility = state; for (const fn of docListeners.get('visibilitychange') ?? []) fn({ type: 'visibilitychange' }); };
 const fire = (type, { target = window, isTrusted = true } = {}) => { for (const fn of listeners.get(type) ?? []) fn({ type, target, isTrusted }); };
 
 const { watchAway } = await import('../extension/shared/away.js');
@@ -105,4 +107,36 @@ test('away: the frame watch stops as the page is hidden or the window focused; t
   assert.deepEqual(types(), ['away'], 'its focus back said by the focus event, or the next switch');
   fire('focus');
   assert.deepEqual(types(), ['away', 'back']);
+});
+
+test('away: not said once no hold can still run (the page shown longer ago than keep-ready\'s minutes, and a few seconds), and its focus back not said past 20 s after its word: each can start a background Safari stopped, for nothing', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 10_000 });
+  reset();
+  const said = [];
+  watchAway({ isOn: () => true, holdMs: () => 60_000, send: (type) => said.push(type) });
+  t.mock.timers.tick(10_000); // shown 10 s ago: the hold of the switch to it may run
+  page.focus = false;
+  fire('blur');
+  t.mock.timers.tick(5);
+  assert.deepEqual(said, ['away']);
+  t.mock.timers.tick(30_000);
+  page.focus = true;
+  fire('focus');
+  assert.deepEqual(said, ['away'], 'back 30 s later: the background let go by then (or stopped)');
+  t.mock.timers.tick(30_000); // shown 70 s ago
+  page.focus = false;
+  fire('blur');
+  t.mock.timers.tick(5);
+  assert.deepEqual(said, ['away'], 'no hold of the switch to it left');
+  page.focus = true;
+  fire('focus');
+  visibility('hidden'); // a switch away and back: a new hold
+  visibility('visible');
+  page.focus = false;
+  fire('blur');
+  t.mock.timers.tick(5);
+  t.mock.timers.tick(3_000);
+  page.focus = true;
+  fire('focus');
+  assert.deepEqual(said, ['away', 'away', 'back']);
 });

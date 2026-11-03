@@ -17,7 +17,7 @@ let frameId = 0;
 globalThis.requestAnimationFrame = /** @type {any} */ ((fn) => { frames.set(++frameId, fn); return frameId; });
 globalThis.cancelAnimationFrame = /** @type {any} */ ((id) => { frames.delete(id); });
 const frame = () => { const due = frames; frames = new Map(); for (const fn of due.values()) fn(); };
-const { MOVE_CAP_MS, SETTLE_MS, SETTLE_TRIES, keyframesIn, startMoves } = await import('../extension/content/page/moves.js');
+const { KEYFRAMES_KEEP_MS, MOVE_CAP_MS, SETTLE_MS, SETTLE_TRIES, keyframesIn, startMoves } = await import('../extension/content/page/moves.js');
 
 const READ = /^(margin|padding|width|font|--)/i;
 const CHAIN = /^(margin|font|--)/i;
@@ -136,6 +136,21 @@ test('moves: an animation counts if it ends, runs and moves a length, by its @ke
   assert.equal(moves.moving(), true, 'keyframes in no sheet the page can read: taken as moving a length');
   animation('animationcancel', body, 'gone');
   assert.equal(moves.moving(), false);
+});
+
+test('moves: what a @keyframes sets is found once for a run of reads (every sheet\'s every rule walked for it), and again once that\'s 2 s old', () => {
+  const asked = [];
+  const { moves, animation } = setUp({ keyframes: (name) => { asked.push(name); return ['opacity']; }, styles: new Map([[body, { animationName: 'fade', animationIterationCount: '1', animationPlayState: 'running' }]]) });
+  animation('animationstart', body, 'fade');
+  for (let i = 0; i < 20; i++) {
+    assert.equal(moves.moving(), false);
+    clock += 16; // a read tried every frame
+  }
+  assert.deepEqual(asked, ['fade']);
+  clock += KEYFRAMES_KEEP_MS;
+  assert.equal(moves.moving(), false);
+  assert.deepEqual(asked, ['fade', 'fade']);
+  animation('animationend', body, 'fade');
 });
 
 test('moves: one whose element left the page, or isn\'t looked at any more, or never ended, stops holding reads back', () => {

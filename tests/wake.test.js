@@ -135,7 +135,7 @@ globalThis.chrome = {
   },
 };
 
-const { repairCutOff, wakeTab, forgetWake, focusTab, isFocusing, isIntroduction, isNeverShown, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { repairCutOff, wakeTab, forgetWake, focusTab, handingOff, holdTab, isFocusing, isIntroduction, isNeverShown, keepHandedOff, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const { tapLog } = await import('../extension/background/diagnostics.js');
 const { holdNow, keepReadyState, noteLeft, resetKeepReady, startedAgain, switchFacts } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
@@ -144,6 +144,10 @@ const { mutate, decided, load, markSynced } = await import('../extension/backgro
 const V = await import('../extension/shared/view.js');
 const { navigate, showSpace } = await import('../extension/background/navigation.js');
 const { handlers } = await import('../extension/background/handlers.js');
+const { asksBackground } = await import('../extension/shared/platform.js');
+// What content/hold.js listens for.
+const HOLD = 'margin-hold';
+const RELEASE = 'margin-release';
 
 function reset(tabs) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
@@ -279,17 +283,72 @@ test('releaseInPage: self-contained (executeScript sends only its source), and s
   vm.runInContext(`(${releaseInPage})(['a'])`, vm.createContext({ Event, dispatchEvent: () => { throw new Error('page wrapper'); } }));
 });
 
-test('release: in the page\'s own world, naming the holds; nothing while a switch to the tab is under way (it ends them as it shows it)', async () => {
+test('release: a message to Margin\'s page naming the holds, a script in the page\'s own world only if nothing there answers it; nothing while a switch to the tab is under way (it ends them as it shows it)', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 13, url: 'https://release.test/' }]);
   fake.scriptDelay = () => 40;
   const focusing = focusTab(13);
+  fake.messages = [];
   assert.equal(releaseTab(13, ['k1']), false);
   assert.equal(fake.scripts.filter((x) => x.func === releaseInPage).length, 0);
   await focusing;
+  const releases = () => fake.messages.filter((m) => m.message.type === RELEASE).map((m) => [m.tabId, m.message.keys]);
+  assert.deepEqual(releases(), []);
   fake.scripts = [];
   assert.equal(releaseTab(13, ['k1', 'k2']), true);
+  await sleep(5);
+  assert.deepEqual(releases(), [[13, ['k1', 'k2']]]);
+  assert.equal(fake.scripts.filter((x) => x.func === releaseInPage).length, 0, 'answered: nothing more');
+  // A page with Margin's script from before (no listener of this copy's: no answer).
+  fake.reply = undefined;
+  fake.messages = [];
+  assert.equal(releaseTab(13, ['k3']), true);
+  await sleep(5);
+  assert.deepEqual(releases(), [[13, ['k3']]]);
   const sent = fake.scripts.filter((x) => x.func === releaseInPage);
-  assert.deepEqual(sent.map((x) => [x.tabId, x.world, x.args[0]]), [[13, 'MAIN', ['k1', 'k2']]]);
+  assert.deepEqual(sent.map((x) => [x.tabId, x.world, x.args[0]]), [[13, 'MAIN', ['k3']]]);
+});
+
+test('hold: keep-ready\'s hold is a message to Margin\'s page, answered once it\'s over (background priority: no script left running); a page with no listener of this copy\'s is held by the page-world script for what\'s left; a message that failed late isn\'t followed by one', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 16, url: 'https://hold16.test/' }]);
+  fake.scriptDelay = () => 1;
+  const send = chrome.tabs.sendMessage;
+  try {
+    /** @type {(answer: unknown) => void} */
+    let answer = () => {};
+    chrome.tabs.sendMessage = async (tabId, message) => {
+      fake.messages.push({ tabId, message });
+      return message.type === HOLD ? new Promise((resolve) => { answer = resolve; }) : true;
+    };
+    let over = false;
+    const held = holdTab(16, 60_000, 'key16').then((ran) => { over = true; return ran; });
+    await sleep(10);
+    assert.deepEqual(fake.messages.map((m) => [m.tabId, m.message]), [[16, { type: HOLD, key: 'key16', ms: 60_000 }]]);
+    assert.equal(keepAwakes(16).length, 0, 'no script');
+    assert.equal(over, false, 'running');
+    answer({ held: true });
+    assert.equal(await held, true);
+    // No listener there: an answer of nothing, at once.
+    chrome.tabs.sendMessage = async (tabId, message) => { fake.messages.push({ tabId, message }); return undefined; };
+    fake.holdsRun = true;
+    void holdTab(16, 60_000, 'key16b');
+    await sleep(10);
+    assert.deepEqual(keepAwakes(16).map((x) => [x.world, x.args[1]]), [['MAIN', 'key16b']]);
+    assert.ok(keepAwakes(16)[0].args[0] <= 60_000 && keepAwakes(16)[0].args[0] > 59_000, 'for what\'s left of its time');
+    // Failed after a while (its page gone with its process): nothing more.
+    fake.scripts = [];
+    chrome.tabs.sendMessage = async () => sleep(2100).then(() => { throw new Error('page gone'); });
+    assert.equal(await holdTab(16, 60_000, 'key16c'), false);
+    assert.equal(keepAwakes(16).length, 0);
+  } finally {
+    chrome.tabs.sendMessage = send;
+    fake.holdsRun = false;
+  }
+});
+
+test('hold: the messages are the ones Margin\'s page listens for', async () => {
+  const page = await import('../extension/content/hold.js');
+  assert.equal(HOLD, page.HOLD);
+  assert.equal(RELEASE, page.RELEASE);
 });
 
 test('switch log: whether keep-ready held the tab and how long it had been hidden as the switch was asked for, and where the preparation\'s time went in the page', async () => {
@@ -2895,6 +2954,86 @@ test('wait: a wake that fails before its scripts go out (its permission check th
     tabShown(217);
     done();
   }
+});
+
+test('wait: a wake that fails once the page in front is covered for it (past 150 ms: its permission check slow, then throwing) uncovers that page at once, told the switch failed, not left covered until its own limit', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 263, url: 'https://throws263.test/' }], []);
+  const contains = chrome.permissions.contains;
+  chrome.permissions.contains = () => { throw new Error('boom'); };
+  // The wake's own look at the tab (the switch's first is quick) slow: its
+  // permission check comes 300 ms in.
+  const get = chrome.tabs.get;
+  let gets = 0;
+  chrome.tabs.get = async (id) => (id === 263 && ++gets === 2 ? sleep(300).then(() => get(id)) : get(id));
+  const listeners = process.listeners('unhandledRejection');
+  process.removeAllListeners('unhandledRejection');
+  process.on('unhandledRejection', () => {});
+  try {
+    noteLeft(263, Date.now() - 1_000);
+    const outcome = await Promise.race([focusTab(263, { source: 'space' }).then(() => 'shown', (err) => `failed: ${err.message}`), sleep(1500).then(() => 'still waiting')]);
+    assert.equal(outcome, 'failed: boom');
+    await sleep(20);
+    assert.deepEqual(toldFront().map(([type, tabId]) => [type, tabId]), [['switching', 263], ['switch-failed', 263]], 'covered while it waited, then told');
+  } finally {
+    process.removeAllListeners('unhandledRejection');
+    for (const listener of listeners) process.on('unhandledRejection', listener);
+    chrome.permissions.contains = contains;
+    chrome.tabs.get = get;
+    tabShown(263);
+    done();
+  }
+});
+
+test('wait: a tab keep-ready holds isn\'t waited for, but one whose wake doesn\'t answer in time all the same (suspended after all: a hold that ended unseen) is drawn before it\'s shown', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 264, url: 'https://held264.test/' }], []);
+  try {
+    await decided();
+    await markSynced();
+    await mutate((st) => M.upsertTab(st, fake.tabs.get(264), Date.now() - 60_000));
+    fake.holdsRun = true;
+    noteLeft(264, Date.now() - 10_000);
+    holdNow(264);
+    await sleep(10);
+    assert.equal(switchFacts(264).heldAtAsk, true, 'held');
+    fake.holdsRun = false;
+    suspend(264, { backgroundMs: 600 });
+    const asked = Date.now();
+    const { entry } = await logged(264, () => focusTab(264));
+    assert.equal(entry.wakeOutcome, null, 'not a wait');
+    const [drawn] = barriers(264);
+    assert.ok(drawn, 'drawn first');
+    assert.ok(fake.updates.at(-1).at - asked >= 590, `shown once its process had resumed (${fake.updates.at(-1).at - asked} ms)`);
+  } finally {
+    resetKeepReady();
+    tabShown(264);
+    done();
+  }
+});
+
+test('hand-off: a ⌘T tab that stays after all has its activation, left out while it was handed back, told if it\'s still in front; nothing for one not handed off, or no longer in front', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/' }, { id: 265, url: 'safari-web-extension://test/newtab/newtab.html', active: true }, { id: 266, url: 'https://b.test/' }], []);
+  try {
+    const told = [];
+    setIntroductionHooks({ activated: (info) => told.push([info.tabId, info.windowId]) });
+    handingOff.add(265);
+    keepHandedOff(265);
+    await sleep(5);
+    assert.deepEqual(told, [[265, 1]]);
+    assert.equal(handingOff.has(265), false);
+    keepHandedOff(265); // (again: no longer handed off)
+    handingOff.add(266); // left meanwhile
+    keepHandedOff(266);
+    await sleep(5);
+    assert.deepEqual(told, [[265, 1]]);
+  } finally {
+    handingOff.clear();
+    done();
+  }
+});
+
+test('prewake: pages ask for wakes in Safari (Chrome: tests/open-behind-chrome.test.js)', () => {
+  assert.equal(asksBackground('prewake'), true);
+  assert.equal(asksBackground('activateTab'), true);
 });
 
 // A tab Safari unloaded whose scripts fail only after 200 ms (its UI process

@@ -117,12 +117,15 @@ function normalizeState(raw = {}) {
 // Settings that no longer exist: `searchEngine` (Margin's own engine
 // choice, replaced by the browser's); `sidebarWidth` (now Arcadia's own,
 // settings.themes.arcadia; normalizeThemes moves a saved one there);
-// `paletteShortcut` (⌥K: ⌘T opens the same palette, content/palette.js);
-// `keepTabsReadyMinutes` (up to six tabs of the space in front, until that
-// long after Safari was last used: most of Tirth's battery; replaced by
+// `paletteShortcut` (⌥K: ⌘T opens the same palette, content/palette.js).
+// Not `keepTabsReadyMinutes` (up to six tabs of the space in front, until
+// that long after Safari was last used: most of Tirth's battery; replaced by
 // keepLeftTabReadyMinutes, the tab just left only, whose default it doesn't
-// change, even turned off: shared/view.js keepReadyMinutes).
-const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut', 'keepTabsReadyMinutes'];
+// change, even turned off: shared/view.js keepReadyMinutes): unread here, but
+// kept as saved, so a build from before (main, a branch being checked) still
+// finds the 0 Tirth set there, and doesn't turn the old keep-ready back on
+// with its default of 30.
+const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
 const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 
 // Each theme's settings, filled in by the theme (which also takes over what

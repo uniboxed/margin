@@ -14,14 +14,29 @@
 // whether this document still has focus is asked every POLL_MS while it's in
 // a frame. Its focus back says so, once, after it said it was left: the
 // window's focus, or, for focus back in a frame (no focus event here), asked
-// the same way for BACK_MS (the background lets go AWAY_MS after; past that,
-// the next switch says Safari is in use itself).
+// the same way for BACK_MS (the background lets go PAGE_AWAY_MS after; past
+// that, the next switch says Safari is in use itself).
+// Each word can start a background Safari stopped (idle 30 s), so neither is
+// said when it can't matter: Safari left once no hold can still run (the
+// holds of a switch end `holdMs()` after it: background/keep-ready.js holdNow;
+// the switch to this page is when it was last shown, give or take
+// HOLD_SLACK_MS), and its focus back past BACK_WITHIN_MS after its word (the
+// background has let go by then, or stopped and forgotten it, and the next
+// switch says Safari is in use).
 const POLL_MS = 1000;
 const BACK_MS = 5000;
-/** @param {{ isOn: () => boolean, send: (type: 'away' | 'back', payload?: { at: number }) => unknown }} options */
-export function watchAway({ isOn, send }) {
+const HOLD_SLACK_MS = 5000;
+export const BACK_WITHIN_MS = 20_000; // keep-ready.js PAGE_AWAY_MS, and some
+/** @param {{ isOn: () => boolean, holdMs?: () => number, send: (type: 'away' | 'back', payload?: { at: number }) => unknown }} options */
+export function watchAway({ isOn, holdMs = () => Infinity, send }) {
   let said = false;
   let saidAt = 0;
+  let shownAt = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') shownAt = Date.now();
+  });
+  // A hold the switch to this page placed may still run.
+  const holding = () => Date.now() - shownAt <= holdMs() + HOLD_SLACK_MS;
   /** @type {ReturnType<typeof setInterval> | null} */
   let poll = null;
   const stop = () => {
@@ -36,18 +51,18 @@ export function watchAway({ isOn, send }) {
   const back = () => {
     stop();
     said = false;
-    void send('back');
+    if (Date.now() - saidAt <= BACK_WITHIN_MS) void send('back');
   };
   const check = () => {
     if (document.visibilityState !== 'visible' || !isOn()) return stop();
     if (!said) {
-      if (!document.hasFocus()) away(Date.now()); // (watched on for its focus back)
+      if (!document.hasFocus() && holding()) away(Date.now()); // (watched on for its focus back)
     } else if (document.hasFocus()) back();
     else if (Date.now() - saidAt >= BACK_MS) stop();
   };
   const watch = () => { poll ??= setInterval(check, POLL_MS); };
   addEventListener('blur', (event) => {
-    if (!event.isTrusted || event.target !== window || said || !isOn()) return;
+    if (!event.isTrusted || event.target !== window || said || !isOn() || !holding()) return;
     const at = Date.now();
     // (document.hasFocus() can still say yes within the blur.)
     setTimeout(() => {

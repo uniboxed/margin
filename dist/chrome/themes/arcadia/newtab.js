@@ -223,7 +223,7 @@ export function mount({ api, self, send, windowed = false }) {
 
   // Safari left for another app with this page in front (as on web pages,
   // content/core.js): the tab kept ready is let go (background/keep-ready.js).
-  watchAway({ isOn: () => !!platform?.keepTabsReady && V.keepReadyMinutes(state?.settings) > 0, send });
+  watchAway({ isOn: () => !!platform?.keepTabsReady && V.keepReadyMinutes(state?.settings) > 0, holdMs: () => V.keepReadyMinutes(state?.settings) * 60_000, send });
   const keepReady = $('keep-ready-minutes');
   if (platform?.keepTabsReady) {
     $('keep-ready-setting').hidden = false;

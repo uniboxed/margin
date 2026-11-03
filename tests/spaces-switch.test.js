@@ -480,3 +480,15 @@ test('hello: the sidebar carried open goes only to a page in front (one loading 
     chrome.tabs.sendMessage = send;
   }
 });
+
+// (Last: this copy is stale from here on.)
+test('showSpace (Safari): a copy a newer one replaced, its last check over a second ago, fails as stale before it switches anything (its write waits, and wouldn\'t ask until then)', async () => {
+  await setup();
+  await sleep(1100);
+  const owner = fake.local.owner;
+  fake.local.owner = { origin: 'safari-web-extension://newer/', since: (owner?.since ?? 0) + 1000 };
+  const { StaleError } = await import('../extension/background/store.js');
+  await assert.rejects(showSpace(1, 'work'), StaleError);
+  assert.equal(front(1), 1, 'nothing brought');
+  assert.equal(V.activeSpaceId(await load(), 1), 'personal');
+});

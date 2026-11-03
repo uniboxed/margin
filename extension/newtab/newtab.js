@@ -3,7 +3,7 @@
 // (themes/<id>/newtab.bundle.js) and calls its mount(). Only that theme's
 // code loads.
 import { themeFor } from '../themes/index.js';
-import { platform } from '../shared/platform.js';
+import { asksBackground, platform } from '../shared/platform.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -21,6 +21,7 @@ const api = globalThis.browser ?? globalThis.chrome;
 const SEND_TIMEOUT_MS = 8000;
 const LOADING_TIMEOUT_MS = 12000;
 async function send(type, payload = {}) {
+  if (!asksBackground(type)) return undefined;
   let timer;
   const loading = type === 'newTab' || type === 'search';
   const waitMs = loading ? LOADING_TIMEOUT_MS : SEND_TIMEOUT_MS;

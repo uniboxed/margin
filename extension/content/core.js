@@ -6,8 +6,9 @@
 import * as V from '../shared/view.js';
 import { createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHost } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
-import { platform } from '../shared/platform.js';
+import { asksBackground, platform } from '../shared/platform.js';
 import { watchAway } from '../shared/away.js';
+import { listenForHolds } from './hold.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
@@ -35,6 +36,9 @@ export function startCore({ onTheme } = {}) {
   // open pages, in the same world, when Margin's site permissions change.
   if (Margin.content) return false;
   Margin.content = { api, startedAt: Date.now() }; // see background.js injectIntoOpenTabs
+  // Keep-ready's holds (content/hold.js), from the start: a tab left is held
+  // at once. `holding()`: how many run (the WebKit host counts them).
+  if (platform?.keepTabsReady) Margin.content.holding = listenForHolds(api);
   // An earlier copy of Margin's sidebar in the page: take over from it.
   const takeover = takeOver(api);
   // An earlier copy's sidebar is (or, once this copy owns the state, turns
@@ -97,8 +101,9 @@ export function startCore({ onTheme } = {}) {
     // Margin was reloaded or removed since this copy started (Chrome takes its
     // id away, and sendMessage throws "Extension context invalidated"): a
     // new copy has the page now, this one stays quiet. So does one a newer
-    // copy replaced.
-    if (!api.runtime?.id || dormant) return;
+    // copy replaced. Nor a request this browser has no use for (platform.js
+    // asksBackground: a wake ahead of a switch in Chrome).
+    if (!api.runtime?.id || dormant || !asksBackground(type)) return;
     // A switch to a tab also says the tab's address and place, so the
     // background finds it even if its id is from before (background/tabs.js
     // resolveTab).
@@ -467,7 +472,7 @@ export function startCore({ onTheme } = {}) {
   for (const type of KEY_EVENTS) addEventListener(type, holdKeys, true);
   // Safari left for another app with this page in front: the background lets
   // go of the tab it keeps ready (background/keep-ready.js). Safari, and on.
-  watchAway({ isOn: () => !!platform?.keepTabsReady && V.keepReadyMinutes(state?.settings) > 0, send: (type, payload) => send(type, payload, false) });
+  watchAway({ isOn: () => !!platform?.keepTabsReady && V.keepReadyMinutes(state?.settings) > 0, holdMs: () => V.keepReadyMinutes(state?.settings) * 60_000, send: (type, payload) => send(type, payload, false) });
   // A switch from this page called off (Escape, the palette opened again):
   // the page stays, as clicking its own tab does; a new tab loading behind it
   // stays there (background/tabs.js openBehind).

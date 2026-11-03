@@ -1,6 +1,6 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
-import { api, load, mutate, now } from './store.js';
+import { api, load, mutate, now, recheckSoon, StaleError } from './store.js';
 import { activating, anyFocusing, focusTab, openTab, tellPage, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
 import { passing as keepReadyPassing, switchFacts } from './keep-ready.js';
@@ -173,6 +173,11 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
     .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
   /** @param {import('../../types/margin').State} st */
   const switching = (st) => bringTab && st.spaces.some((x) => x.id === spaceId) && !(shown && st.tabSpace[shown.id] === spaceId) && candidatesIn(st).length > 0;
+  // The write that waits doesn't ask whether this copy still owns the state
+  // (store.js flush does, as it writes): asked here (at most once a second),
+  // so a copy a newer one replaced fails as stale, and its page stands down,
+  // rather than switching tabs from its own state, out of date.
+  if (platform?.prepareSidebar && (await recheckSoon()) !== 'owner') throw new StaleError();
   let before = null;
   const s = await mutate((st) => {
     before = V.activeSpaceId(st, windowId);

@@ -562,6 +562,39 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## This round: the 20-minute check (2026-11-03)
+
+Start here. Run `npm run safari`, then use Safari as you normally do for about 20 minutes, on battery, with your usual tabs and spaces. Don't judge the first 5 minutes after quitting and reopening Safari.
+
+**The setting.** On Margin's new-tab page, Settings: "Keep the tab you just left ready to show…". It now means: the tab you just left, and the one before it, are kept from going to sleep for that many minutes, at low priority (the slow cores), so switching back to them shows no black. Nothing else is kept. The 0 you set earlier was for the old setting (six tabs, at full speed, for 30 minutes after you last used Safari); this build doesn't read it. Settings should show 1. If it shows 0, set it to 1.
+
+**What you should see**
+
+- [ ] Switch to another tab and back within a minute, through Margin's sidebar, Safari's tab bar or ⌃Tab: no black, every time.
+- [ ] A → B → C, then back to B or A within a minute: no black.
+- [ ] ⌘F on a page, type a search for 10 seconds, Esc, then back to the tab you left: no black.
+- [ ] ⌘Tab to another app for about 5 seconds, come back, and go back to the tab you left: no black.
+- [ ] A tab you left several minutes ago, through Margin's sidebar or a space's icon: the page you're on stays (covered, a spinner after a moment) until the tab is ready, then it comes up with no black. Note roughly how long it takes on heavy tabs.
+
+**What you shouldn't see**
+
+- [ ] A black screen for half a second or more on a switch through Margin.
+- [ ] Another tab flashing up for an instant during a switch.
+- [ ] A page going black for about 2 seconds and reloading by itself. If it does, note the time.
+- A tab left long ago, chosen through Safari's own tab bar, can still flash dark: Margin can't wake it before Safari shows it. Note how often.
+
+**Activity Monitor** (CPU tab, View → All Processes, search "Safari Web Content")
+
+- [ ] Read one page for a minute without touching anything: the hidden tabs' processes sit near 0%. Right after a switch, the tab you left may show a few % for up to a minute, then drops. None of them should sit at 15–25% for minutes, as six of them did before.
+- [ ] The total for "Safari Web Content" while reading, compared with the 60–70% you had before.
+- [ ] The battery drop over the 20 minutes (it was 45% to 6% in an hour before).
+- [ ] Optional, in Terminal, within a minute of a switch: `ps -axo pid,pri,%cpu,command | grep '[W]ebContent' | sort -k3 -nr | head`. Hidden tabs with CPU should show a `pri` of 4 (low priority), not 31 or 47.
+
+**Then send me**
+
+- [ ] The switch log: on Margin's start page, the "Switch log" button, copy all of it, and paste it to me.
+- [ ] The times of any black flash you saw, and whether it was through Margin, Safari's tab bar or a shortcut.
+
 ## Keep-ready: the tab just left, for a minute (2026-11-03)
 
 Keep-ready now keeps only the tab you just left (and the one before it) ready, for a minute, and lets go of them when you leave Safari. It used to keep up to six tabs running all the time. Settings on Margin's new-tab page: "Keep the tab you just left ready to show…". Your 0 for the old setting doesn't carry over: the new one starts at 1.
@@ -572,9 +605,9 @@ Keep-ready now keeps only the tab you just left (and the one before it) ready, f
 - [ ] A → B → C, then back to A within a minute: no flash. A tab you left more than a minute ago may flash as with keep-ready off. Note how often that bothers you.
 - [ ] Use Safari normally for 30 minutes, on battery. Activity Monitor → Energy, and CPU with View → All Processes: the `Safari Web Content` processes of tabs you aren't looking at sit near 0% once you've stopped switching for a minute. Compare the battery drop with yesterday's hour (45% to 6%).
 - [ ] Switch to another app (⌘Tab) for a few seconds, come back, and switch to the tab you left just before: note whether it flashes. Then stay away 10 seconds or more: the hidden tabs' CPU should drop to near 0 in Activity Monitor while you're away.
-- [ ] Whether Margin hears that Safari was left: switch tabs, then ⌘Tab to another app. In Activity Monitor, the tab you just left should drop to near 0% within about 5 s, not after a minute.
-- [ ] Click into Safari's address bar for more than 3 seconds, press Esc, then go back to the tab you left: note whether it flashes (expected now and then).
-- [ ] Type in a Google Docs document, switch tabs and back once, then ⌘Tab to another app: the tab you left drops to near 0% CPU within about 5 s, as on other pages.
+- [ ] Whether Margin hears that Safari was left: switch tabs, then ⌘Tab to another app. In Activity Monitor, the tab you just left should drop to near 0% within about 5 s (if Safari tells extensions it was left) or about 15 s (if only the page says so), not after a minute.
+- [ ] Click into Safari's address bar for more than 15 seconds, press Esc, then go back to the tab you left: note whether it flashes (expected now and then). Under 15 seconds: no flash.
+- [ ] Type in a Google Docs document, switch tabs and back once, then ⌘Tab to another app: the tab you left drops to near 0% CPU within about 15 s, as on other pages.
 - [ ] Two Safari windows side by side: switch tabs in one, click into the other, wait 5 s, click back and return to the tab you left: no flash.
 - [ ] Other Safari profiles: with Safari left alone for 10 minutes, `/usr/bin/log show --last 10m --predicate 'process == "Safari" AND eventMessage CONTAINS "Starting foreground activity" AND eventMessage CONTAINS "Web Extension background content"' | wc -l` is a handful, not about 10 per profile (one a minute each before).
 - [ ] Chrome: switching behaves as before.
@@ -632,7 +665,7 @@ The page in front went black for about 2 seconds and reloaded when WebKit crashe
 
 ## Round 3: the 30-minute check (2026-11-02)
 
-Start here. It checks the whole of round 3 (faster switching, no dark frames, less CPU and memory) in about 30 minutes of normal use. The sections below go into each part. Run `npm run safari` first. Use Safari as you normally do, with 15 or more tabs in a few spaces. Don't judge anything in the first 5 minutes after quitting and reopening Safari: tabs are still coming back then, and everything is slower. Close other heavy apps if you can, and note what else was running.
+The check for round 3 (this round's is "This round: the 20-minute check" above). It checks the whole of round 3 (faster switching, no dark frames, less CPU and memory) in about 30 minutes of normal use. The sections below go into each part. Run `npm run safari` first. Use Safari as you normally do, with 15 or more tabs in a few spaces. Don't judge anything in the first 5 minutes after quitting and reopening Safari: tabs are still coming back then, and everything is slower. Close other heavy apps if you can, and note what else was running.
 
 **Before you start**
 

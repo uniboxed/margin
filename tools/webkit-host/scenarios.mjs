@@ -88,8 +88,12 @@ const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return 
 
 // keep-ready-cap: ten tabs, and in each page's own world a count of the
 // keepAwake holds waiting there (tabs.js keepAwake listens for pageswap; the
-// test pages have no listener of their own).
+// test pages have no listener of their own): keep-ready's holds are messages
+// to Margin's page now (content/hold.js, counted there: HELD), never a
+// script left running in the page's own world (that kept the process at
+// foreground priority).
 const HOLD_TABS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+const HELD = '(Margin.content.holding?.() ?? -1)';
 const COUNT_HOLDS = `const live = new Set(); const add = addEventListener, remove = removeEventListener; window.addEventListener = function (type, fn, options) { if (type === 'pageswap') live.add(fn); return add.call(this ?? window, type, fn, options); }; window.removeEventListener = function (type, fn, options) { if (type === 'pageswap') live.delete(fn); return remove.call(this ?? window, type, fn, options); }; window.__holds = () => live.size; return 'counting holds'`;
 
 // wake-wait, wake-cap: a switch to a tab whose wake answers late (as Safari's
@@ -1350,8 +1354,8 @@ export const SCENARIOS = {
   // Keep-ready's holds (background/keep-ready.js) through a run of switches
   // in Safari's own tab bar: each tab left is held at once, but never more
   // than two (MAX_HELD): past them, the tab used longest ago lets go at once.
-  // A hold is a keepAwake waiting in the page's own world: its pageswap
-  // listener, counted there.
+  // A hold is a message waiting for its answer in Margin's page (HELD), none
+  // a keepAwake in the page's own world (its pageswap listener, counted there).
   'wake-wait': waitedFor(500, 'resumed', 'waited for with the page before on screen, then prepared and drawn before it was shown', `e.waitedOnOldPage >= 450 && e.wakeStartedBy === 'switch' && e.preparation?.outcome === 'ready' && e.barrier?.some((b) => b.how === 'drawn')`),
   'wake-cap': waitedFor(2200, 'capped', 'no answer by 1.6 s: shown then, as it was', `e.waitedOnOldPage >= 1550 && e.shownAfter < 2100 && !e.barrier`),
   'wake-reveal': [
@@ -1382,29 +1386,32 @@ export const SCENARIOS = {
     ...HOLD_TABS.slice(1).flatMap((name) => [{ op: 'show', name }, wait(120)]),
     wait(300),
     { op: 'page', in: 'J', js: 'return "holds counted in each tab next"' },
-    ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: `return '${name}: ' + __holds()` })),
-    ...['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((name) => checkPage(name, `${name}: left earlier, let go once two later tabs were held`, '__holds() === 0', 3000)),
-    ...['H', 'I'].map((name) => checkPage(name, `${name}: among the two left last, held`, '__holds() >= 1', 1500)),
-    checkPage('J', 'J: the tab in front holds nothing', '__holds() === 0', 1500),
+    ...HOLD_TABS.map((name) => ({ op: 'eval', in: name, js: `return '${name}: ' + (${HELD})` })),
+    ...['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((name) => check(name, `${name}: left earlier, let go once two later tabs were held`, `${HELD} === 0`, 3000)),
+    ...['H', 'I'].map((name) => check(name, `${name}: among the two left last, held`, `${HELD} >= 1`, 1500)),
+    check('J', 'J: the tab in front holds nothing', `${HELD} === 0`, 1500),
+    ...HOLD_TABS.map((name) => checkPage(name, `${name}: no hold left running in the page's own world (foreground priority)`, '__holds() === 0', 200)),
   ],
   // Safari left for another app (the page in front lost focus while in sight:
   // shared/away.js sends 'away'; the host never has focus, so it's sent from
-  // the page's Margin world here): the two tabs held are let go 3 s later.
-  // The same word from a tab behind (B, a page that lost focus while still
-  // drawn, its word late) doesn't count: 3.2 s after it, still held. All
-  // within the host's ~5 s of background life.
+  // the page's Margin world here): the two tabs held are let go 15 s later
+  // (keep-ready.js PAGE_AWAY_MS: Safari's own find bar brings the same word),
+  // past the host's ~5 s of background life: here, that they're still held
+  // 3.5 s after it (they were let go at 3 s until 2026-11-03), and that the
+  // same word from a tab behind (B, a page that lost focus while still drawn,
+  // its word late) doesn't count either. The let-go itself: unit tests.
   'keep-ready-away': [
     ...['A', 'B', 'C'].map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
     ...['A', 'B', 'C'].map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),
     { op: 'install' }, drawn('A'),
     { op: 'show', name: 'B' }, wait(120), { op: 'show', name: 'C' },
-    ...['A', 'B'].map((name) => checkPage(name, `${name}: left, held`, '__holds() >= 1', 1000)),
+    ...['A', 'B'].map((name) => check(name, `${name}: left, held`, `${HELD} >= 1`, 1000)),
     { op: 'eval', in: 'B', js: 'return JSON.stringify(await Margin.content.send("away", { at: Date.now() }))' },
-    wait(1200),
+    wait(500),
     { op: 'eval', in: 'C', js: 'return JSON.stringify(await Margin.content.send("away", { at: Date.now() }))' },
-    wait(2000),
-    ...['A', 'B'].map((name) => checkPage(name, `${name}: still held 2 s after Safari was left`, '__holds() >= 1', 200)),
-    ...['A', 'B'].map((name) => checkPage(name, `${name}: let go once Safari was left for 3 s`, '__holds() === 0', 3000)),
+    wait(3500),
+    ...['A', 'B'].map((name) => check(name, `${name}: still held 3.5 s after Safari was left (or its find bar used)`, `${HELD} >= 1`, 200)),
+    ...['A', 'B', 'C'].map((name) => checkPage(name, `${name}: no hold left running in the page's own world (foreground priority)`, '__holds() === 0', 200)),
   ],
   // A hidden tab's title ticking (a chat, a timer: background/tab-updates.js):
   // its changes are gathered into a write every 2 s at most, not one each,

@@ -10,7 +10,7 @@ import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mut
 import * as keepReady from './background/keep-ready.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, injectIntoOpenTabs, isIntroduction, resolveTab, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, injectIntoOpenTabs, isIntroduction, keepHandedOff, resolveTab, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -144,7 +144,7 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
     // A ⌘T tab about to close (handlers.js newTabHandOff), unless it goes
     // somewhere else first: then it stays, and is tracked from here.
     if (!change.url || V.isNewTabPage(change.url)) return;
-    handingOff.delete(tabId);
+    keepHandedOff(tabId);
   }
   // A tab keep-ready found no page in may have one now (background/keep-ready.js).
   if (change.status || change.url) keepReady.pageChanged(tabId);
@@ -201,10 +201,16 @@ function stayInSpace(windowId, spaceId, closedId) {
     return M.setActiveSpace(s, windowId, spaceId);
   });
 }
-// `left`: the tab it was shown in place of (onActivation).
-/** @param {{ tabId: number, windowId: number }} info @param {number | null} left */
-const activated = owned(({ tabId, windowId }, left) => {
+// `left`: the tab it was shown in place of (onActivation); undefined: not
+// known as the activation came (it started this background, before its state
+// was read), so from the state now, before this activation is in it. Every
+// activation waits for the state the same way, so they still go on in the
+// order they came.
+/** @param {{ tabId: number, windowId: number }} info @param {number | null | undefined} left */
+const activated = owned(async ({ tabId, windowId }, left) => {
+  const s = await load();
   if (handingOff.has(tabId)) return;
+  if (left === undefined) left = keepReady.leftIn(s, windowId, tabId);
   // The tab left stays ready to come back to for a minute (Safari can suspend
   // it within a second: background/keep-ready.js). Safari is in use.
   keepReady.noteFocused();

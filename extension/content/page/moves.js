@@ -22,6 +22,11 @@ const SWEEP_AT = 64;
 // Not a read for the box's own moves: nothing of the page's moved.
 export const SETTLE_MS = 1000;
 export const SETTLE_TRIES = 3;
+// What a `@keyframes` sets is found by walking every rule of every sheet
+// (keyframesIn): on a site with tens of thousands of rules, 3–11 ms a walk in
+// WebKit, and a read asks at every attempt while an animation runs on what it
+// looks at. So each name's answer is kept this long.
+export const KEYFRAMES_KEEP_MS = 2000;
 
 // The browser's own, from before a page's scripts.
 const { CSSKeyframesRule: KeyframesRule, CSSImportRule: ImportRule } = globalThis;
@@ -45,6 +50,17 @@ const nth = (list, at) => {
 export function startMoves({ names, near = (node) => !!names(node), ended, settle = () => {}, styleOf, keyframes, echoed = () => {} }, on = window) {
   /** @type {Map<any, Map<string, number>>} element → what's on its way on it, and since when */
   const moving = new Map();
+  /** @type {Map<string, { set: string[] | null, at: number }>} a `@keyframes` name → what it sets, and when that was found */
+  const sets = new Map();
+  const keyframesOf = (/** @type {string} */ name) => {
+    const now = performance.now();
+    const kept = sets.get(name);
+    if (kept && now - kept.at < KEYFRAMES_KEEP_MS) return kept.set;
+    for (const [other, { at }] of sets) if (now - at >= KEYFRAMES_KEEP_MS) sets.delete(other);
+    const set = keyframes(name);
+    sets.set(name, { set, at: now });
+    return set;
+  };
   let owed = false; // something that mattered moved since the last read: read again once it's all ended
   const keyOf = (event) => (event.type.startsWith('transition') ? `t ${event.propertyName}` : `a ${event.animationName}`);
   // A CSS animation with an end, running, of something a read looks at. One
@@ -54,7 +70,7 @@ export function startMoves({ names, near = (node) => !!names(node), ended, settl
     const style = styleOf(node);
     const at = String(style.animationName).split(/,\s*/).lastIndexOf(name);
     if (at < 0 || nth(style.animationIterationCount, at) === 'infinite' || nth(style.animationPlayState, at) === 'paused') return false;
-    const set = keyframes(name);
+    const set = keyframesOf(name);
     return !set || set.some((item) => property.test(item));
   }
   // Whether it moves what a read looks at on that element now.

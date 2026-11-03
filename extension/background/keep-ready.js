@@ -10,21 +10,26 @@
 // wakeTab). A tab whose process keeps running keeps its layers, and WebKit
 // keeps the page before on screen until it has painted: no flash. So the tab
 // just left is kept running for `settings.keepLeftTabReadyMinutes` (default
-// 1; 0: off): one self-ending hold (tabs.js keepAwake), never renewed. Most
+// 1; 0: off): one self-ending hold (tabs.js holdTab), never renewed. Most
 // returns are to a tab used a moment ago, and the commonest is straight back
 // to the one just left (a change of space and back too: navigation.js
 // showSpace).
-// A hold isn't free: WebKit keeps a held process at foreground priority, so
-// the site's own work runs on as if it were in front, and its memory stays in
-// use. In Tirth's Safari (2026-11-02) the old keep-ready, which held up to six
-// tabs of the space in front and renewed them for 30 minutes after Safari was
-// last used, kept about six heavy hidden tabs running all the time, at about
-// 22% of a core each: 60–70% of all web content CPU, his battery from 45% to
-// 6% in an hour. Now at most MAX_HELD run, each for a minute after it was
-// left. One more past them ends the hold of the tab used longest ago at once
-// (trimSoon, releaseTab), and all of them end once Safari is left for another
-// app (noteAway): nobody switches tabs there, and their sites would run on
-// for nothing. A tab a held key only passed through isn't held (`passed`).
+// A hold isn't free. Until 2026-11-03 it was a script left running in the
+// page (tabs.js keepAwake), and WebKit keeps a process running a script at
+// foreground priority (RunningBoard's UserInteractiveFocal role): the site's
+// own work ran on as if it were in front. In Tirth's Safari (2026-11-02) the
+// old keep-ready, which held up to six tabs of the space in front and renewed
+// them for 30 minutes after Safari was last used, kept about six heavy hidden
+// tabs running all the time, at about 22% of a core each: 60–70% of all web
+// content CPU, his battery from 45% to 6% in an hour. A hold is now a message
+// to Margin's page there, answered only once the hold is over (tabs.js
+// holdTab): WebKit keeps that process running too (its layers stay), but at
+// background priority (efficiency cores, background QoS, throttled I/O). At
+// most MAX_HELD run, each for a minute after it was left. One more past them
+// ends the hold of the tab used longest ago at once (trimSoon, releaseTab),
+// and all of them end once Safari is left for another app (noteAway): nobody
+// switches tabs there, and their sites would run on for nothing. A tab a held
+// key only passed through isn't held (`passed`).
 // A hold that found no page (Margin's start page, a site without access, a
 // tab being closed) marks the tab (hasNoPage) until a tab event says it has
 // one (pageChanged, shown) or NO_PAGE_RETRY_MS has passed.
@@ -54,12 +59,17 @@ const PASSING_MS = 5000;
 // process at foreground priority for the minute after a switch at most,
 // nothing once switching stops.
 const MAX_HELD = 2;
-// Safari left for another app (windows.onFocusChanged with WINDOW_ID_NONE, or
-// the page in front losing focus while still in sight: shared/away.js): the
-// holds end this long after, unless Safari is back first. Moving from one
+// Safari left for another app (windows.onFocusChanged with WINDOW_ID_NONE):
+// the holds end this long after, unless Safari is back first. Moving from one
 // Safari window to another can bring a WINDOW_ID_NONE just before the new
 // window's id, and a glance at another app and straight back keeps them.
 const AWAY_MS = 3000;
+// The page in front losing focus while still in sight (shared/away.js): Safari
+// left for another app, or Safari's own find bar or address bar taking the
+// keys (⌘F, ⌘L) with the page still in front. Longer, so a search typed there
+// doesn't cost the tab just left its hold: a hold costs little now
+// (background priority), a dark switch back costs more.
+export const PAGE_AWAY_MS = 15_000;
 // The tabs set aside, in storage.session: a background Safari stops and
 // starts again (idle 30 s) would otherwise forget them. Its tab ids hold:
 // storage.session is cleared with them (a Safari restart, a new copy of
@@ -214,11 +224,13 @@ export function tickSoon() {
   /** @type {any} */ (soon)?.unref?.(); // Node (tests) only
 }
 
-// A hold ends early when its tab is shown or its page goes away (keepAwake):
-// then it's forgotten. One that couldn't run (no page) marks the tab until
+// A hold ends early when its tab is shown or its page goes away (tabs.js
+// holdTab): then it's forgotten, in storage.session too (a background started
+// again would take it for one still running there, and not wait for the
+// tab). One that couldn't run (no page) marks the tab until
 // its page changes (an event while the script was on its way counts: the
 // page may have come just after it) or NO_PAGE_RETRY_MS has passed. Each hold
-// has a key of its own (tabs.js keepAwake), for its release. `onSent` once
+// has a key of its own (tabs.js holdTab), for its release. `onSent` once
 // the script has gone out.
 /** @param {number} tabId @param {number} now @param {number} ms @param {((until: number) => void) | null} [onSent] */
 function hold(tabId, now, ms, onSent = null) {
@@ -245,6 +257,7 @@ function hold(tabId, now, ms, onSent = null) {
     if (keys?.get(key) === record) {
       keys.delete(key);
       if (!keys.size) holdKeys.delete(tabId);
+      if (record.sent) save(HOLDS_KEY);
     }
     if (heldUntil.get(tabId) !== until) return; // held again, released or shown meanwhile
     heldUntil.delete(tabId);
@@ -258,10 +271,17 @@ function hold(tabId, now, ms, onSent = null) {
 
 // A tab event says the tab has a page again or is getting one (its status or
 // address changed: Margin restored it behind, it navigated). Its holds aren't
-// sure to run on (keepAwake ends as its page goes away).
+// sure to run on (a hold ends as its page goes away), in storage.session too:
+// a background started again before their scripts answer would take them as
+// sure, and a switch to the tab then wouldn't wait for it.
 export function pageChanged(tabId) {
   if (heldUntil.has(tabId)) pageEvents.set(tabId, (pageEvents.get(tabId) ?? 0) + 1);
-  for (const h of holdKeys.get(tabId)?.values() ?? []) h.sure = false;
+  let unsure = false;
+  for (const h of holdKeys.get(tabId)?.values() ?? []) {
+    if (h.sent && h.sure) unsure = true;
+    h.sure = false;
+  }
+  if (unsure) save(HOLDS_KEY);
   takeBack(tabId);
 }
 
@@ -351,7 +371,8 @@ function releaseAll(now = Date.now()) {
 // WebKit tells extensions of no focused window when Safari says so
 // (WebExtensionContext::didFocusWindow(nullptr) fires onFocusChanged with
 // WINDOW_ID_NONE); whether Safari does when it's deactivated isn't known, so
-// the page in front says so too. The holds end AWAY_MS later, unless Safari
+// the page in front says so too. The holds end AWAY_MS later (PAGE_AWAY_MS
+// for a page's word, which Safari's own find bar brings too), unless Safari
 // is used again first (noteFocused), and none are placed until it is.
 // A page's word (`tabId`, `windowId`: its tab; `at`: when it lost focus)
 // comes through more hops than a window's focus or an activation, and can
@@ -373,7 +394,7 @@ export function noteAway({ at = null, tabId = null, windowId = null } = {}) {
     awayTimer = null;
     away = true;
     releaseAll();
-  }, AWAY_MS);
+  }, tabId != null ? PAGE_AWAY_MS : AWAY_MS);
   /** @type {any} */ (awayTimer)?.unref?.(); // Node (tests) only
 }
 // Safari in use again: a window focused (`windowId`), a tab switch, the page
@@ -389,14 +410,21 @@ export function noteFocused(windowId = null, now = Date.now()) {
 // A tab activated (background.js, as its activation comes): the tab it was
 // shown in place of, from the activations before (frontByWindow), or from
 // the state for a window this background hasn't seen a switch in (it started
-// since). null: none.
-/** @param {number} windowId @param {number} tabId @param {import('../../types/margin').State | null | undefined} s @returns {number | null} */
+// since). null: none. undefined: not known yet, the state not read yet (the
+// activation that starts a background Safari stopped comes before its read):
+// background.js asks leftIn once it has read it.
+/** @param {number} windowId @param {number} tabId @param {import('../../types/margin').State | null | undefined} s @returns {number | null | undefined} */
 export function frontChanged(windowId, tabId, s) {
   const known = frontByWindow.get(windowId);
   frontByWindow.set(windowId, tabId);
-  const left = known !== undefined ? known : Object.values(s?.tabs ?? {}).find((t) => t.windowId === windowId && t.active && t.id !== tabId)?.id ?? null;
+  if (known === undefined && !s) return undefined;
+  const left = known !== undefined ? known : leftIn(s, windowId, tabId);
   return left === tabId ? null : left;
 }
+// The tab in front of the window by the state, other than `tabId`: the one
+// it was shown in place of, if this background saw no switch there before.
+/** @param {import('../../types/margin').State | null | undefined} s @param {number} windowId @param {number} tabId @returns {number | null} */
+export const leftIn = (s, windowId, tabId) => Object.values(s?.tabs ?? {}).find((t) => t.windowId === windowId && t.active && t.id !== tabId)?.id ?? null;
 // A tab closed, or moved to another window: no longer in front of its own.
 export function frontGone(tabId) {
   for (const [windowId, id] of frontByWindow) if (id === tabId) frontByWindow.set(windowId, null);

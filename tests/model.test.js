@@ -32,7 +32,7 @@ test('keep-ready\'s old setting (the space\'s tabs, until that long after Safari
   for (const old of [30, 0, 5, 480, -1, 'x', null]) {
     const settings = from({ keepTabsReadyMinutes: old });
     assert.equal(settings.keepLeftTabReadyMinutes, 1, `${old}: off was a way out of what the old one cost`);
-    assert.ok(!('keepTabsReadyMinutes' in settings), 'the old one dropped');
+    assert.deepEqual(settings.keepTabsReadyMinutes, old, 'the old one kept as saved: a build from before still reads it (its default: 30)');
   }
   assert.equal(from({ keepTabsReadyMinutes: 0, keepLeftTabReadyMinutes: 3 }).keepLeftTabReadyMinutes, 3, 'the new one, once set, wins');
   assert.equal(from({ keepTabsReadyMinutes: 30, keepLeftTabReadyMinutes: 0 }).keepLeftTabReadyMinutes, 0);

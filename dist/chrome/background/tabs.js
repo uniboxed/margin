@@ -100,6 +100,18 @@ const KEEP_AWAKE_MS = WAKE_REUSE_MS + SWITCH_HOLD_MS;
 // moment, so the tab events leave them out of the state (no "New Tab" row
 // flashing in the sidebar).
 export const handingOff = new Set();
+// A ⌘T tab that stays after all (its page had no palette in time, it was
+// used, Margin couldn't bring the page back: handlers.js handOff; it went
+// somewhere: background.js): no longer handed off, and its activation, left
+// out meanwhile, told now if it's still in front. Left out for good, the tab
+// before it stayed the one in front by the activations: the next switch held
+// that tab (likely suspended by then) and not this one (keep-ready.js
+// frontChanged).
+/** @param {number} tabId */
+export function keepHandedOff(tabId) {
+  if (!handingOff.delete(tabId)) return;
+  void api.tabs.get(tabId).then((t) => t?.active && hooks.activated?.({ tabId, windowId: t.windowId }), () => {});
+}
 
 /** @typedef {'hover' | 'press' | 'reveal' | 'space' | 'keys' | 'switch'} WakeCause what started a wake: a pointer resting on a row (or the palette on one), a press on a row or a space's icon, the sidebar coming out, a space's icon or a swipe toward it, a key run's tab woken ahead, the switch itself */
 /** @typedef {{ outcome: 'awake' | 'no page' | 'timeout' | 'shown' | 'gone' | 'no access', ms: number, startedAt: number, by?: WakeCause, unseen?: boolean }} Wake `unseen`: its page started visible and hasn't come into view from hidden since (pageThere); `by`: what started it (DEVELOPMENT DIAGNOSTICS) */
@@ -211,6 +223,9 @@ export function forgetWake(tabId) {
 // promise is the engine's (an async function's), whatever window.Promise is.
 // Left open only if the page both cancels pagehide and blocks pageswap
 // before navigating away. Self-contained: executeScript sends its source.
+// It keeps the process at foreground priority while it runs: a wake's short
+// hold (the switch is about to show the tab); keep-ready's only where Margin's
+// page there doesn't answer its message (holdTab).
 // `key`: a hold keep-ready.js placed also ends when releaseInPage names it
 // (the tab no longer kept ready), not only at its end. Each hold has a key of
 // its own, a random one, so a release never ends a newer hold than it means,
@@ -332,33 +347,60 @@ const ranAtAll = (rows) => !(Array.isArray(rows) && rows.some((row) => row?.erro
 /** @param {Wake | null | undefined} woke */
 const hasPage = (woke) => woke?.outcome === 'awake' || woke?.outcome === 'timeout';
 
-// Keeps a hidden tab's process running for `ms` (keepAwake), without waiting
-// for it: background/keep-ready.js. False if it can't (no page: Safari
-// unloaded it, and a hold doesn't load it; no access to the site). Answers
-// once the hold is over. `key`: what releaseTab names it by. `sending`, just
-// before the script goes out (after the round trips above): false calls it
-// off (released meanwhile), and the answer is false.
+// Keeps a hidden tab's process running for `ms`, without waiting for it:
+// background/keep-ready.js. A message to Margin's page there, answered only
+// once the hold is over (content/hold.js): WebKit keeps the process running
+// meanwhile at background priority, not at the foreground priority of a
+// script left running (keepAwake, the hold until 2026-11-03: about 22% of a
+// core per held tab in Tirth's Safari). A message also costs one round trip,
+// where a script first asks for each of the page's frames. A page with no
+// listener of this copy's (Margin's script from before an update, still in
+// the page) answers at once with nothing, or fails: held the old way then, by
+// keepAwake, for what's left of the time. Not once the message has waited
+// HOLD_ANSWER_MS (a hold that ran, then failed with its page: a crash).
+// False if it can't be held (no page: Safari unloaded it, and a hold doesn't
+// load it; no access to the site). Answers once the hold is over. `key`:
+// what releaseTab names it by. `sending`, just before the hold goes out
+// (after the round trips above): false calls it off (released meanwhile),
+// and the answer is false.
+const HOLD_ANSWER_MS = 2000;
 /** @param {number} tabId @param {number} ms @param {string | null} [key] @param {(() => boolean) | null} [sending] @returns {Promise<boolean>} */
 export async function holdTab(tabId, ms, key = null, sending = null) {
   if (!platform?.wakeTabs || !api.scripting?.executeScript) return false;
   const tab = cached()?.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
   if (!tab || !(await mayAccessCached(tab.url))) return false;
   if (sending && !sending()) return false;
-  return api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [ms, key] }).then(ranAtAll, () => false);
+  const byScript = (/** @type {number} */ left) => api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [left, key] }).then(ranAtAll, () => false);
+  if (key == null || !api.tabs?.sendMessage) return byScript(ms);
+  const sentAt = Date.now();
+  const answer = await Promise.resolve().then(() => api.tabs.sendMessage(tabId, { type: HOLD_MESSAGE, key, ms })).catch(() => null);
+  if (answer?.held === true) return true;
+  const waited = Date.now() - sentAt;
+  return waited < HOLD_ANSWER_MS && waited < ms ? byScript(ms - waited) : false;
 }
+// What content/hold.js listens for (it can't be imported here: the
+// background bundle would take in the page's code).
+const HOLD_MESSAGE = 'margin-hold';
+const RELEASE_MESSAGE = 'margin-release';
 // The holds `keys` names end now, not at their end (keep-ready.js: the tab
 // is no longer one of those kept ready): WebKit lets the process go as the
-// script answers. A held process runs at foreground priority, so in Tirth's
-// Safari each one kept a hidden site's own work going at about 18% of a core
-// (2026-11-02). The wakes' own holds aren't named (they have no key) and run
-// on. Not while a switch to the tab is under way (it's shown in a moment,
-// which ends them): false then, and nothing is sent. The process is running
-// (held), so the script is quick.
+// message is answered. A message to Margin's page (content/hold.js), which
+// also ends one placed the old way (keepAwake: a page with Margin's script
+// from before); if nothing there answers it, a script in the page's own world
+// ends those (releaseInPage). The wakes' own holds aren't named (they have no
+// key) and run on. Not while a switch to the tab is under way (it's shown in
+// a moment, which ends them): false then, and nothing is sent. The process
+// is running (held), so either is quick.
 /** @param {number} tabId @param {string[]} keys @returns {boolean} */
 export function releaseTab(tabId, keys) {
   if (isFocusing(tabId)) return false;
   if (!keys.length || !platform?.wakeTabs || !api.scripting?.executeScript) return true;
-  api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: releaseInPage, args: [keys] }).catch(() => {});
+  const byScript = () => api.scripting.executeScript({ target: { tabId }, world: 'MAIN', injectImmediately: true, func: releaseInPage, args: [keys] }).catch(() => {});
+  if (!api.tabs?.sendMessage) {
+    void byScript();
+    return true;
+  }
+  void Promise.resolve().then(() => api.tabs.sendMessage(tabId, { type: RELEASE_MESSAGE, keys })).then((answer) => answer === true || byScript(), byScript);
   return true;
 }
 // In the page's own world, as keepAwake. Self-contained.
@@ -703,6 +745,13 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // its process is resumed). Not one the caller has just waited for to load
   // (openBehind): its process runs, and it's introduced as it is.
   const waits = wake && !loading && !loadWaited && gen === focusGen && mayWait(live);
+  // Not waited for only because keep-ready holds it (running: its wake
+  // answers at once, or a little late if its page is busy). One whose wake
+  // doesn't answer in time at all (WAKE_MAX_MS) was likely suspended all the
+  // same (a hold that ended unseen; one a background before this one placed,
+  // its page changed since): drawn before it's shown, as a tab waited for is
+  // (`late`, below), not shown as Safari's empty view.
+  const trusted = wake && !waits && !loading && !loadWaited && !!platform?.wakeTabs && live.status === 'complete';
   const earlyBudget = waits ? Math.min(WAIT_AWAKE_MAX_MS + PREPARE_AWAKE_MS, Number.isFinite(deadline) ? Math.max(0, /** @type {number} */ (deadline) - 250 - SHOW_MS - Date.now()) : Infinity) : undefined;
   /** @type {Promise<Preparation> | null} */
   let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered, ...(earlyBudget != null ? { budget: earlyBudget } : {}) }) : null;
@@ -754,12 +803,13 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       if (stop) break;
       // The page in front covered while it waits, if it doesn't cover itself
       // for this switch (shared/switching.js): a space's icon, ⌃⌘ and an
-      // arrow to a space, a tab closed.
-      if (!frontCovering && Date.now() - waitFrom >= COVER_AFTER_MS && !SELF_COVERED.has(source)) frontCovering = coverFront(live, gen);
-    }
-    if (frontCovering) {
-      const covering = frontCovering;
-      front.uncover = (shown, reason = null) => void covering.then((cover) => cover.done(shown, reason));
+      // arrow to a space, a tab closed. Told how the switch went from then
+      // on, whatever happens next: a wake failing after this (its permission
+      // check throwing) would leave its cover up for 8 s (switching.js MAX_MS).
+      if (!frontCovering && Date.now() - waitFrom >= COVER_AFTER_MS && !SELF_COVERED.has(source)) {
+        const covering = (frontCovering = coverFront(live, gen));
+        front.uncover = (shown, reason = null) => void covering.then((cover) => cover.done(shown, reason));
+      }
     }
     const unanswered = !answered && !stop;
     capped = unanswered && !neverShown.has(tabId);
@@ -938,6 +988,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     step('preparation', prepared ?? (wake ? prepareTabForShow(live, { token: prepToken, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)))),
     introduced ? step('barrier', barrier(BARRIER_MAX_MS)) : null,
   ]);
+  if (trusted && !introduced && woke?.outcome === 'timeout') late = true;
   // A page still running an earlier copy of Margin (it slept through an
   // update or a rebuild): the current copy goes in now, theme and all, and
   // is prepared in what's left of the wait, so the page doesn't show the old

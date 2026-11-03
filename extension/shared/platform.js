@@ -112,5 +112,12 @@ const detect = () => {
 /** @type {Platform} */
 export const platform = PROFILES[BUILD_TARGET ?? detect()];
 export { PROFILES };
+// Whether a page sends the background a request of this type at all
+// (content/core.js send, the new-tab page's): a wake ahead of a switch only
+// where tabs are woken. In Chrome each would start its service worker (shut
+// down 30 s after its last event) for nothing: the sidebar coming out, a
+// pointer resting on a row or a space's icon, a swipe.
+/** @param {string} type */
+export const asksBackground = (type) => type !== 'prewake' || !!platform?.wakeTabs;
 // Also on the global, for the console and the E2E tests.
 (globalThis.Margin ??= {}).platform = platform;

@@ -71,3 +71,10 @@ test('Chrome: writes of the state carry no stamp (Chrome\'s pages aren\'t prepar
   assert.equal('stateRev' in local, false);
   assert.equal(stateRev(), null);
 });
+
+test('chrome: pages ask for no wake ahead of a switch (each would start the service worker for nothing: Chrome wakes no tabs), and still ask for everything else', async () => {
+  const { asksBackground, platform } = await import('../extension/shared/platform.js');
+  assert.equal(platform.wakeTabs, false);
+  assert.equal(asksBackground('prewake'), false);
+  for (const type of ['activateTab', 'setSpace', 'hello', 'away']) assert.equal(asksBackground(type), true, type);
+});

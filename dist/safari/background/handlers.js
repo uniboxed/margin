@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageStarted, resolveTab, shownAt, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageStarted, resolveTab, shownAt, wakeTab } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -183,7 +183,7 @@ async function handOff(tab) {
     new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
   ]);
   if (!opened) {
-    handingOff.delete(tab.id);
+    keepHandedOff(tab.id);
     // In case it answers after all, later.
     api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
     return log('palette on the new-tab page', `previous tab ${prev.id} has no Margin palette (yet)`), false;
@@ -193,7 +193,7 @@ async function handOff(tab) {
   // (background.js onUpdated then lets it go): it stays, and the palette closes.
   const cur = handingOff.has(tab.id) ? await api.tabs.get(tab.id).catch(() => null) : null;
   if (!cur?.active || !V.isNewTabPage(cur.pendingUrl || cur.url)) {
-    handingOff.delete(tab.id);
+    keepHandedOff(tab.id);
     api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
     return log('kept', 'the new tab was used or left meanwhile'), false;
   }
@@ -203,7 +203,7 @@ async function handOff(tab) {
   } catch (err) {
     // The page the user was on couldn't come back: the new tab stays, with
     // its own palette, and is tracked from here.
-    handingOff.delete(tab.id);
+    keepHandedOff(tab.id);
     api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
     return log('kept', `tab ${prev.id} didn't come back: ${err?.message ?? err}`), false;
   }
@@ -318,7 +318,7 @@ export const handlers = {
   // (`holdOnly`): nothing is renewed in a loop any more, so that does nothing.
   /** @param {{ tabId?: number, pinId?: string, windowId?: number, hover?: boolean, holdOnly?: boolean, why?: string }} message `hover`: the sidebar's longer hold (a pointer resting, the sidebar coming out, a space); `why`: what asked (the switch log: 'hover', 'press', 'reveal', 'space'; a press by default) */
   async prewake({ tabId, pinId, windowId, hover = false, holdOnly = false, why }) {
-    if (holdOnly) return;
+    if (holdOnly || !platform?.wakeTabs) return; // (pages don't ask where tabs aren't woken: platform.js asksBackground)
     const id = tabId ?? (pinId ? V.pinTabId(await load(), pinId, windowId) : null);
     if (!Number.isInteger(id) || keepReady.isHeld(id)) return;
     const by = why === 'hover' || why === 'reveal' || why === 'space' ? why : hover ? 'hover' : 'press';
