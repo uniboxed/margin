@@ -2,7 +2,7 @@
 import * as M from '../state/model.js';
 import { api, cached, isOwner, mutate, now, stateRev, thisCopy } from './store.js';
 import { recordSwitch } from './diagnostics.js';
-import { hasNoPage, hiddenFor, isHeld, switchFacts } from './keep-ready.js';
+import { hasNoPage, hiddenFor, isHeld, sessionKnown, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
@@ -263,11 +263,13 @@ async function startWake(tabId, at, holdMs, sent, answered) {
   const ran = (async () => {
     if (!(await mayAccessCached(tab.url))) return 'no access';
     sent();
+    const sentAt = Date.now();
     api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [holdMs] }).catch(() => {});
     return api.scripting.executeScript({ target, injectImmediately: true, func: pageThere }).then((rows) => {
       answered();
       if (!ranThere(rows)) return 'no page';
       answeredAt.set(tabId, Date.now()); // (also once past WAKE_MAX_MS: it's awake now)
+      if (Date.now() - sentAt > KICK_AFTER_MS) resumedBehind.add(tabId); // (focusTabNow's kick)
       return rows[0].result === 'unseen' ? 'unseen' : 'awake';
     }, () => {
       answered();
@@ -601,9 +603,16 @@ export async function focusTab(tabId, { wake = true, source = 'other', carry = n
 const UNDER_WAY_MS = 400;
 // What showing a tab takes once it's ready (tabs.update: ~110 ms in Safari).
 const SHOW_MS = 150;
+const SESSION_WAIT_MS = 200;
 
 async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front) {
   const asked = Date.now();
+  // What the background before this one knew of when tabs were left and which
+  // are held (keep-ready.js sessionKnown: read as this one started): the
+  // switch that starts a background Safari stopped is often to a tab left
+  // minutes ago, likely suspended (likelySuspended, below). Not waited for
+  // past SESSION_WAIT_MS (a storage stuck behind a loaded Safari).
+  await answerBy(sessionKnown(), asked + SESSION_WAIT_MS);
   // DEVELOPMENT DIAGNOSTICS: whether keep-ready held the tab, and how long it
   // had been hidden, as the switch was asked for (a hold ends as it's shown).
   const facts = switchFacts(tabId, asked);
@@ -695,11 +704,14 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       const got = await answerBy(first, until);
       return got?.outcome === 'timeout' ? null : got;
     };
+    // A wake whose scripts never went out by WAKE_MAX_MS (its permission
+    // check slow: Safari starting) has no answer either: as if stuck from now.
     /** @type {Wake | null} */
-    let woke = sentAt == null ? await first : await answer(sentAt + (suspended ? KICK_SOON_MS : KICK_AFTER_MS));
-    if (!woke && gen === focusGen && (await mayKick(live, deadline))) {
+    let woke = sentAt == null ? await answer(Date.now()) : await answer(sentAt + (suspended ? KICK_SOON_MS : KICK_AFTER_MS));
+    // Awake now, but resumed behind (resumedBehind): kicked all the same.
+    if ((!woke || resumedBehind.has(tabId)) && gen === focusGen && (await mayKick(live, deadline))) {
       const at = Date.now();
-      kick = { at: at - asked, kickMs: null, wakeMs: null, outcome: 'not sent' };
+      kick = { at: at - asked, kickMs: null, wakeMs: null, outcome: 'not sent', ...(woke ? { behind: true } : {}) }; // (`behind`: DEVELOPMENT DIAGNOSTICS)
       // Its wake's hold ends as it's shown for that instant: a new one after.
       const back = await kickTab(live, gen, () => wakes.delete(tabId));
       // The times after it count from Safari's answer to its two updates
@@ -753,7 +765,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     }
     // Not kicked (introductions off, the window busy, too little time left),
     // or kicked without an answer: not waited for past STUCK_MS.
-    if (!woke && !kick && gen === focusGen) woke = await answer(/** @type {number} */ (sentAt) + STUCK_MS);
+    if (!woke && !kick && gen === focusGen) woke = await answer((sentAt ?? Date.now()) + STUCK_MS);
     if (!woke && !loading && gen === focusGen) stuck = { outcome: 'timeout', ms: Date.now() - startedAt, startedAt };
     if (kick) how = { ...how, kicked: kick };
     if (stuck) how = { ...how, stuck: true };
@@ -1164,6 +1176,7 @@ export function tabShown(tabId) {
   neverShown.delete(tabId);
   introduced.delete(tabId);
   answeredAt.delete(tabId);
+  resumedBehind.delete(tabId);
   forgetWake(tabId); // its hold ended as it was shown
   forgetUnseen(tabId);
 }
@@ -1351,6 +1364,7 @@ async function forwardAndBack(tab, gen, sending = () => {}) {
   lastSpan.set(windowId, pending.span);
   await Promise.allSettled([api.tabs.update(tab.id, { active: true }), api.tabs.update(front.id, { active: true })]);
   pending.answered = true;
+  resumedBehind.delete(tab.id); // in the window for that instant: visible, and drawn for it
   settled();
   void hooks.introduced?.(tab.id);
   if (pending.seen.some((info) => info.tabId === front.id)) return true; // both seen: the page is back
@@ -1416,7 +1430,18 @@ const KICK_MAX_MS = 500;
 const SUSPEND_LIKELY_MS = 8000;
 const ANSWERED_MS = 1500;
 const answeredAt = new Map(); // tabId → when a wake there last found its page awake
-/** @typedef {{ at: number, kickMs: number | null, wakeMs: number | null, outcome: 'resumed' | 'stuck' | 'not sent' | Wake['outcome'] }} Kick `at`: ms from the switch asked for to the kick; `kickMs`: Safari's answer to its two updates; `wakeMs`: the new wake's answer, ms from Safari's answer to the kick (null: none by STUCK_MS); `outcome`: 'resumed' (it answered), 'stuck' (it didn't: shown at once) */
+// Tabs whose wake was answered only past KICK_AFTER_MS (a pointer resting on
+// the row, a press, the palette, a key run's tab woken ahead, before the
+// switch; a switch's own wake that late is kicked already): their process had
+// been suspended, and resumed at background priority. Running now, so a switch's wake there answers at once, but a
+// process resumed hidden keeps its content hidden until it has drawn for a
+// visible page (WebProcessProxy hideContentUntilPendingUpdate): in Tirth's
+// log (2026-11-02) such tabs, resumed 0.9–2.6 s before their selection, were
+// Safari's empty view for 141–360 ms all the same. So a switch kicks them
+// too, as if their wake hadn't answered; marked until they're in the window
+// (shown, kicked or introduced: forwardAndBack).
+const resumedBehind = new Set();
+/** @typedef {{ at: number, kickMs: number | null, wakeMs: number | null, outcome: 'resumed' | 'stuck' | 'not sent' | Wake['outcome'] }} Kick `at`: ms from the switch asked for to the kick; `kickMs`: Safari's answer to its two updates; `wakeMs`: the new wake's answer, ms from Safari's answer to the kick (null: none by STUCK_MS); `outcome`: 'resumed' (it answered), 'stuck' (it didn't: shown at once); `behind`: its wake had answered, late (resumedBehind) */
 // Whether a switch may kick the tab, or show it without waiting for its wake:
 // a page there (known: left in this copy's time, or a wake answered there, and
 // not since found without one), at rest, that keep-ready doesn't hold, shown before.

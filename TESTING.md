@@ -562,19 +562,56 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
-## Speed, flicker and memory: the quick check (2026-11-02)
+## Round 3: the 30-minute check (2026-11-02)
 
-Start here. It covers what the sections below check in detail. Run `npm run safari` first, then quit and reopen Safari with 15 or more tabs in a few spaces, so most come back unloaded. Record the screen (⇧⌘5) while you switch, and step through it frame by frame if anything looks off.
+Start here. It checks the whole of round 3 (faster switching, no dark frames, less CPU and memory) in about 30 minutes of normal use. The sections below go into each part. Run `npm run safari` first. Use Safari as you normally do, with 15 or more tabs in a few spaces. Don't judge anything in the first 5 minutes after quitting and reopening Safari: tabs are still coming back then, and everything is slower. Close other heavy apps if you can, and note what else was running.
 
-- [ ] **Unloaded tabs:** click rows of tabs you haven't opened since the relaunch. Each comes up in under a second on most sites, about as fast as Safari's own tab bar shows such a tab. The page you're on keeps a spinner until then. No dark window at any point.
-- [ ] **New tabs:** ⌘T, type a site (youtube.com), Enter. It comes to the front as soon as something is drawn, not when it has finished loading. Then a Google search, the same.
-- [ ] **The tab that was in front at the relaunch:** click a link in it first, then switch away with the sidebar and back. No dark flash on the way back.
-- [ ] **App pages:** Gmail, YouTube and Outlook (or another web app that builds itself with scripts), each from an unloaded state. Each comes up with its own content drawn, not an empty page with only Margin's sidebar. A slow one may show its own loading screen. Click such a row twice quickly: it still comes up as fast.
-- [ ] **A slow server or a redirect:** a link from Gmail (it goes through google.com/url), a t.co link, or a site that sends you to a login page. ⌘-click it, then pick its row. It comes up drawn, with no dark frame.
-- [ ] **Loaded tabs:** go back and forth among the six tabs you used last, with the sidebar and with Safari's tab bar. Instant, no flash.
-- [ ] **Memory and CPU:** after 10 minutes of normal use, open Activity Monitor. In the CPU tab, Safari Web Content processes for tabs you're not looking at sit near 0%. In the Memory tab, the Safari Web Content total isn't far above what the same tabs use with Margin turned off (Safari → Settings → Extensions; turn it back on after). Follow 20 links on one site in one tab: that tab's memory goes up and down, but doesn't keep climbing.
-- [ ] **Chrome:** the same clicks on loaded tabs and ⌘T. Chrome shows a new tab once it has loaded, as before. Chrome's Task Manager (⋮ → More tools) shows no Margin process using CPU while you read a page.
-- [ ] **If something is off:** Start page → Settings → Switch log (development) → Copy, and note the time. The fields are described in the next section.
+**Before you start**
+
+- [ ] Activity Monitor → CPU, search "Safari Web Content". Note the total %CPU while you read a page without touching anything for a minute.
+
+**Normal use (25 minutes)**
+
+- [ ] Switch with the sidebar as you normally would: rows, ⌃⌘↓/↑, the command bar. Tabs you used in the last minute come up at once, as fast as Safari's own tab bar, with no flash.
+- [ ] At least five times, go back to a tab you haven't touched for 10 minutes or more. Click its row. It should come up within a moment, with no black or empty window and no flash of another tab. It may take a little longer than a recent tab. It shouldn't take a second.
+- [ ] Do the same once right after leaving Safari alone for 2 minutes or more (another app in front, or just reading). That's when Safari has stopped Margin's background, and the first click starts it again. It should look the same as above.
+- [ ] Rest the pointer on a row for a second or two before clicking it, for a tab you haven't used in a while. No flash or black when it comes up.
+- [ ] The tab you click from never blinks or goes blank for an instant as you click.
+- [ ] Hold ⌃⌘↓ through a space and stop. The tab you stop on comes up cleanly. The ones passed may flash briefly, as before.
+- [ ] Open links in new tabs (⌘-click), ⌘T and type a site. New tabs come up as soon as something is drawn.
+- [ ] A chat or mail tab behind whose title counts messages: its row follows within about 2 seconds.
+- [ ] Each tab you land on has the right tab highlighted, the right space, and the sidebar scrolled as before, from the first frame.
+
+**After a burst (2 minutes)**
+
+- [ ] Click quickly through ten or more tabs, then stop and read a page. In Activity Monitor, the Safari Web Content total falls back within a few seconds to about what it was before you started, not after a minute or more.
+- [ ] Then leave Safari alone for 5 minutes. The total falls further: at most about six hidden tabs keep running.
+
+**What you shouldn't see**
+
+- A dark or empty window when switching with the sidebar, except right after a relaunch, or when going back to Safari from another app (plain Safari does that too).
+- A switch that takes a second or more to a tab that's already loaded.
+- The page you click from flickering.
+- Safari freezing for an instant as you click a row.
+
+**Send me**
+
+- [ ] Start page → Settings → Switch log (development) → Copy, at the end. Paste it into a file. Note the times of anything that looked wrong (a flash, black, a slow switch), and roughly what you clicked.
+- [ ] If you can, Safari's log for the same window: `/usr/bin/log show --last 35m --predicate 'process == "Safari"' > ~/Desktop/safari-round3.log` (it's large).
+- [ ] The two Activity Monitor numbers (idle before, a few seconds after the burst) and the one after 5 minutes.
+
+What the switch log shows, per switch: `shownAfter` is the ms from the click to the show. `hiddenForMs` is how long the tab had been behind. `heldAtAsk` says whether keep-ready was holding it. `kicked` means Margin woke it with a flip out of sight first: `outcome: "resumed"` is good, and `behind: true` means an earlier wake had already brought it back slowly. `stuck: true` means it was shown without waiting.
+
+**Chrome**
+
+- [ ] The same clicks on loaded tabs and ⌘T. Chrome shows a new tab once it has loaded, as before. Chrome's Task Manager (⋮ → More tools) shows no Margin process using CPU while you read a page.
+
+## Round 3's last fixes (2026-11-02)
+
+- [ ] Leave Safari alone for 2 minutes or more, then come back and click a sidebar row for a tab you left 10 minutes ago or more. It comes up within a moment, with no black. In the switch log that switch has `hiddenForMs` (a number, not null) and `kicked`.
+- [ ] Rest the pointer on such a row for a second, then click it. No black. Its switch log line has `kicked` with `behind: true`, or no kick if the tab was still running.
+- [ ] Right after coming back to Safari from a long break (30 minutes or more), click a tab you haven't used in a long while, and switch away within a few seconds. Then use seven or more other tabs of the space, one after another. Activity Monitor: once those seven are used, that first tab's process (its address in the process name) goes quiet within a few seconds, not up to 75 s later.
+- [ ] Chrome: switching behaves as before.
 
 ## Switching at first paint, fewer dark frames (2026-11-02)
 

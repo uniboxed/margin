@@ -125,8 +125,12 @@ globalThis.chrome = {
       get: async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((k) => k in fake.local).map((k) => [k, fake.local[k]])),
       set: async (items) => { Object.assign(fake.local, items); },
     },
+    // `fake.sessionMs`: how long a read takes (a background Safari just started).
     session: {
-      get: async (key) => (key in fake.session ? { [key]: structuredClone(fake.session[key]) } : {}),
+      get: async (keys) => {
+        if (fake.sessionMs) await sleep(fake.sessionMs);
+        return Object.fromEntries([].concat(keys).filter((k) => k in fake.session).map((k) => [k, structuredClone(fake.session[k])]));
+      },
       set: async (items) => { Object.assign(fake.session, structuredClone(items)); },
     },
   },
@@ -134,7 +138,7 @@ globalThis.chrome = {
 
 const { repairCutOff, wakeTab, forgetWake, focusTab, isFocusing, isIntroduction, isNeverShown, likelySuspended, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const { tapLog } = await import('../extension/background/diagnostics.js');
-const { holdNow, keepReadyState, noteLeft, noteUsed, resetKeepReady, switchFacts } = await import('../extension/background/keep-ready.js');
+const { holdNow, keepReadyState, noteLeft, noteUsed, resetKeepReady, startedAgain, switchFacts } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided, load, markSynced } = await import('../extension/background/store.js');
@@ -892,6 +896,7 @@ test('openBehind: the new tab comes to the front once its page has painted, befo
 test('arriving covered: a tab opened behind is prepared to arrive covered; an ordinary switch isn\'t', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 3, url: 'https://c.test/' }]);
   fake.scriptDelay = () => 1;
+  tabShown(4); // (the new tab's id: an earlier test's tab 4 answered its wake late, resumed behind)
   const shown = openBehind({ url: 'https://slow.test/', from: { id: 1, windowId: 1 } });
   await sleep(150);
   fake.tabs.get(4).status = 'complete';
@@ -2965,6 +2970,77 @@ test('kick: a tab left before whose page has gone since (no answer before or aft
     assert.deepEqual(toldFront(), [['switching', 219, 'now'], ['switch-done', 219, null]], 'the page in front covered meanwhile');
   } finally {
     undo();
+    done();
+  }
+});
+
+test('kick: the first switch after a background start (Safari stopped the idle one) knows from storage.session when its tab was left: one left a minute ago, suspended, is kicked, not waited for', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 270, url: 'https://restarted.test/' }], []);
+  try {
+    fake.session.keepReadyLeftAt = { 270: Date.now() - 60_000 };
+    fake.sessionMs = 30; // a background just started: storage slow to answer
+    startedAgain();
+    suspend(270);
+    const asked = Date.now();
+    const { result, entry } = await logged(270, () => focusTab(270));
+    assert.equal(result.tab?.id, 270);
+    assert.deepEqual(fake.updates.map((u) => u.id), [270, 1, 270], 'kicked, then shown');
+    assert.equal(entry.kicked?.outcome, 'resumed');
+    assert.ok(entry.hiddenForMs >= 60_000, `hidden for ${entry.hiddenForMs} ms (the background before's note)`);
+    assert.ok(fake.updates[2].at - asked < 350, `shown ${fake.updates[2].at - asked} ms after the ask (its background resume: 2 s)`);
+  } finally {
+    fake.sessionMs = 0;
+    resetKeepReady();
+    tabShown(270);
+    done();
+  }
+});
+
+test('kick: a tab whose earlier wake (a pointer resting on its row) was answered only after a background resume is kicked though awake now, and drawn before it\'s shown; one whose wake answered in time isn\'t', async () => {
+  // [backgroundMs (null: running), click after the hover wake, tab]
+  for (const [backgroundMs, clickAfter, id] of [[300, 450, 272], [600, 700, 273], [null, 150, 274]]) {
+    const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://hovered${id}.test/` }], []);
+    try {
+      noteLeft(id, Date.now() - 20_000);
+      if (backgroundMs) suspend(id, { backgroundMs });
+      const hovered = Date.now();
+      const hover = wakeTab(id, { hover: true });
+      await sleep(clickAfter - (Date.now() - hovered));
+      const { result, entry } = await logged(id, () => focusTab(id));
+      assert.equal(result.tab?.id, id);
+      if (!backgroundMs) {
+        // (A machine too loaded to answer in time here says nothing.)
+        if ((await hover).ms < 50) assert.deepEqual(fake.updates.map((u) => u.id), [id], 'answered in time: not kicked');
+        assert.equal(entry.kicked, null);
+        continue;
+      }
+      assert.deepEqual(fake.updates.map((u) => u.id), [id, 1, id], `resumed at ${backgroundMs} ms: kicked, then shown`);
+      assert.equal(entry.kicked?.outcome, 'resumed');
+      assert.equal(entry.kicked.behind, true, 'in the switch log');
+      assert.ok(barriers(id).some((x) => x.at >= fake.updates[1].at && x.at < fake.updates[2].at), 'drawn before the show');
+    } finally {
+      tabShown(id);
+      done();
+    }
+  }
+});
+
+test('kick: a wake whose permission check outlasts its 400 ms (Safari starting) still leaves the switch its kick, rather than waiting out the preparation', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 275, url: 'https://slow-check.test/' }], []);
+  const contains = chrome.permissions.contains;
+  chrome.permissions.contains = async () => { await sleep(450); return true; };
+  try {
+    noteLeft(275, Date.now() - 10_000);
+    suspend(275);
+    const asked = Date.now();
+    const { result, entry } = await logged(275, () => focusTab(275));
+    assert.equal(result.tab?.id, 275);
+    assert.deepEqual(fake.updates.map((u) => u.id), [275, 1, 275], 'kicked, then shown');
+    assert.equal(entry.kicked?.outcome, 'resumed');
+    assert.ok(fake.updates[2].at - asked < 750, `shown ${fake.updates[2].at - asked} ms after the ask (900 ms and dark before)`);
+  } finally {
+    chrome.permissions.contains = contains;
+    tabShown(275);
     done();
   }
 });

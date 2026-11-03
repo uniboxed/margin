@@ -724,3 +724,88 @@ test('keep ready: a background started again keeps the hold of the tab left for 
   assert.equal(again.switchFacts(1, t0).heldAtAsk, true);
   again.resetKeepReady();
 });
+
+test('keep ready: a hold that reached its page only once its tab was in front (sent behind a resume, the tab clicked meanwhile) isn\'t forgotten by a tick while the tab is in front: it\'s named once the tab is behind and not kept', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 60_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUp();
+  keepReady.noteUsed(t0);
+  keepReady.noteLeft(2, t0 - 40 * MIN); // left long ago: its first hold may wait behind a resume
+  keepReady.resetKeepReady();
+  await keepReady.tick(t0);
+  await settleNow();
+  const [first] = keysOf(2);
+  assert.ok(first);
+  assert.equal(keepReady.isHeld(2, t0 + 10), false, 'not sure to run (maybe behind its resume)');
+  // The click on tab 2: shown before its hold has reached the page.
+  t.mock.timers.tick(500);
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 1: { ...s.tabs[1], active: false }, 2: { ...s.tabs[2], active: true, lastActive: t0 + 500 } } }));
+  keepReady.shown(2, t0 + 500);
+  t.mock.timers.tick(1500);
+  await keepReady.tick(t0 + 2000); // tab 2 still in front
+  await settleNow();
+  assert.deepEqual(released().filter(([id]) => id === 2), [], 'nothing sent to the tab in front');
+  assert.deepEqual(keepReady.keepReadyState().holds[2], [first], 'its key kept');
+  // Left for tab 1 (held at once), then turned off: both holds named.
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 1: { ...s.tabs[1], active: true, lastActive: t0 + 5000 }, 2: { ...s.tabs[2], active: false } } }));
+  t.mock.timers.tick(3000);
+  keepReady.holdNow(2, t0 + 5000);
+  await settleNow();
+  const second = keysOf(2).at(-1);
+  await mutate((s) => ({ ...s, settings: { ...s.settings, keepTabsReadyMinutes: 0 } }));
+  await keepReady.tick(t0 + 6000);
+  await settleNow();
+  const named = released().filter(([id]) => id === 2).flatMap(([, keys]) => keys);
+  assert.deepEqual(named.sort(), [first, second].sort());
+  assert.equal(keepReady.keepReadyState().holds[2], undefined);
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: a key kept for the tab in front through a stop (turned off while it\'s in front) is named as the next tick stops again, once the tab is behind', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 61_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUp();
+  keepReady.noteUsed(t0);
+  keepReady.holdNow(2, t0);
+  await settleNow();
+  const [key] = keysOf(2);
+  await mutate((s) => ({ ...s, settings: { ...s.settings, keepTabsReadyMinutes: 0 }, tabs: { ...s.tabs, 1: { ...s.tabs[1], active: false }, 2: { ...s.tabs[2], active: true, lastActive: t0 + 100 } } }));
+  keepReady.shown(2, t0 + 100);
+  await keepReady.tick(t0 + 200);
+  await settleNow();
+  assert.deepEqual(released().filter(([id]) => id === 2), [], 'in front: nothing sent');
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 1: { ...s.tabs[1], active: true, lastActive: t0 + 1000 }, 2: { ...s.tabs[2], active: false } } }));
+  await keepReady.tick(t0 + 1500);
+  await settleNow();
+  assert.deepEqual(released().filter(([id]) => id === 2), [[2, [key]]]);
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: when tabs were left is forgotten for closed tabs with keep-ready off too (it\'s noted either way, and written whole at each switch)', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 62_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUp({ minutes: 0 });
+  keepReady.noteLeft(2, t0);
+  keepReady.noteLeft(99, t0); // closed since
+  await keepReady.tick(t0 + 1000);
+  assert.equal(keepReady.hiddenFor(99, t0 + 1000), null);
+  assert.equal(keepReady.hiddenFor(2, t0 + 1000), 1000);
+  keepReady.noteLeft(3, t0 + 1000);
+  await settleNow();
+  assert.deepEqual(Object.keys(fake.session.keepReadyLeftAt ?? {}).sort(), ['2', '3'], 'nor written again');
+  keepReady.resetKeepReady();
+});
+
+test('keep ready: a tab shown since its last noted leave counts as hidden no longer than since that show (a leave missed: the tab left taken from a state still behind)', async (t) => {
+  keepReady.resetKeepReady();
+  const t0 = 63_000_000;
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: t0 });
+  await setUp();
+  keepReady.noteLeft(2, t0 - 60 * MIN);
+  keepReady.shown(2, t0 - 2000); // its leave after this never noted
+  assert.equal(keepReady.hiddenFor(2, t0), 2000);
+  keepReady.resetKeepReady();
+});

@@ -125,7 +125,7 @@ let sessionRead = null;
 let sessionDone = false;
 const putBack = new Set();
 function fromSession() {
-  return (sessionRead ??= Promise.resolve(api.storage.session?.get([USED_KEY, NO_PAGE_KEY, HOLDS_KEY, LEFT_KEY])).catch(() => null).then((stored) => {
+  return (sessionRead ??= Promise.resolve().then(() => api.storage.session?.get([USED_KEY, NO_PAGE_KEY, HOLDS_KEY, LEFT_KEY])).catch(() => null).then((stored) => {
     if (Number.isFinite(stored?.[USED_KEY])) usedAt = Math.max(usedAt, stored[USED_KEY]);
     let takenBack = false;
     for (const [id, retryAt] of Object.entries(stored?.[NO_PAGE_KEY] ?? {})) {
@@ -149,6 +149,15 @@ function fromSession() {
     if (takenBack) save(NO_PAGE_KEY);
   }));
 }
+// Read as the background starts, not at the first tick (1.5 s after the
+// first sync): the switch that starts a background Safari stopped (idle 30 s)
+// is often to a tab left minutes ago, which Safari has likely suspended, and
+// it needs to know when that tab was left and whether it's held
+// (background/tabs.js likelySuspended), or it isn't kicked. A switch awaits
+// it (sessionKnown): one storage.session read per background run, nothing
+// once it has answered. (Chrome keeps no tabs ready: nothing to read.)
+export const sessionKnown = () => (platform?.keepTabsReady ? fromSession() : Promise.resolve());
+void sessionKnown();
 const saved = {
   [NO_PAGE_KEY]: () => Object.fromEntries(noPage),
   // The ones sent, each as [until, sure, left] (1 or 0: a background Safari
@@ -264,6 +273,16 @@ export function pageChanged(tabId) {
 // a page may not have seen itself visible, and a release then still ends them.
 // Shown in passing (a held key): marked so; shown again after, not any more.
 export function shown(tabId, now = Date.now()) {
+  // In front now: hidden no longer than since then, should its leave not be
+  // noted (background.js takes the tab left from the state, which can lag
+  // behind an activation still queued behind a write), or come late. Taken
+  // for hidden since an older leave, a tab in front a moment ago looked
+  // suspended and was kicked though awake (tabs.js likelySuspended).
+  // (Written with the leave noted in the same moment: one write.)
+  if (platform?.keepTabsReady) {
+    leftAt.set(tabId, now);
+    save(LEFT_KEY);
+  }
   heldUntil.delete(tabId);
   leftHolds.delete(tabId);
   takeBack(tabId);
@@ -293,19 +312,30 @@ const lastUse = (s, tabId) => passed.get(tabId)?.lastActive ?? s.tabs[tabId]?.la
 
 // A hold no longer wanted ends now (tabs.js releaseTab), not when it runs out:
 // every hold of this copy's that may still run there (one a run of the
-// background before this one placed too). Not a tab in front (shown: its
-// holds have ended) or closed: forgotten then. Whether it was let go (not
-// while a switch to it is under way: it's shown in a moment).
+// background before this one placed too). Not a closed tab's: forgotten. Nor
+// yet a tab in front's: a hold that reached its page only once it was visible
+// (one sent to a process Safari suspended waits behind its resume, and the
+// show's resume comes first) doesn't end then (keepAwake ends on the page
+// coming into view, not on finding it there), and runs on once the tab is
+// left: its sent keys are kept (as shown() keeps them), and named once the
+// tab is behind and not kept. Forgotten in front, such a hold ran its 75 s
+// with nothing left to name it, outside the MAX_HELD. Whether it was let go
+// (not while a switch to it is under way: it's shown in a moment).
 /** @param {number} tabId @param {import('../../types/margin').State | null | undefined} s @param {number} now */
 function release(tabId, s, now) {
   const tab = s?.tabs[tabId];
   // (Those not sent yet are called off: hold's `sending`.)
-  const keys = tab && !tab.active ? [...(holdKeys.get(tabId) ?? [])].filter(([, h]) => h.sent && h.until > now).map(([key]) => key) : [];
+  const open = [...(holdKeys.get(tabId) ?? [])].filter(([, h]) => h.sent && h.until > now);
+  const keys = tab && !tab.active ? open.map(([key]) => key) : [];
   if (!releaseTab(tabId, keys)) return false;
   const had = heldUntil.delete(tabId);
   leftHolds.delete(tabId);
   lingering.delete(tabId);
-  if (holdKeys.delete(tabId) || had) save(HOLDS_KEY);
+  if (tab?.active && open.length) {
+    const before = holdKeys.get(tabId)?.size;
+    holdKeys.set(tabId, new Map(open));
+    if (open.length !== before || had) save(HOLDS_KEY);
+  } else if (holdKeys.delete(tabId) || had) save(HOLDS_KEY);
   return true;
 }
 
@@ -379,9 +409,12 @@ export async function tick(now = Date.now()) {
   if (!isSynced()) return;
   const minutes = minutesOf(s);
   await fromSession();
+  // Closed tabs forgotten, with keep-ready on or off: when tabs were left is
+  // noted either way (noteLeft), and written whole at each switch.
+  const setAside = noPage.size;
+  for (const known of [noPage, pageEvents, leftAt, passed]) for (const tabId of known.keys()) if (!(tabId in s.tabs)) known.delete(tabId);
   const until = usedAt + minutes * 60_000;
   if (!minutes || now >= until) return stop(now);
-  const setAside = noPage.size;
   for (const [tabId, retryAt] of noPage) if (retryAt <= now) noPage.delete(tabId);
   const chosen = chooseTabs(s, new Set(noPage.keys()));
   // The tabs kept: those chosen, and those just left that aren't (another
@@ -402,7 +435,6 @@ export async function tick(now = Date.now()) {
     if (!keys.size) holdKeys.delete(tabId);
   }
   for (const tabId of new Set([...heldUntil.keys(), ...holdKeys.keys()])) if (!kept.has(tabId)) release(tabId, s, now);
-  for (const known of [noPage, pageEvents, leftAt, passed]) for (const tabId of known.keys()) if (!(tabId in s.tabs)) known.delete(tabId);
   if (noPage.size !== setAside) save(NO_PAGE_KEY);
   schedule(now, until);
   if (!alarmSet && api.alarms) {
@@ -432,9 +464,10 @@ function stop(now = Date.now()) {
   const releaseAll = () => {
     const s = cached();
     for (const tabId of new Set([...heldUntil.keys(), ...holdKeys.keys()])) release(tabId, s, now);
-    if (heldUntil.size || holdKeys.size) save(HOLDS_KEY);
+    if (heldUntil.size) save(HOLDS_KEY);
+    // (Kept: the keys of a tab in front, or one being switched to: release.
+    // Named as the next tick stops again, once the tab is behind.)
     heldUntil.clear();
-    holdKeys.clear();
     leftHolds.clear();
     lingering.clear();
   };
@@ -465,9 +498,23 @@ export function chooseTabs(s, skip = new Set()) {
 
 // For tests.
 export const keepReadyState = () => ({ usedAt, held: [...heldUntil.keys()], holds: Object.fromEntries([...holdKeys].map(([tabId, keys]) => [tabId, [...keys.keys()]])), lingering: [...lingering], passed: [...passed.keys()], noPage: [...noPage.keys()], alarmSet, ticks });
+// For tests: as a background Safari stopped and started again (nothing in
+// memory, storage.session as it was, its read under way as at a start).
+export function startedAgain() {
+  clearTimeout(soon);
+  clearTimeout(timer);
+  soon = timer = null;
+  usedAt = 0;
+  for (const known of [heldUntil, holdKeys, leftHolds, lingering, passed, noPage, pageEvents, leftAt]) known.clear();
+  sessionRead = null;
+  sessionDone = false;
+  void sessionKnown();
+}
 export function resetKeepReady() {
   clearTimeout(soon);
   soon = null;
   passed.clear();
   stop();
+  holdKeys.clear();
+  leftAt.clear();
 }
