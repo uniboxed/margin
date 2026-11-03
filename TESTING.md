@@ -691,6 +691,19 @@ Margin wakes fewer tabs it doesn't then show: a pointer passing over sidebar row
 - [ ] Safari's log after ten minutes of normal use: `/usr/bin/log show --last 10m --predicate 'process == "Safari" AND eventMessage CONTAINS "sending ProcessDidResume"'`. Fewer resumes with the reason `WebFrame_GetFrameInfo` than before, for the same use.
 - [ ] Chrome: hovering and switching behave as before.
 
+## A hidden tab's changes are written together (2026-11-02)
+
+Margin saves a hidden tab's new title, icon and load a moment later, together, instead of on every change. A new address is still saved at once. Fewer saves means less work in every open tab.
+
+- [ ] A chat or mail tab behind whose title counts messages, or a page with a timer in its title: its row follows within about 2 seconds. The tab you're on shows its own title changes at once.
+- [ ] ⌘-click a few links so they open in tabs behind: each row appears at once, and gets its title and icon within about a second of the page loading.
+- [ ] Click a row whose title just changed: the tab comes up as fast as before, and every tab's row then shows its current title.
+- [ ] Close a tab behind right after it changed its title (a chat getting a message): it doesn't come back in the sidebar.
+- [ ] A tab in another space that goes to a new page while it's behind (a page that redirects after a moment, or a single-page app changing its address): quit Safari (⌘Q) right after and reopen it. The tab is back in its own space, not in the one shown.
+- [ ] Switch log (Start page → Settings → Switch log (development) → Copy): `preparation.timings.known: 1` on most switches to loaded tabs, as before, also while a tab behind is ticking its title.
+- [ ] Activity Monitor → CPU, with a ticking tab behind and 20 or more tabs open: the `Safari Web Content` processes are quieter than before when you're not doing anything.
+- [ ] Chrome: rows follow titles and addresses as above.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.

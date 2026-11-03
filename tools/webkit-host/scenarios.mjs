@@ -1322,6 +1322,38 @@ export const SCENARIOS = {
     ...['D', 'E', 'F', 'G', 'H', 'I'].map((name) => checkPage(name, `${name}: among the six left last, held`, '__holds() >= 1', 1500)),
     checkPage('J', 'J: the tab in front holds nothing', '__holds() === 0', 1500),
   ],
+  // A hidden tab's title ticking (a chat, a timer: background/tab-updates.js):
+  // its changes are gathered into a write every 2 s at most, not one each,
+  // and its row still shows the last; the tab in front's own title is written
+  // at once. The writes of the open tabs counted in A's Margin world. All
+  // within the host's ~5 s of background life.
+  titles: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),
+    { op: 'eval', in: 'A', js: `globalThis.__writes = []; (globalThis.browser ?? chrome).storage.onChanged.addListener((changes) => { if (changes.openTabs) __writes.push(performance.now()); }); return 'counting writes'` },
+    { op: 'page', in: 'A', js: `document.title = 'A now'; return 'titled'` },
+    check('A', 'A: the tab in front\'s title is written at once (under 300 ms)', `${ID} return __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + id('A') + '"] .title')?.textContent === 'A now' && __writes.length > 0`, 300),
+    { op: 'eval', in: 'A', js: `globalThis.__before = __writes.length; return 'next: B ticking'` },
+    // (A hidden page's timers are slowed: each tick waits in a busy loop, then yields through a message.)
+    { op: 'page', in: 'B', js: `const yieldNow = () => new Promise((resolve) => { const c = new MessageChannel(); c.port1.onmessage = resolve; c.port2.postMessage(0); }); for (let n = 1; n <= 8; n++) { document.title = 'B tick ' + n; const until = performance.now() + 60; while (performance.now() < until); await yieldNow(); } return 'ticked'` },
+    check('A', 'A: B\'s row shows its last title', `${ID} return __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + id('B') + '"] .title')?.textContent === 'B tick 8'`, 3600),
+    { op: 'eval', in: 'A', js: `return 'writes while B ticked: ' + (__writes.length - __before)` },
+    check('A', 'A: eight title changes of a hidden tab, at most two writes', `const n = __writes.length - __before; return n >= 1 && n <= 2`),
+  ],
+  // A hidden tab's new address is written at once, not gathered (background/
+  // tab-updates.js: after a restart tabs are matched to their records by it);
+  // a new fragment alone waits its 300 ms. Read from storage in A's Margin world.
+  addresses: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),
+    { op: 'eval', in: 'A', js: `${ID} globalThis.__b = id('B'); return 'B is ' + __b` },
+    { op: 'page', in: 'B', js: `history.pushState(null, '', '/p/B/next'); return 'moved'` },
+    check('A', 'A: B\'s new address is stored at once (by about 200 ms: the host looks every 100 ms)', `const { tabs } = await ${STATE}('tabs'); return !!tabs[__b]?.url.endsWith('/p/B/next')`, 150),
+    { op: 'page', in: 'B', js: `location.hash = 'inbox'; return 'fragment'` },
+    wait(100),
+    check('A', 'A: B\'s new fragment alone waits', `const { tabs } = await ${STATE}('tabs'); return !tabs[__b]?.url.endsWith('#inbox')`),
+    check('A', 'A: then is stored', `const { tabs } = await ${STATE}('tabs'); return !!tabs[__b]?.url.endsWith('/p/B/next#inbox')`, 1500),
+  ],
   // A picture of a page in its box, for a look (build/screenshot.png).
   screenshot: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'),

@@ -46,6 +46,8 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 | `reloaded-newtab` | The same reload with Margin's new-tab page open: that page, at the old copy's address, answers nothing; it's loaded again at this copy's (`?again`, so ⌘T's hand-off doesn't close it) and shows every tab |
 | `kick`, `kick-stuck` | A switch to a tab whose wake doesn't answer in time (here a page busy from the moment the wake's hold reaches it: the host can't suspend a process; shown once first, so Margin knows it has a page, and WebKit holds the window for its paint during the kick: the switch log's `kickMs`) kicks it first, to the front and straight back: the page in front isn't hidden by it, the kick comes before the real show; woken again in time, the tab is prepared and drawn before it's shown, otherwise shown at once |
 | `keep-ready-cap` | Keep-ready's holds through nine switches in the host's tab bar: the six tabs left last are held, the first three let go at once (each hold counted in its page's own world as the `pageswap` listener `keepAwake` waits on) |
+| `titles` | A hidden tab's title changing eight times in half a second: at most two writes of the open tabs (counted in the front page's Margin world), and its row ends on the last title; the tab in front's own title is written at once (all within the host's ~5 s of background life) |
+| `addresses` | A hidden tab's new address (`pushState`) stored at once, and a new fragment alone a moment later (gathered with its title and icon) |
 | `screenshot` | A page in its box, saved to `build/screenshot.png` to look at |
 
 ## Real websites

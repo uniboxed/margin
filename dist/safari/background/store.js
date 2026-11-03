@@ -137,8 +137,7 @@ async function recheckNow() {
   // Claimed back: this copy's tabs are written again now, over the older
   // copy's (not waited for: a recheck inside a write mustn't wait on itself).
   if (role === 'owner' && synced) {
-    for (const key of OPEN_TABS_KEYS) unsaved.add(key);
-    void write([]);
+    void write(OPEN_TABS_KEYS);
   }
   return role;
 }
@@ -168,7 +167,9 @@ let doneRev = null; // the last that went through; null while one failed, or non
 // (sent, not yet through): a page's read then comes behind it in Safari's
 // storage and gets it, where a page drawing from what it has wouldn't, its
 // event landing after the script.
-export const stateRev = () => (unsaved.size || lastRev !== doneRev ? null : doneRev);
+// A change that can wait (mutate's `within`) isn't on its way yet: storage has
+// the write before it, as the page does, and a read would get the same.
+export const stateRev = () => ([...unsaved].some((key) => !later.has(key)) || lastRev !== doneRev ? null : doneRev);
 // The next write's stamp, or null where pages aren't prepared. Sent or not,
 // the one after follows it: a page that saw it knows the write after, and one
 // that didn't finds the write after doesn't follow the one it knows, and reads.
@@ -221,9 +222,34 @@ let retryTimer = null;
 let retryMs = 250;
 // Writes `keys` from the cache, queued behind the state's other writes.
 function write(keys) {
-  for (const key of keys) unsaved.add(key);
+  for (const key of keys) {
+    later.delete(key);
+    unsaved.add(key);
+  }
   queue = queue.then(flush);
   return queue;
+}
+// Keys whose only change not yet sent can wait (mutate's `within`), and when
+// the write that takes them is due. Any write before then takes them along.
+const later = new Set();
+let laterTimer = null;
+let laterAt = Infinity;
+function writeWithin(ms) {
+  const at = performance.now() + ms; // a clock that only runs forward, as the timer's
+  if (laterTimer && laterAt <= at) return;
+  clearTimeout(laterTimer);
+  laterAt = at;
+  laterTimer = setTimeout(() => {
+    dropLater();
+    write([]);
+  }, ms);
+}
+// On their way now (the write that takes them is queued or under way).
+function dropLater() {
+  later.clear();
+  clearTimeout(laterTimer);
+  laterTimer = null;
+  laterAt = Infinity;
 }
 // False if this copy doesn't own the state (any more): nothing was written.
 async function flush() {
@@ -232,6 +258,7 @@ async function flush() {
   if ((await recheck()) !== 'owner') return false; // a newer copy took over meanwhile
   const keys = [...unsaved];
   unsaved.clear();
+  dropLater();
   try {
     // The icons' mark in a set() of its own, once the icons are stored: Safari
     // writes one set()'s keys in no set order and stops at the first that
@@ -259,11 +286,17 @@ async function flush() {
 // Serialize every read-modify-write so concurrent tab events can't clobber
 // each other, and persist only the keys that changed. Not in a copy that
 // doesn't own the storage: nothing runs, the state stays as it is.
-/** @param {(state: State) => State | void | Promise<State | void>} fn @returns {Promise<State>} */
-export function mutate(fn) {
+// `within(state)`: ms the write may wait (null: none), from the state before
+// the change. The change is in the state at once, in order with every other,
+// and written within that time, or sooner with any write made before then
+// (background/tab-updates.js: a hidden tab's title and address, gathered).
+// Every page hears each write (storage.onChanged), so fewer are cheaper.
+/** @param {(state: State) => State | void | Promise<State | void>} fn @param {{ within?: (state: State) => number | null }} [options] @returns {Promise<State>} */
+export function mutate(fn, { within } = {}) {
   const run = queue.then(async () => {
     const prev = await load();
     if (role !== 'owner') return prev;
+    const wait = within?.(prev) ?? null;
     const next = /** @type {State} */ ((await fn(prev)) ?? prev);
     // Changed by value: a tab event with nothing new (a page that finished
     // loading again, the same title) rebuilds its records, but isn't written.
@@ -271,7 +304,23 @@ export function mutate(fn) {
     // copy still owns the state.
     const changed = M.STATE_KEYS.filter((key) => !sameStored(next[key], prev[key]));
     cache = next;
-    for (const key of changed) unsaved.add(key);
+    if (wait != null && wait > 0) {
+      // A key with a change already on its way (a failed write to try again)
+      // stays so.
+      for (const key of changed) {
+        if (!unsaved.has(key)) later.add(key);
+        unsaved.add(key);
+      }
+      if (changed.length) writeWithin(wait);
+      return next;
+    }
+    // Nothing new, and nothing on its way but changes that can wait: they
+    // still wait.
+    if (!changed.length && [...unsaved].every((key) => later.has(key))) return next;
+    for (const key of changed) {
+      later.delete(key);
+      unsaved.add(key);
+    }
     // A newer copy took over while this change was made: it wasn't written,
     // so it fails (auto-archive doesn't close tabs it couldn't archive; a
     // page is told: background.js).

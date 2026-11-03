@@ -19,6 +19,7 @@ import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
 import { followFullscreen } from './background/fullscreen.js';
+import { tabGone, tabUpdated } from './background/tab-updates.js';
 import { platform } from './shared/platform.js';
 
 // ---- which copy is in charge ------------------------------------------------
@@ -119,8 +120,6 @@ api.permissions?.onRemoved?.addListener(owned(() => void onboarding.reportAccess
 
 // ---- tab events -----------------------------------------------------------
 
-const TRACKED_CHANGES = ['title', 'url', 'favIconUrl'];
-
 api.tabs.onCreated.addListener(owned(async (tab) => {
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.js newTabHandOff); a new tab
@@ -151,9 +150,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (change.status || change.url) keepReady.pageChanged(tabId);
   // Its page going away ends a wake's hold there (background/tabs.js wakeTab).
   if (change.status === 'loading') forgetWake(tabId);
-  if (TRACKED_CHANGES.some((k) => k in change) || change.status === 'complete') {
-    mutate((s) => M.upsertTab(s, tab, now()));
-  }
+  // Into the state; a hidden tab's written a moment later (background/tab-updates.js).
+  tabUpdated(tabId, change, tab);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
   // The URL when it changes, and again once loaded (in case Safari reported
   // the change without it, or it redirected).
@@ -170,6 +168,7 @@ api.tabs.onRemoved.addListener(owned((tabId) => {
   handingOff.delete(tabId);
   tabShown(tabId); // gone: forgotten
   newTabHint.tabGone(tabId);
+  tabGone(tabId);
   forgetCurrent(tabId);
   mutate((s) => {
     const closed = s.tabs[tabId];
