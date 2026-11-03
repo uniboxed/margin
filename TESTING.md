@@ -562,6 +562,19 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## No crash from asking for animations (2026-11-03)
+
+The page in front went black for about 2 seconds and reloaded when WebKit crashed sorting a page's animations, which Margin asked for on every read of the page's layout. Margin no longer asks.
+
+- [ ] After a day of normal use, look for new crash reports: `ls -t ~/Library/Logs/DiagnosticReports/ | grep WebContent | head`. For each one since the update, `grep -l compareAnimationsByCompositeOrder ~/Library/Logs/DiagnosticReports/com.apple.WebKit.WebContent-*.ips` should not list it. A `TypeLocationCache` crash is a different one (it was there before 2026-11-01); note it if it keeps coming.
+- [ ] A tab in front that goes black and reloads by itself: note the time, and send the crash report from that minute.
+- [ ] Outlook (or another mail web app): after the mail has loaded, no gap at the left, top, right or bottom. The same after toggling its folder pane or reading pane, and after changing the sidebar's width.
+- [ ] Sites whose page slides or fades in as it opens (a menu that pushes the page over, a site that animates in): once it has stopped moving, the page sits right against the sidebar and the frame, with no gap or overlap.
+- [ ] Sites with a footer at the bottom of a short page (a login page, a settings page): the footer is at the bottom of the box, not squeezed up, and the page scrolls all the way.
+- [ ] Sites that put a bar at the very top after they open (a cookie or notice bar that slides in and pushes the page down): once it has stopped, the gap above the page is the same as before it came. Close the bar: the page goes back up.
+- [ ] A few idle tabs left open for a minute, Margin's sidebar showing: in Activity Monitor (CPU tab, View → All Processes), their Safari Web Content processes sit near 0% while you don't touch them.
+- [ ] Chrome (full screen): the same sites look as before.
+
 ## Round 3: the 30-minute check (2026-11-02)
 
 Start here. It checks the whole of round 3 (faster switching, no dark frames, less CPU and memory) in about 30 minutes of normal use. The sections below go into each part. Run `npm run safari` first. Use Safari as you normally do, with 15 or more tabs in a few spaces. Don't judge anything in the first 5 minutes after quitting and reopening Safari: tabs are still coming back then, and everything is slower. Close other heavy apps if you can, and note what else was running.

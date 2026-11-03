@@ -2,6 +2,7 @@
 // window's root does that a box has to do by hand: the scroll handed to <body>
 // and back, the page's scroll locks, and things put directly under <html>.
 import { bodyFitCss, boxCss, FITTED_BODY, HOLD_ELEMENT, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS } from '../../shared/page-box.js';
+import { keyframesIn, startMoves } from './moves.js';
 
 const DEFAULT_LEFT = 260;
 const FRAME = 8;
@@ -41,7 +42,7 @@ export function startBox(left = DEFAULT_LEFT) {
   const ours = [boxSheet, fitSheet, scrollSheet, paddingSheet, zoomSheet, readSheet];
   const zoom = { scale: 1, x: 0, y: 0 };
   // The browser's own, from before viewport.js speaks for the box.
-  const { matches, getAnimations, append, remove } = Element.prototype;
+  const { matches, append, remove, checkVisibility } = Element.prototype;
   const computed = window.getComputedStyle;
   const parseLength = window.CSSNumericValue?.parse; // absent: NaN, and a layout tells (pixels)
   const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
@@ -215,21 +216,34 @@ export function startBox(left = DEFAULT_LEFT) {
   let fitted = { grows: false, column: false };
   let paddingCss = '';
   let lastSaid = '';
+  let lastPage = ''; // the same, without the box's width
+  let pageNew = false; // the last read found something new the page says, the box's width aside
   let plainPage = true;
   const EDGES = ['Top', 'Right', 'Bottom', 'Left'];
   const SIZES = ['width', 'minWidth', 'maxWidth', 'height'];
   const readFlag = document.createElement(READ_ELEMENT); // in the page only during a read
   const holdFlag = document.createElement(HOLD_ELEMENT);
   const NOT_IN_FLOW = 'dialog, [popover], :fullscreen';
-  // Transitions a browser started for this read, on what inherits from <body>:
-  // Chromium styles the whole page for one read, WebKit only what's asked for.
-  const pendingOnes = () => document.getAnimations().filter((a) => a.pending && /** @type {any} */ (a).transitionProperty);
-  function noticeStarted(before) {
-    if (held) return;
-    const { body } = document;
-    held = pendingOnes().some((a) => !before.includes(a) && /** @type {any} */ (a.effect).target !== body && INHERITED_INTO.test(/** @type {any} */ (a).transitionProperty));
-    if (held) writeFit();
+  // Transitions a read started on what inherits from <body>: Chromium styles
+  // the whole page for one read, WebKit only what's asked for. They come as
+  // events in the next frame, each started and over at once (moves.js echo),
+  // and from then on everything is held for a read. Not by asking the
+  // document for its animations (moves.js).
+  function noticeStarted(event) {
+    const node = event.target;
+    if (held || node === document.body || node === html || !INHERITED_INTO.test(event.propertyName)) return;
+    held = true;
+    writeFit();
   }
+  // The page's style brought up to date before a read, style only. With
+  // something still to restyle under <body> as the read's elements come in,
+  // WebKit restyles it for the read and not again once they're gone: a flex
+  // column's children kept shrinking (host, body-size F and O). Asking for
+  // animations did this on the way; `checkVisibility` does it alone, and no
+  // more (20,000 rows: the same 25 ms in WebKit as `getAnimations`, 0 if
+  // nothing changed). Not `getComputedStyle`: only what's asked for, and its
+  // ancestors, is brought up to date.
+  const styleNow = checkVisibility ? () => void checkVisibility.call(html) : () => void computed(document.body).color;
   // Margin's rules off <body> for one read, and back, then `apply` while it's
   // still held: a change of padding mustn't start a page's transition on it.
   // Styled again in the same step: leaving that to the next paint makes WebKit's
@@ -237,11 +251,11 @@ export function startBox(left = DEFAULT_LEFT) {
   function readWithout(read, keepScroll, apply) {
     const { body } = document;
     const kept = keepScroll ? scrollOf(body) : null; // laid out narrower, it may not scroll as far
-    const before = held ? null : pendingOnes();
+    if (!held) moves.echo();
+    styleNow();
     append.call(html, holdFlag, readFlag);
     try {
       read(body);
-      if (before) noticeStarted(before);
     } finally {
       remove.call(readFlag);
       if (kept) scrollInstantly(body, kept);
@@ -396,27 +410,31 @@ export function startBox(left = DEFAULT_LEFT) {
     return refit || repadded;
   }
   // A length on its way somewhere isn't what the page says: a read during a
-  // transition or an animation of one is thrown away and made again as it ends.
-  // In the meantime it runs on <body> as it would in a window, unless Margin's
-  // rule hides it. With no end to it, what shows now is all there'll ever be.
-  let endAwaited = false;
-  function movesRead(animation, property) {
-    if (animation.playState !== 'running' || !animation.effect || animation.effect.getComputedTiming().endTime === Infinity) return false;
-    const named = /** @type {any} */ (animation).transitionProperty;
-    return (named ? [named] : /** @type {any} */ (animation.effect).getKeyframes().flatMap(Object.keys)).some((name) => property.test(name));
-  }
-  function runningOn(body) {
-    const on = (node, property) => getAnimations.call(node).filter((a) => movesRead(a, property));
-    return [...on(html, READ_PROPERTY), ...on(body, READ_PROPERTY), ...chain.nodes.flatMap((node) => on(node, CHAIN_PROPERTY))];
-  }
-  function readAfter(animations) {
-    if (endAwaited) return;
-    endAwaited = true;
-    Promise.allSettled(animations.map((a) => a.finished)).then(() => {
-      endAwaited = false;
-      bodyMayHaveChanged();
-    });
-  }
+  // transition or an animation of one is thrown away and made again as it ends
+  // (moves.js). In the meantime it runs on <body> as it would in a window,
+  // unless Margin's rule hides it. With no end to it, what shows now is all
+  // there'll ever be.
+  // Starts are kept for anything as deep as the first children go: a new one
+  // can start moving before the next look at them (chainCheck) finds it.
+  const nearBody = (node) => {
+    if (node === html) return true;
+    for (let depth = 0; node && depth <= CHAIN_DEPTH; depth++, node = node.parentElement) if (node === document.body) return true;
+    return false;
+  };
+  const moves = startMoves({
+    names: (node) => (node === html || node === document.body ? READ_PROPERTY : chain.nodes.includes(node) ? CHAIN_PROPERTY : null),
+    near: nearBody,
+    ended: () => bodyMayHaveChanged(),
+    // Only this reading of its attributes is put in doubt: what others say stays known.
+    settle: () => {
+      known.delete(attributesNow());
+      readAt.stale = true;
+      measureSoon();
+    },
+    styleOf: (node) => computed(node),
+    keyframes: (name) => keyframesIn([...document.styleSheets, ...adopted.get.call(document)], name),
+    echoed: noticeStarted,
+  });
   // `again`: what a layout showed before no longer holds, as when the content
   // has grown. A page known to need the layout has it in the same step, so
   // that's one trip with Margin's rules off. Returns whether anything was new.
@@ -429,13 +447,15 @@ export function startBox(left = DEFAULT_LEFT) {
     let changed = false;
     let next = null;
     const settle = () => !!next && applyBody(next);
+    if (moves.moving()) return false;
     readWithout((element) => {
-      const running = runningOn(element);
-      if (running.length) return readAfter(running);
       said = readSaid(element);
       const key = JSON.stringify(said);
       changed = key !== lastSaid;
       lastSaid = key;
+      const page = JSON.stringify({ ...said, whole: 0 });
+      pageNew = page !== lastPage;
+      lastPage = page;
       plainPage = said.plain;
       if (said.plain) {
         if (changed) next = resolve(said);
@@ -444,6 +464,7 @@ export function startBox(left = DEFAULT_LEFT) {
       }
     }, inOneGo, settle);
     if (!said) return false;
+    moves.read();
     if (!said.plain && !inOneGo && (changed || again)) readWithout((element) => { next = readLaidOut(element, said); }, true, settle);
     remember(said);
     return changed;
@@ -472,6 +493,7 @@ export function startBox(left = DEFAULT_LEFT) {
   }
   function useKnown({ said, key }) {
     lastSaid = key;
+    lastPage = JSON.stringify({ ...said, whole: 0 });
     readAt.attributes = attributesNow();
     setRootZoom(said.rootZoom);
     append.call(html, holdFlag);
@@ -508,7 +530,10 @@ export function startBox(left = DEFAULT_LEFT) {
     const reading = known.get(attributesNow());
     if (reading && document.fullscreenElement !== document.body) return useKnown(reading);
     const started = performance.now();
-    measureGap = measureBody(false) ? MEASURE_GAP_MS : Math.min(MEASURE_WAIT_MS, measureGap * 2);
+    pageNew = false;
+    const changed = measureBody(false);
+    moves.found(pageNew);
+    measureGap = changed ? MEASURE_GAP_MS : Math.min(MEASURE_WAIT_MS, measureGap * 2);
     checkLocks();
     measureAt = performance.now();
     measureCost = measureAt - started;
@@ -540,9 +565,7 @@ export function startBox(left = DEFAULT_LEFT) {
     const now = readChain(body);
     const moved = now.tops.join() !== chain.tops.join() || now.nodes.length !== chain.nodes.length || now.nodes.some((node, i) => node !== chain.nodes[i]);
     follow(now);
-    const running = runningOn(body); // a margin at the start of its way shows no change yet
-    if (running.length) readAfter(running);
-    else if (moved) bodyMayHaveChanged();
+    if (moved && !moves.moving()) bodyMayHaveChanged(); // a margin at the start of its way shows no change yet: read as it ends
   }
   function chainTouched() {
     chainFrame ||= requestAnimationFrame(chainCheck);
