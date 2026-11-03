@@ -562,6 +562,30 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## After a reboot: every click switches, within about 2 seconds (2026-11-03, evening)
+
+Right after a reboot Safari is slow to answer Margin, sometimes 2–3 s for each question, and Margin's own timers run late. Margin now notices this. A switch starts from what Margin already knows about the tab instead of first asking Safari where it is. While Safari is slow, the tab comes up about 1.5–2 s after the click, still loading if it has to, as Safari itself would show it, instead of after 5–7 s. The page you clicked on also waits 3 s longer for Margin's answer, so a slow answer is never taken as "didn't switch".
+
+Before you start: run `npm run safari`. The real test is right after a reboot (restart the Mac, open Safari with your usual windows, and start clicking as soon as the sidebar shows). Do the quick-Safari checks afterwards, once the Mac has settled.
+
+- [ ] Right after the reboot, click 10 tabs you haven't opened since, one after another in the sidebar. Every click switches. "Margin didn't answer, so the tab didn't switch" never appears, and neither does "Margin isn't responding".
+- [ ] Each of those tabs comes up within about 2 s of the click. Some come up still loading: an empty or half-drawn page that fills in, as Safari shows it. Note any that take longer than 3 s, and any that show black for more than a moment once they're up.
+- [ ] No tab jumps back in front of one you clicked later.
+- [ ] A space's icon right after the reboot: the same.
+- [ ] From Margin's own new-tab page (⌘T, then a tab in its sidebar) right after the reboot: the same.
+- [ ] Right after Safari opens, before the sidebar has redrawn, click a tab: it switches within about 2 s.
+- [ ] Copy the switch log (new-tab page → Settings → Switch log). On those switches:
+  - `before.resolve` should be under about 200 ms (it was 2.3–3.3 s).
+  - `slow` says what showed Safari slow: `what` and `ms` of the last sign, `own: true` if it was the switch's own call to Safari, and `sources` (two or more: Safari as a whole). Most switches in the first minutes should have it.
+  - `plain: 'tab'` means Safari was too slow to say where the tab was, so it was shown at once. `plain: 'late'` means the click reached Margin with less than a second left before the sidebar's deadline, and it was still shown.
+  - `restored: 'cut'` means a restore behind the page ran out of its 1.1 s and the tab was shown as far as it had got.
+  - `stuckAt` with `forced: true` should be rare now. Note its `shownAfter`: it should be about 2000, not 5000–7000.
+- [ ] Once the Mac has settled (a few minutes later, load average under about 10), no new switch has `slow` (one tab that's slow to answer shouldn't give it to switches to other tabs). Unloaded tabs are restored behind the page again: they come up drawn, with `restored: 'painted'` or `'loaded'`, and `introduced: true` for tabs never shown.
+- [ ] With Safari quick, switches feel as before: the page you're on stays until the tab is ready, with no black and no flicker.
+- [ ] Optional: `uptime` in Terminal when you start clicking after the reboot, so I can match the log to the load.
+
+**Send me** the switch log, the times of anything slow or dark, and the load average.
+
 ## Startup: clicks that start, restores that wait for the load, one introduction (2026-11-03)
 
 After a Safari relaunch, Margin's check of the open tabs no longer asks every unloaded tab again and again, and it waits while you switch. A tab loaded behind the page comes up only once it has really loaded. A tab that has already come back into view after you left it, whether Safari or Margin brought it, isn't flipped again on its next switch. A tab that only came back into view because its window was uncovered still is.

@@ -226,9 +226,9 @@ async function carryIfSameWindow(tabId, why, windowId) {
 // command after activation.
 /**
  * @param {number} tabId
- * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number, deadline?: number, arrival?: import('./tabs.js').Arrival | null, tab?: any }} [options] `tab`: as found already (its window)
+ * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number, deadline?: number, waitsUntil?: number, arrival?: import('./tabs.js').Arrival | null, tab?: any }} [options] `tab`: as found already (its window)
  */
-async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop, deadline, arrival = null, tab = null } = {}) {
+async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop, deadline, waitsUntil, arrival = null, tab = null } = {}) {
   const target = tab ?? (await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
   const reason = show && sourceWindowId != null && target?.windowId === sourceWindowId ? rememberCarry(tabId, show) : null;
   // Preparation receives the value directly; persistence can finish beside
@@ -237,7 +237,7 @@ async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId,
   try {
     // A page's own switch: it's covered meanwhile (content/core.js), so a tab
     // never shown before arrives covered too.
-    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline, covered: isNeverShown(tabId), arrival });
+    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline, waitsUntil, covered: isNeverShown(tabId), arrival });
     if (!reason) return result;
     if (!result?.tab) carried.delete(tabId);
     else if (result.preparation?.outcome === 'ready') carried.delete(tabId);
@@ -312,11 +312,11 @@ export const handlers = {
   },
   // Answers which tab came to the front ({ shown }), or fails: the tab is
   // gone, or the browser didn't show it (the page then says so).
-  /** @param {{ tabId: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, resolved?: any, arrival?: import('./tabs.js').Arrival | null }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it); `resolved`: the tab background.js found by that address already (not asked for again); `arrival`: how the request came (the switch log: background.js) */
-  async activateTab({ tabId, hint, show, sidebarTop, deadline, resolved = null, arrival = null }, sender) {
+  /** @param {{ tabId: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number, resolved?: any, arrival?: import('./tabs.js').Arrival | null }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it), `waitsUntil` past it for the answer (a switch asked too late for its steps is shown at once); `resolved`: the tab background.js found by that address already (not asked for again); `arrival`: how the request came (the switch log: background.js) */
+  async activateTab({ tabId, hint, show, sidebarTop, deadline, waitsUntil, resolved = null, arrival = null }, sender) {
     const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
-    const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline, arrival, tab: target });
+    const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline, waitsUntil, arrival, tab: target });
     return { shown: result?.superseded ? null : target.id };
   },
   // About to be shown, probably (a press on a sidebar row or a space's icon,
@@ -595,8 +595,8 @@ export const handlers = {
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
   },
-  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number }} message `show`: keep the sidebar open there; `deadline`: as activateTab's */
-  async openPin({ pinId, windowId, show, sidebarTop, deadline }) {
+  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number }} message `show`: keep the sidebar open there; `deadline`: as activateTab's */
+  async openPin({ pinId, windowId, show, sidebarTop, deadline, waitsUntil }) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
@@ -606,7 +606,7 @@ export const handlers = {
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
-      const result = await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop, deadline });
+      const result = await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop, deadline, waitsUntil });
       return { shown: result?.superseded ? null : existing.id };
     }
     const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline });
@@ -615,12 +615,12 @@ export const handlers = {
   /** @param {{ windowId: number, spaceId: string }} message */
   // `bringTab: false`: only the sidebar's space, the page in front stays.
   /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean }} message */
-  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number }} message `show`: keep the sidebar open on the tab that comes to the front */
-  async setSpace({ windowId, spaceId, bringTab = true, show, sidebarTop, deadline }, sender) {
+  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number }} message `show`: keep the sidebar open on the tab that comes to the front */
+  async setSpace({ windowId, spaceId, bringTab = true, show, sidebarTop, deadline, waitsUntil }, sender) {
     const win = windowId ?? sender?.tab?.windowId;
     if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop);
     const reason = show && win != null && win === sender?.tab?.windowId ? (show === 'toggle' ? 'toggle' : 'hover') : null;
-    const result = await showSpace(win, spaceId, { bringTab, carry: reason, scroll: sidebarTop, deadline });
+    const result = await showSpace(win, spaceId, { bringTab, carry: reason, scroll: sidebarTop, deadline, waitsUntil });
     // Which tab is in front now (the page that swiped shows it switching).
     const done = { shown: result?.tab?.id ?? null };
     if (!show || win == null) return done;

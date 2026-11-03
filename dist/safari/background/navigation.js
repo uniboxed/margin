@@ -1,6 +1,7 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
-import { api, load, mutate, now, recheckSoon, StaleError } from './store.js';
+import { api, cached, isSynced, load, mutate, now, recheckSoon, StaleError } from './store.js';
+import { timed } from './slow.js';
 import { activating, anyFocusing, focusTab, openTab, tellPage, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
 import { passing as keepReadyPassing, switchFacts } from './keep-ready.js';
@@ -163,10 +164,25 @@ export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-
 // change queued before it (the cache can be behind those while a write is
 // under way): the tab used last, a tab just moved to the space staying.
 const SPACE_WRITE_MS = 2000;
-/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, hurry?: (() => boolean) | null }} [options] */
-export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline, hurry = null } = {}) {
+// The tab in front of the window: Safari's answer, or, past FRONT_KNOWN_MS,
+// Margin's own (its tabs matched to the open ones): after a reboot Safari
+// took seconds to answer (2026-11-03), and a space's switch waited that long
+// before it started. Timed (slow.js).
+const FRONT_KNOWN_MS = 150;
+/** @param {number} windowId */
+async function frontOf(windowId) {
+  /** @type {Promise<{ tab: any }>} */
+  const asking = timed('tabs.query', Promise.resolve().then(() => api.tabs.query({ active: true, windowId }))).then(([tab]) => ({ tab: tab ?? null }));
+  const known = isSynced() ? Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === windowId && t.active) ?? null : null;
+  if (!known) return (await asking).tab;
+  let timer;
+  const answer = await Promise.race([asking.catch(() => null), new Promise((resolve) => { timer = setTimeout(() => resolve(null), FRONT_KNOWN_MS); })]).finally(() => clearTimeout(timer));
+  return /** @type {{ tab: any } | null} */ (answer)?.tab ?? known;
+}
+/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, waitsUntil?: number, hurry?: (() => boolean) | null }} [options] */
+export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline, waitsUntil, hurry = null } = {}) {
   if (windowId == null) return;
-  const [shown] = bringTab ? await api.tabs.query({ active: true, windowId }) : [];
+  const shown = bringTab ? await frontOf(windowId) : null;
   /** @param {import('../../types/margin').State} st */
   const candidatesIn = (st) => Object.values(st.tabs)
     .filter((t) => t.windowId === windowId && st.tabSpace[t.id] === spaceId && t.id !== shown?.id)
@@ -195,7 +211,7 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
   };
   for (const tab of candidates) {
     try {
-      const result = await focusTab(tab.id, { source: 'space', carry, scroll, deadline, hurry, retry: true });
+      const result = await focusTab(tab.id, { source: 'space', carry, scroll, deadline, waitsUntil, hurry, retry: true });
       // Called off while its tab loaded behind the page (Escape on its cover),
       // not by another switch of Margin's (that one sets its own space) nor a
       // key press (the next press goes on from this space).

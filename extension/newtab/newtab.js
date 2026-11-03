@@ -24,7 +24,8 @@ async function send(type, payload = {}) {
   if (!asksBackground(type)) return undefined;
   let timer;
   const loading = type === 'newTab' || type === 'search';
-  const waitMs = loading ? LOADING_TIMEOUT_MS : SEND_TIMEOUT_MS;
+  // (A switch that says how long it waits past its deadline: that long, themes/arcadia/newtab.js.)
+  const waitMs = Number.isFinite(payload?.waitsUntil) ? Math.max(0, payload.waitsUntil - Date.now()) : loading ? LOADING_TIMEOUT_MS : SEND_TIMEOUT_MS;
   // When this page stops waiting: the background doesn't switch after it.
   const res = await Promise.race([
     api.runtime.sendMessage({ type, ...(loading && !payload?.deadline ? { deadline: Date.now() + waitMs } : {}), ...payload }),

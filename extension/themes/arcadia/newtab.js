@@ -11,7 +11,7 @@ import { watchAway } from '../../shared/away.js';
 import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../../shared/stored.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
 import { installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
-import { createSwitching, backgroundSwitches, NEW_TAB } from '../../shared/switching.js';
+import { createSwitching, backgroundSwitches, NEW_TAB, SWITCH_GRACE_MS } from '../../shared/switching.js';
 import { THEMES, themeFor } from '../index.js';
 import { avatar, createSidebar } from './sidebar.js';
 import { createPalette } from './palette.js';
@@ -90,15 +90,18 @@ export function mount({ api, self, send, windowed = false }) {
   // A switch (from the sidebar, the palette or a pin tile) also says the
   // tab's address and place, with whose ids this page drew (as on web pages,
   // content/core.js send), and when this page stops waiting for it: no switch
-  // after that. Not for this tab itself (its id is the background's own).
+  // after that, and the grace it waits past that for the answer (`waitsUntil`,
+  // as on web pages: a switch asked late is still shown). Not for this tab
+  // itself (its id is the background's own).
   const withHint = (/** @type {string} */ type, /** @type {any} */ payload) => {
     if (!SWITCHES.has(type) || payload?.hint) return payload;
     if (type !== 'closeTab') lastShown = 0; // no longer just shown (refresh): a switch was asked for from here
     const tab = Number.isInteger(payload?.tabId) && payload.tabId !== self?.id ? state?.tabs?.[payload.tabId] : null;
+    const deadline = Date.now() + 7000;
     return {
       ...payload,
       ...(tab ? { hint: { url: tab.url, index: tab.index, title: tab.title, from: /** @type {any} */ (state)?.openTabsBy ?? null } } : {}),
-      ...(type === 'closeTab' ? {} : { deadline: Date.now() + 7000 }),
+      ...(type === 'closeTab' ? {} : { deadline, waitsUntil: deadline + SWITCH_GRACE_MS }),
     };
   };
   /** @type {import('../../../types/margin').Send} */

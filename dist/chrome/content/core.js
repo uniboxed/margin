@@ -15,7 +15,7 @@ import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
 import { startPageLink } from './page-link.js';
 import { startPinch } from './pinch.js';
-import { createSwitching, backgroundSwitches, NEW_TAB } from '../shared/switching.js';
+import { createSwitching, backgroundSwitches, NEW_TAB, SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
 import { readyInPage } from '../shared/page-ready.js';
@@ -87,6 +87,14 @@ export function startCore({ onTheme } = {}) {
   const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
   // These, and a new tab from the palette, say when this page stops waiting.
   const TIMED_REQUESTS = new Set([...SWITCH_REQUESTS, 'newTab', 'search']);
+  // A switch waits SWITCH_GRACE_MS past that for the answer (`waitsUntil`):
+  // the background plans the switch to the deadline, and answers by it, but
+  // on a Mac that busy (after a reboot, 2026-11-03) its timers fired seconds
+  // late, and a tab it showed came 0.3 s after this page had said it didn't
+  // switch. A click must switch: a switch asked for late is still shown then,
+  // at once (background/tabs.js focusTab). Not a new tab: one is opened only
+  // before the deadline (background/tabs.js tooLate), so waiting past it
+  // gains nothing.
   let switchError = null;
   let helloAnswered = false; // this page's background has said which tab it is
   let switchAskedAt = 0; // when this page last asked for a switch (render: justShown)
@@ -122,9 +130,12 @@ export function startCore({ onTheme } = {}) {
     // after that (a switch that lands after its page said it didn't). Asked
     // again (retry), it keeps its first deadline, and waits only till then.
     if (SWITCH_REQUESTS.has(type)) switchAskedAt = Date.now();
-    const deadline = (/** @type {any} */ (payload)).deadline;
-    if (TIMED_REQUESTS.has(type) && !Number.isFinite(deadline)) payload = /** @type {any} */ ({ ...payload, deadline: Date.now() + SEND_TIMEOUT_MS[type] });
-    const waitMs = Number.isFinite(deadline) ? Math.max(0, deadline - Date.now()) : (SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default);
+    if (TIMED_REQUESTS.has(type) && !Number.isFinite((/** @type {any} */ (payload)).deadline)) {
+      const deadline = Date.now() + SEND_TIMEOUT_MS[type];
+      payload = /** @type {any} */ ({ ...payload, deadline, ...(SWITCH_REQUESTS.has(type) ? { waitsUntil: deadline + SWITCH_GRACE_MS } : {}) });
+    }
+    const until = (/** @type {any} */ (payload)).waitsUntil ?? (/** @type {any} */ (payload)).deadline;
+    const waitMs = Number.isFinite(until) ? Math.max(0, until - Date.now()) : (SEND_TIMEOUT_MS[type] ?? SEND_TIMEOUT_MS.default);
     failedSwitch(type, null);
     let timer;
     let reply;
@@ -157,7 +168,6 @@ export function startCore({ onTheme } = {}) {
     }
     if (retry) {
       await new Promise((r) => setTimeout(r, 250));
-      const until = (/** @type {any} */ (payload)).deadline;
       // No time left for a switch: it didn't happen.
       if (Number.isFinite(until) && until - Date.now() < 500) return void failedSwitch(type, 'Too late');
       return send(type, payload, false);

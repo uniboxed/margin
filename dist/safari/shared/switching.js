@@ -23,7 +23,11 @@ export const opensNewTab = (/** @type {string} */ type, /** @type {any} */ paylo
   (type === 'newTab' && !!payload?.url) || (type === 'search' && payload?.tabId == null);
 const SLOW_MS = 150;
 const GRACE_MS = 300;
-const MAX_MS = 8000;
+// How long past its deadline a page waits for a switch's answer (content/core.js
+// send, themes/arcadia/newtab.js: `waitsUntil`), for a background whose
+// timers fire late on a Mac that busy, or a Safari slow to carry out the show.
+export const SWITCH_GRACE_MS = 3000;
+const MAX_MS = 7000 + SWITCH_GRACE_MS + 500; // a switch request's 7 s, and its grace for a late answer
 const UNASKED_MAX_MS = 2500;
 
 // Hidden for less than this, then shown again: a blink (background/tabs.js

@@ -8,6 +8,7 @@ import * as O from '../shared/owner.js';
 import { FAVICONS, FAVICONS_MARK, OPEN_TABS, OPEN_TABS_KEYS, STATE_REV, fromStorage, openTabsCurrent, revOf, sameStored, storedName, toStorage } from '../shared/stored.js';
 import { platform } from '../shared/platform.js';
 import { recordEmptyStart } from './diagnostics.js';
+import { timed } from './slow.js';
 /** @import { State } from '../../types/margin' */
 
 export const api = globalThis.browser ?? globalThis.chrome;
@@ -350,12 +351,27 @@ async function isFreshSession() {
   return true;
 }
 
+// Safari's open tabs, asked by a sync (a question of its own: what changed
+// since is in it), and the question under way, if any: a switch looking for
+// its tab by address before the first sync (tabs.js resolveTab) takes that
+// one rather than queueing a second behind it, on a Safari slow after a
+// relaunch. Timed (slow.js).
+/** @type {Promise<any[]> | null} */
+let openAsked = null;
+function askOpenTabs() {
+  const asking = timed('tabs.query', Promise.resolve().then(() => api.tabs.query({})));
+  openAsked = asking;
+  const over = () => { if (openAsked === asking) openAsked = null; };
+  asking.then(over, over);
+  return asking;
+}
+export const openTabsAsked = () => openAsked ?? askOpenTabs();
 // `onSync({ state, renumbered, fresh })`: told after the sync (in the queue).
-/** @param {{ fresh?: boolean, onSync?: (sync: { state: State, renumbered: boolean, fresh: boolean }) => void }} [options] */
 // Any sync that went through lets pages trust the stored tabs (markSynced).
+/** @param {{ fresh?: boolean, onSync?: (sync: { state: State, renumbered: boolean, fresh: boolean }) => void }} [options] */
 export function resync({ fresh, onSync } = {}) {
   return mutate(async (s) => {
-    const tabs = await api.tabs.query({});
+    const tabs = await askOpenTabs();
     const isFresh = fresh ?? (await isFreshSession());
     const next = M.syncTabs(s, tabs, { fresh: isFresh, now: now() });
     onSync?.({ state: next, renumbered: M.isRenumbered(s, tabs, { fresh: isFresh }), fresh: isFresh });

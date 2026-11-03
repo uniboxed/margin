@@ -85,11 +85,16 @@ const firstSync = (async () => {
   }
 })();
 // A request that says when its page stops waiting (`deadline`: a switch)
-// waits only so long that SYNC_LEAVES_MS is left for the switch itself.
+// waits only so long that SYNC_LEAVES_MS is left for the switch itself; one
+// that names its tab by address too (`hint`: found among Safari's open tabs
+// without the sync, background/tabs.js resolveTab, by the sync's own
+// question if it's still under way), SYNC_HINTED_MS at most: with Safari slow
+// after a relaunch, the sync and its write can take seconds.
 const SYNC_LEAVES_MS = 2500;
-const untilSynced = (deadline = Infinity) => {
+const SYNC_HINTED_MS = 1000;
+const untilSynced = (deadline = Infinity, hinted = false) => {
   if (isSynced()) return null;
-  const ms = Math.max(0, Math.min(SYNC_WAIT_MS, deadline - SYNC_LEAVES_MS - Date.now()));
+  const ms = Math.max(0, Math.min(SYNC_WAIT_MS, deadline - SYNC_LEAVES_MS - Date.now(), deadline !== Infinity && hinted ? SYNC_HINTED_MS : Infinity));
   let timer;
   return Promise.race([firstSync, new Promise((resolve) => { timer = setTimeout(resolve, ms); })]).finally(() => clearTimeout(timer));
 };
@@ -333,6 +338,11 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // waits below (background/tabs.js pageStarted).
   if (message.type === 'hello') message = { ...message, heard: activationsHeard() };
   const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
+  // A page that waits past its deadline (content/core.js SWITCH_GRACE_MS):
+  // answered by then. Its switch still plans to its deadline (focusTab); the
+  // grace is for timers that fire late and a Safari slow to carry out the
+  // show, so the page hears it was shown rather than that it didn't happen.
+  const latest = deadline !== Infinity && Number.isFinite(message.waitsUntil) ? Math.max(deadline, message.waitsUntil) : deadline;
   let answered = false;
   let guard = null;
   // A switch asked for: work that can wait (background/tabs.js
@@ -350,7 +360,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (answered) return;
       console.warn(`[margin] ${message.type} still under way at its page's deadline: answered that it didn't happen`);
       answer({ ok: false, error: 'Too late: Margin took too long to answer' });
-    }, Math.max(0, deadline - REPLY_GUARD_MS - Date.now()));
+    }, Math.max(0, latest - REPLY_GUARD_MS - Date.now()));
   }
   // DEVELOPMENT DIAGNOSTICS: how much of its page's wait was left as it came,
   // and what it waited for before its switch started (the switch log's
@@ -364,7 +374,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .then(() => (message.type === 'hello' || message.type === 'owner' ? recheck() : null))
     .then(() => {
       if (arrival) [arrival.decided, step] = [since(step), Date.now()];
-      return isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced(deadline) : null;
+      return isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced(deadline, Number.isInteger(message.tabId) && !!message.hint?.url) : null;
     })
     .then(() => {
       if (arrival) [arrival.sync, step] = [since(step), Date.now()];
