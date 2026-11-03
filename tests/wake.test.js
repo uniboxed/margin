@@ -2360,8 +2360,9 @@ test('restoring: the last thing before the show is the page drawing (a barrier a
     await focusTab(169);
     const [prepared] = prepares(169).filter((x) => x.at > fake.updates[1].at);
     const last = barriers(169).at(-1);
-    assert.ok(last.at >= prepared.at + 150, 'a barrier once the preparation answered');
-    assert.ok(fake.updates.at(-1).at >= last.at + 20, 'the show once it answered');
+    // A few ms of slack: timers can fire a millisecond early by Date.now().
+    assert.ok(last.at >= prepared.at + 145, 'a barrier once the preparation answered');
+    assert.ok(fake.updates.at(-1).at >= last.at + 18, 'the show once it answered');
   } finally {
     done();
   }
