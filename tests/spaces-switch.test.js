@@ -233,7 +233,7 @@ test('next/previous: a page a held key only passes through isn\'t covered (the l
 });
 
 test('page zoom: remembered per site (only away from the default), capped, so its pages draw Margin at its size at once', async () => {
-  const { handlers } = await import('../extension/background/handlers.js');
+  const { handlers, zoomChanged } = await import('../extension/background/handlers.js');
   const at = (url) => ({ tab: { id: 1, url }, url });
   const zooms = () => Object.fromEntries(Object.entries(fake.local.pageZoom ?? {}).map(([k, v]) => [k, v[0]]));
   fake.zoom[1] = 1.5;
@@ -246,11 +246,13 @@ test('page zoom: remembered per site (only away from the default), capped, so it
   assert.deepEqual(zooms(), {}, 'back to 100%: forgotten');
   // A default zoom (Chrome's setting): kept once, not per site.
   chrome.tabs.getZoomSettings = async () => ({ defaultZoomFactor: 1.1 });
+  zoomChanged(); // (the browser's tabs.onZoomChange, background.js)
   fake.zoom[1] = 1.1;
   for (const n of [1, 2, 3]) await handlers.getZoom({}, at(`https://site${n}.com/`));
   await sleep(10);
   assert.deepEqual(zooms(), { '*': 1.1 });
   delete chrome.tabs.getZoomSettings;
+  zoomChanged();
   // At most 150 sites, the oldest changes dropped.
   for (let n = 0; n < 160; n++) {
     fake.zoom[1] = 1.5;
@@ -261,6 +263,60 @@ test('page zoom: remembered per site (only away from the default), capped, so it
   const kept = Object.keys(zooms()).filter((k) => k !== '*');
   assert.equal(kept.length, 150);
   assert.ok(!kept.includes('https://z0.com') && kept.includes('https://z159.com'));
+});
+
+test('page zoom: an unchanged zoom is answered without reading storage or the zoom settings again, until a zoom or `pageZoom` changes', async () => {
+  const { handlers, zoomChanged, zoomStored } = await import('../extension/background/handlers.js');
+  const at = (url) => ({ tab: { id: 7, url }, url });
+  const get = chrome.storage.local.get;
+  const reads = { pageZoom: 0, settings: 0 };
+  chrome.storage.local.get = async (keys) => {
+    if ([].concat(keys).includes('pageZoom')) reads.pageZoom++;
+    return get(keys);
+  };
+  chrome.tabs.getZoomSettings = async () => {
+    reads.settings++;
+    return { defaultZoomFactor: 1 };
+  };
+  try {
+    zoomStored();
+    zoomChanged();
+    fake.zoom[7] = 1.25;
+    for (let n = 0; n < 5; n++) await handlers.getZoom({}, at('https://cached.com/a'));
+    await sleep(10);
+    assert.equal(fake.local.pageZoom['https://cached.com'][0], 1.25, 'written once it changed');
+    const afterWrite = { ...reads };
+    for (let n = 0; n < 5; n++) await handlers.getZoom({}, at('https://cached.com/b'));
+    await sleep(10);
+    assert.deepEqual(reads, afterWrite, 'the same zoom again: no reads');
+    assert.ok(afterWrite.pageZoom <= 3 && afterWrite.settings === 1, `read before the write, again for it, and once after it (${JSON.stringify(afterWrite)})`);
+    // `pageZoom` cleared here (its storage event, background.js): the next
+    // ask reads it again, and writes what's right.
+    fake.local.pageZoom = {};
+    zoomStored();
+    await handlers.getZoom({}, at('https://cached.com/c'));
+    await sleep(10);
+    assert.equal(fake.local.pageZoom['https://cached.com'][0], 1.25);
+    // Another copy of Margin wrote a site (its storage event never reaches
+    // this one) while this one kept what it read: a write here is built from
+    // what's stored now.
+    await handlers.getZoom({}, at('https://cached.com/d'));
+    await sleep(10);
+    fake.local.pageZoom = { ...fake.local.pageZoom, 'https://other.com': [1.5, Date.now()] };
+    fake.zoom[7] = 1.1;
+    await handlers.getZoom({}, at('https://third.com/'));
+    await sleep(10);
+    assert.deepEqual(Object.keys(fake.local.pageZoom).sort(), ['https://cached.com', 'https://other.com', 'https://third.com'], 'the other copy\'s site kept');
+    // The browser's default zoom changed (tabs.onZoomChange): its settings asked again.
+    zoomChanged();
+    await handlers.getZoom({}, at('https://cached.com/e'));
+    await sleep(10);
+    assert.equal(reads.settings, 2);
+  } finally {
+    chrome.storage.local.get = get;
+    delete chrome.tabs.getZoomSettings;
+    zoomChanged();
+  }
 });
 
 test('a window reopened after the ids changed takes its old tabs\' spaces once its tabs stop arriving (background/restore.js)', async () => {

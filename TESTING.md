@@ -704,6 +704,20 @@ Margin saves a hidden tab's new title, icon and load a moment later, together, i
 - [ ] Activity Monitor → CPU, with a ticking tab behind and 20 or more tabs open: the `Safari Web Content` processes are quieter than before when you're not doing anything.
 - [ ] Chrome: rows follow titles and addresses as above.
 
+## Cheap page fixes (2026-11-02)
+
+Margin repeats less work in the tab in front: it no longer checks for its first-paint frame on every redraw, remembers for a second whether something fixed is outside the page's body, keeps each site's zoom in the background, and clears out what pages throw away.
+
+- [ ] Sidebar hidden, frame on: load, reload and switch pages. The frame is there from the first frame, as before, and never doubled (a second, darker frame or shadow).
+- [ ] Turn Keep open on and off, change the sidebar's width, and turn "With the sidebar hidden, keep the frame around pages" off and on, with several tabs open. Then go through those tabs: none shows a second frame, a frame at the old width, or a page box that jumps once Margin draws.
+- [ ] After an update (`npm run safari` with pages open): the pages behind show one frame, at the right width.
+- [ ] Keep open on, one tab zoomed to 150%: quit Safari, open it again, and go through the tabs within the first few seconds. None shows a second frame, a gray frame over the page, or a page box at the wrong size.
+- [ ] A news article with a video that floats into a corner as you scroll past it: the floating player keeps playing, and stops or goes back when you scroll back up, as with Margin off.
+- [ ] Sites with sticky or fixed headers that load more as you scroll (a news feed, X, YouTube, a long shop list): images and more items still load as you scroll, with Keep open and with the sidebar hidden. Resize the sidebar or toggle Keep open on such a page, then scroll: still loading.
+- [ ] Zoom a site (⌘+), switch to another tab and back, open a new page on the same site: Margin's sidebar keeps its size everywhere, from the page's first frame. ⌘0 back to 100%: the same.
+- [ ] Leave an app tab (Gmail, a chat, Figma) in front for an hour or more: its `Safari Web Content` memory in Activity Monitor doesn't keep growing more than with Margin off.
+- [ ] Chrome (full screen, the default): the frame, the sidebar and zoom behave as before.
+
 ## The page's box, on every page (2026-11-01)
 
 No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-screen tests can't sign in or feel a trackpad, so these are yours. Note the site for anything wrong.

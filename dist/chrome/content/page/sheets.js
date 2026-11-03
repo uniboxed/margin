@@ -4,6 +4,8 @@
 // frame, and none on a tab out of sight until it's shown.
 import { asksSize, hasUnits, shiftQuery, shiftUnits } from '../../shared/page-css.js';
 
+const SWEEP_FLOOR = 64;
+
 export function startSheets(box) {
   const ours = new Set(box.ours);
   const sheetProto = CSSStyleSheet.prototype;
@@ -23,6 +25,14 @@ export function startSheets(box) {
   // variable, and moving one twice would double it.
   /** @type {Map<any, { dw: number, dh: number }>} */
   const moved = new Map();
+  // A sheet that left the page, or a rule that left its sheet, goes from the
+  // list: when the box rests, and whenever the list has twice as many as after
+  // the last sweep (a page that swaps its <style>s and never moves the box).
+  const gone = (holder) => {
+    const sheet = holder instanceof CSSStyleSheet ? holder : holder.parentStyleSheet;
+    return !sheet || (sheet.ownerNode && !sheet.ownerNode.isConnected);
+  };
+  let sweepAt = SWEEP_FLOOR;
   function moveHolder(holder, dw, dh) {
     const applied = moved.get(holder) ?? { dw: 0, dh: 0 };
     const list = holder.media;
@@ -32,12 +42,13 @@ export function startSheets(box) {
     const next = shiftQuery(text, dw - applied.dw, dh - applied.dh);
     if (next !== text) mediaText.set.call(list, next);
     moved.set(holder, { dw, dh });
+    if (moved.size < sweepAt) return;
+    for (const held of moved.keys()) if (gone(held)) moved.delete(held);
+    sweepAt = Math.max(SWEEP_FLOOR, 2 * moved.size);
   }
   function moveAll(dw, dh) {
     for (const holder of moved.keys()) {
-      const sheet = holder instanceof CSSStyleSheet ? holder : holder.parentStyleSheet;
-      // A sheet that left the page goes from the list.
-      if (!sheet || (sheet.ownerNode && !sheet.ownerNode.isConnected)) moved.delete(holder);
+      if (gone(holder)) moved.delete(holder);
       else {
         try {
           moveHolder(holder, dw, dh);

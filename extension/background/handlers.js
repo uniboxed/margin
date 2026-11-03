@@ -63,6 +63,43 @@ const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
 // write redraws Margin's pages); one at a time.
 const ZOOM_CAP = 150;
 let zoomWrites = Promise.resolve();
+// Pages ask for their zoom as they start, on every resize and every time
+// they're shown, and it seldom changes: what's stored and each tab's default
+// zoom are kept here between asks, so an unchanged zoom costs only the
+// browser's answer. Forgotten when the browser says a zoom changed
+// (zoomChanged), when `pageZoom` is written (zoomStored), and after
+// ZOOM_KEEP_MS (on a clock that only runs forward): copies of Margin don't
+// hear each other's writes. Only to tell that nothing changed: a write reads
+// storage first.
+const ZOOM_KEEP_MS = 60000;
+const zoomClock = () => performance.now();
+let storedZoom = null; // { pageZoom, at }
+let zoomReads = 0; // a read that started before a write is not kept
+const tabZoomBase = new Map(); // tab id → { base, at }
+async function zoomBase(tabId) {
+  const known = tabZoomBase.get(tabId);
+  if (known && zoomClock() - known.at < ZOOM_KEEP_MS) return known.base;
+  const settings = await api.tabs.getZoomSettings?.(tabId).catch(() => null);
+  const base = Number.isFinite(settings?.defaultZoomFactor) && settings.defaultZoomFactor > 0 ? settings.defaultZoomFactor : 1;
+  if (tabZoomBase.size > 2 * ZOOM_CAP) tabZoomBase.clear();
+  tabZoomBase.set(tabId, { base, at: zoomClock() });
+  return base;
+}
+async function readStoredZoom() {
+  if (storedZoom && zoomClock() - storedZoom.at < ZOOM_KEEP_MS) return storedZoom.pageZoom;
+  const reads = zoomReads;
+  const { pageZoom = {} } = await api.storage.local.get('pageZoom');
+  if (reads === zoomReads) storedZoom = { pageZoom, at: zoomClock() };
+  return pageZoom;
+}
+// background.js: tabs.onZoomChange (a tab's zoom changed, or the browser's
+// default, which every tab's answer gives) and storage.onChanged with
+// `pageZoom` (written here, or cleared).
+export const zoomChanged = () => tabZoomBase.clear();
+export function zoomStored() {
+  zoomReads++;
+  storedZoom = null;
+}
 function rememberZoom(tab, url, zoom) {
   let origin;
   try {
@@ -72,11 +109,14 @@ function rememberZoom(tab, url, zoom) {
   }
   if (!Number.isFinite(zoom) || zoom <= 0 || origin === 'null') return;
   zoomWrites = zoomWrites.then(async () => {
-    const settings = await api.tabs.getZoomSettings?.(tab.id).catch(() => null);
-    const base = Number.isFinite(settings?.defaultZoomFactor) && settings.defaultZoomFactor > 0 ? settings.defaultZoomFactor : 1;
-    const { pageZoom = {} } = await api.storage.local.get('pageZoom');
-    const known = (pageZoom[origin] ?? pageZoom['*'])?.[0] ?? 1;
-    if (known === zoom && (pageZoom['*']?.[0] ?? 1) === base) return;
+    const base = await zoomBase(tab.id);
+    const unchanged = (stored) => ((stored[origin] ?? stored['*'])?.[0] ?? 1) === zoom && (stored['*']?.[0] ?? 1) === base;
+    if (unchanged(await readStoredZoom())) return;
+    // A write is built from what's stored now, not what's kept: another
+    // copy's writes reach storage, never this copy's events, and would be lost.
+    zoomStored();
+    const pageZoom = await readStoredZoom();
+    if (unchanged(pageZoom)) return;
     const next = { ...pageZoom };
     if (base === 1) delete next['*'];
     else next['*'] = [base, Date.now()];
@@ -87,6 +127,7 @@ function rememberZoom(tab, url, zoom) {
       sites.sort((a, b) => next[a][1] - next[b][1]);
       for (const old of sites.slice(0, sites.length - ZOOM_CAP)) delete next[old];
     }
+    zoomStored(); // whatever its storage event does, the next ask reads it again
     await api.storage.local.set({ pageZoom: next });
   }).catch(() => {});
 }

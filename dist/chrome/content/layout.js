@@ -11,6 +11,7 @@ import * as shortcuts from '../shared/shortcuts.js';
 const edgePx = () =>
   V.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
 const HIDE_DELAY_MS = 300;
+const PLACEHOLDER_RECHECK_MS = 5000;
 
 // `page`: see content/core.js. `loader`: content/loader.js.
 export function startLayout(page, { loader }) {
@@ -85,15 +86,45 @@ export function startLayout(page, { loader }) {
   // Once it does, the page-world box above takes over (same frame, same width,
   // so nothing moves) and the placeholder is switched off on this page, so it
   // can't fight a resize or linger after "Keep open" is turned off. Only
-  // touches <html> when the placeholder is present.
+  // touches <html> when the placeholder is present, or about to be.
+  // Whether it is costs a style read, which on a page that changed works out
+  // its styles first: asked once per <html>, not on every render. One can be
+  // registered late (a relaunch's or a Margin update's registrations come
+  // back after its pages have started), so it's asked again at the first
+  // render after the page is hidden (a switch prepares it there), when it's
+  // shown, and otherwise at most every PLACEHOLDER_RECHECK_MS (a render
+  // within that, seen, asks once it's over). A change of the settings it's
+  // registered from (background/registered.js) brings a new one: switched
+  // off here without asking, before it arrives.
+  let placeholderAsked = null; // { html, settings, at }
+  let placeholderTimer = null;
   function syncPlaceholder() {
     const html = document.documentElement;
     if (!page.link.can || html.dataset.marginDocked === 'off') return;
+    const s = page.state()?.settings;
+    const settings = JSON.stringify([s?.sidebarPinnedOpen, s?.frameWhenHidden, s?.fullscreenOnly, s?.theme, s?.themes, s?.sidebarWidth]);
+    const asked = placeholderAsked?.html === html ? placeholderAsked : null;
+    const at = performance.now();
+    if (asked && asked.settings !== settings) return void (html.dataset.marginDocked = 'off');
+    if (asked && at - asked.at < PLACEHOLDER_RECHECK_MS) {
+      if (document.hidden) return; // its show asks
+      placeholderTimer ??= setTimeout(() => {
+        placeholderTimer = null;
+        if (!document.hidden && page.state()) syncPlaceholder();
+      }, asked.at + PLACEHOLDER_RECHECK_MS - at);
+      return;
+    }
+    placeholderAsked = { html, settings, at };
     if (getComputedStyle(html, '::after').content !== 'none') {
       html.dataset.marginDocked = 'off';
       if (pinnedOpen()) loader.tookOverPlaceholder(); // hidden, its placeholder has no pill
     }
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (placeholderAsked) placeholderAsked.at = -Infinity;
+    if (!document.hidden && page.state()) syncPlaceholder();
+  });
 
   function show(why) {
     if (!page.active()) return; // out of the way (Chrome, not in full screen): nothing to open

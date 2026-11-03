@@ -16,6 +16,8 @@ const find = (object, name) => {
   return undefined;
 };
 const OWN_GETTERS = ['rootMargin', 'scrollMargin', 'thresholds', 'delay', 'trackVisibility'];
+const OUTSIDE_FOR_MS = 1000;
+const SWEEP_FLOOR = 64;
 
 export function startInView(box) {
   const Native = window.IntersectionObserver;
@@ -43,8 +45,27 @@ export function startInView(box) {
   });
 
   // Is this target outside <body>'s containing block chain? Asked only when the
-  // two answers differ, so rarely.
-  function outsideBody(target) {
+  // two answers differ: for what's fixed, each time it crosses a threshold. A
+  // walk reads the style of every node up to <body>, which on a page that
+  // changed works it out first: an answer is kept for OUTSIDE_FOR_MS, and
+  // until <body> or the box changes. One that was used is asked again as it
+  // runs out (`later`, with the ms left): what turned fixed meanwhile (a
+  // player floated in a corner, say) may not cross a threshold again, and
+  // the page would never hear it's in view.
+  let outside = new WeakMap(); // target → { answer, at }
+  const forgetOutside = () => { outside = new WeakMap(); };
+  function outsideBody(target, later) {
+    const at = performance.now();
+    const known = outside.get(target);
+    if (known && at - known.at < OUTSIDE_FOR_MS) {
+      later(known.at + OUTSIDE_FOR_MS - at);
+      return known.answer;
+    }
+    const answer = walkOutside(target);
+    outside.set(target, { answer, at });
+    return answer;
+  }
+  function walkOutside(target) {
     const body = document.body;
     if (target === body) return true;
     for (let node = target; node; node = node.parentElement ?? /** @type {any} */ (node.getRootNode()).host) {
@@ -57,6 +78,16 @@ export function startInView(box) {
   /** Every stand-in, to be told when the box or <body> changes. @type {Set<WeakRef<any>>} */
   const standIns = new Set();
   const reroots = new WeakMap();
+  // Pages that make an observer per component and drop it leave their
+  // entries behind until the box or <body> changes: swept as well whenever
+  // there are twice as many as after the last sweep.
+  let sweepAt = SWEEP_FLOOR;
+  function addStandIn(standIn) {
+    standIns.add(new WeakRef(standIn));
+    if (standIns.size < sweepAt) return;
+    for (const ref of standIns) if (!ref.deref()) standIns.delete(ref);
+    sweepAt = Math.max(SWEEP_FLOOR, 2 * standIns.size);
+  }
 
   function Boxed(callback, options) {
     if (!new.target) throw new TypeError("Constructor IntersectionObserver requires 'new'");
@@ -76,7 +107,20 @@ export function startInView(box) {
       if (!inBody) return state.window;
       if (!state.body || !state.window) return null; // the first answers go out together
       if (state.body.isIntersecting || !state.window.isIntersecting) return state.body;
-      return outsideBody(state.window.target) ? state.window : state.body;
+      return outsideBody(state.window.target, (ms) => askAgain(state, ms)) ? state.window : state.body;
+    }
+    // Targets whose answer came from a kept walk: chosen again once it ran
+    // out, and the page hears it if that changed what it was told.
+    const again = new Set();
+    let againTimer = 0;
+    function askAgain(state, ms) {
+      again.add(state);
+      againTimer ||= setTimeout(() => {
+        againTimer = 0;
+        const list = [...again].filter((one) => targets.get(one.window?.target) === one);
+        again.clear();
+        tell(news(list));
+      }, ms + 1);
     }
     // What the page should hear of these targets: only what changed for it.
     function news(list) {
@@ -155,7 +199,7 @@ export function startInView(box) {
       },
     });
     reroots.set(self, reroot);
-    standIns.add(new WeakRef(self));
+    addStandIn(self);
   }
   Boxed.prototype = Native.prototype;
   Native.prototype.constructor = Boxed;
@@ -169,6 +213,7 @@ export function startInView(box) {
       else standIns.delete(ref);
     }
   };
-  box.onToggle.push(rerootAll);
-  box.onBody.push(rerootAll);
+  box.onToggle.push(forgetOutside, rerootAll);
+  box.onBody.push(forgetOutside, rerootAll);
+  box.onMove.push(forgetOutside);
 }

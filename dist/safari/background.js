@@ -12,7 +12,7 @@ import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
 import { ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, injectIntoOpenTabs, isIntroduction, resolveTab, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
-import { handlers, newTabHandOff, newTabKey } from './background/handlers.js';
+import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
 import { recordCreated } from './background/diagnostics.js';
 import { queueRegistrations } from './background/registered.js';
@@ -303,6 +303,12 @@ function keepReadyChanged(changes) {
   const before = open.oldValue ?? {}, after = open.newValue ?? {};
   return !sameJson(before.activeSpaceByWindow, after.activeSpaceByWindow) || !sameJson(before.tabSpace, after.tabSpace);
 }
+// What a page's zoom answer keeps (handlers.js getZoom), in every copy: a
+// copy that doesn't own the state now may again.
+api.tabs.onZoomChange?.addListener(zoomChanged);
+api.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.pageZoom) zoomStored();
+});
 // The theme, its placeholder and the page's box follow the settings.
 api.storage.onChanged.addListener(owned((changes, area) => {
   if (area === 'local' && changes.settings) queueRegistrations();

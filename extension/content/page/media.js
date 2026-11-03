@@ -5,11 +5,22 @@
 // can't take a variable, so the query itself is what changes.
 import { asksSize, shiftQuery } from '../../shared/page-css.js';
 
+const SWEEP_FLOOR = 64;
+
 export function startMedia(box) {
   const matchMediaNative = window.matchMedia;
   const native = (query) => matchMediaNative.call(window, shiftQuery(query, box.seenW(), box.seenH()));
   /** @type {Set<WeakRef<object>>} */
   const lists = new Set();
+  // Pages ask for lists all the time and drop them: those gone are swept when
+  // the box rests, and whenever there are twice as many as after the last sweep.
+  let sweepAt = SWEEP_FLOOR;
+  function addList(list) {
+    lists.add(new WeakRef(list));
+    if (lists.size < sweepAt) return;
+    for (const ref of lists) if (!ref.deref()) lists.delete(ref);
+    sweepAt = Math.max(SWEEP_FLOOR, 2 * lists.size);
+  }
 
   function standIn(text) {
     const listeners = new Set(); // [callback, once]
@@ -68,7 +79,7 @@ export function startMedia(box) {
     const text = String(query);
     if (!asksSize(text)) return matchMediaNative.call(window, text);
     const list = standIn(text);
-    lists.add(new WeakRef(list));
+    addList(list);
     return list;
   };
 
