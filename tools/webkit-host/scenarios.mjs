@@ -126,6 +126,48 @@ const waitedFor = (ms, outcome, label, entry) => [
 // background life.
 const CHIP = (name) => `${ID} const { tabSpace } = await ${STATE}('tabSpace'); const root = __shadowOf(document.querySelector('margin-sidebar-host')); const chip = root.querySelector('.chip[data-space-id="' + tabSpace[id('${name}')] + '"]'); chip.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, composed: true, pointerType: 'mouse' })); return 'resting on ' + chip.title`;
 
+// space-press: a press on a space's icon (sidebar.js switchSpace) shows the
+// space in the sidebar at once and brings its tab to the front with the
+// button still down; the release asks nothing more. Then back, by a click in
+// the page that came: the page it left drew the other space as it was
+// pressed, and its rows of its own space are there again, the same rows
+// (sidebar.js SPACES_KEPT), not built anew; not the space it asked for
+// before it went (sidebar.js shownSpace).
+// Times (Date.now) are logged: the press, the sidebar showing the space,
+// the tab shown. Five tabs in Personal, C in Work. `click`: the button comes
+// up 100 ms after it went down (a click as a hand makes it), for timing a
+// build that switches on click against this one. Within the host's ~5 s of
+// background life (it stalls once in a while near the end, with or without
+// this change: nothing after the last switch asks it anything).
+const CHIP_AT = (name) => `${ID} const { tabSpace } = await ${STATE}('tabSpace'); const r = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.chip[data-space-id="' + tabSpace[id('${name}')] + '"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]`;
+const TIME_SPACE = (tab, title) => ({ op: 'eval', in: tab, js: `const root = __shadowOf(document.querySelector('margin-sidebar-host')); globalThis.__t = {}; let n = 0; root.addEventListener('pointerdown', () => { __t.press ??= Date.now(); }, true); const sent = (globalThis.browser ?? chrome).runtime; const send = sent.sendMessage.bind(sent); sent.sendMessage = (m, ...rest) => { if (m?.type === 'setSpace') __t.setSpace = ++n; return send(m, ...rest); }; new MutationObserver(() => { if (root.querySelector('.space-title .title')?.textContent === '${title}') __t.title ??= Date.now(); }).observe(root, { subtree: true, childList: true, characterData: true }); return 'timing'` });
+const TIME_SHOWN = (tab) => ({ op: 'page', in: tab, js: `window.__shownAt = null; document.addEventListener('visibilitychange', () => { if (!document.hidden) window.__shownAt ??= Date.now(); }); return 'timing'` });
+const spacePress = (click = false) => [
+  ...['A', 'B', 'D', 'E', 'F', 'C'].map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })),
+  wait(800), { op: 'install', sameId: true }, drawn('A'), themed('A'),
+  { op: 'eval', in: 'A', js: `${ID} await Margin.content.send('updateSettings', { patch: { keepLeftTabReadyMinutes: 0 } }); const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('C'), spaceId: work }); Margin.content.sidebar.show('toggle'); return 'C moved to Work'` },
+  check('A', 'A: the Work space\'s icon is drawn', `!!__shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.chip[title="Work"]')`, 2000),
+  TIME_SPACE('A', 'Work'), TIME_SHOWN('C'), TIME_SPACE('C', 'Personal'), TIME_SHOWN('A'), wait(300), // (the sidebar slides out)
+  { op: 'eval', in: 'A', js: `const root = __shadowOf(document.querySelector('margin-sidebar-host')); const rows = root.querySelectorAll('.tabs > .tab'); for (const row of rows) row.__drawnFirst = true; globalThis.__drewWork = false; new MutationObserver(() => { if (root.querySelectorAll('.tabs > .tab').length === 1) __drewWork = true; }).observe(root, { subtree: true, childList: true }); return rows.length + ' rows marked'` },
+  { op: 'mouse', in: 'A', type: 'down', at: CHIP_AT('C') },
+  ...(click ? [wait(100), { op: 'mouse', in: 'A', type: 'up' }] : []),
+  check('A', 'A: Work shown in the sidebar at once', `!!__t.title && __t.title - __t.press < ${click ? 250 : 150}`, 1000),
+  checkPage('C', click ? 'C: in front' : 'C: in front with the button still down', '!document.hidden', 2000),
+  ...(click ? [] : [{ op: 'mouse', in: 'A', type: 'up' }]),
+  wait(300),
+  { op: 'eval', in: 'A', js: 'return "A: " + JSON.stringify(__t)' },
+  { op: 'page', in: 'C', js: 'return "C shown at " + __shownAt' },
+  check('A', 'A: one switch asked (the release asked nothing more)', `__t.setSpace === 1`),
+  { op: 'eval', in: 'C', js: `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('C')).at(-1); return 'C switch ' + JSON.stringify(e)` },
+  check('C', 'C: shown through Margin, prepared', `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('C')).at(-1); return !!e && !e.error`),
+  { op: 'mouse', in: 'C', type: 'down', at: CHIP_AT('A') }, { op: 'mouse', in: 'C', type: 'up' },
+  checkPage('A', 'A: back in front', '!document.hidden', 2000),
+  wait(200),
+  { op: 'eval', in: 'C', js: 'return "C: " + JSON.stringify(__t)' },
+  { op: 'page', in: 'A', js: 'return "A shown at " + __shownAt' },
+  check('A', 'A: Personal\'s five tabs listed, the rows it drew before (it drew Work\'s since)', `const rows = [...__shadowOf(document.querySelector('margin-sidebar-host')).querySelectorAll('.tabs > .tab')]; return rows.length === 5 && rows.filter((row) => row.__drawnFirst).length >= 4 && __drewWork`, 500),
+];
+
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core, the background
   // the theme); switching through Margin, including to a tab Safari unloaded.
@@ -1331,6 +1373,8 @@ export const SCENARIOS = {
     shown('C'),
     check('C', 'C: woken as the pointer rested on its space\'s icon', `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('C')).at(-1); return !!e && !e.error && e.wakeStartedBy === 'space'`),
   ],
+  'space-press': spacePress(),
+  'space-click': spacePress(true),
   'keep-ready-cap': [
     ...HOLD_TABS.map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
     ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),

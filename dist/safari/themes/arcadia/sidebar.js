@@ -213,9 +213,11 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   let pendingRename = null;
   let rendering = false; // the rename field leaves the DOM while redrawing: not a blur
   // A space this sidebar shows before the state says so (just swiped to;
-  // the background is switching), and when that started.
+  // the background is switching), when that started, and the tab its switch
+  // brings (null: none, this page's own space or an empty one).
   let shownSpace = null;
   let shownSince = 0;
+  let shownWith = null;
   // The page was just shown (content/core.js): its own tab's space until the
   // state records it's in front (shared/view.js sidebar).
   let justShown = false;
@@ -347,9 +349,17 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // row keeps its picture (no icon loaded again), its hover and its press.
   // Not for the still pictures of a swipe's neighbours (drawn into the same
   // lists, then copied): those are built afresh and kept nowhere.
+  // The rows of the last SPACES_KEPT spaces drawn are kept, not only the
+  // space's on screen: a page draws the space it asks for at once (a swipe,
+  // a space's icon) as it goes, and its own space's rows are there again
+  // when it's shown again (or a space is switched back to), rather than all
+  // built anew.
+  const SPACES_KEPT = 3;
   /** @type {Map<string, { el: HTMLElement, from: any[] }>} */
   const rowCache = new Map();
   const usedKeys = new Set();
+  /** @type {Map<string, Set<string>>} */
+  const keysBySpace = new Map(); // space → the keys its last draw used, the space drawn last at the end
   /** @type {Map<string, any[]>} */
   const drawnFrom = new Map(); // the space title's and the chips'
   const sameFrom = (a, b) => !!a && a.length === b.length && a.every((v, i) => v === b[i]);
@@ -365,7 +375,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     usedKeys.add(key);
     const kept = rowCache.get(key);
     // Not one whose icon didn't load: the next draw tries it again, as before.
-    if (kept && sameFrom(kept.from, from) && !kept.el.hasAttribute('data-icon-broken')) return kept.el;
+    if (kept && sameFrom(kept.from, from) && !kept.el.hasAttribute('data-icon-broken')) {
+      // Out of the lists since it was drawn (another space's): nothing of a
+      // press, a drop or a landing it had then (render marks what's current).
+      if (!kept.el.isConnected) kept.el.classList.remove('pressed', 'instant', 'landing', ...MARKS);
+      return kept.el;
+    }
     const row = build();
     rowCache.set(key, { el: row, from });
     return row;
@@ -386,9 +401,17 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       at = next;
     }
   }
-  function forgetUnused() {
+  /** @param {string} spaceId */
+  function forgetUnused(spaceId) {
     if (drawingGhosts) return;
-    for (const key of rowCache.keys()) if (!usedKeys.has(key)) rowCache.delete(key);
+    keysBySpace.delete(spaceId);
+    keysBySpace.set(spaceId, new Set(usedKeys));
+    for (const space of keysBySpace.keys()) {
+      if (keysBySpace.size <= SPACES_KEPT) break;
+      keysBySpace.delete(space);
+    }
+    const kept = [...keysBySpace.values()];
+    for (const key of rowCache.keys()) if (!kept.some((keys) => keys.has(key))) rowCache.delete(key);
     usedKeys.clear();
   }
   const pinFrom = (p, nested) => [nested, p.active, p.behind, p.tabId, p.folderId, p.title, p.url, V.iconFor(state, p)];
@@ -460,7 +483,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
         el(doc, 'span', { class: 'title', text: t.title || t.url || 'New Tab' }),
         closeButton(t.id, 'Close tab')))),
     ]);
-    forgetUnused();
+    forgetUnused(view.spaceId);
 
     const pinned = !!state.settings?.sidebarPinnedOpen;
     keepOpen.title = pinned ? 'Auto-hide the sidebar' : 'Keep the sidebar open';
@@ -548,6 +571,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // this page away (to another tab, or during a switch to one) starts no drag,
   // whatever row the redraw has put under it (the drag would go on in a page
   // no longer shown, with nowhere to drop).
+  // A space's icon the same: its space is shown as the button goes down
+  // (switchSpace, below).
   let pressed = false; // a press switched: its click is the same switch
   let pressedAway = false; // and this page is on its way out
   root.addEventListener('pointerdown', (event) => {
@@ -557,6 +582,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     const target = /** @type {HTMLElement | null} */ (event.target.closest?.('[data-action]'));
     if (!target || !root.contains(target)) return;
     const action = target.dataset.action;
+    if (action === 'set-space' && target.dataset.spaceId) {
+      pressed = true;
+      stopHoverWake();
+      void switchSpace(target.dataset.spaceId);
+      return;
+    }
     if (action !== 'activate' && !(action === 'open-pin' && target.classList.contains('open'))) return;
     pressed = true;
     const tab = rowTab(target);
@@ -575,7 +606,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     const show = openOverPage();
     // Switched as it was pressed (above); a click with no press (the
     // keyboard, a script) still switches.
-    if ((target.dataset.action === 'activate' || target.dataset.action === 'open-pin') && pressed && event.detail > 0) {
+    if ((target.dataset.action === 'activate' || target.dataset.action === 'open-pin' || target.dataset.action === 'set-space') && pressed && event.detail > 0) {
       pressed = false;
       return;
     }
@@ -591,7 +622,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
         lastToggle = { folderId, wasOpen: folder.open !== false, at: Date.now() };
         return send('setFolderOpen', { folderId, open: folder.open === false });
       }
-      case 'set-space': return send('setSpace', { windowId, spaceId, ...(show ? { show } : {}) });
+      case 'set-space': return switchSpace(spaceId);
       case 'new-tab': return onNewTab ? onNewTab() : send('newTab', { windowId });
       case 'archive': return onArchive ? onArchive() : send('openLauncher', { windowId });
       case 'add-menu': {
@@ -758,35 +789,60 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     for (const ghost of Object.values(s.ghosts)) ghost.classList.add('settling');
     placeSwipe(dir ? -dir * s.width : 0);
     if (dir) {
-      const spaceId = s.neighbours[dir];
       s.committed = true;
-      onScroll?.(0); // the window's list position: the new space from its top (saved with the switch)
-      // Swiped on the sidebar out over the page: it stays out on the page
-      // that comes to the front (as a tab clicked there).
-      const show = openOverPage();
-      const request = send('setSpace', { windowId, spaceId, ...(show ? { show } : {}) });
-      if (state.tabSpace[currentTabId] === spaceId) {
-        // Back to this page's own space: a switch away still pending stops
-        // (as clicking this page's tab does).
-        if (switchingTo != null) send('activateTab', { tabId: currentTabId });
-        onSwitch?.(currentTabId, request);
-      } else {
-        // Its tab comes to the front: highlighted and the page covered at
-        // once (shared/switching.js).
-        const tab = recentTabOf(spaceId);
-        if (tab) onSwitch?.(tab.id, request);
-      }
-      showSpaceNow(spaceId);
+      askSpace(s.neighbours[dir]);
     }
     setTimeout(() => {
       if (swiping === s) endSwipe();
     }, SETTLE_MS);
   }
+  // A space asked for (swiped to, its icon pressed or clicked): the window
+  // switches to it, and this sidebar shows it at once.
+  function askSpace(spaceId) {
+    onScroll?.(0); // the window's list position: the new space from its top (saved with the switch)
+    // Asked from the sidebar out over the page: it stays out on the page
+    // that comes to the front (as a tab clicked there).
+    const show = openOverPage();
+    const request = send('setSpace', { windowId, spaceId, ...(show ? { show } : {}) });
+    if (state.tabSpace[currentTabId] === spaceId) {
+      // Back to this page's own space: a switch away still pending stops
+      // (as clicking this page's tab does).
+      if (switchingTo != null) send('activateTab', { tabId: currentTabId });
+      onSwitch?.(currentTabId, request);
+    } else {
+      // Its tab comes to the front: highlighted and the page covered at
+      // once (shared/switching.js).
+      const tab = recentTabOf(spaceId);
+      if (tab) onSwitch?.(tab.id, request);
+    }
+    showSpaceNow(spaceId, switchingTo);
+    return request;
+  }
+  // A space's icon, pressed with the mouse (above) or clicked otherwise (the
+  // keyboard): as a swipe to it, drawn now, from its top (a swipe's is drawn
+  // as it settles: endSwipe). Its own space, with no switch away under way:
+  // only the window's space, as before (a held key may have left the
+  // sidebar on another).
+  function switchSpace(spaceId) {
+    if (!state || windowId == null || !state.spaces.some((x) => x.id === spaceId)) return null;
+    if (state.tabSpace[currentTabId] === spaceId && switchingTo == null && V.activeSpaceId(viewState(), windowId) === spaceId) {
+      return send('setSpace', { windowId, spaceId });
+    }
+    const request = askSpace(spaceId);
+    render();
+    if (tabsSection.scrollTop !== 0) {
+      settingScroll = true; // not a scroll of the user's
+      tabsSection.scrollTop = 0;
+    }
+    return request;
+  }
   // This sidebar shows the space until the state does; if it never does
-  // (the switch failed), back to the state's after SHOWN_SPACE_MS.
-  function showSpaceNow(spaceId) {
+  // (the switch failed), back to the state's after SHOWN_SPACE_MS, or once
+  // the switch bringing `tabId` is over (update).
+  function showSpaceNow(spaceId, tabId = null) {
     shownSpace = spaceId;
     shownSince = Date.now();
+    shownWith = tabId;
     clearTimeout(shownTimer);
     shownTimer = setTimeout(() => {
       if (shownSpace !== spaceId) return;
@@ -1554,8 +1610,13 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       if (context && 'switchingTo' in context) switchingTo = context.switchingTo ?? null;
       if (context && 'justShown' in context) justShown = !!context.justShown;
       state = nextState;
-      // The swiped-to space has arrived (or never will: the switch failed).
-      if (shownSpace && (V.activeSpaceId(state, windowId) === shownSpace || Date.now() - shownSince > SHOWN_SPACE_MS)) {
+      // The space asked for has arrived (or never will: the switch failed).
+      // Or the switch that brings it is over: this page was left (a page
+      // shown again soon after shows its own space, not the one it asked
+      // for before it went), or the switch failed. Until the state says so,
+      // a page left draws the space before, out of sight. Not while a swipe
+      // to it settles: it ends on that space, as its picture slid in.
+      if (shownSpace && (V.activeSpaceId(state, windowId) === shownSpace || Date.now() - shownSince > SHOWN_SPACE_MS || (shownWith != null && switchingTo == null && !swiping))) {
         shownSpace = null;
         clearTimeout(shownTimer);
       }

@@ -599,6 +599,24 @@ A tab Safari has put to sleep used to be flicked to the front and straight back 
 - [ ] Switch log (the start page's "Switch log" button), after 30 minutes of use: for switches with `wakeOutcome`, count `awake`, `resumed` and `capped`, and look at `waitedOnOldPage` and `wakeStartedBy` (`hover`, `press`, `reveal`, `space`, `keys`, `switch`). Send it.
 - [ ] Chrome: switching behaves as before.
 
+## Space icons switch on press (2026-11-03)
+
+A space's icon at the bottom of the sidebar now switches as the mouse button goes down, like tab rows: the sidebar shows that space at once and its tab starts coming to the front, instead of nothing happening until the button comes up and Margin has saved the space. Margin also no longer waits for that save before bringing the tab.
+
+- [ ] Press another space's icon and hold the button: the sidebar shows that space at once (its name, its tabs, its icon highlighted), and its tab comes to the front before you let go. Letting go does nothing more.
+- [ ] Click back and forth between two spaces' icons quickly (about one a second): each click lands on the right space's tab, the sidebar never shows the space you just left on the page you come back to, and nothing blinks.
+- [ ] Click a space's icon, then straight away (within 3 s) click a tab in the sidebar of the page that came, then come back to the first page: its sidebar shows its own space.
+- [ ] Click the icon of the space you're in: nothing changes.
+- [ ] In a space, click a tab other than the last one you used, switch to another space, and press the first space's icon at once: the tab you clicked comes back, not the one before it.
+- [ ] Drag the tab in front onto another space's icon and press that icon straight away: the tab stays in front.
+- [ ] Double-click the icon of the space you're in: its editor opens, as before.
+- [ ] Tab to a space's icon with the keyboard (Full Keyboard Access) and press Space: it switches, as before.
+- [ ] A space with no tabs: pressing its icon opens Margin's start page in it, as before.
+- [ ] Swiping between spaces and ⌃⌘→/← behave as before.
+- [ ] With a sleeping tab as the space's last tab: no black flash (the page you're on stays covered until it's ready, as in the entry above).
+- [ ] After switching spaces, reload the page you land on (⌘R) within 2 s: its sidebar shows the space you switched to.
+- [ ] Chrome: clicking a space's icon switches on press too, and the space is right after a reload.
+
 ## No crash from asking for animations (2026-11-03)
 
 The page in front went black for about 2 seconds and reloaded when WebKit crashed sorting a page's animations, which Margin asked for on every read of the page's layout. Margin no longer asks.

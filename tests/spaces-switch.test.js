@@ -132,6 +132,112 @@ test('showSpace: an empty space opens the start page in it; an untouched start p
   assert.equal((await load()).tabSpace[opened], 'empty2', 'the untouched one moved');
 });
 
+test('showSpace: the space\'s tab comes to the front without waiting for the space to be written', async () => {
+  await setup();
+  // Storage takes no write until released.
+  const set = chrome.storage.local.set;
+  let release = () => {};
+  const held = new Promise((resolve) => { release = resolve; });
+  chrome.storage.local.set = async (items) => {
+    await held;
+    Object.assign(fake.local, items);
+  };
+  let switching;
+  try {
+    switching = showSpace(1, 'work');
+    const until = Date.now() + 2000;
+    while (front(1) !== 4 && Date.now() < until) await sleep(5);
+    assert.equal(front(1), 4, 'tab 4 in front while storage still holds every write');
+  } finally {
+    release();
+    chrome.storage.local.set = set;
+  }
+  await switching;
+  assert.equal(V.activeSpaceId(await load(), 1), 'work');
+});
+
+test('showSpace (Safari): the space is written with the next write (its tab\'s activation), and the page prepared draws from what it has', async () => {
+  await setup();
+  const stored = () => fake.local.openTabs?.activeSpaceByWindow?.[1] ?? null;
+  const before = stored();
+  const execute = chrome.scripting.executeScript;
+  const revs = [];
+  chrome.scripting.executeScript = (details) => {
+    if (details.func?.name === 'prepareSidebarInPage') revs.push(details.args?.[0]?.rev);
+    return execute(details);
+  };
+  try {
+    await showSpace(1, 'work');
+  } finally {
+    chrome.scripting.executeScript = execute;
+  }
+  assert.equal(front(1), 4);
+  assert.equal(V.activeSpaceId(await load(), 1), 'work', 'in the state at once');
+  assert.equal(stored(), before, 'not written on its own before the switch');
+  assert.ok(revs.length && revs.every((rev) => typeof rev === 'string'), `the page told the last write is through (${JSON.stringify(revs)})`);
+  // The activation (background.js) writes the open tabs: the space goes with it.
+  await mutate((st) => M.activateTab(st, 4, 1, Date.now()));
+  assert.equal(stored(), 'work');
+  // With no other write, within 2 s.
+  await showSpace(1, 'personal');
+  assert.equal(front(1), 1);
+  assert.equal(stored(), 'work');
+  await sleep(2100);
+  assert.equal(stored(), 'personal');
+});
+
+test('showSpace: only the sidebar\'s space, a tab of the space already in front, or no such space: written before it returns', async () => {
+  await setup();
+  const stored = () => fake.local.openTabs?.activeSpaceByWindow?.[1] ?? null;
+  await showSpace(1, 'work', { bringTab: false });
+  assert.equal(stored(), 'work');
+  assert.equal(front(1), 1);
+  await showSpace(1, 'personal');
+  assert.equal(stored(), 'personal');
+  assert.equal(front(1), 1);
+  await showSpace(1, 'nowhere');
+  assert.equal(stored(), 'personal');
+  assert.equal(front(1), 1);
+});
+
+// Storage takes no write until released; a write is under way (any change),
+// and `change` is queued behind it before the space is shown.
+async function showBehindHeldWrite(spaceId, change) {
+  const set = chrome.storage.local.set;
+  let release = () => {};
+  const held = new Promise((resolve) => { release = resolve; });
+  chrome.storage.local.set = async (items) => {
+    await held;
+    Object.assign(fake.local, items);
+  };
+  try {
+    void mutate((s) => M.updateSpace(s, 'empty', { name: 'Empty 2' }));
+    void mutate(change);
+    const switching = showSpace(1, spaceId);
+    await sleep(30);
+    release();
+    chrome.storage.local.set = set;
+    await switching;
+  } finally {
+    release();
+    chrome.storage.local.set = set;
+  }
+}
+
+test('showSpace: a change queued behind a write under way is seen: the tab used last comes to the front', async () => {
+  await setup();
+  await showBehindHeldWrite('work', (s) => ({ ...s, tabs: { ...s.tabs, 3: { ...s.tabs[3], lastActive: 1000 } } }));
+  assert.equal(front(1), 3, 'tab 3, used last in Work (not tab 4, last in the cache before the change)');
+  assert.equal(V.activeSpaceId(await load(), 1), 'work');
+});
+
+test('showSpace: the tab in front moved to the space behind a write under way stays in front', async () => {
+  await setup();
+  await showBehindHeldWrite('work', (s) => M.moveTab(s, 1, 'work'));
+  assert.equal(front(1), 1, 'tab 1, now in Work, stays');
+  assert.equal(V.activeSpaceId(await load(), 1), 'work');
+});
+
 test('wake: uses Margin\'s own state (no lookups before waking), but not a stale "shown" flag; "no access" isn\'t remembered', async () => {
   await setup();
   // Sites no earlier test woke (the access cache lives for the whole run).

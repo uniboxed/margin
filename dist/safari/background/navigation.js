@@ -153,20 +153,34 @@ export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-
 // (no pile of empty pages). `bringTab: false`: only the sidebar's space
 // (held keys pass spaces; the last press brings the tab).
 // `hurry`: as focusTab's.
+// A switch to one of its tabs doesn't wait for the space to be written
+// where pages are prepared (Safari): the write waits for the next one, the
+// activation's (which sets the same space: background.js followTab),
+// SPACE_WRITE_MS at most. A write under way as the tab is prepared would make
+// the page read storage before drawing (store.js stateRev), and the page
+// draws its own tab's space anyway (content/core.js stateForShow). What to
+// bring is still read from the state the change is made to, behind every
+// change queued before it (the cache can be behind those while a write is
+// under way): the tab used last, a tab just moved to the space staying.
+const SPACE_WRITE_MS = 2000;
 /** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, hurry?: (() => boolean) | null }} [options] */
 export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline, hurry = null } = {}) {
   if (windowId == null) return;
+  const [shown] = bringTab ? await api.tabs.query({ active: true, windowId }) : [];
+  /** @param {import('../../types/margin').State} st */
+  const candidatesIn = (st) => Object.values(st.tabs)
+    .filter((t) => t.windowId === windowId && st.tabSpace[t.id] === spaceId && t.id !== shown?.id)
+    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
+  /** @param {import('../../types/margin').State} st */
+  const switching = (st) => bringTab && st.spaces.some((x) => x.id === spaceId) && !(shown && st.tabSpace[shown.id] === spaceId) && candidatesIn(st).length > 0;
   let before = null;
   const s = await mutate((st) => {
     before = V.activeSpaceId(st, windowId);
     return M.setActiveSpace(st, windowId, spaceId);
-  });
+  }, platform?.prepareSidebar ? { within: (st) => (switching(st) ? SPACE_WRITE_MS : null) } : undefined);
   if (V.activeSpaceId(s, windowId) !== spaceId || !bringTab) return; // no such space, or only the sidebar
-  const [shown] = await api.tabs.query({ active: true, windowId });
   if (shown && s.tabSpace[shown.id] === spaceId) return;
-  const candidates = Object.values(s.tabs)
-    .filter((t) => t.windowId === windowId && s.tabSpace[t.id] === spaceId && t.id !== shown?.id)
-    .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0));
+  const candidates = candidatesIn(s);
   // The window back to the space it showed (its tab in front is still of that
   // one), unless something else changed it meanwhile.
   const goBack = async () => {
