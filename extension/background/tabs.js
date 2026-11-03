@@ -1,7 +1,7 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
-import { api, cached, isOwner, mutate, now, stateRev, thisCopy } from './store.js';
-import { recordSwitch } from './diagnostics.js';
+import { api, cached, isOwner, isSynced, mutate, now, stateRev, thisCopy } from './store.js';
+import { recordRepair, recordSwitch } from './diagnostics.js';
 import { hasNoPage, hiddenFor, isHeld, sessionKnown, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
@@ -114,7 +114,7 @@ export function keepHandedOff(tabId) {
 }
 
 /** @typedef {'hover' | 'press' | 'reveal' | 'space' | 'keys' | 'switch'} WakeCause what started a wake: a pointer resting on a row (or the palette on one), a press on a row or a space's icon, the sidebar coming out, a space's icon or a swipe toward it, a key run's tab woken ahead, the switch itself */
-/** @typedef {{ outcome: 'awake' | 'no page' | 'timeout' | 'shown' | 'gone' | 'no access', ms: number, startedAt: number, by?: WakeCause, unseen?: boolean }} Wake `unseen`: its page started visible and hasn't come into view from hidden since (pageThere); `by`: what started it (DEVELOPMENT DIAGNOSTICS) */
+/** @typedef {{ outcome: 'awake' | 'no page' | 'timeout' | 'shown' | 'gone' | 'no access', ms: number, startedAt: number, by?: WakeCause, unseen?: boolean, seen?: boolean }} Wake `unseen`: its page started visible and hasn't come into view from hidden since (pageThere); `seen`: its page has come into view from hidden (pageThere); `by`: what started it (DEVELOPMENT DIAGNOSTICS) */
 // `sent`: when its scripts went out (after the permission check, slow while
 // Safari starts), null if none did (nothing to wake): how long the page has
 // taken to answer is counted from then (resumedBehind). `pending`: its
@@ -287,7 +287,7 @@ function holdAgain(tabId) {
 // came past RESUMED_MS.
 /** @param {number} tabId @param {number} at @param {number} holdMs @param {WakeCause} by @param {() => void} sent @param {(woke: Wake, resumed?: boolean) => void} answered @returns {Promise<Wake>} */
 async function startWake(tabId, at, holdMs, by, sent, answered) {
-  const result = (/** @type {Wake['outcome'] | 'unseen'} */ outcome) => /** @type {Wake} */ ({ outcome: outcome === 'unseen' ? 'awake' : outcome, ms: Date.now() - at, startedAt: at, by, ...(outcome === 'unseen' ? { unseen: true } : {}) });
+  const result = (/** @type {Wake['outcome'] | 'unseen' | 'seen'} */ outcome) => /** @type {Wake} */ ({ outcome: outcome === 'unseen' || outcome === 'seen' ? 'awake' : outcome, ms: Date.now() - at, startedAt: at, by, ...(outcome === 'unseen' ? { unseen: true } : outcome === 'seen' ? { seen: true } : {}) });
   const now = (/** @type {Wake['outcome']} */ outcome) => {
     const woke = result(outcome);
     answered(woke);
@@ -319,14 +319,17 @@ async function startWake(tabId, at, holdMs, by, sent, answered) {
     return api.scripting.executeScript({ target, injectImmediately: true, func: pageThere }).then((rows) => {
       if (!ranThere(rows)) return 'no page';
       resumed = Date.now() - sentAt > RESUMED_MS;
-      return rows[0].result === 'unseen' ? 'unseen' : 'awake';
+      return rows[0].result === 'unseen' || rows[0].result === 'seen' ? rows[0].result : 'awake';
     }, () => 'no page');
   })();
-  void ran.then((outcome) => answered(result(outcome), resumed), () => {});
+  void ran.then((outcome) => {
+    if (outcome === 'seen') sawInWindow(tabId);
+    answered(result(outcome), resumed);
+  }, () => {});
   let timer;
   const outcome = await Promise.race([ran, new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), WAKE_MAX_MS); })]);
   clearTimeout(timer);
-  return result(/** @type {Wake['outcome'] | 'unseen'} */ (outcome));
+  return result(/** @type {Wake['outcome'] | 'unseen' | 'seen'} */ (outcome));
 }
 // Whether a tab has a page: a script runs there, in a document of its own.
 // WebKit answers a script for a tab with a view but no page yet (Safari makes
@@ -339,17 +342,26 @@ async function startWake(tabId, at, holdMs, by, sent, answered) {
 // launch, one Safari loaded as it was shown, both made from the tab's saved
 // history), whose tab WebKit may never have seen come into the window with a
 // process (mayIntroduce). A page with an earlier copy (its world isn't this
-// one) counts as seen.
+// one) counts as seen. 'seen': the page has come into view from hidden
+// itself (content/core.js cameIntoView). That's its tab coming into the
+// window only for a page that started hidden in a tab never in front
+// (neverShown: Margin's mark that it was never shown goes, startWake); a
+// page in front also goes hidden and comes back as its window is covered
+// and uncovered, minimized, or on another Space, and WebKit marks a tab only
+// as it enters a window. So a mark a page left as it started in front
+// (pageStarted) goes on 'seen' only once its tab was heard left and back
+// after that page's word (backSince).
 export const pageThere = () => {
   if (/^about:/.test(location.href)) return false;
   try {
-    return globalThis.Margin?.content?.windowSeen?.() === false ? 'unseen' : true;
+    const content = globalThis.Margin?.content;
+    return content?.windowSeen?.() === false ? 'unseen' : content?.cameIntoView?.() === true ? 'seen' : true;
   } catch {
     return true;
   }
 };
 /** @param {any} rows executeScript's answer */
-const ranThere = (rows) => rows?.[0]?.result === true || rows?.[0]?.result === 'unseen';
+const ranThere = (rows) => rows?.[0]?.result === true || rows?.[0]?.result === 'unseen' || rows?.[0]?.result === 'seen';
 /** @param {any} rows executeScript's answer, for a script that returns nothing */
 const ranAtAll = (rows) => !(Array.isArray(rows) && rows.some((row) => row?.error));
 // A wake that found a page there: awake, or too busy to answer in time.
@@ -616,6 +628,30 @@ let focusGen = 0;
 const focusing = new Map(); // tabId → overlapping Margin focus requests
 export const isFocusing = (tabId) => (focusing.get(tabId) ?? 0) > 0;
 export const anyFocusing = () => focusing.size > 0;
+// Switches a page asked for and hasn't been answered yet (background.js
+// counts each timed request from its arrival: before focusTab, the first
+// sync, the tab's lookup), or that focusTab hasn't answered yet: startup work
+// that asks Safari for much waits until there are none (runOpenTabRepair
+// giveWay). Each counts for SWITCH_HOLDS_MS at most, and focusTab's until it
+// answers, not until its steps are over: one whose steps still wait on a
+// Safari call that doesn't answer (it's shown as it is at its page's
+// deadline) held the repair up for 8 s before every tab.
+/** @type {Set<{ at: number }>} */
+const switchesAsked = new Set();
+const SWITCH_HOLDS_MS = 8000; // a switch is over within its page's 7 s
+/** background.js, focusTab: a switch asked for; the function returned says it's answered. */
+export function switchAsked() {
+  const entry = { at: Date.now() };
+  switchesAsked.add(entry);
+  return () => void switchesAsked.delete(entry);
+}
+const switchUnderWay = () => {
+  for (const entry of switchesAsked) {
+    if (Date.now() - entry.at < SWITCH_HOLDS_MS) return true;
+    switchesAsked.delete(entry);
+  }
+  return false;
+};
 // The user chose a tab themselves (Safari's tab bar, ⌘1–9, a held key passing
 // through): a switch of Margin's still waiting doesn't pull the window back.
 // Not for a tab Margin itself just brought to the front: its onActivated can
@@ -742,12 +778,27 @@ const NOT_PREPARED = { outcome: 'skipped', ms: 0, token: null };
 // `loadWaited`: the caller has waited for the tab to load already (openBehind):
 // not waited for again. `retry`: the caller goes on to another tab if this one
 // is closed meanwhile (showSpace): that isn't told to the page as a failure.
-/** @param {number} tabId @param {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, raise?: boolean, covered?: boolean, hurry?: (() => boolean) | null, loadWaited?: boolean, retry?: boolean }} [options] */
-export async function focusTab(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline, raise = true, covered = false, hurry = null, loadWaited = false, retry = false } = {}) {
+// `arrival`: how its request came (background.js), for the switch log.
+// A switch under way until it answers (switchUnderWay).
+/** @typedef {{ at: number, left: number, decided: number, sync: number, resolve: number }} Arrival DEVELOPMENT DIAGNOSTICS: a timed request as it reached background.js (`at`), how much of its page's wait was `left` then, and the ms it waited for this copy's ownership (`decided`), the first sync, and its tab's lookup (`resolve`) */
+/** @typedef {{ wake?: boolean, source?: string, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, raise?: boolean, covered?: boolean, hurry?: (() => boolean) | null, loadWaited?: boolean, retry?: boolean, arrival?: Arrival | null }} FocusOptions */
+/** @param {number} tabId @param {FocusOptions} [options] */
+export async function focusTab(tabId, options = {}) {
+  const answered = switchAsked();
+  try {
+    return await focusTabAnswered(tabId, options);
+  } finally {
+    answered();
+  }
+}
+/** @param {number} tabId @param {FocusOptions} [options] */
+async function focusTabAnswered(tabId, { wake = true, source = 'other', carry = null, scroll = null, deadline, raise = true, covered = false, hurry = null, loadWaited = false, retry = false, arrival = null } = {}) {
   const timed = Number.isFinite(deadline);
   const asked = Date.now();
+  // DEVELOPMENT DIAGNOSTICS: the request's way here, in its switch's entry.
+  const before = arrival ? { left: arrival.left, waited: asked - arrival.at, decided: arrival.decided, sync: arrival.sync, resolve: arrival.resolve } : null;
   if (timed && asked > /** @type {number} */ (deadline) - REFUSE_MS) {
-    recordSwitch({ source, tabId, asked, error: 'expired', stuckAt: 'before' });
+    recordSwitch({ source, tabId, asked, error: 'expired', stuckAt: 'before', before });
     throw new Error(TOO_LATE);
   }
   focusing.set(tabId, (focusing.get(tabId) ?? 0) + 1);
@@ -782,7 +833,7 @@ export async function focusTab(tabId, { wake = true, source = 'other', carry = n
     throw err;
   };
   /** @type {Run} */
-  const run = { stage: 'start', sent: false, sentAt: 0, update: null, taken: false, tab: null, noPage: false, preparation: null, prepToken: null, early: null, facts: {}, kick: null };
+  const run = { stage: 'start', sent: false, sentAt: 0, update: null, taken: false, tab: null, noPage: false, preparation: null, prepToken: null, early: null, facts: before ? { before } : {}, kick: null };
   /** @type {Promise<{ result?: any, err?: any }>} */
   const settled = focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front, run).then((result) => ({ result }), (err) => ({ err }));
   const inTime = timed ? await answerBy(settled, /** @type {number} */ (deadline) - FORCE_SHOW_MS) : await settled;
@@ -862,7 +913,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   await answerBy(sessionKnown(), asked + SESSION_WAIT_MS);
   // DEVELOPMENT DIAGNOSTICS: whether keep-ready held the tab, and how long it
   // had been hidden, as the switch was asked for (a hold ends as it's shown).
-  const facts = switchFacts(tabId, asked);
+  const facts = { ...run.facts, ...switchFacts(tabId, asked) };
   run.facts = facts;
   // (Not once focusTab has shown the tab itself: it says how that went.)
   const logSwitch = (/** @type {Record<string, unknown>} */ entry) => run.taken || recordSwitch({ source, tabId, asked, ...facts, ...entry });
@@ -1194,7 +1245,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
         behind = loading ? await waitLoaded(tabId, wait) : await restoreTab(live, wait);
       }
     }
-    how = { ...how, ...(loading ? { loadWait: behind } : { restored: behind }) };
+    how = { ...how, ...(loading ? { loadWait: behind } : { restored: behind }), ...(wait.started ? { restoreStart: wait.started } : {}) };
     // DEVELOPMENT DIAGNOSTICS: when its own document first answered (null: it
     // never did, and it's shown with none: Safari's empty view until it commits).
     if (wait.thereAt != null || behind === 'loading') how = { ...how, committed: wait.thereAt != null ? wait.thereAt - asked : null };
@@ -1261,7 +1312,9 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       // means no page. (Usually the same wake as restorable()'s, reused.)
       // Unseen if its page says so, or one before it in the tab did (pageStarted).
       const [woke, knownUnseen] = await Promise.all([wakeTab(tabId), isUnseen(tabId)]);
-      const unseen = (!!woke.unseen || knownUnseen) && !neverShown.has(tabId);
+      // (Not one whose page has come into view since its tab was heard left
+      // and back: sawInWindow.)
+      const unseen = (!!woke.unseen || (knownUnseen && !(woke.seen && backSince.has(tabId)))) && !neverShown.has(tabId);
       if (hasPage(woke) && (unseen || neverShown.has(tabId))) await flipsClear();
       if (hasPage(woke) && mayIntroduce(live, { unseen }) && gen === focusGen && roomToIntroduce()) {
         if (unseen && early) {
@@ -1523,12 +1576,29 @@ export async function resolveTab(tabId, hint, preferWindow, { deadline } = {}) {
   }
   if (live || !hint?.url) return live;
   const key = M.normalizeUrl(hint.url);
-  let candidates = (await api.tabs.query({}).catch(() => [])).filter((t) => M.normalizeUrl(t.url || t.pendingUrl || '') === key);
-  // The same page open twice: the one with the row's title, if that tells them apart.
-  if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
-  if (!candidates.length) return null;
-  const distance = (t) => (t.windowId === preferWindow ? 0 : 1e6) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
-  const found = candidates.reduce((best, t) => (distance(t) < distance(best) ? t : best));
+  const nearest = (/** @type {any[]} */ tabs) => {
+    let candidates = tabs.filter((t) => M.normalizeUrl(t.url || t.pendingUrl || '') === key);
+    // The same page open twice: the one with the row's title, if that tells them apart.
+    if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
+    if (!candidates.length) return null;
+    const distance = (t) => (t.windowId === preferWindow ? 0 : 1e6) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
+    return candidates.reduce((best, t) => (distance(t) < distance(best) ? t : best));
+  };
+  // Margin's own tabs first, once they're this copy's (matched to the open
+  // tabs): no round trip to Safari before the switch. Safari's list only if
+  // they have no such tab, or before the first sync; by RESOLVE_LEAVES_MS
+  // before the deadline at the latest (it can wait behind Safari's other
+  // calls, as after a relaunch: 2026-11-03). Not the tab Safari just said is
+  // gone: Margin's state can have it still (its onRemoved not handled yet).
+  let found = isSynced() ? nearest(Object.values(cached()?.tabs ?? {}).filter((t) => !(ours && t.id === tabId))) : null;
+  if (!found) {
+    /** @type {Promise<any[]>} */
+    const asking = api.tabs.query({}).catch(() => []);
+    const open = Number.isFinite(deadline) ? await answerBy(asking, /** @type {number} */ (deadline) - RESOLVE_LEAVES_MS) : await asking;
+    if (!open) throw new Error('Safari didn\'t say which tabs are open in time');
+    found = nearest(open);
+  }
+  if (!found) return null;
   console.info(`[margin] tab ${tabId} isn't one this copy of Margin knows: switching to tab ${found.id}, at the same address`);
   return found;
 }
@@ -1581,19 +1651,36 @@ export async function mayAccess(url) {
   }
   return (await api.permissions?.contains({ origins: [pattern] }).catch(() => false)) ?? false;
 }
+// Tabs where a script found no page (inPage: 'asleep'): not asked again by
+// the open-tab repair (runOpenTabRepair), nor taken as cut off, until the
+// tab is shown (tabShown) or a tab event says its page changed (background.js:
+// its status or address).
+/** @type {Set<number>} */
+const noPageFound = new Set();
+/** @param {number} tabId */
+export function pageChanged(tabId) {
+  noPageFound.delete(tabId);
+}
 // Runs `func` in the tab's page (Margin's content-script world). 'asleep'
 // when it can't run because there's no page (WebKit: no web view; a tab
 // Safari unloaded), 'unknown' when Margin has no access or no answer came
 // within `ms` (a busy page), else { result }. Messages to content scripts
 // aren't used for this: after Margin is reinstalled or updated, WebKit can
 // stop delivering them to pages that were open (their listeners stay with
-// the old copy), while executeScript keeps working.
+// the old copy), while executeScript keeps working. A view with no page yet
+// (WebKit answers with an error in place of a result) is 'asleep' too. A tab
+// found so is remembered (noPageFound). The permission is asked once per
+// site (mayAccessCached): after a relaunch every probe asked it again.
 export async function inPage(tabId, url, func, args = [], ms = 300) {
-  if (!api.scripting?.executeScript || !(await mayAccess(url))) return 'unknown';
-  return Promise.race([
-    api.scripting.executeScript({ target: { tabId }, func, args }).then((r) => ({ result: r?.[0]?.result }), () => 'asleep'),
-    new Promise((resolve) => setTimeout(() => resolve('unknown'), ms)),
+  if (!api.scripting?.executeScript || !(await mayAccessCached(url))) return 'unknown';
+  let timer;
+  const answer = await Promise.race([
+    api.scripting.executeScript({ target: { tabId }, func, args }).then((r) => (ranAtAll(r) ? { result: r?.[0]?.result } : 'asleep'), () => 'asleep'),
+    new Promise((resolve) => { timer = setTimeout(() => resolve('unknown'), ms); }),
   ]);
+  clearTimeout(timer);
+  if (answer === 'asleep') noPageFound.add(tabId);
+  return answer;
 }
 
 // `deadline`: when the page that asked stops waiting (it's then told it
@@ -1633,6 +1720,24 @@ export function tabShown(tabId) {
   kickedAt.delete(tabId);
   forgetWake(tabId); // its hold ended as it was shown
   forgetUnseen(tabId);
+  backSince.delete(tabId);
+  noPageFound.delete(tabId); // it loads as it's shown, if it had none
+}
+// Its page says it has come into view from hidden (pageThere 'seen'). For a
+// tab never in front, its page started hidden and could come into view only
+// as the tab came into the window, with a process: Margin's mark goes (it
+// isn't introduced again). The mark a page left as it started in front goes
+// only if its tab was heard left and back since (backSince): a page in front
+// also comes into view as its window is uncovered, and WebKit doesn't mark
+// a tab for that. In Tirth's Safari on 2026-11-03 a tab restored in front at
+// the relaunch was covered and uncovered (activity state 30 to 58 and back)
+// before it was first left, and its first return showed 420 ms of Safari's
+// empty view. The rest of tabShown's doesn't go (it may be hidden now, its
+// hold or kick still under way).
+/** @param {number} tabId */
+function sawInWindow(tabId) {
+  neverShown.delete(tabId);
+  if (backSince.has(tabId)) forgetUnseen(tabId);
 }
 export const isNeverShown = (tabId) => neverShown.has(tabId);
 
@@ -1688,12 +1793,44 @@ const UNSEEN_KEY = 'unseenTabs';
 let unseenTabs = null;
 const unseenSet = () => (unseenTabs ??= Promise.resolve(api.storage.session?.get(UNSEEN_KEY)).then((stored) => new Set(Array.isArray(stored?.[UNSEEN_KEY]) ? stored[UNSEEN_KEY] : []), () => new Set()));
 const saveUnseen = (/** @type {Set<number>} */ set) => void Promise.resolve().then(() => api.storage.session?.set({ [UNSEEN_KEY]: [...set] })).catch(() => {});
+// Activations in the order they reach this background (background.js, as
+// each comes, before any wait): a page's hello is handled after the
+// ownership check, an activation once the state is read, so a hello can be
+// handled after its tab was left and came back, the mark it leaves then
+// outlasting that return (tabShown came first). `returns`: for each tab, the
+// place in that order of the activation of another tab in its window just
+// before its own last one (it was left there, then came back).
+let heard = 0;
+/** @type {Map<number, { tabId: number, at: number }>} */
+const lastHeard = new Map(); // windowId → its last activation heard
+/** @type {Map<number, number>} */
+const returns = new Map();
+/** background.js: a tab's activation, as it comes (not an introduction's). @param {{ tabId: number, windowId: number }} info */
+export function heardActivation({ tabId, windowId }) {
+  heard++;
+  const before = lastHeard.get(windowId);
+  if (before && before.tabId !== tabId) returns.set(tabId, before.at);
+  lastHeard.set(windowId, { tabId, at: heard });
+}
+/** How many activations have come so far (a hello's place among them: background.js). */
+export const activationsHeard = () => heard;
+// Tabs marked unseen whose tab was heard left and back after the page said so
+// (both activations came after its hello): the page's own word that it has
+// come into view (pageThere 'seen') then drops the mark (sawInWindow). Not
+// the return alone: a background starting can be given the activations from
+// before it ahead of a hello, or after it.
+/** @type {Set<number>} */
+const backSince = new Set();
 // A page has started in the tab; `unseen`: it started visible in a tab whose
-// page may have just been made (content/core.js windowSeen).
-/** @param {number | null | undefined} tabId @param {{ unseen?: boolean }} [page] */
-export function pageStarted(tabId, { unseen = false } = {}) {
+// page may have just been made (content/core.js windowSeen); `heard`: how
+// many activations had come as its hello did (activationsHeard).
+/** @param {number | null | undefined} tabId @param {{ unseen?: boolean, heard?: number | null }} [page] */
+export function pageStarted(tabId, { unseen = false, heard: at = null } = {}) {
   if (!unseen || !platform?.introduceTabs || !Number.isInteger(tabId)) return;
-  void unseenSet().then((set) => !set.has(tabId) && saveUnseen(set.add(/** @type {number} */ (tabId))));
+  const id = /** @type {number} */ (tabId);
+  if (at != null && (returns.get(id) ?? 0) > at) backSince.add(id);
+  else backSince.delete(id);
+  void unseenSet().then((set) => !set.has(id) && saveUnseen(set.add(id)));
 }
 function forgetUnseen(/** @type {number} */ tabId) {
   if (!platform?.introduceTabs) return;
@@ -2059,6 +2196,7 @@ const READY_MAX_MS = 1500; // from its load's start to its show, at most, for a 
 // (waiting on a hung process) took it past.
 const RESTORE_RESERVE_MS = 2800;
 const RESTORE_POLL_MS = 40;
+const RESTORE_SCRIPT_MIN_MS = 100; // a script's least time to fail or answer in loadStarted
 const RESTORE_BLINK_MS = 60; // a hide dated this late after the answers is still the restore's (a busy page dates it late)
 const RESTORE_MISSES = 2;
 const RESTORES_OFF_KEY = 'restoresOff';
@@ -2086,7 +2224,7 @@ async function countMiss(missed, tabId) {
 /** @param {any} tab the tab as the browser has it @param {{ busy?: boolean }} [options] */
 const mayRestore = (tab, { busy = false } = {}) => !!platform?.restoreTabs && !!api.scripting?.executeScript && !tab.active && tab.status === 'complete' && /^https?:/.test(tab.url ?? '') && (busy || !windowBusy(tab.windowId));
 /** @typedef {'painted' | 'loaded' | 'loading' | 'not loaded' | 'in front' | 'left' | 'hurried' | 'gone'} Behind 'painted': its page has painted (still loading); 'loading': still, with nothing painted, at the time limit (or introductions just stopped); 'not loaded': Safari didn't load it behind; 'in front': Safari left it there; 'left': another switch; 'hurried': a key press after it */
-/** @typedef {{ gen: number, since: number, until: number, hardUntil?: number, hurry?: (() => boolean) | null, arrival?: Promise<[Wake | null, boolean]> | null, thereAt?: number | null }} Wait `until`: the wait's end; `hardUntil`: its end while the tab's own document hasn't answered; `arrival`: its wake renewed and its arrival cover, asked for as that document answered (waitLoaded); `thereAt`: then */
+/** @typedef {{ gen: number, since: number, until: number, hardUntil?: number, hurry?: (() => boolean) | null, arrival?: Promise<[Wake | null, boolean]> | null, thereAt?: number | null, started?: Started | null }} Wait `until`: the wait's end; `hardUntil`: its end while the tab's own document hasn't answered; `arrival`: its wake renewed and its arrival cover, asked for as that document answered (waitLoaded); `thereAt`: then; `started`: how its load was found started (loadStarted; DEVELOPMENT DIAGNOSTICS) */
 // Why a wait stops early, if it does: another switch, a key press after it,
 // or introductions just turned off (the page in front blinked: it stopped
 // covering itself, so the switch goes ahead now).
@@ -2116,40 +2254,58 @@ async function restoreTab(tab, wait) {
   try {
     const started = await loadStarted(tab.id, wait);
     if (started === 'gone' || started === 'left' || started === 'hurried') return started;
-    if (started !== true) {
+    if (started !== 'loading' && started !== 'ran' && started !== 'waiting') {
       // Not counted when cut short (introductions stopped): it may yet load.
       if (started === false) await countMiss(true, tab.id);
       return 'not loaded';
     }
+    wait.started = started; // DEVELOPMENT DIAGNOSTICS
     await countMiss(false, tab.id);
     wakes.delete(tab.id); // one since, from before its load, said it had no page
-    return await waitLoaded(tab.id, wait, Date.now());
+    return await waitLoaded(tab.id, wait, Date.now(), { seen: started !== 'waiting' });
   } finally {
     // Its activation, should it have come after Safari's answer, is told if
     // it's in front after all.
     if (endIntroduction(tab.id, wait.gen)?.lateTab) void api.tabs.get(tab.id).then((t) => t.active && hooks.activated?.({ tabId: tab.id, windowId: t.windowId }), () => {});
   }
 }
-// Whether the tab's load has started: Safari says it's loading, or a script
-// runs there (a page from its cache can be complete again by the next look).
-/** @param {number} tabId @param {Wait} wait @returns {Promise<boolean | 'stopped' | 'left' | 'hurried' | 'gone'>} */
+// Whether the tab's load has started: Safari says it's loading ('loading'),
+// or a script runs in its own document ('ran': a page from its cache can be
+// complete again by the next look), or a script hasn't answered by `until`
+// ('waiting': a page too busy to answer, or a process still starting; a tab
+// with no page fails at once). 'waiting' isn't taken as loaded: Safari says
+// 'complete' for a tab it unloaded, so until the tab is seen loading or its
+// document answers, its status says nothing (waitLoaded). After a relaunch
+// (load average about 50, 2026-11-03) two tabs were shown that way before
+// their load had started or committed: 19 ms and 1.0 s of Safari's empty view.
+/** @typedef {'loading' | 'ran' | 'waiting'} Started */
+/** @param {number} tabId @param {Wait} wait @returns {Promise<Started | false | 'stopped' | 'left' | 'hurried' | 'gone'>} */
 async function loadStarted(tabId, wait) {
   const until = Math.min(Date.now() + RESTORE_START_MS, wait.until);
-  // Not waited for past `until`: a page too busy to answer by then has one (a
-  // tab with none fails at once), so its load has started.
-  const runs = () => {
+  // Not waited for past `until`, but the script always gets twice as long
+  // as Safari took to answer the tabs.get before it, and RESTORE_SCRIPT_MIN_MS:
+  // its failure for a tab with no page goes through the same Safari as
+  // that answer. With tabs.get taking 350 ms (a Mac busy after a relaunch),
+  // the script went out past `until` with no time left, and every tab Safari
+  // didn't load behind was 'waiting', held to the usual limit and not
+  // counted as a miss (restores never went off).
+  const runs = (/** @type {number} */ answerMs) => {
     let timer;
     return Promise.race([
-      api.scripting.executeScript({ target: { tabId }, injectImmediately: true, func: pageThere }).then(ranThere, () => false),
-      new Promise((resolve) => { timer = setTimeout(() => resolve(true), Math.max(0, until - Date.now())); }),
+      api.scripting.executeScript({ target: { tabId }, injectImmediately: true, func: pageThere }).then((rows) => (ranThere(rows) ? 'ran' : false), () => false),
+      new Promise((resolve) => { timer = setTimeout(() => resolve('waiting'), Math.max(until - Date.now(), 2 * answerMs, RESTORE_SCRIPT_MIN_MS)); }),
     ]).finally(() => clearTimeout(timer));
   };
   for (let tries = 0; ; tries++) {
+    const askedAt = Date.now();
     const tab = await api.tabs.get(tabId).catch(() => null);
+    const answerMs = Date.now() - askedAt;
     if (!tab) return 'gone';
     const stop = stopsWait(wait);
     if (stop) return stop;
-    if (tab.status === 'loading' || (tries % 2 === 1 && (await runs()))) return stopsWait(wait) ?? true;
+    if (tab.status === 'loading') return stopsWait(wait) ?? 'loading';
+    const ran = tries % 2 === 1 ? /** @type {Started | false} */ (await runs(answerMs)) : false;
+    if (ran) return stopsWait(wait) ?? ran;
     if (Date.now() >= until) return false;
     await new Promise((resolve) => setTimeout(resolve, RESTORE_POLL_MS));
   }
@@ -2160,17 +2316,23 @@ async function loadStarted(tabId, wait) {
 // RESTORE_HARD_MAX_MS while it hasn't). As soon as that document answers, its
 // wake is renewed and its arrival cover asked for (`wait.arrival`), while its
 // paint is still waited for, not after it: on 'painted', it's introduced at once.
-/** @param {number} tabId @param {Wait} wait @param {number} [startedAt] @returns {Promise<Behind>} */
-async function waitLoaded(tabId, wait, startedAt = Date.now()) {
+// `seen`: its load is known to have started (seen loading, or its document
+// answered: loadStarted). Until it is, Safari's 'complete' doesn't count as
+// loaded (an unloaded tab says so), and the wait for its document ends at
+// the usual limit, not the hard one: it may not be loading at all (Safari
+// putting its load off), or be a page too busy to answer.
+/** @param {number} tabId @param {Wait} wait @param {number} [startedAt] @param {{ seen?: boolean }} [options] @returns {Promise<Behind>} */
+async function waitLoaded(tabId, wait, startedAt = Date.now(), { seen = true } = {}) {
   let there = false;
   /** @type {number | null} */
   let thereAt = null;
+  const load = { seen, answered: () => thereAt != null };
   // Once its document is there: READY_MAX_MS from its load's start, or for a
   // document that came late (a server slow to answer) COMMITTED_PAINT_MS from
   // its arrival, within the hard limit, so it has a chance to paint (shown at
   // once, it was a page with nothing drawn yet).
   const until = () => {
-    if (!there) return wait.hardUntil ?? wait.until;
+    if (!there) return load.seen ? wait.hardUntil ?? wait.until : wait.until;
     const usual = Math.min(wait.until, startedAt + READY_MAX_MS);
     return thereAt == null ? usual : Math.max(usual, Math.min(wait.hardUntil ?? wait.until, thereAt + COMMITTED_PAINT_MS));
   };
@@ -2185,7 +2347,7 @@ async function waitLoaded(tabId, wait, startedAt = Date.now()) {
     wait.arrival = Promise.all([wakeTab(tabId, { renew: true }), coverArrival({ id: tabId })]).catch(() => /** @type {[Wake | null, boolean]} */ ([null, false]));
   };
   const painted = untilPainted(tabId, until, () => over || !!stopsWait(wait), arrived);
-  const loaded = await untilLoaded(tabId, until, () => !!stopsWait(wait), null, painted).finally(() => { over = true; });
+  const loaded = await untilLoaded(tabId, until, () => !!stopsWait(wait), null, painted, load).finally(() => { over = true; });
   if (loaded === 'left') {
     const stop = stopsWait(wait);
     return stop === 'stopped' ? 'loading' : stop ?? 'left';
@@ -2395,8 +2557,11 @@ export async function openBehind({ windowId, url, from, then, created, label, de
 // 'timeout', 'gone' (closed), 'left' (`left()`) or 'moved' (the page the user
 // is on, `fromId`, started loading something else: a link, the address bar, a
 // reload). A question Safari doesn't answer counts as still loading.
-/** @param {number} tabId @param {() => number} until @param {() => boolean} left @param {number | null} fromId @param {Promise<'painted' | 'loaded' | null> | null} [painted] @returns {Promise<'painted' | 'loaded' | 'timeout' | 'gone' | 'left' | 'moved'>} */
-async function untilLoaded(tabId, until, left, fromId, painted = null) {
+// `load`, for a tab loaded behind (waitLoaded): 'complete' counts only once
+// it has been seen loading (`seen`, set here too) or its own document has
+// answered (`answered()`): Safari says 'complete' for a tab it unloaded.
+/** @param {number} tabId @param {() => number} until @param {() => boolean} left @param {number | null} fromId @param {Promise<'painted' | 'loaded' | null> | null} [painted] @param {{ seen: boolean, answered: () => boolean } | null} [load] @returns {Promise<'painted' | 'loaded' | 'timeout' | 'gone' | 'left' | 'moved'>} */
+async function untilLoaded(tabId, until, left, fromId, painted = null, load = null) {
   const SLOW = Symbol('slow');
   const ask = (id) => {
     let timer;
@@ -2422,8 +2587,12 @@ async function untilLoaded(tabId, until, left, fromId, painted = null) {
       if (fromLoaded && from.status === 'loading') return 'moved';
       if (from.status === 'complete') fromLoaded = true;
     }
-    if (tab.status === 'loading') sawLoading = true;
-    if (tab.status === 'complete' && ((tab.url && tab.url !== 'about:blank') || (!tab.url && sawLoading))) return 'loaded';
+    if (tab.status === 'loading') {
+      sawLoading = true;
+      if (load) load.seen = true;
+    }
+    const known = !load || load.seen || load.answered();
+    if (tab.status === 'complete' && known && ((tab.url && tab.url !== 'about:blank') || (!tab.url && sawLoading))) return 'loaded';
     if (ready) return ready;
     if (Date.now() >= until()) return 'timeout';
     const pause = new Promise((resolve) => setTimeout(resolve, Math.min(POLL_MS, Math.max(0, until() - Date.now()))));
@@ -2457,7 +2626,7 @@ async function checkCurrent(tabId) {
   // copy can run there until it's loaded again.
   const cut = await repairCutOff(tab);
   if (cut === 'reloaded') checkedCurrent.add(tabId);
-  if (cut) return;
+  if (cut || noPageFound.has(tabId)) return; // (no page yet: next time)
   const here = await inPage(tabId, tab.url, () => !!globalThis.Margin?.content, [], 1000);
   if (typeof here === 'string') return; // asleep, no access or busy: next time
   checkedCurrent.add(tabId);
@@ -2505,8 +2674,9 @@ export async function repairCutOff(tab, { ms = 1000 } = {}) {
   const probe = await askCutOff(tab.id, tab.url, false, ms);
   const action = cutOffAction(probe);
   if (action === 'none') {
-    if (probe) {
-      boundHere.add(tab.id);
+    // (Not a tab with no page: it loads with this copy's scripts.)
+    if (probe || noPageFound.has(tab.id)) {
+      if (probe) boundHere.add(tab.id);
       cutOffSuspects.delete(tab.id);
     } else cutOffSuspects.add(tab.id);
     return false;
@@ -2586,7 +2756,20 @@ export function disableStaleSidebarInPage() {
 // Sleeping tabs are deliberately skipped; ensureCurrent repairs one when it
 // is first shown. A page with a previous copy reloads later, when safe
 // (content/core.js), to remove that copy's remaining page-world hooks.
+// A tab found with no page (noPageFound: Safari unloaded it, and every tab
+// after a relaunch) isn't asked again, by this pass or the next, until it's
+// shown or its page changes: once it loads it runs this copy anyway. (Each
+// was asked twice per pass, over four passes: about 450 failing scripts in
+// Tirth's first five minutes after a relaunch, 2026-11-03.)
+// A few tabs at a time, the one in front of each window first, and none
+// while a switch is under way (switchUnderWay: asked for, or in focusTab):
+// all at once, the repair's scripts queued ahead of the switch's own calls
+// in Safari, and after that relaunch five clicks in a row never started a
+// switch (each one's request reached focusTab with under 1 s of its page's
+// 7 s left: 'expired', stuck 'before').
 const REPAIR_RETRY_MS = [350, 1200, 3000];
+const REPAIR_AT_ONCE = 2;
+const GIVE_WAY_POLL_MS = 50;
 let repairOpenTabs = null;
 /** @param {{ retry?: boolean }} [options] */
 export function injectIntoOpenTabs({ retry = true } = {}) {
@@ -2595,21 +2778,39 @@ export function injectIntoOpenTabs({ retry = true } = {}) {
   }
   return repairOpenTabs;
 }
+async function giveWay() {
+  const until = Date.now() + SWITCH_HOLDS_MS;
+  while (switchUnderWay() && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, GIVE_WAY_POLL_MS));
+}
 
 async function runOpenTabRepair(retry) {
   // The sidebar's entry, whatever the build named its file.
   const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
   if (!files?.length || !api.scripting?.executeScript) return;
   const delays = [0, ...(retry ? REPAIR_RETRY_MS : [])];
-  for (const delay of delays) {
+  const done = (/** @type {any} */ tab) => tab.discarded || checkedCurrent.has(tab.id) || !/^https?:/i.test(tab.url ?? '');
+  for (const [pass, delay] of delays.entries()) {
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    const passStart = Date.now();
+    let gaveWay = 0;
+    const yielded = async () => {
+      const from = Date.now();
+      await giveWay();
+      gaveWay += Date.now() - from;
+    };
+    await yielded();
     const tabs = await api.tabs.query({}).catch(() => []);
-    await Promise.all(tabs.map(async (tab) => {
-      if (!checkedCurrent.has(tab.id) && await repairOldOwnPage(tab)) return void checkedCurrent.add(tab.id);
-      if (tab.discarded || checkedCurrent.has(tab.id) || checking.has(tab.id) || !/^https?:/i.test(tab.url ?? '')) return;
+    const left = tabs.filter((tab) => !checkedCurrent.has(tab.id) && !noPageFound.has(tab.id)).sort((a, b) => Number(!!b.active) - Number(!!a.active));
+    // DEVELOPMENT DIAGNOSTICS: the tabs this pass asked, and found with no page.
+    const counts = { asked: 0, noPage: 0 };
+    const one = async (/** @type {any} */ tab) => {
+      if (await repairOldOwnPage(tab)) return void checkedCurrent.add(tab.id);
+      if (done(tab) || noPageFound.has(tab.id) || checking.has(tab.id)) return;
+      counts.asked++;
       const cut = await repairCutOff(tab);
+      if (noPageFound.has(tab.id)) counts.noPage++;
       if (cut === 'reloaded') checkedCurrent.add(tab.id);
-      if (cut) return;
+      if (cut || noPageFound.has(tab.id)) return; // (no page: no second question)
       const current = await inPage(tab.id, tab.url, (id, since) => {
         const content = globalThis.Margin?.content;
         return !!content && (content.instanceId === id || content.startedAt >= since);
@@ -2622,7 +2823,16 @@ async function runOpenTabRepair(retry) {
       await api.scripting.executeScript({ target: { tabId: tab.id }, func: disableStaleSidebarInPage }).catch(() => {});
       const injected = await api.scripting.executeScript({ target: { tabId: tab.id }, files }).then(() => true, () => false);
       if (injected) checkedCurrent.add(tab.id);
+    };
+    await Promise.all(Array.from({ length: REPAIR_AT_ONCE }, async () => {
+      for (let tab = left.shift(); tab; tab = left.shift()) {
+        await yielded();
+        await one(tab);
+      }
     }));
-    if (tabs.every((tab) => tab.discarded || checkedCurrent.has(tab.id) || !/^https?:/i.test(tab.url ?? ''))) return;
+    recordRepair({ pass, tabs: tabs.length, ...counts, gaveWayMs: gaveWay, ms: Date.now() - passStart });
+    // (A tab with no page keeps the passes going: it may load meanwhile, the
+    // tab in front at a relaunch most of all, and is then asked again.)
+    if (tabs.every(done)) return;
   }
 }

@@ -10,7 +10,7 @@ import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mut
 import * as keepReady from './background/keep-ready.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, injectIntoOpenTabs, isIntroduction, keepHandedOff, resolveTab, sawActivation, setIntroductionHooks, shownAt, tabOpened, tabShown, userSwitched } from './background/tabs.js';
+import { activationsHeard, ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, heardActivation, injectIntoOpenTabs, isIntroduction, keepHandedOff, pageChanged, resolveTab, sawActivation, setIntroductionHooks, shownAt, switchAsked, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -154,8 +154,12 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
     if (!change.url || V.isNewTabPage(change.url)) return;
     keepHandedOff(tabId);
   }
-  // A tab keep-ready found no page in may have one now (background/keep-ready.js).
-  if (change.status || change.url) keepReady.pageChanged(tabId);
+  // A tab keep-ready, or a script, found no page in may have one now
+  // (background/keep-ready.js, background/tabs.js noPageFound).
+  if (change.status || change.url) {
+    keepReady.pageChanged(tabId);
+    pageChanged(tabId);
+  }
   // Its page going away ends a wake's hold there (background/tabs.js wakeTab).
   if (change.status === 'loading') forgetWake(tabId);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.js).
@@ -260,6 +264,7 @@ const onActivation = (/** @type {{ tabId: number, windowId: number }} */ info) =
 api.tabs.onActivated.addListener((info) => {
   if (isIntroduction(info)) return undefined;
   sawActivation(info); // (tabs.js answeredLate)
+  heardActivation(info); // in the order they came (tabs.js pageStarted)
   return onActivation(info);
 });
 api.tabs.onRemoved.addListener((tabId) => keepReady.frontGone(tabId));
@@ -298,11 +303,13 @@ api.windows?.onRemoved.addListener(owned((windowId) =>
 // A request naming a tab by the id its page drew comes with the tab's
 // address (content/core.js send): it gets this copy's id for that tab, or
 // fails if the tab is gone (no other tab is closed or moved for it).
+// The tab found goes with it (`resolved`): a switch doesn't ask Safari for it
+// a second time before it starts (handlers.js activateTab).
 async function withTab(message, sender) {
   if (!Number.isInteger(message?.tabId) || !message.hint) return message;
   const target = await resolveTab(message.tabId, message.hint, sender.tab?.windowId, { deadline: message.deadline });
   if (!target) throw new Error('That tab is no longer open');
-  return { ...message, tabId: target.id, hint: null };
+  return { ...message, tabId: target.id, hint: null, resolved: target };
 }
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
@@ -322,13 +329,20 @@ const REPLY_GUARD_MS = 500;
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;
+  // A page starting: its place among the activations as it came, before the
+  // waits below (background/tabs.js pageStarted).
+  if (message.type === 'hello') message = { ...message, heard: activationsHeard() };
   const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
   let answered = false;
   let guard = null;
+  // A switch asked for: work that can wait (background/tabs.js
+  // injectIntoOpenTabs) gives way until it's answered (by the guard too).
+  const over = TIMED.has(message.type) ? switchAsked() : null;
   const answer = (/** @type {any} */ reply) => {
     if (answered) return;
     answered = true;
     clearTimeout(guard);
+    over?.();
     sendResponse(reply);
   };
   if (deadline !== Infinity) {
@@ -338,13 +352,28 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
       answer({ ok: false, error: 'Too late: Margin took too long to answer' });
     }, Math.max(0, deadline - REPLY_GUARD_MS - Date.now()));
   }
+  // DEVELOPMENT DIAGNOSTICS: how much of its page's wait was left as it came,
+  // and what it waited for before its switch started (the switch log's
+  // `before`: background/tabs.js focusTab).
+  const arrival = deadline !== Infinity ? { at: Date.now(), left: deadline - Date.now(), decided: 0, sync: 0, resolve: 0 } : null;
+  const since = (/** @type {number} */ from) => Date.now() - from;
+  let step = Date.now();
   // A page starting asks whether this copy still owns the state (a newer
   // one may have taken over since: copies don't hear each other's writes).
   decided()
     .then(() => (message.type === 'hello' || message.type === 'owner' ? recheck() : null))
-    .then(() => (isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced(deadline) : null))
-    .then(() => (isOwner() ? withTab(message, sender) : null))
-    .then((request) => (isOwner() ? handler(request, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' }))
+    .then(() => {
+      if (arrival) [arrival.decided, step] = [since(step), Date.now()];
+      return isOwner() && !BEFORE_SYNC.has(message.type) ? untilSynced(deadline) : null;
+    })
+    .then(() => {
+      if (arrival) [arrival.sync, step] = [since(step), Date.now()];
+      return isOwner() ? withTab(message, sender) : null;
+    })
+    .then((request) => {
+      if (arrival) arrival.resolve = since(step);
+      return isOwner() ? handler(arrival ? { ...request, arrival } : request, sender).then((result) => ({ ok: true, result })) : { ok: false, stale: true, error: 'a newer copy of Margin is running' };
+    })
     // A change made while a newer copy took over wasn't written (store.js
     // mutate). Only a copy known not to own the state says `stale` (its pages
     // then stand down for good): a storage error while deciding is an error.

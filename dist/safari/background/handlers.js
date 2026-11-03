@@ -226,10 +226,10 @@ async function carryIfSameWindow(tabId, why, windowId) {
 // command after activation.
 /**
  * @param {number} tabId
- * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number, deadline?: number }} [options]
+ * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number, deadline?: number, arrival?: import('./tabs.js').Arrival | null, tab?: any }} [options] `tab`: as found already (its window)
  */
-async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop, deadline } = {}) {
-  const target = (await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
+async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop, deadline, arrival = null, tab = null } = {}) {
+  const target = tab ?? (await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
   const reason = show && sourceWindowId != null && target?.windowId === sourceWindowId ? rememberCarry(tabId, show) : null;
   // Preparation receives the value directly; persistence can finish beside
   // the switch instead of adding a storage.session round trip in front of it.
@@ -237,7 +237,7 @@ async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId,
   try {
     // A page's own switch: it's covered meanwhile (content/core.js), so a tab
     // never shown before arrives covered too.
-    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline, covered: isNeverShown(tabId) });
+    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline, covered: isNeverShown(tabId), arrival });
     if (!reason) return result;
     if (!result?.tab) carried.delete(tabId);
     else if (result.preparation?.outcome === 'ready') carried.delete(tabId);
@@ -292,10 +292,10 @@ const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
 const STYLE_MAX_CHARS = 8_000_000;
 
 export const handlers = {
-  /** @param {{ unseen?: boolean }} message `unseen`: the page started visible in a tab whose page may have just been made (background/tabs.js pageStarted) */
-  async hello({ unseen = false } = {}, sender) {
+  /** @param {{ unseen?: boolean, heard?: number }} message `unseen`: the page started visible in a tab whose page may have just been made (background/tabs.js pageStarted); `heard`: how many activations had come as it did (background.js) */
+  async hello({ unseen = false, heard = null } = {}, sender) {
     onboarding.pageLoaded();
-    pageStarted(sender.tab?.id, { unseen });
+    pageStarted(sender.tab?.id, { unseen, heard });
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
     // Only to a page in front: one loading behind (background/tabs.js
@@ -312,11 +312,11 @@ export const handlers = {
   },
   // Answers which tab came to the front ({ shown }), or fails: the tab is
   // gone, or the browser didn't show it (the page then says so).
-  /** @param {{ tabId: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it) */
-  async activateTab({ tabId, hint, show, sidebarTop, deadline }, sender) {
-    const target = await resolveTab(tabId, hint, sender.tab?.windowId, { deadline });
+  /** @param {{ tabId: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, resolved?: any, arrival?: import('./tabs.js').Arrival | null }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it); `resolved`: the tab background.js found by that address already (not asked for again); `arrival`: how the request came (the switch log: background.js) */
+  async activateTab({ tabId, hint, show, sidebarTop, deadline, resolved = null, arrival = null }, sender) {
+    const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
-    const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline });
+    const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline, arrival, tab: target });
     return { shown: result?.superseded ? null : target.id };
   },
   // About to be shown, probably (a press on a sidebar row or a space's icon,

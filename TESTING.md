@@ -562,6 +562,22 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Startup: clicks that start, restores that wait for the load, one introduction (2026-11-03)
+
+After a Safari relaunch, Margin's check of the open tabs no longer asks every unloaded tab again and again, and it waits while you switch. A tab loaded behind the page comes up only once it has really loaded. A tab that has already come back into view after you left it, whether Safari or Margin brought it, isn't flipped again on its next switch. A tab that only came back into view because its window was uncovered still is.
+
+Before you start: run `npm run safari`. Do this right after a reboot or a Safari relaunch with many tabs, when the Mac is busy, as on 2026-11-03.
+
+- [ ] Quit Safari with many windows and tabs, open it again, and start clicking tabs in the sidebar as soon as it shows. Every click starts a switch: none comes back as nothing, with the row snapping back. Then copy the switch log (new-tab page → Settings → Switch log): no `activateTab` entry has `error: 'expired'`. Each switch has `before`: `left` (ms of the 7 s left as the click reached the background), `waited`, `sync` and `resolve` say what it waited for before it started. If one did expire, note those numbers.
+- [ ] In the same log, the `repair` entries: the first pass (`pass: 0`) asks about as many tabs as are open, most with `noPage`; the later passes ask only a few (tabs that loaded since), and `gaveWayMs` is more than 0 if you were clicking.
+- [ ] Unloaded tabs you click right after the relaunch come up drawn, with no empty view, even when they take a while. In the switch log, `restoreStart` says how the load was first seen (`loading`, `ran` or `waiting`). One with `waiting` should show `restored: 'loaded'` or `'painted'`, and you shouldn't have seen an empty view on it. If a click on an unloaded tab sits behind the spinner for about 2.5 s and the tab then still comes up empty, note the time.
+- [ ] A tab you had left, brought back with Safari's own tab bar (or ⌘1–9), then left again: switching back to it with the sidebar doesn't flip it first. Look for `introduced: true` on that switch in the log: it shouldn't be there. (A tab whose page loaded in front, and was never left and brought back since, is still flipped once on its first return: WebKit hasn't marked it.)
+- [ ] The tab in front at the relaunch still gets its sidebar if it loads slowly (it's checked again once loaded).
+- [ ] Safari's log the same day, for the minutes after the relaunch: far fewer failing scripts than the ~450 of 2026-11-03 (two per unloaded tab per pass).
+- [ ] After a relaunch, switch to another app whose window covers Safari's (or minimize the Safari window), come back, then leave the tab in front with the sidebar and switch back to it. It's flipped first (`introduced: true`, `unseen: true` in the log), and you see no empty view. Uncovering the window doesn't count as the tab coming back.
+- [ ] Right after a relaunch, with the Mac busy, click a few unloaded tabs that Safari loads in front instead of behind. Each comes up within about a second, not after 2.5 s behind the spinner. In the log they say `restored: 'not loaded'`, and after two in a row Margin stops trying to restore tabs behind for that Safari session.
+- [ ] Close a tab and at once click its row in another window's sidebar, before the sidebar redraws. The row snaps back, and the log has no switch entry with `No tab with id` for it.
+
 ## The kick is back, for speed (2026-11-03)
 
 A switch to a tab Safari has put to sleep is quicker now. If the tab hasn't answered within about 60 ms (40 ms for one you left 8 s or more ago), Margin brings it to the front and the page you're on straight back, out of sight, so Safari wakes it at full speed. The page you're on stays in front until the tab is awake and drawn, as before. A tab kicked awake waits less for its page to draw before it comes up (0.15 s at most); a tab that woke slowly in the background before you clicked still gets up to 0.4 s, as this morning.

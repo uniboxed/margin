@@ -28,6 +28,7 @@ const fake = {
   // view from hidden (pageThere answers 'unseen').
   painted: new Set(),
   unseen: new Set(),
+  seen: new Set(), // pages that have come into view from hidden (pageThere answers 'seen')
   // Tabs going from a loaded page to another: the old page's document, loaded,
   // answers until the new one commits (readyInPage: 'loaded' at once).
   oldDocument: new Set(),
@@ -115,7 +116,7 @@ globalThis.chrome = {
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
       if (func?.name === 'readyInPage') return sleep(delay).then(() => readiness(target.tabId, args)).then((result) => [{ result }]);
       if (func?.name === 'paintBarrierInPage') return sleep(delay + fake.barrierMs(target.tabId)).then(() => [{ result: 'drawn' }]);
-      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : func?.name === 'pageThere' && fake.unseen.has(target.tabId) ? 'unseen' : true;
+      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : func?.name === 'pageThere' && fake.unseen.has(target.tabId) ? 'unseen' : func?.name === 'pageThere' && fake.seen.has(target.tabId) ? 'seen' : true;
       return sleep(delay).then(() => [{ result }]);
     },
   },
@@ -135,7 +136,7 @@ globalThis.chrome = {
   },
 };
 
-const { repairCutOff, wakeTab, forgetWake, focusTab, handingOff, holdTab, isFocusing, isIntroduction, isNeverShown, keepHandedOff, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { activationsHeard, heardActivation, repairCutOff, wakeTab, forgetWake, focusTab, handingOff, holdTab, isFocusing, isIntroduction, isNeverShown, keepHandedOff, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const { tapLog } = await import('../extension/background/diagnostics.js');
 const { holdNow, keepReadyState, noteLeft, resetKeepReady, startedAgain, switchFacts } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
@@ -153,6 +154,7 @@ function reset(tabs) {
   fake.prepare = (args) => ({ ready: true, token: args?.[0]?.token });
   fake.painted = new Set();
   fake.unseen = new Set();
+  fake.seen = new Set();
   fake.oldDocument = new Set();
   fake.barrierMs = () => 60;
   fake.scriptError = null;
@@ -1472,6 +1474,87 @@ test('wake: a page says whether it ever came into view from hidden (unseen); one
   assert.equal(ask('https://a.test/', { content: {} }), true, 'an earlier copy (no windowSeen)');
   assert.equal(ask('https://a.test/', null), true, 'no copy in this world');
   assert.equal(ask('about:blank', { content: { windowSeen: () => false } }), false);
+  assert.equal(ask('https://a.test/', { content: { windowSeen: () => true, cameIntoView: () => true } }), 'seen', 'one that came into view from hidden itself');
+  assert.equal(ask('https://a.test/', { content: { windowSeen: () => true, cameIntoView: () => false } }), true);
+});
+
+test('introducing: a tab Margin never saw shown (opened behind) whose page says it has come into view from hidden (Safari showed it, or a switch went out with no introduction) isn\'t introduced', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 304, url: 'https://shownbysafari.test/' }], [304]);
+  try {
+    assert.ok(isNeverShown(304));
+    fake.seen.add(304);
+    await focusTab(304, { covered: true });
+    assert.deepEqual(fake.updates.map((u) => u.id), [304], 'shown, not introduced first');
+    assert.equal(isNeverShown(304), false, 'its mark gone');
+  } finally {
+    done();
+  }
+});
+
+test('introducing: a tab whose page started unseen (hello) and has since come into view from hidden is still introduced when nothing says its tab left the window (its window uncovered, a minimize: WebKit marks a tab only as it enters a window)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 305, url: 'https://uncovered.test/' }], []);
+  try {
+    // As Tirth's Safari had it on 2026-11-03: a tab restored in front at the
+    // relaunch, its window covered (state 30 to 58) and uncovered (58 to 30)
+    // while it stayed in front, then left: its first return showed 420 ms of
+    // Safari's empty view.
+    heardActivation({ tabId: 305, windowId: 1 });
+    pageStarted(305, { unseen: true, heard: activationsHeard() });
+    heardActivation({ tabId: 1, windowId: 1 }); // left (after its hello was handled)
+    await sleep(5);
+    fake.seen.add(305);
+    await focusTab(305);
+    assert.deepEqual(fake.updates.map((u) => u.id), [305, 1, 305], 'introduced, then shown');
+  } finally {
+    tabShown(305);
+    done();
+  }
+});
+
+test('introducing: a page\'s word that it started unseen, handled only once its tab had been left and come back (both activations came after its hello), doesn\'t stand once the page says it came into view; one whose bringing up came after it does', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 306, url: 'https://backbeforehello.test/' }, { id: 307, url: 'https://latepick.test/' }, { id: 308, url: 'https://notseen.test/' }], []);
+  try {
+    // 306: selected (loaded in front), its hello came, then tab 1 and 306
+    // again, all before the hello was handled (it waits for the ownership
+    // check, an activation for the state).
+    heardActivation({ tabId: 306, windowId: 1 });
+    const hello306 = activationsHeard();
+    heardActivation({ tabId: 1, windowId: 1 });
+    heardActivation({ tabId: 306, windowId: 1 });
+    pageStarted(306, { unseen: true, heard: hello306 });
+    // 307: the activation that brought it up came after its hello (a
+    // background starting, given both at once): not a return.
+    const hello307 = activationsHeard();
+    heardActivation({ tabId: 307, windowId: 1 });
+    pageStarted(307, { unseen: true, heard: hello307 });
+    // 308: left and back after its hello, but its page hasn't come into
+    // view (Safari loaded it afresh as it came back, say): introduced.
+    heardActivation({ tabId: 308, windowId: 1 });
+    const hello308 = activationsHeard();
+    heardActivation({ tabId: 1, windowId: 1 });
+    heardActivation({ tabId: 308, windowId: 1 });
+    pageStarted(308, { unseen: true, heard: hello308 });
+    await sleep(5);
+    fake.seen.add(306);
+    fake.seen.add(307);
+    putInFront(1);
+    await knownInFront(1);
+    fake.updates = [];
+    await focusTab(306);
+    assert.deepEqual(fake.updates.map((u) => u.id), [306], 'left and back since: shown, not introduced');
+    await sleep(5);
+    assert.equal((fake.session.unseenTabs ?? []).includes(306), false, 'its mark gone from the session too');
+    for (const id of [307, 308]) {
+      putInFront(1);
+      await knownInFront(1);
+      fake.updates = [];
+      await focusTab(id);
+      assert.deepEqual(fake.updates.map((u) => u.id), [id, 1, id], `tab ${id}: introduced, then shown`);
+    }
+  } finally {
+    for (const id of [306, 307, 308]) tabShown(id);
+    done();
+  }
 });
 
 test('openBehind: a new tab shown at its first paint, still loading, is introduced all the same (it was never in a window)', async () => {
@@ -1520,7 +1603,10 @@ const unloaded = new Map(); // id → how
 const noPage = new Set();
 const viewed = new Set();
 const busy = new Map(); // id → ms
-/** @param {any[]} tabs @param {Record<number, { loadMs?: number, startMs?: number, behind?: boolean, cached?: boolean, busyMs?: number }>} asleep @param {{ answerMs?: number }} [options] */
+// `launchMs`: its process starts that long after the selection (a Mac
+// busy after a relaunch): its scripts wait until then, Safari still says
+// 'complete' (as for any tab it unloaded), and its load starts then.
+/** @param {any[]} tabs @param {Record<number, { loadMs?: number, startMs?: number, behind?: boolean, cached?: boolean, busyMs?: number, launchMs?: number }>} asleep @param {{ answerMs?: number }} [options] */
 async function restoring(tabs, asleep, { answerMs = 0 } = {}) {
   const done = await introducing(tabs, []);
   unloaded.clear();
@@ -1549,7 +1635,16 @@ async function restoring(tabs, asleep, { answerMs = 0 } = {}) {
     };
     if (how && change.active) {
       viewed.add(id);
-      if (how.behind) {
+      if (how.launchMs) {
+        let launched = () => {};
+        const running = new Promise((resolve) => { launched = resolve; });
+        fake.suspended.set(id, { wait: () => running, shown() {} });
+        setTimeout(() => {
+          fake.suspended.delete(id);
+          if (unloaded.has(id) && fake.tabs.has(id)) load();
+          launched();
+        }, how.launchMs);
+      } else if (how.behind) {
         if (how.startMs) setTimeout(() => unloaded.has(id) && fake.tabs.has(id) && load(), how.startMs);
         else load();
       } else setTimeout(() => fake.tabs.get(id)?.active && unloaded.has(id) && load(), 0);
@@ -1648,6 +1743,44 @@ test('restoring: Safari putting the load off (it loads the tab selected by then)
   }
 });
 
+test('restoring: Safari slow to answer (tabs.get 350 ms, as after a relaunch) and putting the load off: its script\'s failure, 20 ms on, is still heard (not taken as a page too busy to answer), so each counts as a miss, and restores go off after two', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 77, url: 'https://slowb.test/' }, { id: 78, url: 'https://slowc.test/' }], { 77: { behind: false }, 78: { behind: false } });
+  const get = chrome.tabs.get;
+  const run = chrome.scripting.executeScript;
+  const slow = (id) => id === 77 || id === 78;
+  chrome.tabs.get = async (id) => {
+    if (slow(id)) await sleep(350);
+    return get(id);
+  };
+  chrome.scripting.executeScript = async (options) => {
+    if (slow(options.target.tabId)) await sleep(20);
+    return run(options);
+  };
+  try {
+    await decided();
+    for (const id of [77, 78]) {
+      putInFront(1);
+      await knownInFront(1);
+      fake.updates = [];
+      const entries = [];
+      tapLog((e) => entries.push(e));
+      await focusTab(id, { deadline: Date.now() + 7000 });
+      tapLog(null);
+      const entry = entries.find((e) => e.kind === 'switch' && e.tabId === id);
+      assert.equal(entry?.restored, 'not loaded', `tab ${id}: ${entry?.restored} (${entry?.restoreStart})`);
+      assert.equal(entry?.restoreStart, undefined);
+      resetRestores();
+    }
+    assert.equal(fake.session.restoresOff, true);
+  } finally {
+    chrome.tabs.get = get;
+    chrome.scripting.executeScript = run;
+    delete fake.session.restoresOff;
+    resetRestores();
+    done();
+  }
+});
+
 test('restoring: misses count only in a row: a tab loaded behind between two keeps restores on', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 66, url: 'https://b.test/' }, { id: 67, url: 'https://c.test/' }, { id: 68, url: 'https://d.test/' }], { 66: { behind: false }, 67: {}, 68: { behind: false } });
   try {
@@ -1682,14 +1815,37 @@ test('restoring: a page back from its cache at once (never seen loading) is foun
   }
 });
 
-test('restoring: a page too busy to answer a script once back is taken as loading (not a miss), and doesn\'t hold the switch up', async () => {
+test('restoring: a page too busy to answer a script once back is taken as loading (not a miss), and held up only to the usual limit (its load not seen, its document silent: Safari\'s \'complete\' says nothing)', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 71, url: 'https://busy.test/' }], { 71: { cached: true, busyMs: 8000 } });
   try {
     const asked = Date.now();
     const result = await focusTab(71, { deadline: asked + 7000 });
     assert.equal(result.tab?.id, 71);
-    assert.ok(fake.updates.at(-1).at - asked < 2500, `shown in time (${fake.updates.at(-1).at - asked}ms)`);
+    const shown = fake.updates.at(-1).at - asked;
+    // (2.5 s, then the introduction's questions to the busy page.)
+    assert.ok(shown >= 2450 && shown < 4000, `shown at the usual limit, not the 4 s one (${shown}ms)`);
     assert.equal(fake.session.restoreMisses, undefined, 'not counted as Safari putting it off');
+  } finally {
+    done();
+  }
+});
+
+test('restoring: a tab whose process is slow to start once selected (its scripts wait, Safari still says \'complete\') isn\'t taken as loaded: it stays behind until its load is seen and it has loaded, then is introduced and shown', async () => {
+  const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 76, url: 'https://launching.test/' }], { 76: { launchMs: 1100, loadMs: 300 } });
+  try {
+    const entries = [];
+    tapLog((e) => entries.push(e));
+    const asked = Date.now();
+    const result = await focusTab(76, { deadline: asked + 7000 });
+    tapLog(null);
+    assert.equal(result.tab?.id, 76);
+    assert.deepEqual(fake.updates.map((u) => u.id), [76, 1, 76, 1, 76], 'restored, introduced, shown');
+    const introducedAt = fake.updates[2].at - asked;
+    assert.ok(introducedAt >= 1380, `introduced once it had loaded (${introducedAt}ms; its load started at 1100, done at 1400)`);
+    const entry = entries.find((e) => e.kind === 'switch' && e.tabId === 76);
+    assert.equal(entry?.restored, 'loaded');
+    assert.equal(entry?.restoreStart, 'waiting', 'the switch log says its start wasn\'t seen at first');
+    assert.equal(fake.session.restoreMisses, undefined);
   } finally {
     done();
   }

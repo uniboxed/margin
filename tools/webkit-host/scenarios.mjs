@@ -831,6 +831,23 @@ export const SCENARIOS = {
     check('H', 'H: the switch says its page was unseen and it introduced it', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.introduced === true && e.unseen === true && !e.error)`),
     noPageErrors('H'),
   ],
+  // A Safari relaunch with tabs it unloaded (all but the one in front): the
+  // repair of the open tabs asks each of them once, in its first pass, and
+  // no pass after asks them again (background/tabs.js injectIntoOpenTabs:
+  // after a relaunch on 2026-11-03, twice per pass over four passes); a
+  // click as Margin starts isn't held up behind it, and the unloaded tab it
+  // asks for is restored behind the page. The tab in front (no page yet at
+  // the first pass) and the one switched to are asked again once loaded.
+  // Within about 4 s of the restart (README.md): the last pass isn't seen.
+  restartrepair: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, { op: 'open', name: 'D', url: '/p/D' }, { op: 'open', name: 'E', url: '/p/E' },
+    wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1500),
+    { op: 'restart' }, drawn('A'),
+    switchTo('A', 'C'), shown('C'), drawn('C'),
+    check('C', 'C: the repair asked each tab Safari unloaded once (its first pass), none again after', `const log = await Margin.content.send('switchLog'); const at = log.findLastIndex((e) => e.kind === 'repair' && e.pass === 0); const passes = log.slice(at).filter((e) => e.kind === 'repair'); return at >= 0 && passes[0].noPage >= 3 && passes.length >= 2 && passes.slice(1).every((e) => e.noPage === 0) && passes.slice(1).reduce((n, e) => n + e.asked, 0) <= 2`, 2500),
+    check('C', 'C: its switch started in time (not expired before it), restored behind the page', `const log = await Margin.content.send('switchLog'); const start = log.findLast((e) => e.kind === 'repair' && e.pass === 0)?.at ?? Infinity; const since = log.filter((e) => e.kind === 'switch' && e.at > start - 5000); const last = since.at(-1); return !since.some((e) => e.error === 'expired') && last?.restored != null && last?.before != null`),
+    noPageErrors('C'),
+  ],
   // A hidden tab prepared from the state it has: it heard every write since its
   // last read (the background's `rev` is the one it saw last), so it draws
   // without reading storage (content/core.js prepareForShow, timings.known),

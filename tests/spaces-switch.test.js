@@ -315,8 +315,8 @@ test('install repair: replaces stale sidebars immediately and never reinjects a 
   fake.injected = [];
   fake.disabled = [];
   await injectIntoOpenTabs({ retry: false });
-  assert.deepEqual(fake.disabled, [2, 3, 4, 5], 'stale UI is disabled before those pages are repaired');
-  assert.deepEqual(fake.injected.map((x) => x.tabId), [2, 3, 4, 5]);
+  assert.deepEqual([...fake.disabled].sort(), [2, 3, 4, 5], 'stale UI is disabled before those pages are repaired');
+  assert.deepEqual(fake.injected.map((x) => x.tabId).sort(), [2, 3, 4, 5]);
   assert.equal(fake.disabled.includes(1), false, 'the current copy is left visible');
   assert.equal(fake.disabled.includes(6), false, 'browser-internal pages are not retried');
 });

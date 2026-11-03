@@ -955,11 +955,19 @@ export function startCore({ onTheme } = {}) {
   const startedVisible = !document.hidden && document.readyState === 'loading' && madeAfresh;
   let wasHidden = !startedVisible;
   let windowSeen = !startedVisible;
+  // Whether this page has itself come into view (visible after hidden). Its
+  // tab came into the window then, whoever showed it, only if it wasn't
+  // there before: a page in front also goes hidden and comes back as its
+  // window is covered and uncovered, which WebKit doesn't count. So the
+  // background takes it as its tab's mark only where it knows it was out of
+  // the window (background/tabs.js pageThere 'seen', sawInWindow).
+  let cameIntoView = false;
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) wasHidden = true;
-    else if (wasHidden) windowSeen = true;
+    else if (wasHidden) windowSeen = cameIntoView = true;
   });
   Margin.content.windowSeen = () => windowSeen;
+  Margin.content.cameIntoView = () => cameIntoView;
   // Never longer than this hidden (a switch that didn't happen, or a page
   // shown without its frames running).
   const ARRIVAL_MAX_MS = 3000;
