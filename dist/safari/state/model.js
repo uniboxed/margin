@@ -21,10 +21,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   sidebarPinnedOpen: false,
   frameWhenHidden: true, // the sidebar hidden: Margin's frame around the page, the page inside it at its sides
   archiveAfterHours: 12,
-  // Safari: the tabs of the space in front are kept ready to show (no flash
-  // when switching to them) until this many minutes after Safari was last
-  // used; 0: off (background/keep-ready.js).
-  keepTabsReadyMinutes: 30,
+  // Safari: the tab just left is kept ready to show (no flash when switching
+  // back to it) for this many minutes, and let go once Safari is left for
+  // another app; 0: off (background/keep-ready.js).
+  keepLeftTabReadyMinutes: 1,
   // Searches use the browser's engine (shared/search.js). Safari: the one
   // learned from Safari's own address-bar searches, { id, name, template, at }.
   safariSearch: null,
@@ -117,8 +117,12 @@ function normalizeState(raw = {}) {
 // Settings that no longer exist: `searchEngine` (Margin's own engine
 // choice, replaced by the browser's); `sidebarWidth` (now Arcadia's own,
 // settings.themes.arcadia; normalizeThemes moves a saved one there);
-// `paletteShortcut` (⌥K: ⌘T opens the same palette, content/palette.js).
-const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
+// `paletteShortcut` (⌥K: ⌘T opens the same palette, content/palette.js);
+// `keepTabsReadyMinutes` (up to six tabs of the space in front, until that
+// long after Safari was last used: most of Tirth's battery; replaced by
+// keepLeftTabReadyMinutes, the tab just left only, whose default it doesn't
+// change, even turned off: shared/view.js keepReadyMinutes).
+const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut', 'keepTabsReadyMinutes'];
 const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 
 // Each theme's settings, filled in by the theme (which also takes over what

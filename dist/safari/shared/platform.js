@@ -14,9 +14,9 @@ const PROFILES = {
     // Wake a hidden tab's process before showing it (background/tabs.js
     // wakeTab): Safari blanks a suspended tab until it has drawn again.
     wakeTabs: true,
-    // Keep the tabs of the space in front running while Safari is in use
-    // (background/keep-ready.js, setting keepTabsReadyMinutes): Safari drops a
-    // suspended tab's drawn layers, so switching to it flashes.
+    // Keep the tab just left running for a minute (background/keep-ready.js,
+    // setting keepLeftTabReadyMinutes): Safari drops a suspended tab's drawn
+    // layers, so switching back to it flashes.
     keepTabsReady: true,
     // A tab never in front is brought to the front and straight back, out of
     // sight, before Margin first shows it (background/tabs.js introduceTab):

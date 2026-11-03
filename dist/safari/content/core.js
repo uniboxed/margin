@@ -7,6 +7,7 @@ import * as V from '../shared/view.js';
 import { createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHost } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
+import { watchAway } from '../shared/away.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
@@ -464,19 +465,9 @@ export function startCore({ onTheme } = {}) {
   };
   const KEY_EVENTS = ['keydown', 'keypress', 'keyup'];
   for (const type of KEY_EVENTS) addEventListener(type, holdKeys, true);
-  // Safari in use: the background keeps the tabs of this space ready to show
-  // while it is (background/keep-ready.js). A click, key or scroll here says
-  // so, at most once a minute.
-  const USED_EVERY_MS = 60_000;
-  let usedSaidAt = 0;
-  const onUse = (/** @type {Event} */ event) => {
-    if (!platform?.keepTabsReady || !(Number(state?.settings?.keepTabsReadyMinutes) > 0)) return; // Safari, and on
-    if (!event.isTrusted || Date.now() - usedSaidAt < USED_EVERY_MS) return;
-    usedSaidAt = Date.now();
-    void send('used', undefined, false);
-  };
-  const USE_EVENTS = ['pointerdown', 'keydown', 'wheel'];
-  for (const type of USE_EVENTS) addEventListener(type, onUse, { capture: true, passive: true });
+  // Safari left for another app with this page in front: the background lets
+  // go of the tab it keeps ready (background/keep-ready.js). Safari, and on.
+  watchAway({ isOn: () => !!platform?.keepTabsReady && V.keepReadyMinutes(state?.settings) > 0, send: (type, payload) => send(type, payload, false) });
   // A switch from this page called off (Escape, the palette opened again):
   // the page stays, as clicking its own tab does; a new tab loading behind it
   // stays there (background/tabs.js openBehind).

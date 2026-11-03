@@ -562,6 +562,23 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Keep-ready: the tab just left, for a minute (2026-11-03)
+
+Keep-ready now keeps only the tab you just left (and the one before it) ready, for a minute, and lets go of them when you leave Safari. It used to keep up to six tabs running all the time. Settings on Margin's new-tab page: "Keep the tab you just left ready to show…". Your 0 for the old setting doesn't carry over: the new one starts at 1.
+
+- [ ] Settings shows 1, though you had set the old one to 0. The field takes 0 to 10.
+- [ ] A → B → C quickly (a click every quarter second or so), then straight back to B: no flash.
+- [ ] Switch from a heavy tab (mail, chat, a long document) to another, then back within a minute: no black flash. Same through Safari's own tab bar, and with ⌃⌘→/← to another space and back.
+- [ ] A → B → C, then back to A within a minute: no flash. A tab you left more than a minute ago may flash as with keep-ready off. Note how often that bothers you.
+- [ ] Use Safari normally for 30 minutes, on battery. Activity Monitor → Energy, and CPU with View → All Processes: the `Safari Web Content` processes of tabs you aren't looking at sit near 0% once you've stopped switching for a minute. Compare the battery drop with yesterday's hour (45% to 6%).
+- [ ] Switch to another app (⌘Tab) for a few seconds, come back, and switch to the tab you left just before: note whether it flashes. Then stay away 10 seconds or more: the hidden tabs' CPU should drop to near 0 in Activity Monitor while you're away.
+- [ ] Whether Margin hears that Safari was left: switch tabs, then ⌘Tab to another app. In Activity Monitor, the tab you just left should drop to near 0% within about 5 s, not after a minute.
+- [ ] Click into Safari's address bar for more than 3 seconds, press Esc, then go back to the tab you left: note whether it flashes (expected now and then).
+- [ ] Type in a Google Docs document, switch tabs and back once, then ⌘Tab to another app: the tab you left drops to near 0% CPU within about 5 s, as on other pages.
+- [ ] Two Safari windows side by side: switch tabs in one, click into the other, wait 5 s, click back and return to the tab you left: no flash.
+- [ ] Other Safari profiles: with Safari left alone for 10 minutes, `/usr/bin/log show --last 10m --predicate 'process == "Safari" AND eventMessage CONTAINS "Starting foreground activity" AND eventMessage CONTAINS "Web Extension background content"' | wc -l` is a handful, not about 10 per profile (one a minute each before).
+- [ ] Chrome: switching behaves as before.
+
 ## No crash from asking for animations (2026-11-03)
 
 The page in front went black for about 2 seconds and reloaded when WebKit crashed sorting a page's animations, which Margin asked for on every read of the page's layout. Margin no longer asks.

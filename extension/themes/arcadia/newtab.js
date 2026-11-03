@@ -7,6 +7,7 @@ import * as V from '../../shared/view.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
+import { watchAway } from '../../shared/away.js';
 import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../../shared/stored.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
 import { installNewTabKey, newTabCloser, reportingSwitches } from '../../content/palette.js';
@@ -220,22 +221,15 @@ export function mount({ api, self, send, windowed = false }) {
     renderLauncher();
   });
 
-  // Safari in use (as on web pages, content/core.js): a click, key or scroll
-  // here keeps the tabs of the space ready (background/keep-ready.js).
-  let usedSaidAt = 0;
-  const onUse = (/** @type {Event} */ event) => {
-    if (!platform?.keepTabsReady || !(Number(state?.settings?.keepTabsReadyMinutes) > 0)) return; // Safari, and on
-    if (!event.isTrusted || Date.now() - usedSaidAt < 60_000) return;
-    usedSaidAt = Date.now();
-    void send('used');
-  };
-  for (const type of ['pointerdown', 'keydown', 'wheel']) addEventListener(type, onUse, { capture: true, passive: true });
+  // Safari left for another app with this page in front (as on web pages,
+  // content/core.js): the tab kept ready is let go (background/keep-ready.js).
+  watchAway({ isOn: () => !!platform?.keepTabsReady && V.keepReadyMinutes(state?.settings) > 0, send });
   const keepReady = $('keep-ready-minutes');
   if (platform?.keepTabsReady) {
     $('keep-ready-setting').hidden = false;
     keepReady.addEventListener('change', () => {
       const value = Number(keepReady.value);
-      if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { keepTabsReadyMinutes: Math.round(value) } });
+      if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { keepLeftTabReadyMinutes: Math.min(Math.round(value), 10) } }); // (keep-ready.js MAX_MINUTES)
     });
   }
 
@@ -481,7 +475,7 @@ export function mount({ api, self, send, windowed = false }) {
     if (document.activeElement !== themeSelect) themeSelect.value = themeFor(state.settings).id;
     gestureGuard?.update();
     if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
-    if (document.activeElement !== keepReady) keepReady.value = String(state.settings.keepTabsReadyMinutes ?? 30);
+    if (document.activeElement !== keepReady) keepReady.value = String(V.keepReadyMinutes(state.settings)); // (as stored: settings from before 2026-11-03 too)
     if (!recording) {
       const values = currentShortcuts();
       for (const input of shortcutInputs) input.value = shortcuts.format(values[input.dataset.shortcut]);

@@ -138,7 +138,7 @@ globalThis.chrome = {
 
 const { repairCutOff, wakeTab, forgetWake, focusTab, isFocusing, isIntroduction, isNeverShown, likelySuspended, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
 const { tapLog } = await import('../extension/background/diagnostics.js');
-const { holdNow, keepReadyState, noteLeft, noteUsed, resetKeepReady, startedAgain, switchFacts } = await import('../extension/background/keep-ready.js');
+const { holdNow, keepReadyState, noteLeft, resetKeepReady, startedAgain, switchFacts } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
 const { mutate, decided, load, markSynced } = await import('../extension/background/store.js');
@@ -2766,7 +2766,6 @@ test('kick: never a tab keep-ready holds (its process runs: a slow wake there is
     await markSynced();
     await mutate((st) => M.upsertTab(st, fake.tabs.get(204), Date.now() - 60_000));
     fake.holdsRun = true;
-    noteUsed();
     for (const id of [204, 205]) noteLeft(id, Date.now() - 10_000);
     holdNow(204);
     await sleep(10);

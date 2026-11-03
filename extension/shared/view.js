@@ -223,4 +223,18 @@ function iconFor(state, item) {
   return (origin && state?.favicons?.[origin]?.data) || '';
 }
 
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor };
+// How long keep-ready keeps the tab just left ready (minutes; 0: off), from
+// the settings as stored. Settings saved by a build before 2026-11-03 have
+// only `keepTabsReadyMinutes` (up to six tabs, until that long after Safari
+// was last used): it doesn't carry over, not even as off. It measured
+// something else, and turning it off was a way out of what it cost (Tirth
+// did, to save his battery), which the tab just left alone doesn't: the
+// default, 1, until a value is saved. Pages read the settings as stored, so
+// they need this too (state/model.js gives the default the same way).
+function keepReadyMinutes(settings) {
+  if (!settings || !('keepLeftTabReadyMinutes' in settings)) return 1;
+  const minutes = Number(settings.keepLeftTabReadyMinutes);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
+}
+
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, keepReadyMinutes };

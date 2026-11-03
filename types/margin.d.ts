@@ -47,7 +47,7 @@ export interface Settings {
   sidebarPinnedOpen: boolean;
   frameWhenHidden?: boolean;
   archiveAfterHours: number;
-  keepTabsReadyMinutes: number;
+  keepLeftTabReadyMinutes: number;
   sidebarShortcut: string;
   newTabHint: boolean;
   safariSearch: { id: string; name: string; template: string; at: number } | null;

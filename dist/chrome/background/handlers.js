@@ -412,10 +412,16 @@ export const handlers = {
   // Page zoom (the browser's own, like ⌘+): for Margin's pinch, and so
   // Margin's UI keeps its size on a zoomed page; remembered per site.
   // ⌘T reached Margin on a page (content/palette.js installNewTabKey).
-  // Safari in use (a page saw a click, key or scroll: content/core.js): the
-  // tabs of the space in front stay ready (background/keep-ready.js).
-  async used() {
-    keepReady.noteUsed();
+  // The page in front lost focus while in sight (Safari left for another
+  // app; `at`: when), and got it back: the tabs kept ready are let go a
+  // moment later, unless Safari is back first (shared/away.js,
+  // background/keep-ready.js noteAway: not if Safari was seen in use since).
+  /** @param {{ at?: number }} request @param {any} sender */
+  async away({ at } = {}, sender) {
+    keepReady.noteAway({ at: Number.isFinite(at) ? at : null, tabId: sender?.tab?.id ?? null, windowId: sender?.tab?.windowId ?? null });
+  },
+  async back(_request, sender) {
+    keepReady.noteFocused(sender?.tab?.windowId ?? null);
   },
   // The page in front was hidden for an instant during a switch
   // (shared/switching.js onBlink): tabs.js pageBlinked.

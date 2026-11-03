@@ -108,7 +108,7 @@ const kicked = (ms, outcome, label, entry) => [
   { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
   wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),
   // (Keep-ready off: a tab it holds isn't kicked.)
-  { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepTabsReadyMinutes: 0 } }))' },
+  { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepLeftTabReadyMinutes: 0 } }))' },
   { op: 'show', name: 'B' }, wait(300), { op: 'show', name: 'A' }, wait(300),
   { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
   { op: 'page', in: 'B', js: `window.__from = __vis.length; ${BUSY_AT_HOLD(ms)}` },
@@ -1304,8 +1304,7 @@ export const SCENARIOS = {
   ],
   // Keep-ready's holds (background/keep-ready.js) through a run of switches
   // in Safari's own tab bar: each tab left is held at once, but never more
-  // than six (MAX_HELD): past them, the tab used longest ago lets go at once
-  // (before, every hold stayed its 75 s, and a run of switches held them all).
+  // than two (MAX_HELD): past them, the tab used longest ago lets go at once.
   // A hold is a keepAwake waiting in the page's own world: its pageswap
   // listener, counted there.
   kick: kicked(150, 'resumed', 'woken again in time, prepared and drawn before it was shown', `e.preparation?.outcome === 'ready' && e.barrier?.some((b) => b.how === 'drawn') && !e.stuck`),
@@ -1318,9 +1317,28 @@ export const SCENARIOS = {
     wait(300),
     { op: 'page', in: 'J', js: 'return "holds counted in each tab next"' },
     ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: `return '${name}: ' + __holds()` })),
-    ...['A', 'B', 'C'].map((name) => checkPage(name, `${name}: left first, let go once six later tabs were held`, '__holds() === 0', 1500)),
-    ...['D', 'E', 'F', 'G', 'H', 'I'].map((name) => checkPage(name, `${name}: among the six left last, held`, '__holds() >= 1', 1500)),
+    ...['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((name) => checkPage(name, `${name}: left earlier, let go once two later tabs were held`, '__holds() === 0', 3000)),
+    ...['H', 'I'].map((name) => checkPage(name, `${name}: among the two left last, held`, '__holds() >= 1', 1500)),
     checkPage('J', 'J: the tab in front holds nothing', '__holds() === 0', 1500),
+  ],
+  // Safari left for another app (the page in front lost focus while in sight:
+  // shared/away.js sends 'away'; the host never has focus, so it's sent from
+  // the page's Margin world here): the two tabs held are let go 3 s later.
+  // The same word from a tab behind (B, a page that lost focus while still
+  // drawn, its word late) doesn't count: 3.2 s after it, still held. All
+  // within the host's ~5 s of background life.
+  'keep-ready-away': [
+    ...['A', 'B', 'C'].map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
+    ...['A', 'B', 'C'].map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),
+    { op: 'install' }, drawn('A'),
+    { op: 'show', name: 'B' }, wait(120), { op: 'show', name: 'C' },
+    ...['A', 'B'].map((name) => checkPage(name, `${name}: left, held`, '__holds() >= 1', 1000)),
+    { op: 'eval', in: 'B', js: 'return JSON.stringify(await Margin.content.send("away", { at: Date.now() }))' },
+    wait(1200),
+    { op: 'eval', in: 'C', js: 'return JSON.stringify(await Margin.content.send("away", { at: Date.now() }))' },
+    wait(2000),
+    ...['A', 'B'].map((name) => checkPage(name, `${name}: still held 2 s after Safari was left`, '__holds() >= 1', 200)),
+    ...['A', 'B'].map((name) => checkPage(name, `${name}: let go once Safari was left for 3 s`, '__holds() === 0', 3000)),
   ],
   // A hidden tab's title ticking (a chat, a timer: background/tab-updates.js):
   // its changes are gathered into a write every 2 s at most, not one each,
