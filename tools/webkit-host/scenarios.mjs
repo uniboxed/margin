@@ -92,36 +92,39 @@ const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return 
 const HOLD_TABS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 const COUNT_HOLDS = `const live = new Set(); const add = addEventListener, remove = removeEventListener; window.addEventListener = function (type, fn, options) { if (type === 'pageswap') live.add(fn); return add.call(this ?? window, type, fn, options); }; window.removeEventListener = function (type, fn, options) { if (type === 'pageswap') live.delete(fn); return remove.call(this ?? window, type, fn, options); }; window.__holds = () => live.size; return 'counting holds'`;
 
-// kick, kick-stuck: a switch to a tab whose wake hasn't answered 60 ms after
-// it went out kicks it first (tabs.js kickTab: to the front and the page in
-// front straight back, in one turn), as Safari's resume of a suspended
-// process makes it wait. The host never suspends a process, so here the
-// page's main thread is busy for `ms` from the moment the wake's hold reaches
-// it (keepAwake listens for pageswap). The kick must not hide the page in
-// front (its one hide is the real switch), and comes before the real show;
-// the tab woken again in time ('resumed') is prepared and drawn before it's
-// shown; not ('stuck'), it's shown at once. B is shown once first, in the
-// host's tab bar: only a tab Margin knows has a page (left in its time) is
-// kicked or shown without its wake.
+// wake-wait, wake-cap: a switch to a tab whose wake answers late (as Safari's
+// resume of a suspended process makes it wait) keeps the page before on
+// screen until it does (tabs.js focusTabNow, mayWait), then has the tab
+// prepared and drawn before it's shown ('resumed'); one with no answer by
+// 1.6 s is shown then, as it is ('capped'). Nothing else comes to the front
+// meanwhile: the page before is hidden once (the switch), the tab shown once.
+// The host never suspends a process, so here the page's main thread is busy
+// for `ms` from the moment the wake's hold reaches it (keepAwake listens for
+// pageswap). B is shown once first, in the host's tab bar.
 const BUSY_AT_HOLD = (ms) => `let armed = true; const add = addEventListener; window.addEventListener = function (type, fn, options) { if (armed && type === 'pageswap') { armed = false; const until = performance.now() + ${ms}; while (performance.now() < until); } return add.call(this ?? window, type, fn, options); }; return 'busy at the next hold'`;
-const kicked = (ms, outcome, label, entry) => [
+const waitedFor = (ms, outcome, label, entry) => [
   { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
   wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),
-  // (Keep-ready off: a tab it holds isn't kicked.)
+  // (Keep-ready off: a tab it holds isn't waited for.)
   { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepLeftTabReadyMinutes: 0 } }))' },
-  { op: 'show', name: 'B' }, wait(300), { op: 'show', name: 'A' }, wait(300),
+  { op: 'show', name: 'B' }, wait(200), { op: 'show', name: 'A' }, wait(250),
   { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
   { op: 'page', in: 'B', js: `window.__from = __vis.length; ${BUSY_AT_HOLD(ms)}` },
   switchTo('A', 'B'), shown('B'),
-  { op: 'eval', in: 'B', js: `${ID} return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1))` },
-  { op: 'page', in: 'B', js: `return JSON.stringify(__vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]))` },
-  checkPage('A', 'A: hidden once (the switch), not by the kick', `JSON.stringify(__visibility) === '["hidden"]'`),
-  // (The kick's two changes, then its real show: a page busy as they come
-  // reads its state once it gets to them.)
-  checkPage('B', 'B: its visibility changed twice for the kick, before its real show', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.length === 3 && v[2] === 'shown'`),
-  check('B', `B: kicked, ${outcome}: ${label}`, `${ID} const e = (await Margin.content.send('switchLog')).filter((x) => x.kind === 'switch' && x.tabId === id('B')).at(-1); return !!e && !e.error && e.kicked?.outcome === '${outcome}' && e.kicked.at < e.shownAfter && (${entry})`),
+  // (The switch log first: the host's background stops about 5 s after it starts.)
+  { op: 'eval', in: 'A', js: `${ID} return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1))` },
+  check('A', `B: ${outcome}: ${label}`, `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('B')).at(-1); return !!e && !e.error && e.wakeOutcome === '${outcome}' && e.kicked === undefined && (${entry})`),
+  checkPage('A', 'A: hidden once (the switch)', `JSON.stringify(__visibility) === '["hidden"]'`),
+  checkPage('B', 'B: shown once, nothing before', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.length === 1 && v[0] === 'shown'`),
   noPageErrors('B'),
 ];
+// wake-reveal, wake-space: the sidebar brought out (toggled) wakes the tab
+// used before the one in front, and a pointer resting on a space's icon wakes
+// that space's most recent tab (sidebar.js); a switch soon after takes the
+// wake on, and the switch log says what started it. Keep-ready off (it would
+// hold the tab just left, which isn't woken then). Within the host's ~5 s of
+// background life.
+const CHIP = (name) => `${ID} const { tabSpace } = await ${STATE}('tabSpace'); const root = __shadowOf(document.querySelector('margin-sidebar-host')); const chip = root.querySelector('.chip[data-space-id="' + tabSpace[id('${name}')] + '"]'); chip.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, composed: true, pointerType: 'mouse' })); return 'resting on ' + chip.title`;
 
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core, the background
@@ -1307,8 +1310,27 @@ export const SCENARIOS = {
   // than two (MAX_HELD): past them, the tab used longest ago lets go at once.
   // A hold is a keepAwake waiting in the page's own world: its pageswap
   // listener, counted there.
-  kick: kicked(150, 'resumed', 'woken again in time, prepared and drawn before it was shown', `e.preparation?.outcome === 'ready' && e.barrier?.some((b) => b.how === 'drawn') && !e.stuck`),
-  'kick-stuck': kicked(700, 'stuck', 'not woken again in time, shown at once', `e.stuck === true && !e.barrier`),
+  'wake-wait': waitedFor(500, 'resumed', 'waited for with the page before on screen, then prepared and drawn before it was shown', `e.waitedOnOldPage >= 450 && e.wakeStartedBy === 'switch' && e.preparation?.outcome === 'ready' && e.barrier?.some((b) => b.how === 'drawn')`),
+  'wake-cap': waitedFor(2200, 'capped', 'no answer by 1.6 s: shown then, as it was', `e.waitedOnOldPage >= 1550 && e.shownAfter < 2100 && !e.barrier`),
+  'wake-reveal': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),
+    { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepLeftTabReadyMinutes: 0 } }))' },
+    { op: 'show', name: 'B' }, wait(200), { op: 'show', name: 'A' }, wait(300),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.toggle(); return 'sidebar out'` }, wait(250),
+    switchTo('A', 'B'), shown('B'),
+    check('B', 'B: woken as the sidebar came out on A (the tab used before it)', `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('B')).at(-1); return !!e && !e.error && e.wakeStartedBy === 'reveal'`),
+  ],
+  'wake-space': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'C', url: '/p/C' },
+    wait(800), { op: 'install' }, drawn('A'), themed('A'),
+    { op: 'eval', in: 'A', js: `${ID} await Margin.content.send('updateSettings', { patch: { keepLeftTabReadyMinutes: 0 } }); const work = (await Margin.content.send('createSpace', { name: 'Work' })).spaceId; await Margin.content.send('moveTabToSpace', { tabId: id('C'), spaceId: work }); return 'C moved to Work'` },
+    check('A', 'A: the Work space\'s icon is drawn', `!!__shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.chip[title="Work"]')`, 2000),
+    { op: 'eval', in: 'A', js: CHIP('C') }, wait(300),
+    { op: 'eval', in: 'A', js: `${ID} const { tabSpace } = await ${STATE}('tabSpace'); return JSON.stringify(await Margin.content.send('setSpace', { spaceId: tabSpace[id('C')] }))` },
+    shown('C'),
+    check('C', 'C: woken as the pointer rested on its space\'s icon', `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('C')).at(-1); return !!e && !e.error && e.wakeStartedBy === 'space'`),
+  ],
   'keep-ready-cap': [
     ...HOLD_TABS.map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
     ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),

@@ -2,7 +2,7 @@
 import * as M from '../state/model.js';
 import { api, cached, isOwner, mutate, now, stateRev, thisCopy } from './store.js';
 import { recordSwitch } from './diagnostics.js';
-import { hasNoPage, hiddenFor, isHeld, sessionKnown, switchFacts } from './keep-ready.js';
+import { isHeld, sessionKnown, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
 import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
@@ -25,35 +25,38 @@ export const shownAt = new Map(); // tabId → when it was last activated
 // Margin shows a tab, a script there keeps its process awake (Safari
 // suspends it again as soon as nothing needs it), and a second one answers
 // as soon as it has run: the process is running again and its layers are
-// back, so the switch goes ahead then (at most WAKE_MAX_MS later: a process
-// busy releasing memory took up to a second to come back in Safari's log, and
-// the old page stays on screen meanwhile). Waiting a fixed 70ms instead left
-// 23 of 100 such switches black (Safari's log, 2026-10-26). A tab Safari
-// unloaded has no page: the scripts fail at once and the switch doesn't wait
-// (Safari loads the page as it's shown). The wake can start early (a press on
-// a sidebar row, the palette resting on a row: handlers.js prewake); the
-// switch then picks up the same wake, already under way or done.
+// back, so the switch goes ahead then (a wake that says 'timeout' hasn't
+// answered within WAKE_MAX_MS; a switch to a tab that may be suspended waits
+// for its answer longer, the old page on screen: focusTabNow, mayWait).
+// Waiting a fixed 70ms instead left 23 of 100 such switches black (Safari's
+// log, 2026-10-26). A tab Safari unloaded has no page: the scripts fail at
+// once and the switch doesn't wait (Safari loads the page as it's shown, or
+// it's restored behind the page: restoreTab). The wake can start early (a
+// press on a sidebar row, the palette resting on a row, the sidebar coming
+// out: handlers.js prewake); the switch then picks up the same wake, already
+// under way or done.
 const WAKE_MAX_MS = 400;
 // A wake started this recently still counts, answered or not (a press on a
-// row, then its click).
+// row, then its click); one whose page hasn't answered yet, until it has.
 const WAKE_REUSE_MS = 600;
-// One whose page answered in time counts for as long as the hold it placed
-// runs, less what the switch that takes it over still needs held (wakeTab's
-// `need`): by default this, for a switch whose preparation is bounded by
-// PREPARE_AWAKE_MS (it holds the process itself while it's under way; then
-// tabs.update, ~110 ms). Each wake that goes out is a script that resumes a
-// process Safari suspended at background priority, and 65 of 114 in Tirth's
-// log weren't followed by a show (2026-11-02): a switch soon after one, the
-// key run's next tab woken ahead, a pointer resting on a row, takes the same
-// wake on.
+// One whose page answered (in time, or late once its process was resumed)
+// counts for as long as the hold it placed runs, less what the switch that
+// takes it over still needs held (wakeTab's `need`): by default this, for a
+// switch whose preparation is bounded by PREPARE_AWAKE_MS (it holds the
+// process itself while it's under way; then tabs.update, ~110 ms). Each wake
+// that goes out is a script that resumes a process Safari suspended at
+// background priority, and 65 of 114 in Tirth's log weren't followed by a
+// show (2026-11-02): a switch soon after one, the key run's next tab woken
+// ahead, a pointer resting on a row, takes the same wake on.
 const HOLD_LEFT_MS = 400;
-// A pointer resting on a sidebar row holds its tab this long, renewed every
-// 1.5 s while it stays (sidebar.js; a renewal sends the hold alone: wakeTab's
-// `holdOnly`), so each renewal lands while the hold before still runs. Not
-// longer: nothing ends a hover hold as the pointer leaves the row, and a held
-// hidden process runs at foreground priority (about 18% of a core in Tirth's
-// Safari), so the hold after the pointer leaves is 0.5–2 s (1.3–1.8 s before
-// 2026-11-02, with holds of KEEP_AWAKE_MS renewed every 500 ms).
+// A pointer resting on a sidebar row, a space's icon, or the sidebar coming
+// out over the page (sidebar.js) holds its tab this long, once: nothing renews
+// it, and nothing ends it as the pointer leaves. A held hidden process runs at
+// foreground priority (about 18% of a core in Tirth's Safari), and until
+// 2026-11-03 the sidebar renewed a row's hold every 1.5 s while the pointer
+// stayed. A click after it has run out sends a fresh wake: a process still
+// running answers in a few ms, one Safari has suspended again is waited for
+// with the page before on screen (focusTabNow).
 const HOVER_KEEP_AWAKE_MS = 2000;
 // Sidebar preparation (below) is an extra Safari-only round trip. It
 // normally takes a few milliseconds once a hover wake has landed; a process
@@ -70,9 +73,9 @@ const PREPARE_MAX_MS = 900;
 // show took a median 1.2–1.4 s). One that misses it is shown unprepared: it
 // has said hello by then, and draws its own tab.
 const PREPARE_LOADED_MS = 300;
-// A tab whose wake answered (its process running), neither kicked nor
-// introduced: its preparation gets this long from that answer. The page
-// draws from the state it has, without reading storage, when it saw the last
+// A tab whose wake answered (its process running), not introduced: its
+// preparation gets this long from that answer. The page draws from the state
+// it has, without reading storage, when it saw the last
 // write (content/core.js prepareForShow): a few ms after the script reaches
 // it. One later than this is a page busy with its own work, or a read stuck
 // behind a loaded Safari (11 of 45 such switches waited 529–1017 ms for it
@@ -98,69 +101,85 @@ const KEEP_AWAKE_MS = WAKE_REUSE_MS + SWITCH_HOLD_MS;
 // flashing in the sidebar).
 export const handingOff = new Set();
 
-/** @typedef {{ outcome: 'awake' | 'no page' | 'timeout' | 'shown' | 'gone' | 'no access', ms: number, startedAt: number, unseen?: boolean }} Wake `unseen`: its page started visible and hasn't come into view from hidden since (pageThere) */
+/** @typedef {'hover' | 'press' | 'reveal' | 'space' | 'keys' | 'switch'} WakeCause what started a wake: a pointer resting on a row (or the palette on one), a press on a row or a space's icon, the sidebar coming out, a space's icon or a swipe toward it, a key run's tab woken ahead, the switch itself */
+/** @typedef {{ outcome: 'awake' | 'no page' | 'timeout' | 'shown' | 'gone' | 'no access', ms: number, startedAt: number, by?: WakeCause, unseen?: boolean }} Wake `unseen`: its page started visible and hasn't come into view from hidden since (pageThere); `by`: what started it (DEVELOPMENT DIAGNOSTICS) */
 // `sent`: when its scripts went out (after the permission check, slow while
 // Safari starts), null if none did (nothing to wake): how long the page has
-// taken to answer is counted from then (focusTabNow's kick). `pending`: its
+// taken to answer is counted from then (resumedBehind). `pending`: its
 // scripts went out and its page hasn't answered yet (held up behind a resume,
-// past WAKE_MAX_MS too); kept until it has. `holdUntil`: once its page
-// answered in time, when the hold it placed ends at the earliest (counted
-// from `at`: the hold's own clock starts as it reaches the page).
-/** @typedef {{ at: number, done: Promise<Wake>, sent: Promise<number | null>, pending: boolean, holdUntil: number }} WakeEntry */
+// past WAKE_MAX_MS too); kept until it has. `answer`: its page's own answer,
+// however late (`done` says 'timeout' past WAKE_MAX_MS), and `settled` once
+// it's there: a wake taken on after that says it, not the timeout.
+// `holdUntil`: once its page answered, when the hold it placed ends at the
+// earliest. The hold's own clock starts as it reaches the page: at its resume
+// for a process Safari suspended, just before its answer (keepAwake goes out
+// first). So one that came late counts from that answer, less RESUMED_MS
+// (counted from `at`, a switch that waited for a late answer sent a second
+// wake once it came, and waited up to WAKE_MAX_MS more for it, out of the
+// time its page had to draw). `by`: what started it.
+/** @typedef {{ at: number, done: Promise<Wake>, answer: Promise<Wake>, settled: Wake | null, sent: Promise<number | null>, pending: boolean, holdUntil: number, by: WakeCause }} WakeEntry */
 /** @type {Map<number, WakeEntry>} */
 const wakes = new Map();
 // `renew`: a fresh wake even if one is recent (a tab whose hold ended as it
-// was shown for an instant). `holdOnly`: the sidebar's renewal while the
-// pointer rests on a row: the hold alone, one script (no answer asked for),
-// on a page whose wake answered and whose hold still runs; nothing while that
-// page hasn't answered (a second wake would only queue behind the first);
-// otherwise a fresh wake. `hover`: the sidebar's hold (HOVER_KEEP_AWAKE_MS).
+// was shown for an instant). `hover`: the sidebar's hold (HOVER_KEEP_AWAKE_MS).
 // `need`: how long the caller still needs the process held, at most
-// SWITCH_HOLD_MS: a wake taken on has that left of its hold.
-/** @param {number} tabId @param {{ renew?: boolean, holdOnly?: boolean, hover?: boolean, need?: number }} [options] @returns {Promise<Wake>} */
-export function wakeTab(tabId, { renew = false, holdOnly = false, hover = false, need = HOLD_LEFT_MS } = {}) {
+// SWITCH_HOLD_MS: a wake taken on has that left of its hold. `by`: what
+// starts it (the switch log); one taken on keeps its own.
+/** @param {number} tabId @param {{ renew?: boolean, hover?: boolean, need?: number, by?: WakeCause }} [options] @returns {Promise<Wake>} */
+export function wakeTab(tabId, { renew = false, hover = false, need = HOLD_LEFT_MS, by = 'switch' } = {}) {
   const recent = wakes.get(tabId);
   const t = Date.now();
-  if (recent && holdOnly) {
-    if (recent.pending) return recent.done;
-    if (t < recent.holdUntil) return renewHold(tabId, recent);
-  } else if (recent && !renew && (t - recent.at < WAKE_REUSE_MS || t < recent.holdUntil - need)) return recent.done;
+  // Taken on: one recent, one whose hold runs long enough, or one whose page
+  // hasn't answered yet (held up behind a resume: a second wake would only
+  // queue behind it).
+  if (recent && !renew && (recent.pending || t - recent.at < WAKE_REUSE_MS || t < recent.holdUntil - need)) return recent.settled ? Promise.resolve(recent.settled) : recent.done;
   const at = t;
-  const holdMs = hover || holdOnly ? HOVER_KEEP_AWAKE_MS : KEEP_AWAKE_MS;
+  const holdMs = hover ? HOVER_KEEP_AWAKE_MS : KEEP_AWAKE_MS;
   /** @type {(when: number | null) => void} */
   let sending = () => {};
   /** @type {Promise<number | null>} */
   const sent = new Promise((resolve) => { sending = resolve; });
+  /** @type {(woke: Wake) => void} */
+  let settle = () => {};
+  /** @type {(error: unknown) => void} */
+  let fail = () => {};
+  /** @type {Promise<Wake>} */
+  const answer = new Promise((resolve, reject) => { settle = resolve; fail = reject; });
   /** @type {WakeEntry} */
-  const entry = { at, done: /** @type {any} */ (null), sent, pending: false, holdUntil: 0 };
-  const answered = () => {
+  const entry = { at, done: /** @type {any} */ (null), answer, settled: null, sent, pending: false, holdUntil: 0, by };
+  // Its page's answer, however late: a wake that found it awake counts for as
+  // long as its hold runs; one that no longer counts by then is forgotten.
+  // `resumed`: it came past RESUMED_MS, its process resumed just then
+  // (resumedBehind), marked only while the wake still counts: one whose tab
+  // was shown meanwhile (a switch that stopped waiting for it) is in the
+  // window, and drawn for that.
+  const answered = (/** @type {Wake} */ woke, resumed = false) => {
     entry.pending = false;
-    if (wakes.get(tabId) === entry && Date.now() >= wakeEnd(entry)) wakes.delete(tabId);
+    entry.settled = woke;
+    if (wakes.get(tabId) === entry) {
+      if (woke.outcome === 'awake') {
+        entry.holdUntil = Math.max(entry.holdUntil, Math.max(at, Date.now() - RESUMED_MS) + holdMs);
+        if (resumed) resumedBehind.add(tabId); // (drawn before it's shown: focusTabNow)
+      }
+      if (Date.now() >= wakeEnd(entry)) wakes.delete(tabId);
+      else forgetLater(tabId, entry);
+    }
+    settle(woke);
   };
-  const done = startWake(tabId, at, holdMs, () => { entry.pending = true; sending(Date.now()); }, answered);
+  const done = startWake(tabId, at, holdMs, by, () => { entry.pending = true; sending(Date.now()); }, answered);
   entry.done = done;
-  void done.then((woke) => {
-    sending(null); // (no-op once sent)
-    if (woke.outcome !== 'awake' || wakes.get(tabId) !== entry) return;
-    entry.holdUntil = Math.max(entry.holdUntil, at + holdMs);
-    forgetLater(tabId, entry);
-  }, () => sending(null));
+  void done.then(() => sending(null), () => sending(null)); // (no-op once sent)
+  // A wake that fails before its scripts go out (its permission check
+  // throws): its answer fails with it, and so does a switch waiting for it.
+  void done.catch(fail);
   wakes.set(tabId, entry);
   forgetLater(tabId, entry);
   return done;
 }
-// The hold alone, renewed (wakeTab's `holdOnly`): the wake counts on for as
-// long as the new hold runs. Its page gone meanwhile (holdTab fails: no page
-// to hold) leaves nothing to take on.
-/** @param {number} tabId @param {WakeEntry} entry */
-function renewHold(tabId, entry) {
-  entry.holdUntil = Math.max(entry.holdUntil, Date.now() + HOVER_KEEP_AWAKE_MS);
-  forgetLater(tabId, entry);
-  void holdTab(tabId, HOVER_KEEP_AWAKE_MS).catch(() => false).then((held) => {
-    if (!held && wakes.get(tabId) === entry) wakes.delete(tabId);
-  });
-  return entry.done;
-}
+// The page's own answer to the tab's wake under way (or its last one, while
+// it counts), however late; null if there's none.
+/** @param {number} tabId @returns {Promise<Wake> | null} */
+const wakeAnswer = (tabId) => wakes.get(tabId)?.answer ?? null;
 // Until when a wake counts (and some, for a switch already holding it).
 /** @param {WakeEntry} entry */
 const wakeEnd = (entry) => Math.max(entry.at + WAKE_REUSE_MS + WAKE_MAX_MS, entry.holdUntil);
@@ -238,48 +257,52 @@ export async function keepAwake(ms, key = null) {
   };
 }
 
-// `holdMs`: how long its hold runs. `sent`, `answered`: as its scripts go
-// out, and as its page answers them (or they fail), past WAKE_MAX_MS too.
-/** @param {number} tabId @param {number} at @param {number} holdMs @param {() => void} sent @param {() => void} answered @returns {Promise<Wake>} */
-async function startWake(tabId, at, holdMs, sent, answered) {
-  const result = (/** @type {Wake['outcome']} */ outcome, unseen = false) => ({ outcome, ms: Date.now() - at, startedAt: at, ...(unseen ? { unseen } : {}) });
+// `holdMs`: how long its hold runs. `by`: what started it. `sent`: as its
+// scripts go out; `answered(wake, resumed)`: with its page's answer to them (or
+// their failure, or nothing to wake), past WAKE_MAX_MS too; `resumed` if it
+// came past RESUMED_MS.
+/** @param {number} tabId @param {number} at @param {number} holdMs @param {WakeCause} by @param {() => void} sent @param {(woke: Wake, resumed?: boolean) => void} answered @returns {Promise<Wake>} */
+async function startWake(tabId, at, holdMs, by, sent, answered) {
+  const result = (/** @type {Wake['outcome'] | 'unseen'} */ outcome) => /** @type {Wake} */ ({ outcome: outcome === 'unseen' ? 'awake' : outcome, ms: Date.now() - at, startedAt: at, by, ...(outcome === 'unseen' ? { unseen: true } : {}) });
+  const now = (/** @type {Wake['outcome']} */ outcome) => {
+    const woke = result(outcome);
+    answered(woke);
+    return woke;
+  };
   // Only Safari blanks a suspended tab (Chrome keeps its last frame).
-  if (!platform?.wakeTabs || !api.scripting?.executeScript) return result('no access');
+  if (!platform?.wakeTabs || !api.scripting?.executeScript) return now('no access');
   // What Margin knows of the tab, if its state is loaded (no round trip to
   // the browser before the wake: every one delays the switch); the
   // browser's answer otherwise. 'shown' (nothing to do) only as the browser
   // says: Margin's flag can be a moment behind.
   const tab = cached()?.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
-  if (!tab) return result('gone');
+  if (!tab) return now('gone');
   if (tab.active) {
     const live = await api.tabs.get(tabId).catch(() => null);
-    if (!live) return result('gone');
-    if (live.active) return result('shown');
+    if (!live) return now('gone');
+    if (live.active) return now('shown');
   }
   // Right away, not once the page has loaded (Chrome's default; WebKit
   // ignores the key and runs it right away anyway). The permission check
   // counts toward the wait too (it can be slow while Safari starts).
   const target = { tabId };
+  let resumed = false;
   const ran = (async () => {
     if (!(await mayAccessCached(tab.url))) return 'no access';
     sent();
     const sentAt = Date.now();
     api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, func: keepAwake, args: [holdMs] }).catch(() => {});
     return api.scripting.executeScript({ target, injectImmediately: true, func: pageThere }).then((rows) => {
-      answered();
       if (!ranThere(rows)) return 'no page';
-      answeredAt.set(tabId, Date.now()); // (also once past WAKE_MAX_MS: it's awake now)
-      if (Date.now() - sentAt > KICK_AFTER_MS) resumedBehind.add(tabId); // (focusTabNow's kick)
+      resumed = Date.now() - sentAt > RESUMED_MS;
       return rows[0].result === 'unseen' ? 'unseen' : 'awake';
-    }, () => {
-      answered();
-      return 'no page';
-    });
+    }, () => 'no page');
   })();
+  void ran.then((outcome) => answered(result(outcome), resumed), () => {});
   let timer;
   const outcome = await Promise.race([ran, new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), WAKE_MAX_MS); })]);
   clearTimeout(timer);
-  return outcome === 'unseen' ? result('awake', true) : result(/** @type {Wake['outcome']} */ (outcome));
+  return result(/** @type {Wake['outcome'] | 'unseen'} */ (outcome));
 }
 // Whether a tab has a page: a script runs there, in a document of its own.
 // WebKit answers a script for a tab with a view but no page yet (Safari makes
@@ -607,11 +630,11 @@ const SESSION_WAIT_MS = 200;
 
 async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited }, front) {
   const asked = Date.now();
-  // What the background before this one knew of when tabs were left and which
-  // are held (keep-ready.js sessionKnown: read as this one started): the
-  // switch that starts a background Safari stopped is often to a tab left
-  // minutes ago, likely suspended (likelySuspended, below). Not waited for
-  // past SESSION_WAIT_MS (a storage stuck behind a loaded Safari).
+  // What the background before this one knew of which tabs are held
+  // (keep-ready.js sessionKnown: read as this one started): a tab held isn't
+  // waited for (mayWait, below), and the switch log says when the tab was
+  // left. Not waited for past SESSION_WAIT_MS (a storage stuck behind a
+  // loaded Safari).
   await answerBy(sessionKnown(), asked + SESSION_WAIT_MS);
   // DEVELOPMENT DIAGNOSTICS: whether keep-ready held the tab, and how long it
   // had been hidden, as the switch was asked for (a hold ends as it's shown).
@@ -673,106 +696,92 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // The token of the preparation that goes with the show (a new one once the
   // early one is called off: a late answer to that call can't be taken for it).
   let prepToken = token;
+  let loading = !loadWaited && !!platform?.restoreTabs && neverShown.has(tabId) && live.status === 'loading';
+  // A tab Safari may have suspended (any not held, at rest: mayWait): its
+  // wake's own answer is waited for, below, and the preparation sent beside
+  // it is given that long too (it reaches the page just behind the wake, as
+  // its process is resumed). Not one the caller has just waited for to load
+  // (openBehind): its process runs, and it's introduced as it is.
+  const waits = wake && !loading && !loadWaited && gen === focusGen && mayWait(live);
+  const earlyBudget = waits ? Math.min(WAIT_AWAKE_MAX_MS + PREPARE_AWAKE_MS, Number.isFinite(deadline) ? Math.max(0, /** @type {number} */ (deadline) - 250 - SHOW_MS - Date.now()) : Infinity) : undefined;
   /** @type {Promise<Preparation> | null} */
-  let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered }) : null;
+  let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered, ...(earlyBudget != null ? { budget: earlyBudget } : {}) }) : null;
   const earlyAt = Date.now();
   /** @type {Wait} */
   const wait = { gen, since: asked, until: Math.min(asked + RESTORE_MAX_MS, (deadline ?? Infinity) - RESTORE_RESERVE_MS), hardUntil: Math.min(asked + RESTORE_HARD_MAX_MS, (deadline ?? Infinity) - RESTORE_RESERVE_MS), hurry, arrival: null, thereAt: null };
-  let loading = !loadWaited && !!platform?.restoreTabs && neverShown.has(tabId) && live.status === 'loading';
-  // A wake stuck behind the resume of a process Safari suspended (above
-  // kickTab): the tab kicked, then woken again, prepared afresh and drawn; or
-  // not waited for (`stuck`: no answer by STUCK_MS), shown at once.
-  /** @type {Kick | null} */
-  let kick = null;
-  /** @type {Wake | null} */
-  let stuck = null;
-  let kickEnd = Infinity; // the kicked tab is shown by then, prepared or not
   // A preparation called off now, and again once it answers (its token isn't
   // the next one's), should it land later.
   const callOff = (/** @type {Promise<Preparation>} */ stale, /** @type {string} */ staleToken) => {
     cancelPreparation(tabId, { outcome: 'ready', ms: 0, token: staleToken });
     void stale.then((late) => cancelPreparation(tabId, late));
   };
-  if (wake && !loading && gen === focusGen && mayStick(live)) {
-    const suspended = likelySuspended(live, asked);
-    const first = wakeTab(tabId);
-    // From when its scripts went out (not a slow permission check before).
-    // One that ran out of time (an early wake, a press's) hasn't answered either.
-    const sentAt = await (wakes.get(tabId)?.sent ?? null);
-    let startedAt = wakes.get(tabId)?.at ?? Date.now();
-    const answer = async (/** @type {number} */ until) => {
-      const got = await answerBy(first, until);
-      return got?.outcome === 'timeout' ? null : got;
-    };
-    // A wake whose scripts never went out by WAKE_MAX_MS (its permission
-    // check slow: Safari starting) has no answer either: as if stuck from now.
-    /** @type {Wake | null} */
-    let woke = sentAt == null ? await answer(Date.now()) : await answer(sentAt + (suspended ? KICK_SOON_MS : KICK_AFTER_MS));
-    // Awake now, but resumed behind (resumedBehind): kicked all the same.
-    if ((!woke || resumedBehind.has(tabId)) && gen === focusGen && (await mayKick(live, deadline))) {
-      const at = Date.now();
-      kick = { at: at - asked, kickMs: null, wakeMs: null, outcome: 'not sent', ...(woke ? { behind: true } : {}) }; // (`behind`: DEVELOPMENT DIAGNOSTICS)
-      // Its wake's hold ends as it's shown for that instant: a new one after.
-      const back = await kickTab(live, gen, () => wakes.delete(tabId));
-      // The times after it count from Safari's answer to its two updates
-      // (~110 ms; longer if WebKit held its window for the tab's page to draw
-      // as its view came into it, up to 250 ms): nothing goes out before.
-      const kicked = Date.now();
-      kick.kickMs = kicked - at;
-      if (back) {
-        kickEnd = kicked + KICK_MAX_MS;
-        // The preparation sent beside the wake waits behind the same resume:
-        // called off, made again under a token of its own beside the new wake.
-        if (early) callOff(early, token);
-        prepToken = `${token}:kicked`;
-        const renewed = wakeTab(tabId, { renew: true });
-        startedAt = wakes.get(tabId)?.at ?? kicked;
-        const most = Number.isFinite(deadline) ? Math.max(0, Math.min(KICK_MAX_MS, /** @type {number} */ (deadline) - 250 - SHOW_MS - Date.now())) : KICK_MAX_MS;
-        early = prepareTabForShow(live, { token: prepToken, carry, scroll, covered, budget: most });
-        woke = await answerBy(renewed, kicked + STUCK_MS);
-        kick.wakeMs = woke?.ms ?? null;
-        kick.outcome = !woke ? 'stuck' : hasPage(woke) ? 'resumed' : woke.outcome;
-        // In the window with a process now (as an introduction).
-        if (kick.outcome === 'resumed') forgetUnseen(tabId);
-        else {
-          // A tab with no page after all (Safari unloaded it, or its process
-          // went away): the kick has started its load. Shown at once it would
-          // be Safari's empty view: waited for behind the page, as a tab
-          // restored (below). With no load seen yet and its wake saying so,
-          // restored behind the page as any.
-          const now = await api.tabs.get(tabId).catch(() => null);
-          if (now && !now.active && now.status === 'loading' && gen === focusGen) {
-            endIntroduction(tabId, gen);
-            neverShown.add(tabId); // (as restoreTab's `selected`)
-            wakes.delete(tabId);
-            callOff(early, prepToken);
-            early = null; // prepared once it has loaded
-            prepToken = `${token}:loaded`;
-            live = now;
-            loading = true;
-          } else if (kick.outcome === 'no page') endIntroduction(tabId, gen);
-        }
-      } else {
-        // Left in front by Safari (or the user picked it meanwhile): the
-        // preparation sent beside the wake would land on the page on screen.
-        const now = await api.tabs.get(tabId).catch(() => null);
-        if (now?.active) {
-          if (early) callOff(early, token);
-          return inFront(now, { kicked: kick });
-        }
-        kick = null;
-      }
+  // Its wake's own answer, if it was waited for: the page's, however late.
+  /** @type {Wake | null} */
+  let answered = null;
+  // The page in front, covered while that answer was waited for (coverFront):
+  // its own answer to that is waited for only by a restore (below), which
+  // needs to know it's covered; a switch that goes on to show the tab tells
+  // it how it went once it has answered.
+  /** @type {Promise<{ covered: boolean, done: (shown: boolean | null, reason?: string | null) => void }> | null} */
+  let frontCovering = null;
+  // No answer by WAIT_AWAKE_MAX_MS: shown as it is (its show resumes it). A
+  // tab never shown goes on as before the wait instead: introduced, its wake
+  // taken as too busy to answer (hasPage).
+  let capped = false;
+  // Answered only once its process was resumed (resumedBehind): drawn
+  // (paintBarrier) before it's shown.
+  let late = false;
+  if (waits) {
+    // Its wake, or the one under way it takes on (a pointer resting on its
+    // row, a press, the sidebar coming out: wakeTab's `by`).
+    void wakeTab(tabId);
+    const entry = wakes.get(tabId);
+    const answer = wakeAnswer(tabId);
+    const until = Math.min(asked + WAIT_AWAKE_MAX_MS, Number.isFinite(deadline) ? /** @type {number} */ (deadline) - 250 - SHOW_MS - PREPARE_AWAKE_MS : Infinity);
+    const waitFrom = Date.now();
+    /** @type {'left' | 'hurried' | null} */
+    let stop = null;
+    // One already there (a wake taken on whose page has answered) counts even
+    // with no time left to wait: the tab is running.
+    answered = entry?.settled ?? null;
+    while (answer && !answered) {
+      const left = until - Date.now();
+      if (left <= 0) break;
+      answered = await answerBy(answer, Date.now() + Math.min(WAIT_POLL_MS, left));
+      if (answered) break;
+      if (gen !== focusGen) stop = 'left';
+      else if (hurry?.()) stop = 'hurried';
+      if (stop) break;
+      // The page in front covered while it waits, if it doesn't cover itself
+      // for this switch (shared/switching.js): a space's icon, ⌃⌘ and an
+      // arrow to a space, a tab closed.
+      if (!frontCovering && Date.now() - waitFrom >= COVER_AFTER_MS && !SELF_COVERED.has(source)) frontCovering = coverFront(live, gen);
     }
-    // Not kicked (introductions off, the window busy, too little time left),
-    // or kicked without an answer: not waited for past STUCK_MS.
-    if (!woke && !kick && gen === focusGen) woke = await answer((sentAt ?? Date.now()) + STUCK_MS);
-    if (!woke && !loading && gen === focusGen) stuck = { outcome: 'timeout', ms: Date.now() - startedAt, startedAt };
-    if (kick) how = { ...how, kicked: kick };
-    if (stuck) how = { ...how, stuck: true };
+    if (frontCovering) {
+      const covering = frontCovering;
+      front.uncover = (shown, reason = null) => void covering.then((cover) => cover.done(shown, reason));
+    }
+    const unanswered = !answered && !stop;
+    capped = unanswered && !neverShown.has(tabId);
+    late = !!answered && hasPage(answered) && resumedBehind.has(tabId);
+    // DEVELOPMENT DIAGNOSTICS: what started the wake the switch waited for,
+    // its page's answer (ms from the wake's start; null: none by then), how
+    // long the page before stayed on screen for it, and how it went.
+    const outcome = stop ?? (unanswered ? 'capped' : !hasPage(answered) ? /** @type {Wake} */ (answered).outcome : late ? 'resumed' : 'awake');
+    how = { ...how, wakeStartedBy: entry?.by ?? null, wakeMs: answered?.ms ?? null, waitedOnOldPage: Date.now() - asked, wakeOutcome: outcome };
+    if (stop) {
+      if (early) callOff(early, token);
+      logSwitch({ ...how, error: 'superseded' });
+      return { tab: null, preparation: skipped, superseded: true, hurried: stop === 'hurried' };
+    }
+    // Its preparation, still waiting behind the resume, called off (now, and
+    // once it answers): no paint barrier either, it would wait behind the
+    // resume too.
+    if (capped && early) callOff(early, token);
   }
-  const restorable = async () => mayRestore(live) && !(await isOff()) && !(await areRestoresOff()) && (await wakeTab(tabId)).outcome === 'no page';
-  const resumed = kick?.outcome === 'resumed';
-  if (wake && gen === focusGen && !stuck && !resumed && wait.until - Date.now() >= RESTORE_START_MS && (loading || (await restorable()))) {
+  // The answer it had, however late (the wake's `done` says 'timeout' past WAKE_MAX_MS).
+  const restorable = async () => mayRestore(live) && !(await isOff()) && !(await areRestoresOff()) && (answered ?? (await wakeTab(tabId))).outcome === 'no page';
+  if (wake && gen === focusGen && !capped && wait.until - Date.now() >= RESTORE_START_MS && (loading || (await restorable()))) {
     // Called off or hurried while that was asked (a wake can take a while
     // just after Safari started): the page in front isn't covered for it.
     if (gen !== focusGen) behind = 'left';
@@ -781,7 +790,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       // Its window first: a tab in another window has its page covered where
       // the user sees it, not behind the window they're in.
       if (raise) await focusWindow(live.windowId);
-      const cover = await coverFront(live, gen);
+      const cover = await (frontCovering ?? coverFront(live, gen));
       front.uncover = cover.done;
       if (gen !== focusGen) behind = 'left';
       // Only with the page in front covered: one that isn't (a PDF, Safari's
@@ -826,7 +835,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // (its wake says `unseen`).
   /** @type {boolean | null} */
   let introduced = null;
-  if (wake && platform?.introduceTabs && gen === focusGen && !stuck && !resumed && !(await isOff())) {
+  if (wake && platform?.introduceTabs && gen === focusGen && !capped && !(await isOff())) {
     let tried = false;
     if (waited) {
       // Its wake renewed and its arrival cover asked for together, not one
@@ -910,24 +919,24 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   };
   // Run these together. Preparation itself wakes the isolated world, while
   // wakeTab's page-world hold keeps WebKit's layer tree attached through the
-  // subsequent tabs.update. A tab just introduced (or kicked): its page's
-  // paint for that instant landed (paintBarrier), in place of a fixed wait.
-  // A tab whose wake is stuck: nothing waited for, its preparation called off
-  // (now: below, and once it answers). The preparation sent beside the wake,
-  // for a tab neither kicked nor introduced: PREPARE_AWAKE_MS at most once its
-  // wake says it's awake (awakeBudget). The wake it takes on (a pointer
-  // resting on its row, a press) has to hold the process to the show: for
-  // that short a preparation, HOLD_LEFT_MS; for any other (a tab never shown,
-  // or one cut off: the wait for its repair), a whole one's (SWITCH_HOLD_MS).
-  if (stuck) void early?.then((late) => cancelPreparation(tabId, late));
-  const budgeted = !!early && wake && !stuck && !kick && !introduced && !waited;
-  const woken = wake && !stuck ? wakeTab(tabId, { renew: !!introduced || waited, need: budgeted && !cutting ? HOLD_LEFT_MS : SWITCH_HOLD_MS }) : null;
-  const prepared = budgeted && woken ? awakeBudget(/** @type {Promise<Preparation>} */ (early), woken, earlyAt, prepToken) : early;
+  // subsequent tabs.update. A tab just introduced: its page's paint for that
+  // instant landed (paintBarrier), in place of a fixed wait. A tab whose wake
+  // didn't answer by WAIT_AWAKE_MAX_MS: nothing more waited for, its
+  // preparation called off (above). The preparation sent beside the wake, for
+  // a tab not introduced: PREPARE_AWAKE_MS at most once its wake says it's
+  // awake (awakeBudget: its own answer, however late). The wake it takes on (a
+  // pointer resting on its row, a press) has to hold the process to the show:
+  // for that short a preparation, HOLD_LEFT_MS; for any other (a tab never
+  // shown, or one cut off: the wait for its repair), a whole one's
+  // (SWITCH_HOLD_MS).
+  const budgeted = !!early && wake && !capped && !introduced && !waited;
+  const woken = wake && !capped ? wakeTab(tabId, { renew: !!introduced || waited, need: budgeted && !cutting ? HOLD_LEFT_MS : SWITCH_HOLD_MS }) : null;
+  const prepared = budgeted && woken ? awakeBudget(/** @type {Promise<Preparation>} */ (early), answered ? Promise.resolve(answered) : woken, earlyAt, prepToken) : early;
   /** @type {[Wake | null, Preparation, unknown]} */
-  let [woke, preparation] = stuck ? [stuck, early ? { outcome: 'timeout', ms: Date.now() - asked, reason: 'stuck', token: prepToken } : skipped, null] : await Promise.all([
+  let [woke, preparation] = capped ? [{ outcome: 'timeout', ms: Date.now() - asked, startedAt: asked }, early ? { outcome: 'timeout', ms: Date.now() - asked, reason: 'capped', token: prepToken } : skipped, null] : await Promise.all([
     woken?.then((w) => { if (w?.outcome !== 'awake') lastStep = 'wake'; return w; }) ?? null,
     step('preparation', prepared ?? (wake ? prepareTabForShow(live, { token: prepToken, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)))),
-    introduced || resumed ? step('barrier', barrier(Math.min(BARRIER_MAX_MS, Math.max(0, kickEnd - Date.now())))) : null,
+    introduced ? step('barrier', barrier(BARRIER_MAX_MS)) : null,
   ]);
   // A page still running an earlier copy of Margin (it slept through an
   // update or a rebuild): the current copy goes in now, theme and all, and
@@ -955,9 +964,11 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // last thing before its show is its page drawing (paintBarrier), so the
   // show goes out in a gap of its main thread rather than behind a task (a
   // show whose paint comes after WebKit's 250 ms hold is Safari's empty view).
-  // A tab kicked too, within KICK_MAX_MS of Safari's answer to its kick.
-  const fragile = !!platform?.introduceTabs && wake && !stuck && hasPage(woke) && (waited || !!introduced || resumed || neverShown.has(tabId));
-  const barrierMs = Math.min(Number.isFinite(deadline) ? Math.min(BARRIER_MAX_MS, deadline - 250 - SHOW_MS - Date.now()) : BARRIER_MAX_MS, kickEnd - Date.now());
+  // A tab whose wake answered only once its process was resumed too (`late`:
+  // WebKit hid its content as it was suspended, until the page draws again:
+  // hideContentUntilPendingUpdate), by WAIT_DRAWN_MAX_MS from the ask.
+  const fragile = wake && !capped && hasPage(woke) && ((!!platform?.introduceTabs && (waited || !!introduced || neverShown.has(tabId))) || late);
+  const barrierMs = Math.min(Number.isFinite(deadline) ? Math.min(BARRIER_MAX_MS, deadline - 250 - SHOW_MS - Date.now()) : BARRIER_MAX_MS, late && !introduced && !waited ? asked + WAIT_DRAWN_MAX_MS - Date.now() : Infinity);
   if (fragile && lastStep !== 'barrier' && barrierMs > 0 && gen === focusGen) await barrier(barrierMs);
   if (barriers.length) how = { ...how, barrier: barriers };
   // Another switch was asked for while this one waited (back to the tab in
@@ -1175,7 +1186,6 @@ export function tabOpened(tab) {
 export function tabShown(tabId) {
   neverShown.delete(tabId);
   introduced.delete(tabId);
-  answeredAt.delete(tabId);
   resumedBehind.delete(tabId);
   forgetWake(tabId); // its hold ended as it was shown
   forgetUnseen(tabId);
@@ -1385,83 +1395,63 @@ async function forwardAndBack(tab, gen, sending = () => {}) {
 }
 
 // ---- a tab whose process Safari suspended --------------------------------------
-// A switch to it waited out its wake and its preparation (400 and 900 ms),
-// then showed it dark all the same: 18 of Margin's switches in Tirth's Safari
-// log (2026-11-02), 116–949 ms of Safari's empty view each. A script reaches
-// a suspended process only once WebKit has resumed it, and for an extension's
-// script (executeScript asks for the tab's frames first) it resumes it at
-// background priority only: under swap, a median 710 ms (p90 3.6 s). A
-// foreground activity resumes it a median 32 ms later, and only the tab's
-// view coming into the window takes one (WebPageProxy::activityStateDidChange:
-// a view newly in a window dispatches its change at once, "View is visible").
-// So such a tab is kicked: brought to the front and the page in front straight
-// back in one run loop turn (forwardAndBack, as an introduction: the page in
-// front doesn't notice), then woken again (its wake's hold ended as it was
-// shown for that instant), prepared afresh and drawn (paintBarrier) before
-// it's shown, KICK_MAX_MS from Safari's answer to the kick at most. Soon
-// (KICK_SOON_MS) when it's likely suspended (likelySuspended), otherwise once
-// its wake hasn't answered in KICK_AFTER_MS (a running process answers in a
-// median 17–40 ms; a kick it doesn't need costs it a flip, a second wake and
-// preparation, and a barrier). Only a tab known to have a page: one left in
-// this copy's time, or whose wake answered (selected, a tab Safari unloaded
-// starts loading with no cover; one whose wake says 'no page' late is
-// restored behind the page as before). Never a tab keep-ready holds
-// (running, if busy) nor one never shown (introduced instead). This comes from
-// WebKit's source, not yet from Safari's log: the switch log says how each
-// kick went (`kicked`; its `kickMs` well over ~110 ms means WebKit held the
-// window for the tab's page to draw as its view came into it, up to 250 ms:
-// WebPageProxy waitForDidUpdateActivityState). And a switch never sits on a
-// stuck wake: one not answered STUCK_MS after it went out (when there's no
-// kick: introductions off, another under way in the window, too little time
-// left), or after Safari answered the kick (it didn't resume the process),
-// isn't waited for (`stuck`): its preparation is called off and the tab shown
-// at once. The show's own foreground activity resumes it in a median 32–53
-// ms, as with Safari's own tab bar, where the waits got nothing (the
-// background resume outlasted them: the empty view all the same, later). A
-// kicked tab found loading then (its page had gone: the kick started its
-// load) is waited for behind the page instead, as a tab restored.
-const KICK_SOON_MS = 40;
-const KICK_AFTER_MS = 60;
-const STUCK_MS = 150;
-const KICK_MAX_MS = 500;
-// Safari suspends a hidden tab's process a median 8 s after it's left (10%
-// within a second, in Tirth's log): hidden this long, it likely has, unless a
-// wake answered there just now (it keeps the process awake for a while).
-const SUSPEND_LIKELY_MS = 8000;
-const ANSWERED_MS = 1500;
-const answeredAt = new Map(); // tabId → when a wake there last found its page awake
-// Tabs whose wake was answered only past KICK_AFTER_MS (a pointer resting on
-// the row, a press, the palette, a key run's tab woken ahead, before the
-// switch; a switch's own wake that late is kicked already): their process had
-// been suspended, and resumed at background priority. Running now, so a switch's wake there answers at once, but a
-// process resumed hidden keeps its content hidden until it has drawn for a
-// visible page (WebProcessProxy hideContentUntilPendingUpdate): in Tirth's
-// log (2026-11-02) such tabs, resumed 0.9–2.6 s before their selection, were
-// Safari's empty view for 141–360 ms all the same. So a switch kicks them
-// too, as if their wake hadn't answered; marked until they're in the window
-// (shown, kicked or introduced: forwardAndBack).
+// A script reaches a suspended process only once WebKit has resumed it, and
+// for an extension's script (executeScript asks for the tab's frames first)
+// it resumes it at background priority only: under swap, a median 710 ms
+// (p90 3.6 s) in Tirth's Safari. WebKit hid the tab's content as it was
+// suspended (WebProcessProxy::sendPrepareToSuspend →
+// hideContentUntilPendingUpdate), and shown before its page draws again it's
+// Safari's empty view. So a switch to a tab that may be suspended (mayWait:
+// at rest, not held by keep-ready) waits for its wake's own
+// answer, however late (wakeAnswer), with the page before on screen: covered
+// by the switch's own cover (the sidebar's or the palette's, a key's after
+// 150 ms: shared/switching.js), or by coverFront after COVER_AFTER_MS for a
+// switch whose page doesn't cover itself. A wake answered past RESUMED_MS
+// was a process resumed just then (resumedBehind; a running one answers in a
+// median 17–40 ms): its preparation, just behind the wake, then its page's
+// drawing (paintBarrier) come before the show, by WAIT_DRAWN_MAX_MS from the
+// ask. In Tirth's Safari, tabs woken that way before their show, then shown
+// after a paint barrier, came up clean in 25 of 29 cases (2026-11-02). A wake
+// with no answer by WAIT_AWAKE_MAX_MS: the tab is shown as it is (its show's
+// own foreground resume takes a median 32–53 ms, then its paint), its
+// preparation called off (`capped` in the switch log). Another switch, or a
+// key press after it (`hurry`), ends the wait at once. Until 2026-11-03 such
+// a tab was kicked instead (brought to the front and the page in front
+// straight back, for a foreground resume), and shown after 150 ms without an
+// answer: in Tirth's Safari the kick showed the other tab for 11–148 ms (its
+// two updates never landed in one turn) and didn't get heavy swapped-out tabs
+// drawn, which were then shown dark for about 1.2 s. The wake starts earlier
+// now instead: a pointer resting on a row or a space's icon, a press, the
+// sidebar coming out, a swipe toward a space (sidebar.js), a key run's next
+// tab (navigation.js), each once (wakeTab's `by`, in the switch log).
+const RESUMED_MS = 60;
+const WAIT_AWAKE_MAX_MS = 1600;
+const WAIT_DRAWN_MAX_MS = 2000;
+const WAIT_POLL_MS = 50; // how often a wait looks for another switch or a key press
+const COVER_AFTER_MS = 150;
+// Switches whose page covers itself (content/core.js startSwitching): a row
+// in its sidebar or palette, a next/previous key (after 150 ms).
+const SELF_COVERED = new Set(['activateTab', 'openPin', 'next-tab', 'prev-tab']);
+// Tabs whose wake was answered only past RESUMED_MS (a pointer resting on the
+// row, a press, the palette, a key run's tab woken ahead, or the switch's
+// own): their process had been suspended, and resumed at background
+// priority. Running now, so a switch's wake there answers at once, but their
+// content stays hidden until their page draws again: in Tirth's log
+// (2026-11-02) such tabs, resumed 0.9–2.6 s before their selection and shown
+// with no paint barrier, were Safari's empty view for 141–360 ms. Drawn before
+// they're shown (focusTabNow's `late`); marked until they're in the window
+// (shown, or introduced: forwardAndBack).
 const resumedBehind = new Set();
-/** @typedef {{ at: number, kickMs: number | null, wakeMs: number | null, outcome: 'resumed' | 'stuck' | 'not sent' | Wake['outcome'] }} Kick `at`: ms from the switch asked for to the kick; `kickMs`: Safari's answer to its two updates; `wakeMs`: the new wake's answer, ms from Safari's answer to the kick (null: none by STUCK_MS); `outcome`: 'resumed' (it answered), 'stuck' (it didn't: shown at once); `behind`: its wake had answered, late (resumedBehind) */
-// Whether a switch may kick the tab, or show it without waiting for its wake:
-// a page there (known: left in this copy's time, or a wake answered there, and
-// not since found without one), at rest, that keep-ready doesn't hold, shown before.
+// Whether a switch waits for the tab's wake to answer: Safari only, a tab at
+// rest (one loading runs), that keep-ready doesn't hold (running, if busy). A
+// tab Safari unloaded answers at once that it has no page. A tab never shown
+// too (a ⌘-clicked link read later): it's introduced once it has answered, so
+// its instant in the window is a running process's, and its drawing after it
+// isn't held up behind a resume (until 2026-11-03 it was introduced once its
+// wake had run out of time, at 400 ms, its process maybe still suspended).
+// One with no answer by then is introduced all the same, as before.
 /** @param {any} tab the tab as the browser has it */
-const mayStick = (tab) => !!platform?.wakeTabs && !neverShown.has(tab.id) && tab.status === 'complete' && !isHeld(tab.id) && !hasNoPage(tab.id) && (hiddenFor(tab.id) != null || answeredAt.has(tab.id));
-/** @param {any} tab the tab as the browser has it */
-export function likelySuspended(tab, now = Date.now()) {
-  if (!mayStick(tab)) return false;
-  const hidden = hiddenFor(tab.id, now);
-  return hidden != null && hidden >= SUSPEND_LIKELY_MS && now - (answeredAt.get(tab.id) ?? 0) >= ANSWERED_MS;
-}
-// Not with introductions off (Safari left a tab in front, or the page in front
-// blinked: pageBlinked), another under way in the window, or too little time
-// left before the page that asked stops waiting.
-/** @param {any} tab @param {number | undefined} deadline */
-const mayKick = async (tab, deadline) => !!platform?.introduceTabs && !windowBusy(tab.windowId) && !(Number.isFinite(deadline) && /** @type {number} */ (deadline) - 250 - SHOW_MS - Date.now() < STUCK_MS) && !(await isOff());
-// The kick: an introduction's two updates, but not counted as one (the tab may
-// still be introduced later: mayIntroduce). Whether the page in front is back.
-/** @param {any} tab @param {number} gen @param {() => void} sending */
-const kickTab = (tab, gen, sending) => forwardAndBack(tab, gen, sending);
+const mayWait = (tab) => !!platform?.wakeTabs && tab.status === 'complete' && !isHeld(tab.id);
 // The preparation `prep`, sent at `since`, once the tab's wake has said its
 // page is awake (before the preparation answered): its answer within
 // PREPARE_AWAKE_MS of then, else a timeout, called off before the show as any

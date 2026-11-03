@@ -579,6 +579,26 @@ Keep-ready now keeps only the tab you just left (and the one before it) ready, f
 - [ ] Other Safari profiles: with Safari left alone for 10 minutes, `/usr/bin/log show --last 10m --predicate 'process == "Safari" AND eventMessage CONTAINS "Starting foreground activity" AND eventMessage CONTAINS "Web Extension background content"' | wc -l` is a handful, not about 10 per profile (one a minute each before).
 - [ ] Chrome: switching behaves as before.
 
+## Switching to a sleeping tab: the page you're on stays until it's ready (2026-11-03)
+
+A tab Safari has put to sleep used to be flicked to the front and straight back first (the other tab flashed for an instant), then shown after 0.15 s whether it was ready or not, which was the big black flash on heavy tabs. Now Margin wakes it and keeps the page you're on in front, under its empty screen (a spinner after a moment), until the tab is awake and has drawn, for up to about 1.6 s. Margin also starts waking a tab earlier: when the pointer rests on its row or on a space's icon, when you press, when you bring the sidebar out, and when you swipe toward a space. Test with keep-ready at 0 in Settings, or wait a minute or more after leaving the tab.
+
+- [ ] Click a heavy tab (mail, chat, a long document) you left a few minutes ago: no black flash. The page you were on stays, covered, until the tab comes up. Note roughly how long that takes.
+- [ ] The same with ⌃⌘→/← to another space, and by clicking a space's icon: the page you're on covers itself after a moment, and the space's tab comes up with no black.
+- [ ] While you wait, the tab you're on doesn't flicker, and no other tab shows for an instant.
+- [ ] Rest the pointer on a row for a moment, then click it: it comes up quickly.
+- [ ] Bring the sidebar out (hover at the left edge, or the toggle) and click the tab you used just before: quick.
+- [ ] Rest the pointer on another space's icon, then click it; and swipe to another space: quick, no black.
+- [ ] A very heavy tab you left long ago, on a busy Mac: the page you're on may stay up to about 1.6 s, then the tab can still show dark. Note how often.
+- [ ] Click a tab, then click another before the first comes up: the second one wins at once.
+- [ ] Hold the next-tab key across tabs you left minutes ago: the highlight moves along the sidebar, the page you're on stays instead of a black screen for each sleeping tab passed, and the tab you stop on comes up with no black. Tabs that are awake still show as you pass them.
+- [ ] ⌘-click a link to open it behind, read on for a minute or more, then click its row: no black, and no flicker of black just before it comes up.
+- [ ] A space's icon or ⌃⌘ and an arrow onto a sleeping tab while the page you're on is busy: the tab comes up as soon as it's ready, not a moment later.
+- [ ] Bring the sidebar out every few seconds for a minute without clicking anything: in Activity Monitor, the tab you used before the current one doesn't stay busy (at most a 2 s blip every 10 s).
+- [ ] Rest the pointer on a row for 10 seconds without clicking: in Activity Monitor, that tab's Safari Web Content process goes back to near 0% after about 2 s (it used to stay up while the pointer stayed).
+- [ ] Switch log (the start page's "Switch log" button), after 30 minutes of use: for switches with `wakeOutcome`, count `awake`, `resumed` and `capped`, and look at `waitedOnOldPage` and `wakeStartedBy` (`hover`, `press`, `reveal`, `space`, `keys`, `switch`). Send it.
+- [ ] Chrome: switching behaves as before.
+
 ## No crash from asking for animations (2026-11-03)
 
 The page in front went black for about 2 seconds and reloaded when WebKit crashed sorting a page's animations, which Margin asked for on every read of the page's layout. Margin no longer asks.

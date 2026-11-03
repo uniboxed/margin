@@ -107,7 +107,7 @@ const leftAt = new Map(); // tabId → when it was last left (hiddenFor)
 // running as a front tab's (release).
 const leftSince = new Set();
 // The tab in front of each window, by the activations as they come
-// (background.js: not an introduction's or a kick's, nor a ⌘T tab's about to
+// (background.js: not an introduction's, nor a ⌘T tab's about to
 // close): the tab left at the next switch. The state's `active` can lag
 // behind them (an activation's write waits behind the one under way:
 // store.js mutate), and through two quick switches it still named the tab
@@ -159,12 +159,11 @@ function fromSession() {
   }));
 }
 // Read as the background starts: the switch that starts a background Safari
-// stopped (idle 30 s) is often to a tab left minutes ago, which Safari has
-// likely suspended, and it needs to know when that tab was left and whether
-// it's held (background/tabs.js likelySuspended), or it isn't kicked. A
-// switch awaits it (sessionKnown): one storage.session read per background
-// run, nothing once it has answered. (Chrome keeps no tabs ready: nothing to
-// read.)
+// stopped (idle 30 s) needs to know whether its tab is held (background/tabs.js
+// mayWait: a tab held isn't waited for), and the switch log when it was
+// left. A switch awaits it (sessionKnown): one storage.session read per
+// background run, nothing once it has answered. (Chrome keeps no tabs ready:
+// nothing to read.)
 export const sessionKnown = () => (platform?.keepTabsReady ? fromSession() : Promise.resolve());
 void sessionKnown();
 const saved = {
@@ -275,9 +274,7 @@ export function pageChanged(tabId) {
 export function shown(tabId, now = Date.now()) {
   // In front now: hidden no longer than since then, should its leave not be
   // noted (a background just started takes the tab left from the state,
-  // which can lag behind an activation queued behind a write), or come late. Taken
-  // for hidden since an older leave, a tab in front a moment ago looked
-  // suspended and was kicked though awake (tabs.js likelySuspended).
+  // which can lag behind an activation queued behind a write), or come late.
   // (Written with the leave noted in the same moment: one write.)
   if (platform?.keepTabsReady) {
     leftAt.set(tabId, now);

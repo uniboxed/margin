@@ -76,7 +76,7 @@ export function startLayout(page, { loader }) {
       page.setBox(box);
       mark(host, 'box', box ? String(box.left) : 'off');
     };
-    if (!view.setLayout({ open, docked, framed, width, place })) place();
+    if (!view.setLayout({ open, docked, framed, width, place, why: open ? reason : null })) place();
     mark(host, 'open', String(open)); // test/debug hook; reveals nothing private
     if (page.state()) syncPlaceholder();
   }

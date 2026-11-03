@@ -34,7 +34,7 @@ function wakeAhead(tabId) {
   /** @type {Ahead} */
   const mark = { at: now(), answered: null, next: null };
   ahead = mark;
-  void wakeTab(tabId).then((woke) => woke.outcome !== 'timeout', () => true).then((answered) => {
+  void wakeTab(tabId, { by: 'keys' }).then((woke) => woke.outcome !== 'timeout', () => true).then((answered) => {
     mark.answered = answered;
     if (answered && mark.next != null && ahead === mark) wakeAhead(mark.next);
   });
@@ -84,12 +84,16 @@ async function runNavigation(action, windowId) {
       if (passing) {
         const asked = Date.now();
         const facts = switchFacts(next, asked); // DEVELOPMENT DIAGNOSTICS
-        const wake = await Promise.race([wakeTab(next), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
+        const wake = await Promise.race([wakeTab(next, { by: 'keys' }), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
         userSwitched(null, windowId); // a switch still waiting for its wake doesn't land after this one
         // A tab Safari unloaded isn't shown in passing (its empty view, and its
         // load in front, for an instant): the highlight moves on, and the tab
         // the key stops on is loaded behind the page (background/tabs.js restoreTab).
-        if (wake?.outcome === 'no page' && platform?.restoreTabs) {
+        // Nor one whose wake hasn't answered by then (Safari suspended it, and
+        // resumes it at background priority, or it's too busy to draw anyway):
+        // shown, it would be Safari's empty view until the next press. The
+        // tab the key stops on waits for its answer (tabs.js mayWait).
+        if ((wake?.outcome === 'no page' && platform?.restoreTabs) || (wake == null && platform?.wakeTabs)) {
           recordSwitch({ source: action, tabId: next, asked, ...facts, wake, error: 'passed over' });
           void told('switch-done');
           return;

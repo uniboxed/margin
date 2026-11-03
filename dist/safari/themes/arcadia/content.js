@@ -92,7 +92,7 @@ registerTheme({
       // will be called later (Keep open turned on: the floating sidebar goes
       // off to the left, the docked one comes in with the card's edge, and
       // the page moves as that starts); otherwise the caller places it.
-      setLayout({ open, docked, framed = false, width, place }) {
+      setLayout({ open, docked, framed = false, width, place, why = null }) {
         const classes = sidebar.el.classList;
         if (arrival) {
           if (docked && open) { // drawn again on the way: it goes on, with what's new
@@ -138,9 +138,15 @@ registerTheme({
           sidebar.el.classList.toggle('leaving', leaving);
           if (leaving) leavingTimer = setTimeout(() => sidebar.el.classList.remove('leaving'), 300);
         }
+        // Brought out over the page just now (hovered at the window's edge, or
+        // toggled; not a page shown with it out already, drawn at once then,
+        // nor its peek after a space switch): the tab likely chosen next is
+        // woken (sidebar.js revealed).
+        const revealed = open && !docked && (why === 'hover' || why === 'toggle') && !sidebar.el.classList.contains('open') && !sidebar.el.classList.contains('instant');
         sidebar.el.classList.toggle('open', open);
         sidebar.el.classList.toggle('docked', docked);
         chrome.setLayout({ docked, framed, width });
+        if (revealed) sidebar.revealed();
       },
       setWidth: chrome.setWidth,
       setLoading: chrome.setLoading,

@@ -6,7 +6,7 @@
 // A content theme is { id, geometry: { inset, radius }, createPalette,
 // mount({ shadow, document, send, onNewTab, onWidth, onScroll, onSwitch }) → view }, where view
 // is { isBusy(), width(), update(state, ctx: { windowId, tabId, newTabPending, switchingTo, scroll? }), ready(), instantOnce?(), setColorScheme(s),
-// setLayout({ open, docked, framed, width, place }),
+// setLayout({ open, docked, framed, width, place, why }) (`why`: how it's open: 'hover' | 'toggle' | 'peek' | null),
 // setWidth(px), setLoading(on, { instant }), setCover?(on, { instant, spinnerNow }) (the empty screen while switching tabs),
 // setStartup?(on) (over everything while Margin gets ready after Safari starts or Margin is updated; else setCover),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),

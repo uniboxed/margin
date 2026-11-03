@@ -703,7 +703,7 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     }
     root.append(...Object.values(ghosts));
     root.classList.add('space-swiping');
-    swiping = { neighbours, ghosts, width: box.width * k, offset: 0, frame: 0, settling: false, committed: false };
+    swiping = { neighbours, ghosts, width: box.width * k, offset: 0, frame: 0, settling: false, committed: false, woken: {} };
   }
   // Where everything sits for `offset` (px; > 0: dragged right).
   function placeSwipe(offset) {
@@ -715,6 +715,12 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   }
   function moveSwipe(offset) {
     swiping.offset = offset;
+    // Heading for a space: the tab its switch shows is woken, once (prewakeSpace, below).
+    const toward = offset > 0 ? -1 : offset < 0 ? 1 : 0;
+    if (toward && swiping.neighbours[toward] && !swiping.woken[toward]) {
+      swiping.woken[toward] = true;
+      prewakeSpace(swiping.neighbours[toward], { hover: true, why: 'space' });
+    }
     if (swiping.frame) return;
     swiping.frame = requestAnimationFrame(() => {
       if (!swiping) return;
@@ -853,59 +859,72 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   const newFolder = (payload = {}) => send('createFolder', { windowId, ...payload }).then(folderCreated);
 
   // A tab or open pin under the pointer, or pressed: its process is woken
-  // and kept awake (background/tabs.js wakeTab), so a click switches with
-  // nothing left to wait for. Resting HOVER_WAKE_MS on a row starts it (a
-  // pointer only passing over rows wakes nothing: each wake can resume a
-  // process Safari suspended); its hold is renewed every HOVER_RENEW_MS while
-  // the pointer stays (each hold runs 2 s: background/tabs.js
-  // HOVER_KEEP_AWAKE_MS), the hold alone once its page has answered.
+  // (background/tabs.js wakeTab), so a click switches with nothing left to
+  // wait for. Resting HOVER_WAKE_MS on a row starts it (a pointer only
+  // passing over rows wakes nothing: each wake can resume a process Safari
+  // suspended), once: its hold runs 2 s (background/tabs.js
+  // HOVER_KEEP_AWAKE_MS) and nothing renews it. The same for a space's icon
+  // (its most recent tab, the one its switch shows), a swipe toward a space,
+  // and the sidebar coming out over the page (the tab used before this one:
+  // `revealed`). `why`, for the switch log: what asked.
   const HOVER_WAKE_MS = 150;
-  const HOVER_RENEW_MS = 1500;
-  const HOVER_IDLE_MS = 10000; // the pointer resting longer without moving: stop
-  let hoverWake = null; // { key, selector, timer, until }
-  // `how`: { hover } for the pointer resting on it, { hover, holdOnly } for a
-  // renewal; nothing for a press.
-  const prewakeRow = (row, how = {}) => {
+  let hoverWake = null; // { key, timer }
+  // `how`: { hover, why } for the pointer resting on it; a press otherwise.
+  const prewakeRow = (row, how = { why: 'press' }) => {
     if (!row?.isConnected || row.classList.contains('active')) return;
     if (row.dataset.tabId) send('prewake', { tabId: Number(row.dataset.tabId), ...how });
     else if (row.dataset.pinId && row.classList.contains('open')) send('prewake', { pinId: row.dataset.pinId, windowId, ...how });
+  };
+  // The tab a space's switch would show (navigation.js showSpace: its most
+  // recent tab in this window), none for the space shown.
+  const prewakeSpace = (spaceId, how) => {
+    if (!state || !spaceId || spaceId === V.activeSpaceId(viewState(), windowId)) return;
+    const tab = recentTabOf(spaceId);
+    if (tab && tab.id !== currentTabId) send('prewake', { tabId: tab.id, ...how });
   };
   const stopHoverWake = () => {
     if (hoverWake) clearTimeout(hoverWake.timer);
     hoverWake = null;
   };
   root.addEventListener('pointerover', (event) => {
-    const row = event.target.closest?.('.tab, .pin');
-    const key = row && root.contains(row) ? (row.dataset.tabId ? `tab:${row.dataset.tabId}` : `pin:${row.dataset.pinId}`) : null;
+    const row = event.target.closest?.('.tab, .pin, .chip[data-space-id]');
+    const key = !row || !root.contains(row) ? null
+      : row.dataset.tabId ? `tab:${row.dataset.tabId}` : row.dataset.pinId ? `pin:${row.dataset.pinId}` : row.dataset.spaceId ? `space:${row.dataset.spaceId}` : null;
     if (key && hoverWake?.key === key) return;
     stopHoverWake();
     if (!key || dragging) return;
-    // Found again by its id on each renewal: a redraw (another tab's title
-    // changing) replaces the row.
-    const selector = row.dataset.tabId ? `.tab[data-tab-id="${row.dataset.tabId}"]` : `.pin[data-pin-id="${CSS.escape(row.dataset.pinId)}"]`;
-    const wake = { key, selector, timer: null, until: Date.now() + HOVER_IDLE_MS };
-    let first = true;
-    const tick = () => {
-      if (hoverWake !== wake) return;
-      if (doc.hidden || Date.now() > wake.until) return stopHoverWake();
-      prewakeRow(root.querySelector(selector), first ? { hover: true } : { hover: true, holdOnly: true });
-      first = false;
-      wake.timer = setTimeout(tick, HOVER_RENEW_MS);
-    };
+    // Found again by its id: a redraw (another tab's title changing) replaces the row.
+    const selector = row.dataset.tabId ? `.tab[data-tab-id="${row.dataset.tabId}"]` : row.dataset.pinId ? `.pin[data-pin-id="${CSS.escape(row.dataset.pinId)}"]` : null;
+    const spaceId = row.dataset.spaceId ?? null;
+    const wake = { key, timer: null };
     hoverWake = wake;
-    wake.timer = setTimeout(tick, HOVER_WAKE_MS);
+    wake.timer = setTimeout(() => {
+      if (hoverWake !== wake || doc.hidden) return;
+      if (selector) prewakeRow(root.querySelector(selector), { hover: true, why: 'hover' });
+      else prewakeSpace(spaceId, { hover: true, why: 'space' });
+    }, HOVER_WAKE_MS);
   });
-  root.addEventListener('pointermove', () => {
-    freshHover();
-    if (hoverWake) hoverWake.until = Date.now() + HOVER_IDLE_MS;
-  }, { passive: true });
+  root.addEventListener('pointermove', () => freshHover(), { passive: true });
   root.addEventListener('pointerleave', stopHoverWake);
   root.addEventListener('click', stopHoverWake, true); // a switch: the page goes
   root.addEventListener('pointerdown', (event) => {
     if (pressed || event.button !== 0 || event.ctrlKey || event.target.closest('.icon')) return; // pressed: switching already
-    const row = event.target.closest('.tab, .pin');
-    if (row && root.contains(row)) prewakeRow(row);
+    const row = event.target.closest('.tab, .pin, .chip[data-space-id]');
+    if (!row || !root.contains(row)) return;
+    if (row.dataset.spaceId) prewakeSpace(row.dataset.spaceId, { why: 'press' });
+    else prewakeRow(row);
   });
+  // The sidebar out over the page (hovered at the window's edge, or toggled):
+  // the tab most likely chosen next, the one used before this one in the
+  // space shown, is woken. Not as a page is shown with it already out.
+  function revealed() {
+    if (doc.hidden || !state || windowId == null) return;
+    const spaceId = V.activeSpaceId(viewState(), windowId);
+    const tab = Object.values(state.tabs ?? {})
+      .filter((t) => t.windowId === windowId && state.tabSpace[t.id] === spaceId && t.id !== currentTabId)
+      .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
+    if (tab) send('prewake', { tabId: tab.id, hover: true, why: 'reveal' });
+  }
   // A page shown again: the browser still applies :hover where the pointer
   // was when it was last in front, which drew a hover and × on the wrong
   // row for a frame. Hover styles wait for the pointer to move.
@@ -1566,6 +1585,8 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
       if (editing && !state.spaces.some((s) => s.id === editing.spaceId)) closeEditor();
       renderEditor();
     },
+    // Out over the page just now (themes/arcadia/content.js setLayout).
+    revealed,
     // The Mac's Light/Dark appearance ('light' | 'dark').
     setColorScheme(scheme) {
       root.dataset.theme = scheme;

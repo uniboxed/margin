@@ -135,8 +135,8 @@ function createPalette({ send, getState, getContext, onLocal, colorScheme, onClo
       const key = action.type === 'openPin' ? `pin:${action.pinId}` : `tab:${action.tabId}`;
       if (key === prewoken) return;
       prewoken = key;
-      if (action.type === 'openPin') send('prewake', { pinId: action.pinId, windowId: action.windowId });
-      else if (action.tabId !== getContext().tabId) send('prewake', { tabId: action.tabId });
+      if (action.type === 'openPin') send('prewake', { pinId: action.pinId, windowId: action.windowId, why: 'hover' });
+      else if (action.tabId !== getContext().tabId) send('prewake', { tabId: action.tabId, why: 'hover' });
     }, PREWAKE_DWELL_MS);
   }
 

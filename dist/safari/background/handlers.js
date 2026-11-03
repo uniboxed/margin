@@ -132,6 +132,23 @@ function rememberZoom(tab, url, zoom) {
   }).catch(() => {});
 }
 const SHOW_PALETTE_MS = 1000;
+// The sidebar coming out over the page wakes the tab used before (prewake's
+// 'reveal'), each tab at most once in this long: brought out every few
+// seconds to glance at it, it kept that tab's process running at foreground
+// priority most of the time (a 2 s hold each), what keep-ready set to 0 is
+// meant to spare. One woken that long ago may be suspended again, and its
+// switch then waits for it (tabs.js mayWait). Per background run: one
+// started again wakes it once more.
+const REVEAL_WAKE_EVERY_MS = 10_000;
+const revealWokenAt = new Map(); // tab id → when
+/** @param {number} tabId */
+function revealWakeDue(tabId, now = Date.now()) {
+  const last = revealWokenAt.get(tabId);
+  if (last != null && now - last < REVEAL_WAKE_EVERY_MS) return false;
+  for (const [id, at] of revealWokenAt) if (now - at >= REVEAL_WAKE_EVERY_MS) revealWokenAt.delete(id);
+  revealWokenAt.set(tabId, now);
+  return true;
+}
 // When each tab was last loaded again after an update (reloadForUpdate).
 const RELOAD_COOLDOWN_MS = 30000;
 const reloadedAt = new Map();
@@ -292,13 +309,21 @@ export const handlers = {
     const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline });
     return { shown: result?.superseded ? null : target.id };
   },
-  // About to be shown, probably (a press on a sidebar row, the palette
-  // resting on a row): its process is woken now, so the switch that follows
-  // doesn't wait for it (background/tabs.js wakeTab). A pin wakes its open tab.
-  /** @param {{ tabId?: number, pinId?: string, windowId?: number, renew?: boolean, holdOnly?: boolean, hover?: boolean }} message `hover`: the pointer resting on a row (the sidebar's longer hold); `holdOnly`: its renewal, the hold alone where the page has answered; `renew`: a fresh wake */
-  async prewake({ tabId, pinId, windowId, renew = false, holdOnly = false, hover = false }) {
+  // About to be shown, probably (a press on a sidebar row or a space's icon,
+  // the pointer or the palette resting on a row, the sidebar coming out, a
+  // swipe toward a space): its process is woken now, once, so the switch that
+  // follows doesn't wait for it (background/tabs.js wakeTab). A pin wakes its
+  // open tab. Not a tab keep-ready holds (its process runs). An earlier copy's
+  // sidebar renews a row's hold every 1.5 s while the pointer rests on it
+  // (`holdOnly`): nothing is renewed in a loop any more, so that does nothing.
+  /** @param {{ tabId?: number, pinId?: string, windowId?: number, hover?: boolean, holdOnly?: boolean, why?: string }} message `hover`: the sidebar's longer hold (a pointer resting, the sidebar coming out, a space); `why`: what asked (the switch log: 'hover', 'press', 'reveal', 'space'; a press by default) */
+  async prewake({ tabId, pinId, windowId, hover = false, holdOnly = false, why }) {
+    if (holdOnly) return;
     const id = tabId ?? (pinId ? V.pinTabId(await load(), pinId, windowId) : null);
-    if (Number.isInteger(id)) void wakeTab(id, { renew, holdOnly, hover });
+    if (!Number.isInteger(id) || keepReady.isHeld(id)) return;
+    const by = why === 'hover' || why === 'reveal' || why === 'space' ? why : hover ? 'hover' : 'press';
+    if (by === 'reveal' && !revealWakeDue(id)) return;
+    void wakeTab(id, { hover, by });
   },
   // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): the log itself, for the
   // start page's "Switch log" button.
