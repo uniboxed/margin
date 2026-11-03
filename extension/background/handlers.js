@@ -458,10 +458,11 @@ export const handlers = {
   async back(_request, sender) {
     keepReady.noteFocused(sender?.tab?.windowId ?? null);
   },
-  // The page in front was hidden for an instant during a switch
-  // (shared/switching.js onBlink): tabs.js pageBlinked.
+  // The page in front was hidden for an instant (shared/switching.js
+  // onBlink): tabs.js pageBlinked takes it only from the page in front of a
+  // flip in its window, during the flip.
   async pageBlinked({ hiddenAt, shownAt }, sender) {
-    pageBlinked(sender.tab?.windowId, { hiddenAt, shownAt });
+    pageBlinked(sender.tab?.windowId, { hiddenAt, shownAt }, sender.tab?.id ?? null);
   },
   async newTabKeyUsed() {
     onboarding.reportEvent('cmdTKey');

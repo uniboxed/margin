@@ -562,6 +562,30 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## The kick is back, for speed (2026-11-03)
+
+A switch to a tab Safari has put to sleep is quicker now. If the tab hasn't answered within about 60 ms (40 ms for one you left 8 s or more ago), Margin brings it to the front and the page you're on straight back, out of sight, so Safari wakes it at full speed. The page you're on stays in front until the tab is awake and drawn, as before. A tab kicked awake waits less for its page to draw before it comes up (0.15 s at most); a tab that woke slowly in the background before you clicked still gets up to 0.4 s, as this morning.
+
+Before you start: run `npm run safari`, and have Terminal ready. Safari's log keeps these lines only for a few hours, so save it the same day.
+
+- [ ] Click heavy tabs you left a few minutes ago (mail, chat, a long document), through the sidebar and with a space's icon. Each comes up with no black, and quicker than this morning (it was about 0.8 s typical, 1.7 s on the slow ones).
+- [ ] As you click, the page you're on never flickers, goes blank or shows another tab for an instant. If it does even once, note the time: Margin turns the kick off for the rest of the Safari session when the page notices (the background console says "no more introductions until Safari restarts").
+- [ ] Safari never freezes for an instant as you click one of those tabs (scrolling or the sidebar stops answering for a moment). If it does, note the time.
+- [ ] Holding ⌃⌘↓ across tabs you left minutes ago: no flicker of the tabs passed. The tab you stop on comes up as a click does.
+- [ ] ⌃⌘ and an arrow to a space whose tab you left minutes ago: if it takes a moment, the page you're on is covered within about 0.15 s, as before, never later.
+- [ ] Click a heavy tab, then click its row again before it comes up: it comes up once, with no second flicker or freeze.
+- [ ] Click a heavy tab, then quickly another one: the second comes up as quickly as if you'd clicked it first.
+- [ ] Sites you come back to (a chat, a mail tab) behave as before: no messages marked read and no sound starting just because Margin flipped to them.
+- [ ] Tabs you left less than a minute ago (kept ready) come up as fast as before, with no flicker.
+- [ ] Right after quitting and reopening Safari, clicking tabs that haven't loaded yet works as before.
+- [ ] Chrome: switching behaves as before.
+
+**Send me**
+
+- [ ] The switch log (start page → Settings → Switch log → Copy) after 20–30 minutes of use. On switches with `kicked`: `outcome` should mostly be `resumed`; `awake` means the tab was running after all and the kick wasn't needed (how often that happens says whether 40 ms is too soon). `kickMs` is how long Safari took for the flip: about 110 is normal, and near 250 means Safari held its window for that tab to draw (that's the freeze to watch for). `wakeMs` in `kicked` is how long the tab took to answer after the flip (0: during it). `barrier` entries should run at most about 150–270 ms on kicked switches, and up to 400–520 ms as before on switches with `wakeStartedBy: "hover"` or `"press"` that answered before the click. On kicked switches, `preparation.timings.known` 0 with `readMs` above 0 means the page had to read storage after the flip.
+- [ ] Safari's log for the same half hour, saved right after: `/usr/bin/log show --last 35m --info --debug --predicate 'process == "Safari" AND (eventMessage CONTAINS "Selecting tab" OR eventMessage CONTAINS "dispatchActivityStateChange" OR eventMessage CONTAINS "hideContentUntilPendingUpdate" OR eventMessage CONTAINS "Unhiding layer tree" OR eventMessage CONTAINS "ProcessDidResume" OR eventMessage CONTAINS "viewIsBecomingVisible" OR eventMessage CONTAINS "updateActivityState")' > ~/Desktop/safari-kick.log`. It shows whether the page you were on ever left the window during a kick.
+- [ ] The times of anything that looked wrong: a flicker, black, a freeze, a slow switch.
+
 ## "Margin isn't responding" fix: check this first (2026-11-03)
 
 This build fixes the notice that came up on nearly every switch this morning, and the blanks after it. Run `npm run safari`. Then do the 20-minute check below, with these added. The worst case is right after a reboot or a Safari relaunch, when every tab is unloaded, so do the first part then.

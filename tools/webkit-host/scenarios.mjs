@@ -100,28 +100,40 @@ const COUNT_HOLDS = `const live = new Set(); const add = addEventListener, remov
 
 // wake-wait, wake-cap: a switch to a tab whose wake answers late (as Safari's
 // resume of a suspended process makes it wait) keeps the page before on
-// screen until it does (tabs.js focusTabNow, mayWait), then has the tab
-// prepared and drawn before it's shown ('resumed'); one with no answer by
-// 1.6 s is shown then, as it is ('capped'). Nothing else comes to the front
-// meanwhile: the page before is hidden once (the switch), the tab shown once.
-// The host never suspends a process, so here the page's main thread is busy
-// for `ms` from the moment the wake's hold reaches it (keepAwake listens for
-// pageswap). B is shown once first, in the host's tab bar.
+// screen until it does (tabs.js focusTabNow, mayWait). 60 ms in with no
+// answer, the tab is kicked (to the front and the page in front straight
+// back, in one turn), its hold sent again, then it's prepared and drawn
+// before it's shown once its wake answers
+// ('resumed'); one with no answer by 1.6 s is shown then, as it is
+// ('capped'). The page before is hidden once (the switch), never by the
+// kick; the tab's visibility changes twice for the kick, before its real
+// show. The host never suspends a process, so here the page's main thread is
+// busy for `ms` from the moment the wake's hold reaches it (keepAwake listens
+// for pageswap): the kick can't speed it up, as a foreground resume does in
+// Safari. B is shown once first, in the host's tab bar (so Margin knows it
+// had a page). The paint barrier after a kick is 150 ms at most (here B's
+// first rendering update after its busy spell can come later: ran out, not
+// drawn). `ms` null: B isn't busy, and answers in time: not kicked before
+// 60 ms (a host too loaded to answer by then may kick it).
 const BUSY_AT_HOLD = (ms) => `let armed = true; const add = addEventListener; window.addEventListener = function (type, fn, options) { if (armed && type === 'pageswap') { armed = false; const until = performance.now() + ${ms}; while (performance.now() < until); } return add.call(this ?? window, type, fn, options); }; return 'busy at the next hold'`;
-const waitedFor = (ms, outcome, label, entry) => [
+const waitedFor = (ms, outcome, label, entry, kicked = null) => [
   { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
   wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),
   // (Keep-ready off: a tab it holds isn't waited for.)
   { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepLeftTabReadyMinutes: 0 } }))' },
   { op: 'show', name: 'B' }, wait(200), { op: 'show', name: 'A' }, wait(250),
   { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
-  { op: 'page', in: 'B', js: `window.__from = __vis.length; ${BUSY_AT_HOLD(ms)}` },
+  { op: 'page', in: 'B', js: ms == null ? `window.__from = __vis.length; return 'not busy'` : `window.__from = __vis.length; ${BUSY_AT_HOLD(ms)}` },
   switchTo('A', 'B'), shown('B'),
   // (The switch log first: the host's background stops about 5 s after it starts.)
   { op: 'eval', in: 'A', js: `${ID} return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1))` },
-  check('A', `B: ${outcome}: ${label}`, `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('B')).at(-1); return !!e && !e.error && e.wakeOutcome === '${outcome}' && e.kicked === undefined && (${entry})`),
-  checkPage('A', 'A: hidden once (the switch)', `JSON.stringify(__visibility) === '["hidden"]'`),
-  checkPage('B', 'B: shown once, nothing before', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.length === 1 && v[0] === 'shown'`),
+  check('A', `B: ${outcome}: ${label}`, `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('B')).at(-1); return !!e && !e.error && ${outcome ? `e.wakeOutcome === '${outcome}' && ` : ''}${kicked ? `e.kicked?.outcome === '${kicked}' && e.kicked.at < e.shownAfter` : `(!e.kicked || e.kicked.at >= 55)`} && (${entry})`),
+  checkPage('A', 'A: hidden once (the switch), not by the kick', `JSON.stringify(__visibility) === '["hidden"]'`),
+  ...(kicked
+    // (The kick's two changes, then its real show: a page busy as they come
+    // reads its state once it gets to them.)
+    ? [checkPage('B', 'B: its visibility changed twice for the kick, before its real show', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.length === 3 && v[2] === 'shown'`)]
+    : [checkPage('B', 'B: shown last', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.at(-1) === 'shown'`)]),
   noPageErrors('B'),
 ];
 // wake-reveal, wake-space: the sidebar brought out (toggled) wakes the tab
@@ -1372,8 +1384,9 @@ export const SCENARIOS = {
   // than two (MAX_HELD): past them, the tab used longest ago lets go at once.
   // A hold is a message waiting for its answer in Margin's page (HELD), none
   // a keepAwake in the page's own world (its pageswap listener, counted there).
-  'wake-wait': waitedFor(500, 'resumed', 'waited for with the page before on screen, then prepared and drawn before it was shown', `e.waitedOnOldPage >= 450 && e.wakeStartedBy === 'switch' && e.preparation?.outcome === 'ready' && e.barrier?.some((b) => b.how === 'drawn')`),
-  'wake-cap': waitedFor(2200, 'capped', 'no answer by 1.6 s: shown then, as it was', `e.waitedOnOldPage >= 1550 && e.shownAfter < 2100 && !e.barrier`),
+  'wake-wait': waitedFor(500, 'resumed', 'kicked, waited for with the page before on screen, then prepared and drawn before it was shown', `e.waitedOnOldPage >= 450 && e.wakeStartedBy === 'switch' && e.preparation?.outcome === 'ready' && e.barrier?.length === 1 && e.barrier[0].ms < 350`, 'resumed'),
+  'wake-cap': waitedFor(2200, 'capped', 'kicked, no answer by 1.6 s: shown then, as it was', `e.waitedOnOldPage >= 1550 && e.shownAfter < 2100 && !e.barrier`, 'capped'),
+  'wake-awake': waitedFor(null, null, 'answered in time: shown, not kicked before 60 ms', 'true'),
   'wake-reveal': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
     wait(800), { op: 'install' }, drawn('A'), themed('A'), drawn('B'),

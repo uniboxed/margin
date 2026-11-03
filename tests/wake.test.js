@@ -1295,7 +1295,7 @@ test('introducing: not Safari\'s doing, introductions stay on: the user\'s pick 
   }
 });
 
-test('introducing: the page in front hidden for an instant after the two updates went out, before the real switch, turns them off for the session; a real switch away and back doesn\'t', async () => {
+test('introducing: the page in front hidden for an instant after the two updates went out, before the real switch, turns them off for the session; a real switch away and back doesn\'t, nor the tab introduced saying it blinked', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 52, url: 'https://new.test/' }, { id: 53, url: 'https://next.test/' }], [52, 53]);
   try {
     let sentAt = 0;
@@ -1313,10 +1313,13 @@ test('introducing: the page in front hidden for an instant after the two updates
     pageBlinked(1, { hiddenAt: realAt + 2, shownAt: realAt + 40 });
     pageBlinked(2, { hiddenAt: sentAt + 1, shownAt: sentAt + 10 }); // another window
     pageBlinked(1, { hiddenAt: sentAt - 100, shownAt: sentAt - 90 }); // before it
+    // The tab introduced itself, hidden just before (shared/switching.js says
+    // a blink with no switch under way too), and shown for that instant.
+    pageBlinked(1, { hiddenAt: sentAt - 5, shownAt: sentAt + 2 }, 52);
     await sleep(0);
     assert.equal(fake.session.introductionsOff, undefined);
     // A busy page in front, dating it when it got to it (after the answers).
-    pageBlinked(1, { hiddenAt: answeredAt + 30, shownAt: answeredAt + 30 });
+    pageBlinked(1, { hiddenAt: answeredAt + 30, shownAt: answeredAt + 30 }, 1);
     await sleep(0);
     assert.equal(fake.session.introductionsOff, true);
     // As after a background restart: the session's word is kept.
@@ -2715,10 +2718,17 @@ const cancelsOf = (id, token) => scriptsNamed(id, 'cancelSidebarInPage').filter(
 
 // The early preparation's token (the switch's own, sent beside its wake).
 const earlyToken = (id) => prepares(id)[0]?.args[0].token;
+// Introductions off for the Safari session, and with them the kick: a switch
+// waits for its tab's wake alone (introducing's `done` turns them on again).
+function noKicks() {
+  fake.session.introductionsOff = true;
+  resetIntroductions();
+}
 
-test('wait: a tab Safari suspended (its wake answered only once its process is resumed, at background priority) stays behind the page in front until then, then is prepared and drawn before it\'s shown; nothing else comes to the front', async () => {
+test('wait: a tab Safari suspended (its wake answered only once its process is resumed, at background priority), with introductions off (no kick), stays behind the page in front until then, then is prepared and drawn before it\'s shown; nothing else comes to the front', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 200, url: 'https://slept.test/' }], []);
   try {
+    noKicks();
     const events = [];
     fake.activated = (info) => events.push(info.tabId);
     noteLeft(200, Date.now() - 10_000);
@@ -2747,9 +2757,10 @@ test('wait: a tab Safari suspended (its wake answered only once its process is r
   }
 });
 
-test('wait: no answer by 1.6 s: shown then as it is (its show resumes it), its preparation called off, no paint barrier (it would wait behind the resume)', async () => {
+test('wait: no answer by 1.6 s (introductions off: no kick): shown then as it is (its show resumes it), its preparation called off, no paint barrier (it would wait behind the resume)', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 201, url: 'https://deep.test/' }], []);
   try {
+    noKicks();
     noteLeft(201, Date.now() - 60_000);
     suspend(201, { backgroundMs: 4000 });
     const asked = Date.now();
@@ -2786,11 +2797,12 @@ test('wait: with too little time left before the page stops waiting, the tab is 
   }
 });
 
-test('wait: a switch whose page doesn\'t cover itself (a space\'s icon, a key to a space, a tab closed) covers the page in front once it has waited 150 ms, and tells it how it went; not one answered sooner, nor a row clicked in the page (it covers itself)', async () => {
+test('wait: a switch whose page doesn\'t cover itself (a space\'s icon, a key to a space, a tab closed) covers the page in front once it has waited 150 ms (introductions off: no kick), and tells it how it went; not one answered sooner, nor a row clicked in the page (it covers itself)', async () => {
   // [source, backgroundMs (null: running), told the page in front]
   for (const [source, backgroundMs, told, id] of [['space', 600, true, 202], ['space', null, false, 203], ['activateTab', 600, false, 204]]) {
     const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://cover${id}.test/` }], []);
     try {
+      noKicks(); // (its foreground resume would answer sooner)
       noteLeft(id, Date.now() - 10_000);
       if (backgroundMs) suspend(id, { backgroundMs });
       let coveredAt = null;
@@ -2811,10 +2823,11 @@ test('wait: a switch whose page doesn\'t cover itself (a space\'s icon, a key to
   }
 });
 
-test('wait: another switch, or a key press after it, ends the wait at once; the tab stays behind, its preparation called off', async () => {
+test('wait: another switch, or a key press after it, ends the wait at once (introductions off: no kick; after a kick: below); the tab stays behind, its preparation called off', async () => {
   for (const [how, id] of [['another switch', 205], ['a key press', 206]]) {
     const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://left${id}.test/` }], []);
     try {
+      noKicks();
       noteLeft(id, Date.now() - 10_000);
       suspend(id, { backgroundMs: 1200 });
       let pressed = false;
@@ -3076,7 +3089,7 @@ function slowNoPage(id) {
   return () => { chrome.scripting.executeScript = run; };
 }
 
-test('wait: a tab whose wake says late that it has no page (Safari unloaded it, or its process went away while suspended) is restored behind the page in front, covered once (from 150 ms into the wait)', async () => {
+test('wait: a tab whose wake says late that it has no page (Safari unloaded it, or its process went away while suspended) is restored behind the page in front, covered once (from 150 ms into the wait); one left in this session (known to have had a page) is kicked first, which starts its load: it\'s waited for behind the page the same way', async () => {
   for (const [left, id] of [[false, 218], [true, 219]]) {
     const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://unloaded${id}.test/` }], { [id]: { loadMs: 300, startMs: 80 } });
     const undo = slowNoPage(id);
@@ -3085,8 +3098,14 @@ test('wait: a tab whose wake says late that it has no page (Safari unloaded it, 
       const { result, entry } = await logged(id, () => focusTab(id));
       assert.equal(result.tab?.id, id);
       assert.equal(entry.wakeOutcome, 'no page');
-      assert.ok(['painted', 'loaded'].includes(entry.restored), `restored: ${entry.restored}`);
-      assert.deepEqual(fake.updates.map((u) => u.id), [id, 1, id, 1, id], 'restored, introduced, shown');
+      if (left) {
+        assert.equal(entry.kicked?.outcome, 'loading');
+        assert.ok(['painted', 'loaded'].includes(entry.loadWait), `waited for: ${entry.loadWait}`);
+      } else {
+        assert.equal(entry.kicked, undefined, 'not known to have a page: not kicked');
+        assert.ok(['painted', 'loaded'].includes(entry.restored), `restored: ${entry.restored}`);
+      }
+      assert.deepEqual(fake.updates.map((u) => u.id), [id, 1, id, 1, id], 'restored (or kicked), introduced, shown');
       assert.deepEqual(toldFront(), [['switching', id, 'now'], ['switch-done', id, null]]);
     } finally {
       undo();
@@ -3095,7 +3114,7 @@ test('wait: a tab whose wake says late that it has no page (Safari unloaded it, 
   }
 });
 
-test('wait: the first switch after a background start (Safari stopped the idle one) knows from storage.session when its tab was left (the switch log), and waits for its wake', async () => {
+test('wait: the first switch after a background start (Safari stopped the idle one) knows from storage.session when its tab was left (the switch log): hidden a minute, likely suspended, it\'s kicked 40 ms after its wake went out, then drawn and shown', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 270, url: 'https://restarted.test/' }], []);
   try {
     fake.session.keepReadyLeftAt = { 270: Date.now() - 60_000 };
@@ -3105,10 +3124,13 @@ test('wait: the first switch after a background start (Safari stopped the idle o
     const asked = Date.now();
     const { result, entry } = await logged(270, () => focusTab(270));
     assert.equal(result.tab?.id, 270);
-    assert.deepEqual(fake.updates.map((u) => u.id), [270]);
+    assert.deepEqual(fake.updates.map((u) => u.id), [270, 1, 270], 'kicked, then shown');
     assert.equal(entry.wakeOutcome, 'resumed');
+    assert.equal(entry.kicked?.outcome, 'resumed');
     assert.ok(entry.hiddenForMs >= 60_000, `hidden for ${entry.hiddenForMs} ms (the background before's note)`);
-    assert.ok(fake.updates[0].at - asked < 600, `shown ${fake.updates[0].at - asked} ms after the ask (its resume: 300 ms)`);
+    const kickedAt = fake.updates[0].at - asked;
+    assert.ok(kickedAt >= 65 && kickedAt < 120, `kicked ${kickedAt} ms after the ask (the session read: 30 ms, then 40 ms after the wake went out)`);
+    assert.ok(fake.updates[2].at - asked < 300, `shown ${fake.updates[2].at - asked} ms after the ask (its background resume: 300 ms)`);
   } finally {
     fake.sessionMs = 0;
     resetKeepReady();
@@ -3117,7 +3139,7 @@ test('wait: the first switch after a background start (Safari stopped the idle o
   }
 });
 
-test('wait: a wake whose permission check outlasts its 400 ms (Safari starting) is still waited for: the tab is drawn and shown once it answers', async () => {
+test('wait: a wake whose permission check outlasts its 400 ms (Safari starting) is still waited for: its scripts not out by then, the tab is kicked, then drawn and shown once it answers', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 275, url: 'https://slow-check.test/' }], []);
   const contains = chrome.permissions.contains;
   chrome.permissions.contains = async () => { await sleep(450); return true; };
@@ -3127,12 +3149,15 @@ test('wait: a wake whose permission check outlasts its 400 ms (Safari starting) 
     const asked = Date.now();
     const { result, entry } = await logged(275, () => focusTab(275));
     assert.equal(result.tab?.id, 275);
-    assert.deepEqual(fake.updates.map((u) => u.id), [275]);
+    assert.deepEqual(fake.updates.map((u) => u.id), [275, 1, 275], 'kicked, then shown');
     assert.equal(entry.wakeOutcome, 'resumed');
+    assert.equal(entry.kicked?.outcome, 'resumed');
+    const kickedAt = fake.updates[0].at - asked;
+    assert.ok(kickedAt >= 395 && kickedAt < 440, `kicked ${kickedAt} ms after the ask (its scripts not out by 400 ms)`);
     assert.equal(result.preparation.outcome, 'ready');
     assert.ok(barriers(275).length === 1);
-    const shownAfter = fake.updates[0].at - asked;
-    assert.ok(shownAfter >= 740 && shownAfter < 1000, `shown ${shownAfter} ms after the ask`);
+    const shownAfter = fake.updates[2].at - asked;
+    assert.ok(shownAfter >= 450 && shownAfter < 700, `shown ${shownAfter} ms after the ask (its check: 450 ms; its background resume would have been 750)`);
   } finally {
     chrome.permissions.contains = contains;
     tabShown(275);
@@ -3145,6 +3170,7 @@ test('wait: a wake answered late holds the tab from its answer (its hold started
   for (const [backgroundMs, clickAfter, id] of [[1500, null, 331], [1700, 1000, 332]]) {
     const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://late${id}.test/` }], []);
     try {
+      noKicks(); // (a kick would resume it in the foreground: no late answer)
       noteLeft(id, Date.now() - 20_000);
       suspend(id, { backgroundMs });
       const started = Date.now();
@@ -3179,6 +3205,7 @@ test('wait: a wake answered late holds the tab from its answer (its hold started
 test('wait: a wake answering only after its tab was shown (a switch that stopped waiting for it) doesn\'t mark it resumed: the next switch to it, running, isn\'t drawn first', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 333, url: 'https://capped333.test/' }], []);
   try {
+    noKicks(); // (capped: a kick would resume it)
     fake.activated = (info) => tabShown(info.tabId); // as background.js onActivated
     noteLeft(333, Date.now() - 60_000);
     suspend(333, { backgroundMs: 4000, shownMs: 30 });
@@ -3222,6 +3249,7 @@ test('wait: the page in front, covered from 150 ms into the wait, slow to answer
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 335, url: 'https://space335.test/' }], []);
   const send = chrome.tabs.sendMessage;
   try {
+    noKicks(); // (its foreground resume would answer before the cover)
     noteLeft(335, Date.now() - 10_000);
     suspend(335, { backgroundMs: 170 });
     chrome.tabs.sendMessage = (tabId, message) => (message.type === 'switching' ? send(tabId, message).then((answer) => sleep(400).then(() => answer)) : send(tabId, message));
@@ -3262,6 +3290,468 @@ test('wait: a tab never shown that Safari suspended (a ⌘-clicked link read lat
     } finally {
       done();
     }
+  }
+});
+
+// ---- the kick (tabs.js focusTabNow: a foreground resume inside the wait) --------
+
+test('kick: a tab Safari suspended, hidden 8 s or more, whose wake hasn\'t answered 40 ms after it went out, is brought to the front and the page in front straight back (sent together); then woken again, prepared afresh and drawn before it\'s shown, long before its background resume; the kick\'s activations aren\'t switches', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 280, url: 'https://kicked.test/' }], []);
+  try {
+    const events = [];
+    fake.activated = (info) => events.push([info.tabId, isIntroduction(info)]);
+    noteLeft(280, Date.now() - 10_000);
+    suspend(280, { backgroundMs: 2000, shownMs: 30 }); // (its answer then comes more than 60 ms after its wake went out: resumed, not running)
+    let inFlight = 0;
+    const startedWhile = [];
+    const asked = Date.now();
+    const { result, entry } = await withUpdate(async (update, id, change) => {
+      startedWhile.push(inFlight++);
+      try {
+        const answer = await update(id, change);
+        await sleep(10);
+        return answer;
+      } finally {
+        inFlight--;
+      }
+    }, () => logged(280, () => focusTab(280, { source: 'activateTab' })));
+    assert.equal(result.tab?.id, 280);
+    assert.deepEqual(fake.updates.map((u) => u.id), [280, 1, 280], 'kicked, then shown');
+    assert.deepEqual(startedWhile.slice(0, 2), [0, 1], 'the two sent together');
+    const kickedAt = fake.updates[0].at - asked;
+    assert.ok(kickedAt >= 38 && kickedAt < 56, `kicked ${kickedAt} ms after the ask (40 ms after its wake went out)`);
+    assert.deepEqual(events, [[280, true], [1, true], [280, false]], 'only the real switch is told as one');
+    const holds = keepAwakes(280);
+    assert.equal(holds.length, 2, 'woken, then held afresh after the kick (its instant in front ended the first hold)');
+    assert.ok(holds[1].at >= fake.updates[1].at);
+    const [first, again, ...more] = prepares(280);
+    assert.ok(first && again && !more.length, 'prepared beside the wake, then again after the kick');
+    assert.ok(again.at >= fake.updates[1].at && again.args[0].token.endsWith(':kicked'));
+    assert.ok(holds[1].at <= again.at, 'woken again as Safari answered the kick, with the new preparation (not once the wait is over)');
+    assert.ok(cancelsOf(280, first.args[0].token).some((x) => x.at <= fake.updates[2].at), 'the first preparation called off');
+    assert.equal(result.preparation.outcome, 'ready');
+    const drawn = barriers(280);
+    assert.ok(drawn.length === 1 && drawn[0].at >= fake.updates[1].at && fake.updates[2].at - drawn[0].at >= 55, 'drawn after the kick, then shown');
+    assert.ok(fake.updates[2].at - asked < 400, `shown ${fake.updates[2].at - asked} ms after the ask (its background resume: 2 s)`);
+    assert.equal(entry.wakeOutcome, 'resumed');
+    assert.equal(entry.kicked?.outcome, 'resumed');
+    assert.ok(entry.kicked.at >= 38 && entry.kicked.kickMs >= 8 && entry.kicked.wakeMs != null, JSON.stringify(entry.kicked));
+    assert.deepEqual(toldFront(), [], 'the page in front was told nothing (it covers itself for a row)');
+  } finally {
+    tabShown(280);
+    done();
+  }
+});
+
+test('kick: a tab hidden only 2 s is kicked once its wake hasn\'t answered 60 ms after it went out; one answering in 30 ms isn\'t kicked', async () => {
+  for (const [suspended, id] of [[true, 281], [false, 282]]) {
+    const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://soon${id}.test/` }], []);
+    try {
+      noteLeft(id, Date.now() - 2000);
+      if (suspended) suspend(id, { backgroundMs: 2000, shownMs: 5 });
+      else fake.scriptDelay = (_id, func) => (func?.name === 'pageThere' ? 30 : 1);
+      const asked = Date.now();
+      const { entry } = await logged(id, () => focusTab(id, { source: 'activateTab' }));
+      if (!suspended) {
+        assert.deepEqual(fake.updates.map((u) => u.id), [id]);
+        assert.equal(entry.kicked, undefined);
+        assert.equal(entry.wakeOutcome, 'awake');
+        continue;
+      }
+      assert.deepEqual(fake.updates.map((u) => u.id), [id, 1, id]);
+      const kickedAt = fake.updates[0].at - asked;
+      assert.ok(kickedAt >= 58 && kickedAt < 90, `kicked ${kickedAt} ms after the ask`);
+      assert.equal(entry.kicked?.outcome, 'resumed');
+      const drawn = barriers(id);
+      assert.ok(drawn.length === 1 && drawn[0].at >= fake.updates[1].at && drawn[0].at < fake.updates[2].at, 'drawn after the kick, before the show (its new wake answered at once)');
+    } finally {
+      tabShown(id);
+      done();
+    }
+  }
+});
+
+test('kick: none with introductions off, for a tab not known to have had a page (not left in this Safari session), nor with too little of the wait left; those wait for the wake alone', async () => {
+  for (const [how, id] of [['off', 283], ['unknown', 284], ['little time', 285]]) {
+    const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://nokick${id}.test/` }], []);
+    try {
+      if (how === 'off') noKicks();
+      if (how !== 'unknown') noteLeft(id, Date.now() - 10_000);
+      suspend(id, { backgroundMs: 200, shownMs: 5 });
+      // (The wait leaves 250 ms: 1.5 s, then 250 ms for the preparation, before its deadline.)
+      const deadline = how === 'little time' ? Date.now() + 2000 : undefined;
+      const { result, entry } = await logged(id, () => focusTab(id, { source: 'activateTab', deadline }));
+      assert.equal(result.tab?.id, id, how);
+      assert.deepEqual(fake.updates.map((u) => u.id), [id], `${how}: not kicked`);
+      assert.equal(entry.kicked, undefined, how);
+      assert.equal(entry.wakeOutcome, 'resumed', how);
+    } finally {
+      tabShown(id);
+      done();
+    }
+  }
+});
+
+test('kick: one that doesn\'t get the tab resumed (a heavy tab under swap) still has it shown only at the cap (1.6 s), not before; both its preparations called off, no paint barrier', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 286, url: 'https://heavy.test/' }], []);
+  try {
+    noteLeft(286, Date.now() - 60_000);
+    suspend(286, { backgroundMs: 4000, shownMs: 4000 });
+    const asked = Date.now();
+    const { result, entry } = await logged(286, () => focusTab(286, { source: 'activateTab' }));
+    assert.equal(result.tab?.id, 286);
+    assert.deepEqual(fake.updates.map((u) => u.id), [286, 1, 286]);
+    const shownAfter = fake.updates[2].at - asked;
+    assert.ok(shownAfter >= 1590 && shownAfter < 1750, `shown ${shownAfter} ms after the ask`);
+    for (const prep of prepares(286)) assert.ok(cancelsOf(286, prep.args[0].token).some((x) => x.at <= fake.updates[2].at), `${prep.args[0].token} called off`);
+    assert.equal(barriers(286).length, 0);
+    assert.equal(entry.wakeOutcome, 'capped');
+    assert.equal(entry.kicked?.outcome, 'capped');
+    assert.equal(entry.kicked.wakeMs, null);
+  } finally {
+    tabShown(286);
+    done();
+  }
+});
+
+test('kick: another switch after the kick ends the wait at once; the tab stays behind, its preparation after the kick called off', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 287, url: 'https://kickleft.test/' }], []);
+  try {
+    noteLeft(287, Date.now() - 10_000);
+    suspend(287, { backgroundMs: 1500, shownMs: 1500 });
+    const asked = Date.now();
+    const pending = logged(287, () => focusTab(287, { source: 'activateTab' }));
+    await sleep(150);
+    userSwitched(999);
+    const { result, entry } = await pending;
+    assert.equal(result.superseded, true);
+    assert.ok(Date.now() - asked < 260, `ended ${Date.now() - asked} ms after the ask`);
+    assert.deepEqual(fake.updates.map((u) => u.id), [287, 1], 'the kick, nothing after');
+    assert.equal(front(), 1);
+    const kicked = prepares(287).find((x) => x.args[0].token.endsWith(':kicked'));
+    assert.ok(kicked && cancelsOf(287, kicked.args[0].token).length >= 1, 'its preparation after the kick called off');
+    assert.equal(entry.kicked?.outcome, 'left');
+    await sleep(1500); // (its resume, and the late answers)
+  } finally {
+    tabShown(287);
+    done();
+  }
+});
+
+test('kick: Safari leaving the tab in front: it\'s shown as it is (its preparation called off, not left to land on the page on screen), and no more kicks or introductions this session', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 288, url: 'https://stays.test/' }], []);
+  try {
+    noteLeft(288, Date.now() - 10_000);
+    suspend(288, { backgroundMs: 2000, shownMs: 5 });
+    const { result, entry } = await withUpdate(async (update, id, change) => (id === 1 ? (fake.updates.push({ id, change, at: Date.now() }), { ...fake.tabs.get(1), active: true }) : update(id, change)),
+      () => logged(288, () => focusTab(288, { source: 'activateTab' })));
+    assert.equal(front(), 288);
+    assert.equal(result.tab?.id, 288);
+    assert.equal(entry.kicked?.outcome, 'in front');
+    assert.ok(cancelsOf(288, earlyToken(288)).length >= 1, 'its preparation called off');
+    assert.equal(fake.session.introductionsOff, true);
+  } finally {
+    tabShown(288);
+    done();
+  }
+});
+
+test('kick: the page in front hidden for an instant during a kick turns kicks off for the session: the next switch to a tab Safari suspended waits for its wake alone', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 289, url: 'https://blink1.test/' }, { id: 290, url: 'https://blink2.test/' }], []);
+  try {
+    // The page in front, as it comes back from the kick, says it was hidden for an instant.
+    fake.activated = (info) => { if (isIntroduction(info) && info.tabId === 1) pageBlinked(1, { hiddenAt: Date.now(), shownAt: Date.now() }); };
+    for (const id of [289, 290]) {
+      noteLeft(id, Date.now() - 10_000);
+      suspend(id, { backgroundMs: 300, shownMs: 5 });
+    }
+    await focusTab(289, { source: 'activateTab' });
+    assert.deepEqual(fake.updates.map((u) => u.id), [289, 1, 289]);
+    assert.equal(fake.session.introductionsOff, true);
+    await chrome.tabs.update(1, { active: true });
+    await knownInFront(1);
+    fake.updates = [];
+    const { entry } = await logged(290, () => focusTab(290, { source: 'activateTab' }));
+    assert.deepEqual(fake.updates.map((u) => u.id), [290], 'not kicked');
+    assert.equal(entry.wakeOutcome, 'resumed');
+  } finally {
+    for (const id of [289, 290]) tabShown(id);
+    done();
+  }
+});
+
+test('barrier: a tab kicked awake is drawn for 150 ms at most before it\'s shown (it drew in the window for the kick); a tab resumed behind (its wake answered late before the switch, never in the window since) and a tab introduced (never shown) still get 400 ms', async () => {
+  for (const [kind, id] of [['kicked', 290], ['resumed', 291], ['introduced', 292]]) {
+    const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://barrier${id}.test/` }], kind === 'introduced' ? [id] : []);
+    try {
+      noteLeft(id, Date.now() - 20_000);
+      if (kind === 'resumed') {
+        suspend(id, { backgroundMs: 200 });
+        await wakeTab(id, { hover: true, by: 'hover' }).then(() => sleep(300));
+      }
+      if (kind === 'kicked') suspend(id, { backgroundMs: 2000, shownMs: 30 });
+      fake.barrierMs = () => 2000; // a page that doesn't draw in time
+      const asked = Date.now();
+      const { result, entry } = await logged(id, () => focusTab(id, { source: 'activateTab' }));
+      assert.equal(result.tab?.id, id);
+      const [timedOut, ...more] = entry.barrier ?? [];
+      assert.ok(timedOut?.how === 'timeout' && !more.length, `${kind}: ${JSON.stringify(entry.barrier)}`);
+      const shownAfter = fake.updates.at(-1).at - asked;
+      if (kind === 'kicked') {
+        assert.equal(entry.kicked?.outcome, 'resumed');
+        assert.ok(timedOut.ms >= 140 && timedOut.ms < 200, `the barrier ran ${timedOut.ms} ms`);
+        assert.ok(shownAfter < 330, `shown ${shownAfter} ms after the ask`);
+      } else {
+        if (kind === 'resumed') {
+          assert.equal(entry.wakeOutcome, 'resumed');
+          assert.equal(entry.kicked, undefined, 'answered before the switch: not kicked');
+        }
+        assert.ok(timedOut.ms >= 410, `${kind}: the barrier ran ${timedOut.ms} ms`);
+        assert.ok(shownAfter >= 410, `${kind}: shown ${shownAfter} ms after the ask`);
+      }
+    } finally {
+      tabShown(id);
+      done();
+    }
+  }
+});
+
+test('kick: a second click on the same row during the wait after a kick doesn\'t kick the tab again (its process resumed and held by then): it takes on the tab\'s wake, and the tab is shown once that answers', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 460, url: 'https://reclick460.test/' }], []);
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  try {
+    noteLeft(460, Date.now() - 20_000);
+    suspend(460, { backgroundMs: 3000, shownMs: 400 }); // a heavy tab: its foreground resume takes 400 ms
+    const asked = Date.now();
+    const first = focusTab(460, { source: 'activateTab' });
+    await sleep(250); // kicked at about 40 ms, its wake not answered
+    const second = focusTab(460, { source: 'activateTab' });
+    const [a, b] = await Promise.all([first, second]);
+    assert.equal(a.superseded, true);
+    assert.equal(b.tab?.id, 460);
+    assert.deepEqual(fake.updates.map((u) => u.id), [460, 1, 460], 'one kick, then the show');
+    const shown = entries.filter((e) => e.kind === 'switch' && e.tabId === 460 && e.shownAfter != null);
+    assert.equal(shown.length, 1);
+    assert.equal(shown[0].kicked, undefined, 'the second switch: not kicked');
+    assert.equal(scriptsNamed(460, 'pageThere').length, 1, 'its wake taken on');
+    const shownAfter = fake.updates[2].at - asked;
+    assert.ok(shownAfter >= 430 && shownAfter < 700, `shown ${shownAfter} ms after the first ask (its resume: about 440 ms)`);
+  } finally {
+    tapLog(null);
+    tabShown(460);
+    done();
+  }
+});
+
+test('kick: the page in front of a switch that doesn\'t cover itself (a key to a space) is covered 150 ms into the wait even while a kick is under way (WebKit holding its first update 250 ms for the tab\'s paint)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 461, url: 'https://held461.test/' }], []);
+  const send = chrome.tabs.sendMessage;
+  try {
+    noteLeft(461, Date.now() - 20_000);
+    suspend(461, { backgroundMs: 3000, shownMs: 300 });
+    let coveredAt = null;
+    const asked = Date.now();
+    chrome.tabs.sendMessage = (tabId, message) => {
+      if (message.type === 'switching' && coveredAt == null) coveredAt = Date.now() - asked;
+      return send(tabId, message);
+    };
+    const { result, entry } = await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (fake.updates.length <= 2) await sleep(250); // the kick, held
+      return answer;
+    }, () => logged(461, () => focusTab(461, { source: 'space' })));
+    assert.equal(result.tab?.id, 461);
+    assert.deepEqual(fake.updates.map((u) => u.id), [461, 1, 461]);
+    assert.ok(entry.kicked?.kickMs >= 245, JSON.stringify(entry.kicked));
+    assert.ok(coveredAt != null && coveredAt >= 145 && coveredAt < 200, `covered ${coveredAt} ms after the ask`);
+    assert.deepEqual(toldFront(), [['switching', 461, 'now'], ['switch-done', 461, null]]);
+  } finally {
+    chrome.tabs.sendMessage = send;
+    tabShown(461);
+    done();
+  }
+});
+
+test('kick: a switch given up while Safari answers its kick (another switch) sends the tab nothing more: no hold, wake or preparation for a tab the user has left', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 462, url: 'https://given462.test/' }, { id: 463, url: 'https://other463.test/' }], []);
+  try {
+    noteLeft(462, Date.now() - 10_000);
+    suspend(462, { backgroundMs: 1500, shownMs: 5 });
+    let otherAt = null;
+    const { result, entry } = await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (otherAt == null && id === 462) {
+        otherAt = Date.now();
+        userSwitched(463);
+      }
+      await sleep(120);
+      return answer;
+    }, () => logged(462, () => focusTab(462, { source: 'activateTab' })));
+    assert.equal(result.superseded, true);
+    assert.equal(entry.kicked?.outcome, 'left');
+    await sleep(50);
+    const after = fake.scripts.filter((x) => x.tabId === 462 && x.at >= otherAt && x.func.name !== 'cancelSidebarInPage').map((x) => x.func.name || 'keepAwake');
+    assert.deepEqual(after, [], 'nothing but its preparation called off');
+    assert.ok(cancelsOf(462, earlyToken(462)).length >= 1, 'its preparation called off');
+    await sleep(1500); // (its late answers)
+  } finally {
+    tabShown(462);
+    done();
+  }
+});
+
+test('kick: after the kick the tab\'s wake stands (its scripts reach the page behind the resume the kick started, so its answer comes first): only its hold is sent again, and its preparation made again; the wait ends on that first answer', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 464, url: 'https://stands464.test/' }], []);
+  try {
+    noteLeft(464, Date.now() - 10_000);
+    suspend(464, { backgroundMs: 1500, shownMs: 30 });
+    const asked = Date.now();
+    const { result, entry } = await logged(464, () => focusTab(464, { source: 'activateTab' }));
+    assert.equal(result.tab?.id, 464);
+    assert.deepEqual(fake.updates.map((u) => u.id), [464, 1, 464]);
+    assert.equal(scriptsNamed(464, 'pageThere').length, 1, 'one wake');
+    assert.equal(keepAwakes(464).length, 2, 'its hold, then again after the kick');
+    assert.equal(prepares(464).length, 2, 'prepared beside the wake, then again after the kick');
+    assert.equal(entry.kicked?.outcome, 'resumed');
+    assert.ok(entry.kicked.wakeMs != null && entry.kicked.wakeMs < 60, `answered ${entry.kicked.wakeMs} ms after the kick`);
+    assert.equal(entry.wakeOutcome, 'resumed');
+    assert.ok(fake.updates[2].at - asked < 330, `shown ${fake.updates[2].at - asked} ms after the ask`);
+  } finally {
+    tabShown(464);
+    done();
+  }
+});
+
+test('kick: another switch, to another tab, asked while Safari answers a kick, sends its wake at once (not once the kick is answered); a tab running is shown then', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 465, url: 'https://first465.test/' }, { id: 466, url: 'https://second466.test/' }], []);
+  try {
+    noteLeft(465, Date.now() - 10_000);
+    noteLeft(466, Date.now() - 1000);
+    suspend(465, { backgroundMs: 1500, shownMs: 5 });
+    let secondAsked = 0;
+    const second = await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      await sleep(150);
+      return answer;
+    }, async () => {
+      const first = focusTab(465, { source: 'activateTab' });
+      await sleep(70); // the kick went out at about 40 ms
+      secondAsked = Date.now();
+      const shown = await logged(466, () => focusTab(466, { source: 'activateTab' }));
+      await first;
+      return shown;
+    });
+    assert.equal(second.result.tab?.id, 466);
+    const woken = scriptsNamed(466, 'pageThere')[0];
+    assert.ok(woken && woken.at - secondAsked < 20, `its wake went out ${woken && woken.at - secondAsked} ms after its ask`);
+    const shown = fake.updates.find((u) => u.id === 466);
+    assert.ok(shown.at - secondAsked < 60, `shown ${shown.at - secondAsked} ms after its ask`);
+    assert.deepEqual(fake.updates.map((u) => u.id), [465, 1, 466]);
+    assert.equal(front(), 466);
+    await sleep(1500); // (the first's late answers)
+  } finally {
+    for (const id of [465, 466]) tabShown(id);
+    done();
+  }
+});
+
+test('kick: another switch, to a tab never shown, asked while Safari answers a kick, still has its tab introduced: once the kick is answered (one flip at a time in a window)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 471, url: 'https://first471.test/' }, { id: 472, url: 'https://new472.test/' }], [472]);
+  try {
+    noteLeft(471, Date.now() - 10_000);
+    suspend(471, { backgroundMs: 1500, shownMs: 5 });
+    const second = await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (fake.updates.length <= 2) await sleep(150); // the kick
+      return answer;
+    }, async () => {
+      const first = focusTab(471, { source: 'activateTab' });
+      await sleep(70);
+      const shown = await logged(472, () => focusTab(472, { source: 'activateTab' }));
+      await first;
+      return shown;
+    });
+    assert.equal(second.result.tab?.id, 472);
+    assert.equal(second.entry.introduced, true);
+    assert.deepEqual(fake.updates.map((u) => u.id), [471, 1, 472, 1, 472], 'the kick, the introduction, the show');
+    await sleep(1500);
+  } finally {
+    tabShown(471);
+    done();
+  }
+});
+
+test('kick: a second switch\'s kick waits for a kick of another switch\'s still under way in the window (one at a time), then goes out', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 467, url: 'https://first467.test/' }, { id: 468, url: 'https://second468.test/' }], []);
+  try {
+    for (const id of [467, 468]) {
+      noteLeft(id, Date.now() - 10_000);
+      suspend(id, { backgroundMs: 1500, shownMs: 30 });
+    }
+    let secondAsked = 0;
+    const second = await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (id === 467 || (id === 1 && fake.updates.length <= 2)) await sleep(150);
+      return answer;
+    }, async () => {
+      const first = focusTab(467, { source: 'activateTab' });
+      await sleep(50);
+      secondAsked = Date.now();
+      const shown = await logged(468, () => focusTab(468, { source: 'activateTab' }));
+      await first;
+      return shown;
+    });
+    assert.equal(second.result.tab?.id, 468);
+    assert.deepEqual(fake.updates.map((u) => u.id), [467, 1, 468, 1, 468], 'the first kick, the second, the show');
+    assert.equal(second.entry.kicked?.outcome, 'resumed');
+    assert.ok(fake.updates[2].at - secondAsked >= 130, `kicked ${fake.updates[2].at - secondAsked} ms after its ask (once the first kick was answered)`);
+    await sleep(1500);
+  } finally {
+    for (const id of [467, 468]) tabShown(id);
+    done();
+  }
+});
+
+test('kick: a tab kicked that answers within 60 ms of its wake going out was running after all: shown as an awake tab, not drawn first (`kicked.outcome` awake)', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 469, url: 'https://busy469.test/' }], []);
+  try {
+    noteLeft(469, Date.now() - 10_000);
+    fake.scriptDelay = (_id, func) => (func?.name === 'pageThere' ? 50 : 1); // busy: answers in 50 ms
+    const { result, entry } = await logged(469, () => focusTab(469, { source: 'activateTab' }));
+    assert.equal(result.tab?.id, 469);
+    assert.deepEqual(fake.updates.map((u) => u.id), [469, 1, 469], 'kicked at 40 ms, not knowing');
+    assert.equal(entry.kicked?.outcome, 'awake');
+    assert.equal(entry.wakeOutcome, 'awake');
+    assert.equal(barriers(469).length, 0, 'not drawn first');
+  } finally {
+    tabShown(469);
+    done();
+  }
+});
+
+test('kick: a switch shown at its page\'s deadline during a kick (Safari slow to answer it) says so in the switch log', async () => {
+  const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 470, url: 'https://hung470.test/' }], []);
+  const entries = [];
+  tapLog((entry) => entries.push(entry));
+  try {
+    noteLeft(470, Date.now() - 10_000);
+    suspend(470, { backgroundMs: 4000, shownMs: 4000 });
+    const result = await withUpdate(async (update, id, change) => {
+      const answer = await update(id, change);
+      if (fake.updates.length <= 2) await sleep(1500); // the kick, answered late
+      return answer;
+    }, () => focusTab(470, { source: 'activateTab', deadline: Date.now() + 2500 }));
+    assert.equal(result.forced, true);
+    const entry = entries.find((e) => e.kind === 'switch' && e.tabId === 470 && e.forced);
+    assert.equal(entry?.stuckAt, 'kick');
+    assert.equal(entry.kicked?.outcome, 'under way');
+    assert.equal(entry.kicked.kickMs, null);
+    await sleep(1600);
+  } finally {
+    tapLog(null);
+    tabShown(470);
+    done();
   }
 });
 

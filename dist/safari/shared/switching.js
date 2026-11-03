@@ -26,8 +26,12 @@ const GRACE_MS = 300;
 const MAX_MS = 8000;
 const UNASKED_MAX_MS = 2500;
 
-// Hidden for less than this during a switch, then shown again: a blink
-// (background/tabs.js introduceTab should never cause one: pageBlinked).
+// Hidden for less than this, then shown again: a blink (background/tabs.js
+// forwardAndBack, an introduction, restore or kick, should never cause one:
+// pageBlinked). Said whether or not this page knows of a switch: a kick goes
+// out before a switch whose page doesn't cover itself (a key to a space) has
+// told it anything (from 150 ms), and the background takes only a blink
+// during one of its flips in the window.
 const BLINK_MS = 100;
 
 /**
@@ -97,16 +101,16 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
   // after the page was hidden and shown again, and find it visible: a blink too).
   const when = (/** @type {Event | undefined} */ event) => (event?.timeStamp && globalThis.performance ? performance.timeOrigin + event.timeStamp : Date.now());
   let wasHidden = doc.hidden;
-  let hiddenAt = 0; // hidden while switching
+  let hiddenAt = 0; // when it was last hidden
   doc.addEventListener('visibilitychange', (event) => {
     const changed = doc.hidden !== wasHidden;
     wasHidden = doc.hidden;
     if (doc.hidden) {
-      hiddenAt = target != null ? when(event) : 0;
+      hiddenAt = when(event);
       return end();
     }
     const at = when(event);
-    if (!changed && target != null) onBlink({ hiddenAt: at, shownAt: at });
+    if (!changed) onBlink({ hiddenAt: at, shownAt: at });
     else if (hiddenAt && at - hiddenAt < BLINK_MS) onBlink({ hiddenAt, shownAt: at });
     hiddenAt = 0;
   });
