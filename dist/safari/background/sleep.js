@@ -37,7 +37,7 @@
 import * as M from '../state/model.js';
 import { api, cached, isOwner, load, now } from './store.js';
 import { platform } from '../shared/platform.js';
-import { isSleepPage, neverSleeps, sleepAddress } from '../shared/sleep.js';
+import { SLEEP_PATH, isSleepPage, neverSleeps, sleepAddress } from '../shared/sleep.js';
 import { foundWithNoPage, isFocusing, mayAccess, switchBusy, wakeAsleep } from './tabs.js';
 import { hasNoPage, isHeld } from './keep-ready.js';
 import { isSlow } from './slow.js';
@@ -54,6 +54,9 @@ const TIMING = {
   askMs: 3000,
   // Between two tabs.
   gapMs: 1000,
+  // The sleep page loaded (or not: landed), looked at for this long, this often.
+  landMs: 3000,
+  landPollMs: 200,
   // "Wake all": between two tabs.
   wakeGapMs: 250,
   // A pass on tab events, where there are no alarms: at most this often.
@@ -161,6 +164,7 @@ async function run({ afterMs = null, max = TIMING.perRun }) {
   // A pass asked for by hand asks every page again (its refusals still count).
   const byHand = afterMs != null;
   if (due.length) await readRefusals();
+  const pageThere = !due.length || (await sleepPageThere());
   /** @type {Record<string, number>} */
   const skipped = {};
   const skip = (/** @type {string} */ why) => { skipped[why] = (skipped[why] ?? 0) + 1; };
@@ -176,11 +180,16 @@ async function run({ afterMs = null, max = TIMING.perRun }) {
       skip('asked lately');
       continue;
     }
-    stopped = !isOwner() ? 'not in charge' : switchBusy() ? 'switch' : isSlow() ? 'Safari slow' : warming() ? 'warm-up' : null;
+    stopped = !isOwner() ? 'not in charge' : switchBusy() ? 'switch' : isSlow() ? 'Safari slow' : warming() ? 'warm-up' : !pageThere ? 'no sleep page' : null;
     if (stopped) break;
     const outcome = await sleepTab(record, afterMs);
     if (outcome !== true) {
       skip(outcome);
+      // The next would land there too: none sent there until the next pass.
+      if (outcome === 'sleep page failed') {
+        stopped = outcome;
+        break;
+      }
       continue;
     }
     slept++;
@@ -245,10 +254,43 @@ async function sleepTab(record, afterMs) {
   } else {
     const to = sleepAddress(api.runtime.getURL(''), { url: tab.url, title: tab.title || record.title, key: newKey() });
     if (!(await api.tabs.update(tab.id, { url: to }).then(() => true, () => false))) return 'not sent';
+    if (!(await landed(tab.id))) {
+      // Not on the sleep page (Safari's error page): back to its own.
+      await api.tabs.update(tab.id, { url: tab.url }).catch(() => {});
+      recordSleep({ step: 'failed', tabId: tab.id });
+      return 'sleep page failed';
+    }
   }
   forgetRefusal(record.id);
   recordSleep({ step: 'slept', tabId: tab.id, how, idleMin: Math.round((now() - lastUseOf(record)) / 60_000), judged: answer.judged ?? null });
   return true;
+}
+
+// Margin's sleep page is there to go to (asked at each pass that has tabs
+// due: a file of Margin's own, read at once). An app built without it (an
+// Xcode project made before the page was added: Tirth's Safari, 2026-11-04)
+// sent a tab to Safari's error page ("Failed to open page"), with no page of
+// Margin's there to bring it back. Chrome discards: no page needed.
+async function sleepPageThere() {
+  if (platform?.sleepTabs === 'discard') return true;
+  return Promise.resolve(globalThis.fetch?.(api.runtime.getURL(SLEEP_PATH))).then((response) => !!response?.ok, () => false);
+}
+
+// The tab went to the sleep page, or to something else (an error page: not a
+// web page and not Margin's). Still loading at the end of the wait, or back
+// at a web page (shown and woken meanwhile): taken as gone to sleep.
+/** @param {number} tabId */
+async function landed(tabId) {
+  const until = Date.now() + TIMING.landMs;
+  for (;;) {
+    const tab = await api.tabs.get(tabId).catch(() => null);
+    if (!tab) return true;
+    const url = tab.url ?? tab.pendingUrl ?? '';
+    if (isSleepPage(url) || /^https?:/i.test(url)) return true;
+    if (tab.status === 'complete' && url) return false;
+    if (Date.now() >= until) return true;
+    await pause(TIMING.landPollMs);
+  }
 }
 
 // sleepInPage's answer for the page, 'no page' (no script runs there), or

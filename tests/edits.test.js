@@ -118,14 +118,22 @@ test('events a page sends itself, and its own values, aren\'t the user\'s; choic
   assert.equal(edited(), false);
 });
 
-test('a watch started after the page loaded (Margin installed or updated into an open page): text already typed there counts, judged generously; one from the page\'s start doesn\'t look at fields not typed into', () => {
-  const draft = field('text', { value: 'typed before Margin came', defaultValue: 'typed before Margin came' });
+test('a watch started after the page loaded (Margin installed or updated into an open page): text already typed there counts, judged generously, but not the page\'s own text in a field the cursor isn\'t in; one from the page\'s start doesn\'t look at fields not typed into', () => {
+  const draft = field('text', { value: 'typed before Margin came', defaultValue: '' });
   const late = page({ readyState: 'complete', fields: [draft] });
   const lateEdited = watchEdits(late.win, late.doc);
   assert.equal(lateEdited.late, true);
   assert.equal(lateEdited(), true, 'no input seen, but text in a field');
   draft.value = '';
   assert.equal(lateEdited(), false);
+  // A results page's query in its search box (Google's): the page's own.
+  const query = field('text', { value: 'what was searched', defaultValue: 'what was searched' });
+  const results = page({ readyState: 'complete', fields: [query] });
+  assert.equal(watchEdits(results.win, results.doc)(), false, 'the page\'s own text');
+  // A React app's draft typed before Margin came (its value attribute kept in
+  // step): kept awake while the cursor is in it.
+  results.doc.activeElement = query;
+  assert.equal(watchEdits(results.win, results.doc)(), true, 'the field with the focus');
   const editor = field('editor', { textContent: 'a draft in an editor' });
   const lateEditor = page({ readyState: 'interactive', fields: [editor] });
   assert.equal(watchEdits(lateEditor.win, lateEditor.doc)(), true);

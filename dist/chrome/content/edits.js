@@ -13,7 +13,13 @@
 // sites' frames are asked on their own: background/sleep.js sleepInPage).
 // A watch started once the page had loaded (Margin installed or updated, its
 // scripts added to pages already open) missed what was typed before: it also
-// judges the whole page that generous way (`late`).
+// judges the whole page that generous way (`late`), except for text the page
+// put there itself (a field's value as its own HTML has it: a results page's
+// query in its search box, as on Google's, which kept every such tab awake
+// until it was next loaded, in Tirth's Safari, 2026-11-04) in a field the
+// cursor isn't in. (A React app's draft typed before Margin came equals its
+// value attribute too: kept awake while its field has the focus, where a
+// half-written message stays, even with its tab hidden.)
 const FIELDS = 'textarea, select, input:not([type=hidden], [type=button], [type=submit], [type=reset], [type=image], [type=file])';
 const TEXT_FIELDS = 'textarea, input:not([type]), input[type=text], input[type=search], input[type=email], input[type=url], input[type=tel], input[type=number], input[type=password]';
 const EDITORS = '[contenteditable]:not([contenteditable=false])';
@@ -79,11 +85,15 @@ function stillEdited(el, before) {
   }
 }
 
-// Any text in a field or an editor, or a choice not the page's own.
+// Any text in a field other than the page's own (or in the field with the
+// focus) or in an editor, or a choice not the page's own.
 /** @param {Document} doc */
 function fieldsInUse(doc) {
   try {
-    for (const el of /** @type {any[]} */ ([...doc.querySelectorAll(TEXT_FIELDS)])) if (String(el.value ?? '').trim()) return true;
+    for (const el of /** @type {any[]} */ ([...doc.querySelectorAll(TEXT_FIELDS)])) {
+      const value = String(el.value ?? '');
+      if (value.trim() && (value !== String(el.defaultValue ?? '') || el === doc.activeElement)) return true;
+    }
     for (const el of /** @type {any[]} */ ([...doc.querySelectorAll(EDITORS)])) if (el.isContentEditable && String(el.textContent ?? '').trim()) return true;
     for (const el of /** @type {any[]} */ ([...doc.querySelectorAll('select')])) if ([...el.options].some((o) => o.selected !== o.defaultSelected)) return true;
     for (const el of /** @type {any[]} */ ([...doc.querySelectorAll('input[type=checkbox], input[type=radio]')])) if (el.checked !== el.defaultChecked) return true;

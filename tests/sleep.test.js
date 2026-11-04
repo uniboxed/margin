@@ -25,7 +25,12 @@ const fake = {
   asking: async () => {},
   noAllFrames: false,
   denied: new Set(),
+  // The app has no sleep page (its file isn't there), or Safari shows its
+  // error page for it.
+  noSleepPage: false,
+  errorPage: false,
 };
+globalThis.fetch = async (url) => ({ ok: !fake.noSleepPage && String(url) === `${BASE}sleep/sleep.html` });
 globalThis.chrome = {
   runtime: { id: 'test', getURL: (path) => `${BASE}${path}`, getManifest: () => ({ version: '0' }), sendMessage: async () => undefined },
   permissions: { contains: async ({ origins: [o] }) => ![...fake.denied].some((d) => o.includes(d)) },
@@ -39,7 +44,7 @@ globalThis.chrome = {
       fake.updates.push({ id, change });
       const tab = fake.tabs.get(id);
       if (!tab) throw new Error('no tab');
-      if (change.url) Object.assign(tab, { url: change.url, status: 'complete' });
+      if (change.url) Object.assign(tab, { url: fake.errorPage && change.url.startsWith(BASE) ? 'safari-resource:/ErrorPage.html' : change.url, status: 'complete' });
       return { ...tab };
     },
     query: async () => [...fake.tabs.values()].map((t) => ({ ...t })),
@@ -442,6 +447,28 @@ test('a pass: each tab long unused asked in its page, then sent to Margin\'s sle
   // The next pass: the two left (the five asleep aren't due).
   const next = await sleepIdle();
   assert.deepEqual(next, { due: 2, slept: 2, skipped: {}, stopped: null });
+});
+
+test('an app without its sleep page (its Xcode project made before the page was added) puts no tab to sleep; one sent there that lands on Safari\'s error page is sent straight back to its page, and the pass stops there', async () => {
+  await setUp([{ id: 1, url: 'https://front.test/', active: true }, { id: 2, url: 'https://s2.test/p', idleHours: 6 }, { id: 3, url: 'https://s3.test/p', idleHours: 5 }]);
+  fake.noSleepPage = true;
+  try {
+    const pass = await sleepIdle();
+    assert.deepEqual(pass, { due: 2, slept: 0, skipped: {}, stopped: 'no sleep page' });
+    assert.deepEqual(fake.updates, [], 'no tab sent anywhere');
+    assert.deepEqual(fake.scripts.filter((x) => x.func === 'sleepInPage'), [], 'no page asked');
+  } finally {
+    fake.noSleepPage = false;
+  }
+  fake.errorPage = true;
+  try {
+    const pass = await sleepIdle();
+    assert.deepEqual(pass, { due: 2, slept: 0, skipped: { 'sleep page failed': 1 }, stopped: 'sleep page failed' });
+    assert.equal(fake.tabs.get(2).url, 'https://s2.test/p', 'back at its page');
+    assert.deepEqual(fake.updates.map((u) => u.id), [2, 2], 'the next tab not sent there');
+  } finally {
+    fake.errorPage = false;
+  }
 });
 
 test('a pass leaves alone: a tab in front, playing sound, loading, already asleep, not a web page, on the never list, not reachable, with a draft, playing, or shown meanwhile; one whose page doesn\'t answer in time, or has none (Safari unloaded it), waits for the next pass', async () => {
