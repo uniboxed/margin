@@ -28,6 +28,7 @@ const fake = {
   // The page in front's answer to whether the user is idle (content/idle.js).
   idle: () => ({ idle: true }),
   idleAsks: [], // { tabId, at }
+  primes: [], // the page told to watch for input from now on: { tabId, at }
   notes: [], // { tabId, progress, at }: the warm-up's note
   covers: [], // { tabId, at }: 'switching' messages (a page covered)
   winState: 'normal',
@@ -114,6 +115,10 @@ globalThis.chrome = {
     sendMessage: (tabId, message) => {
       if (fake.noPage.has(tabId)) return sleep(2).then(() => { throw new Error('no page'); });
       if (message?.type === 'margin-hold') return never();
+      if (message?.type === 'warm-up-idle' && message.prime) {
+        fake.primes.push({ tabId, at: Date.now() });
+        return sleep(2).then(() => ({ watching: true }));
+      }
       if (message?.type === 'warm-up-idle') {
         fake.idleAsks.push({ tabId, at: Date.now() });
         return sleep(2).then(() => fake.idle(tabId));
@@ -176,7 +181,7 @@ const { tapLog } = await import('../extension/background/diagnostics.js');
 const slow = await import('../extension/background/slow.js');
 const warmUp = await import('../extension/background/warm-up.js');
 
-const TIMING = { startAfterMs: 300, repairWaitMs: 5000, resumeAfterMs: 50, runMaxMs: 60_000, quietMs: 700, lagMaxMs: 250, idleMs: 200, keysMs: 500, gapMs: 120, retryMs: 100, loadingMaxMs: 3000, backoffMaxMs: 2000, noteMs: 15_000, calmMs: 50, idleAnswerMs: 300 };
+const TIMING = { slowQuietMs: 1500, frontLoadingMaxMs: 3000, startAfterMs: 300, repairWaitMs: 5000, resumeAfterMs: 50, runMaxMs: 60_000, quietMs: 700, lagMaxMs: 250, idleMs: 200, keysMs: 500, gapMs: 120, retryMs: 100, loadingMaxMs: 3000, backoffMaxMs: 2000, noteMs: 15_000, calmMs: 50, idleAnswerMs: 300 };
 warmUp.setWarmUpTiming(TIMING);
 
 const front = () => [...fake.tabs.values()].find((t) => t.active && t.windowId === 1).id;
@@ -306,6 +311,10 @@ test('after a relaunch, once settled: the tabs picked are loaded behind the page
   assert.ok(notes.some((n) => n[1] === 'running' && n[2] === 1), JSON.stringify(notes));
   const plan = entries.find((e) => e.step === 'plan');
   assert.deepEqual(plan.candidates.map((c) => c.tabId), [20, 21, 22]);
+  // The page in front told to watch for input before the run planned (its
+  // first answer then knows what came while the run waited to start).
+  const firstAsk = fake.idleAsks.find((a) => a.tabId === 1 && a.at >= startedAt);
+  assert.ok(firstAsk && fake.primes.some((p) => p.tabId === 1 && p.at <= firstAsk.at), JSON.stringify({ primes: fake.primes, firstAsk }));
   assert.ok(plan.evidence.noPage >= 30 && plan.evidence.withPage <= 9, JSON.stringify(plan.evidence));
   assert.equal(entries.find((e) => e.step === 'end')?.why, 'done');
   assert.ok(flips[0].at - startedAt >= 0);
@@ -372,6 +381,7 @@ test('the setting at 0: nothing is warmed', async () => {
   assert.equal(fake.updates.length, before);
   assert.equal(fake.session.warmUp?.state, 'off');
   assert.deepEqual(fake.idleAsks.filter((a) => a.at >= t0), [], 'not even the page asked');
+  assert.deepEqual(fake.primes.filter((a) => a.at >= t0), [], 'nor told to watch');
 });
 
 test('it waits while Safari is slow, and until the user is idle on the page in front, focused, the window not minimized, nothing playing', async () => {
@@ -414,20 +424,28 @@ test('it waits while Safari is slow, and until the user is idle on the page in f
   for (const why of ['slow', 'typing', 'not focused', 'minimized', 'playing']) assert.ok(waits[why] >= 1, `${why}: ${JSON.stringify(waits)}`);
 });
 
-test('a window in Safari\'s full screen is warmed as any other (the user\'s own clicks restore behind the page there too)', async () => {
+test('a window in Safari\'s full screen is warmed as any other (the user\'s own clicks restore behind the page there too); nothing goes while the page in front is still loading', async () => {
   await calm();
   await prefer([39, 59]);
   loadsFor([39, 59]);
   fake.winState = 'fullscreen';
+  fake.tabs.get(1).status = 'loading';
   try {
     const t0 = Date.now();
-    const { entries } = await logged(() => relaunched());
+    const run = logged(() => relaunched());
+    await sleep(TIMING.startAfterMs + 1200);
+    assert.equal(flipsOf(39, t0).length, 0, 'nothing while the page in front loads');
+    fake.tabs.get(1).status = 'complete';
+    const { entries } = await run;
     assert.equal(fake.session.warmUp?.state, 'done', JSON.stringify(entries.at(-1)));
     assert.equal(flipsOf(39, t0).length, 1);
     assert.equal(flipsOf(59, t0).length, 1);
-    assert.equal(warmUp.warmUpState().waits.fullscreen, undefined);
+    const waits = warmUp.warmUpState().waits;
+    assert.equal(waits.fullscreen, undefined);
+    assert.ok(waits['page in front loading'] >= 1, JSON.stringify(waits));
   } finally {
     fake.winState = 'normal';
+    fake.tabs.get(1).status = 'complete';
   }
 });
 

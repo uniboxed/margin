@@ -30,15 +30,18 @@ import { api, cached, isOwner, load } from './store.js';
 import { platform } from '../shared/platform.js';
 import { hiddenFor, sessionKnown } from './keep-ready.js';
 import { foundWithNoPage, foundWithPage, inPage, repairUnderWay, startedAt, switchBusy, warmTab, warmUpBlocked } from './tabs.js';
-import { lastSignAt, timed } from './slow.js';
+import { isSlow, lastSignAt, timed } from './slow.js';
 import { recordWarmUp } from './diagnostics.js';
 import { warmUpCount } from '../shared/view.js';
 
 // Times (tests shorten them: setWarmUpTiming).
 const TIMING = {
   // From the background's start: Safari restores its windows, Margin's first
-  // sync and its repair of the open tabs (passes at 0, 0.35, 1.2 and 3 s) go first.
-  startAfterMs: 8000,
+  // sync and its repair of the open tabs (passes at 0, 0.35, 1.2 and 3 s) go
+  // first. (8 s at first: the first tab went 13–20 s after the launch, the
+  // tab in front long since drawn and the user already reaching for the
+  // next. Tirth's repair is over about 3–4 s in: 2026-11-03.)
+  startAfterMs: 3000,
   // The repair waited for this long at most.
   repairWaitMs: 20_000,
   // A background that stopped and started again during a run goes on after this.
@@ -46,8 +49,13 @@ const TIMING = {
   // The whole run: past this from its start, whatever is left stays unloaded.
   runMaxMs: 5 * 60_000,
   // No sign of a slow Safari (slow.js), nor of the warm-up's own timers
-  // running late, for this long before each tab.
-  quietMs: 8000,
+  // running late, for this long before each tab; slowQuietMs while Safari
+  // is slow (signs from two sources: slow.js isSlow, a Mac overloaded after
+  // a reboot). One sign, as a launch gives, holds it back only a moment.
+  quietMs: 3000,
+  slowQuietMs: 8000,
+  // The page in front still loading: waited for this long at most from the run's start.
+  frontLoadingMaxMs: 8000,
   // The warm-up's own pause this late: the Mac busy.
   lagMaxMs: 250,
   // The page in front with no pointer, wheel, scroll or input for this long,
@@ -198,6 +206,9 @@ async function begin() {
   // No run in this session, and not a new one: nothing to do (a background
   // started again before the plan was kept).
   if (!fresh) return;
+  // The page in front watches for input from now on (content/idle.js): its
+  // first answer then knows what came while the run waited to start.
+  void watchFront();
   await until(startedAt + TIMING.startAfterMs);
   await Promise.race([repairUnderWay(), pause(TIMING.repairWaitMs)]);
   if (await planned()) return loop();
@@ -326,8 +337,9 @@ async function gate(left, previous) {
   if (blocked === 'switch') return { wait: TIMING.retryMs, why: 'switch' };
   if (blocked) return { stop: blocked };
   const sign = lastSignAt();
-  const quiet = Math.max(quietUntil, sign != null ? sign + TIMING.quietMs : 0);
-  if (Date.now() < quiet) return { wait: Math.min(quiet - Date.now(), TIMING.quietMs), why: 'slow', backoff: true };
+  const quietFor = isSlow() ? TIMING.slowQuietMs : TIMING.quietMs;
+  const quiet = Math.max(quietUntil, sign != null ? sign + quietFor : 0);
+  if (Date.now() < quiet) return { wait: Math.min(quiet - Date.now(), quietFor), why: 'slow', backoff: true };
   // One load at a time: the tab warmed before still loading, the next waits
   // (loadingMaxMs from its flip at most: a heavy page, and the next one
   // starts while it finishes). The one before playing sound by itself (a
@@ -344,6 +356,11 @@ async function gate(left, previous) {
   // waiting for that; the rest once it's so.
   const [front] = await timed('tabs.query', api.tabs.query({ active: true, lastFocusedWindow: true })).catch(() => []);
   if (!front || !isWeb(front.url)) return { wait: TIMING.gapMs, why: 'no page in front', backoff: true };
+  // The page in front, the one Safari loads itself at a launch, still
+  // loading: the user is waiting on it, and a tab loading behind would take
+  // its network and CPU. Not past frontLoadingMaxMs from the run's start (a
+  // page that never says complete).
+  if (front.status === 'loading' && run && Date.now() - run.at < TIMING.frontLoadingMaxMs) return { wait: TIMING.retryMs, why: 'page in front loading' };
   if (run?.windowId != null && front.windowId !== run.windowId) return { wait: TIMING.gapMs, why: 'another window', backoff: true };
   if (front.audible) return { wait: TIMING.gapMs, why: 'playing', backoff: true };
   // (A pick moved to another window since: left alone.)
@@ -382,6 +399,20 @@ async function gate(left, previous) {
   // (Again, as those answers came: a switch since, the user.)
   if (switchBusy() || actedAt >= askedAt) return { wait: TIMING.retryMs, why: 'switch' };
   return { pick, tab, front, askedAt };
+}
+// The page in front of each window, as Margin has it (no Safari call: at a
+// launch's busiest a timed one could be the second sign that makes Safari
+// slow for the user's first clicks), told to watch for input (content/idle.js
+// `prime`): nothing asked, nothing else done. Not with the setting at 0; a
+// page that doesn't get it is asked as usual later, with the longer pause.
+async function watchFront() {
+  try {
+    const s = await load();
+    if (!warmUpCount(s.settings)) return;
+    for (const t of Object.values(s.tabs ?? {})) {
+      if (t.active && isWeb(t.url)) void Promise.resolve(api.tabs.sendMessage(t.id, { type: 'warm-up-idle', prime: true })).catch(() => {});
+    }
+  } catch {}
 }
 // Whether the user is idle on the page in front (content/idle.js): it
 // watches for input from then on, and says so once (userActed).
@@ -522,7 +553,7 @@ export async function stopByUser() {
 const pause = (ms) => new Promise((resolve) => {
   const due = Date.now() + ms;
   setTimeout(() => {
-    if (Date.now() - due > TIMING.lagMaxMs) quietUntil = Date.now() + TIMING.quietMs;
+    if (Date.now() - due > TIMING.lagMaxMs) quietUntil = Date.now() + TIMING.slowQuietMs; // (the Mac busy: not a launch's one sign)
     resolve(undefined);
   }, Math.max(0, ms));
 });

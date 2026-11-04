@@ -1328,7 +1328,7 @@ export function startCore({ onTheme } = {}) {
   });
 
   const onMessage = (message, _, sendResponse) => {
-    if (message?.type === 'warm-up-idle') return sendResponse(dormant ? { idle: false, why: 'not in charge', retryMs: 5000 } : idle.ask(message));
+    if (message?.type === 'warm-up-idle') return sendResponse(dormant ? { idle: false, why: 'not in charge', retryMs: 5000 } : message.prime ? idle.watch() : idle.ask(message));
     if (message?.type === 'warm-up') return showWarmUp(message.progress);
     // Background (⌘T hand-off): open the palette here to choose a new tab, and
     // say whether it could (not before the theme is mounted, or while Margin

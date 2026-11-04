@@ -5,7 +5,11 @@
 // user types, in the page or in Safari's address bar, or reaches for a tab).
 // Nothing is watched until the background asks: the first ask puts the
 // listeners on (passive, on the window) and can't know what came before, so
-// it says to ask again in a moment. From an ask on, the first input (a key,
+// it says to ask again in a moment. After a relaunch the background has the
+// page watch at once (`watch`: its `prime`), while it waits to start, so its
+// first ask knows what came. With no key since that watch began and focus
+// not in a text field, a pointer's pause is enough (no typing to pause); a
+// watch an ask began can't know the keys before it, and keeps the longer one. From an ask on, the first input (a key,
 // a press, the pointer moving, a wheel or scroll, typing by an input method,
 // this page's focus going, it going hidden, an element going full screen)
 // is said to the background once (`acted`), so a tab it's about to load, or
@@ -42,6 +46,7 @@ export function createIdleWatch({ busy, acted }) {
   let lastKey = 0;
   let composing = false;
   let armed = false; // an ask came and no input since: the next is said
+  let primed = false; // the listeners went on by the background's prime (watch), and stayed on
   /** @type {ReturnType<typeof setTimeout> | null} */
   let offTimer = null;
   const tell = () => {
@@ -75,6 +80,7 @@ export function createIdleWatch({ busy, acted }) {
     if (offTimer) clearTimeout(offTimer);
     offTimer = null;
     armed = false;
+    primed = false;
     if (!watching) return;
     watching = false;
     composing = false;
@@ -112,10 +118,18 @@ export function createIdleWatch({ busy, acted }) {
     if (now - quietFrom < idleMs) return not(lastInput > since ? 'input' : 'watching', idleMs - (now - quietFrom));
     // (A pause in typing is longer: keys from the first ask, and before it unknown.)
     const keysFrom = Math.max(since, lastKey);
-    const pauseMs = focus === 'field' ? 3 * keysMs : keysMs;
+    const pauseMs = focus === 'field' ? 3 * keysMs : primed && lastKey <= since ? idleMs : keysMs;
     if (now - keysFrom < pauseMs) return not(lastKey > since ? 'typing' : 'watching', pauseMs - (now - keysFrom));
     armed = true;
     return { idle: true };
   }
-  return { ask, end: off };
+  // Watching from now on, nothing asked (the background's `prime`).
+  function watch() {
+    if (!watching) primed = true; // (watching already from an ask: keys before it unknown)
+    on();
+    if (offTimer) clearTimeout(offTimer);
+    offTimer = setTimeout(off, WATCH_MS);
+    return { watching: true };
+  }
+  return { ask, watch, end: off };
 }

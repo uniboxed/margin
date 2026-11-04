@@ -117,3 +117,34 @@ test('the run over: the listeners come off at once', () => {
   fire(windowListeners, 'keydown');
   assert.ok(acted.length <= 3);
 });
+
+test('told to watch first (after a relaunch, while the run waits to start): the first ask knows what came; with no key since and focus not in a text field, a pointer\'s pause is enough', async () => {
+  const fresh = createIdleWatch({ busy: () => null, acted: () => {} });
+  const before = count(windowListeners);
+  assert.deepEqual(fresh.watch(), { watching: true });
+  assert.ok(count(windowListeners) > before, 'listening from the watch on');
+  await sleep(70); // past idleMs (60), short of keysMs (120)
+  assert.deepEqual(fresh.ask(ASK), { idle: true });
+  // A key since: the longer pause for typing again.
+  fire(windowListeners, 'keydown');
+  await sleep(70);
+  assert.equal(fresh.ask(ASK).why, 'typing');
+  // A watch an ask began (no prime: it missed the page, or came off after
+  // WATCH_MS): keys before it unknown, the longer pause kept.
+  const unprimed = createIdleWatch({ busy: () => null, acted: () => {} });
+  assert.equal(unprimed.ask(ASK).why, 'watching');
+  await sleep(70);
+  assert.equal(unprimed.ask(ASK).why, 'watching', 'past idleMs, short of keysMs: still watching');
+  unprimed.watch(); // (a prime after the ask began it changes nothing)
+  assert.equal(unprimed.ask(ASK).why, 'watching');
+  unprimed.end();
+  // In a text field: three times keysMs, key or not.
+  const field = createIdleWatch({ busy: () => null, acted: () => {} });
+  field.watch();
+  page.active = { tagName: 'TEXTAREA' };
+  await sleep(70);
+  assert.equal(field.ask(ASK).why, 'watching');
+  page.active = null;
+  fresh.end();
+  field.end();
+});

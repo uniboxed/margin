@@ -568,7 +568,7 @@ After Safari restarts, Margin now loads up to 6 of the tabs you're likely to cli
 
 Before you start: run `npm run safari`. Then quit Safari with several windows, spaces and pinned tabs open, and open it again.
 
-- [ ] Wait about 15 s without touching anything. With the sidebar kept open (or out over the page), the note appears above the bottom bar, counts up, says "Tabs ready", and fades. Nothing on the page flickers, goes dark or moves, and Safari's tab bar and address bar don't change while it runs.
+- [ ] Wait about 5 s without touching anything. With the sidebar kept open (or out over the page), the note appears above the bottom bar, counts up, says "Tabs ready", and fades. Nothing on the page flickers, goes dark or moves, and Safari's tab bar and address bar don't change while it runs.
 - [ ] Then click those tabs: the tab you used last, another space's icon, a pinned tab. Each comes up at once, already drawn, with no spinner. A tab further down the list that wasn't warmed still loads behind the page as before.
 - [ ] Relaunch again, and this time start typing in a page (a search box) or in Safari's address bar (⌘L) right away, and keep going for a while. Nothing is loaded while you type. Your typing isn't interrupted, the address bar keeps what you typed, and the note doesn't appear or doesn't move on. If it was up, it goes within about 15 s while you keep working, and comes back when the next tab starts.
 - [ ] Relaunch with a page in front that types inside a frame (Google Docs, an embedded editor or a card field) and type there, pausing a few seconds now and then: nothing is loaded while focus is in it. With Japanese or Chinese input, a word being composed is never cut off.
