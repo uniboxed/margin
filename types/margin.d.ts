@@ -35,6 +35,10 @@ export interface TabRecord {
   restoredFrom?: string;
   /** put in its space on purpose (the user, or Margin opening it there) */
   placed?: boolean;
+  /** Margin put it to sleep (background/sleep.js), at `at`; its url and title are its page's (state/model.js seenTab) */
+  sleeping?: { at: number; how: 'page' | 'discarded' };
+  /** when it last woke from that sleep */
+  wokeAt?: number;
 }
 /** A tab from before ids changed that no open tab matched yet (state/model.js lostTabs). */
 export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }
@@ -47,6 +51,10 @@ export interface Settings {
   sidebarPinnedOpen: boolean;
   frameWhenHidden?: boolean;
   archiveAfterHours: number;
+  /** tabs unused this long are put to sleep (background/sleep.js); 0: never */
+  sleepAfterHours: number;
+  /** hostnames whose tabs never sleep (each with its subdomains: shared/sleep.js) */
+  neverSleepSites: string[];
   keepLeftTabReadyMinutes: number;
   /** Safari: tabs loaded behind the page after a relaunch (background/warm-up.js); 0: off */
   warmUpTabs?: number;

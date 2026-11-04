@@ -18,6 +18,7 @@ import * as newTabHint from './background/newtab-hint.js';
 import { recordCreated } from './background/diagnostics.js';
 import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
+import { sleepChanged, sleepIdle, sleepIdleThrottled } from './background/sleep.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
 import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
@@ -177,6 +178,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (change.status === 'loading') forgetWake(tabId);
   // Discarded: a new web view as it's shown (background/tabs.js WebKit's mark).
   if (change.discarded === true) pageDiscarded(tabId);
+  // A tab Margin put to sleep, awake again (background/sleep.js; the switch log).
+  if (change.url != null || change.discarded === false) sleepChanged(tabId, change);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.js).
   tabUpdated(tabId, change, tab);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
@@ -265,7 +268,10 @@ const activated = owned(async ({ tabId, windowId }, left) => {
     }
     return followed;
   });
-  if (!api.alarms) archiveStaleThrottled();
+  if (!api.alarms) {
+    archiveStaleThrottled();
+    sleepIdleThrottled();
+  }
   // After the switch has landed (not in its way).
   setTimeout(() => isOwner() && ensureCurrent(tabId), 300);
 });
@@ -421,7 +427,12 @@ owned(queueRegistrations)();
 // ---- auto-archive -----------------------------------------------------------
 
 if (api.alarms) {
-  api.alarms.onAlarm.addListener(owned((alarm) => alarm.name === ARCHIVE_ALARM && archiveStale()));
+  // Then the tabs unused for a while put to sleep (background/sleep.js).
+  api.alarms.onAlarm.addListener(owned(async (alarm) => {
+    if (alarm.name !== ARCHIVE_ALARM) return;
+    await archiveStale();
+    await sleepIdle();
+  }));
   // The alarm the keep-ready before renewed its holds by, if a copy still has
   // it: cleared, in every copy and profile (it started the background every
   // minute for nothing). Nothing is renewed now.
@@ -434,8 +445,10 @@ if (api.alarms) {
   console.log('[margin] auto-archive via tab events (no browser.alarms)');
 }
 
-// Debug hook for Web Inspector and tests: `margin.archiveNow()`.
-globalThis.margin = { archiveNow: archiveStale, syncRegistrations: queueRegistrations, navigate };
+// Debug hook for Web Inspector and tests: `margin.archiveNow()`;
+// `margin.sleepNow(ms)`: a pass of sleeping tabs now, for tabs unused for `ms`
+// (the setting's hours if left out).
+globalThis.margin = { archiveNow: archiveStale, sleepNow: (/** @type {number | undefined} */ ms) => sleepIdle(Number.isFinite(ms) ? { afterMs: ms } : {}), syncRegistrations: queueRegistrations, navigate };
 
 // ---- commands -------------------------------------------------------------
 

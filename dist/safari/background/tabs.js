@@ -1,13 +1,14 @@
 // Showing, opening and reaching into tabs.
 import * as M from '../state/model.js';
 import { api, cached, isOwner, isSynced, mutate, now, openTabsAsked, stateRev, thisCopy } from './store.js';
-import { recordRepair, recordSwitch } from './diagnostics.js';
+import { recordRepair, recordSleep, recordSwitch } from './diagnostics.js';
 import { hasNoPage, hiddenFor, isHeld, sessionKnown, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
 import { commandKeys } from '../shared/shortcuts.js';
 import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
+import { isSleepPage, readSleepAddress } from '../shared/sleep.js';
 import { readyInPage } from '../shared/page-ready.js';
 import { noteCall, noteLag, ownSign, slowFacts, slowFoundAt, timed as timedCall, timersLate } from './slow.js';
 
@@ -1339,6 +1340,12 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // only briefly before the show. (Any other is checked as it's shown:
   // ensureCurrent.)
   const cutting = cutOffSuspects.has(tabId) && !live.discarded ? repairCutOff(live, { ms: 400, forSwitch: true }) : null;
+  // A tab Margin put to sleep (background/sleep.js): its page is Margin's
+  // sleep page, where no script of Margin's runs (no wake, no preparation).
+  // Woken and loaded behind the page in front, as a tab Safari unloaded is
+  // (restoreTab); shown as it is otherwise, its sleep page going back to its
+  // page as it's shown.
+  const asleep = isSleepPage(live.url);
   // Left in front by Safari (or brought there by the user meanwhile) while
   // being introduced or restored: shown, not prepared as a hidden page (it
   // would wait under its cover for a show that has happened).
@@ -1367,18 +1374,18 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // it is given that long too (it reaches the page just behind the wake, as
   // its process is resumed). Not one the caller has just waited for to load
   // (openBehind): its process runs, and it's introduced as it is.
-  const waits = wake && !loading && !loadWaited && gen === focusGen && mayWait(live);
+  const waits = wake && !loading && !loadWaited && !asleep && gen === focusGen && mayWait(live);
   // Not waited for only because keep-ready holds it (running: its wake
   // answers at once, or a little late if its page is busy). One whose wake
   // doesn't answer in time at all (WAKE_MAX_MS) was likely suspended all the
   // same (a hold that ended unseen; one a background before this one placed,
   // its page changed since): drawn before it's shown, as a tab waited for is
   // (`late`, below), not shown as Safari's empty view.
-  const trusted = wake && !waits && !loading && !loadWaited && !!platform?.wakeTabs && live.status === 'complete';
+  const trusted = wake && !waits && !loading && !loadWaited && !asleep && !!platform?.wakeTabs && live.status === 'complete';
   // (As long as its wake may be waited for: a click's, to its plan's drawing.)
   const earlyBudget = waits ? (timedRun ? Math.max(0, byDeadline - Date.now()) : Math.min(WAIT_AWAKE_MAX_MS + PREPARE_AWAKE_MS, Math.max(0, showBy() - Date.now()))) : undefined;
   /** @type {Promise<Preparation> | null} */
-  let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered, ...(earlyBudget != null ? { budget: earlyBudget } : {}) }) : null;
+  let early = wake && !neverShown.has(tabId) && !asleep ? prepareTabForShow(live, { token, carry, scroll, covered, ...(earlyBudget != null ? { budget: earlyBudget } : {}) }) : null;
   run.early = early;
   run.prepToken = token;
   let earlyAt = Date.now();
@@ -1683,11 +1690,15 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // The answer it had, however late (the wake's `done` says 'timeout' past
   // WAKE_MAX_MS). Another tab's kick under way in the window (not waited for
   // above) over first: the window isn't free for a restore until then.
+  // (A sleeping tab has no page of its own to ask: asleep.)
   const restorable = async () => {
-    if (!mayRestore(live, { busy: true }) || (await isOff()) || (await areRestoresOff()) || (answered ?? (await wakeTab(tabId))).outcome !== 'no page') return false;
+    if (!mayRestore(live, { busy: true }) || (await isOff()) || (await areRestoresOff()) || (!asleep && (answered ?? (await wakeTab(tabId))).outcome !== 'no page')) return false;
     await flipsClear();
     return mayRestore(live);
   };
+  // (A sleeping tab not woken behind the page: shown as it is, its sleep page
+  // sending it back as it's shown. The switch log says so.)
+  if (asleep) how = { ...how, asleep: 'as it is' };
   if (wake && gen === focusGen && !capped && wait.until - Date.now() >= RESTORE_START_MS && (loading || (await restorable()))) {
     // Called off or hurried while that was asked (a wake can take a while
     // just after Safari started): the page in front isn't covered for it.
@@ -1729,7 +1740,8 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
         } else behind = got;
       }
     }
-    how = { ...how, ...(loading ? { loadWait: behind } : { restored: behind }), ...(wait.started ? { restoreStart: wait.started } : {}) };
+    how = { ...how, ...(loading ? { loadWait: behind } : { restored: behind }), ...(wait.started ? { restoreStart: wait.started } : {}), ...(asleep ? { asleep: wait.woken ?? 'not woken' } : {}) };
+    if (asleep && wait.woken) recordSleep({ step: 'woke', tabId, by: 'switch', how: wait.woken, restored: behind });
     // DEVELOPMENT DIAGNOSTICS: when its own document first answered (null: it
     // never did, and it's shown with none: Safari's empty view until it commits).
     if (wait.thereAt != null || behind === 'loading') how = { ...how, committed: wait.thereAt != null ? wait.thereAt - asked : null };
@@ -2222,7 +2234,8 @@ export async function resolveTab(tabId, hint, preferWindow, { deadline } = {}) {
   if (live || !hint?.url) return live;
   const key = M.normalizeUrl(hint.url);
   const nearest = (/** @type {any[]} */ tabs) => {
-    let candidates = tabs.filter((t) => M.normalizeUrl(t.url || t.pendingUrl || '') === key);
+    // (A sleeping tab by its page's address: model.js seenTab.)
+    let candidates = tabs.filter((t) => { const seen = M.seenTab(t); return M.normalizeUrl(seen.url || seen.pendingUrl || '') === key; });
     // The same page open twice: the one with the row's title, if that tells them apart.
     if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
     if (!candidates.length) return null;
@@ -3213,9 +3226,9 @@ async function countMiss(missed, tabId) {
 // A page Margin may reach, at rest: Safari says an unloaded tab has loaded.
 // `busy`: whatever is under way in its window (asked before waiting for it).
 /** @param {any} tab the tab as the browser has it @param {{ busy?: boolean }} [options] */
-const mayRestore = (tab, { busy = false } = {}) => !!platform?.restoreTabs && !!api.scripting?.executeScript && !tab.active && tab.status === 'complete' && /^https?:/.test(tab.url ?? '') && (busy || !windowBusy(tab.windowId));
+const mayRestore = (tab, { busy = false } = {}) => !!platform?.restoreTabs && !!api.scripting?.executeScript && !tab.active && tab.status === 'complete' && (/^https?:/.test(tab.url ?? '') || isSleepPage(tab.url)) && (busy || !windowBusy(tab.windowId));
 /** @typedef {'painted' | 'loaded' | 'loading' | 'not loaded' | 'in front' | 'left' | 'hurried' | 'gone' | 'cut'} Behind 'painted': its page has painted (still loading); 'loading': still, with nothing painted, at the time limit (or introductions just stopped); 'cut': its wait over with Safari's answers still to come (a Safari slow: focusTabNow withinWait), shown as far as it got; 'not loaded': Safari didn't load it behind; 'in front': Safari left it there; 'left': another switch; 'hurried': a key press after it */
-/** @typedef {{ gen: number, since: number, until: number, hardUntil?: number, hurry?: (() => boolean) | null, arrival?: Promise<[Wake | null, boolean]> | null, thereAt?: number | null, started?: Started | null, cut?: boolean, quiet?: boolean }} Wait `quiet`: the warm-up's (warmTab): nobody waits for the tab, so nothing is covered or held for it, and its flip doesn't go out once `hurry()` says so; `cut`: over (focusTabNow went on without it); `until`: the wait's end; `hardUntil`: its end while the tab's own document hasn't answered; `arrival`: its wake renewed and its arrival cover, asked for as that document answered (waitLoaded); `thereAt`: then; `started`: how its load was found started (loadStarted; DEVELOPMENT DIAGNOSTICS) */
+/** @typedef {{ gen: number, since: number, until: number, hardUntil?: number, hurry?: (() => boolean) | null, arrival?: Promise<[Wake | null, boolean]> | null, thereAt?: number | null, started?: Started | null, cut?: boolean, quiet?: boolean, woken?: Woken | null }} Wait `woken`: how a sleeping tab was woken (restoreTab); `quiet`: the warm-up's (warmTab): nobody waits for the tab, so nothing is covered or held for it, and its flip doesn't go out once `hurry()` says so; `cut`: over (focusTabNow went on without it); `until`: the wait's end; `hardUntil`: its end while the tab's own document hasn't answered; `arrival`: its wake renewed and its arrival cover, asked for as that document answered (waitLoaded); `thereAt`: then; `started`: how its load was found started (loadStarted; DEVELOPMENT DIAGNOSTICS) */
 // Why a wait stops early, if it does: another switch, a key press after it,
 // or introductions just turned off (the page in front blinked: it stopped
 // covering itself, so the switch goes ahead now).
@@ -3241,27 +3254,40 @@ async function restoreTab(tab, wait) {
     wakes.delete(tab.id);
     lose(tab.id, 'restored behind', { outFromStart: true });
   };
-  if (!(await forwardAndBack(tab, wait.gen, selected, wait.quiet ? { stop: () => !!stopsWait(wait) } : {}))) {
-    const now = await api.tabs.get(tab.id).catch(() => null);
-    return now?.active ? 'in front' : null;
+  // A tab Margin put to sleep (background/sleep.js): sent to its page's
+  // address, hidden (wakeAsleep), it loads behind the page as one Safari
+  // unloaded does once selected; if that fails, it's selected for an instant,
+  // as that one is: its sleep page sends it back to its page as it's shown.
+  const asleep = isSleepPage(tab.url);
+  if (asleep) {
+    wait.woken = await wakeAsleep(tab);
+    if (wait.woken) selected();
   }
-  // Its two activations are still left out while it loads (should they come
-  // late); a blink dated from here on isn't this restore's.
-  const span = introductions.get(tab.windowId)?.span;
-  if (span) span.until = Math.min(span.until, Date.now() + RESTORE_BLINK_MS);
+  if (!wait.woken) {
+    if (!(await forwardAndBack(tab, wait.gen, selected, wait.quiet ? { stop: () => !!stopsWait(wait) } : {}))) {
+      const now = await api.tabs.get(tab.id).catch(() => null);
+      return now?.active ? 'in front' : null;
+    }
+    if (asleep) wait.woken = 'flip';
+    // Its two activations are still left out while it loads (should they come
+    // late); a blink dated from here on isn't this restore's.
+    const span = introductions.get(tab.windowId)?.span;
+    if (span) span.until = Math.min(span.until, Date.now() + RESTORE_BLINK_MS);
+  }
   try {
     const started = await loadStarted(tab.id, wait);
     if (started === 'gone' || started === 'left' || started === 'hurried') return started;
     // (The warm-up's, `quiet`, aren't counted: a guess at a tab nobody asked
     // for doesn't turn restores off for the user's own clicks. It counts its
     // own: background/warm-up.js.)
+    // (Nor a sleeping tab's: its wake is Margin's own, not Safari's load.)
     if (started !== 'loading' && started !== 'ran' && started !== 'waiting') {
       // Not counted when cut short (introductions stopped): it may yet load.
-      if (started === false && !wait.quiet) await countMiss(true, tab.id);
+      if (started === false && !wait.quiet && !asleep) await countMiss(true, tab.id);
       return 'not loaded';
     }
     wait.started = started; // DEVELOPMENT DIAGNOSTICS
-    if (!wait.quiet) await countMiss(false, tab.id);
+    if (!wait.quiet && !asleep) await countMiss(false, tab.id);
     wakes.delete(tab.id); // one since, from before its load, said it had no page
     return await waitLoaded(tab.id, wait, Date.now(), { seen: started !== 'waiting' });
   } finally {
@@ -3404,7 +3430,8 @@ async function untilPainted(tabId, until, stopped, there = null) {
     if (latePaint) return 'painted';
     const tab = await timedCall('tabs.get', api.tabs.get(tabId), tabId).catch(() => null);
     const url = tab?.url || tab?.pendingUrl;
-    if (!url || stopped() || (!/^about:/.test(url) && !(await mayAccessCached(url)))) return (there?.(false), null);
+    // (A sleeping tab's sleep page until its page commits: asked again.)
+    if (!url || stopped() || (!/^about:/.test(url) && !isSleepPage(url) && !(await mayAccessCached(url)))) return (there?.(false), null);
     const left = Math.max(0, Math.min(READY_ASK_MS, until() - Date.now()));
     // (The answer is waited for as long as before: a page too busy to run the
     // first doesn't get a second queued behind it any sooner.)
@@ -3646,7 +3673,8 @@ async function untilLoaded(tabId, until, left, fromId, painted = null, load = nu
       if (load) load.seen = true;
     }
     const known = !load || load.seen || load.answered();
-    if (tab.status === 'complete' && known && ((tab.url && tab.url !== 'about:blank') || (!tab.url && sawLoading))) return 'loaded';
+    // (Not a sleeping tab's sleep page: it's woken, its page still to come.)
+    if (tab.status === 'complete' && known && ((tab.url && tab.url !== 'about:blank' && !isSleepPage(tab.url)) || (!tab.url && sawLoading))) return 'loaded';
     if (ready) return ready;
     if (Date.now() >= until()) return 'timeout';
     const pause = new Promise((resolve) => setTimeout(resolve, Math.min(POLL_MS, Math.max(0, until() - Date.now()))));
@@ -3838,15 +3866,31 @@ function suspectCutOff(tab) {
 }
 // A tab showing Margin's new-tab page from a copy that's gone (background/
 // cut-off.js oldOwnPageAddress): sent to this copy's. Whether it was. A tab
-// asleep is too (it'd load the old address, which no longer exists).
+// asleep is too (it'd load the old address, which no longer exists), and so
+// is a tab Margin put to sleep, to this copy's sleep page.
 async function repairOldOwnPage(tab) {
   const to = oldOwnPageAddress(tab?.url, ownAddress);
   if (tab?.id == null || !to || Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) < CUT_OFF_COOLDOWN_MS) return false;
   cutOffLoadedAt.set(tab.id, Date.now());
   const ok = await api.tabs.update(tab.id, { url: to }).then(() => true, () => false);
-  if (ok) console.info(`[margin] tab ${tab.id} still had the new-tab page of Margin from before it was reloaded: loaded again`);
+  if (ok) console.info(isSleepPage(tab.url) ? `[margin] tab ${tab.id} is asleep on the sleep page of Margin from before it was reloaded: moved to this copy's, still asleep` : `[margin] tab ${tab.id} still had the new-tab page of Margin from before it was reloaded: loaded again`);
   return ok;
 }
+// ---- sleeping tabs (background/sleep.js) --------------------------------------
+// A tab Margin put to sleep shows Margin's sleep page (shared/sleep.js), this
+// copy's or an earlier one's. Woken where it is, hidden: sent to its page's
+// address ('address': tabs.update; WebKit lets no extension page navigate
+// itself to a web page). Null if that failed: a switch selects it for an
+// instant then ('flip', restoreTab), and its sleep page sends it back as it's
+// shown.
+/** @typedef {'address' | 'flip'} Woken how a sleeping tab was woken: sent to its page's address, or shown for an instant */
+/** @param {any} tab @returns {Promise<'address' | null>} */
+export async function wakeAsleep(tab) {
+  const sleep = readSleepAddress(tab?.url);
+  if (tab?.id == null || !sleep?.url) return null;
+  return (await timedCall('tabs.update', api.tabs.update(tab.id, { url: sleep.url }), tab.id).then(() => true, () => false)) ? 'address' : null;
+}
+
 // The current copy's core and its active theme, into a page that has neither
 // (focusTabNow, before a switch to it). Whether they went in.
 async function addCurrentCopy(tab) {

@@ -103,7 +103,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 #settings { color: var(--muted); font-size: 13px; }
 #settings summary { cursor: pointer; }
 #settings label { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
-#settings select, #settings input { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+#settings select, #settings input, #settings textarea { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
 #settings input[type="checkbox"] { flex: none; width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
 #settings .help { margin: 6px 0 0; font-size: 12px; }
 .shortcut-input { width: 120px; text-align: center; cursor: pointer; }
@@ -116,7 +116,12 @@ ul { list-style: none; margin: 0; padding: 0; }
 #switch-log .help { margin: 0; }
 #shortcuts-reset { margin-top: 8px; font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
 #shortcut-help.error { color: #d63031; }
-#archive-hours { width: 72px; }
+#archive-hours, #sleep-hours { width: 72px; }
+#settings label.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
+#never-sleep { resize: vertical; min-height: 3.6em; }
+#settings .actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+#settings .actions button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+#settings .actions .help { margin: 0; }
 #archive-more { margin-top: 6px; padding: 4px 10px; border: 0; border-radius: 8px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 #archive-more:hover { background: var(--card); color: var(--fg); }
 

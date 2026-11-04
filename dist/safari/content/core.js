@@ -10,6 +10,7 @@ import { asksBackground, madeAfresh as madeAfreshNavigation, platform } from '..
 import { watchAway } from '../shared/away.js';
 import { copyAlive, mayNotice } from '../shared/no-answer.js';
 import { listenForHolds } from './hold.js';
+import { watchEdits } from './edits.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
@@ -41,6 +42,9 @@ export function startCore({ onTheme } = {}) {
   // Keep-ready's holds (content/hold.js), from the start: a tab left is held
   // at once. `holding()`: how many run (the WebKit host counts them).
   if (platform?.keepTabsReady) Margin.content.holding = listenForHolds(api);
+  // What the user typed here and hasn't sent: a tab with a draft isn't put to
+  // sleep (background/sleep.js asks: content/edits.js).
+  if (platform?.sleepTabs) Margin.content.edits = watchEdits();
   // An earlier copy of Margin's sidebar in the page: take over from it.
   const takeover = takeOver(api);
   // An earlier copy's sidebar is (or, once this copy owns the state, turns

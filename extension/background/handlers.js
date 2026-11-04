@@ -9,6 +9,7 @@ import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
 import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, provenWith, resolveTab, tellProven, shownAt, wakeTab } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
+import { sleepIdle, wakeAll } from './sleep.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import * as keepReady from './keep-ready.js';
@@ -360,6 +361,17 @@ export const handlers = {
     const by = why === 'hover' || why === 'reveal' || why === 'space' ? why : hover ? 'hover' : 'press';
     if (by === 'reveal' && !revealWakeDue(id)) return;
     void wakeTab(id, { hover, by });
+  },
+  // Settings' "Wake all sleeping tabs" (background/sleep.js): how many it woke.
+  async wakeSleeping() {
+    return wakeAll();
+  },
+  // A pass of sleeping tabs now (background/sleep.js), for tabs unused for
+  // `afterMs` (the setting's hours if left out): for checks by hand and the
+  // WebKit host. What it did.
+  /** @param {{ afterMs?: number, max?: number }} message */
+  async sleepNow({ afterMs, max } = {}) {
+    return sleepIdle({ ...(Number.isFinite(afterMs) && afterMs >= 0 ? { afterMs } : {}), ...(Number.isInteger(max) && max > 0 ? { max } : {}) });
   },
   // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): the log itself, for the
   // start page's "Switch log" button.

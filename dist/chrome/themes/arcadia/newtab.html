@@ -24,6 +24,16 @@
       <label>Archive tabs not used for (hours, 0 = never)
         <input id="archive-hours" type="number" min="0" max="720" step="1">
       </label>
+      <label id="sleep-setting" hidden>Put tabs to sleep after not using them for (hours, 0 = never). A sleeping tab frees its memory and loads again when you go back to it
+        <input id="sleep-hours" type="number" min="0" max="720" step="any">
+      </label>
+      <label id="never-sleep-setting" class="stacked" hidden>Never put these sites to sleep (one per line; each includes its subdomains)
+        <textarea id="never-sleep" rows="3" spellcheck="false" autocomplete="off" placeholder="mail.example.com"></textarea>
+      </label>
+      <div id="wake-all-setting" class="actions" hidden>
+        <button id="wake-all" type="button">Wake all sleeping tabs</button>
+        <span id="wake-all-status" class="help" role="status"></span>
+      </div>
       <label id="keep-ready-setting" hidden>Keep the tab you just left ready to show, with no flash, for this long (minutes, 0 = off; let go when you leave Safari)
         <input id="keep-ready-minutes" type="number" min="0" max="10" step="1">
       </label>

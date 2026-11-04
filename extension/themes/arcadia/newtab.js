@@ -7,6 +7,7 @@ import * as V from '../../shared/view.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 import { installGestureGuard } from '../../shared/gestures.js';
 import { platform } from '../../shared/platform.js';
+import { siteList } from '../../shared/sleep.js';
 import { watchAway } from '../../shared/away.js';
 import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../../shared/stored.js';
 import { el, asBrowserUi, setPageZoom } from '../../shared/dom.js';
@@ -252,6 +253,30 @@ export function mount({ api, self, send, windowed = false }) {
     if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { archiveAfterHours: value } });
   });
 
+  // Sleeping tabs (background/sleep.js): after how long, the sites that never
+  // sleep (shared/sleep.js siteList reads what's typed), and waking them all
+  // (turning sleep off wakes none: each wakes as it's shown).
+  const sleepHours = $('sleep-hours');
+  const neverSleep = $('never-sleep');
+  const wakeAllStatus = $('wake-all-status');
+  if (platform?.sleepTabs) {
+    for (const id of ['sleep-setting', 'never-sleep-setting', 'wake-all-setting']) $(id).hidden = false;
+    sleepHours.addEventListener('change', () => {
+      const value = Number(sleepHours.value);
+      if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { sleepAfterHours: Math.min(value, 720) } });
+    });
+    neverSleep.addEventListener('change', () => {
+      const sites = siteList(neverSleep.value);
+      neverSleep.value = sites.join('\n');
+      send('updateSettings', { patch: { neverSleepSites: sites } });
+    });
+    $('wake-all').addEventListener('click', async () => {
+      wakeAllStatus.textContent = 'Waking…';
+      const woke = await send('wakeSleeping');
+      wakeAllStatus.textContent = typeof woke !== 'number' ? 'Couldn’t reach Margin.' : woke ? `Woke ${woke} tab${woke === 1 ? '' : 's'}.` : 'No tabs are asleep.';
+    });
+  }
+
 
   // Safari's trackpad swipe/pinch (Safari builds only).
   const blockGestures = $('block-gestures');
@@ -488,6 +513,8 @@ export function mount({ api, self, send, windowed = false }) {
     if (document.activeElement !== themeSelect) themeSelect.value = themeFor(state.settings).id;
     gestureGuard?.update();
     if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
+    if (document.activeElement !== sleepHours) sleepHours.value = String(state.settings.sleepAfterHours ?? 4);
+    if (document.activeElement !== neverSleep) neverSleep.value = siteList(state.settings.neverSleepSites ?? []).join('\n');
     if (document.activeElement !== keepReady) keepReady.value = String(V.keepReadyMinutes(state.settings)); // (as stored: settings from before 2026-11-03 too)
     if (document.activeElement !== warmUpTabs) warmUpTabs.value = String(V.warmUpCount(state.settings));
     if (!recording) {

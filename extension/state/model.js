@@ -4,6 +4,7 @@
 // background can write only the keys that changed.
 import { platform, PROFILES } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
+import { neverSleeps, readSleepAddress, siteList } from '../shared/sleep.js';
 /** @import { State } from '../../types/margin' */
 
 const ARCHIVE_CAP = 200;
@@ -21,6 +22,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   sidebarPinnedOpen: false,
   frameWhenHidden: true, // the sidebar hidden: Margin's frame around the page, the page inside it at its sides
   archiveAfterHours: 12,
+  // Tabs not used for this many hours are put to sleep to free their memory
+  // (background/sleep.js; 0: never), except on these sites (hostnames, each
+  // with its subdomains: shared/sleep.js neverSleeps).
+  sleepAfterHours: 4,
+  neverSleepSites: Object.freeze([]),
   // Safari: the tab just left is kept ready to show (no flash when switching
   // back to it) for this many minutes, and let go once Safari is left for
   // another app; 0: off (background/keep-ready.js).
@@ -79,6 +85,7 @@ function defaultState() {
     archive: [],
     settings: {
       ...DEFAULT_SETTINGS,
+      neverSleepSites: [],
       shortcuts: { ...DEFAULT_SETTINGS.shortcuts },
       themes: Object.fromEntries(Object.entries(DEFAULT_SETTINGS.themes).map(([id, own]) => [id, { ...own }])),
     },
@@ -107,6 +114,7 @@ function normalizeState(raw = {}) {
     settings: {
       ...base.settings,
       ...withoutKeys(raw.settings, REMOVED_SETTINGS),
+      neverSleepSites: siteList(raw.settings?.neverSleepSites ?? []),
       shortcuts: normalizeShortcuts(raw.settings, base.settings),
       shortcutDefaults: base.settings.shortcutDefaults,
       theme: THEMES[raw.settings?.theme] ? raw.settings.theme : DEFAULT_THEME,
@@ -185,18 +193,39 @@ function pinForUrl(state, url, spaceId) {
 
 // ---- tabs -----------------------------------------------------------------
 
+// A tab as Margin keeps it: one Margin put to sleep (background/sleep.js) is
+// the page it was, its address and title read from its sleep page's address
+// (shared/sleep.js), whichever copy of Margin's sleep page it is, so the
+// sidebar, search, pins, spaces, the archive and the matching after a relaunch
+// (matchTabs) all go by the page, never by the sleep page. `asleep`: how
+// ('page'). One whose sleep page has no web address to go back to stays as it
+// is. A tab the browser discarded (Chrome's tabs.discard, Margin's or its
+// own) keeps its address and says `discarded` ('discarded').
+/** @param {any} tab */
+function seenTab(tab) {
+  if (!tab || tab.asleep) return tab;
+  const sleep = readSleepAddress(tab.url || tab.pendingUrl);
+  if (sleep?.url) return { ...tab, url: sleep.url, pendingUrl: undefined, title: sleep.title || tab.title, asleep: 'page' };
+  return tab.discarded === true ? { ...tab, asleep: 'discarded' } : tab;
+}
+
 function tabRecord(tab, prev, now) {
+  const seen = seenTab(tab);
   return {
-    id: tab.id,
-    windowId: tab.windowId,
-    index: tab.index ?? prev?.index ?? 0,
-    title: tab.title ?? prev?.title ?? '',
-    url: tab.url || tab.pendingUrl || prev?.url || '',
-    favIconUrl: tab.favIconUrl ?? prev?.favIconUrl ?? '',
-    active: !!tab.active,
-    lastActive: prev?.lastActive ?? tab.lastAccessed ?? now,
+    id: seen.id,
+    windowId: seen.windowId,
+    index: seen.index ?? prev?.index ?? 0,
+    title: seen.title ?? prev?.title ?? '',
+    url: seen.url || seen.pendingUrl || prev?.url || '',
+    favIconUrl: seen.favIconUrl ?? prev?.favIconUrl ?? '',
+    active: !!seen.active,
+    lastActive: prev?.lastActive ?? seen.lastAccessed ?? now,
     ...(prev?.restored ? { restored: true, restoredFrom: prev.restoredFrom } : {}),
     ...(prev?.placed ? { placed: true } : {}),
+    // Asleep since `at`; awake again since `wokeAt` (a tab woken isn't put
+    // to sleep again until it's been left that long once more: sleepyTabs).
+    ...(seen.asleep ? { sleeping: { at: prev?.sleeping?.at ?? now, how: seen.asleep } } : {}),
+    ...(!seen.asleep && prev?.sleeping ? { wokeAt: now } : prev?.wokeAt != null ? { wokeAt: prev.wokeAt } : {}),
   };
 }
 
@@ -385,6 +414,7 @@ function isRenumbered(state, openTabs, { fresh = false } = {}) {
 
 /** @param {State} state */
 function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
+  openTabs = openTabs.map(seenTab); // (a sleeping tab by its page's address)
   const open = new Set(openTabs.map((t) => String(t.id)));
   const known = (t) => !fresh && !!state.tabs[t.id];
   const gone = Object.values(state.tabs).filter((r) => fresh || !open.has(String(r.id)));
@@ -404,7 +434,7 @@ function syncTabs(state, openTabs, { fresh = false, now = Date.now() } = {}) {
   for (const tab of openTabs) {
     const same = known(tab) ? state.tabs[tab.id] : undefined;
     const match = matched.get(tab.id);
-    const prev = same ?? (match && { ...match, lastActive: (match.lastActive ?? now) + shift });
+    const prev = same ?? (match && { ...match, lastActive: (match.lastActive ?? now) + shift, ...(match.wokeAt != null ? { wokeAt: match.wokeAt + shift } : {}) });
     const record = tabRecord(tab, prev, now);
     if (match) Object.assign(record, { restored: true, restoredFrom: groupKey(now, match.windowId) });
     next.tabs[tab.id] = record;
@@ -759,6 +789,24 @@ function staleTabs(state, now) {
   );
 }
 
+// Tabs due to be put to sleep (background/sleep.js picks from these, and
+// asks each tab itself before it does): web pages that aren't the tab in
+// front of their window, aren't asleep, aren't on a site that never sleeps,
+// and haven't been used (or woken) for `settings.sleepAfterHours` (0 or less:
+// never; `afterMs` in its place, for tests and a pass asked for by hand).
+// Pinned tabs too. The time Safari was closed doesn't count: after a restart
+// every last use is moved forward (syncTabs). The longest unused first.
+/** @param {State} state @param {number} now @param {{ afterMs?: number | null }} [options] */
+function sleepyTabs(state, now, { afterMs = null } = {}) {
+  const ms = afterMs ?? Number(state.settings.sleepAfterHours) * 3600_000;
+  if (!(ms > 0)) return [];
+  const cutoff = now - ms;
+  const lastUse = (t) => Math.max(t.lastActive ?? now, t.wokeAt ?? -Infinity);
+  return Object.values(state.tabs)
+    .filter((t) => !t.active && !t.sleeping && /^https?:/i.test(t.url) && lastUse(t) < cutoff && !neverSleeps(t.url, state.settings.neverSleepSites))
+    .sort((a, b) => lastUse(a) - lastUse(b));
+}
+
 /** @param {State} state */
 function archiveEntryForTab(state, tab, { id, closedAt }) {
   return { id, url: tab.url, title: tab.title, favIconUrl: tab.favIconUrl, spaceId: state.tabSpace[tab.id] ?? state.spaces[0].id, closedAt };
@@ -807,5 +855,7 @@ export {
   inheritSpace,
   FAVICON_CAP,
   staleTabs,
+  sleepyTabs,
+  seenTab,
   archiveEntryForTab,
 };

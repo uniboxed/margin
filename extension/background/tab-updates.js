@@ -41,8 +41,10 @@ function waitFor(s, tabId, change, tab) {
   // redirect) at once: after a restart or an update tabs are matched to their
   // records by it (model.js matchTabs), and a write lost with the background
   // stopping would leave the tab in the window's active space. Not a new
-  // fragment alone (the same page there).
-  if (M.normalizeUrl(tab.url || tab.pendingUrl || known.url) !== M.normalizeUrl(known.url)) return null;
+  // fragment alone (the same page there), nor its going to sleep or waking
+  // (its record keeps the page's address: model.js seenTab).
+  const seen = M.seenTab(tab);
+  if (M.normalizeUrl(seen.url || seen.pendingUrl || known.url) !== M.normalizeUrl(known.url)) return null;
   const titleOnly = 'title' in change && !('url' in change) && !('favIconUrl' in change) && change.status !== 'complete';
   if (!titleOnly || known.title === change.title) return GATHER_MS;
   // A clock that only runs forward: the Mac's set back would hold it back as long.

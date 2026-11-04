@@ -1,0 +1,35 @@
+/* Margin's loading card (themes/arcadia/styles/sidebar.css .switch-cover and
+   .startup-cover): the frame's color, a spinner once it takes a moment. A
+   wake usually leaves before anything here shows. */
+:root { --frame: #9c9da1; }
+html, body { margin: 0; height: 100%; }
+body {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--frame) 92%, #fff);
+  color: rgba(0, 0, 0, 0.55);
+  font: 500 13px/1.3 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  letter-spacing: 0.01em;
+}
+.card { display: grid; justify-items: center; gap: 10px; max-width: min(560px, calc(100vw - 32px)); text-align: center; }
+.card p { margin: 0; }
+.site, .address { opacity: 0; animation: sleep-show 1ms linear 600ms forwards; }
+.address { font-weight: 400; font-size: 12px; overflow-wrap: anywhere; color: rgba(0, 0, 0, 0.45); }
+.note:empty { display: none; }
+.spinner { overflow: visible; opacity: 0; animation: sleep-spin 0.8s linear infinite, sleep-show 1ms linear 160ms forwards; }
+.spinner circle { fill: none; stroke-width: 2.5; }
+.spinner .track { stroke: rgba(0, 0, 0, 0.12); }
+.spinner .arc { stroke: rgba(0, 0, 0, 0.45); stroke-linecap: round; stroke-dasharray: 28 72; }
+#go { font: inherit; color: rgba(0, 0, 0, 0.7); background: rgba(255, 255, 255, 0.55); border: 0; border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+/* The page couldn't be gone back to by itself: its link offered, no spinner.
+   An address Margin won't go to: no spinner, everything there at once. */
+[data-offer] .spinner { display: none; }
+[data-offer] .site, [data-offer] .address { opacity: 1; animation: none; }
+[data-broken] .spinner { display: none; }
+[data-broken] .site, [data-broken] .address { opacity: 1; animation: none; }
+@keyframes sleep-spin { to { transform: rotate(360deg); } }
+@keyframes sleep-show { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: sleep-show 1ms linear 160ms forwards, sleep-pulse 1.2s ease-in-out 160ms infinite; }
+}
+@keyframes sleep-pulse { 50% { opacity: 0.4; } }

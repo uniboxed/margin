@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- A tab Margin put to sleep (shared/sleep.js startSleepPage): shown, it goes
+     back to its page at once. Margin's loading card, nothing else: no
+     sidebar, no storage listeners. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Asleep</title>
+  <link rel="stylesheet" href="sleep.css">
+  <script src="sleep.js" type="module"></script>
+</head>
+<body>
+  <main class="card" aria-busy="true">
+    <svg class="spinner" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+      <circle class="track" cx="14" cy="14" r="11"></circle>
+      <circle class="arc" cx="14" cy="14" r="11" pathLength="100"></circle>
+    </svg>
+    <p id="site" class="site"></p>
+    <p id="address" class="address"></p>
+    <p id="note" class="note"></p>
+    <button id="go" type="button" hidden>Open the page</button>
+  </main>
+</body>
+</html>

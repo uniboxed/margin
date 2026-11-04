@@ -31,6 +31,10 @@ const PROFILES = {
     // the page, one at a time, while the user is idle (background/warm-up.js,
     // setting warmUpTabs): Safari brings every tab back unloaded.
     warmUp: true,
+    // How a tab not used for a while is put to sleep (background/sleep.js):
+    // Safari has no tabs.discard, so its page goes to Margin's sleep page
+    // (shared/sleep.js), and back from there as it's shown.
+    sleepTabs: 'page',
     // Before Safari swaps web views, refresh the destination tab's own copy
     // of the sidebar while it is still hidden (background/tabs.js +
     // content/core.js). Chrome keeps hidden tabs' last frames and does not
@@ -76,6 +80,7 @@ const PROFILES = {
     introduceTabs: false,
     restoreTabs: false,
     warmUp: false, // Chrome loads restored tabs itself (its session restore), and keeps them drawn
+    sleepTabs: 'discard', // tabs.discard: Chrome loads the tab again as it's shown
     prepareSidebar: false,
     hiddenPaints: false, // Chrome doesn't paint a hidden tab (no paint entry comes for it): one loading behind is shown once loaded
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
