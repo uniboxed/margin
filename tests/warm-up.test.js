@@ -716,6 +716,37 @@ test('a tab warmed that starts playing sound by itself ends the run', async () =
   assert.equal(flipsOf(56, t0).length, 0);
 });
 
+test('an update Safari applied as it launched (every background tab with no page) is a relaunch: the tabs picked are warmed', async () => {
+  await calm();
+  await prefer([57, 58]);
+  loadsFor([57, 58]);
+  // The background tabs with a page by now (2–9, and those loaded by the
+  // tests before) out of the count, as if Safari had brought them back
+  // unloaded too: made pages Margin doesn't ask.
+  const urls = new Map();
+  for (const [id, tab] of fake.tabs) {
+    if (id === 1 || fake.noPage.has(id)) continue;
+    urls.set(id, tab.url);
+    tab.url = 'about:blank';
+  }
+  try {
+    const t0 = Date.now();
+    warmUp.resetWarmUp();
+    delete fake.session.warmUp;
+    warmUp.freshSession();
+    warmUp.noteInstalled('update');
+    const { entries } = await logged(() => over(warmUp.start()));
+    const plan = entries.find((e) => e.step === 'plan');
+    assert.equal(plan?.evidence?.update, true, JSON.stringify(entries));
+    assert.equal(plan?.evidence?.withPage, 0);
+    assert.equal(fake.session.warmUp?.state, 'done');
+    assert.equal(flipsOf(57, t0).length, 1);
+    assert.equal(flipsOf(58, t0).length, 1);
+  } finally {
+    for (const [id, url] of urls) fake.tabs.get(id).url = url;
+  }
+});
+
 // ---- nothing changes for a switch ------------------------------------------------------------
 
 test('guard: a click on an unloaded tab with no warm-up under way is restored behind the covered page and introduced, as before', async () => {

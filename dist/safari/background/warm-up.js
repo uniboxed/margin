@@ -77,6 +77,12 @@ const TIMING = {
 // A relaunch: of the background tabs the repair could ask, at least this
 // share had no page, and at least one.
 const RELAUNCH_SHARE = 0.6;
+// A Margin update Safari applied as it launched (a new build installed, then
+// Safari quit and opened again) is a relaunch too: every background tab with
+// no page, and at least this many. An update with Safari running finds its
+// tabs loaded. (Tirth's relaunch after `npm run safari`, 2026-11-03: 33 of 33
+// with no page, and nothing warmed, the update alone taken as no relaunch.)
+const UPDATE_RELAUNCH_MIN = 3;
 const KEY = 'warmUp';
 // Tabs warmed that Safari didn't load behind: this many and the run ends (a
 // switch's restores aren't affected: tabs.js restoreTab).
@@ -160,8 +166,9 @@ const read = () => Promise.resolve(api.storage.session?.get(KEY)).then((stored) 
 export function freshSession() {
   fresh = true;
 }
-// background.js: runtime.onInstalled. An update is never a relaunch (its
-// tabs have their pages): a run under way stops.
+// background.js: runtime.onInstalled. An update with Safari running isn't a
+// relaunch (its tabs have their pages: planned), and a run the copy before
+// had under way stops; one Safari applied as it launched can be (planned).
 /** @param {string} reason */
 export function noteInstalled(reason) {
   installed = reason; // (a run kept by the copy before stops at its next look: loop)
@@ -214,7 +221,9 @@ async function planned() {
   const [front] = await timed('tabs.query', api.tabs.query({ active: true, lastFocusedWindow: true })).catch(() => []);
   const behind = open.filter((t) => !t.active && isWeb(t.url));
   const evidence = { noPage: behind.filter((t) => foundWithNoPage(t.id) || t.discarded === true).length, withPage: behind.filter((t) => foundWithPage(t.id)).length, update: installed === 'update' };
-  if (evidence.update || evidence.noPage < 1 || evidence.noPage / (evidence.noPage + evidence.withPage) < RELAUNCH_SHARE) {
+  const relaunch = evidence.noPage >= 1 && evidence.noPage / (evidence.noPage + evidence.withPage) >= RELAUNCH_SHARE
+    && (!evidence.update || (evidence.withPage === 0 && evidence.noPage >= UPDATE_RELAUNCH_MIN));
+  if (!relaunch) {
     keep('not relaunch');
     recordWarmUp({ step: 'not relaunch', evidence });
     return false;
@@ -248,7 +257,7 @@ async function loop() {
   let lastWhy = null; // the last wait's reason, and how many times in a row
   let streak = 0;
   for (;;) {
-    const why = stopWhy ?? (installed === 'update' ? 'Margin updated' : Date.now() >= run.until ? 'out of time' : !isOwner() ? 'not in charge' : null);
+    const why = stopWhy ?? (resumed && installed === 'update' ? 'Margin updated' : Date.now() >= run.until ? 'out of time' : !isOwner() ? 'not in charge' : null);
     if (why) return finish(why);
     const left = run.picked.filter((p) => !(String(p.id) in run.done));
     if (!left.length) return finish('done');
