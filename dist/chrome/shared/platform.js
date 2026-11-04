@@ -27,6 +27,10 @@ const PROFILES = {
     // (background/tabs.js restoreTab): Safari shows a dark window until its
     // document arrives otherwise.
     restoreTabs: true,
+    // After a relaunch, the tabs likely to be clicked next are loaded behind
+    // the page, one at a time, while the user is idle (background/warm-up.js,
+    // setting warmUpTabs): Safari brings every tab back unloaded.
+    warmUp: true,
     // Before Safari swaps web views, refresh the destination tab's own copy
     // of the sidebar while it is still hidden (background/tabs.js +
     // content/core.js). Chrome keeps hidden tabs' last frames and does not
@@ -71,6 +75,7 @@ const PROFILES = {
     keepTabsReady: false, // Chrome keeps hidden tabs' last frames
     introduceTabs: false,
     restoreTabs: false,
+    warmUp: false, // Chrome loads restored tabs itself (its session restore), and keeps them drawn
     prepareSidebar: false,
     hiddenPaints: false, // Chrome doesn't paint a hidden tab (no paint entry comes for it): one loading behind is shown once loaded
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by

@@ -10,7 +10,8 @@
 // setWidth(px), setLoading(on, { instant }), setCover?(on, { instant, spinnerNow }) (the empty screen while switching tabs),
 // setStartup?(on) (over everything while Margin gets ready after Safari starts or Margin is updated; else setCover),
 // setPull({ phase, progress }), setSwipe({ phase, progress, direction }),
-// showNotice({ text, actions: [{ label, run }], duration? } | null) }
+// showNotice({ text, actions: [{ label, run }], duration? } | null),
+// setWarmUp?({ done, total, state: 'running' | 'done' | 'stopped' } | null) (the warm-up's note after a relaunch: background/warm-up.js) }
 // (themes/arcadia/content.js is the reference).
 export function registerTheme(theme) {
   const Margin = (globalThis.Margin ??= {});

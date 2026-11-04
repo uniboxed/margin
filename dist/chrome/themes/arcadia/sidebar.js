@@ -131,9 +131,11 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
   // The space's own part (its name, the editor, the list): what a sideways
   // swipe moves (see "swipe between spaces" below).
   const pane = el(doc, 'div', { class: 'space-pane' }, spaceTitle, editor, tabsSection);
+  const warmUp = createWarmUpNote(doc, () => send('warmUpStop'));
   const root = el(doc, 'aside', { class: `margin-sidebar ${mode}`, 'aria-label': 'Margin' },
     top,
     pane,
+    warmUp.el,
     footer,
   );
 
@@ -1651,6 +1653,88 @@ function createSidebar({ document: doc, send, mode, onNewTab, onArchive, onWidth
     // The Mac's Light/Dark appearance ('light' | 'dark').
     setColorScheme(scheme) {
       root.dataset.theme = scheme;
+    },
+    // The warm-up after a relaunch (background/warm-up.js): its note, or null.
+    setWarmUp: warmUp.set,
+  };
+}
+
+// "Getting your tabs ready", 3 of 6, over the bottom bar while Margin loads
+// the tabs likely clicked next after a Safari relaunch (background/warm-up.js).
+// Nothing to do with it: it blocks nothing and takes no focus; its × stops
+// the warm-up (in the tab order, as the sidebar's other buttons). Drawn
+// once, changed in place (never the sidebar drawn again for it). Its words
+// are said once by a screen reader as it comes and as it ends (a polite live
+// region: the label only, its words put in just after it's shown, which
+// WebKit announces); the count is a progress bar. Done: "Tabs ready" for a
+// moment, then it fades; stopped, it fades at once (styles/sidebar.css; no
+// fade with reduced motion). A last word for a page that wasn't showing it
+// (it came to the front since, or its note went for want of news) shows nothing.
+const WARM_DONE_MS = 2000;
+const WARM_FADE_MS = 200;
+/** @param {Document} doc @param {() => void} stop */
+function createWarmUpNote(doc, stop) {
+  const label = el(doc, 'span', { class: 'warm-label', role: 'status', 'aria-live': 'polite', text: '' });
+  const count = el(doc, 'span', { class: 'warm-count', 'aria-hidden': 'true' });
+  const fill = el(doc, 'div', { class: 'warm-fill' });
+  const bar = el(doc, 'div', { class: 'warm-bar', role: 'progressbar', 'aria-label': 'Getting tabs ready', 'aria-valuemin': '0' }, fill);
+  const close = el(doc, 'button', { type: 'button', class: 'warm-stop', title: 'Stop getting tabs ready', 'aria-label': 'Stop getting tabs ready' }, ICONS.close(doc));
+  const note = el(doc, 'div', { class: 'warm-note', hidden: true }, el(doc, 'div', { class: 'warm-row' }, label, count, close), bar);
+  let timer = null;
+  let words = null;
+  let drawn = '';
+  const hide = (after = 0) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      note.classList.add('leaving');
+      timer = setTimeout(() => {
+        note.hidden = true;
+        note.classList.remove('leaving');
+        clearTimeout(words);
+        label.textContent = '';
+        drawn = '';
+      }, WARM_FADE_MS);
+    }, after);
+  };
+  close.addEventListener('click', (event) => {
+    event.stopPropagation();
+    stop();
+    hide();
+  });
+  return {
+    el: note,
+    /** @param {{ done: number, total: number, state: string } | null} progress */
+    set(progress) {
+      if (!progress || !(progress.total > 0)) {
+        if (!note.hidden) hide();
+        return;
+      }
+      const done = Math.max(0, Math.min(progress.done, progress.total));
+      const key = `${progress.state}:${done}:${progress.total}`;
+      if (key === drawn) return;
+      const coming = note.hidden || note.classList.contains('leaving');
+      drawn = key;
+      clearTimeout(timer);
+      note.classList.remove('leaving');
+      if (progress.state !== 'running' && coming) {
+        if (!note.hidden) hide();
+        return;
+      }
+      if (progress.state === 'stopped') return hide();
+      const over = progress.state === 'done';
+      const text = over ? 'Tabs ready' : 'Getting your tabs ready';
+      clearTimeout(words);
+      if (coming) {
+        label.textContent = '';
+        words = setTimeout(() => { label.textContent = text; }, 50);
+      } else if (label.textContent !== text) label.textContent = text;
+      count.textContent = over ? '' : `${done} of ${progress.total}`;
+      bar.setAttribute('aria-valuemax', String(progress.total));
+      bar.setAttribute('aria-valuenow', String(over ? progress.total : done));
+      fill.style.transform = `scaleX(${over ? 1 : done / progress.total})`;
+      note.classList.toggle('over', over);
+      note.hidden = false;
+      if (over) hide(WARM_DONE_MS);
     },
   };
 }

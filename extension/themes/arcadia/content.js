@@ -155,6 +155,7 @@ registerTheme({
       setPull: chrome.setPull,
       setSwipe: chrome.setSwipe,
       showNotice: chrome.showNotice,
+      setWarmUp: sidebar.setWarmUp,
     };
   },
 });

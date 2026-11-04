@@ -237,4 +237,13 @@ function keepReadyMinutes(settings) {
   return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
 }
 
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, keepReadyMinutes };
+// How many tabs the warm-up after a relaunch loads (settings.warmUpTabs:
+// background/warm-up.js), 0 (off) to WARM_UP_MAX; 6 for settings from before it.
+const WARM_UP_MAX = 12;
+function warmUpCount(settings) {
+  if (!settings || !('warmUpTabs' in settings)) return 6;
+  const count = Number(settings.warmUpTabs);
+  return Number.isFinite(count) && count > 0 ? Math.min(Math.round(count), WARM_UP_MAX) : 0;
+}
+
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, keepReadyMinutes, warmUpCount, WARM_UP_MAX };

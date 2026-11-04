@@ -12,6 +12,7 @@ import { clearLog, readLog } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import * as keepReady from './keep-ready.js';
+import * as warmUp from './warm-up.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
@@ -303,7 +304,8 @@ export const handlers = {
     const carry = sender.tab?.id != null && sender.tab.active !== false ? takeCarried(sender.tab.id) : null;
     if (sender.tab?.id != null) forgetShowing(sender.tab.id, { later: true });
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.js).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since };
+    // `warmUp`: the warm-up after a relaunch under way, for its note in the sidebar (background/warm-up.js).
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.js), after checking the stored owner again.
@@ -457,6 +459,18 @@ export const handlers = {
   },
   async back(_request, sender) {
     keepReady.noteFocused(sender?.tab?.windowId ?? null);
+  },
+  // The page in front, asked whether the user is idle for the warm-up after
+  // a relaunch, says they did something since (content/idle.js): the warm-up
+  // gives way (background/warm-up.js).
+  /** @param {{ at?: number }} [request] */
+  async warmUpInput({ at } = {}) {
+    warmUp.userActed(Number.isFinite(at) ? at : Date.now());
+  },
+  // The warm-up's note in the sidebar: its × (themes/arcadia/sidebar.js),
+  // answered once the stop is kept.
+  async warmUpStop() {
+    await warmUp.stopByUser();
   },
   // The page in front was hidden for an instant (shared/switching.js
   // onBlink): tabs.js pageBlinked takes it only from the page in front of a

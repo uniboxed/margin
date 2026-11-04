@@ -50,6 +50,13 @@ export function slowSince(now = Date.now()) {
 }
 // Whether Safari (or the Mac) is slow now.
 export const isSlow = () => slowSince() != null;
+// When the last sign came, whatever its source (null: none within
+// SLOW_KEEP_MS): work that can wait (background/warm-up.js) waits for a
+// Safari with none for a while, not only one that isn't slow.
+export const lastSignAt = (now = Date.now()) => {
+  const last = seen.at(-1);
+  return last && now - last.at < SLOW_KEEP_MS ? last.at : null;
+};
 // When a switch that started at `since`, for the tab `key`, found Safari
 // slow: as it started, if it was then; or when one of its own calls was, or
 // Safari became so. null: it hasn't.

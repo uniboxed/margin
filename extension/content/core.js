@@ -18,6 +18,7 @@ import { startPinch } from './pinch.js';
 import { createSwitching, backgroundSwitches, NEW_TAB, SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { createReadiness } from './ready.js';
+import { createIdleWatch } from './idle.js';
 import { readyInPage } from '../shared/page-ready.js';
 import { STATE_REV, fromStorage, knowsState, onlyMark, openTabsCurrent, readForPage, revAfter, revOf, takesChanges, withChanges } from '../shared/stored.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
@@ -246,6 +247,7 @@ export function startCore({ onTheme } = {}) {
     if (state) render();
     layout.reopen(); // hovered or toggled before it was there
     if (readiness.shown()) view.setStartup?.(true); // getting ready before it was there
+    if (warmUpNote && !document.hidden) view.setWarmUp?.(warmUpNote); // the warm-up's note, told before it was there
     offerFittedReload();
   }
   // Taking over from a copy from before the page's box, on a page that copy
@@ -1265,6 +1267,7 @@ export function startCore({ onTheme } = {}) {
     }
     helloWindowId = ctx.windowId;
     fullscreen = ctx.fullscreen;
+    if (ctx.warmUp) showWarmUp(ctx.warmUp);
     render();
     const carry = ctx.carry ?? carriedWhy;
     carriedWhy = null;
@@ -1292,7 +1295,41 @@ export function startCore({ onTheme } = {}) {
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
 
+  // ---- the warm-up after a relaunch (background/warm-up.js) ------------------
+  // Whether the user is idle here, asked by the background before it loads a
+  // tab behind this page, and the first input after that said to it
+  // (content/idle.js). Margin itself isn't idle with its palette open, the
+  // sidebar out over the page or in use, or a switch under way.
+  const idle = createIdleWatch({
+    busy: () => (Margin.content.paletteOpen?.() ? 'palette' : layout.out() ? 'sidebar out' : view?.isBusy?.() ? 'sidebar in use' : switching.target() != null ? 'switching' : !active() ? 'out of the way' : null),
+    acted: (at) => void send('warmUpInput', { at }, false),
+  });
+  // Its note in the sidebar ("Getting your tabs ready", 3 of 6): only while
+  // this page is in front; one hidden drops it (the background tells the page
+  // that comes to the front). Over, the watch ends.
+  // A note with no news for its `forMs` (the background's NOTE_MS: a run
+  // waiting on the user, or one whose last word didn't come) goes by itself.
+  /** @type {{ done: number, total: number, state: string } | null} */
+  let warmUpNote = null;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let warmUpTimer;
+  const showWarmUp = (/** @type {any} */ progress) => {
+    clearTimeout(warmUpTimer);
+    warmUpNote = progress && progress.state === 'running' ? progress : null;
+    if (warmUpNote) warmUpTimer = setTimeout(() => showWarmUp(null), Math.max(1000, Number(progress.forMs) || 15_000));
+    if (progress && progress.state !== 'running') idle.end();
+    if (!document.hidden || !progress) view?.setWarmUp?.(progress ?? null);
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden || !warmUpNote) return;
+    clearTimeout(warmUpTimer);
+    warmUpNote = null;
+    view?.setWarmUp?.(null);
+  });
+
   const onMessage = (message, _, sendResponse) => {
+    if (message?.type === 'warm-up-idle') return sendResponse(dormant ? { idle: false, why: 'not in charge', retryMs: 5000 } : idle.ask(message));
+    if (message?.type === 'warm-up') return showWarmUp(message.progress);
     // Background (⌘T hand-off): open the palette here to choose a new tab, and
     // say whether it could (not before the theme is mounted, or while Margin
     // is out of the way; then the new-tab page opens its own instead).

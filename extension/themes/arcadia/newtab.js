@@ -236,6 +236,16 @@ export function mount({ api, self, send, windowed = false }) {
     });
   }
 
+  // How many tabs the warm-up after a relaunch loads (background/warm-up.js).
+  const warmUpTabs = $('warm-up-tabs');
+  if (platform?.warmUp) {
+    $('warm-up-setting').hidden = false;
+    warmUpTabs.addEventListener('change', () => {
+      const value = Number(warmUpTabs.value);
+      if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { warmUpTabs: Math.min(Math.round(value), V.WARM_UP_MAX) } });
+    });
+  }
+
   const hours = $('archive-hours');
   hours.addEventListener('change', () => {
     const value = Number(hours.value);
@@ -479,6 +489,7 @@ export function mount({ api, self, send, windowed = false }) {
     gestureGuard?.update();
     if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
     if (document.activeElement !== keepReady) keepReady.value = String(V.keepReadyMinutes(state.settings)); // (as stored: settings from before 2026-11-03 too)
+    if (document.activeElement !== warmUpTabs) warmUpTabs.value = String(V.warmUpCount(state.settings));
     if (!recording) {
       const values = currentShortcuts();
       for (const input of shortcutInputs) input.value = shortcuts.format(values[input.dataset.shortcut]);

@@ -229,6 +229,8 @@ export function startLayout(page, { loader }) {
 
   return {
     show, hide, toggle, peek, onWidth,
+    // Out over the page (hovered or toggled, not docked): the user is reaching for it.
+    out: () => isOpen && !wasDocked,
     // The page's zoom changed: the box follows.
     rezoom: () => setOpen(isOpen),
     // After a render: back to the resting layout, unless hovered or toggled.

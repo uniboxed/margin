@@ -562,6 +562,34 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## After a relaunch: your likely tabs get ready on their own (2026-11-03)
+
+After Safari restarts, Margin now loads up to 6 of the tabs you're likely to click next, one at a time, behind the page you're on. It waits until Safari has settled and you're not typing, clicking or scrolling. Those are the tab you used last before the one in front, the tab each other space would show, tabs open on a pin, then other tabs you used recently. The sidebar shows a small note while it does this ("Getting your tabs ready", 3 of 6), then "Tabs ready". Nothing covers the page and nothing waits for it. Anything you do comes first.
+
+Before you start: run `npm run safari`. Then quit Safari with several windows, spaces and pinned tabs open, and open it again.
+
+- [ ] Wait about 15 s without touching anything. With the sidebar kept open (or out over the page), the note appears above the bottom bar, counts up, says "Tabs ready", and fades. Nothing on the page flickers, goes dark or moves, and Safari's tab bar and address bar don't change while it runs.
+- [ ] Then click those tabs: the tab you used last, another space's icon, a pinned tab. Each comes up at once, already drawn, with no spinner. A tab further down the list that wasn't warmed still loads behind the page as before.
+- [ ] Relaunch again, and this time start typing in a page (a search box) or in Safari's address bar (⌘L) right away, and keep going for a while. Nothing is loaded while you type. Your typing isn't interrupted, the address bar keeps what you typed, and the note doesn't appear or doesn't move on. If it was up, it goes within about 15 s while you keep working, and comes back when the next tab starts.
+- [ ] Relaunch with a page in front that types inside a frame (Google Docs, an embedded editor or a card field) and type there, pausing a few seconds now and then: nothing is loaded while focus is in it. With Japanese or Chinese input, a word being composed is never cut off.
+- [ ] Relaunch again and click a tab in the sidebar as soon as it shows, while the note is up. The click switches as fast as usual. The warm-up waits and goes on afterwards.
+- [ ] Relaunch with a video playing in the tab in front, with the Safari window minimized, in full screen, or with another app in front. Nothing is loaded until you're back on a page in a normal window with nothing playing.
+- [ ] Click the note's ×: it fades and nothing more is loaded. Try it again after a relaunch where you leave Safari alone for a minute first (Margin's background stops), then click ×: it still stops.
+- [ ] With two windows open at the relaunch, work in the other window: nothing is loaded there, and no note stays stuck in either window.
+- [ ] If a site you allow to auto-play (YouTube, a radio site) is among the tabs warmed: no sound starts from a tab you didn't open. Tell me if it does.
+- [ ] Settings (start page) → "After Safari restarts, quietly load this many of the tabs…": set 0, relaunch: no note, nothing loaded. Set it back to 6.
+- [ ] Update Margin (`npm run safari` again) without quitting Safari: no note, nothing loaded (it's not a relaunch).
+- [ ] After the relaunch checks, Activity Monitor: Safari's memory is a few hundred MB higher at most, and settles.
+- [ ] Copy the switch log (start page → Settings → Switch log). Look for `kind: 'warmUp'`:
+  - `step: 'plan'` lists the tabs picked and why (`recent`, `space`, `pinned`), and `evidence` (`noPage` should be most of your tabs).
+  - Each `step: 'tab'` has `outcome` `painted` or `loaded` (`left` or `hurried`: you did something while it loaded; `skipped: shown`: you opened it yourself first). `waitedMs` is how long it waited before that tab.
+  - `step: 'end'` has `why` (`done`, `stopped by you`, `out of time`…) and `waits`: what it waited for (`slow`, `typing`, `input`, `not focused`…).
+  - If it never ran: a `step: 'not relaunch'` entry, and whether its `evidence` says `update: true`. Send me that.
+  - Right after the warm-up, the next `kind: 'switch'` entries shouldn't say Safari was slow unless it really was (the warm-up no longer counts its own late timers).
+- [ ] Safari's log for the minute after the relaunch, if anything looked wrong: the flips' tabs should show `restoreFromSessionState` with no `hideContentUntilPendingUpdate` on the page in front.
+
+**Send me** the switch log, and anything that flickered, went dark, or lost what you typed.
+
 ## After a reboot: every click switches, within about 2 seconds (2026-11-03, evening)
 
 Right after a reboot Safari is slow to answer Margin, sometimes 2–3 s for each question, and Margin's own timers run late. Margin now notices this. A switch starts from what Margin already knows about the tab instead of first asking Safari where it is. While Safari is slow, the tab comes up about 1.5–2 s after the click, still loading if it has to, as Safari itself would show it, instead of after 5–7 s. The page you clicked on also waits 3 s longer for Margin's answer, so a slow answer is never taken as "didn't switch".

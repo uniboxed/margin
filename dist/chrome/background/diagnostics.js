@@ -96,6 +96,11 @@ export function recordRepair({ pass, tabs, asked, noPage, gaveWayMs, ms }) {
   record({ kind: 'repair', pass, tabs, asked, noPage, gaveWayMs, ms });
 }
 
+/** The warm-up after a relaunch (background/warm-up.js): `step` 'plan' (the tabs picked, `candidates` [{ tabId, why }], and the `evidence` it was a relaunch: { noPage, withPage, update }), 'not relaunch' (the same evidence), 'tab' (`tabId`, `why` it was picked: 'recent' | 'space' | 'pinned'; `waitedMs` from the step before to its flip; `outcome`: the restore's 'painted' | 'loaded' | 'loading' | 'not loaded' | 'in front' | 'left' | 'hurried' | 'gone' | 'cut', 'not tried', or 'skipped: <why>'; `ms` from its flip to its end; `restoreStart`, `committed` as a switch's), or 'end' (`why`, `done`, `total`, `ms` from its start; `waits`: what it waited for and how often). */
+export function recordWarmUp(entry) {
+  record({ kind: 'warmUp', ...entry });
+}
+
 /** A background start that found storage empty (a first install, or Safari cleared Margin's data: seen at every relaunch of an unsigned build). */
 export function recordEmptyStart() {
   record({ kind: 'start', emptyStorage: true });

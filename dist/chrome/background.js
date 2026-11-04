@@ -8,6 +8,7 @@ import * as M from './state/model.js';
 import * as V from './shared/view.js';
 import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
 import * as keepReady from './background/keep-ready.js';
+import * as warmUp from './background/warm-up.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
 import { activationsHeard, ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, heardActivation, injectIntoOpenTabs, isIntroduction, keepHandedOff, pageChanged, resolveTab, sawActivation, setIntroductionHooks, shownAt, switchAsked, tabOpened, tabShown, userSwitched } from './background/tabs.js';
@@ -49,6 +50,7 @@ const owned = (fn) => async (...args) => {
 
 api.runtime.onInstalled.addListener(owned((details) => {
   console.log('[margin] installed', details.reason);
+  warmUp.noteInstalled(details.reason); // an update isn't a relaunch: no warm-up (background/warm-up.js)
   if (details.reason === 'install' || details.reason === 'update') injectIntoOpenTabs();
 }));
 
@@ -70,6 +72,9 @@ const firstSyncOnce = () => resync({ onSync: (sync) => {
   // has reconciled their authoritative ids, without waiting for WebKit's
   // delayed static-content-script pass.
   if (sync.fresh) void injectIntoOpenTabs();
+  // A relaunch (or a new copy): the tabs likely clicked next may be loaded
+  // behind the page once Safari has settled (background/warm-up.js decides).
+  if (sync.fresh) warmUp.freshSession();
 } }).then(() => isOwner() && markSynced());
 // Tried again if it fails (a storage error), a few times.
 const firstSync = (async () => {
@@ -116,6 +121,9 @@ firstSync.then(async () => {
   // matched as soon as it knows it owns the state). A copy's first start
   // can't (its ids aren't the open tabs' until this sync).
   keepReady.tickSoon();
+  // The warm-up after a relaunch: planned in a while, or one under way when
+  // this background stopped carried on (background/warm-up.js).
+  void warmUp.start();
   if (!(await startWorkDue())) return;
   void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
@@ -236,6 +244,7 @@ const activated = owned(async ({ tabId, windowId }, left) => {
   if (left != null) keepReady.holdNow(left); // (not one a held key only passed through)
   userSwitched(tabId, windowId);
   tabShown(tabId);
+  warmUp.frontChanged(tabId, windowId); // its page gets the warm-up's note, if one is up
   shownAt.set(tabId, Date.now());
   // The user switched tabs themselves: shortcut chaining restarts from here.
   if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
@@ -319,7 +328,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme', 'injectPage', 'fetchStyle']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme', 'injectPage', 'fetchStyle']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it

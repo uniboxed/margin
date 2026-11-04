@@ -2107,8 +2107,10 @@ async function introduceTab(tab, gen, { loading = false, unseen = false } = {}) 
 // turn (above). Whether the page in front is back; `sending()` just before
 // the updates go out. `kick`: a switch's kick (focusTabNow), not an
 // introduction or a restore: another switch doesn't wait for it before its wake.
-/** @param {any} tab @param {number} gen @param {() => void} [sending] @param {{ kick?: boolean }} [options] @returns {Promise<boolean>} */
-async function forwardAndBack(tab, gen, sending = () => {}, { kick = false } = {}) {
+// `stop()`: the warm-up's (warmTab), looked at once more just before the
+// updates go out: true, and nothing is sent.
+/** @param {any} tab @param {number} gen @param {() => void} [sending] @param {{ kick?: boolean, stop?: (() => boolean) | null }} [options] @returns {Promise<boolean>} */
+async function forwardAndBack(tab, gen, sending = () => {}, { kick = false, stop = null } = {}) {
   const windowId = tab.windowId;
   let settled = () => {};
   /** @type {Promise<void>} */
@@ -2127,7 +2129,7 @@ async function forwardAndBack(tab, gen, sending = () => {}, { kick = false } = {
   const [front] = await timedCall('tabs.query', api.tabs.query({ active: true, windowId }), tab.id).catch(() => []);
   // (Not once it was ended meanwhile: its switch went on without it, out of
   // time, and has shown the tab, or is about to: endIntroduction.)
-  if (!front || front.id === tab.id || front.id !== known || gen !== focusGen || introductions.get(windowId) !== pending) {
+  if (!front || front.id === tab.id || front.id !== known || gen !== focusGen || introductions.get(windowId) !== pending || stop?.()) {
     release();
     return false;
   }
@@ -2299,6 +2301,14 @@ async function answerBy(promise, until) {
   return /** @type {T | null} */ (answer);
 }
 
+// For tests: what this background alone knows about tabs never shown gone,
+// as for a background Safari started again (storage.session read again).
+export function forgetNeverShown() {
+  neverShown.clear();
+  introduced.clear();
+  backSince.clear();
+  unseenTabs = null;
+}
 // For tests: on again, as after a Safari restart.
 export function resetIntroductions() {
   off = null;
@@ -2420,7 +2430,7 @@ async function countMiss(missed, tabId) {
 /** @param {any} tab the tab as the browser has it @param {{ busy?: boolean }} [options] */
 const mayRestore = (tab, { busy = false } = {}) => !!platform?.restoreTabs && !!api.scripting?.executeScript && !tab.active && tab.status === 'complete' && /^https?:/.test(tab.url ?? '') && (busy || !windowBusy(tab.windowId));
 /** @typedef {'painted' | 'loaded' | 'loading' | 'not loaded' | 'in front' | 'left' | 'hurried' | 'gone' | 'cut'} Behind 'painted': its page has painted (still loading); 'loading': still, with nothing painted, at the time limit (or introductions just stopped); 'cut': its wait over with Safari's answers still to come (a Safari slow: focusTabNow withinWait), shown as far as it got; 'not loaded': Safari didn't load it behind; 'in front': Safari left it there; 'left': another switch; 'hurried': a key press after it */
-/** @typedef {{ gen: number, since: number, until: number, hardUntil?: number, hurry?: (() => boolean) | null, arrival?: Promise<[Wake | null, boolean]> | null, thereAt?: number | null, started?: Started | null, cut?: boolean }} Wait `cut`: over (focusTabNow went on without it); `until`: the wait's end; `hardUntil`: its end while the tab's own document hasn't answered; `arrival`: its wake renewed and its arrival cover, asked for as that document answered (waitLoaded); `thereAt`: then; `started`: how its load was found started (loadStarted; DEVELOPMENT DIAGNOSTICS) */
+/** @typedef {{ gen: number, since: number, until: number, hardUntil?: number, hurry?: (() => boolean) | null, arrival?: Promise<[Wake | null, boolean]> | null, thereAt?: number | null, started?: Started | null, cut?: boolean, quiet?: boolean }} Wait `quiet`: the warm-up's (warmTab): nobody waits for the tab, so nothing is covered or held for it, and its flip doesn't go out once `hurry()` says so; `cut`: over (focusTabNow went on without it); `until`: the wait's end; `hardUntil`: its end while the tab's own document hasn't answered; `arrival`: its wake renewed and its arrival cover, asked for as that document answered (waitLoaded); `thereAt`: then; `started`: how its load was found started (loadStarted; DEVELOPMENT DIAGNOSTICS) */
 // Why a wait stops early, if it does: another switch, a key press after it,
 // or introductions just turned off (the page in front blinked: it stopped
 // covering itself, so the switch goes ahead now).
@@ -2435,11 +2445,16 @@ async function restoreTab(tab, wait) {
   // Shown for the first time yet, from the moment it's selected: introduced
   // once loaded, and arriving covered, should this switch be called off
   // before its load is seen (Safari goes on loading it); its wake said it had no page.
+  // The warm-up's (`quiet`): its switch comes later, maybe from another
+  // background (Safari stops an idle one after about 30 s, and neverShown is
+  // this background's own), so it's marked unseen in storage.session too
+  // (unseenTabs): its first switch introduces it whichever background makes it.
   const selected = () => {
     neverShown.add(tab.id);
     wakes.delete(tab.id);
+    if (wait.quiet && platform?.introduceTabs) void unseenSet().then((set) => !set.has(tab.id) && saveUnseen(set.add(tab.id)));
   };
-  if (!(await forwardAndBack(tab, wait.gen, selected))) {
+  if (!(await forwardAndBack(tab, wait.gen, selected, wait.quiet ? { stop: () => !!stopsWait(wait) } : {}))) {
     const now = await api.tabs.get(tab.id).catch(() => null);
     return now?.active ? 'in front' : null;
   }
@@ -2450,13 +2465,16 @@ async function restoreTab(tab, wait) {
   try {
     const started = await loadStarted(tab.id, wait);
     if (started === 'gone' || started === 'left' || started === 'hurried') return started;
+    // (The warm-up's, `quiet`, aren't counted: a guess at a tab nobody asked
+    // for doesn't turn restores off for the user's own clicks. It counts its
+    // own: background/warm-up.js.)
     if (started !== 'loading' && started !== 'ran' && started !== 'waiting') {
       // Not counted when cut short (introductions stopped): it may yet load.
-      if (started === false) await countMiss(true, tab.id);
+      if (started === false && !wait.quiet) await countMiss(true, tab.id);
       return 'not loaded';
     }
     wait.started = started; // DEVELOPMENT DIAGNOSTICS
-    await countMiss(false, tab.id);
+    if (!wait.quiet) await countMiss(false, tab.id);
     wakes.delete(tab.id); // one since, from before its load, said it had no page
     return await waitLoaded(tab.id, wait, Date.now(), { seen: started !== 'waiting' });
   } finally {
@@ -2543,7 +2561,7 @@ async function waitLoaded(tabId, wait, startedAt = Date.now(), { seen = true } =
     if (!answered) return;
     thereAt = Date.now();
     wait.thereAt = thereAt; // DEVELOPMENT DIAGNOSTICS
-    if (!platform?.introduceTabs || over || stopsWait(wait)) return;
+    if (!platform?.introduceTabs || over || wait.quiet || stopsWait(wait)) return;
     wait.arrival = Promise.all([wakeTab(tabId, { renew: true }), coverArrival({ id: tabId })]).catch(() => /** @type {[Wake | null, boolean]} */ ([null, false]));
   };
   const painted = untilPainted(tabId, until, () => over || !!stopsWait(wait), arrived);
@@ -2666,6 +2684,55 @@ export function resetRestores() {
   restoresOff = null;
   restoreMisses = null;
 }
+
+// ---- the warm-up after a relaunch (background/warm-up.js) ---------------------
+// A tab Safari unloaded, loaded behind the page in front as a switch's
+// restore loads it (restoreTab: the same flip, load start, limits and safety
+// nets), with nobody waiting for it: no cover on the page in front, no
+// arrival cover or renewed hold once its document answers, and a tab Safari
+// didn't load not counted toward turning restores off (Wait `quiet`).
+// Its wait gives way to any switch (one asked for, under way, or the user's
+// own: focusGen) and to `stop()` (input on the page in front, Safari slow),
+// and its flip isn't sent once either says so. It's left never shown, as a
+// restore leaves it, and marked unseen in storage.session: its first switch,
+// from this background or a later one, introduces it, then shows it. Safari
+// leaving it in front: introductions go off for the session (forwardAndBack;
+// the flip has been seen to fail in this Safari, so the user's own switches
+// mustn't flip either), and the page before is brought back at once
+// (`frontId`), unless a switch came meanwhile.
+// `behind`: the restore's outcome (null: not tried).
+/** @param {any} tab @param {{ stop?: () => boolean, frontId?: number | null }} [options] @returns {Promise<{ behind: Behind | null, started: Started | null, committed: number | null }>} */
+export async function warmTab(tab, { stop = () => false, frontId = null } = {}) {
+  const since = Date.now();
+  const gen = focusGen;
+  /** @type {Wait} */
+  const wait = { gen, since, until: since + RESTORE_MAX_MS, hardUntil: since + RESTORE_HARD_MAX_MS, hurry: () => switchUnderWay() || anyFocusing() || stop(), quiet: true };
+  const behind = await restoreTab(tab, wait);
+  if (behind === 'in front' && frontId != null && stoppedAt >= since && gen === focusGen && !switchUnderWay()) {
+    activating(frontId);
+    await timedCall('tabs.update', api.tabs.update(frontId, { active: true }), frontId).catch(() => {});
+  }
+  return { behind, started: wait.started ?? null, committed: wait.thereAt != null ? wait.thereAt - since : null };
+}
+// Why the warm-up can't go on now, if it can't: for the Safari session
+// ('introductions off': a page in front blinked, or Safari left a tab in
+// front; 'restores off': Safari didn't load tabs behind), or for a moment
+// ('switch': one asked for or under way).
+/** @returns {Promise<'introductions off' | 'restores off' | 'switch' | null>} */
+export async function warmUpBlocked() {
+  if (!platform?.restoreTabs || !api.scripting?.executeScript) return 'restores off';
+  if (await isOff()) return 'introductions off';
+  if (await areRestoresOff()) return 'restores off';
+  return switchUnderWay() || anyFocusing() ? 'switch' : null;
+}
+/** The open-tab repair found the tab with no page (Safari unloaded it), and nothing has said it has one since. @param {number} tabId */
+export const foundWithNoPage = (tabId) => noPageFound.has(tabId);
+/** The open-tab repair found this copy running in the tab's page (it has one). @param {number} tabId */
+export const foundWithPage = (tabId) => checkedCurrent.has(tabId);
+/** The open-tab repair under way, if it is (not started by asking). */
+export const repairUnderWay = () => repairOpenTabs ?? Promise.resolve();
+/** A switch asked for or under way (the warm-up's own note: background/warm-up.js). */
+export const switchBusy = () => switchUnderWay() || anyFocusing();
 
 // A page of the tab in front is told about a switch the background makes from
 // it ('switching', then 'switch-done' or 'switch-failed': content/core.js);

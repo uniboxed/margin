@@ -48,6 +48,8 @@ export interface Settings {
   frameWhenHidden?: boolean;
   archiveAfterHours: number;
   keepLeftTabReadyMinutes: number;
+  /** Safari: tabs loaded behind the page after a relaunch (background/warm-up.js); 0: off */
+  warmUpTabs?: number;
   sidebarShortcut: string;
   newTabHint: boolean;
   safariSearch: { id: string; name: string; template: string; at: number } | null;
