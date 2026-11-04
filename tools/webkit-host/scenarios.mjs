@@ -30,6 +30,8 @@
 //                              release go where the press did
 //   { op: 'stall', name, ms }  the tab's next activation by Margin (tabs.update) is carried out and
 //                              answered only ms later (Safari's update of a tab whose process hangs)
+//   { op: 'pid', name }        keep the tab's web content process id now (logged)
+//   { op: 'pidGone', name, label, timeout? }  that process has exited (its memory given back)
 //   { op: 'deferLoads' }       from now on, a tab asleep loads only if it's still the one shown
 //                              once the run loop turn is over (Safari putting its load off); its
 //                              view is made as it's selected all the same (no page: a script there
@@ -185,6 +187,17 @@ const spacePress = (click = false) => [
   { op: 'page', in: 'A', js: 'return "A shown at " + __shownAt' },
   check('A', 'A: Personal\'s five tabs listed, the rows it drew before (it drew Work\'s since)', `const rows = [...__shadowOf(document.querySelector('margin-sidebar-host')).querySelectorAll('.tabs > .tab')]; return rows.length === 5 && rows.filter((row) => row.__drawnFirst).length >= 4 && __drewWork`, 500),
 ];
+
+// Sleeping tabs (background/sleep.js): a pass asked for now, for tabs unused
+// for a millisecond (the setting is hours), and what it did.
+const sleepNow = (tab, label = 'a pass of sleeping tabs') => ({ op: 'eval', in: tab, js: `return JSON.stringify(await Margin.content.send('sleepNow', { afterMs: 1 }))`, label });
+// A tab's page is Margin's sleep page, hidden, its record still the page's own.
+const asleepAt = (tab, name) => [
+  checkPage(tab, `${tab}: on Margin's sleep page, hidden`, `location.pathname === '/sleep/sleep.html' && document.hidden && new URLSearchParams(location.search).get('u').endsWith('/p/${name}')`, 3000),
+  check('A', `${tab}: Margin keeps it as its page (its address and title), asleep`, `const { tabs } = await ${STATE}('tabs'); const t = Object.values(tabs).find((x) => x.url.endsWith('/p/${name}')); return !!t && !!t.sleeping && t.title === '${name}'`, 3000),
+];
+// Back at its page, one history entry (no sleep page in its Back list), its content there.
+const awakeAt = (tab, name, label) => checkPage(tab, `${tab}: ${label}`, `location.pathname === '/p/${name}' && history.length === 1 && document.title === '${name}' && !!document.body?.textContent.includes('${name}')`, 4000);
 
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core, the background
@@ -1589,6 +1602,79 @@ Object.assign(SCENARIOS, {
   // The same reload with Margin's new-tab page open: that page is the old copy's, at its address,
   // and nothing in it answers. It's loaded again at this copy's address (marked as not a new tab:
   // ⌘T's hand-off would close it), then shown with every tab.
+  // A tab put to sleep (background/sleep.js): its page goes to Margin's sleep
+  // page with location.replace from Margin's content script, and its page's
+  // process exits; Safari's own show (its tab bar) wakes it: back at its page,
+  // with no history entry for the sleep page, its content there. The tab in
+  // front isn't put to sleep.
+  'sleep-show': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), drawn('B'),
+    checkPage('B', 'B: one history entry to begin with', 'history.length === 1'),
+    { op: 'pid', name: 'B' }, { op: 'pid', name: 'A' },
+    sleepNow('A'),
+    ...asleepAt('B', 'B'),
+    { op: 'pidGone', name: 'B', label: "B: its page's process has exited", timeout: 4000 },
+    checkPage('A', 'A (in front): not put to sleep', "location.pathname === '/p/A' && !document.hidden"),
+    { op: 'state' },
+    { op: 'show', name: 'B' },
+    awakeAt('B', 'B', "Safari's show woke it: back at its page, no history entry for the sleep page"),
+    { op: 'state' },
+  ],
+  // The same put to sleep, woken by Margin's switch: loaded behind the page in
+  // front (its sleep page told to go back, hidden), then shown, its content
+  // there as it's shown, no history entry for the sleep page; the switch log
+  // says so. (All within the host's ~5 s of background life.)
+  'sleep-switch': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), drawn('B'),
+    { op: 'pid', name: 'B' },
+    sleepNow('A'),
+    ...asleepAt('B', 'B'),
+    { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
+    switchTo('A', 'B'),
+    shown('B'),
+    awakeAt('B', 'B', "Margin's switch woke it: back at its page, no history entry for the sleep page"),
+    checkPage('B', 'B: loaded behind before it was shown (hidden from its start)', `window.__vis[0][0] === 'hidden' && window.__vis.some((e) => e[0] === 'shown')`),
+    checkPage('A', 'A: hidden once (the switch)', `JSON.stringify(__visibility) === '["hidden"]'`),
+    check('B', "B: the switch log says it was woken (its page told) and loaded behind", `${ID} const log = await Margin.content.send('switchLog'); const sw = log.filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1); const woke = log.some((e) => e.kind === 'sleep' && e.step === 'woke' && e.by === 'switch'); return !!sw && !sw.error && ['painted', 'loaded'].includes(sw.restored) && woke && log.some((e) => e.kind === 'sleep' && e.step === 'slept')`, 3000),
+    noPageErrors('B'),
+  ],
+  // A tab with a draft typed into it (a real key press) isn't put to sleep;
+  // one on a site that never sleeps isn't either.
+  'sleep-kept': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'F', url: '/p/F1' }, { op: 'open', name: 'N', url: '/p/N' },
+    wait(800), { op: 'install' }, drawn('A'), drawn('F'),
+    // (Keep-ready off: the tab just left is held, and a tab held isn't put to sleep.)
+    { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepLeftTabReadyMinutes: 0 } }))' },
+    { op: 'show', name: 'F' }, wait(150),
+    { op: 'page', in: 'F', js: `document.querySelector('textarea').focus(); return 'focused'` },
+    key('F', 0, 0x61), key('F', 11, 0x62),
+    checkPage('F', 'F: the draft is typed', `document.querySelector('textarea').value === 'ab'`),
+    { op: 'show', name: 'A' }, wait(150),
+    { op: 'eval', in: 'A', js: `return JSON.stringify(await Margin.content.send('updateSettings', { patch: { neverSleepSites: ['127.0.0.1'] } }))` }, wait(100),
+    check('A', 'a pass: no tab due (the test pages\' site never sleeps)', `const r = await Margin.content.send('sleepNow', { afterMs: 1 }); return r?.due === 0 && r.slept === 0`, 3000),
+    checkPage('F', 'F: still its page, the draft there', `location.pathname === '/p/F1' && document.querySelector('textarea').value === 'ab'`),
+    checkPage('N', 'N: still its page', `location.pathname === '/p/N'`),
+    { op: 'eval', in: 'A', js: `return JSON.stringify(await Margin.content.send('updateSettings', { patch: { neverSleepSites: [] } }))` }, wait(100),
+    check('A', 'without the list: the tab with the draft kept (edited), the other put to sleep', `const r = await Margin.content.send('sleepNow', { afterMs: 1 }); return JSON.stringify(r) === JSON.stringify({ due: 2, slept: 1, skipped: { edited: 1 }, stopped: null })`, 3000),
+    checkPage('F', 'F: still its page, the draft there', `location.pathname === '/p/F1' && document.querySelector('textarea').value === 'ab'`),
+    checkPage('N', "N: on Margin's sleep page", `location.pathname === '/sleep/sleep.html'`, 3000),
+  ],
+  // Margin updated while a tab is asleep: its sleep page is the old copy's,
+  // whose address no longer opens. It's moved to this copy's sleep page,
+  // still asleep (hidden), and Safari's show wakes it there.
+  'sleep-copy': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'),
+    sleepNow('A'),
+    checkPage('B', "B: on Margin's sleep page", `location.pathname === '/sleep/sleep.html' && document.hidden`, 3000),
+    { op: 'page', in: 'B', js: 'window.__old = location.origin; return location.origin' },
+    { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
+    checkPage('B', "B: on this copy's sleep page now, still asleep", `!window.__old && location.pathname === '/sleep/sleep.html' && document.hidden && new URLSearchParams(location.search).get('u').endsWith('/p/B')`, 6000),
+    { op: 'show', name: 'B' },
+    checkPage('B', "B: Safari's show woke it, back at its page", `location.pathname === '/p/B' && document.title === 'B'`, 4000),
+  ],
   'reloaded-newtab': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
     wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),

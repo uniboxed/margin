@@ -3961,3 +3961,115 @@ test('prewake: the sidebar coming out wakes the same tab at most once in 10 s; a
     for (const id of [338, 339]) tabShown(id);
   }
 });
+
+// ---- a tab Margin put to sleep (background/sleep.js; tabs.js restoreTab) -------------
+// Its page is Margin's sleep page (shared/sleep.js): no script of Margin's runs
+// there (scripts fail), Safari says 'complete'. Sent to its page's address
+// (tabs.update with a url), it loads (`loadMs`), its page then answers.
+// `refuse`: that update fails. Shown (to the front) while still on its sleep
+// page, the sleep page sends it back itself (the fake does it a moment later).
+const { sleepAddress, isSleepPage } = await import('../extension/shared/sleep.js');
+const { ensureCurrent, forgetCurrent } = await import('../extension/background/tabs.js');
+/** @param {any[]} tabs @param {Record<number, string>} asleep id → its page's address @param {{ loadMs?: number, refuse?: boolean }} [options] */
+async function sleeping(tabs, asleep, { loadMs = 120, refuse = false } = {}) {
+  const done = await introducing(tabs, []);
+  const pages = new Map(Object.entries(asleep).map(([id, url]) => [Number(id), url]));
+  for (const [id, url] of pages) fake.tabs.get(id).url = sleepAddress('safari-web-extension://test/', { url, title: `Page ${id}`, key: `k${id}` });
+  await mutate((s) => [...pages.keys()].reduce((st, id) => M.upsertTab(st, fake.tabs.get(id), Date.now()), s));
+  fake.scriptDelay = (id) => (isSleepPage(fake.tabs.get(id)?.url) ? null : 1);
+  const load = (id, url) => {
+    const tab = fake.tabs.get(id);
+    Object.assign(tab, { url, status: 'loading' });
+    setTimeout(() => { if (fake.tabs.has(id)) tab.status = 'complete'; }, loadMs);
+  };
+  const update = chrome.tabs.update;
+  chrome.tabs.update = async (id, change) => {
+    if (change.url) {
+      fake.updates.push({ id, change, at: Date.now() });
+      if (refuse && pages.has(id)) throw new Error('refused');
+      load(id, change.url);
+      return { ...fake.tabs.get(id) };
+    }
+    const answer = await update(id, change);
+    if (change.active && pages.has(id) && isSleepPage(fake.tabs.get(id).url)) setTimeout(() => load(id, pages.get(id)), 0);
+    return answer;
+  };
+  return () => {
+    chrome.tabs.update = update;
+    for (const id of pages.keys()) tabShown(id);
+    done();
+  };
+}
+const steps = (id) => fake.updates.filter((u) => u.id === id || u.change.active).map((u) => [u.id, u.change.url ? 'address' : 'front']);
+
+test('asleep: Margin\'s switch to a sleeping tab sends it to its page\'s address behind the covered page in front (no flip for that), waits for it to load, introduces it (its page is new to the window), prepares it covered, then shows it; its page arrives with no sleep page to go back to', async () => {
+  const done = await sleeping([{ id: 1, url: 'https://a.test/', active: true }, { id: 61, url: '' }], { 61: 'https://slept.test/page?x=1' });
+  const entries = [];
+  tapLog((e) => entries.push(e));
+  try {
+    const asked = Date.now();
+    const result = await focusTab(61, { carry: 'hover', source: 'activateTab' });
+    assert.equal(result.tab?.id, 61);
+    assert.equal(front(), 61);
+    assert.deepEqual(steps(61), [[61, 'address'], [61, 'front'], [1, 'front'], [61, 'front']], 'woken behind, introduced, shown');
+    assert.equal(fake.updates[0].change.url, 'https://slept.test/page?x=1', 'its page\'s own address');
+    assert.ok(fake.updates[1].at - asked >= 110, `introduced once it had loaded (${fake.updates[1].at - asked} ms)`);
+    assert.deepEqual(toldFront(), [['switching', 61, 'now'], ['switch-done', 61, null]], 'the page in front covered at once, then told');
+    const loadedPrepares = prepares(61);
+    assert.ok(loadedPrepares.length >= 1 && loadedPrepares.every((x) => x.args[0].covered === true && x.at > fake.updates[0].at), 'prepared only once its page was there, to arrive covered');
+    assert.equal(fake.scripts.filter((x) => x.tabId === 61 && x.at < fake.updates[0].at && x.func.name !== 'pageThere' && x.func.name !== 'keepAwake').length, 0, 'nothing else sent to its sleep page first');
+    const entry = entries.find((e) => e.kind === 'switch' && e.tabId === 61);
+    assert.equal(entry?.asleep, 'address');
+    assert.ok(['painted', 'loaded'].includes(entry.restored), `restored: ${entry?.restored}`);
+    assert.equal(entry.error, null);
+    assert.deepEqual(entries.filter((e) => e.kind === 'sleep').map((e) => [e.step, e.by, e.how]), [['woke', 'switch', 'address']]);
+  } finally {
+    tapLog(null);
+    done();
+  }
+});
+
+test('asleep: if its page\'s address can\'t be sent, the sleeping tab is shown for an instant behind the covered page (its sleep page then sends it back), loaded behind, and shown as before', async () => {
+  const done = await sleeping([{ id: 1, url: 'https://a.test/', active: true }, { id: 62, url: '' }], { 62: 'https://slept62.test/' }, { refuse: true });
+  try {
+    const result = await focusTab(62, { source: 'activateTab' });
+    assert.equal(result.tab?.id, 62);
+    assert.equal(front(), 62);
+    assert.deepEqual(steps(62), [[62, 'address'], [62, 'front'], [1, 'front'], [62, 'front'], [1, 'front'], [62, 'front']], 'refused, then flipped (it wakes itself), introduced, shown');
+    assert.equal(fake.tabs.get(62).url, 'https://slept62.test/');
+    assert.deepEqual(toldFront(), [['switching', 62, 'now'], ['switch-done', 62, null]]);
+  } finally {
+    done();
+  }
+});
+
+test('asleep: with restores off for the session, a sleeping tab is shown as it is (its sleep page sends it back as it\'s shown), no wake sent behind', async () => {
+  const done = await sleeping([{ id: 1, url: 'https://a.test/', active: true }, { id: 63, url: '' }], { 63: 'https://slept63.test/' });
+  fake.session.restoresOff = true;
+  resetRestores();
+  try {
+    const result = await focusTab(63, { source: 'activateTab' });
+    assert.equal(result.tab?.id, 63);
+    assert.deepEqual(steps(63), [[63, 'front']], 'shown at once');
+    await sleep(5);
+    assert.equal(fake.tabs.get(63).url, 'https://slept63.test/', 'its sleep page sent it back as it was shown');
+  } finally {
+    delete fake.session.restoresOff;
+    done();
+  }
+});
+
+test('asleep: a page that names a sleeping tab by its address (before this copy\'s ids are its own) finds it at its sleep page', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 64, url: sleepAddress('safari-web-extension://test/', { url: 'https://named.test/a', key: 'k' }) }]);
+  const found = await resolveTab(999, { url: 'https://named.test/a', index: 1, from: { origin: 'safari-web-extension://elsewhere/' } }, 1);
+  assert.equal(found?.id, 64);
+});
+
+test('asleep: a tab asleep on an earlier copy\'s sleep page (an update, a relaunch) is moved to this copy\'s, its page\'s address kept, still asleep', async () => {
+  const old = sleepAddress('safari-web-extension://old-copy/', { url: 'https://moved.test/?q=1', title: 'Moved', key: 'k' });
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 65, url: old }]);
+  forgetCurrent(65);
+  await ensureCurrent(65);
+  assert.deepEqual(fake.updates.map((u) => [u.id, u.change.url]), [[65, old.replace('safari-web-extension://old-copy/', 'safari-web-extension://test/')]]);
+  assert.ok(!fake.updates.some((u) => u.change.active), 'not brought to the front');
+});

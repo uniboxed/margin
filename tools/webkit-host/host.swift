@@ -139,6 +139,9 @@ let pageRecorder = """
     let wantFor = base.flatMap { url.absoluteString.hasPrefix($0) ? $0 : nil }
     if let wv = webView, wantFor != madeFor {
       let shown = wv.superview != nil
+      // An extension page's view is kept (out of the window): closing one took Margin's
+      // background with it here, and nothing revives it in the host (Safari starts it again).
+      if madeFor != nil { retiredViews.append(wv) }
       wv.removeFromSuperview(); webView = nil; loadingObs = []
       makeWebView()
       if shown { window?.nsWindow.contentView!.addSubview(webView!) }
@@ -387,6 +390,10 @@ app.setActivationPolicy(.accessory)
 // runs over a minute long failed now and then: tabs shown stayed hidden, clicks went unanswered.
 let noNap = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled], reason: "WebKit host test run")
 let host = MainActor.assumeIsolated { Host() }
+// Extension pages' web views a tab left for a web page (Tab.loadURL), kept.
+var retiredViews: [WKWebView] = []
+// Each tab's web content process as a 'pid' step saw it (name → pid).
+var recordedPids: [String: Int32] = [:]
 
 Task { @MainActor in
   for step in scenario {
@@ -573,6 +580,24 @@ Task { @MainActor in
       let t = host.tab(step["name"] as! String)!; t.webView?.removeFromSuperview(); log("took \(t.name) out of the window")
     case "mark":
       log("MARK \(step["label"] as! String)")
+    case "pid":
+      // { op: 'pid', name }: the tab's web content process now, kept for 'pidGone'.
+      let t = host.tab(step["name"] as! String)!
+      let pid = (t.webView?.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
+      recordedPids[t.name] = pid
+      log("pid \(t.name): \(pid)")
+    case "pidGone":
+      // { op: 'pidGone', name, label, timeout? }: the process 'pid' kept for the tab has exited
+      // (a page's memory given back), within `timeout` ms (default 3000).
+      let name = step["name"] as! String
+      let label = step["label"] as? String ?? "\(name): its page's process has exited"
+      let pid = recordedPids[name] ?? 0
+      let deadline = Date().addingTimeInterval(Double(step["timeout"] as? Int ?? 3000) / 1000)
+      while true {
+        if pid > 0 && kill(pid, 0) != 0 && errno == ESRCH { log("PASS \(label)"); break }
+        if Date() > deadline { fail(label, pid > 0 ? "process \(pid) still running" : "no process kept"); break }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+      }
     case "check", "checkPage":
       // Waits until `js` returns true (in Margin's content-script world for "check", the
       // page's for "checkPage"), up to `timeout` ms (default 3000), then PASS or FAIL. A tab
