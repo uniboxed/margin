@@ -95,11 +95,34 @@ function commandKeys() {
     return {};
   }
 }
-// A press sent and not answered in this long: the page's world is cut off
-// from Margin (its messages neither arrive nor fail: background/cut-off.js),
-// and the listener lets the keys pass (to the page, and to Safari's commands,
-// which a copy of Margin running elsewhere answers) until one is answered.
+// A press sent and not answered in this long: the listener asks whether its
+// world still reaches Margin at all (worldAlive). Only a world cut off from
+// Margin (its messages and storage calls neither arrive nor fail:
+// background/cut-off.js) makes it step aside; a background that is merely
+// slow to answer (Safari starting it again after it went idle, the first
+// sync) doesn't: its presses are queued as before (2026-11-04 review: a step
+// aside on latency alone lost every press of a cold start, and could last for
+// the document's life).
 const NO_ANSWER_MS = 400;
+// How long the world's storage gets to answer that (cut-off.js asks the same).
+const ALIVE_MS = 200;
+// Whether this world's calls still arrive somewhere: a storage read answers
+// within milliseconds in a live world, whatever the background is doing, and
+// never (or fails at once) in one whose copy is gone. True where it can't be
+// told (no storage).
+/** @returns {Promise<boolean>} */
+function worldAlive() {
+  let local = null;
+  try {
+    const api = /** @type {any} */ (globalThis).browser ?? /** @type {any} */ (globalThis).chrome;
+    local = api?.storage?.local;
+  } catch {}
+  if (typeof local?.get !== 'function') return Promise.resolve(true);
+  return Promise.race([
+    Promise.resolve().then(() => local.get('owner')).then(() => true, () => false),
+    new Promise((resolve) => setTimeout(() => resolve(false), ALIVE_MS)),
+  ]);
+}
 
 // Capture-phase listener for the navigation shortcuts, used by the content
 // script and the new-tab page. It only reports the action: the background
@@ -111,13 +134,28 @@ const NO_ANSWER_MS = 400;
 // `getSettings()` → current settings (shortcuts may change any time);
 // return null to pause, e.g. while a shortcut is being recorded.
 // `target`: the window to listen on. `commands`: the manifest commands' keys
-// it takes too, after the Settings shortcuts (commandKeys: Safari's).
-// It steps aside, the keys left to the page and Safari's commands, in a page
-// cut off from Margin: one the background found so (`Margin.cutOff`, set in
-// this world: background/cut-off.js), or once a press sent hasn't been
-// answered in NO_ANSWER_MS (until one is).
+// it takes too, after the Settings shortcuts (commandKeys: Safari's), unless
+// Settings give that key to the sidebar (`sidebarShortcut`, content/layout.js).
+// In a page cut off from Margin it steps aside: one the background found so
+// (`Margin.cutOff`, set in this world: background/cut-off.js), or once a press
+// went unanswered for NO_ANSWER_MS and the world's storage didn't answer
+// either (worldAlive; asked again at the next press, which then passes). The
+// commands' keys then go on to Safari's commands, which the copy running now
+// answers, kept from the page's own listeners (stopImmediatePropagation, not
+// preventDefault: WebKit gives a key the page didn't turn down to the menu);
+// the Settings keys go to the page, as nothing else can take them there.
 function installNavigation({ send, getSettings, target = globalThis, commands = commandKeys() }) {
-  let unanswered = false;
+  let aside = false;
+  /** @type {Promise<boolean> | null} */
+  let asking = null;
+  const askAlive = () => {
+    asking ??= worldAlive().then((alive) => {
+      asking = null;
+      aside = !alive;
+      return alive;
+    });
+    return asking;
+  };
   const cutOff = () => {
     try {
       return /** @type {any} */ (globalThis).Margin?.cutOff === true;
@@ -127,25 +165,33 @@ function installNavigation({ send, getSettings, target = globalThis, commands = 
   };
   target.addEventListener('keydown', (event) => {
     const settings = getSettings();
-    if (settings === null || unanswered || cutOff()) return;
+    if (settings === null) return;
     const keys = navigationFor(settings);
-    const name = Object.keys(keys).find((n) => matches(event, keys[n])) ?? Object.keys(commands).find((n) => matches(event, commands[n]));
+    const own = Object.keys(keys).find((n) => matches(event, keys[n]));
+    const command = own ? null : Object.keys(commands).find((n) => matches(event, commands[n]) && !matches(event, settings?.sidebarShortcut));
+    const name = own ?? command;
     if (!name) return;
+    const dead = cutOff();
+    if (dead || aside) {
+      if (!dead) void askAlive(); // (the next press is taken again if it's alive)
+      if (command) event.stopImmediatePropagation();
+      return;
+    }
     event.preventDefault();
     event.stopImmediatePropagation();
     if (event.repeat && name.endsWith('Space')) return; // don't fly through spaces while held
     const reply = send('navigate', { action: ACTIONS[name] });
     if (!reply || typeof reply.then !== 'function') return;
     let answered = false;
-    const timer = setTimeout(() => { if (!answered) unanswered = true; }, NO_ANSWER_MS);
-    reply.then((taken) => {
+    const timer = setTimeout(() => { if (!answered) void askAlive(); }, NO_ANSWER_MS);
+    // Any answer, however late (undefined from a send that gave up): the
+    // world asked again if it was taken as cut off meanwhile.
+    const settle = () => {
       answered = true;
       clearTimeout(timer);
-      if (taken === true) unanswered = false;
-    }, () => {
-      answered = true;
-      clearTimeout(timer);
-    });
+      if (aside) void askAlive();
+    };
+    reply.then(settle, settle);
   }, true);
 }
 

@@ -66,33 +66,103 @@ test('Safari: null settings (a shortcut being recorded, Margin out of the way) p
   assert.equal(sent.length, 0);
 });
 
-test('Safari: in a page found cut off from Margin (Margin.cutOff in its world) the keys pass to the page and Safari\'s commands', () => {
+test('Safari: in a page found cut off from Margin (Margin.cutOff in its world) the keys pass: the commands\' keys on to Safari\'s commands, kept from the page\'s own listeners; the Settings keys to the page', () => {
   const { sent, press } = listening();
   globalThis.Margin = { cutOff: true };
   try {
-    assert.equal(press('ArrowDown', ctrlCmd).prevented, false);
-    assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).prevented, false);
+    const command = press('ArrowDown', ctrlCmd);
+    assert.equal(command.prevented, false, 'not turned down: WebKit gives it to the menu, where the copy running now answers it');
+    assert.equal(command.stopped, true, 'and the page (Outlook, Instagram) never sees it to eat it');
+    const own = press('ArrowDown', { altKey: true, metaKey: true });
+    assert.equal(own.prevented, false);
+    assert.equal(own.stopped, false, 'a Settings key has no command: the page\'s');
     assert.equal(sent.length, 0);
   } finally {
     delete globalThis.Margin;
   }
 });
 
-test('Safari: a press whose message gets no answer in 400 ms (a world whose copy is gone, which nobody has told yet) makes the listener step aside until one is answered', async () => {
-  let reply = () => new Promise(() => {}); // never arrives nor fails
-  const { sent, press } = listening({ answer: () => reply() });
-  assert.equal(press('ArrowDown', ctrlCmd).prevented, true, 'the first press is taken (and lost)');
-  await new Promise((resolve) => setTimeout(resolve, 450));
-  assert.equal(press('ArrowDown', ctrlCmd).prevented, false, 'the next goes to the page and Safari\'s command');
-  assert.equal(sent.length, 1);
-  // A slow answer that comes after all (a background starting): taken again from then.
-  let late = () => {};
-  const { press: pressSlow } = listening({ answer: () => new Promise((resolve) => { late = () => resolve(true); }) });
-  pressSlow('ArrowDown', ctrlCmd);
-  await new Promise((resolve) => setTimeout(resolve, 450));
-  assert.equal(pressSlow('ArrowDown', ctrlCmd).prevented, false, 'aside while unanswered');
-  late();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(pressSlow('ArrowDown', ctrlCmd).prevented, true, 'answered: taken again');
-  reply = async () => true;
+test('Safari: a ⌃⌘ arrow that Settings give to the sidebar is left to it, not taken for the command', () => {
+  const { sent, press } = listening({ settings: { shortcuts: {}, sidebarShortcut: 'Ctrl+Meta+ArrowDown' } });
+  const e = press('ArrowDown', ctrlCmd);
+  assert.equal(e.prevented, false);
+  assert.equal(e.stopped, false);
+  assert.equal(sent.length, 0);
+  press('ArrowUp', ctrlCmd);
+  assert.deepEqual(sent.map((m) => m.action), ['prev-tab']);
+});
+
+// The world's storage, as worldAlive reads it: `answer` false never answers (a
+// world whose copy is gone).
+/** @param {boolean} answers */
+function storage(answers) {
+  globalThis.chrome.storage = { local: { get: () => (answers ? Promise.resolve({}) : new Promise(() => {})) } };
+}
+const after = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test('Safari: a press with no answer in 400 ms, in a world whose storage doesn\'t answer either (its copy gone, nobody has told it yet), makes the listener step aside, and it stays aside while the world is dead', async () => {
+  storage(false);
+  try {
+    const { sent, press } = listening({ answer: () => new Promise(() => {}) }); // neither arrives nor fails
+    assert.equal(press('ArrowDown', ctrlCmd).prevented, true, 'the first press is taken (and lost)');
+    await after(650);
+    const next = press('ArrowDown', ctrlCmd);
+    assert.equal(next.prevented, false, 'the next goes on to Safari\'s command');
+    assert.equal(next.stopped, true);
+    await after(250);
+    assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).prevented, false, 'asked again: still dead');
+    assert.equal(sent.length, 1);
+  } finally {
+    delete globalThis.chrome.storage;
+  }
+});
+
+test('Safari: a slow but live background (a cold start) never makes the listener step aside: a second press while the first is unanswered is taken and sent', async () => {
+  storage(true);
+  try {
+    let n = 0;
+    const { sent, press } = listening({ answer: () => (++n === 1 ? after(700).then(() => true) : Promise.resolve(true)) });
+    press('ArrowDown', { altKey: true, metaKey: true });
+    await after(450);
+    const second = press('ArrowDown', { altKey: true, metaKey: true });
+    assert.equal(second.prevented, true);
+    await after(400);
+    assert.equal(sent.length, 2);
+  } finally {
+    delete globalThis.chrome.storage;
+  }
+});
+
+test('Safari: a late answer that is no answer (a send that gave up: undefined) in a live world leaves the listener taking the keys', async () => {
+  storage(true);
+  try {
+    let n = 0;
+    const { sent, press } = listening({ answer: () => (++n === 1 ? after(500).then(() => undefined) : Promise.resolve(true)) });
+    assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).prevented, true);
+    await after(700);
+    for (let i = 0; i < 3; i++) assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).prevented, true);
+    assert.equal(sent.length, 4);
+  } finally {
+    delete globalThis.chrome.storage;
+  }
+});
+
+test('Safari: taken as cut off on a slow storage, the world is asked again at the next press (which passes) and at the late answer, and taken again once it answers', async () => {
+  let alive = false;
+  globalThis.chrome.storage = { local: { get: () => (alive ? Promise.resolve({}) : new Promise(() => {})) } };
+  try {
+    let late = () => {};
+    const { sent, press } = listening({ answer: () => (sent.length === 1 ? new Promise((resolve) => { late = () => resolve(true); }) : Promise.resolve(true)) });
+    press('ArrowDown', ctrlCmd);
+    await after(650);
+    alive = true;
+    assert.equal(press('ArrowDown', ctrlCmd).prevented, false, 'aside: this one passes, and asks again');
+    await after(10);
+    assert.equal(press('ArrowDown', ctrlCmd).prevented, true, 'alive after all: taken');
+    late();
+    await after(10);
+    assert.equal(sent.length, 2);
+  } finally {
+    delete globalThis.chrome.storage;
+  }
 });

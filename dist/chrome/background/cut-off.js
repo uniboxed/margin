@@ -36,8 +36,16 @@
 // A page found cut off is also told so in its world (`Margin.cutOff`): the old
 // copy's listener for the navigation keys, whose messages go nowhere, then
 // lets them pass to the page and to Safari's own commands (shared/shortcuts.js).
-/** @param {string} own @param {boolean} [quiet] */
-export async function cutOffInPage(own, quiet = false) {
+// `keys`: the manifest commands' keys (shared/shortcuts.js commandKeys: on
+// Safari ⌃⌘↓/↑/→): a listener put in the world here, once, keeps them from
+// the page's own listeners, so they go on to Safari's commands, which this
+// copy answers. A page that turns any ArrowDown down (Outlook, Instagram) ate
+// them before: the only way left out of a cut-off tab by keys, where the old
+// copy's own listener (one from before 2026-11-04 doesn't know `cutOff`)
+// swallows its Settings keys into messages that go nowhere. Not turned down
+// (preventDefault): WebKit gives the menu only a key the page didn't.
+/** @param {string} own @param {boolean} [quiet] @param {string[]} [keys] */
+export async function cutOffInPage(own, quiet = false, keys = []) {
   const api = /** @type {any} */ (globalThis).browser ?? /** @type {any} */ (globalThis).chrome;
   let at = null;
   try {
@@ -74,7 +82,15 @@ export async function cutOffInPage(own, quiet = false) {
     return false;
   };
   try {
-    (/** @type {any} */ (globalThis).Margin ??= {}).cutOff = true;
+    const world = /** @type {any} */ (globalThis).Margin ??= {};
+    world.cutOff = true;
+    const wanted = (Array.isArray(keys) ? keys : []).map((k) => String(k).split('+')).map((parts) => ({ code: parts.at(-1), ctrl: parts.includes('Ctrl'), alt: parts.includes('Alt'), shift: parts.includes('Shift'), meta: parts.includes('Meta') }));
+    if (wanted.length && !world.cutOffKeys) {
+      world.cutOffKeys = true;
+      globalThis.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
+        if (wanted.some((k) => e.code === k.code && e.ctrlKey === k.ctrl && e.altKey === k.alt && e.shiftKey === k.shift && e.metaKey === k.meta)) e.stopImmediatePropagation();
+      }, true);
+    }
   } catch {}
   let proven = false;
   try {

@@ -4,6 +4,7 @@ import { api, cached, isOwner, isSynced, mutate, now, openTabsAsked, stateRev, t
 import { recordRepair, recordSwitch } from './diagnostics.js';
 import { hasNoPage, hiddenFor, isHeld, sessionKnown, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
+import { commandKeys } from '../shared/shortcuts.js';
 import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
@@ -3673,7 +3674,7 @@ const cutOffSuspects = new Set();
 let cutOffLoads = Promise.resolve();
 /** @param {number} tabId @param {boolean} quiet @param {number} ms */
 async function askCutOff(tabId, url, quiet, ms) {
-  const answer = await inPage(tabId, url, cutOffInPage, [ownAddress, quiet], ms);
+  const answer = await inPage(tabId, url, cutOffInPage, [ownAddress, quiet, Object.values(commandKeys())], ms);
   return typeof answer === 'string' ? null : answer.result ?? null;
 }
 // A tab whose page is cut off: loaded again ('reloaded') when nothing in it

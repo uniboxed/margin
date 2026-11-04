@@ -134,6 +134,33 @@ test('cut off: a page found so is told in its world (its old listener for the na
   }
 });
 
+test('cut off: a world found so gets a listener (once) that keeps the commands\' keys from the page\'s own listeners, not turned down, so Safari\'s command (this copy\'s) runs: the way out by keys of a page that eats arrows (review, 2026-11-04)', async () => {
+  const p = page();
+  const listeners = [];
+  const world = vm.createContext({ ...p.globals, addEventListener: (type, fn, capture) => listeners.push({ type, fn, capture }) });
+  const keys = ['Ctrl+Meta+ArrowDown', 'Ctrl+Meta+ArrowUp'];
+  for (let i = 0; i < 2; i++) await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false, ${JSON.stringify(keys)})`, world);
+  assert.equal(listeners.length, 1, 'once per world');
+  assert.equal(listeners[0].type, 'keydown');
+  assert.equal(listeners[0].capture, true);
+  const press = (code, mods) => {
+    const e = { code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods, stopped: false, prevented: false };
+    e.stopImmediatePropagation = () => { e.stopped = true; };
+    e.preventDefault = () => { e.prevented = true; };
+    listeners[0].fn(e);
+    return e;
+  };
+  const down = press('ArrowDown', { ctrlKey: true, metaKey: true });
+  assert.deepEqual([down.stopped, down.prevented], [true, false]);
+  assert.equal(press('ArrowDown', {}).stopped, false, 'a bare arrow is the page\'s');
+  assert.equal(press('ArrowDown', { altKey: true, metaKey: true }).stopped, false, 'another combination is the page\'s');
+  assert.equal(press('ArrowLeft', { ctrlKey: true, metaKey: true }).stopped, false, 'a key no command has');
+  const live = page({ address: OWN });
+  const liveListeners = [];
+  await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false, ${JSON.stringify(keys)})`, vm.createContext({ ...live.globals, addEventListener: (...a) => liveListeners.push(a) }));
+  assert.equal(liveListeners.length, 0, 'none in a page that isn\'t cut off');
+});
+
 test('cut off: the old copy\'s word that this document\'s tab was proven to have WebKit\'s mark comes with the answer (kept before the page is loaded again)', async () => {
   const p = page();
   const world = vm.createContext({ ...p.globals, Margin: { inWindowAt: 123 } });
