@@ -1324,12 +1324,14 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     return { tab: live, preparation: skipped };
   }
   // A page that may be cut off from Margin (background/cut-off.js: it was,
-  // and was in use, or didn't answer when the open tabs were checked): loaded
-  // again before it's shown if it's no longer in use, as its old copy would
-  // show it under covers that never lift. Asked beside the rest, and waited
-  // for only briefly before the show. (Any other is checked as it's shown:
+  // and was in use, or didn't answer when the open tabs were checked, or its
+  // wake found its world another copy's: suspectCutOff): its dead Margin put
+  // out of sight before it's shown, as its old copy would show it under
+  // covers that never lift, and loaded again once it's left, never as it's
+  // shown (repairCutOff `forSwitch`). Asked beside the rest, and waited for
+  // only briefly before the show. (Any other is checked as it's shown:
   // ensureCurrent.)
-  const cutting = cutOffSuspects.has(tabId) && !live.discarded ? repairCutOff(live, { ms: 400 }) : null;
+  const cutting = cutOffSuspects.has(tabId) && !live.discarded ? repairCutOff(live, { ms: 400, forSwitch: true }) : null;
   // Left in front by Safari (or brought there by the user meanwhile) while
   // being introduced or restored: shown, not prepared as a hidden page (it
   // would wait under its cover for a show that has happened).
@@ -3688,14 +3690,20 @@ async function askCutOff(tabId, url, quiet, ms) {
 // loading in front for half a second. One in front is put out of sight at
 // once, as a page in use is, and loaded again once it's behind (reloadBehind:
 // its next leave, asked again then, nothing in it to lose).
+// Nor a tab a switch is under way to (`forSwitch`: focusTabNow's, or
+// isFocusing): loaded then, the load would commit in front, the switch
+// carrying a page load (review of 2026-11-04: a wake of a tab after an update
+// makes it a suspect, and the switch to it loaded it again 150 ms before its
+// show). Put out of sight in the same one script (while it's still hidden, as
+// a rule), and loaded again once it's left, as one found in front.
 // Its page's own word that its tab is proven (pageThere 'proven') goes with
 // the document: kept as this copy's proof before the load (the same web view:
 // its mark stays), and the new document's hello isn't taken as a new web
 // view's (ownReloads).
-/** @returns {Promise<'reloaded' | 'quiet' | false>} */
-export async function repairCutOff(tab, { ms = 1000 } = {}) {
+/** @param {any} tab @param {{ ms?: number, forSwitch?: boolean }} [options] @returns {Promise<'reloaded' | 'quiet' | false>} */
+export async function repairCutOff(tab, { ms = 1000, forSwitch = false } = {}) {
   if (tab?.id == null || tab.discarded || boundHere.has(tab.id) || !/^https?:/i.test(tab.url ?? '')) return false;
-  const probe = await askCutOff(tab.id, tab.url, false, ms);
+  const probe = await askCutOff(tab.id, tab.url, forSwitch, ms);
   const action = cutOffAction(probe);
   if (action === 'none') {
     // (Not a tab with no page: it loads with this copy's scripts.)
@@ -3706,32 +3714,42 @@ export async function repairCutOff(tab, { ms = 1000 } = {}) {
     return false;
   }
   if (probe?.proven === true) prove(tab.id, 'page');
-  // (In front as Margin or Safari has it now: the probe can take a while.)
-  const inFront = action === 'reload' && (tab.active === true || (await api.tabs.get(tab.id).then((t) => t?.active === true, () => false)));
+  // In front, or about to be (a switch to it), as Margin or Safari has it now
+  // (the probe can take a while).
+  const showing = () => forSwitch || isFocusing(tab.id);
+  const inFront = action === 'reload' && (showing() || tab.active === true || (await api.tabs.get(tab.id).then((t) => t?.active === true, () => false)));
   if (inFront) reloadWhenLeft.add(tab.id);
   if (action === 'reload' && !inFront && Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) >= CUT_OFF_COOLDOWN_MS) {
     cutOffLoadedAt.set(tab.id, Date.now());
     reloadWhenLeft.delete(tab.id);
     const load = cutOffLoads.then(async () => {
+      // (A switch to it started while this waited its turn: not now.)
+      if (showing()) return null;
       ownReloads.set(tab.id, Date.now());
       // A GET of its address (a reload would send a form again); with a
       // #fragment, where that would only scroll, the browser's reload.
       const ok = await (tab.url.includes('#') ? api.tabs.reload(tab.id) : api.tabs.update(tab.id, { url: tab.url })).then(() => true, () => false);
+      if (!ok) ownReloads.delete(tab.id);
       await new Promise((resolve) => setTimeout(resolve, CUT_OFF_GAP_MS));
       return ok;
     });
-    cutOffLoads = load;
-    if (await load) {
+    cutOffLoads = load.then(() => {});
+    const loaded = await load;
+    if (loaded) {
       cutOffSuspects.delete(tab.id);
       console.info(`[margin] tab ${tab.id} still had Margin from before it was reloaded: loaded again`);
       return 'reloaded';
     }
+    if (loaded === null) {
+      cutOffLoadedAt.delete(tab.id);
+      reloadWhenLeft.add(tab.id);
+    }
   }
   cutOffSuspects.add(tab.id);
-  await askCutOff(tab.id, tab.url, true, ms);
+  if (!forSwitch) await askCutOff(tab.id, tab.url, true, ms);
   if (quietened.has(tab.id)) return 'quiet';
   quietened.add(tab.id);
-  console.info(inFront ? `[margin] tab ${tab.id} still has Margin from before it was reloaded, and is in front: its sidebar is put away, and it's loaded again once it's behind` : `[margin] tab ${tab.id} still has Margin from before it was reloaded, and is in use: its sidebar is put away until it's loaded again`);
+  console.info(inFront || reloadWhenLeft.has(tab.id) ? `[margin] tab ${tab.id} still has Margin from before it was reloaded, and is in front: its sidebar is put away, and it's loaded again once it's behind` : `[margin] tab ${tab.id} still has Margin from before it was reloaded, and is in use: its sidebar is put away until it's loaded again`);
   return 'quiet';
 }
 // Cut off and in front when found (repairCutOff): loaded again once left.
@@ -3767,8 +3785,10 @@ function reloadBehind(tabId) {
 /** @type {Set<number>} */
 const cutOffAsked = new Set();
 /** @param {any} tab */
+// (Not one suspected already, or put out of sight: a switch to it asks again,
+// and each wake of it, a pointer resting on its row say, would cost a probe.)
 function suspectCutOff(tab) {
-  if (tab?.id == null || boundHere.has(tab.id) || cutOffAsked.has(tab.id) || !/^https?:/i.test(tab.url ?? '')) return;
+  if (tab?.id == null || boundHere.has(tab.id) || cutOffAsked.has(tab.id) || cutOffSuspects.has(tab.id) || quietened.has(tab.id) || !/^https?:/i.test(tab.url ?? '')) return;
   cutOffAsked.add(tab.id);
   void askCutOff(tab.id, tab.url, false, 1000).then((probe) => {
     if (probe?.cutOff) {

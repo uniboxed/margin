@@ -136,7 +136,7 @@ globalThis.chrome = {
       if (delay == null) return Promise.reject(new Error('Could not execute script on this tab'));
       if (func?.name === 'readyInPage') return sleep(delay).then(() => readiness(target.tabId, args)).then((result) => [{ result }]);
       if (func?.name === 'paintBarrierInPage') return sleep(delay + fake.barrierMs(target.tabId)).then(() => [{ result: 'drawn' }]);
-      const result = func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : func?.name === 'pageThere' && fake.proven.has(target.tabId) ? 'proven' : func?.name === 'pageThere' && fake.unseen.has(target.tabId) ? 'unseen' : func?.name === 'pageThere' && fake.seen.has(target.tabId) ? 'seen' : func?.name === 'pingInPage' ? { since: fake.since(target.tabId) } : func?.name === 'drewInPage' ? fake.drewAt(target.tabId) : true;
+      const result = func?.name === 'pageThere' && fake.other?.has(target.tabId) ? { there: true, other: true } : func?.name === 'prepareSidebarInPage' ? fake.prepare(args) : func?.name === 'cutOffInPage' ? (fake.cutOff?.(target.tabId, args) ?? { cutOff: false }) : func?.name === 'pageThere' && fake.proven.has(target.tabId) ? 'proven' : func?.name === 'pageThere' && fake.unseen.has(target.tabId) ? 'unseen' : func?.name === 'pageThere' && fake.seen.has(target.tabId) ? 'seen' : func?.name === 'pingInPage' ? { since: fake.since(target.tabId) } : func?.name === 'drewInPage' ? fake.drewAt(target.tabId) : true;
       return sleep(delay).then(() => [{ result }]);
     },
   },
@@ -208,6 +208,7 @@ function reset(tabs) {
   fake.barrierMs = () => 20;
   fake.scriptError = null;
   fake.cutOff = null;
+  fake.other = null;
   fake.suspended = new Map();
   fake.holdsRun = false;
   fake.busyUntil = new Map();
@@ -1001,4 +1002,39 @@ test('S3: a page is told as it says hello whether its tab is proven with it in i
   await proven(122);
   assert.equal((await hello(122, { doc: 'doc-122b', made: false, active: false }))?.proven, true, 'a link');
   assert.equal((await hello(122, { doc: 'doc-122c', made: true, active: false }))?.proven, false, 'made afresh');
+});
+
+// Review of 2026-11-04 (S5): a cut-off tab woken before the switch to it (a
+// pointer resting on its row, the key run's wake ahead: its world another
+// copy's) is a suspect, and the switch to it used to load it again 150 ms
+// before its show, the load committing in front. Now its dead Margin is put
+// out of sight in the switch's one probe, before the show, and it's loaded
+// again once it's left, behind.
+test('S5: a cut-off tab a switch goes to is never loaded again as it\'s shown: put out of sight before its show, loaded again once it\'s left', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 300, url: 'https://cut.test/' }]);
+  await knownInFront(1);
+  await proven(300);
+  fake.other = new Set([300]);
+  fake.cutOff = (tabId) => (tabId === 300 ? { cutOff: true, busy: false, hidden: true, proven: false } : { cutOff: false });
+  await tabsModule.wakeTab(300, { by: 'hover' });
+  await sleep(100); // the probe the wake set off answers: a suspect
+  const probes = () => fake.scripts.filter((x) => x.tabId === 300 && x.func.name === 'cutOffInPage').length;
+  await tabsModule.wakeTab(300, { by: 'hover' });
+  await sleep(50);
+  assert.equal(probes(), 1, 'a suspect isn\'t asked again by each wake');
+  fake.updates = [];
+  fake.scripts = [];
+  await focusTab(300);
+  await sleep(300);
+  const loads = () => fake.updates.filter((u) => u.id === 300 && (u.change.url || u.change.reload));
+  const show = fake.updates.find((u) => u.id === 300 && u.change.active);
+  assert.ok(show, 'shown');
+  assert.deepEqual(loads(), [], 'not loaded again as it\'s shown');
+  const quiet = fake.scripts.find((x) => x.tabId === 300 && x.func.name === 'cutOffInPage' && x.args[1] === true);
+  assert.ok(quiet && quiet.at <= show.at, 'its dead sidebar put out of sight before its show');
+  // Left: loaded again, behind.
+  await select(1);
+  await sleep(700);
+  assert.equal(loads().length, 1, JSON.stringify(fake.updates));
+  assert.equal(loads()[0].change.active, undefined, 'a load, not a show');
 });

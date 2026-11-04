@@ -250,3 +250,25 @@ test('cut off, in front and in use (something typed): put out of sight, not load
   await sleepMs(500);
   assert.deepEqual(loadsOf(5), []);
 });
+
+test('cut off, with a switch to it under way (behind still): put out of sight in one probe, not loaded again; loaded again once it\'s left', async () => {
+  const tabs = await background();
+  fake.updates = [];
+  fake.scripts = [];
+  fake.tabs = new Map([[7, { id: 7, windowId: 3, url: 'https://next.test/', active: false, status: 'complete' }], [8, { id: 8, windowId: 3, url: 'https://front.test/', active: true, status: 'complete' }]]);
+  fake.probe = (id) => (id === 7 ? { cutOff: true, busy: false, hidden: true, proven: false } : { cutOff: false });
+  assert.equal(await tabs.repairCutOff({ ...fake.tabs.get(7) }, { forSwitch: true }), 'quiet');
+  assert.deepEqual(loadsOf(7), []);
+  const probes = fake.scripts.filter((x) => x.tabId === 7 && x.func.name === 'cutOffInPage');
+  assert.equal(probes.length, 1, 'one script');
+  assert.equal(probes[0].args[1], true, 'which puts it out of sight');
+  // Shown, then left.
+  fake.tabs.get(7).active = true;
+  fake.tabs.get(8).active = false;
+  tabs.heardActivation({ tabId: 7, windowId: 3 });
+  fake.tabs.get(7).active = false;
+  fake.tabs.get(8).active = true;
+  tabs.heardActivation({ tabId: 8, windowId: 3 });
+  await sleepMs(700);
+  assert.equal(loadsOf(7).length, 1);
+});

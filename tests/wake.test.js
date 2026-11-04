@@ -2670,7 +2670,10 @@ test('cut off: a page not in use is loaded again (a GET of its address; with a #
   assert.equal(fake.updates.length, 2);
 });
 
-test('cut off: a page in use keeps its page, its dead Margin out of sight; a switch to it later loads it again first', async () => {
+// (Changed 2026-11-04: a switch to it no longer loads it again first, the load
+// committing in front: it's shown as it is, its dead Margin out of sight, and
+// loaded again once it's left.)
+test('cut off: a page in use keeps its page, its dead Margin out of sight; a switch to it later shows it so, not loaded again as it\'s shown', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 42, url: 'https://draft.test/' }]);
   fake.scriptDelay = () => 1;
   let busy = true;
@@ -2680,7 +2683,10 @@ test('cut off: a page in use keeps its page, its dead Margin out of sight; a swi
   assert.equal(fake.updates.length, 0, 'not loaded again');
   busy = false; // the draft sent meanwhile
   await focusTab(42);
-  assert.deepEqual(fake.updates.map((u) => u.change), [{ url: 'https://draft.test/' }, { active: true }], 'loaded again, then shown');
+  assert.deepEqual(fake.updates.map((u) => u.change), [{ active: true }], 'shown, not loaded again as it is');
+  const quiet = fake.scripts.filter((x) => x.func.name === 'cutOffInPage' && x.tabId === 42).at(-1);
+  assert.ok(quiet.args[1] === true && quiet.at <= fake.updates[0].at, 'put out of sight before its show');
+  // (Loaded again once it's left: tests/in-window.test.js, tests/cut-off.test.js.)
 });
 
 test('cut off: a page bound to this copy isn\'t, and isn\'t asked again; a switch to a tab not suspected doesn\'t ask', async () => {
