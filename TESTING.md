@@ -574,7 +574,11 @@ Before you start: run `npm run safari`. Use Dark Mode, and record the screen if 
 - [ ] On Safari's Start Page and in the address bar, ⌃⌘↓ still switches (Safari's command).
 - [ ] With a heavy tab in the cycle (Instagram with reels playing, a big Google Doc), press ⌃⌘↓ to it once. The page before stays, with its cover if it's slow, until the tab comes up with no dark frame. Then press ⌃⌘↓ twice quickly through it. The second press goes on to the next tab, and the heavy one isn't shown in between.
 - [ ] Hold ⌃⌘↓: the key repeats through tabs on web pages now, as ⌥⌘↓ did.
+- [ ] Leave Safari alone for two minutes (its background stops), then click into a page and press ⌥⌘↓ twice quickly. Both presses count.
 - [ ] Right after `npm run safari`, with tabs open: switch through Margin to the tab in front and to the 2 tabs you used last. None is reloaded while it's in front. The background's console may say `still has Margin from before it was reloaded, and is in front`. After you leave one, it's reloaded behind; come back and it's there, with no dark frame.
+  - Those tabs show the page with no sidebar while you're on them (the old copy's sidebar is put away); that's expected until you leave and come back.
+  - On one of them that is Outlook or Instagram, press ⌃⌘↓: it still switches (Safari's own command now gets the key past the page). ⌥⌘↓ goes to the page there; that's expected.
+  - In the switch log those switches say `cutOff: 'quiet'`, not `'reloaded'`.
 - [ ] After that first round, run `npm run safari` again and switch through Margin to tabs you visited after the first install. In the switch log they show `markReason: 'proven:page'` and `introduced: false`: no flip first.
 - [ ] Copy the switch log (start page → Settings → Switch log). For each `kind: 'switch'`:
   - `gate.outcome` is `free` on almost every switch. `answered` is a page that answered three looks slowly (shown then). `limit` is a page that never answered (shown as it is). `slow safari` is Safari slow, not the page (`gate.safari` is its answer). A `hurried: true` entry is a show given up for your next press, and the press after it goes to the tab after that one. `gate.stalled: true` is a tab that answered a wake moments before and then didn't.

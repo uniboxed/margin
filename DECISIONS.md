@@ -1984,3 +1984,17 @@ Tirth's Outlook showed 8 px gaps at the left, top and right and a large one at t
   - WebKit host: new `heavyflip` (a page that stalls 2 s as it's hidden again). At 9f1611f, 40 turns showed the empty view; now its content is there 2 ms after the show. New `commandkeys`: ⌃⌘↓ on a page that takes ArrowDown at every level, from a text field too. It fails at 9f1611f (the page ate it) and passes now.
   - `reloaded` and `reloaded-newtab` now expect the tab in front to be quieted, not loaded again in front, and loaded again behind once it's left.
   - Full host run (load average 3–6): 79 scenarios, 3 failed. `reloaded` and `reloaded-newtab` failed on the S5 change and pass after the update above. `press` fails now and then on this build (2 of 4 alone) and on 9f1611f's (1 of 3 alone), on the same check.
+- **After review (the same day).** Two reviews of the build above found five problems that were real; each is fixed and noted under its S above, with a unit test that fails on the code before the fix:
+  - S4's listener stepped aside on latency alone (presses lost on every cold start of the background, possibly for the page's life).
+  - S5 still loaded a cut-off tab again from inside the switch to it.
+  - S1's press after a give-up went back to the same busy tab once 1.5 s had passed, and that switch was then capped and shown dark. A tab that is capped at its wake but stalled was never gated.
+  - S1 took a busy page in front for a slow Safari, and still held a click until the target answered when Safari really was slow. It also had no limit on the number of looks.
+  - S2's word left the flip's hide pending when Safari answered the flip late.
+  - Smaller fixes: the hello no longer waits for its proof; a suspect isn't probed on every wake; a ⌃⌘ arrow given to the sidebar is left to it; a cut-off world sends the ⌃⌘ arrows on to Safari's commands.
+- **Not changed after review, and why:**
+  - S2's 50 ms settle stays. Its replacement, a second rendering update, would mean resizing an element of Margin's in every page at each visibility change.
+  - S3's 15 s window for Margin's own reload stays. The entry goes at the reload's first hello, and now also when the load fails, so only a Safari unload inside the second or so before that hello could slip through. Matching the reload by navigation events would be a bigger change.
+  - The navigation keys in iframes: the content script stays top-frame only (`all_frames: false`). With focus in a frame such as Google Docs' text frame, a key goes to the page first and then to the command, as before.
+  - A ping is still sent when the switch's last script answered moments ago. The look is the proof and costs one round trip.
+  - A tab with no recent answer that is stalled can't be told from a suspended one. It is still shown at the wake's cap.
+- **Verified after review:** `npm test` 632 tests, all passing, run twice (exit 0). In the WebKit host, `heavyflip`, `commandkeys`, `reloaded`, `reloaded-newtab`, `introduce`, `switching`, `keys` and `behindkeys` pass. So does the reviewer's scenario of a woken cut-off suspect: its switch now says `cutOff: 'quiet'`, the tab isn't loaded again around its show, and its content is there 1 ms after the show. `press` failed its release check on 9f1611f, on the build above and on this one alike (2 of 3 runs each, A/B in turn), so that failure isn't from these changes.
