@@ -786,6 +786,24 @@ test('an update Safari applied as it launched (every background tab with no page
   }
 });
 
+test('a run whose loop failed (never finished) stops counting as under way once its time is up: sleeping tabs aren\'t held off for good', async () => {
+  await calm();
+  // Kept by the background before, and broken (what's done is gone): the loop throws.
+  fake.session.warmUp = { v: 1, state: 'running', at: Date.now(), until: Date.now() + 400, picked: [{ id: 23, why: 'recent' }], done: null };
+  warmUp.resetWarmUp();
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    await over(warmUp.start());
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(warmUp.warmUpState().run?.state, 'running', 'never finished');
+  await until(() => !warmUp.warming(), 3000, 'not under way past its time');
+  delete fake.session.warmUp;
+  warmUp.resetWarmUp();
+});
+
 // ---- nothing changes for a switch ------------------------------------------------------------
 
 test('guard: a click on an unloaded tab with no warm-up under way is restored behind the covered page and introduced, as before', async () => {

@@ -8,7 +8,7 @@ import { commandKeys } from '../shared/shortcuts.js';
 import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
-import { isSleepPage, readSleepAddress } from '../shared/sleep.js';
+import { isSleepPage, readSleepAddress, wokeKey } from '../shared/sleep.js';
 import { readyInPage } from '../shared/page-ready.js';
 import { noteCall, noteLag, ownSign, slowFacts, slowFoundAt, timed as timedCall, timersLate } from './slow.js';
 
@@ -3888,7 +3888,11 @@ async function repairOldOwnPage(tab) {
 export async function wakeAsleep(tab) {
   const sleep = readSleepAddress(tab?.url);
   if (tab?.id == null || !sleep?.url) return null;
-  return (await timedCall('tabs.update', api.tabs.update(tab.id, { url: sleep.url }), tab.id).then(() => true, () => false)) ? 'address' : null;
+  if (!(await timedCall('tabs.update', api.tabs.update(tab.id, { url: sleep.url }), tab.id).then(() => true, () => false))) return null;
+  // Its sleep page, reached again through the tab's history, isn't woken
+  // again (shared/sleep.js startSleepPage).
+  if (sleep.key) void Promise.resolve().then(() => api.storage.session?.set({ [wokeKey(sleep.key)]: Date.now() })).catch(() => {});
+  return 'address';
 }
 
 // The current copy's core and its active theme, into a page that has neither

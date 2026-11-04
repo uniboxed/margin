@@ -560,8 +560,8 @@ const pause = (ms) => new Promise((resolve) => {
 /** @param {number} at */
 const until = (at) => pause(Math.max(0, at - Date.now()));
 
-/** A run under way (background/sleep.js puts no tab to sleep meanwhile: the tabs it loads are just back). */
-export const warming = () => run?.state === 'running';
+/** A run under way (background/sleep.js puts no tab to sleep meanwhile: the tabs it loads are just back). Never past its time (a loop that failed never finished it). */
+export const warming = () => run?.state === 'running' && Date.now() < run.until;
 
 // For tests.
 /** @param {Partial<typeof TIMING>} given */

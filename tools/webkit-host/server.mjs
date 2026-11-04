@@ -2,6 +2,8 @@
 // posts its console output to (run.sh adds that hook). Port 47811, or
 // MARGIN_HOST_PORT.
 //   /p/<Name>  a plain page titled <Name> ("F…": with a textarea; "P…": with a POST form; "S…": still loading for 1.5s;
+//              "I…": another site's frame with text in a field; "J…": another site's frame with nothing typed,
+//              and empty, srcdoc and sandboxed frames; "K…": a data: frame;
 //              "H…": heavy to paint, on a dark background, as a busy site is; "G…": a field with autofocus;
 //              "T…": tall, with rules about the window's size for the box to answer;
 //              "B…": busy, as a site with ads and animations is: a timer every 50ms doing work, a CSS animation, a frame loop;
@@ -57,6 +59,9 @@ const FIXTURES = {
   // What a read of the real <body> reaches, and what edits a sheet with no new sheet.
   'late-has': `<script>addEventListener('load', () => setTimeout(() => { const s = document.createElement('style'); s.textContent = 'html { height: 100% } body:has(#app) { margin: 0; height: 100% } #app { height: 100% }'; document.head.append(s); }, 300));</script><div id=app>Mail</div>`,
   'late-text': `<style id=s>.nothing { color: red }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').firstChild.data = 'html, body { margin: 0; height: 100% } #app { height: 100% }'; }, 300));</script><div id=app>Mail</div>`,
+  // Another site's frame (localhost: the page is on 127.0.0.1) with text in a field, and one with none.
+  'frame-draft': `<textarea id=t>a reply typed in a frame</textarea>`,
+  'frame-plain': `<p>an embed with nothing typed</p>`,
   'late-disabled': `<style>html, body { margin: 0; height: 100% } #app { height: 100% }</style><style id=s>body { margin: 40px }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').sheet.disabled = true; }, 300));</script><div id=app>Mail</div>`,
   'late-rule-style': `<style>html, body { height: 100% } #app { height: 100% }</style><style id=s>body { margin: 40px }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').sheet.cssRules[0].style.margin = '0'; }, 300));</script><div id=app>Mail</div>`,
   'late-selector': `<style>html, body { height: 100% } #app { height: 100% }</style><style id=s>.nothing { margin: 0 }</style><script>addEventListener('load', () => setTimeout(() => { document.getElementById('s').sheet.cssRules[0].selectorText = 'body'; }, 300));</script><div id=app>Mail</div>`,
@@ -124,6 +129,13 @@ const page = (name) => {
   if (name.startsWith('Z')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><h1>Late ${name}</h1><p>${'text '.repeat(200)}</p><img src="/slow?ms=3000&n=${Date.now()}"></body></html>`;
   if (name.startsWith('Y')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><script>window.__textAt=0;setTimeout(()=>{document.body.insertAdjacentHTML('beforeend','<h1>Shell ${name}</h1><p>'+'text '.repeat(200)+'</p>');window.__textAt=performance.timeOrigin+performance.now()},250);let on=false;const w=setInterval(()=>{const c=document.querySelector('margin-sidebar-host')?.dataset.loadingCover;if(c==='true')on=true;else if(on&&c==='false'){window.__liftAt=performance.timeOrigin+performance.now();clearInterval(w)}},5)</script><img src="/slow?ms=3000&n=${Date.now()}"></body></html>`;
   if (name.startsWith('G')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body><h1>Focus ${name}</h1><textarea id=t autofocus></textarea></body></html>`;
+  // "I…": another site's frame with text in a field; "J…": another site's frame with none, beside
+  // frames of the page's own site with no address of their own (empty, srcdoc: Gmail has some)
+  // and a sandboxed one; "K…": a data: frame (no site: no extension may look into it).
+  const framed = (frames) => `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body><h1>Framed ${name}</h1>${frames}</body></html>`;
+  if (name.startsWith('I')) return framed(`<iframe src="http://localhost:${PORT}/x/frame-draft"></iframe>`);
+  if (name.startsWith('J')) return framed(`<iframe src="http://localhost:${PORT}/x/frame-plain"></iframe><iframe></iframe><iframe srcdoc="<p>inline</p>"></iframe><iframe sandbox src="http://localhost:${PORT}/x/frame-plain"></iframe>`);
+  if (name.startsWith('K')) return framed(`<iframe src="data:text/html,<textarea>typed</textarea>"></iframe>`);
   if (name.startsWith('F')) return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title></head><body><h1>Form ${name}</h1><textarea id=t></textarea></body></html>`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${name}</title><style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><h1>Page ${name}</h1><p>${'text '.repeat(200)}</p></body></html>`;
 };

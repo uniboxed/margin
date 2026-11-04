@@ -54,6 +54,7 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 | `addresses` | A hidden tab's new address (`pushState`) stored at once, and a new fragment alone a moment later (gathered with its title and icon) |
 | `sleep-show`, `sleep-switch` | A tab put to sleep (background/sleep.js): sent to Margin's sleep page, its page's process exits (`pid`, `pidGone`), Margin keeps it as its page; woken by Safari's own show, or by Margin's switch (loaded behind the covered page, introduced, then shown), with one history entry and its content back |
 | `sleep-kept`, `sleep-copy` | A tab with a typed draft and one on a site that never sleeps stay awake; a tab asleep when Margin is updated is moved to the new copy's sleep page, still asleep, and wakes when shown |
+| `sleep-frames` | Text in another site's frame (`/p/I…`: a frame from `localhost`) keeps its tab awake, the page asked in every frame (`allFrames`); a tab whose frames have nothing typed (`/p/J…`: another site's, empty, `srcdoc`, sandboxed) sleeps; one with a `data:` frame (`/p/K…`), which nothing may look into, stays awake |
 | `screenshot` | A page in its box, saved to `build/screenshot.png` to look at |
 
 ## Real websites

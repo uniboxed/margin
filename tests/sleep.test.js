@@ -19,6 +19,11 @@ const fake = {
   local: {},
   session: {},
   page: () => ({ ok: true, judged: 'margin' }),
+  // The page's other frames' answers (executeScript's rows), when every frame is asked.
+  frames: () => [],
+  // Before a page answers (the ask under way).
+  asking: async () => {},
+  noAllFrames: false,
   denied: new Set(),
 };
 globalThis.chrome = {
@@ -43,12 +48,15 @@ globalThis.chrome = {
   },
   scripting: {
     executeScript: async ({ target, func, args }) => {
-      fake.scripts.push({ tabId: target.tabId, func: func?.name ?? 'files', args });
+      fake.scripts.push({ tabId: target.tabId, func: func?.name ?? 'files', args, allFrames: !!target.allFrames });
       if (func?.name !== 'sleepInPage') return [{ result: true }];
+      if (target.allFrames && fake.noAllFrames) throw new Error('allFrames not supported');
+      await fake.asking(target.tabId);
       const answer = fake.page(target.tabId, args);
       if (answer === 'never') return new Promise(() => {});
       if (answer == null) throw new Error('Could not execute script on this tab');
-      return [{ result: answer }];
+      const top = { frameId: 0, result: { top: true, ...answer } };
+      return target.allFrames ? [top, ...fake.frames(target.tabId)] : [top];
     },
   },
   storage: {
@@ -66,7 +74,7 @@ globalThis.chrome = {
 const S = await import('../extension/shared/sleep.js');
 const M = await import('../extension/state/model.js');
 const { oldOwnPageAddress } = await import('../extension/background/cut-off.js');
-const { sleepIdle, sleepInPage, setSleepTiming, wakeAll } = await import('../extension/background/sleep.js');
+const { sleepChanged, sleepIdle, sleepInPage, setSleepTiming, wakeAll, wokeToAddress } = await import('../extension/background/sleep.js');
 const { decided, mutate, load } = await import('../extension/background/store.js');
 const { tapLog } = await import('../extension/background/diagnostics.js');
 setSleepTiming({ gapMs: 5, askMs: 150, wakeGapMs: 1 });
@@ -98,21 +106,36 @@ test('sleep page: strictly http: and https: (never javascript:, data:, file:, an
   assert.equal(S.readSleepAddress(`${BASE}sleep/sleep.html?u=javascript%3Aalert(1)`).raw, 'javascript:alert(1)', 'shown as it was');
 });
 
-// A sleep page in a fake document: its window, document and API.
-function sleepPage(url, { visible = false, length = 1, kept = {}, tabs = true, icons = {} } = {}) {
+// A sleep page in a fake document: its window, document and API. `length`:
+// the tab's history's; `state`: its entry's (history.state); `kept`: its
+// sessionStorage (null: none, it throws); `woke`: storage.session (Margin's
+// background's marks); `navigation`: the Navigation API's activation.
+function sleepPage(url, { visible = false, length = 1, kept = {}, state = null, woke = null, navigation = undefined, tabs = true, icons = {} } = {}) {
   const listeners = { doc: {}, win: {} };
   const calls = [];
   const nodes = {};
   const element = (id) => (nodes[id] ??= { id, textContent: '', hidden: true, dataset: {}, listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; } });
-  const storage = { ...kept };
+  const storage = kept ? { ...kept } : null;
+  const sessionStorage = storage
+    ? { getItem: (k) => storage[k] ?? null, setItem: (k, v) => { storage[k] = String(v); } }
+    : { getItem: () => { throw new Error('no storage'); }, setItem: () => { throw new Error('no storage'); } };
+  const history = {
+    length,
+    state,
+    back: () => calls.push(['back']),
+    forward: () => calls.push(['forward']),
+    replaceState: (next) => { history.state = structuredClone(next); calls.push(['mark']); },
+  };
   const page = {
     calls,
     nodes,
     storage,
+    history,
     win: {
       location: { href: url, replace: (to) => calls.push(['replace', to]) },
-      history: { length, back: () => calls.push(['back']) },
-      sessionStorage: { getItem: (k) => storage[k] ?? null, setItem: (k, v) => { storage[k] = String(v); } },
+      history,
+      sessionStorage,
+      ...(navigation !== undefined ? { navigation: { activation: navigation } } : {}),
       setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 20)),
       addEventListener: (type, fn) => { listeners.win[type] = fn; },
     },
@@ -127,7 +150,7 @@ function sleepPage(url, { visible = false, length = 1, kept = {}, tabs = true, i
     },
     api: {
       tabs: tabs ? { getCurrent: async () => ({ id: 7 }), update: async (id, change) => { calls.push(['update', id, change.url]); } } : undefined,
-      storage: { local: { get: async () => ({ favicons: icons }) } },
+      storage: { local: { get: async () => ({ favicons: icons }) }, ...(woke ? { session: { get: async (key) => (key in woke ? { [key]: woke[key] } : {}) } } : {}) },
     },
     show() {
       page.doc.visibilityState = 'visible';
@@ -155,15 +178,15 @@ test('sleep page: never by itself while hidden; shown, its tab is sent back to i
   assert.deepEqual(page.calls, []);
   page.show();
   await sleep(5);
-  assert.deepEqual(page.calls, [['update', 7, 'https://a.test/doc']], 'its own tab, to its page\'s address');
+  assert.deepEqual(page.calls, [['mark'], ['update', 7, 'https://a.test/doc']], 'its own tab, to its page\'s address');
   page.hide();
   page.show();
   page.pageshow(false);
   await sleep(5);
-  assert.equal(page.calls.length, 1, 'once');
+  assert.equal(page.calls.length, 2, 'once');
   const front = sleepPage(asleepAt('https://b.test/'), { visible: true });
   await sleep(5);
-  assert.deepEqual(front.calls, [['update', 7, 'https://b.test/']], 'visible as it loads (Safari showing it): at once');
+  assert.deepEqual(front.calls, [['mark'], ['update', 7, 'https://b.test/']], 'visible as it loads (Safari showing it): at once');
 });
 
 test('sleep page: an address that isn\'t a web page\'s is shown, never gone to', async () => {
@@ -178,27 +201,72 @@ test('sleep page: an address that isn\'t a web page\'s is shown, never gone to',
   }
 });
 
-test('sleep page: reached again through its tab\'s history (a browser that keeps it across the change), it isn\'t woken again: it goes back to the page it slept from, and offers that page\'s link if it can\'t; restored as the tab\'s last page (a relaunch), it wakes', async () => {
-  // As it first loaded: the tab's history was 3 long.
+test('sleep page: its entry is marked before it sends its tab back (history.state, and sessionStorage by its key)', async () => {
+  const page = sleepPage(asleepAt('https://a.test/'), { visible: true, state: { other: 1 } });
+  await sleep(5);
+  assert.deepEqual(page.calls, [['mark'], ['update', 7, 'https://a.test/']]);
+  assert.deepEqual(page.history.state, { other: 1, marginWoke: 'k9' }, 'the entry\'s own state kept');
+  assert.equal(page.storage['margin-woke:k9'], '1');
+});
+
+test('sleep page: reached again through its tab\'s history (a browser that keeps it across the change), it never sends its tab forward again: Back goes back once more, Forward forward, and with the way not known it offers its page\'s link and does nothing by itself', async () => {
+  // As it first woke: the tab's history at WebKit's cap (100), so it doesn't grow.
+  const first = sleepPage(asleepAt('https://a.test/'), { length: 100, visible: true });
+  await sleep(5);
+  const entry = first.history.state;
+  // Back from the page it woke to (another site's: the Navigation API can't say from where).
+  const back = sleepPage(asleepAt('https://a.test/'), { length: 100, kept: first.storage, state: entry, visible: true, navigation: { navigationType: 'traverse', from: null, entry: { index: 0 } } });
+  await sleep(40);
+  assert.deepEqual(back.calls, [], 'not sent forward again (no Back trap), nor anywhere');
+  assert.equal(back.nodes.go.hidden, false, 'its link offered');
+  back.nodes.go.listeners.click();
+  await sleep(5);
+  assert.deepEqual(back.calls.at(-1), ['update', 7, 'https://a.test/'], 'the link sends the tab there');
+  // No sessionStorage: its entry's state alone says so.
+  const bare = sleepPage(asleepAt('https://a.test/'), { length: 100, kept: null, state: entry, visible: true });
+  await sleep(40);
+  assert.deepEqual(bare.calls, []);
+  assert.equal(bare.nodes.go.hidden, false);
+  // Nor its entry's state: sessionStorage alone.
+  const lost = sleepPage(asleepAt('https://a.test/'), { length: 100, kept: first.storage, visible: true });
+  await sleep(40);
+  assert.deepEqual(lost.calls, []);
+  // The Navigation API says it came back (from a later entry of Margin's): back once more.
+  const backward = sleepPage(asleepAt('https://a.test/'), { length: 100, kept: first.storage, state: entry, visible: true, navigation: { navigationType: 'traverse', from: { index: 3 }, entry: { index: 2 } } });
+  await sleep(40);
+  assert.deepEqual(backward.calls, [['back']]);
+  assert.equal(backward.nodes.go.hidden, false, 'still here a moment later: its link offered');
+  // Forward, after Back went past it: forward to the page it woke to.
+  const forward = sleepPage(asleepAt('https://a.test/'), { length: 100, kept: first.storage, state: entry, visible: true, navigation: { navigationType: 'traverse', from: { index: 1 }, entry: { index: 2 } } });
+  await sleep(40);
+  assert.deepEqual(forward.calls, [['forward']], 'never back');
+  // Its history longer than as it first loaded (an entry after it), not marked: an old entry too.
+  const longer = sleepPage(asleepAt('https://b.test/'), { length: 3 });
+  const again = sleepPage(asleepAt('https://b.test/'), { length: 4, kept: longer.storage, visible: true });
+  await sleep(40);
+  assert.deepEqual(again.calls, []);
+  assert.equal(again.nodes.go.hidden, false);
+  // Back from the back/forward cache after it woke: not sent forward again.
+  first.pageshow(true);
+  await sleep(40);
+  assert.deepEqual(first.calls, [['mark'], ['update', 7, 'https://a.test/']]);
+});
+
+test('sleep page: woken by Margin\'s background (its key in storage.session), reached again: not sent forward again; one never woken, restored as the tab\'s last page (a relaunch), wakes', async () => {
+  const woken = sleepPage(asleepAt('https://a.test/'), { length: 100, visible: true, woke: { 'sleepWoke:k9': 1 } });
+  await sleep(40);
+  assert.deepEqual(woken.calls, []);
+  assert.equal(woken.nodes.go.hidden, false);
+  // A relaunch restoring one never woken (its sessionStorage back, the same history): woken.
   const first = sleepPage(asleepAt('https://a.test/'), { length: 3 });
   assert.equal(first.storage['margin-sleep:k9'], '3');
-  // Back from the page it woke to: 4 entries now, the same sessionStorage.
-  const again = sleepPage(asleepAt('https://a.test/'), { length: 4, kept: first.storage });
-  again.show();
-  await sleep(40);
-  assert.deepEqual(again.calls, [['back']], 'back to the page it slept from, never forward again');
-  assert.equal(again.nodes.go.hidden, false, 'still here a moment later: its link offered');
-  again.nodes.go.listeners.click();
+  const restored = sleepPage(asleepAt('https://a.test/'), { length: 3, kept: first.storage, visible: true, woke: {}, navigation: { navigationType: 'traverse', from: null, entry: { index: 0 } } });
   await sleep(5);
-  assert.deepEqual(again.calls.at(-1), ['update', 7, 'https://a.test/'], 'the link sends the tab there');
-  // A relaunch restoring it (its sessionStorage back, the same history): woken.
-  const restored = sleepPage(asleepAt('https://a.test/'), { length: 3, kept: first.storage, visible: true });
-  await sleep(5);
-  assert.deepEqual(restored.calls, [['update', 7, 'https://a.test/']]);
+  assert.deepEqual(restored.calls, [['mark'], ['update', 7, 'https://a.test/']]);
   // No API (Margin gone): the page's own way, then the link.
   const orphan = sleepPage(asleepAt('https://c.test/'), { visible: true, tabs: false });
   await sleep(40);
-  assert.deepEqual(orphan.calls, [['replace', 'https://c.test/']]);
+  assert.deepEqual(orphan.calls, [['mark'], ['replace', 'https://c.test/']]);
   assert.equal(orphan.nodes.go.hidden, false);
 });
 
@@ -334,7 +402,11 @@ async function setUp(tabs, settings = {}) {
   fake.updates = [];
   fake.scripts = [];
   fake.page = () => ({ ok: true, judged: 'margin' });
+  fake.frames = () => [];
+  fake.asking = async () => {};
+  fake.noAllFrames = false;
   fake.denied = new Set();
+  delete fake.session.sleepRefused;
   await decided();
   await mutate((s) => {
     let next = { ...s, tabs: {}, tabSpace: {}, settings: { ...s.settings, sleepAfterHours: 4, neverSleepSites: [], ...settings } };
@@ -400,21 +472,119 @@ test('a pass leaves alone: a tab in front, playing sound, loading, already aslee
   assert.deepEqual(fake.updates, [], 'none sent anywhere');
 });
 
-test('sleepInPage: only a hidden page at the same address with nothing typed (Margin\'s watch, or a generous look at the page without it) and nothing playing', () => {
-  const was = { document: globalThis.document, location: globalThis.location, navigator: globalThis.navigator, Margin: globalThis.Margin };
+test('a pass asks every frame of the page: text or media in another site\'s frame (a comment box, a form, a payment\'s), or a frame of another site that gave no answer, keeps the tab awake; the page\'s own checks are its top frame\'s', async () => {
+  await setUp([2, 3, 4, 5, 6, 7, 8].map((id) => ({ id, url: `https://f${id}.test/` })));
+  // A frame of another site (its parent can't look into it), and WebKit's error for a frame it has no access to.
+  const other = (result) => ({ frameId: 9, result: { top: false, apart: true, foreign: 0, ...result } });
+  const noAccess = { frameId: 10, result: null, error: 'Failed to execute script. Extension does not have access to this frame.' };
+  const frames = {
+    2: [other({ ok: false, why: 'edited', judged: 'frame' })],
+    3: [noAccess], // (a data: frame: the top frame couldn't look into it)
+    4: [other({ ok: true, judged: 'frame' })],
+    5: [other({ ok: false, why: 'playing' })],
+    6: [other({ ok: true, judged: 'frame' })],
+    7: [other({ ok: true, judged: 'frame' }), noAccess], // (an empty frame of the page's own site, looked into from the top)
+    8: [], // (a browser that skips a frame it can't run in)
+  };
+  fake.frames = (tabId) => frames[tabId] ?? [];
+  fake.page = (tabId) => (tabId === 6 ? { ok: false, why: 'moved' } : { ok: true, judged: 'margin', foreign: 1 });
+  const pass = await sleepIdle({ afterMs: 1 });
+  assert.deepEqual(pass.skipped, { edited: 1, 'frame unknown': 2, playing: 1, moved: 1 });
+  assert.deepEqual(slept().sort(), [4, 7]);
+  const asked = fake.scripts.filter((x) => x.func === 'sleepInPage');
+  assert.equal(asked.length, 7);
+  assert.ok(asked.every((x) => x.allFrames), 'every frame asked');
+});
+
+test('a browser that won\'t run the check in every frame: asked in the top frame alone, and a page with frames it can\'t look into stays awake', async () => {
+  await setUp([{ id: 2, url: 'https://framed.test/' }, { id: 3, url: 'https://plain.test/' }]);
+  fake.noAllFrames = true;
+  fake.page = (tabId) => ({ ok: true, judged: 'margin', foreign: tabId === 2 ? 1 : 0 });
+  const pass = await sleepIdle({ afterMs: 1 });
+  assert.deepEqual(pass.skipped, { 'frame unknown': 1 });
+  assert.deepEqual(slept(), [3]);
+  assert.deepEqual(fake.scripts.filter((x) => x.func === 'sleepInPage').map((x) => [x.tabId, x.allFrames]), [[2, true], [2, false], [3, true], [3, false]]);
+});
+
+test('a tab used while the pass goes on (in front a moment by Safari\'s tab bar or ⌘1–9, which no switch of Margin\'s sees) isn\'t put to sleep: neither one used during its own page\'s answer nor one used before its turn', async () => {
+  await setUp([{ id: 2, url: 'https://two.test/', idleHours: 9 }, { id: 3, url: 'https://three.test/', idleHours: 8 }]);
+  const use = (id) => mutate((s) => ({ ...s, tabs: { ...s.tabs, [id]: { ...s.tabs[id], lastActive: Date.now() } } }));
+  fake.asking = async (tabId) => {
+    if (tabId !== 2) return;
+    await use(2);
+    await use(3);
+  };
+  const pass = await sleepIdle();
+  assert.deepEqual(pass.skipped, { used: 2 });
+  assert.deepEqual(fake.updates, [], 'none sent to sleep');
+  assert.deepEqual(fake.scripts.filter((x) => x.func === 'sleepInPage').map((x) => x.tabId), [2], '3 not even asked');
+});
+
+test('a page that said no isn\'t asked again each pass (asking resumes its process): not until its tab is used again, or an hour has passed; a pass asked for by hand asks it', async () => {
+  await setUp([{ id: 2, url: 'https://draft.test/' }, { id: 3, url: 'https://idle.test/' }]);
+  let draft = true;
+  fake.page = (tabId) => (tabId === 2 && draft ? { ok: false, why: 'edited', judged: 'margin' } : { ok: true });
+  const askedOf = (id) => fake.scripts.filter((x) => x.func === 'sleepInPage' && x.tabId === id).length;
+  assert.deepEqual((await sleepIdle()).skipped, { edited: 1 });
+  assert.equal(askedOf(2), 1);
+  await mutate((s) => [...fake.tabs.values()].reduce((st, t) => M.upsertTab(st, t, Date.now()), s)); // 3 asleep, as onUpdated brings it in
+  assert.ok(fake.session.sleepRefused?.[2], 'kept in storage.session (a pass is often in a background started for it)');
+  // The next pass: not asked.
+  assert.deepEqual(await sleepIdle(), { due: 1, slept: 0, skipped: { 'asked lately': 1 }, stopped: null });
+  assert.equal(askedOf(2), 1);
+  // By hand: asked.
+  assert.deepEqual((await sleepIdle({ afterMs: 1 })).skipped, { edited: 1 });
+  assert.equal(askedOf(2), 2);
+  // Used since (its last use moved, still long ago): asked again.
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 2: { ...s.tabs[2], lastActive: s.tabs[2].lastActive + 1000 } } }));
+  setSleepTiming({ refusedMs: 20 });
+  try {
+    assert.deepEqual((await sleepIdle()).skipped, { edited: 1 });
+    assert.equal(askedOf(2), 3);
+    // Its time up: asked again; the draft sent meanwhile, it sleeps, and its refusal is forgotten.
+    assert.deepEqual((await sleepIdle()).skipped, { 'asked lately': 1 });
+    await sleep(30);
+    draft = false;
+    assert.deepEqual(await sleepIdle(), { due: 1, slept: 1, skipped: {}, stopped: null });
+    assert.equal(askedOf(2), 4);
+    assert.equal(fake.session.sleepRefused?.[2], undefined);
+  } finally {
+    setSleepTiming({ refusedMs: 60 * 60_000 });
+  }
+});
+
+test('a tab woken back to its page\'s address: that load isn\'t taken for a search made now (background.js learns no search engine from it)', async () => {
+  const search = 'https://www.google.com/search?q=margin&client=safari';
+  await setUp([{ id: 2, url: search }, { id: 3, url: 'https://awake.test/' }]);
+  await mutate((s) => ({ ...s, tabs: { ...s.tabs, 2: { ...s.tabs[2], sleeping: { at: Date.now(), how: 'page' } } } }));
+  sleepChanged(2, { url: search });
+  assert.equal(wokeToAddress(2, search), true);
+  assert.equal(wokeToAddress(2, 'https://www.google.com/search?q=other&client=safari'), false, 'a search made after it woke is');
+  sleepChanged(3, { url: 'https://www.google.com/search?q=x&client=safari' });
+  assert.equal(wokeToAddress(3, 'https://www.google.com/search?q=x&client=safari'), false, 'a tab that wasn\'t asleep');
+});
+
+test('sleepInPage: only a hidden page at the same address with nothing typed (Margin\'s watch, or a generous look at the page without it) and nothing playing; another site\'s frame: nothing typed or playing there, its address its own; the top frame counts the frames it can\'t look into', () => {
+  const was = { document: globalThis.document, location: globalThis.location, navigator: globalThis.navigator, Margin: globalThis.Margin, window: globalThis.window };
   try {
     const el = (props) => ({ value: '', textContent: '', paused: true, ended: false, isContentEditable: false, options: [], checked: false, defaultChecked: false, ...props });
-    const page = ({ hidden = true, href = 'https://a.test/', fields = [], media = [], edits = undefined } = {}) => {
-      globalThis.document = { visibilityState: hidden ? 'hidden' : 'visible', querySelectorAll: (sel) => (sel.startsWith('audio') ? media : sel.startsWith('textarea') ? fields : []), fullscreenElement: null };
+    // `frame`: run in a frame of another site (window.top isn't this window); `frames`: the page's own iframes.
+    const page = ({ hidden = true, href = 'https://a.test/', fields = [], media = [], edits = undefined, late = false, frame = false, frames = [] } = {}) => {
+      globalThis.document = { visibilityState: hidden ? 'hidden' : 'visible', querySelectorAll: (sel) => (sel.startsWith('audio') ? media : sel.startsWith('textarea') ? fields : sel.startsWith('iframe') ? frames : []), fullscreenElement: null };
       Object.defineProperty(globalThis, 'location', { value: { href }, configurable: true, writable: true });
       Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true, writable: true });
-      globalThis.Margin = edits === undefined ? undefined : { content: { edits: () => edits } };
+      const win = { frameElement: frame === 'same' ? {} : null };
+      win.top = frame ? {} : win;
+      globalThis.window = win;
+      globalThis.Margin = edits === undefined ? undefined : { content: { edits: Object.assign(() => edits, { late }) } };
     };
     const until = Date.now() + 1000;
     page();
-    assert.deepEqual(sleepInPage('https://a.test/', until), { ok: true, judged: 'page' });
+    assert.deepEqual(sleepInPage('https://a.test/', until), { ok: true, judged: 'page', top: true, foreign: 0 });
     page({ edits: false, fields: [el({ value: 'set by the page' })] });
-    assert.deepEqual(sleepInPage('https://a.test/', until), { ok: true, judged: 'margin' }, 'Margin\'s watch: the page\'s own values aren\'t a draft');
+    assert.deepEqual(sleepInPage('https://a.test/', until), { ok: true, judged: 'margin', top: true, foreign: 0 }, 'Margin\'s watch: the page\'s own values aren\'t a draft');
+    page({ edits: false, late: true });
+    assert.equal(sleepInPage('https://a.test/', until).judged, 'margin-late', 'a watch started late says so');
     page({ edits: true });
     assert.equal(sleepInPage('https://a.test/', until).why, 'edited');
     page({ fields: [el({ value: 'typed' })] });
@@ -427,11 +597,25 @@ test('sleepInPage: only a hidden page at the same address with nothing typed (Ma
     assert.equal(sleepInPage('https://a.test/', until).why, 'playing');
     page();
     assert.equal(sleepInPage('https://a.test/', Date.now() - 1).why, 'late');
+    page({ edits: false, frames: [{ contentDocument: null }, { get contentDocument() { throw new Error('cross-origin'); } }] });
+    assert.equal(sleepInPage('https://a.test/', until).foreign, 2, 'two frames of other sites');
+    // In another site's frame: its own address, no watch of Margin's (any text counts).
+    page({ frame: true, href: 'https://comments.test/embed', fields: [el({ value: 'a reply' })] });
+    assert.deepEqual(sleepInPage('https://a.test/', until), { ok: false, why: 'edited', judged: 'frame', top: false });
+    page({ frame: 'same', href: 'about:blank' });
+    assert.equal(sleepInPage('https://a.test/', until).apart, false, 'a frame its parent looks into');
+    page({ frame: true, href: 'https://comments.test/embed', edits: false, fields: [el({ value: 'a reply' })] });
+    assert.equal(sleepInPage('https://a.test/', until).why, 'edited', 'a frame never takes the top frame\'s watch');
+    page({ frame: true, href: 'https://video.test/embed', media: [el({ paused: false })] });
+    assert.deepEqual(sleepInPage('https://a.test/', until), { ok: false, why: 'playing', top: false });
+    page({ frame: true, href: 'https://ads.test/', frames: [{ contentDocument: null }] });
+    assert.deepEqual(sleepInPage('https://a.test/', until), { ok: true, judged: 'frame', top: false, foreign: 1, apart: true }, 'another site\'s frame, with one of its own it can\'t look into');
   } finally {
     globalThis.document = was.document;
     Object.defineProperty(globalThis, 'location', { value: was.location, configurable: true, writable: true });
     Object.defineProperty(globalThis, 'navigator', { value: was.navigator, configurable: true, writable: true });
     globalThis.Margin = was.Margin;
+    globalThis.window = was.window;
   }
 });
 

@@ -110,20 +110,32 @@ export function neverSleeps(url, sites) {
 // page in front itself: background/tabs.js restoreTab). An address that isn't
 // a web page's (missing, broken, another scheme) isn't gone to: the page says
 // so and shows what was there. Nothing here listens to storage.
+//
 // Where the browser keeps a tab's history through such a change (the WebKit
 // host makes a new web view with a history of its own: Safari unverified),
 // the sleep page stays in it, before the page it went back to. Reached again
-// from there (Back: it then has entries after it, its history longer than as
-// it first loaded, kept in sessionStorage by its key), it isn't a sleep to
-// wake from: it goes back once more, to the page it was put to sleep from,
-// and offers that page's link if it can't (never forward again: no loop).
+// from there (Back, or Forward after Back went past it), it isn't a sleep to
+// wake from, whatever the history's length (WebKit keeps at most about 100
+// entries, so a long one stops growing). It knows by its entry: marked
+// (history.state, and sessionStorage by its key) before it sends its tab
+// back, and woken by Margin's background (storage.session, by its key:
+// wokeKey). It then goes on the way it was reached when the Navigation API
+// says (Back goes back once more, Forward forward), else offers its page's
+// link and does nothing by itself. Never back and forth: no loop. Its history
+// longer than as it first loaded says the same (an entry after it). A
+// relaunch that restores it as the tab's last page, never woken, wakes.
 // `win`, `doc`, `api`: the page's window, document and extension API (tests
 // pass their own). Returns what it did, for tests.
 const BACK_MS = 1500;
+const WOKE_READ_MS = 400;
+// storage.session: this sleep was woken by Margin's background (background/tabs.js wakeAsleep).
+/** @param {string} key */
+export const wokeKey = (key) => `sleepWoke:${key}`;
 /** @param {{ win: any, doc: any, api: any }} env */
 export function startSleepPage({ win, doc, api }) {
   const info = readSleepAddress(win.location.href) ?? { url: null, raw: '', title: '', key: '' };
   const target = info.url;
+  const key = info.key || String(win.location.href);
   let host = '';
   try {
     host = target ? new URL(target).host : '';
@@ -140,7 +152,8 @@ export function startSleepPage({ win, doc, api }) {
     text('note', info.raw ? 'This tab was asleep, but its address isn’t a web page’s, so Margin won’t open it.' : 'This tab was asleep, but its address is missing.');
   }
   // How long the tab's history was as this sleep page first loaded.
-  const KEPT = `margin-sleep:${info.key}`;
+  const KEPT = `margin-sleep:${key}`;
+  const MARK = `margin-woke:${key}`;
   /** @type {number | null} */
   let firstLength = null;
   try {
@@ -149,9 +162,54 @@ export function startSleepPage({ win, doc, api }) {
     else win.sessionStorage.setItem(KEPT, String(win.history.length));
   } catch {}
   const passed = () => firstLength != null && win.history.length > firstLength;
+  // This entry: woken from before (by this page, or by Margin's background).
+  const marked = () => {
+    try {
+      if (win.history.state?.marginWoke === key) return true;
+    } catch {}
+    try {
+      return win.sessionStorage.getItem(MARK) === '1';
+    } catch {
+      return false;
+    }
+  };
+  const mark = () => {
+    try {
+      const state = win.history.state;
+      win.history.replaceState({ ...(state && typeof state === 'object' ? state : {}), marginWoke: key }, '');
+    } catch {}
+    try {
+      win.sessionStorage.setItem(MARK, '1');
+    } catch {}
+  };
+  // Read as it loads, and again back from the back/forward cache.
+  const readWoke = () => /** @type {Promise<boolean>} */ (new Promise((resolve) => {
+    win.setTimeout(() => resolve(false), WOKE_READ_MS);
+    try {
+      Promise.resolve(api?.storage?.session?.get?.(wokeKey(key))).then((stored) => resolve(!!stored?.[wokeKey(key)]), () => resolve(false));
+    } catch {
+      resolve(false);
+    }
+  }));
+  let wokeByMargin = readWoke();
+  // How this entry was reached, when the Navigation API says: 'back',
+  // 'forward', or null (not known: another site's page came before, or no API).
+  const reached = () => {
+    try {
+      const activation = win.navigation?.activation;
+      if (activation?.navigationType !== 'traverse') return null;
+      const from = activation.from?.index;
+      const to = activation.entry?.index;
+      if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from === to) return null;
+      return from > to ? 'back' : 'forward';
+    } catch {
+      return null;
+    }
+  };
   // Sent there from this page (the API); a page with none (Margin gone) tries
   // the page's own way, and the link is offered.
   const go = async () => {
+    mark();
     try {
       const tab = await api?.tabs?.getCurrent?.();
       if (tab?.id != null && (await Promise.resolve(api.tabs.update(tab.id, { url: target })).then(() => true, () => false))) return true;
@@ -170,35 +228,42 @@ export function startSleepPage({ win, doc, api }) {
     button.addEventListener('click', () => void go());
   };
   let woke = false;
-  /** @param {string} why @returns {string | false} */
-  const wake = (why) => {
+  /** @param {string} why @returns {Promise<string | false>} */
+  const wake = async (why) => {
     if (woke || !target) return false;
     woke = true;
-    if (passed()) {
+    if (marked() || passed() || (await wokeByMargin)) {
+      // An old entry: on the way it was reached, or nothing by itself.
+      const way = reached();
       try {
-        win.history.back();
+        if (way === 'back') win.history.back();
+        else if (way === 'forward') win.history.forward();
       } catch {}
-      win.setTimeout(offer, BACK_MS); // (gone by then if it went back)
-      return 'back';
+      if (way) win.setTimeout(offer, BACK_MS); // (gone by then if it went on)
+      else offer();
+      return way ?? 'offered';
     }
     void go().then((sent) => { if (!sent) win.setTimeout(offer, BACK_MS); });
     return why;
   };
-  const shown = () => doc.visibilityState === 'visible' && !!wake('shown');
+  const shown = () => doc.visibilityState === 'visible' && !woke && (void wake('shown'), true);
   doc.addEventListener('visibilitychange', shown);
   win.addEventListener('pageshow', (/** @type {any} */ event) => {
-    // Back from the back/forward cache: shown again, and goes again.
-    if (event?.persisted) woke = false;
+    // Back from the back/forward cache: shown again, and looks again.
+    if (event?.persisted) {
+      woke = false;
+      wokeByMargin = readWoke();
+    }
     shown();
   });
   shown();
   // The site's icon, from Margin's own copy (shared/stored.js FAVICONS), once.
-  if (target && !woke) {
+  if (target) {
     try {
       const origin = new URL(target).origin;
       Promise.resolve(api?.storage?.local?.get('favicons')).then((stored) => {
         const data = stored?.favicons?.[origin]?.data;
-        if (typeof data !== 'string' || !/^data:image\//.test(data) || woke) return;
+        if (typeof data !== 'string' || !/^data:image\//.test(data)) return;
         const link = doc.createElement('link');
         link.rel = 'icon';
         link.href = data;

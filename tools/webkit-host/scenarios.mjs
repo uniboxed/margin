@@ -1661,6 +1661,21 @@ Object.assign(SCENARIOS, {
     checkPage('F', 'F: still its page, the draft there', `location.pathname === '/p/F1' && document.querySelector('textarea').value === 'ab'`),
     checkPage('N', "N: on Margin's sleep page", `location.pathname === '/sleep/sleep.html'`, 3000),
   ],
+  // Text in another site's frame (a comment box, a form) keeps its tab awake:
+  // the page is asked in every frame (allFrames). One whose other site's frame
+  // has nothing typed sleeps, its empty and srcdoc frames (WebKit runs nothing
+  // there: the top frame looks into them) and a sandboxed one too. One with a
+  // data: frame (no site: nothing may look into it) stays awake. (Margin
+  // installed after the pages loaded: its watch there started late.)
+  'sleep-frames': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'I', url: '/p/I1' }, { op: 'open', name: 'J', url: '/p/J1' }, { op: 'open', name: 'K', url: '/p/K1' },
+    wait(800), { op: 'install' }, drawn('A'),
+    checkPage('I', 'I: its frame loaded', `!!document.querySelector('iframe') && document.readyState === 'complete'`, 3000),
+    check('A', 'a pass: the tab with text in its frame kept (edited), the one with a data: frame kept, the other put to sleep', `const r = await Margin.content.send('sleepNow', { afterMs: 1 }); console.log('[margin] sleep-frames pass ' + JSON.stringify(r)); return JSON.stringify(r) === JSON.stringify({ due: 3, slept: 1, skipped: { edited: 1, 'frame unknown': 1 }, stopped: null })`, 3000),
+    checkPage('I', 'I: still its page', `location.pathname === '/p/I1'`),
+    checkPage('K', 'K: still its page', `location.pathname === '/p/K1'`),
+    checkPage('J', "J: on Margin's sleep page", `location.pathname === '/sleep/sleep.html'`, 3000),
+  ],
   // Margin updated while a tab is asleep: its sleep page is the old copy's,
   // whose address no longer opens. It's moved to this copy's sleep page,
   // still asleep (hidden), and Safari's show wakes it there.
