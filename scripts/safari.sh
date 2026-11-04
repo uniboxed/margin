@@ -76,8 +76,17 @@ BUILT="$DERIVED/Build/Products/Release/Margin.app"
 FIRST=true
 [ -d "$DEST" ] && FIRST=false
 mkdir -p "$HOME/Applications"
-rm -rf "$DEST.new" && ditto "$BUILT" "$DEST.new"
-rm -rf "$DEST" && mv "$DEST.new" "$DEST"
+rm -rf "$DEST.new" "$DEST.old" && ditto "$BUILT" "$DEST.new"
+# The old copy out of the way in one step (a rename), the new one in its place
+# (another), and only then the old one deleted. Deleted in place, file by
+# file, Safari could read the extension half gone: its files no longer
+# matching their signature, it turned Margin off and blocked it
+# (WKWebExtensionErrorDomain 3, "Disabling and blocking extension", Tirth's
+# Safari, 2026-11-04).
+[ -d "$DEST" ] && mv "$DEST" "$DEST.old"
+mv "$DEST.new" "$DEST"
+"$LSREGISTER" -u "$DEST.old" 2>/dev/null || true
+rm -rf "$DEST.old"
 # The build's own copy goes (it would be a second Margin.app on the Mac; the
 # build folder keeps what makes the next build quick).
 "$LSREGISTER" -u "$BUILT" 2>/dev/null || true
