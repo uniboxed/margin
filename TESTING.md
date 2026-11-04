@@ -562,6 +562,29 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Sleeping tabs (2026-11-04)
+
+Margin now puts a tab you haven't used for 4 hours to sleep, to give its memory back, as Arc does. Safari has no way for an extension to unload a tab, so a sleeping tab shows Margin's own sleep page: a grey loading card with the page's title and icon. As soon as you show it (Margin's sidebar, Safari's tab bar, ⌘1–9), it goes back to its page. Margin keeps it in the sidebar as the page it was. Settings has the hours (0 = never), a list of sites that never sleep, and "Wake all sleeping tabs".
+
+Before you start: run `npm run safari`. Have Activity Monitor open (Memory tab, search "Safari Web Content" or the site's name). To see tabs sleep without waiting 4 hours, either set Settings → "Put tabs to sleep after not using them for" to `0.02` (about a minute; the check runs every 15 minutes), or open the background's console (Develop → Web Extension Background Content → Margin) and run `margin.sleepNow(60000)` to sleep tabs unused for a minute right away. Set it back to 4 afterwards.
+
+- [ ] Leave a heavy tab (YouTube, a big Google Doc you haven't typed in) alone for a minute, then run `margin.sleepNow(60000)`. It shows Margin's sleep page if you look at it in Safari's tab bar, with its title and icon. In Activity Monitor its Web Content process is gone, or much smaller, within a few seconds. Note the before and after numbers.
+- [ ] Its row in Margin's sidebar still has its title and icon. It's in the same space, and still under its pin if it was pinned. Search and the palette find it.
+- [ ] Click it in Margin's sidebar. The page you're on stays (covered) until it has loaded, then it comes up drawn, with no dark frame. In the switch log its switch has `asleep: 'address'` and `restored: 'painted'` or `'loaded'`.
+- [ ] Put it to sleep again, then bring it up with Safari's own tab bar (or ⌘1–9). The grey card shows for a moment, then the page loads, as any tab loading in Safari does. Note any dark frame and how long.
+- [ ] After either wake, press Back. It must not go to the sleep page. It goes where the tab went before it slept, or nowhere if Safari dropped the tab's history. **Tell me which**: does Back still reach the pages the tab had before it slept? Does Back ever show the grey card, or the same page twice?
+- [ ] Type something into a text field on a page (a draft, a search box) and don't send it. Leave the tab and run `margin.sleepNow(60000)`. That tab doesn't sleep (`skipped: { edited: 1 }` in the switch log's `run` entry), and the draft is still there when you come back.
+- [ ] A tab playing music or a video, and the tab in front of each window: they never sleep.
+- [ ] Add a site to "Never put these sites to sleep" (for example `youtube.com`). Its tabs stop sleeping, its subdomains too (`m.youtube.com`), but not a site that only ends the same (`notyoutube.com`).
+- [ ] Quit Safari with a tab asleep, and open it again. The tab is still asleep, on the sleep page (Margin moves it to its new address in the first seconds), in its space. Showing it wakes it. Before Margin moves it, Safari's tab bar may show an error page for it for a moment: note it if you see one.
+- [ ] `npm run safari` again (an update) with a tab asleep: the same.
+- [ ] "Wake all sleeping tabs" in Settings: every sleeping tab loads its page again behind the one you're on. Setting the hours to 0 alone wakes nothing.
+- [ ] A site that asks "Leave page?" when you close it: if it ever asks while its tab is going to sleep, tell me the site.
+- [ ] Copy the switch log. The `kind: 'sleep'` entries: `run` (with `due`, `slept` and `skipped`, why each tab was left awake), `slept` (`idleMin`, and `judged: 'margin'` when Margin's own watch saw the page), `woke` (`by: 'switch'`, `'shown'` or `'all'`).
+- [ ] Chrome: a tab unused for the setting's hours is discarded (`chrome://discards` shows it), and comes back as it's clicked.
+
+**Send me** the Activity Monitor numbers, what Back did, the switch log, and the times of any dark frame or error page.
+
 ## A show only into a free page, and ⌃⌘↓ on every site (2026-11-04)
 
 Margin now shows a tab only once its page answers one more look just before the show, so a stalled page (Instagram on 2026-11-04) keeps the page before on screen instead of going dark. A press during that wait gives the show up and goes on from that tab. After a flip, a page that says it has drawn is shown about 0.6 s sooner. A tab's proof is kept in its page, so after an update the tabs Safari had already shown aren't flipped again. That starts from the next update, since this build starts cold. On web pages, ⌃⌘↓/↑ are taken by Margin before the page, so Outlook and Instagram no longer eat them. A cut-off tab in front is no longer reloaded in front: it's reloaded once you leave it.
