@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageStarted, resolveTab, shownAt, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, resolveTab, shownAt, wakeTab } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -293,10 +293,10 @@ const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
 const STYLE_MAX_CHARS = 8_000_000;
 
 export const handlers = {
-  /** @param {{ unseen?: boolean, heard?: number }} message `unseen`: the page started visible in a tab whose page may have just been made (background/tabs.js pageStarted); `heard`: how many activations had come as it did (background.js) */
-  async hello({ unseen = false, heard = null } = {}, sender) {
+  /** @param {{ unseen?: boolean, heard?: number, doc?: string, fresh?: boolean, made?: boolean }} message `unseen`: the page started visible in a tab whose page may have just been made; `doc`: the page's own id; `fresh`: its copy started with it; `made`: it was made from the tab's saved history, or is a tab's first page (background/tabs.js pageStarted); `heard`: its place among the activations as it came (background.js) */
+  async hello({ unseen = false, heard = null, doc = null, fresh = false, made = false } = {}, sender) {
     onboarding.pageLoaded();
-    pageStarted(sender.tab?.id, { unseen, heard });
+    pageStarted(sender.tab?.id, { unseen, heard, doc: typeof doc === 'string' ? doc : null, fresh: fresh === true, made: made === true, active: typeof sender.tab?.active === 'boolean' ? sender.tab.active : null });
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
     // Only to a page in front: one loading behind (background/tabs.js
@@ -459,6 +459,14 @@ export const handlers = {
   },
   async back(_request, sender) {
     keepReady.noteFocused(sender?.tab?.windowId ?? null);
+  },
+  // The page has come into view from hidden (content/core.js): with what's
+  // known of its tab, proof WebKit has seen it come into a window with its
+  // page running (background/tabs.js pageInView). Answered true once its tab
+  // is proven with this page in it (the page then stops saying so).
+  /** @param {{ doc?: string, heard?: number } | undefined} request @param {any} sender */
+  async inView({ doc = null, heard = null } = {}, sender) {
+    return pageInView(sender?.tab?.id, { doc: typeof doc === 'string' ? doc : null, heard: Number.isFinite(heard) ? heard : null });
   },
   // The page in front, asked whether the user is idle for the warm-up after
   // a relaunch, says they did something since (content/idle.js): the warm-up

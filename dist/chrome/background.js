@@ -11,7 +11,7 @@ import * as keepReady from './background/keep-ready.js';
 import * as warmUp from './background/warm-up.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { activationsHeard, ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, heardActivation, injectIntoOpenTabs, isIntroduction, keepHandedOff, pageChanged, resolveTab, sawActivation, setIntroductionHooks, shownAt, switchAsked, tabOpened, tabShown, userSwitched } from './background/tabs.js';
+import { activationsHeard, ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, heardActivation, injectIntoOpenTabs, isIntroduction, keepHandedOff, pageChanged, pageDiscarded, resolveTab, sawActivation, setIntroductionHooks, shownAt, switchAsked, tabClosed, tabOpened, tabShown, userSwitched } from './background/tabs.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -175,6 +175,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   }
   // Its page going away ends a wake's hold there (background/tabs.js wakeTab).
   if (change.status === 'loading') forgetWake(tabId);
+  // Discarded: a new web view as it's shown (background/tabs.js WebKit's mark).
+  if (change.discarded === true) pageDiscarded(tabId);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.js).
   tabUpdated(tabId, change, tab);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
@@ -192,7 +194,7 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
 api.tabs.onRemoved.addListener(owned((tabId) => {
   handingOff.delete(tabId);
   keepReady.closed(tabId);
-  tabShown(tabId); // gone: forgotten
+  tabClosed(tabId); // gone: forgotten
   newTabHint.tabGone(tabId);
   tabGone(tabId);
   forgetCurrent(tabId);
@@ -328,7 +330,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme', 'injectPage', 'fetchStyle']);
+const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme', 'injectPage', 'fetchStyle']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -343,9 +345,10 @@ const REPLY_GUARD_MS = 500;
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;
-  // A page starting: its place among the activations as it came, before the
-  // waits below (background/tabs.js pageStarted).
-  if (message.type === 'hello') message = { ...message, heard: activationsHeard() };
+  // A page starting, or saying it came into view: its place among the
+  // activations as it came, before the waits below (background/tabs.js
+  // pageStarted, pageInView).
+  if (message.type === 'hello' || message.type === 'inView') message = { ...message, heard: activationsHeard() };
   const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
   // A page that waits past its deadline (content/core.js SWITCH_GRACE_MS):
   // answered by then. Its switch still plans to its deadline (focusTab); the

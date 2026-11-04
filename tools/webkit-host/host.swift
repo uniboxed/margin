@@ -575,20 +575,21 @@ Task { @MainActor in
       log("MARK \(step["label"] as! String)")
     case "check", "checkPage":
       // Waits until `js` returns true (in Margin's content-script world for "check", the
-      // page's for "checkPage"), up to `timeout` ms (default 3000), then PASS or FAIL.
-      let t = host.tab(step["in"] as! String)!
+      // page's for "checkPage"), up to `timeout` ms (default 3000), then PASS or FAIL. A tab
+      // the extension is still opening (named new1, new2…) is waited for within that time.
+      let name = step["in"] as! String
       let js = step["js"] as! String
       let label = step["label"] as? String ?? js
       let deadline = Date().addingTimeInterval(Double(step["timeout"] as? Int ?? 3000) / 1000)
       var last = "nil"
       while true {
-        if let wv = t.webView, let world = op == "check" ? host.world() : .page {
+        if let t = host.tab(name), let wv = t.webView, let world = op == "check" ? host.world() : .page {
           do {
             let r = try await wv.callAsyncJavaScript(js, arguments: [:], in: nil, contentWorld: world)
             if (r as? Bool) == true { log("PASS \(label)"); break }
             last = String(describing: r ?? "nil")
           } catch { last = error.localizedDescription }
-        } else { last = "no web view or extension" }
+        } else { last = host.tab(name) == nil ? "no tab \(name)" : "no web view or extension" }
         if Date() > deadline { fail(label, last); break }
         try? await Task.sleep(nanoseconds: 100_000_000)
       }

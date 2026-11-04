@@ -8,7 +8,7 @@ import { getScroll } from './scroll.js';
 import { themeFor } from '../themes/index.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
 import { readyInPage } from '../shared/page-ready.js';
-import { noteCall, noteLag, slowFacts, slowFoundAt, timed as timedCall } from './slow.js';
+import { noteCall, noteLag, ownSign, slowFacts, slowFoundAt, timed as timedCall, timersLate } from './slow.js';
 
 // When each tab was last shown (a
 // diagnostic in tabs.onUpdated).
@@ -322,6 +322,7 @@ async function startWake(tabId, at, holdMs, by, sent, answered) {
     // its own reasons: a process resumed at background priority.)
     const noPage = () => {
       noteCall('a script finding no page', Date.now() - sentAt, tabId);
+      lose(tabId, 'no page'); // Safari unloaded it: a new web view as it's shown or restored
       return 'no page';
     };
     return api.scripting.executeScript({ target, injectImmediately: true, func: pageThere }).then((rows) => {
@@ -332,6 +333,7 @@ async function startWake(tabId, at, holdMs, by, sent, answered) {
   })();
   void ran.then((outcome) => {
     if (outcome === 'seen') sawInWindow(tabId);
+    else if (outcome === 'unseen') doubt(tabId, 'started unseen');
     answered(result(outcome), resumed);
   }, () => {});
   let timer;
@@ -349,16 +351,13 @@ async function startWake(tabId, at, holdMs, by, sent, answered) {
 // view from hidden since (content/core.js windowSeen: the tab in front at a
 // launch, one Safari loaded as it was shown, both made from the tab's saved
 // history), whose tab WebKit may never have seen come into the window with a
-// process (mayIntroduce). A page with an earlier copy (its world isn't this
-// one) counts as seen. 'seen': the page has come into view from hidden
-// itself (content/core.js cameIntoView). That's its tab coming into the
-// window only for a page that started hidden in a tab never in front
-// (neverShown: Margin's mark that it was never shown goes, startWake); a
-// page in front also goes hidden and comes back as its window is covered
-// and uncovered, minimized, or on another Space, and WebKit marks a tab only
-// as it enters a window. So a mark a page left as it started in front
-// (pageStarted) goes on 'seen' only once its tab was heard left and back
-// after that page's word (backSince).
+// process: not marked, whatever Margin knew (WebKit's mark, doubt). A page
+// with an earlier copy (its world isn't this one) says neither. 'seen': the
+// page has come into view from hidden itself (content/core.js cameIntoView):
+// its tab coming into the window only where Margin knows it was out of it
+// during that page's life (sawInWindow: a page in front also goes hidden and
+// comes back as its window is covered and uncovered, minimized, or on another
+// Space, and WebKit marks a tab only as it enters a window).
 export const pageThere = () => {
   if (/^about:/.test(location.href)) return false;
   try {
@@ -610,6 +609,36 @@ const BARRIER_MAX_MS = 400; // a page too busy to draw by then is shown as it is
 // with no barrier on 2026-11-02, such tabs were Safari's empty view for
 // 141–360 ms). Nothing measured a shorter limit there.
 const BARRIER_KICKED_MS = 130;
+// A barrier that ran to its limit with a flip of the tab's own still to be
+// drawn for (hidePending) is followed by one more while the switch's plan
+// leaves this much (focusTabNow).
+const BARRIER_RETRY_MIN_MS = 50;
+// How much longer than its first barrier's limit such a switch waits for its
+// tab's page to draw ("a bit longer" under the cover: T2, 2026-11-03), in one
+// barrier (each needs two rendering updates of its own).
+const LAYERS_EXTRA_MS = 600;
+// A switch with no page waiting for it (a key, a command): its tab's drawing
+// waited for this long from the ask at most.
+const LAYERS_MAX_MS = 3000;
+// The tab's content hidden by a flip of its own (an introduction, a kick, a
+// restore: WebKit hides a view's content each time it comes into a window,
+// until its page's next commit, 72–237 ms after the flip in Safari's log of
+// 2026-11-03): its show waits for a paint of its page that started after
+// the flip (focusTabNow `fragile`), for FLIP_HIDE_MS after it (by then its
+// page has drawn, or its process was suspended since: a wake that resumes it
+// says so).
+const FLIP_HIDE_MS = 1000;
+/** @type {Map<number, number>} */
+const flippedAt = new Map(); // tabId → when Safari answered its last flip
+/** @type {Map<number, number>} */
+const drawnAfter = new Map(); // tabId → when its last paint barrier that drew started
+/** @param {number} tabId @param {number} at */
+const drewSince = (tabId, at) => void drawnAfter.set(tabId, Math.max(drawnAfter.get(tabId) ?? -Infinity, at));
+/** @param {number} tabId */
+const hidePending = (tabId) => {
+  const at = flippedAt.get(tabId);
+  return at != null && Date.now() - at < FLIP_HIDE_MS && (drawnAfter.get(tabId) ?? -Infinity) < at;
+};
 /** @param {any} tab @param {number} ms @returns {Promise<'drawn' | 'timeout' | 'none'>} */
 async function paintBarrier(tab, ms) {
   if (!api.scripting?.executeScript) return 'none';
@@ -794,7 +823,7 @@ function answeredLate(update, tabId, windowId, sentAt) {
 }
 /** @type {Preparation} */
 const NOT_PREPARED = { outcome: 'skipped', ms: 0, token: null };
-/** @typedef {{ stage: string, sent: boolean, sentAt: number, update: Promise<{ tab?: any, err?: any }> | null, taken: boolean, tab: any, noPage: boolean, preparation: Preparation | null, prepToken: string | null, early: Promise<Preparation> | null, facts: Record<string, unknown>, kick: Kick | null, plain?: 'tab' | 'late' | null, slowFrom: () => number | null, forceAt: () => number }} Run what focusTabNow has got to, for focusTab's deadline: `stage`, the step it's at (the switch log says where a switch was stuck); `sent`: its show went out (at `sentAt`, `update` its answer); `taken`: focusTab showed the tab itself (focusTabNow logs nothing more); `kick`: its kick, if it had one (the switch log); `plain`: shown as it is without its steps ('tab': Safari too slow to say where it is; 'late': asked past the time for them); `slowFrom()`: what its plan for a slow Safari counts from (null: Safari not found slow; SLOW_SINCE_MS); `forceAt()`: when focusTab shows it as it is */
+/** @typedef {{ stage: string, sent: boolean, sentAt: number, update: Promise<{ tab?: any, err?: any }> | null, taken: boolean, tab: any, noPage: boolean, preparation: Preparation | null, prepToken: string | null, early: Promise<Preparation> | null, facts: Record<string, unknown>, kick: Kick | null, plain?: 'tab' | 'late' | null, slowFrom: () => number | null, forceAt: () => number, slowPlanAt: (ms: number) => number, onPage: (on: boolean) => void, markReason?: string | null }} Run what focusTabNow has got to, for focusTab's deadline: `stage`, the step it's at (the switch log says where a switch was stuck); `sent`: its show went out (at `sentAt`, `update` its answer); `taken`: focusTab showed the tab itself (focusTabNow logs nothing more); `kick`: its kick, if it had one (the switch log); `plain`: shown as it is without its steps ('tab': Safari too slow to say where it is; 'late': asked past the time for them); `slowFrom()`: what its plan for a slow Safari counts from (null: Safari not found slow; SLOW_SINCE_MS); `forceAt()`: when focusTab shows it as it is; `slowPlanAt(ms)`: when the plan for a slow Safari ends `ms` after its start, the time its steps spent waiting for the tab's own page added (Infinity: Safari not found slow); `onPage(on)`: its steps start (true) or stop (false) waiting for the tab's own page (its wake's answer once its scripts are out, its drawing): that time isn't counted against the slow plan (focusTab) */
 
 // `deadline`: when the page that asked stops waiting (it then says the switch
 // didn't happen): no switch after it. `raise: false`: the window isn't
@@ -877,13 +906,42 @@ async function focusTabAnswered(tabId, { wake = true, source = 'other', carry = 
   // Shown as it is by FORCE_SHOW_MS before the deadline, or, with Safari
   // slow, SLOW_FORCE_MS from its plan's start: looked at every FORCE_POLL_MS
   // (Safari can be found slow during the switch, and a timer that fires late
-  // says so too).
-  const forceAt = () => {
-    const from = slowFrom();
-    return Math.min(timed ? /** @type {number} */ (deadline) - FORCE_SHOW_MS : Infinity, from != null ? from + SLOW_FORCE_MS : Infinity);
+  // says so too). The time its steps spend waiting for the tab's own page
+  // (its wake's answer once its scripts are out, its drawing: `onPage`)
+  // isn't counted against that plan: shown before its page has answered or
+  // drawn, it would be Safari's empty view, and the page waits until its
+  // deadline all the same (2026-11-03). The rest is: Margin's own steps (a
+  // permission check, a storage read slow while a background starts) and
+  // Safari's calls (a flip, a lookup) are what the slow plan is for, and a
+  // switch stuck there is shown about SLOW_FORCE_MS after the ask, as before.
+  // All of it counts if the background's own timers are late (a plan to the
+  // deadline can't be kept then), or this switch's own Safari calls were slow.
+  /** @type {[number, number | null][]} */
+  const pageSpans = [];
+  let pageDepth = 0;
+  const onPage = (/** @type {boolean} */ on) => {
+    if (on) {
+      if (pageDepth++ === 0) pageSpans.push([Date.now(), null]);
+    } else if (pageDepth > 0 && --pageDepth === 0) {
+      const last = pageSpans.at(-1);
+      if (last) last[1] = Date.now();
+    }
   };
+  // The time spent waiting for the page since `from`.
+  const pageTime = (/** @type {number} */ from) => {
+    const t = Date.now();
+    let sum = 0;
+    for (const [start, end] of pageSpans) sum += Math.max(0, (end ?? t) - Math.max(start, from));
+    return sum;
+  };
+  const slowPlanAt = (/** @type {number} */ ms) => {
+    const from = slowFrom();
+    if (from == null) return Infinity;
+    return from + ms + (timersLate() || ownSign(tabId, since) ? 0 : pageTime(from));
+  };
+  const forceAt = () => Math.min(timed ? /** @type {number} */ (deadline) - FORCE_SHOW_MS : Infinity, slowPlanAt(SLOW_FORCE_MS));
   /** @type {Run} */
-  const run = { stage: hurried ? 'late' : 'start', sent: false, sentAt: 0, update: null, taken: false, tab: null, noPage: false, preparation: null, prepToken: null, early: null, facts: before ? { before } : {}, kick: null, plain: hurried ? 'late' : null, slowFrom, forceAt };
+  const run = { stage: hurried ? 'late' : 'start', sent: false, sentAt: 0, update: null, taken: false, tab: null, noPage: false, preparation: null, prepToken: null, early: null, facts: before ? { before } : {}, kick: null, plain: hurried ? 'late' : null, slowFrom, forceAt, slowPlanAt, onPage };
   /** @type {Promise<{ result?: any, err?: any }>} */
   const settled = hurried ? Promise.resolve({ result: { plain: true } }) : focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, raise, covered, hurry, loadWaited, asked }, front, run).then((result) => ({ result }), (err) => ({ err }));
   /** @type {{ result?: any, err?: any } | null} */
@@ -906,7 +964,7 @@ async function focusTabAnswered(tabId, { wake = true, source = 'other', carry = 
   });
   // (With its kick as far as it got, and what showed Safari slow: DEVELOPMENT DIAGNOSTICS.)
   const slow = slowFrom() != null ? slowFacts(tabId, since) : null;
-  const stuck = { source, tabId, asked, ...run.facts, stuckAt: run.stage, ...(run.kick ? { kicked: { ...run.kick } } : {}), ...(run.plain ? { plain: run.plain } : {}), ...(slow ? { slow } : {}) };
+  const stuck = { source, tabId, asked, ...run.facts, stuckAt: run.stage, ...(run.kick ? { kicked: { ...run.kick } } : {}), ...(run.plain ? { plain: run.plain } : {}), ...(slow ? { slow } : {}), markReason: run.markReason ?? null, pageWaitedMs: pageTime(asked) };
   // Safari's answer to the show: with Safari slow, waited for only
   // FORCED_ANSWER_MS (a tab gone fails at once), so the page is answered as
   // soon as the show is out, not once Safari has carried it out (it does),
@@ -963,10 +1021,13 @@ async function focusTabAnswered(tabId, { wake = true, source = 'other', carry = 
   const shown = await answerBy(gone ? Promise.race([update, gone]) : update, answerUntil());
   if (shown?.err) {
     forgetShowing(tabId);
-    recordSwitch({ ...stuck, forced: true, error: String(shown.err?.message ?? shown.err) });
+    recordSwitch({ ...stuck, forced: true, layersBack: run.plain ? `skipped:plain-${run.plain}` : 'skipped:forced', error: String(shown.err?.message ?? shown.err) });
     return conclude({ err: shown.err });
   }
-  recordSwitch({ ...stuck, forced: true, unconfirmed: !shown, shownAfter: Date.now() - asked });
+  // (Shown as it is: its layers not waited for, `layersBack`; a forced show
+  // goes out at FORCE_SHOW_MS before the deadline at the latest, its steps
+  // having waited to there for the tab's own page.)
+  recordSwitch({ ...stuck, forced: true, layersBack: run.plain ? `skipped:plain-${run.plain}` : 'skipped:forced', unconfirmed: !shown, shownAfter: Date.now() - asked });
   tell(true);
   const windowId = shown?.tab?.windowId ?? run.tab?.windowId ?? cached()?.tabs[tabId]?.windowId;
   if (!shown) answeredLate(update, tabId, windowId, sentAt);
@@ -1006,11 +1067,16 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // however much of the page's wait is left: found slow at any step, the
   // next one plans to it.
   const byDeadline = Number.isFinite(deadline) ? /** @type {number} */ (deadline) - SHOW_BEFORE_MS : Infinity;
-  const slowPlan = (/** @type {number} */ ms) => {
-    const from = run.slowFrom();
-    return from != null ? from + ms : Infinity;
-  };
+  // (The time its steps waited for the tab's own page not counted: run.slowPlanAt.)
+  const slowPlan = (/** @type {number} */ ms) => run.slowPlanAt(ms);
   const showBy = () => Math.min(byDeadline, slowPlan(SLOW_SHOW_MS));
+  // A step that waits for the tab's own page (its answer, its drawing): not
+  // counted against the plan for a slow Safari (focusTab, run.onPage).
+  /** @template T @param {Promise<T>} promise @returns {Promise<T>} */
+  const pageStep = (promise) => {
+    run.onPage(true);
+    return promise.finally(() => run.onPage(false));
+  };
   const token = `${instanceId}:${gen}:${tabId}`;
   /** @type {Preparation} */
   const skipped = { outcome: 'skipped', ms: 0, token: null };
@@ -1109,7 +1175,8 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // its page changed since): drawn before it's shown, as a tab waited for is
   // (`late`, below), not shown as Safari's empty view.
   const trusted = wake && !waits && !loading && !loadWaited && !!platform?.wakeTabs && live.status === 'complete';
-  const earlyBudget = waits ? Math.min(WAIT_AWAKE_MAX_MS + PREPARE_AWAKE_MS, Math.max(0, showBy() - Date.now())) : undefined;
+  // (As long as its wake may be waited for: a click's, to its plan's drawing.)
+  const earlyBudget = waits ? (timedRun ? Math.max(0, byDeadline - Date.now()) : Math.min(WAIT_AWAKE_MAX_MS + PREPARE_AWAKE_MS, Math.max(0, showBy() - Date.now()))) : undefined;
   /** @type {Promise<Preparation> | null} */
   let early = wake && !neverShown.has(tabId) ? prepareTabForShow(live, { token, carry, scroll, covered, ...(earlyBudget != null ? { budget: earlyBudget } : {}) }) : null;
   run.early = early;
@@ -1138,14 +1205,18 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   /** @type {Promise<{ covered: boolean, done: (shown: boolean | null, reason?: string | null) => void }> | null} */
   let frontCovering = null;
   // No answer by WAIT_AWAKE_MAX_MS: shown as it is (its show resumes it). A
-  // tab never shown goes on as before the wait instead: introduced, its wake
-  // taken as too busy to answer (hasPage).
+  // tab never shown, or not proven to have WebKit's mark, goes on as before
+  // the wait instead: introduced, its wake taken as too busy to answer (hasPage).
   let capped = false;
   // Answered only once its process was resumed (resumedBehind), or kicked:
   // drawn (paintBarrier) before it's shown.
   let late = false;
   /** @type {Kick | null} */
   let kick = null;
+  // Its kick was its introduction (a tab not proven to have WebKit's mark,
+  // kicked: below): why it wasn't proven, for the switch log.
+  /** @type {string | null} */
+  let kickIntroduced = null;
   if (waits) {
     // Its wake, or the one under way it takes on (a pointer resting on its
     // row, a press, the sidebar coming out: wakeTab's `by`).
@@ -1156,7 +1227,42 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     // (Until focusTab's own show, less the preparation's time after an
     // answer: a tab with no page answers within milliseconds, and is then
     // noted and shown as Safari loads it, not taken as one too busy to answer.)
-    const until = Math.min(asked + WAIT_AWAKE_MAX_MS, (Number.isFinite(deadline) ? /** @type {number} */ (deadline) - FORCE_SHOW_MS : Infinity) - PREPARE_AWAKE_MS);
+    // A switch its page waits for (a click) waits on past WAIT_AWAKE_MAX_MS,
+    // the page before on screen, until its plan leaves only its drawing and
+    // its show (BARRIER_MAX_MS, then SHOW_BEFORE_MS before the deadline), and
+    // with Safari slow too (its time waiting for the page isn't counted
+    // against the slow plan: run.onPage): shown before its answer, a process
+    // still suspended is Safari's empty view until it has resumed and drawn
+    // (T2, 2026-11-03). One with no page waiting for it (a key, a command):
+    // WAIT_AWAKE_MAX_MS, as before.
+    // A tab not proven to have WebKit's mark (or one Margin can't say of yet:
+    // its record still being read) is introduced once its wake has answered,
+    // so a click's wait ends early enough for that too (INTRODUCE_MIN_MS, its
+    // flip and its drawing, after UNSEEN_PREPARED_MS for the preparation sent
+    // beside the wake), not only for its drawing: answered at the very
+    // end of the wait, it would be shown with no introduction (2026-11-03).
+    // Its record is read beside the wait, not before it (a storage read can
+    // be slow while a background starts: SESSION_WAIT_MS at most, then it
+    // counts as not proven).
+    /** @type {{ marked: boolean, how: MarkHow | null, lost: string | null, doc: string | null } | null} */
+    let markNow = null;
+    const markRead = platform?.introduceTabs ? answerBy(markOf(tabId), Date.now() + SESSION_WAIT_MS).then((proof) => { markNow = proof ?? { marked: false, how: null, lost: 'unknown', doc: null }; }) : null;
+    const unprovenNow = () => neverShown.has(tabId) || markNow?.marked !== true;
+    const until = () => Number.isFinite(deadline)
+      ? Math.min(Math.max(asked + WAIT_AWAKE_MAX_MS, /** @type {number} */ (deadline) - SHOW_BEFORE_MS - (platform?.introduceTabs && unprovenNow() ? INTRODUCE_MIN_MS + UNSEEN_PREPARED_MS + WAIT_POLL_MS : BARRIER_MAX_MS)), /** @type {number} */ (deadline) - FORCE_SHOW_MS - PREPARE_AWAKE_MS)
+      : asked + WAIT_AWAKE_MAX_MS;
+    // Waiting for the page itself from the moment its scripts are out (not
+    // during the permission check before, nor during a kick: Safari's calls).
+    let scriptsOut = false;
+    let racing = false;
+    let pageOpen = false;
+    const openPage = () => { if (!pageOpen) { pageOpen = true; run.onPage(true); } };
+    const closePage = () => { if (pageOpen) { pageOpen = false; run.onPage(false); } };
+    void entry?.sent.then((at) => {
+      if (at == null) return;
+      scriptsOut = true;
+      if (racing) openPage();
+    });
     const waitFrom = Date.now();
     /** @type {'left' | 'hurried' | null} */
     let stop = null;
@@ -1175,7 +1281,9 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     let kickEnd = 0; // when Safari answered the kick
     const likely = (hiddenFor(tabId, asked) ?? 0) >= SUSPEND_LIKELY_MS;
     /** @type {Promise<symbol> | null} */
-    let kickDue = !answered && entry && mayKick(live)
+    // (Whether it may be kicked is asked again as the kick is due: its record
+    // may have been read by then, a tab not proven being kicked too.)
+    let kickDue = !answered && entry && (mayKick(live) || mayKick(live, { unproven: true }))
       ? entry.sent.then((at) => new Promise((resolve) => {
         sentAt = at;
         if (at == null && entry.settled) return; // nothing to wake (its answer is there)
@@ -1195,10 +1303,34 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       const covering = (frontCovering = coverFront(live, gen));
       front.uncover = (shown, reason = null) => void covering.then((cover) => cover.done(shown, reason));
     }, Math.max(0, waitFrom + COVER_AFTER_MS - Date.now()));
+    // A kick of a tab not proven to have WebKit's mark is its introduction
+    // (its view in the window with its process there: a suspended process
+    // counts, WebPageProxy::hasRunningProcess): one Margin knows has a page
+    // (its page said hello in this Safari session, and no wake found it
+    // without one since: an unloaded tab, selected, would start loading with
+    // no cover), whether or not it was seen left (a tab the warm-up or a
+    // restore loaded behind, one Safari restored as it was selected, one
+    // never shown). Without it, a tab still suspended was shown as Safari's
+    // empty view at the end of the wait (`capped`), or after a wait of seconds.
+    const pageKnown = () => markNow?.doc != null && markNow.lost !== 'no page' && markNow.lost !== 'discarded' && !noPageFound.has(tabId) && !hasNoPage(tabId);
+    const kickable = () => mayKick(live) || (markNow != null && unprovenNow() && pageKnown() && mayKick(live, { unproven: true }));
+    // (Its record not read yet as the kick is due: looked at again once it is.)
+    let markWaited = false;
+    // Kicked while not proven (its kick its introduction, below): why it wasn't.
+    /** @type {string | null} */
+    let kickedUnproven = null;
     while (answer && !answered) {
-      const left = until - Date.now();
+      const left = until() - Date.now();
       if (left <= 0) break;
-      let got = await Promise.race([answerBy(answer, Date.now() + Math.min(WAIT_POLL_MS, left)), ...(kickDue ? [kickDue] : [])]);
+      racing = true;
+      if (scriptsOut) openPage();
+      let got;
+      try {
+        got = await Promise.race([answerBy(answer, Date.now() + Math.min(WAIT_POLL_MS, left)), ...(kickDue ? [kickDue] : [])]);
+      } finally {
+        racing = false;
+        closePage();
+      }
       if (got === KICK) {
         got = null;
         kickDue = null;
@@ -1206,8 +1338,12 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
         // Another switch's flip under way in the window (one at a time per
         // window): this one's kick once Safari has answered it.
         if (other && other.gen !== gen && windowBusy(live.windowId)) kickDue = other.done.then(() => KICK);
-        else if (gen === focusGen && !hurry?.() && until - Date.now() >= KICK_ROOM_MS && !windowBusy(live.windowId) && mayKick(live) && !(await isOff())) {
+        else if (markRead && markNow == null && !markWaited && !mayKick(live)) {
+          markWaited = true;
+          kickDue = markRead.then(() => KICK);
+        } else if (gen === focusGen && !hurry?.() && until() - Date.now() >= KICK_ROOM_MS && !windowBusy(live.windowId) && kickable() && !(await isOff())) {
           run.stage = 'kick';
+          kickedUnproven = unprovenNow() ? (neverShown.has(tabId) ? 'never shown' : 'unproven') : null;
           const at = Date.now();
           kickedAt.set(tabId, at);
           kick = { at: at - asked, kickMs: null, wakeMs: null, outcome: 'under way' };
@@ -1238,11 +1374,12 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
             // the hide after it would close the sidebar it carries
             // (layout.leave). A new one, sent now, comes after both (as an
             // introduction's), under a token of its own; the first is called off.
-            if (wanted) {
-              if (early) callOff(early, prepToken);
+            // (A tab never shown has none yet: prepared after it, as one introduced.)
+            if (wanted && early) {
+              callOff(early, prepToken);
               prepToken = `${token}:kicked`;
               run.prepToken = prepToken;
-              early = prepareTabForShow(live, { token: prepToken, carry, scroll, covered, budget: Math.max(0, Math.min(until + PREPARE_AWAKE_MS, showBy()) - Date.now()) });
+              early = prepareTabForShow(live, { token: prepToken, carry, scroll, covered, budget: Math.max(0, Math.min(until() + PREPARE_AWAKE_MS, showBy()) - Date.now()) });
               run.early = early;
               earlyAt = Date.now();
             }
@@ -1282,8 +1419,16 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       const running = !!answered && sentAt != null && answered.startedAt + answered.ms - sentAt <= RESUMED_MS;
       kick.outcome = !answered ? stop ?? 'capped' : !hasPage(answered) ? answered.outcome : running ? 'awake' : 'resumed';
       if (hasPage(answered)) {
-        forgetUnseen(tabId); // in the window with a process now (as an introduction)
+        // In the window with its process there (its page answered): proven
+        // to have WebKit's mark, as by an introduction.
+        if (answered?.outcome === 'awake') prove(tabId, 'kicked');
         resumedBehind.delete(tabId); // (in the window since: a late answer marks it again)
+        // Not proven before, its kick was its introduction: not flipped again
+        // (its own flip's hide is waited for: the paint barrier, below).
+        if (kickedUnproven) {
+          noteIntroduced(tabId);
+          kickIntroduced = kickedUnproven;
+        }
       } else if (!stop) {
         // A tab with no page after all (its process went away while it was
         // suspended): the kick has started its load. Shown at once it would
@@ -1307,7 +1452,17 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       }
     }
     const unanswered = !answered && !stop && !loading;
-    capped = unanswered && !neverShown.has(tabId);
+    // So does one not proven to have WebKit's mark (introductions on): its
+    // introduction's flip resumes its process in the foreground, as a kick
+    // would have (one it couldn't have: no page of it known to Margin, or
+    // kicked just now), and its page draws before it's shown; shown as it is,
+    // it would be Safari's empty view until it had resumed and drawn. (The
+    // wait ended early enough for that: until().)
+    // (Its record read by then: SESSION_WAIT_MS at most. Not with no room
+    // left for an introduction: shown as it is at once.)
+    if (unanswered && markRead) await markRead;
+    const roomLeft = !Number.isFinite(deadline) || /** @type {number} */ (deadline) - SHOW_BEFORE_MS - Date.now() >= INTRODUCE_MIN_MS;
+    capped = unanswered && !neverShown.has(tabId) && !(!!platform?.introduceTabs && roomLeft && unprovenNow() && !(await isOff()));
     late = !!answered && hasPage(answered) && (resumedBehind.has(tabId) || kick?.outcome === 'resumed');
     // DEVELOPMENT DIAGNOSTICS: what started the wake the switch waited for,
     // its page's answer (ms from the wake's start; null: none by then), how
@@ -1348,6 +1503,8 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       const cutAt = () => Math.max(wait.until, wait.hardUntil ?? wait.until) + RESTORE_CUT_SLACK_MS;
       // Its window first: a tab in another window has its page covered where
       // the user sees it, not behind the window they're in.
+      // (A restore's steps are Safari's calls: with Safari slow, its plan
+      // stands, its wait for the page's load and paint included.)
       if (raise) await withinWait(focusWindow(live.windowId), cutAt);
       const covering = frontCovering ?? coverFront(live, gen);
       front.uncover = (shown, reason = null) => void covering.then((c) => c.done(shown, reason));
@@ -1403,21 +1560,37 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // last one may say it had no page), and its page arrives covered, as the
   // page before is.
   const waited = loadWaited || behind === 'painted' || behind === 'loaded' || behind === 'loading' || behind === 'cut';
-  // Never in front yet: introduced first (introduceTab), once it has a page (a
-  // tab Safari unloaded has none to introduce: it loads as it's shown). Its
-  // wake's hold ends as it's shown for that instant: held afresh. So is a tab
-  // whose page started visible and hasn't come into view from hidden since
-  // (its wake says `unseen`).
+  // Never in front yet, or not proven to have WebKit's mark (above):
+  // introduced first (introduceTab), once it has a page (a tab Safari unloaded
+  // has none to introduce: it loads as it's shown). Its wake's hold ends as
+  // it's shown for that instant: held afresh.
   /** @type {boolean | null} */
-  let introduced = null;
+  let introduced = kickIntroduced ? true : null;
+  // Why it was or wasn't introduced, in the switch log: 'proven:<how>',
+  // 'unproven', 'never shown', 'loaded behind', ':kicked' after for one whose
+  // kick was its introduction, and for one that needed it and wasn't,
+  // ':skipped:<why>' after (':skipped:no wake' for a switch that doesn't wake
+  // its tab: the new-tab hand-off, its page there a moment ago).
+  /** @type {string | null} */
+  let markReason = null;
+  // (A storage read slow while a background starts: SESSION_WAIT_MS at most,
+  // then not proven.)
+  const proofBefore = platform?.introduceTabs ? (await answerBy(markOf(tabId), Date.now() + SESSION_WAIT_MS)) ?? { marked: false, how: null, lost: 'unknown' } : null;
+  const reasonFor = (/** @type {{ marked: boolean, how: MarkHow | null } | null} */ proof, unseenNow = false) => (neverShown.has(tabId) ? 'never shown' : waited ? 'loaded behind' : !proof?.marked || unseenNow ? 'unproven' : `proven:${proof.how}`);
+  markReason = kickIntroduced ? `${kickIntroduced}:kicked` : proofBefore ? reasonFor(proofBefore) : null;
+  run.markReason = markReason;
   // Time left for an introduction and the drawing after it, before the show
-  // the page's wait leaves room for: none, and it's shown as it is.
-  const roomToIntroduce = () => showBy() - Date.now() >= INTRODUCE_MIN_MS;
-  // (Not looked into at all with no room for it: with Safari slow, its
-  // renewed wake and arrival cover would only take the time the show has.
-  // Nor after a restore cut short: its flip, Safari's calls in it, didn't
-  // answer in time, and an introduction is two more.)
-  if (wake && platform?.introduceTabs && gen === focusGen && !capped && behind !== 'cut' && roomToIntroduce() && !(await isOff())) {
+  // the page's wait leaves room for (its deadline, not the plan for a slow
+  // Safari: shown as it is, a tab not marked is Safari's empty view, and the
+  // page waits all the same); none, and it's shown as it is. Its steps that
+  // wait for the page aren't counted against the slow plan (pageStep); its
+  // flip, Safari's calls, is.
+  const roomToIntroduce = () => byDeadline - Date.now() >= INTRODUCE_MIN_MS;
+  // (Not looked into at all with no room for it. Nor after a restore cut
+  // short: its flip, Safari's calls in it, didn't answer in time, and an
+  // introduction is two more.)
+  const skipIntro = !platform?.introduceTabs || kickIntroduced ? null : !wake ? 'no wake' : gen !== focusGen ? 'left' : capped ? 'capped' : behind === 'cut' ? 'cut' : !roomToIntroduce() ? 'no room' : (await isOff()) ? 'off' : null;
+  if (wake && platform?.introduceTabs && !skipIntro && !kickIntroduced) {
     let tried = false;
     run.stage = 'introduce';
     if (waited) {
@@ -1432,22 +1605,27 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
       await flipsClear();
       if (mayIntroduce(live, { loading: true })) {
         const [early, earlyCovered] = (await wait.arrival) ?? [null, false];
-        const [renewed, arrived] = await Promise.all([early && hasPage(early) ? early : wakeTab(tabId, { renew: true }), earlyCovered || coverArrival(live)]);
+        const [renewed, arrived] = await pageStep(Promise.all([early && hasPage(early) ? early : wakeTab(tabId, { renew: true }), earlyCovered || coverArrival(live)]));
         if ((arrived || hasPage(renewed)) && gen === focusGen && roomToIntroduce()) {
           tried = true;
-          introduced = await introduceTab(live, gen, { loading: true });
-        }
-      }
+          introduced = await introduceTab(live, gen, { loading: true, running: !!arrived || renewed?.outcome === 'awake' });
+        } else markReason = `${markReason}:skipped:${!(arrived || hasPage(renewed)) ? 'no page' : gen !== focusGen ? 'left' : 'no room'}`;
+      } else markReason = `${markReason}:skipped:${introducedBefore(tabId) ? 'introduced already' : windowBusy(live.windowId) ? 'window busy' : 'not ready'}`;
     } else {
       // A page there, awake or too busy to answer in time: one busy loading
       // times out, and shown without its introduction, two such tabs left
       // Safari's empty view (110 and 230 ms) in Tirth's log. Only 'no page'
       // means no page. (Usually the same wake as restorable()'s, reused.)
-      // Unseen if its page says so, or one before it in the tab did (pageStarted).
-      const [woke, knownUnseen] = await Promise.all([wakeTab(tabId), isUnseen(tabId)]);
-      // (Not one whose page has come into view since its tab was heard left
-      // and back: sawInWindow.)
-      const unseen = (!!woke.unseen || (knownUnseen && !(woke.seen && backSince.has(tabId)))) && !neverShown.has(tabId);
+      // Its proof as it stands once that wake has answered (a page saying it
+      // came into view, or that it started unseen, changes it: startWake);
+      // one whose page says it started unseen isn't marked, whatever Margin
+      // had.
+      // (Its wait's own answer if that found no page: a second wake would only
+      // fail again, slowly with Safari slow, and say 'timeout'.)
+      const woke = answered?.outcome === 'no page' ? answered : await pageStep(wakeTab(tabId));
+      const proof = (await answerBy(markOf(tabId), Date.now() + SESSION_WAIT_MS)) ?? { marked: false, how: null, lost: 'unknown' };
+      const unseen = !neverShown.has(tabId) && (!proof.marked || !!woke.unseen);
+      markReason = reasonFor(proof, !!woke.unseen);
       if (hasPage(woke) && (unseen || neverShown.has(tabId))) await flipsClear();
       if (hasPage(woke) && mayIntroduce(live, { unseen }) && gen === focusGen && roomToIntroduce()) {
         if (unseen && early) {
@@ -1459,7 +1637,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
           // answered, should it land later (its token isn't the new one's).
           let timer;
           const stale = early;
-          await Promise.race([stale, new Promise((resolve) => { timer = setTimeout(resolve, UNSEEN_PREPARED_MS); })]);
+          await pageStep(Promise.race([stale, new Promise((resolve) => { timer = setTimeout(resolve, UNSEEN_PREPARED_MS); })]));
           clearTimeout(timer);
           cancelPreparation(tabId, { outcome: 'ready', ms: 0, token });
           void stale.then((late) => cancelPreparation(tabId, late));
@@ -1469,15 +1647,18 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
         }
         // Arriving covered: out of sight under its cover before that instant
         // (coverArrival), so the paint it asks for is the cover's, quick.
-        if (covered && !unseen) await coverArrival(live);
+        if (covered && !unseen) await pageStep(coverArrival(live));
         tried = true;
-        introduced = await introduceTab(live, gen, { unseen });
+        introduced = await introduceTab(live, gen, { unseen, running: woke.outcome === 'awake' });
         if (introduced && unseen) how = { ...how, unseen: true }; // in the switch log
-      }
+      } else if (unseen || neverShown.has(tabId)) markReason = `${markReason}:skipped:${!hasPage(woke) ? woke.outcome : gen !== focusGen ? 'left' : introducedBefore(tabId) ? 'introduced already' : windowBusy(live.windowId) ? 'window busy' : 'no room'}`;
     }
+    if (tried && !introduced && !markReason?.includes(':skipped:') && (markReason === 'unproven' || markReason === 'never shown' || markReason === 'loaded behind')) markReason = `${markReason}:skipped:not back`;
     const now = tried && !introduced ? await api.tabs.get(tabId).catch(() => null) : null;
-    if (now?.active) return inFront(now, { introduced, ...how });
-  }
+    if (now?.active) return inFront(now, { introduced, markReason, ...how });
+  } else if (skipIntro && markReason && !markReason.startsWith('proven')) markReason = `${markReason}:skipped:${skipIntro}`;
+  run.markReason = markReason;
+  if (introduced === null && proofBefore) introduced = false; // (the switch log: not introduced, markReason says why)
   // The preparation's time, within what the page that asked waits (less the
   // show's own): past that the switch would fail as too late. Less for a page
   // that has just loaded behind (PREPARE_LOADED_MS).
@@ -1503,6 +1684,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     const at = Date.now();
     return paintBarrier(live, ms).then((drawn) => {
       barriers.push({ how: drawn, ms: Date.now() - at });
+      if (drawn === 'drawn') drewSince(tabId, at);
       return drawn;
     });
   };
@@ -1527,12 +1709,16 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   const prepared = budgeted && woken ? awakeBudget(/** @type {Promise<Preparation>} */ (early), answered ? Promise.resolve(answered) : woken, earlyAt, prepToken) : early;
   const preparing = capped ? null : prepared ?? (wake ? prepareTabForShow(live, { token: prepToken, carry, scroll, covered: covered || waited, budget: budget() }) : /** @type {Promise<Preparation>} */ (Promise.resolve(skipped)));
   run.early = preparing;
+  // (All of it the page's own steps: not after a restore cut short, Safari's
+  // calls having stalled it, where the slow plan stands.)
+  /** @template T @param {Promise<T>} promise @returns {Promise<T>} */
+  const onPageUnlessCut = (promise) => (behind === 'cut' ? promise : pageStep(promise));
   /** @type {[Wake | null, Preparation, unknown]} */
-  let [woke, preparation] = capped ? [{ outcome: 'timeout', ms: Date.now() - asked, startedAt: asked }, early ? { outcome: 'timeout', ms: Date.now() - asked, reason: 'capped', token: prepToken } : skipped, null] : await Promise.all([
+  let [woke, preparation] = capped ? [{ outcome: 'timeout', ms: Date.now() - asked, startedAt: asked }, early ? { outcome: 'timeout', ms: Date.now() - asked, reason: 'capped', token: prepToken } : skipped, null] : await onPageUnlessCut(Promise.all([
     woken?.then((w) => { if (w?.outcome !== 'awake') lastStep = 'wake'; return w; }) ?? null,
     step('preparation', /** @type {Promise<Preparation>} */ (preparing)),
     introduced ? step('barrier', barrier(BARRIER_MAX_MS)) : null,
-  ]);
+  ]));
   if (trusted && !introduced && woke?.outcome === 'timeout') late = true;
   run.preparation = preparation;
   run.noPage = woke?.outcome === 'no page';
@@ -1571,27 +1757,63 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // WAIT_DRAWN_MAX_MS from the ask; a kicked one BARRIER_KICKED_MS at most (it
   // drew in the window for the kick). A tab whose wake answered in time, its
   // process running (not resumed behind), isn't drawn first at all.
-  const fragile = wake && !capped && hasPage(woke) && ((!!platform?.introduceTabs && (waited || !!introduced || neverShown.has(tabId))) || late);
+  // So is one a flip of its own went to (an introduction, a kick, a restore:
+  // this switch's, or one before it) with no paint of its page since:
+  // WebKit hid its content as it came into the window for that instant, and
+  // shown before its page draws again (72–237 ms after the flip in Safari's
+  // log of 2026-11-03) it skips WebKit's hold.
+  const fragile = wake && !capped && hasPage(woke) && ((!!platform?.introduceTabs && (waited || !!introduced || neverShown.has(tabId) || hidePending(tabId))) || late);
   const resumedOnly = late && !introduced && !waited;
   const kickedOnly = resumedOnly && kick?.outcome === 'resumed' && !neverShown.has(tabId);
   run.stage = 'barrier';
-  // (A tab resumed or kicked, the page before on screen meanwhile, is drawn
-  // first with Safari slow too, within WAIT_DRAWN_MAX_MS and before focusTab
-  // would show it as it is: shown before it draws, it's Safari's empty view.)
-  const barrierBy = resumedOnly ? Math.min(byDeadline, run.forceAt() - FORCE_POLL_MS) : showBy();
-  const barrierMs = Math.min(kickedOnly ? BARRIER_KICKED_MS : BARRIER_MAX_MS, barrierBy - Date.now(), resumedOnly ? asked + WAIT_DRAWN_MAX_MS - Date.now() : Infinity);
-  if (fragile && lastStep !== 'barrier' && barrierMs > 0 && gen === focusGen) await barrier(barrierMs);
+  // Its page's own drawing isn't counted against the slow plan (pageStep:
+  // focusTab doesn't show it as it is at that plan's end): shown before it
+  // draws, it's Safari's empty view. Except after a restore cut short
+  // (Safari's calls were what stalled: the slow plan stands). A switch with
+  // no page waiting for it (a key, a command): LAYERS_MAX_MS from the ask at
+  // most, a tab resumed or kicked WAIT_DRAWN_MAX_MS.
+  const layersBy = () => (behind === 'cut' ? showBy() : Math.min(byDeadline, run.forceAt() - FORCE_POLL_MS, timedRun ? Infinity : asked + (resumedOnly ? WAIT_DRAWN_MAX_MS : LAYERS_MAX_MS)));
+  // A barrier that ran to its limit (a page too busy to draw by then, or one
+  // held back) isn't taken as drawn where a flip of the tab's own is still to
+  // be drawn for (hidePending: an introduction, a kick, a restore; WebKit hid
+  // its content as it came into the window for that instant, and shown before
+  // its page draws again it skips the hold): waited for once more under the
+  // cover, one barrier for the rest of LAYERS_EXTRA_MS (a new one each
+  // BARRIER_MAX_MS would start its two updates over). Not a tab only resumed
+  // behind, with no flip of its own: 23 of 68 such switches ran the barrier to
+  // its limit on 2026-11-03 and none was dark (BARRIER_KICKED_MS), so it's
+  // shown then, as before. The first for a kicked tab BARRIER_KICKED_MS (it
+  // drew in the window for the kick, as a rule).
+  if (fragile && gen === focusGen && !(lastStep === 'barrier' && barriers.at(-1)?.how === 'drawn')) {
+    // (LAYERS_EXTRA_MS from the first barrier that ran out at most: a page
+    // too busy to draw for that long is shown as it is.)
+    const ranOut = lastStep === 'barrier' && barriers.at(-1)?.how === 'timeout';
+    let timedOutAt = ranOut ? Date.now() : null;
+    const extraLeft = () => (timedOutAt == null ? Infinity : timedOutAt + LAYERS_EXTRA_MS - Date.now());
+    const again = () => (hidePending(tabId) ? Math.min(layersBy() - Date.now(), extraLeft()) : 0);
+    let ms = ranOut ? again() : lastStep === 'barrier' ? 0 /* ('none': it can't run there) */ : Math.min(kickedOnly ? BARRIER_KICKED_MS : BARRIER_MAX_MS, layersBy() - Date.now());
+    while (ms > (barriers.length ? BARRIER_RETRY_MIN_MS : 0) && gen === focusGen && !hurry?.()) {
+      if ((await onPageUnlessCut(barrier(ms))) !== 'timeout') break;
+      timedOutAt ??= Date.now();
+      ms = again();
+    }
+  }
   if (barriers.length) how = { ...how, barrier: barriers };
+  // Whether the show waited for its layers (DEVELOPMENT DIAGNOSTICS): its
+  // page drew since its wake, flip or kick ('barrier'), or ran out of time for
+  // that ('timeout'), or wasn't waited for, and why ('skipped:<why>').
+  const lastDrawn = barriers.at(-1)?.how;
+  const layersBack = !wake ? 'skipped:no wake' : capped ? 'skipped:capped' : !hasPage(woke) ? `skipped:${woke?.outcome ?? 'no wake'}` : !fragile ? 'skipped:running' : lastDrawn === 'drawn' ? 'barrier' : lastDrawn === 'timeout' ? 'timeout' : lastDrawn === 'none' ? 'skipped:no barrier' : 'skipped:no time';
   // Another switch was asked for while this one waited (back to the tab in
   // front, say): the latest wins.
   if (gen !== focusGen) {
     cancelPreparation(tabId, preparation);
-    logSwitch({ wake: woke, preparation, introduced, ...how, error: 'superseded' });
+    logSwitch({ wake: woke, preparation, introduced, markReason, layersBack, ...how, error: 'superseded' });
     return { tab: null, preparation, superseded: true };
   }
   if (Number.isFinite(deadline) && Date.now() > deadline - 250) {
     cancelPreparation(tabId, preparation);
-    logSwitch({ wake: woke, preparation, introduced, ...how, error: 'expired' });
+    logSwitch({ wake: woke, preparation, introduced, markReason, layersBack, ...how, error: 'expired' });
     throw new Error(TOO_LATE);
   }
   // A timeout only bounds how long the old page stays covered. Stop the late
@@ -1612,7 +1834,7 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   const fail = (err) => {
     cancelPreparation(tabId, preparation);
     forgetShowing(tabId);
-    logSwitch({ wake: woke, preparation, introduced, ...how, error: String(err) });
+    logSwitch({ wake: woke, preparation, introduced, markReason, layersBack, ...how, error: String(err) });
     throw err;
   };
   const ended = endIntroduction(tabId, gen);
@@ -1634,7 +1856,10 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     await api.tabs.update(tabId, { active: true }).catch(fail);
     if (!(await isInFront(tabId))) fail(new Error(`Safari didn't bring tab ${tabId} to the front`));
   }
-  logSwitch({ wake: woke, preparation, introduced, ...how, shownAfter: Date.now() - asked });
+  // In the window with its page there (it answered its wake, or drew since):
+  // proven to have WebKit's mark from here (above).
+  if (woke?.outcome === 'awake' || lastDrawn === 'drawn') prove(tabId, 'shown');
+  logSwitch({ wake: woke, preparation, introduced, markReason, layersBack, ...how, shownAfter: Date.now() - asked });
   if (ended?.lateTab) void hooks.activated?.({ tabId, windowId: live.windowId }); // as in focusTab
   run.stage = 'window';
   if (tab && raise) await focusWindow(tab.windowId);
@@ -1849,7 +2074,10 @@ export async function inPage(tabId, url, func, args = [], ms = 300) {
     new Promise((resolve) => { timer = setTimeout(() => resolve('unknown'), ms); }),
   ]);
   clearTimeout(timer);
-  if (answer === 'asleep') noPageFound.add(tabId);
+  if (answer === 'asleep') {
+    noPageFound.add(tabId);
+    lose(tabId, 'no page');
+  }
   return answer;
 }
 
@@ -1877,11 +2105,15 @@ export async function openTab({ windowId, url, spaceId, deadline }) {
 // the page before on screen while it paints (WebKit does that only for a
 // view that has been in a window): it's introduced first (below), and
 // arrives covered too (content/core.js arriveCovered). This background's own
-// knowledge: a tab it didn't see open (before it started) is taken as shown
-// before.
+// knowledge (what a later one knows of them is WebKit's mark, below: not
+// proven).
 const neverShown = new Set();
 export function tabOpened(tab) {
+  if (!Number.isInteger(tab?.id)) return;
+  // A new web view: never in a window with its page running yet (one opened
+  // in front went into the window before its process started).
   if (!tab.active) neverShown.add(tab.id);
+  lose(tab.id, tab.active ? 'opened in front' : 'opened behind', { outFromStart: !tab.active });
 }
 export function tabShown(tabId) {
   neverShown.delete(tabId);
@@ -1889,25 +2121,32 @@ export function tabShown(tabId) {
   resumedBehind.delete(tabId);
   kickedAt.delete(tabId);
   forgetWake(tabId); // its hold ended as it was shown
-  forgetUnseen(tabId);
-  backSince.delete(tabId);
   noPageFound.delete(tabId); // it loads as it's shown, if it had none
 }
-// Its page says it has come into view from hidden (pageThere 'seen'). For a
-// tab never in front, its page started hidden and could come into view only
-// as the tab came into the window, with a process: Margin's mark goes (it
-// isn't introduced again). The mark a page left as it started in front goes
-// only if its tab was heard left and back since (backSince): a page in front
-// also comes into view as its window is uncovered, and WebKit doesn't mark
-// a tab for that. In Tirth's Safari on 2026-11-03 a tab restored in front at
-// the relaunch was covered and uncovered (activity state 30 to 58 and back)
-// before it was first left, and its first return showed 420 ms of Safari's
-// empty view. The rest of tabShown's doesn't go (it may be hidden now, its
-// hold or kick still under way).
+// The tab closed: whatever is known of it goes (background.js onRemoved).
+/** @param {number} tabId */
+export function tabClosed(tabId) {
+  tabShown(tabId);
+  leftAtOrder.delete(tabId);
+  backAtOrder.delete(tabId);
+  flippedAt.delete(tabId);
+  drawnAfter.delete(tabId);
+  void withMark(tabId, () => null);
+}
+// Its page says it has come into view from hidden (pageThere 'seen'), with
+// no word of which page that is or when: it counts as the page's word that it
+// came into view (inView, below) only where its tab was out of the window
+// from that page's start (behind since it opened, or loaded there), or was
+// heard left and back after that page's hello (a page in front also goes
+// hidden and comes back as its window is covered and uncovered, minimized, or
+// on another Space, and WebKit marks a tab only as it enters a window: in
+// Tirth's Safari on 2026-11-03 a tab restored in front at the relaunch was
+// covered and uncovered, activity state 30 to 58 and back, before it was
+// first left, and its first return showed 420 ms of Safari's empty view).
 /** @param {number} tabId */
 function sawInWindow(tabId) {
   neverShown.delete(tabId);
-  if (backSince.has(tabId)) forgetUnseen(tabId);
+  void withMark(tabId, (rec) => (rec && rec.out != null ? proveIf({ ...rec, inView: Math.max(rec.inView ?? -Infinity, rec.out) }) : undefined));
 }
 export const isNeverShown = (tabId) => neverShown.has(tabId);
 
@@ -1932,81 +2171,276 @@ export const isNeverShown = (tabId) => neverShown.has(tabId);
 // (awake, or too busy to answer its wake; one still loading its first page
 // held the host's window up for 250 ms as it was shown, WebKit waiting for a
 // paint; one Safari unloaded loads as it's shown).
-// The same for a tab WebKit may never have seen come into the window while it
-// had a process: the tab in front at a launch, or one Safari loaded as it was
-// shown (its view went into the window before its process existed, and WebKit
-// sets its "was in a window" mark only from a change it dispatches to a
-// running process). Its first return showed Safari's empty view until it
-// painted (four shows of 49–155 ms in Tirth's log; 40–87 ms in the host, none
-// with an introduction first). Its page says so (pageThere: `unseen`, a page
-// Safari made from the tab's saved history, or the first of a tab opened in
-// front, that started visible and hasn't come into view from hidden since:
-// content/core.js windowSeen). Not a page that navigated in front in a tab
-// WebKit had seen (a link, the address bar): WebKit's mark stays with the
-// tab's page, and introduced, such a return took 80 ms in the host against
-// 10. A Back in front, or a tab opened in front whose page had a process
-// already, is introduced once more than needed: an instant flip and a moment.
+// The same for any tab Margin has no proof WebKit has seen come into the
+// window while it had a process (WebKit's mark, below): the tab in front at a
+// launch, one Safari loaded as it was shown (its view went into the window
+// before its process existed, and WebKit sets its "was in a window" mark only
+// from a change it dispatches to a running process), one the warm-up or a
+// restore loaded behind, one Margin knows nothing of. Its first return showed
+// Safari's empty view until it painted (four shows of 49–155 ms in Tirth's
+// log; 40–87 ms in the host, none with an introduction first; five of 25–63
+// ms on 2026-11-03, tabs Margin then took as marked). Not a page that
+// navigated in front in a tab WebKit had seen (a link, the address bar):
+// WebKit's mark stays with the tab's web view, and introduced, such a return
+// took 80 ms in the host against 10. A Back in front, or a tab opened in front
+// whose page had a process already, is introduced once more than needed: an
+// instant flip and a moment.
 // Off for the rest of the Safari session (storage.session) if Safari leaves
 // the tab in front instead, or the page in front was hidden for an instant
 // (the two updates took two turns: pageBlinked).
 const introduced = new Set(); // tabs introduced since they were last shown
-// That mark is the tab's, not its page's: a page that started in front with
-// the tab unseen, then went to another in front (a link, a reload, a
-// script's redirect: none of them sets it), left the new page counting as
-// seen, and the first return showed the empty view. So the background
-// remembers such tabs from their page's start (`hello`: pageStarted), until
-// it sees them shown (their activation: tabShown) or introduces them. In
-// storage.session: the background can stop between the page's start and the
-// switch, and the tab ids hold as long as it does.
-const UNSEEN_KEY = 'unseenTabs';
-/** @type {Promise<Set<number>> | null} */
-let unseenTabs = null;
-const unseenSet = () => (unseenTabs ??= Promise.resolve(api.storage.session?.get(UNSEEN_KEY)).then((stored) => new Set(Array.isArray(stored?.[UNSEEN_KEY]) ? stored[UNSEEN_KEY] : []), () => new Set()));
-const saveUnseen = (/** @type {Set<number>} */ set) => void Promise.resolve().then(() => api.storage.session?.set({ [UNSEEN_KEY]: [...set] })).catch(() => {});
-// Activations in the order they reach this background (background.js, as
-// each comes, before any wait): a page's hello is handled after the
-// ownership check, an activation once the state is read, so a hello can be
-// handled after its tab was left and came back, the mark it leaves then
-// outlasting that return (tabShown came first). `returns`: for each tab, the
-// place in that order of the activation of another tab in its window just
-// before its own last one (it was left there, then came back).
-let heard = 0;
+
+// ---- WebKit's mark: a tab seen come into a window with its page running ------
+// WebKit keeps the page before on screen as a tab is shown (it holds Safari's
+// window up to 250 ms for the tab's first paint) only for a tab whose view has
+// come into a window while its page's process ran: m_viewWasEverInWindow in
+// WebPageProxy::dispatchActivityStateChange, set only by a change into the
+// window dispatched to a running process, and never cleared. It's the web
+// view's: kept through the tab's navigations, process swaps and crashes, gone
+// only with the web view itself, when Safari unloads the tab and later makes it
+// afresh (as it's selected, or restored behind the page). Safari's log of
+// 2026-11-03 matched it to the screen frame by frame: 22 of 22 switches to a
+// marked tab with its layers attached held with no dark frame, 34 of 34 others
+// were dark for 5–1046 ms. Until then Margin took a tab as marked unless it
+// had a reason to doubt it (never shown since it opened, a page that said it
+// started unseen, the warm-up's mark), and 5 of its 16 switches that day went
+// to tabs it had no doubt about and weren't marked (Safari had restored them as
+// they were selected, or the warm-up had loaded them behind), each 25–63 ms of
+// Safari's empty view (DECISIONS.md, 2026-11-03). So it's the other way round
+// now: a tab counts as marked only once Margin has proof, and is introduced
+// before Margin first shows it otherwise (an introduction a tab didn't need
+// costs a hold under the cover, at most 250 ms, about 0.3–0.4 s on its first
+// return). The proof (`how`):
+//  - 'introduced', 'kicked': Margin's own flip of the tab (introduceTab, a
+//    kick) with its page answering;
+//  - 'shown': Margin's own show of it with its page answering its wake just
+//    before (focusTabNow, a key passing through: navigation.js);
+//  - 'inView': its page's word that it came into view from hidden (content/
+//    core.js 'inView', or its wake's 'seen'), after its tab was known out of
+//    the window during that page's life: it started out of it (`outHow`
+//    'start': loaded behind, opened behind), or was heard left after the
+//    page's hello and back after that ('left': in front, a page goes hidden
+//    and comes back for its window too, sawInWindow above).
+// Lost (lose) as Safari may have made the tab a new web view: a page made from
+// the tab's saved history, or a tab's first page (content/core.js `made`,
+// from a copy that started with its document: one put in later can't say),
+// a page saying it started visible that way and hasn't come into view since
+// (`unseen`), a script finding no page (Safari unloaded it), the tab restored
+// behind, opened, or discarded. A Back in front (also made from the tab's
+// history) loses it too: one flip more than needed. A tab Margin knows
+// nothing of (it opened before this copy, no page of it has said hello
+// since) isn't marked. In storage.session (`inWindowTabs`): it ends with the
+// Safari session and with the copy (store.js: a new copy has a new `since`,
+// and new tab ids: safari-tab-ids), and a background Safari stops when idle
+// starts again within it. Each record says which copy wrote it (`copy`,
+// store.js thisCopy().since): one from another copy is ignored.
+/** @typedef {'introduced' | 'kicked' | 'shown' | 'inView' | 'test'} MarkHow */
+/** @typedef {{ marked: boolean, how: MarkHow | null, lost: string | null, doc: string | null, out: number | null, outHow: 'start' | 'left' | null, back: number | null, inView: number | null, copy: number, provenAt?: number }} MarkRecord `provenAt`: when it was proven (a place in the order below: a page whose hello came before that doesn't undo it); `doc`: its page's own id (its hello); `out`: when its tab was known out of the window during that page's life (a place in the order of activations and pages' words: activationsHeard), `back`: its activation heard after that, `inView`: its page's word that it came into view, heard after `out`; `lost`: why it was last taken as not marked (the switch log) */
+const MARKS_KEY = 'inWindowTabs';
+/** @type {Promise<Map<number, MarkRecord>> | null} */
+let marks = null;
+// For tests: a tab Margin knows nothing of counts as marked, as every tab did
+// before (the tests of switches written before this; their own of the proof
+// turn it off).
+let unknownMarked = false;
+/** @param {boolean} on */
+export function assumeMarkedForTests(on) {
+  unknownMarked = on;
+}
+// A place in the order is a clock reading, so the records a background before
+// this one left can be ahead of this one's own (the Mac's clock set back
+// since: an NTP step after sleep, a change by hand). Such records are moved
+// back, all by the same amount, to just before this background's first place
+// (`startOrder`): their order among themselves stays, and whatever this one
+// heard comes after them, as it did (otherwise a new page's hello would sort
+// before a proof of the web view before it, and keep it).
+const ORDER_FIELDS = /** @type {const} */ (['out', 'back', 'inView', 'provenAt']);
+const startOrder = Date.now() * 1000;
+/** @param {MarkRecord[]} records */
+function rebaseOrder(records) {
+  let latest = -Infinity;
+  for (const rec of records) for (const field of ORDER_FIELDS) if (Number.isFinite(rec[field])) latest = Math.max(latest, /** @type {number} */ (rec[field]));
+  if (!(latest >= startOrder)) return;
+  const shift = latest - startOrder + 1;
+  for (const rec of records) for (const field of ORDER_FIELDS) if (Number.isFinite(rec[field])) rec[field] = /** @type {number} */ (rec[field]) - shift;
+}
+const marksMap = () => (marks ??= Promise.resolve().then(() => api.storage.session?.get(MARKS_KEY)).then((stored) => {
+  const copy = thisCopy().since;
+  /** @type {Map<number, MarkRecord>} */
+  const map = new Map();
+  const saved = stored?.[MARKS_KEY]?.tabs;
+  if (Array.isArray(saved)) for (const [id, rec] of saved) if (Number.isInteger(id) && rec && typeof rec === 'object' && (!copy || !rec.copy || rec.copy === copy)) map.set(id, { ...rec });
+  rebaseOrder([...map.values()]);
+  return map;
+}, () => new Map()));
+let marksDue = false;
+let marksEpoch = 0; // (for tests: a write due from before resetMarksForTests isn't made)
+/** @param {Map<number, MarkRecord>} map */
+function saveMarks(map) {
+  if (marksDue) return;
+  marksDue = true;
+  const epoch = marksEpoch;
+  queueMicrotask(() => {
+    marksDue = false;
+    if (epoch !== marksEpoch) return;
+    void Promise.resolve().then(() => api.storage.session?.set({ [MARKS_KEY]: { tabs: [...map] } })).catch(() => {});
+  });
+}
+// For tests: nothing known of any tab's mark, in storage.session too.
+export function resetMarksForTests() {
+  marksEpoch++;
+  marksDue = false;
+  marks = Promise.resolve(new Map());
+  lastHeard.clear();
+  leftAtOrder.clear();
+  backAtOrder.clear();
+  flippedAt.clear();
+  drawnAfter.clear();
+  void Promise.resolve().then(() => api.storage.session?.set({ [MARKS_KEY]: { tabs: [] } })).catch(() => {});
+}
+/** @returns {MarkRecord} */
+const blankMark = () => ({ marked: false, how: null, lost: null, doc: null, out: null, outHow: null, back: null, inView: null, copy: thisCopy().since });
+// The tab's record changed by `change` (its record, or undefined if there's
+// none): a new one, null to forget it, undefined to leave it. In the order
+// asked (one map, read once per background).
+/** @param {number} tabId @param {(rec: MarkRecord | undefined) => MarkRecord | null | undefined} change */
+function withMark(tabId, change) {
+  if (!platform?.introduceTabs || !Number.isInteger(tabId)) return Promise.resolve();
+  return marksMap().then((map) => {
+    const before = map.get(tabId);
+    const after = change(before);
+    if (after === undefined || after === before) return;
+    if (after === null) {
+      if (before) map.delete(tabId);
+    } else map.set(tabId, { ...after, copy: thisCopy().since || after.copy || 0 });
+    saveMarks(map);
+  }).catch(() => {});
+}
+// What Margin knows of the tab's mark: whether it's proven, how, and why it
+// was last lost.
+// (`doc`: the page that last said hello there, null if none has.)
+/** @param {number} tabId @returns {Promise<{ marked: boolean, how: MarkHow | null, lost: string | null, doc: string | null }>} */
+const markOf = (tabId) => (!platform?.introduceTabs ? Promise.resolve({ marked: true, how: null, lost: null, doc: null }) : marksMap().then((map) => {
+  const rec = map.get(tabId);
+  return rec ? { marked: !!rec.marked, how: rec.how ?? null, lost: rec.lost ?? null, doc: rec.doc ?? null } : { marked: unknownMarked, how: unknownMarked ? 'test' : null, lost: null, doc: null };
+}, () => ({ marked: false, how: null, lost: 'unknown', doc: null })));
+/** @param {number} tabId @param {MarkHow} how */
+function prove(tabId, how) {
+  const at = activationsHeard();
+  void withMark(tabId, (rec) => ({ ...(rec ?? blankMark()), marked: true, how, lost: null, provenAt: at }));
+}
+// Taken as not marked (a new web view, maybe: above). `outFromStart`: its
+// tab is out of the window as its page starts (opened, or restored, behind).
+// An introduction it had since it was last shown was for the web view before
+// (a switch superseded after it): no longer counts, it's introduced again.
+/** @param {number} tabId @param {string} why @param {{ outFromStart?: boolean }} [options] */
+function lose(tabId, why, { outFromStart = false } = {}) {
+  introduced.delete(tabId);
+  const at = activationsHeard();
+  void withMark(tabId, (rec) => ({ ...blankMark(), lost: why, ...(outFromStart ? { out: at, outHow: 'start' } : {}), doc: rec?.doc ?? null }));
+}
+// Its page says it started visible in a tab made afresh and hasn't come into
+// view from hidden since (pageThere 'unseen'): not marked, whatever Margin
+// knew; the rest of what's known of it stands.
+/** @param {number} tabId @param {string} why */
+function doubt(tabId, why) {
+  void withMark(tabId, (rec) => (rec ? (rec.marked ? { ...rec, marked: false, how: null, lost: why } : undefined) : { ...blankMark(), lost: why }));
+}
+// Proven by its page's word once its tab was known out of the window and, if
+// it was in front as its page started, back since (above).
+/** @param {MarkRecord} rec @returns {MarkRecord} */
+const proveIf = (rec) => (!rec.marked && rec.out != null && rec.inView != null && rec.inView >= rec.out && (rec.outHow === 'start' || (rec.back != null && rec.back > rec.out)) ? { ...rec, marked: true, how: 'inView', lost: null, provenAt: activationsHeard() } : rec);
+// Activations, pages' hellos and their word that they came into view, in the
+// order they reach this background (background.js, as each comes, before any
+// wait): a page's hello is handled after the ownership check, an activation
+// once the state is read, so a hello can be handled after its tab was left and
+// came back. A place in that order is a clock reading (µs), so a background
+// started again goes on after the one before (its records in storage.session).
+let lastOrder = 0;
+/** A place in the order now (a hello's or a page's word as it came: background.js). */
+export const activationsHeard = () => (lastOrder = Math.max(lastOrder, Date.now() * 1000));
+const nextOrder = () => (lastOrder = Math.max(lastOrder + 1, Date.now() * 1000));
 /** @type {Map<number, { tabId: number, at: number }>} */
 const lastHeard = new Map(); // windowId → its last activation heard
 /** @type {Map<number, number>} */
-const returns = new Map();
+const leftAtOrder = new Map(); // tabId → its last leave heard (another tab's activation in its window just after its own)
+/** @type {Map<number, number>} */
+const backAtOrder = new Map(); // tabId → its last activation heard
 /** background.js: a tab's activation, as it comes (not an introduction's). @param {{ tabId: number, windowId: number }} info */
 export function heardActivation({ tabId, windowId }) {
-  heard++;
-  const before = lastHeard.get(windowId);
-  if (before && before.tabId !== tabId) returns.set(tabId, before.at);
-  lastHeard.set(windowId, { tabId, at: heard });
+  const at = nextOrder();
+  // The tab left: the one heard in front before, or, for this background's
+  // first in the window, the one Margin's state has there.
+  const left = lastHeard.get(windowId)?.tabId ?? Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === windowId && t.active && t.id !== tabId)?.id ?? null;
+  lastHeard.set(windowId, { tabId, at });
+  if (left != null && left !== tabId) {
+    leftAtOrder.set(left, at);
+    void withMark(left, (rec) => (rec && rec.out == null ? { ...rec, out: at, outHow: 'left', back: null } : undefined));
+  }
+  backAtOrder.set(tabId, at);
+  void withMark(tabId, (rec) => (rec && rec.out != null && at > rec.out ? proveIf({ ...rec, back: at }) : undefined));
 }
-/** How many activations have come so far (a hello's place among them: background.js). */
-export const activationsHeard = () => heard;
-// Tabs marked unseen whose tab was heard left and back after the page said so
-// (both activations came after its hello): the page's own word that it has
-// come into view (pageThere 'seen') then drops the mark (sawInWindow). Not
-// the return alone: a background starting can be given the activations from
-// before it ahead of a hello, or after it.
-/** @type {Set<number>} */
-const backSince = new Set();
-// A page has started in the tab; `unseen`: it started visible in a tab whose
-// page may have just been made (content/core.js windowSeen); `heard`: how
-// many activations had come as its hello did (activationsHeard).
-/** @param {number | null | undefined} tabId @param {{ unseen?: boolean, heard?: number | null }} [page] */
-export function pageStarted(tabId, { unseen = false, heard: at = null } = {}) {
-  if (!unseen || !platform?.introduceTabs || !Number.isInteger(tabId)) return;
+// A page has started in the tab (its hello). `doc`: the page's own id;
+// `fresh`: its copy of Margin started with it; `made`: it was made from the
+// tab's saved history, or is a tab's first page; `unseen`: it started visible
+// that way and hasn't come into view from hidden since (content/core.js
+// windowSeen); `active`: its tab in front as it said so (Safari's sender);
+// `heard`: its place in the order as its hello came (activationsHeard).
+/** @param {number | null | undefined} tabId @param {{ unseen?: boolean, heard?: number | null, doc?: string | null, fresh?: boolean, made?: boolean, active?: boolean | null }} [page] */
+export function pageStarted(tabId, { unseen = false, heard: at = null, doc = null, fresh = false, made = false, active = null } = {}) {
+  if (!platform?.introduceTabs || !Number.isInteger(tabId)) return;
   const id = /** @type {number} */ (tabId);
-  if (at != null && (returns.get(id) ?? 0) > at) backSince.add(id);
-  else backSince.delete(id);
-  void unseenSet().then((set) => !set.has(id) && saveUnseen(set.add(id)));
+  const hello = at ?? activationsHeard();
+  const anew = unseen || (fresh && made);
+  // Out of the window as it started, or heard left since (its hello handled
+  // late), and back after that.
+  const left = leftAtOrder.get(id);
+  const out = active === false ? hello : left != null && left > hello ? left : null;
+  const back = backAtOrder.get(id);
+  void withMark(id, (rec) => {
+    // (A proof that came after this hello, its handling late: this page's
+    // own web view was proven, Margin having flipped or shown it running.)
+    const after = !!rec?.marked && (rec.provenAt ?? -Infinity) > hello;
+    const kept = anew && !after ? { marked: false, how: null, lost: unseen ? 'started unseen' : 'made afresh' } : rec ? { marked: rec.marked, how: rec.how, lost: rec.lost, ...(rec.provenAt != null ? { provenAt: rec.provenAt } : {}) } : { marked: unknownMarked, how: unknownMarked ? /** @type {MarkHow} */ ('test') : null, lost: null };
+    return { ...blankMark(), ...kept, doc: typeof doc === 'string' ? doc : null, out, outHow: out == null ? null : active === false ? 'start' : 'left', back: out != null && back != null && back > out ? back : null };
+  });
 }
-function forgetUnseen(/** @type {number} */ tabId) {
-  if (!platform?.introduceTabs) return;
-  void unseenSet().then((set) => set.delete(tabId) && saveUnseen(set));
+// Its page says it has come into view from hidden (content/core.js 'inView':
+// `doc`, its own id; `heard`, its place in the order as it came).
+// Whether its tab is proven now with this page in it (its page needn't say so again).
+/** @param {number | null | undefined} tabId @param {{ doc?: string | null, heard?: number | null }} [word] @returns {Promise<boolean>} */
+export async function pageInView(tabId, { doc = null, heard: at = null } = {}) {
+  if (!Number.isInteger(tabId) || !platform?.introduceTabs) return false;
+  const id = /** @type {number} */ (tabId);
+  const when = at ?? activationsHeard();
+  await withMark(id, (rec) => (rec && rec.doc != null && rec.doc === doc && rec.out != null && when >= rec.out ? proveIf({ ...rec, inView: Math.max(rec.inView ?? -Infinity, when) }) : undefined));
+  const rec = await marksMap().then((map) => map.get(id), () => undefined);
+  return !!rec?.marked && rec.doc != null && rec.doc === doc;
 }
-const isUnseen = async (/** @type {number} */ tabId) => !!platform?.introduceTabs && (await unseenSet()).has(tabId);
+// A held key passing through tabs (navigation.js) shows each in passing,
+// with no introduction and no paint first: only a tab Margin has proof of
+// (WebKit's mark), whose wake found it running (not resumed just then, no
+// flip of its own still to draw for: its layers attached). Any other is
+// passed over (the highlight moves on): shown, it would be Safari's empty
+// view until it painted (two warmed tabs on 2026-11-03, 47 and 63 ms). A site
+// Margin can't reach is shown as before (nothing could prepare it).
+/** @param {number} tabId @param {Wake | null} woke @returns {Promise<boolean>} */
+export async function passable(tabId, woke) {
+  if (!platform?.introduceTabs || woke?.outcome === 'no access') return true;
+  if (woke?.outcome !== 'awake' || woke.unseen || neverShown.has(tabId) || resumedBehind.has(tabId) || hidePending(tabId)) return false;
+  return (await markOf(tabId)).marked;
+}
+// A held key showed it in passing, its page running (passable): proven.
+/** @param {number} tabId */
+export function shownInPassing(tabId) {
+  if (platform?.introduceTabs) prove(tabId, 'shown');
+}
+// Safari says the tab was discarded (background.js): a new web view as it's
+// shown.
+/** @param {number} tabId */
+export function pageDiscarded(tabId) {
+  lose(tabId, 'discarded');
+}
 const OFF_KEY = 'introductionsOff';
 /** @type {Promise<boolean> | null} */
 let off = null;
@@ -2088,20 +2522,25 @@ const windowBusy = (/** @type {number} */ windowId) => {
 // introduced all the same (WebKit may then hold the window, the page before
 // on it, up to 250 ms for its paint as it's shown, rather than show it empty).
 // `unseen`: its wake says its page started visible and hasn't come into view
-// from hidden since (above); once per tab until it's shown.
+// from hidden since, or Margin has no proof of WebKit's mark (below: one
+// still loading too, its page there: shown as it is it would be Safari's empty
+// view until it paints); once per tab until it's shown.
+const introducedBefore = (/** @type {number} */ tabId) => introduced.has(tabId);
+const noteIntroduced = (/** @type {number} */ tabId) => void introduced.add(tabId);
 /** @param {any} tab the tab as the browser has it @param {{ loading?: boolean, unseen?: boolean }} [options] */
-const mayIntroduce = (tab, { loading = false, unseen = false } = {}) => !!platform?.introduceTabs && (neverShown.has(tab.id) || unseen) && !introduced.has(tab.id) && (tab.status === 'complete' || loading) && !windowBusy(tab.windowId);
+const mayIntroduce = (tab, { loading = false, unseen = false } = {}) => !!platform?.introduceTabs && (neverShown.has(tab.id) || unseen) && !introduced.has(tab.id) && (tab.status === 'complete' || loading || unseen) && !windowBusy(tab.windowId);
 /**
  * Whether the tab was introduced. `gen`: the switch it's for (not if another
  * was asked for meanwhile). `loading`, `unseen`: as mayIntroduce's.
- * @param {any} tab @param {number} gen @param {{ loading?: boolean, unseen?: boolean }} [options] @returns {Promise<boolean>}
+ * `running`: its page has just answered (a script ran there): its process ran
+ * as it came into the window, so it's proven to have WebKit's mark (below).
+ * @param {any} tab @param {number} gen @param {{ loading?: boolean, unseen?: boolean, running?: boolean }} [options] @returns {Promise<boolean>}
  */
-async function introduceTab(tab, gen, { loading = false, unseen = false } = {}) {
+async function introduceTab(tab, gen, { loading = false, unseen = false, running = false } = {}) {
   if ((await isOff()) || !mayIntroduce(tab, { loading, unseen })) return false;
-  return forwardAndBack(tab, gen, () => {
-    introduced.add(tab.id);
-    forgetUnseen(tab.id); // in the window with a process now
-  });
+  const back = await forwardAndBack(tab, gen, () => { introduced.add(tab.id); });
+  if (back && running) prove(tab.id, 'introduced');
+  return back;
 }
 // The tab to the front and the page in front straight back, in one run loop
 // turn (above). Whether the page in front is back; `sending()` just before
@@ -2144,6 +2583,7 @@ async function forwardAndBack(tab, gen, sending = () => {}, { kick = false, stop
   // (Timed: a Safari slow to carry out a flip is slow for its switch, slow.js.)
   await Promise.allSettled([timedCall('tabs.update', api.tabs.update(tab.id, { active: true }), tab.id), timedCall('tabs.update', api.tabs.update(front.id, { active: true }), tab.id)]);
   pending.answered = true;
+  flippedAt.set(tab.id, Date.now()); // its content hidden until its page draws again (hidePending)
   resumedBehind.delete(tab.id); // in the window for that instant: visible, and drawn for it
   settled();
   void hooks.introduced?.(tab.id);
@@ -2222,12 +2662,20 @@ async function forwardAndBack(tab, gen, sending = () => {}, { kick = false, stop
 // none of those 7 had, and which the switch log's `kickMs` shows. Only a tab
 // known to have a page (left in this Safari session, not since found without
 // one: a tab Safari unloaded, selected, starts loading with no cover), shown
-// before (a tab never shown is introduced once it has answered), and not
-// kicked in the last KICK_AGAIN_MS; never with introductions off (the page in
-// front blinked: pageBlinked), with too little left of the wait, or while
-// another switch's flip is under way in the window (this one's kick then
-// waits for it). A held key passing through tabs never reaches this
+// before, and not kicked in the last KICK_AGAIN_MS; never with introductions
+// off (the page in front blinked: pageBlinked), with too little left of the
+// wait, or while another switch's flip is under way in the window (this one's
+// kick then waits for it). A held key passing through tabs never reaches this
 // (navigation.js: only the tab it stops on goes through focusTab).
+// So is a tab not proven to have WebKit's mark (never shown, or not seen
+// left: one Safari restored as it was selected, one the warm-up or a restore
+// loaded behind) whose page said hello in this Safari session and that no
+// wake has found without a page since (2026-11-04): its kick is its
+// introduction (its view came into the window with its process there, a
+// suspended one counting: WebPageProxy::hasRunningProcess is false only once
+// it has ended), so it isn't flipped again after it. Until then such a tab was
+// waited for until its background resume (seconds), or shown as it was at the
+// cap, Safari's empty view (a key's at 1.6 s).
 const RESUMED_MS = 60;
 const WAIT_AWAKE_MAX_MS = 1600;
 const WAIT_DRAWN_MAX_MS = 2000;
@@ -2247,8 +2695,11 @@ const kickedAt = new Map(); // tabId → when it was last kicked
 // Whether a switch may kick the tab, as far as is known without asking: a
 // tab known to have a page, shown before, not kicked just now. (The rest is
 // checked as the kick is due: focusTabNow.)
-/** @param {any} tab the tab as the browser has it */
-const mayKick = (tab) => !!platform?.introduceTabs && !neverShown.has(tab.id) && hiddenFor(tab.id) != null && !hasNoPage(tab.id) && !(Date.now() - (kickedAt.get(tab.id) ?? -Infinity) < KICK_AGAIN_MS);
+// `unproven`: a tab not proven to have WebKit's mark, whose page Margin knows
+// is there (focusTabNow): never shown, or not seen left, all the same (its
+// kick is its introduction).
+/** @param {any} tab the tab as the browser has it @param {{ unproven?: boolean }} [options] */
+const mayKick = (tab, { unproven = false } = {}) => !!platform?.introduceTabs && (unproven || (!neverShown.has(tab.id) && hiddenFor(tab.id) != null)) && !hasNoPage(tab.id) && !(Date.now() - (kickedAt.get(tab.id) ?? -Infinity) < KICK_AGAIN_MS);
 // Switches whose page covers itself (content/core.js startSwitching): a row
 // in its sidebar or palette, a next/previous key (after 150 ms).
 const SELF_COVERED = new Set(['activateTab', 'openPin', 'next-tab', 'prev-tab']);
@@ -2306,14 +2757,18 @@ async function answerBy(promise, until) {
 export function forgetNeverShown() {
   neverShown.clear();
   introduced.clear();
-  backSince.clear();
-  unseenTabs = null;
+  marks = null;
+  lastHeard.clear();
+  leftAtOrder.clear();
+  backAtOrder.clear();
+  flippedAt.clear();
+  drawnAfter.clear();
 }
 // For tests: on again, as after a Safari restart.
 export function resetIntroductions() {
   off = null;
   stoppedAt = 0;
-  unseenTabs = null;
+  marks = null;
 }
 // A page was hidden for an instant (content: shared/switching.js onBlink,
 // said whether or not it knew of a switch; the page's clock is the
@@ -2445,14 +2900,16 @@ async function restoreTab(tab, wait) {
   // Shown for the first time yet, from the moment it's selected: introduced
   // once loaded, and arriving covered, should this switch be called off
   // before its load is seen (Safari goes on loading it); its wake said it had no page.
-  // The warm-up's (`quiet`): its switch comes later, maybe from another
-  // background (Safari stops an idle one after about 30 s, and neverShown is
-  // this background's own), so it's marked unseen in storage.session too
-  // (unseenTabs): its first switch introduces it whichever background makes it.
+  // Its view goes into the window for that instant with no process yet, and
+  // its page then runs behind: not marked (WebKit's mark, above, in
+  // storage.session), so its first switch introduces it whichever background
+  // makes it (the warm-up's, `quiet`, comes later, maybe from another
+  // background: Safari stops an idle one after about 30 s, and neverShown is
+  // this background's own).
   const selected = () => {
     neverShown.add(tab.id);
     wakes.delete(tab.id);
-    if (wait.quiet && platform?.introduceTabs) void unseenSet().then((set) => !set.has(tab.id) && saveUnseen(set.add(tab.id)));
+    lose(tab.id, 'restored behind', { outFromStart: true });
   };
   if (!(await forwardAndBack(tab, wait.gen, selected, wait.quiet ? { stop: () => !!stopsWait(wait) } : {}))) {
     const now = await api.tabs.get(tab.id).catch(() => null);

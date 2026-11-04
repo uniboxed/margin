@@ -136,7 +136,11 @@ globalThis.chrome = {
   },
 };
 
-const { activationsHeard, heardActivation, repairCutOff, wakeTab, forgetWake, focusTab, handingOff, holdTab, isFocusing, isIntroduction, isNeverShown, keepHandedOff, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+const { activationsHeard, heardActivation, repairCutOff, wakeTab, forgetWake, focusTab, handingOff, holdTab, isFocusing, isIntroduction, isNeverShown, keepHandedOff, markMarginOpening, keepAwake, openBehind, pageBlinked, pageStarted, pageThere, releaseInPage, releaseTab, resetIntroductions, resetMarksForTests, resetRestores, resolveTab, setIntroductionHooks, tabOpened, tabShown, userSwitched } = await import('../extension/background/tabs.js');
+// Tabs these tests didn't prove to have WebKit's mark count as having it, as
+// every tab did before it was tracked (background/tabs.js; its own tests:
+// tests/in-window.test.js).
+(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 const { tapLog } = await import('../extension/background/diagnostics.js');
 const { holdNow, keepReadyState, noteLeft, resetKeepReady, startedAgain, switchFacts } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
@@ -169,6 +173,7 @@ function reset(tabs) {
   fake.messages = [];
   fake.created = [];
   fake.activated = null;
+  resetMarksForTests(); // (WebKit's mark: what one test proved or lost isn't the next one's)
 }
 
 test('wake: a running page answers at once and the switch goes ahead then', async () => {
@@ -1543,7 +1548,7 @@ test('introducing: a page\'s word that it started unseen, handled only once its 
     await focusTab(306);
     assert.deepEqual(fake.updates.map((u) => u.id), [306], 'left and back since: shown, not introduced');
     await sleep(5);
-    assert.equal((fake.session.unseenTabs ?? []).includes(306), false, 'its mark gone from the session too');
+    assert.equal((fake.session.inWindowTabs?.tabs ?? []).find(([id]) => id === 306)?.[1]?.marked, true, 'proven in the session too');
     for (const id of [307, 308]) {
       putInFront(1);
       await knownInFront(1);
@@ -3636,7 +3641,7 @@ test('kick: the page in front hidden for an instant during a kick turns kicks of
   }
 });
 
-test('barrier: a tab kicked awake is drawn for 150 ms at most before it\'s shown (it drew in the window for the kick); a tab resumed behind (its wake answered late before the switch, never in the window since) and a tab introduced (never shown) still get 400 ms', async () => {
+test('barrier: a tab kicked awake gets a first barrier of 150 ms (it drew in the window for the kick); a tab resumed behind (its wake answered late before the switch, never in the window since) and a tab introduced (never shown) 400 ms; one run out after a flip of the tab\'s own (a kick, an introduction: its hide still pending) is followed by one more under the cover, for the rest of 600 ms, then the tab is shown as it is; one only resumed behind is shown when its barrier runs out, as before', async () => {
   for (const [kind, id] of [['kicked', 290], ['resumed', 291], ['introduced', 292]]) {
     const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://barrier${id}.test/` }], kind === 'introduced' ? [id] : []);
     try {
@@ -3651,19 +3656,30 @@ test('barrier: a tab kicked awake is drawn for 150 ms at most before it\'s shown
       const { result, entry } = await logged(id, () => focusTab(id, { source: 'activateTab' }));
       assert.equal(result.tab?.id, id);
       const [timedOut, ...more] = entry.barrier ?? [];
-      assert.ok(timedOut?.how === 'timeout' && !more.length, `${kind}: ${JSON.stringify(entry.barrier)}`);
+      assert.equal(timedOut?.how, 'timeout', `${kind}: ${JSON.stringify(entry.barrier)}`);
+      assert.equal(entry.layersBack, 'timeout');
       const shownAfter = fake.updates.at(-1).at - asked;
+      if (kind === 'resumed') {
+        // (No flip of its own: 23 of 68 such switches ran to the limit on
+        // 2026-11-03, none dark.)
+        assert.equal(more.length, 0, `${kind}: one barrier only: ${JSON.stringify(entry.barrier)}`);
+        assert.equal(entry.wakeOutcome, 'resumed');
+        assert.equal(entry.kicked, undefined, 'answered before the switch: not kicked');
+        assert.ok(timedOut.ms >= 410, `${kind}: the barrier ran ${timedOut.ms} ms`);
+        assert.ok(shownAfter >= 410 && shownAfter < 410 + 300, `${kind}: shown ${shownAfter} ms after the ask`);
+        continue;
+      }
+      // One more, for the rest of LAYERS_EXTRA_MS (not one new barrier each 400 ms).
+      assert.equal(more.length, 1, `${kind}: ${JSON.stringify(entry.barrier)}`);
+      assert.equal(more[0].how, 'timeout');
+      assert.ok(more[0].ms >= 550 && more[0].ms < 750, `${kind}: ${more[0].ms} ms more under the cover (${JSON.stringify(entry.barrier)})`);
       if (kind === 'kicked') {
         assert.equal(entry.kicked?.outcome, 'resumed');
         assert.ok(timedOut.ms >= 140 && timedOut.ms < 200, `the barrier ran ${timedOut.ms} ms`);
-        assert.ok(shownAfter < 330, `shown ${shownAfter} ms after the ask`);
+        assert.ok(shownAfter < 330 + 750, `shown ${shownAfter} ms after the ask`);
       } else {
-        if (kind === 'resumed') {
-          assert.equal(entry.wakeOutcome, 'resumed');
-          assert.equal(entry.kicked, undefined, 'answered before the switch: not kicked');
-        }
         assert.ok(timedOut.ms >= 410, `${kind}: the barrier ran ${timedOut.ms} ms`);
-        assert.ok(shownAfter >= 410, `${kind}: shown ${shownAfter} ms after the ask`);
+        assert.ok(shownAfter >= 410 + 550, `${kind}: shown ${shownAfter} ms after the ask`);
       }
     } finally {
       tabShown(id);
@@ -3869,7 +3885,7 @@ test('kick: a second switch\'s kick waits for a kick of another switch\'s still 
   }
 });
 
-test('kick: a tab kicked that answers within 60 ms of its wake going out was running after all: shown as an awake tab, not drawn first (`kicked.outcome` awake)', async () => {
+test('kick: a tab kicked that answers within 60 ms of its wake going out was running after all (`kicked.outcome` awake), and is shown once its page has drawn since the kick (the kick hid its content as it came into the window), not at once', async () => {
   const done = await introducing([{ id: 1, url: 'https://a.test/', active: true }, { id: 469, url: 'https://busy469.test/' }], []);
   try {
     noteLeft(469, Date.now() - 10_000);
@@ -3879,7 +3895,9 @@ test('kick: a tab kicked that answers within 60 ms of its wake going out was run
     assert.deepEqual(fake.updates.map((u) => u.id), [469, 1, 469], 'kicked at 40 ms, not knowing');
     assert.equal(entry.kicked?.outcome, 'awake');
     assert.equal(entry.wakeOutcome, 'awake');
-    assert.equal(barriers(469).length, 0, 'not drawn first');
+    assert.equal(barriers(469).length, 1, 'drawn first, once');
+    assert.ok(barriers(469)[0].at >= fake.updates[1].at, 'after the kick');
+    assert.equal(entry.layersBack, 'barrier');
   } finally {
     tabShown(469);
     done();

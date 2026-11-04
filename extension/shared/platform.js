@@ -119,10 +119,22 @@ export const platform = PROFILES[BUILD_TARGET ?? detect()];
 export { PROFILES };
 // Whether a page sends the background a request of this type at all
 // (content/core.js send, the new-tab page's): a wake ahead of a switch only
-// where tabs are woken. In Chrome each would start its service worker (shut
-// down 30 s after its last event) for nothing: the sidebar coming out, a
-// pointer resting on a row or a space's icon, a swipe.
+// where tabs are woken, and a page's word that it came into view only where
+// tabs are introduced (background/tabs.js WebKit's mark). In Chrome each
+// would start its service worker (shut down 30 s after its last event) for
+// nothing: the sidebar coming out, a pointer resting on a row or a space's
+// icon, a swipe, a tab shown.
 /** @param {string} type */
-export const asksBackground = (type) => type !== 'prewake' || !!platform?.wakeTabs;
+export const asksBackground = (type) => (type === 'prewake' ? !!platform?.wakeTabs : type === 'inView' ? !!platform?.introduceTabs : true);
+// Whether a page may be a new web view's (content/core.js `made`, background/
+// tabs.js WebKit's mark): made from the tab's saved history (`type`, its
+// PerformanceNavigationTiming type, 'back_forward': how Safari restores a tab
+// it unloaded, or one at a launch), or its tab's first document (a link from
+// another app opened in front). A reload is neither, whatever the tab's
+// history: WebKit reloads in the same web view, which keeps its mark (counted,
+// a reload of a tab with one entry dropped a proof, and its next return was
+// flipped for nothing).
+/** @param {string | null | undefined} type @param {number} historyLength */
+export const madeAfresh = (type, historyLength) => type === 'back_forward' || (historyLength === 1 && (type == null || type === 'navigate'));
 // Also on the global, for the console and the E2E tests.
 (globalThis.Margin ??= {}).platform = platform;

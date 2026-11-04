@@ -123,6 +123,10 @@ await import('../extension/background.js');
 const firstSwitch = ask('activateTab', { tabId: 2 });
 const store = await import('../extension/background/store.js');
 const { injectIntoOpenTabs, tabShown } = await import('../extension/background/tabs.js');
+// Tabs these tests didn't prove to have WebKit's mark count as having it, as
+// every tab did before it was tracked (background/tabs.js; its own tests:
+// tests/in-window.test.js).
+(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 const { tapLog } = await import('../extension/background/diagnostics.js');
 
 const scripts = (id, name = null) => fake.calls.filter((c) => c.what === 'script' && c.tabId === id && (name == null || c.name === name));

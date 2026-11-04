@@ -562,6 +562,28 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## No dark frame on Margin's switches (2026-11-03)
+
+Margin now introduces (an invisible flip to the tab and back) any tab it has no proof Safari has already shown with its page running, before it first shows it. It also never shows a tab before that tab's page has drawn again after a wake, a flip or a kick. The cost is about 0.3–0.4 s on the first Margin return to each such tab, under the cover. Switches made with Safari's own tab bar or keys can't be prepared and can still blink.
+
+Before you start: run `npm run safari`. Use Dark Mode (the blink is the dark gray of Safari's empty view), and if you can, record the screen while you switch.
+
+- [ ] Quit and reopen Safari. In Safari's own tab bar, click 3 tabs that come back unloaded, about a second each, then go back to the first tab. Wait a minute. Then switch to each of the 3 with Margin's sidebar, and again with ⌃⌘↓/↑. No dark frame on any of them, first return included.
+- [ ] Do the same with tabs the warm-up loaded (the note said "Tabs ready"), switching to them with Margin's sidebar and with ⌃⌘↓ pressed once at a time. No dark frame.
+- [ ] Hold ⌃⌘↓ so the key runs through several tabs. The highlight moves through them. Tabs Margin hasn't seen yet may be skipped as the key passes (the highlight moves on without the page changing), and the tab the key stops on comes up with no dark frame.
+- [ ] Switch back and forth between two tabs you've already visited this session through Margin: they come up as fast as before, with no extra flicker or wait.
+- [ ] Leave a tab alone for 2 minutes or more (Safari suspends it), then click it in the sidebar. The page you're on stays (covered) until the tab is ready, then the tab appears with no dark frame. Note it if it takes more than about 2 s.
+- [ ] Right after a reboot, the same clicks: every click still switches, and none waits more than about 6 s.
+- [ ] Right after `npm run safari` (a new build: Margin knows no tab yet), with Safari still open, switch through Margin to 4 tabs you had already visited before the rebuild, recording the screen. Each is flipped once first (an invisible flip to it and back). Watch for the tab you switch to appearing for a frame, then the page before coming back, then the tab: that's a flicker. Note its time if you see one. (Every flip seen so far was of a tab WebKit hadn't seen yet; these are tabs it has.)
+- [ ] Press ⌘R in a tab you opened fresh (one page in its history), go to another tab, then come back through Margin. It comes up at once, with no extra wait.
+- [ ] Leave a tab for 2 minutes or more right after Safari reopens (one Safari brought back, or one the warm-up loaded), then press ⌃⌘↓ once to reach it. It comes up within about half a second, with no dark frame. In the switch log, its `markReason` ends in `:kicked`.
+- [ ] Copy the switch log (start page → Settings → Switch log). For each `kind: 'switch'`:
+  - `introduced` is `true` on a tab's first Margin return after a relaunch or an update, and `false` with `markReason: 'proven:…'` after that. A `markReason` ending in `:kicked` means the kick that woke it was its introduction.
+  - `layersBack` is `barrier` or `skipped:running` on almost every switch. A `timeout`, `skipped:capped`, `skipped:forced` or `skipped:plain-…` is a switch that may have blinked. Send me those.
+  - A `markReason` ending in `:skipped:…` is a tab that needed an introduction and didn't get one. Send me those too.
+
+**Send me** the switch log, the recording, and the times of any dark frame you see.
+
 ## After a relaunch: your likely tabs get ready on their own (2026-11-03)
 
 After Safari restarts, Margin now loads up to 6 of the tabs you're likely to click next, one at a time, behind the page you're on. It waits until Safari has settled and you're not typing, clicking or scrolling. Those are the tab you used last before the one in front, the tab each other space would show, tabs open on a pin, then other tabs you used recently. The sidebar shows a small note while it does this ("Getting your tabs ready", 3 of 6), then "Tabs ready". Nothing covers the page and nothing waits for it. Anything you do comes first.

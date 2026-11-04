@@ -6,7 +6,7 @@
 import * as V from '../shared/view.js';
 import { createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHost } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
-import { asksBackground, platform } from '../shared/platform.js';
+import { asksBackground, madeAfresh as madeAfreshNavigation, platform } from '../shared/platform.js';
 import { watchAway } from '../shared/away.js';
 import { copyAlive, mayNotice } from '../shared/no-answer.js';
 import { listenForHolds } from './hold.js';
@@ -953,13 +953,27 @@ export function startCore({ onTheme } = {}) {
   // doesn't know how it started: taken as seen, as a page with an earlier copy
   // is (in the WebKit host, a page open at install was otherwise introduced on
   // its first switch, 70 ms more for nothing). One that started hidden is a
-  // tab opened behind, which the background knows of (or takes as shown
-  // before). The mark is the tab's, so the page says so as it starts (hello):
-  // the background goes on counting the tab as unseen through the pages it
-  // goes to in front, until it sees it shown (background/tabs.js pageStarted).
+  // tab opened behind, or one loaded behind (the warm-up, a restore).
+  // The mark is the tab's web view's, so the page says as it starts (hello)
+  // how it was made, whether its copy started with it (`fresh`), and its own
+  // id (`doc`): the background takes a page made from the tab's saved history,
+  // or a tab's first page, as a new web view maybe, not marked whatever it
+  // knew (background/tabs.js pageStarted, WebKit's mark), and the tab as
+  // marked only on proof: its own flip or show of it, or this page's word that
+  // it came into view after its tab was known out of the window (inView,
+  // below).
+  const docId = (() => {
+    try {
+      return globalThis.crypto.randomUUID();
+    } catch {
+      return `${Date.now()}-${String(Math.random()).slice(2)}`;
+    }
+  })();
+  const startedFresh = document.readyState === 'loading';
+  // (Not a reload: shared/platform.js madeAfresh.)
   const madeAfresh = (() => {
     try {
-      return /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType('navigation')[0])?.type === 'back_forward' || history.length === 1;
+      return madeAfreshNavigation(/** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType('navigation')[0])?.type, history.length);
     } catch {
       return false;
     }
@@ -974,9 +988,24 @@ export function startCore({ onTheme } = {}) {
   // background takes it as its tab's mark only where it knows it was out of
   // the window (background/tabs.js pageThere 'seen', sawInWindow).
   let cameIntoView = false;
+  // Each time it comes into view from hidden, it says so (a quiet word: the
+  // background takes it as its tab's mark only where it knew the tab was out
+  // of the window, and pages of this tab before it don't count: `doc`), until
+  // the background answers that its tab is proven to have the mark with this
+  // page in it: nothing this page says can add to that, and it's lost only
+  // with the page (a new web view has a new page), so its window covered and
+  // uncovered, a Space switch or each return to it don't start the
+  // background for nothing.
+  let markProven = false;
+  let hiddenNow = document.hidden;
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) wasHidden = true;
-    else if (wasHidden) windowSeen = cameIntoView = true;
+    if (document.hidden) {
+      wasHidden = hiddenNow = true;
+      return;
+    }
+    if (wasHidden) windowSeen = cameIntoView = true;
+    if (hiddenNow && !markProven) void Promise.resolve(send('inView', { doc: docId }, false)).then((proven) => { if (proven === true) markProven = true; }, () => {});
+    hiddenNow = false;
   });
   Margin.content.windowSeen = () => windowSeen;
   Margin.content.cameIntoView = () => cameIntoView;
@@ -1244,7 +1273,7 @@ export function startCore({ onTheme } = {}) {
   if (document.readyState === 'complete') setTimeout(logTiming);
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
   restoreScroll(refresh());
-  send('hello', windowSeen ? {} : { unseen: true }).then((ctx) => {
+  send('hello', { ...(windowSeen ? {} : { unseen: true }), doc: docId, fresh: startedFresh, made: madeAfresh }).then((ctx) => {
     if (dormant) return;
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
     helloAnswered = true;

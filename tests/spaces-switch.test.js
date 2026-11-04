@@ -70,6 +70,10 @@ const V = await import('../extension/shared/view.js');
 const { mutate, load } = await import('../extension/background/store.js');
 const { showSpace, navigate } = await import('../extension/background/navigation.js');
 const { wakeTab, ensureCurrent, forgetCurrent, injectIntoOpenTabs } = await import('../extension/background/tabs.js');
+// Tabs these tests didn't prove to have WebKit's mark count as having it, as
+// every tab did before it was tracked (background/tabs.js; its own tests:
+// tests/in-window.test.js).
+(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 
 // Window 1: Personal tabs 1 (in front), 2; Work tabs 3, 4 (4 used last); window 2: Work tab 5.
 async function setup() {

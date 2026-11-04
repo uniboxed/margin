@@ -177,6 +177,10 @@ await import('../extension/background.js');
 const store = await import('../extension/background/store.js');
 const M = await import('../extension/state/model.js');
 const { forgetNeverShown, pageChanged } = await import('../extension/background/tabs.js');
+// Tabs these tests didn't prove to have WebKit's mark count as having it, as
+// every tab did before it was tracked (background/tabs.js; its own tests:
+// tests/in-window.test.js).
+(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 const { tapLog } = await import('../extension/background/diagnostics.js');
 const slow = await import('../extension/background/slow.js');
 const warmUp = await import('../extension/background/warm-up.js');
@@ -598,7 +602,9 @@ test('a tab warmed, then clicked from a background Safari started again since (i
   loadsFor([42]);
   await relaunched();
   assert.deepEqual(Object.values(fake.session.warmUp.done), ['painted']);
-  assert.ok(fake.session.unseenTabs?.includes(42), JSON.stringify(fake.session.unseenTabs));
+  // Not marked (WebKit's mark, background/tabs.js), in storage.session.
+  const markOf42 = () => (fake.session.inWindowTabs?.tabs ?? []).find(([id]) => id === 42)?.[1];
+  assert.equal(markOf42()?.marked, false, JSON.stringify(fake.session.inWindowTabs));
   forgetNeverShown(); // a new background: neverShown is in memory only
   const t0 = Date.now();
   const { all, out } = await logged(() => ask('activateTab', { tabId: 42 }));
@@ -606,7 +612,8 @@ test('a tab warmed, then clicked from a background Safari started again since (i
   const entry = all.find((e) => e.kind === 'switch' && e.tabId === 42);
   assert.equal(entry?.introduced, true, JSON.stringify(entry));
   assert.equal(flipsOf(42, t0).length, 2, 'its introduction, then its show');
-  assert.ok(!fake.session.unseenTabs.includes(42), 'its mark gone once shown');
+  await sleep(10);
+  assert.equal(markOf42()?.marked, true, 'proven once introduced and shown');
 });
 
 test('the warm-up\'s own timers firing late (Safari in the background, the user away) aren\'t taken as Safari slow by switches', async () => {

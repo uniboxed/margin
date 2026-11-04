@@ -901,7 +901,11 @@ export const SCENARIOS = {
   // so it answers in time and the sidebar carried is open as the tab comes
   // into view (a late one is cancelled, which closes it).
   'catchup-slow': [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'), keepOpen, boxed('A'),
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'),
+    // B shown once by Margin (introduced: open at install, Margin has no proof
+    // WebKit has seen it in a window), so the switch below goes to a tab it knows.
+    switchTo('A', 'B'), shown('B'), switchTo('B', 'A'), shown('A'),
+    keepOpen, boxed('A'),
     { op: 'page', in: 'B', js: `window.__resized = 0; addEventListener('resize', () => { if (__resized++) return; const until = performance.now() + 1200; while (performance.now() < until); }); const open = () => document.querySelector('margin-sidebar-host')?.dataset.open; addEventListener('visibilitychange', () => { if (document.hidden || window.__atShow) return; window.__atShow = { open: open() }; requestAnimationFrame(() => requestAnimationFrame(() => { __atShow.later = open(); })); }, true); return document.hidden ? 'hidden, slow' : 'shown?'` },
     { op: 'eval', in: 'B', js: `const cancel = Margin.content.cancelPreparedShow; globalThis.__cancelled = 0; Margin.content.cancelPreparedShow = (token) => { __cancelled++; return cancel(token); }; return 'counting'` },
     wait(300),
@@ -945,15 +949,20 @@ export const SCENARIOS = {
   ],
   // A page that navigated in front (a link, the address bar), in a tab WebKit
   // had already seen in the window: its first return isn't introduced, as
-  // WebKit holds the page before for its paint (only a tab Safari restored as
-  // it was shown, or in front at a launch, needs it: unseen above).
+  // WebKit holds the page before for its paint (its mark is the tab's web
+  // view's, kept through its navigations). Margin first proves the tab has it:
+  // A, in front at install, is introduced on its first return (Margin has no
+  // proof of it: background/tabs.js WebKit's mark), then navigates in front;
+  // its return to the new page isn't.
   navigated: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), wait(300),
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'), wait(300),
+    switchTo('A', 'B'), shown('B'), switchTo('B', 'A'), shown('A'),
+    check('A', 'A: its first return introduced (no proof of it yet)', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('A')); return log.at(-1)?.introduced === true && !log.at(-1)?.error`),
     { op: 'page', in: 'A', js: `location.href = '/p/A2'; return 'navigating'` }, checkPage('A', 'A: at its new address', `location.pathname === '/p/A2'`, 2000), drawn('A'),
     switchTo('A', 'B'), shown('B'),
     switchTo('B', 'A2'), shown('A'),
-    { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2).map((e) => ({ introduced: e.introduced, unseen: e.unseen, shownAfter: e.shownAfter })))` },
-    check('A', 'A: its return to the new page not introduced, not taken as unseen', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('A2')); return log.length > 0 && log.every((e) => e.introduced !== true && !e.unseen && !e.error)`),
+    { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2).map((e) => ({ introduced: e.introduced, markReason: e.markReason, layersBack: e.layersBack, shownAfter: e.shownAfter })))` },
+    check('A', 'A: its return to the new page not introduced (proven, kept through the link), nor B\'s', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2); return log.length === 2 && log.every((e) => e.introduced === false && String(e.markReason).startsWith('proven:') && !e.error)`),
   ],
   // The tab in front at a relaunch (unseen above) going to another page in
   // front before it's first left (a link, a reload, a script's redirect): the
@@ -1402,7 +1411,9 @@ export const SCENARIOS = {
   // A hold is a message waiting for its answer in Margin's page (HELD), none
   // a keepAwake in the page's own world (its pageswap listener, counted there).
   'wake-wait': waitedFor(500, 'resumed', 'kicked, waited for with the page before on screen, then prepared and drawn before it was shown', `e.waitedOnOldPage >= 450 && e.wakeStartedBy === 'switch' && e.preparation?.outcome === 'ready' && e.barrier?.length === 1 && e.barrier[0].ms < 350`, 'resumed'),
-  'wake-cap': waitedFor(2200, 'capped', 'kicked, no answer by 1.6 s: shown then, as it was', `e.waitedOnOldPage >= 1550 && e.shownAfter < 2100 && !e.barrier`, 'capped'),
+  // (A click waits on past 1.6 s while its page's deadline leaves room: T2,
+  // background/tabs.js focusTabNow. Shown as it was only near the deadline.)
+  'wake-cap': waitedFor(2200, 'resumed', 'kicked, no answer by 1.6 s: waited on with the page before on screen (a click), answered at 2.2 s, drawn, then shown', `e.waitedOnOldPage >= 2150 && e.barrier?.at(-1)?.how === 'drawn' && e.layersBack === 'barrier'`, 'resumed'),
   'wake-awake': waitedFor(null, null, 'answered in time: shown, not kicked before 60 ms', 'true'),
   'wake-reveal': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },

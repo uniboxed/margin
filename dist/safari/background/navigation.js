@@ -2,7 +2,7 @@ import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, cached, isSynced, load, mutate, now, recheckSoon, StaleError } from './store.js';
 import { timed } from './slow.js';
-import { activating, anyFocusing, focusTab, openTab, tellPage, userSwitched, wakeTab } from './tabs.js';
+import { activating, anyFocusing, focusTab, openTab, passable, shownInPassing, tellPage, userSwitched, wakeTab } from './tabs.js';
 import { recordSwitch } from './diagnostics.js';
 import { passing as keepReadyPassing, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
@@ -93,9 +93,12 @@ async function runNavigation(action, windowId) {
         // Nor one whose wake hasn't answered by then (Safari suspended it, and
         // resumes it at background priority, or it's too busy to draw anyway):
         // shown, it would be Safari's empty view until the next press. The
-        // tab the key stops on waits for its answer (tabs.js mayWait).
-        if ((wake?.outcome === 'no page' && platform?.restoreTabs) || (wake == null && platform?.wakeTabs)) {
-          recordSwitch({ source: action, tabId: next, asked, ...facts, wake, error: 'passed over' });
+        // tab the key stops on waits for its answer (tabs.js mayWait). Nor
+        // one Margin has no proof WebKit has seen in a window with its page
+        // running, or whose content a flip of its own hid (tabs.js passable):
+        // it isn't introduced or drawn first in passing.
+        if ((wake?.outcome === 'no page' && platform?.restoreTabs) || (wake == null && platform?.wakeTabs) || !(await passable(next, wake))) {
+          recordSwitch({ source: action, tabId: next, asked, ...facts, wake, layersBack: 'skipped:passing', error: 'passed over' });
           void told('switch-done');
           return;
         }
@@ -104,7 +107,8 @@ async function runNavigation(action, windowId) {
         // its use before (background/keep-ready.js passing).
         keepReadyPassing(next, s.tabs[next]?.lastActive);
         await api.tabs.update(next, { active: true });
-        recordSwitch({ source: action, tabId: next, asked, ...facts, wake, shownAfter: Date.now() - asked });
+        if (wake?.outcome === 'awake') shownInPassing(next);
+        recordSwitch({ source: action, tabId: next, asked, ...facts, wake, layersBack: 'skipped:running', shownAfter: Date.now() - asked });
       } else {
         // The last key in a run is the frame the user keeps. Give it the same
         // hidden render acknowledgement as a click; intermediate held-key

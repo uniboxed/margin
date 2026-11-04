@@ -119,6 +119,10 @@ await import('../extension/background.js');
 const store = await import('../extension/background/store.js');
 const M = await import('../extension/state/model.js');
 const { focusTab, isNeverShown, tabOpened, tabShown } = await import('../extension/background/tabs.js');
+// Tabs these tests didn't prove to have WebKit's mark count as having it, as
+// every tab did before it was tracked (background/tabs.js; its own tests:
+// tests/in-window.test.js).
+(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 const { copyAlive, mayNotice } = await import('../extension/shared/no-answer.js');
 
 const front = () => [...fake.tabs.values()].find((t) => t.active).id;

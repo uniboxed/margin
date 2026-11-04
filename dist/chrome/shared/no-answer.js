@@ -12,7 +12,7 @@
 // a blink, the page's icon, a style sheet, its zoom, the switch log, the
 // sidebar's scroll, the warm-up's word that the user did something):
 // never the notice, whatever happened to them.
-export const QUIET_REQUESTS = new Set(['prewake', 'away', 'back', 'pageBlinked', 'pageIcon', 'fetchStyle', 'getZoom', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'windowState', 'warmUpInput']);
+export const QUIET_REQUESTS = new Set(['prewake', 'inView', 'away', 'back', 'pageBlinked', 'pageIcon', 'fetchStyle', 'getZoom', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'windowState', 'warmUpInput']);
 export const ALIVE_ASK_MS = 2000;
 
 /** Whether a request of this type that went unanswered may say so. @param {string} type */

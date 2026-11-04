@@ -50,6 +50,14 @@ export function slowSince(now = Date.now()) {
 }
 // Whether Safari (or the Mac) is slow now.
 export const isSlow = () => slowSince() != null;
+// The background's own timers seen late lately: a wait planned to a page's
+// deadline can't be trusted to end in time (background/tabs.js focusTab: a
+// switch then keeps to the plan for a slow Safari, whatever it waits for).
+export const timersLate = (now = Date.now()) => seen.some((o) => o.key === 'timer' && now - o.at < SLOW_KEEP_MS);
+// A sign from a call about `key` (a tab's id) since `since`: Safari slow for
+// that switch's own calls (its lookups, flips, show).
+/** @param {Key} key @param {number} since */
+export const ownSign = (key, since) => seen.some((o) => o.key === key && o.at >= since);
 // When the last sign came, whatever its source (null: none within
 // SLOW_KEEP_MS): work that can wait (background/warm-up.js) waits for a
 // Safari with none for a while, not only one that isn't slow.

@@ -109,6 +109,10 @@ for (let id = 1; id <= 6; id++) fake.tabs.set(id, { id, windowId: 1, url: `https
 const WAIT_MS = 7000;
 const GRACE_MS = 3000;
 await import('../extension/background.js');
+// Tabs these tests didn't prove to have WebKit's mark count as having it, as
+// every tab did before it was tracked (background/tabs.js; its own tests:
+// tests/in-window.test.js).
+(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 const store = await import('../extension/background/store.js');
 await sleep(100);
 

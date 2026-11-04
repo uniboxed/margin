@@ -155,6 +155,10 @@ for (let id = 20; id <= 29; id++) {
 await import('../extension/background.js');
 const store = await import('../extension/background/store.js');
 const { focusTab, injectIntoOpenTabs, resetIntroductions } = await import('../extension/background/tabs.js');
+// Tabs these tests didn't prove to have WebKit's mark count as having it, as
+// every tab did before it was tracked (background/tabs.js; its own tests:
+// tests/in-window.test.js).
+(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 const { tapLog } = await import('../extension/background/diagnostics.js');
 const slow = await import('../extension/background/slow.js');
 
@@ -250,7 +254,7 @@ test('an unloaded tab, with Safari slow to fail a script where there\'s no page:
   const { out: { reply, asked }, entry } = await logged(20, () => ask('activateTab', { tabId: 20 }));
   assert.deepEqual(reply, { ok: true, result: { shown: 20 } });
   const at = shownAt(20, asked);
-  assert.ok(at < 1600, `shown ${at} ms after the ask`);
+  assert.ok(at < 1600, `shown ${at} ms after the ask: ${JSON.stringify(entry)}`);
   assert.equal(front(), 20);
   assert.ok(entry?.slow, JSON.stringify(entry));
   await sleep(200);
@@ -273,7 +277,8 @@ test('a restore behind the page that finds Safari slow on its way (its calls tak
     assert.ok(fake.updates.filter((u) => u.id === 21).length >= 2, 'restored behind the page first (Safari was quick then)');
     assert.equal(front(), 21);
     assert.equal(entry?.restored, 'cut', JSON.stringify(entry));
-    assert.equal(entry?.introduced ?? null, null, 'no introduction: no time left for it');
+    assert.ok(!entry?.introduced, 'no introduction: no time left for it');
+    assert.match(String(entry?.markReason), /:skipped:cut$/, JSON.stringify(entry));
   } finally {
     chrome.tabs.update = update;
     await sleep(3200); // Safari's late answers
