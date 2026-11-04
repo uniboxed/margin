@@ -359,11 +359,14 @@ async function gate(left, previous) {
     const away = !['input', 'typing', 'watching'].includes(why);
     return { wait: Math.max(TIMING.retryMs / 2, Math.min(Number(idle.retryMs) || TIMING.retryMs, 3 * TIMING.keysMs)), why, backoff: away };
   }
-  // Its window: not minimized, not in full screen (Safari's own; a page's
-  // element in full screen the page says).
+  // Its window: not minimized. A window in Safari's full screen is warmed
+  // as any other: the user's own clicks restore behind the page there with
+  // the same flip (Tirth's Safari, used in full screen: 5 waits for it and
+  // nothing warmed, 2026-11-03). A page's element in full screen (a video)
+  // the page says (content/idle.js).
   const win = await timed('windows.get', Promise.resolve(api.windows?.get?.(front.windowId))).catch(() => null);
   if (win?.focused === false) return { wait: TIMING.gapMs, why: 'Safari not in use', backoff: true };
-  if (win?.state === 'minimized' || win?.state === 'fullscreen') return { wait: TIMING.gapMs, why: win.state, backoff: true };
+  if (win?.state === 'minimized') return { wait: TIMING.gapMs, why: win.state, backoff: true };
   const tab = await timed('tabs.get', api.tabs.get(pick.id), pick.id).catch(() => null);
   if (!tab) return { skip: pick, why: 'gone' };
   if (tab.windowId !== front.windowId) return { skip: pick, why: 'another window' };

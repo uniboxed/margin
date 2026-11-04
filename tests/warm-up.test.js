@@ -374,7 +374,7 @@ test('the setting at 0: nothing is warmed', async () => {
   assert.deepEqual(fake.idleAsks.filter((a) => a.at >= t0), [], 'not even the page asked');
 });
 
-test('it waits while Safari is slow, and until the user is idle on the page in front, focused, the window on screen, nothing playing', async () => {
+test('it waits while Safari is slow, and until the user is idle on the page in front, focused, the window not minimized, nothing playing', async () => {
   await calm();
   await prefer([26, 27]);
   loadsFor([26, 27]);
@@ -398,9 +398,6 @@ test('it waits while Safari is slow, and until the user is idle on the page in f
   fake.winState = 'minimized';
   await sleep(300);
   assert.equal(flipsOf(26, t0).length, 0, 'nothing while the window is minimized');
-  fake.winState = 'fullscreen';
-  await sleep(300);
-  assert.equal(flipsOf(26, t0).length, 0, 'nothing in full screen');
   // (Sound first, then on screen: a look under way as both changed at once
   // could see neither.)
   fake.tabs.get(1).audible = true;
@@ -414,7 +411,24 @@ test('it waits while Safari is slow, and until the user is idle on the page in f
   assert.equal(flipsOf(26, t0).length, 1);
   assert.equal(flipsOf(27, t0).length, 1);
   const waits = warmUp.warmUpState().waits;
-  for (const why of ['slow', 'typing', 'not focused', 'minimized', 'fullscreen', 'playing']) assert.ok(waits[why] >= 1, `${why}: ${JSON.stringify(waits)}`);
+  for (const why of ['slow', 'typing', 'not focused', 'minimized', 'playing']) assert.ok(waits[why] >= 1, `${why}: ${JSON.stringify(waits)}`);
+});
+
+test('a window in Safari\'s full screen is warmed as any other (the user\'s own clicks restore behind the page there too)', async () => {
+  await calm();
+  await prefer([39, 59]);
+  loadsFor([39, 59]);
+  fake.winState = 'fullscreen';
+  try {
+    const t0 = Date.now();
+    const { entries } = await logged(() => relaunched());
+    assert.equal(fake.session.warmUp?.state, 'done', JSON.stringify(entries.at(-1)));
+    assert.equal(flipsOf(39, t0).length, 1);
+    assert.equal(flipsOf(59, t0).length, 1);
+    assert.equal(warmUp.warmUpState().waits.fullscreen, undefined);
+  } finally {
+    fake.winState = 'normal';
+  }
 });
 
 test('a switch the user asks for while a tab loads behind: shown as fast as without the warm-up, the warm-up\'s wait gives way at once, and nothing more is flipped until it\'s over', async () => {
