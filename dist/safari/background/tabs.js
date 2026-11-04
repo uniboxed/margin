@@ -335,6 +335,7 @@ async function startWake(tabId, at, holdMs, by, sent, answered) {
     }, noPage);
   })();
   void ran.then((outcome) => {
+    if (outcome === 'awake' || outcome === 'unseen' || outcome === 'seen' || outcome === 'proven') pageAnsweredAt.set(tabId, Date.now());
     if (outcome === 'seen') sawInWindow(tabId);
     else if (outcome === 'unseen') doubt(tabId, 'started unseen');
     else if (outcome === 'proven') prove(tabId, 'page');
@@ -731,8 +732,14 @@ async function drewAfter(tab, since) {
 // PING_SLOW_MS, or the page handled a change of its visibility under
 // PING_QUIET_MS before (Instagram's second stall started 30 ms after it handled
 // being hidden), one at a time, never on a timer of its own (a stalled page
-// doesn't pile them up). The page in front is asked too once the first is
-// slow: both slow is Safari slow (slow.js, its plan), not this page. A later key press
+// doesn't pile them up), PINGS_MAX in all: a page that answers each, slowly,
+// is busy but running, and is shown then. Once the first is PING_SLOW_MS out,
+// Safari is asked something about no page (tabs.get): unanswered within
+// SAFARI_SLOW_MS too, Safari is slow, not this page, and the gate ends there
+// without waiting for the page ('slow safari': the show goes out as it would
+// with no gate; slow.js counts the call by its own measure, timed). Not the
+// page in front (review of 2026-11-04: a busy page in front, Gmail in Safari's
+// proof run, would have passed for a slow Safari). A later key press
 // gives the show up (focusTabNow: `hurried`); a key's switch waits until
 // LAYERS_MAX_MS after the press, then for a ping already out PING_PAST_LIMIT_MS
 // more, then shows the tab as it is; a click until focusTab shows it at its
@@ -748,6 +755,13 @@ export function pingInPage() {
 const PING_SLOW_MS = 100;
 const PING_QUIET_MS = 150;
 const PING_PAST_LIMIT_MS = 1000;
+const PINGS_MAX = 3;
+// When each tab's page last answered a wake (startWake): one capped at its
+// wake within STALLED_MS of that is busy, not suspended (focusTabNow `stalled`).
+/** @type {Map<number, number>} */
+const pageAnsweredAt = new Map();
+const STALLED_MS = 5000;
+const SAFARI_SLOW_MS = 250;
 /** @typedef {{ ok: boolean, since: number | null, sent: number, ms: number }} Ping `ok`: it ran there; `since`: ms since the page handled a change of its visibility (null: it doesn't say); `sent`: when it went out; `ms`: its answer's time */
 /** @param {number} tabId @returns {Promise<Ping>} */
 function ping(tabId) {
@@ -757,24 +771,26 @@ function ping(tabId) {
     return { ok: ranAtAll(rows) && r != null, since: Number.isFinite(r?.since) ? r.since : null };
   }, () => ({ ok: false, since: null })).then((r) => ({ ...r, sent, ms: Date.now() - sent }));
 }
-/** @typedef {{ outcome: 'free' | 'none' | 'slow safari' | 'limit' | 'hurried' | 'left', pings: { at: number, ms: number | null, since: number | null }[], front: { ms: number | null } | null, waitedMs: number }} Gate how the show's wait for its page went (the switch log `gate`): `none`, the ping didn't run there (no page, no access: shown); `pings[].at` ms from the gate's start, `ms` null for one still out */
+/** @typedef {{ outcome: 'free' | 'answered' | 'none' | 'slow safari' | 'limit' | 'hurried' | 'left', pings: { at: number, ms: number | null, since: number | null }[], safari: { at: number, ms: number | null } | null, waitedMs: number, stalled?: boolean }} Gate how the show's wait for its page went (the switch log `gate`): `answered`, PINGS_MAX pings all answered, slowly or soon after a change of its visibility (shown then); `none`, the ping didn't run there (no page, no access: shown); `pings[].at` ms from the gate's start, `ms` null for one still out; `safari`: the call about no page, when it went out and its answer's time (null: none by the gate's end); `stalled`: a tab capped at its wake that answered one moments before (focusTabNow) */
 /**
- * @param {any} tab @param {{ frontId: number | null, stop: () => 'left' | 'hurried' | null, until: () => number, after?: number }} options
+ * @param {any} tab @param {{ stop: () => 'left' | 'hurried' | null, until: () => number, after?: number }} options
  * `until()`: the switch's own limit for its page; `after`: not before then (FLIP_SETTLE_MS).
  * @returns {Promise<Gate>}
  */
-async function showGate(tab, { frontId, stop, until, after = 0 }) {
+async function showGate(tab, { stop, until, after = 0 }) {
   const start = Date.now();
   /** @type {Gate['pings']} */
   const pings = [];
-  /** @type {Gate['front']} */
-  let front = null;
-  const end = (/** @type {Gate['outcome']} */ outcome) => ({ outcome, pings, front, waitedMs: Date.now() - start });
+  /** @type {Gate['safari']} */
+  let safari = null;
+  const end = (/** @type {Gate['outcome']} */ outcome) => ({ outcome, pings, safari: safari && { ...safari }, waitedMs: Date.now() - start });
   while (Date.now() < after) {
     const why = stop();
     if (why) return end(why);
     await new Promise((resolve) => setTimeout(resolve, Math.min(WAIT_POLL_MS, after - Date.now())));
   }
+  /** @type {number | null} */
+  let safariSent = null;
   for (;;) {
     const why = stop();
     if (why) return end(why);
@@ -784,10 +800,6 @@ async function showGate(tab, { frontId, stop, until, after = 0 }) {
     /** @type {{ at: number, ms: number | null, since: number | null }} */
     const entry = { at: pingAt - start, ms: null, since: null };
     pings.push(entry);
-    const first = pings.length === 1;
-    /** @type {Promise<Ping> | null} */
-    let fronting = null;
-    let frontSent = 0;
     /** @type {Ping | null} */
     let got = null;
     while (!got) {
@@ -795,29 +807,24 @@ async function showGate(tab, { frontId, stop, until, after = 0 }) {
       if (halt) return end(halt);
       const hard = until() + PING_PAST_LIMIT_MS;
       if (Date.now() >= hard) return end('limit');
-      // The first one slow: the page in front asked too (once).
-      if (first && !fronting && frontId != null && frontId !== tab.id && Date.now() - pingAt >= PING_SLOW_MS) {
-        frontSent = Date.now();
-        fronting = ping(frontId);
+      // Slow: is it Safari? (once per gate)
+      if (safariSent == null && Date.now() - pingAt >= PING_SLOW_MS) {
+        safariSent = Date.now();
+        const sentAt = safariSent;
+        const record = { at: sentAt - start, ms: /** @type {number | null} */ (null) };
+        safari = record;
+        void timedCall('tabs.get', api.tabs.get(tab.id)).then(() => { record.ms = Date.now() - sentAt; }, () => { record.ms = Date.now() - sentAt; });
       }
-      const next = !first || fronting || frontId == null || frontId === tab.id ? Date.now() + WAIT_POLL_MS : Math.max(Date.now(), pingAt + PING_SLOW_MS);
-      got = await answerBy(out, Math.min(hard, next));
+      if (safariSent != null && safari?.ms == null && Date.now() - safariSent >= SAFARI_SLOW_MS) return end('slow safari');
+      const next = safariSent == null ? pingAt + PING_SLOW_MS : safari?.ms == null ? Math.min(Date.now() + WAIT_POLL_MS, safariSent + SAFARI_SLOW_MS) : Date.now() + WAIT_POLL_MS;
+      got = await answerBy(out, Math.min(hard, Math.max(Date.now(), next)));
     }
     Object.assign(entry, { ms: got.ms, since: got.since });
     if (!got.ok) return end('none');
     const slow = got.ms > PING_SLOW_MS;
-    if (fronting) {
-      // (Not answered within PING_SLOW_MS of going out: slow too.)
-      const theirs = await answerBy(fronting, Math.max(Date.now(), frontSent + PING_SLOW_MS + 1));
-      front = { ms: theirs ? theirs.ms : null };
-      if (slow && (!theirs || theirs.ms > PING_SLOW_MS)) {
-        noteCall('a ping to the page in front', theirs?.ms ?? Date.now() - frontSent, 'safari');
-        noteCall('a ping to the page shown', got.ms, tab.id);
-        return end('slow safari');
-      }
-    }
     const quietFor = got.since == null ? Infinity : got.since;
     if (!slow && quietFor >= PING_QUIET_MS) return end('free');
+    if (pings.length >= PINGS_MAX) return end('answered');
     if (Date.now() >= until()) return end('limit');
     // Still settling after a change of its visibility: asked again once that's PING_QUIET_MS behind.
     const wait = slow ? 0 : PING_QUIET_MS - quietFor;
@@ -1895,7 +1902,10 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
     return (asking ? Promise.race([asking, drawing]) : drawing).then((drawn) => {
       barriers.push({ how: drawn, ms: Date.now() - at });
       if (drawn === 'drew' && flip != null) {
-        drewSince(tabId, flip);
+        // (As of the flip's answer, not its sending: the page drew once
+        // visible, after the flip's hide, which hidePending counts from
+        // Safari's answer, about 110 ms later in Safari.)
+        drewSince(tabId, Math.max(flip, flippedAt.get(tabId) ?? flip));
         drewWordAt = Date.now();
         return /** @type {'drawn'} */ ('drawn');
       }
@@ -2066,14 +2076,21 @@ async function focusTabNow(tabId, gen, { wake, source, carry, scroll, deadline, 
   // stays behind, and the next press goes on from it (navigation.js), rather
   // than showing a page still busy into WebKit's hold running out (2026-11-04:
   // press 7 came during Instagram's stall). Another switch, the same.
+  // A tab capped at its wake whose page answered one moments before
+  // (STALLED_MS: a press's wake, the switch before given up for this one) is
+  // gated too: its process runs, its main thread is stalled, so its show
+  // resumes nothing, and shown now it would be the empty view (review of
+  // 2026-11-04: a press 1.5–3 s into a busy tab's gate came back to it, capped,
+  // and showed it so).
   const stopShow = () => (gen !== focusGen ? /** @type {const} */ ('left') : hurry?.() ? /** @type {const} */ ('hurried') : null);
-  const gated = wake && !!platform?.wakeTabs && !!api.scripting?.executeScript && !capped && hasPage(woke) && behind !== 'cut' && run.slowFrom() == null;
+  const stalled = capped && Date.now() - (pageAnsweredAt.get(tabId) ?? -Infinity) < STALLED_MS;
+  const gated = wake && !!platform?.wakeTabs && !!api.scripting?.executeScript && (!capped || stalled) && hasPage(woke) && behind !== 'cut' && run.slowFrom() == null;
   /** @type {Gate | null} */
   let gate = null;
   if (gated) {
     run.stage = 'ping';
-    const frontId = Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === live.windowId && t.active && t.id !== tabId)?.id ?? null;
-    gate = await onPageUnlessCut(showGate(live, { frontId, stop: stopShow, until: layersBy, after: lastDrawn === 'drew' && drewWordAt != null ? drewWordAt + FLIP_SETTLE_MS : 0 }));
+    gate = await onPageUnlessCut(showGate(live, { stop: stopShow, until: layersBy, after: lastDrawn === 'drew' && drewWordAt != null ? drewWordAt + FLIP_SETTLE_MS : 0 }));
+    if (stalled) gate = { ...gate, stalled: true };
     how = { ...how, gate };
     if (run.taken) return { tab: null, preparation, superseded: true };
   }
@@ -2387,6 +2404,7 @@ export function tabClosed(tabId) {
   flippedAt.delete(tabId);
   flipSent.delete(tabId);
   lastFlip.delete(tabId);
+  pageAnsweredAt.delete(tabId);
   drawnAfter.delete(tabId);
   reloadWhenLeft.delete(tabId);
   ownReloads.delete(tabId);
@@ -2563,6 +2581,7 @@ export function resetMarksForTests() {
   flippedAt.clear();
   flipSent.clear();
   lastFlip.clear();
+  pageAnsweredAt.clear();
   drawnAfter.clear();
   void Promise.resolve().then(() => api.storage.session?.set({ [MARKS_KEY]: { tabs: [] } })).catch(() => {});
 }
@@ -2689,6 +2708,26 @@ export async function provenWith(tabId, doc) {
   if (!Number.isInteger(tabId) || !platform?.introduceTabs || typeof doc !== 'string') return false;
   const rec = await marksMap().then((map) => map.get(/** @type {number} */ (tabId)), () => undefined);
   return !!rec?.marked && rec.doc === doc;
+}
+// The same word written into the page's world by a script, for a hello
+// answered before its tab's record was read (handlers.js hello: a background
+// just started); only into that document (`doc`, content/core.js documentId).
+// Self-contained.
+/** @param {string} doc */
+export function provenInPage(doc) {
+  try {
+    const world = globalThis.Margin;
+    if (world?.content?.documentId !== doc) return false;
+    if (!Number.isFinite(world.inWindowAt)) world.inWindowAt = Date.now();
+    return true;
+  } catch {
+    return false;
+  }
+}
+/** @param {number} tabId @param {string} doc */
+export function tellProven(tabId, doc) {
+  if (!api.scripting?.executeScript) return;
+  void api.scripting.executeScript({ target: { tabId }, func: provenInPage, args: [doc] }).catch(() => {});
 }
 // Its page says it has come into view from hidden (content/core.js 'inView':
 // `doc`, its own id; `heard`, its place in the order as it came).

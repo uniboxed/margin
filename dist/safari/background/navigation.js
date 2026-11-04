@@ -120,6 +120,11 @@ async function runNavigation(action, windowId) {
         // goes on from it (the tab stays behind, loading).
         const focused = await focusTab(next, { source: action, hurry: () => queued > 0 });
         if (!focused?.tab) {
+          // Given up for the next press (its page not ready): that press goes
+          // on from this tab however long it was waited for (a busy page's
+          // show waits up to 4 s, past NAV_CHAIN_MS from this press), not
+          // from the tab in front, which would come back to this one.
+          if (focused?.hurried) navTarget.set(windowId, { tabId: next, at: now() });
           told(focused?.hurried ? 'switch-done' : 'switch-failed');
           return;
         }

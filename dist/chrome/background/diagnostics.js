@@ -90,7 +90,7 @@ export function recordSwitch({ source, tabId, asked, heldAtAsk = null, hiddenFor
     // updates (ms from when it went out); when its page drew after it, by its
     // own word (ms from then: background/tabs.js S2); the show's wait for its
     // page (`gate`: how it ended, each ping's time and what the page said of
-    // its visibility, the page in front's ping); Safari's answer to the show
+    // its visibility, a call about no page to tell a slow Safari, PINGS_MAX at most); Safari's answer to the show
     // (`showMs`); a show given up for a later key press (`hurried`); the
     // switch's cut-off probe.
     ...(flip ? { flip } : {}),

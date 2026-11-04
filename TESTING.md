@@ -577,7 +577,7 @@ Before you start: run `npm run safari`. Use Dark Mode, and record the screen if 
 - [ ] Right after `npm run safari`, with tabs open: switch through Margin to the tab in front and to the 2 tabs you used last. None is reloaded while it's in front. The background's console may say `still has Margin from before it was reloaded, and is in front`. After you leave one, it's reloaded behind; come back and it's there, with no dark frame.
 - [ ] After that first round, run `npm run safari` again and switch through Margin to tabs you visited after the first install. In the switch log they show `markReason: 'proven:page'` and `introduced: false`: no flip first.
 - [ ] Copy the switch log (start page → Settings → Switch log). For each `kind: 'switch'`:
-  - `gate.outcome` is `free` on almost every switch. `limit` is a page that never answered (shown as it is). `slow safari` is Safari slow, not the page. A `hurried: true` entry is a show given up for your next press.
+  - `gate.outcome` is `free` on almost every switch. `answered` is a page that answered three looks slowly (shown then). `limit` is a page that never answered (shown as it is). `slow safari` is Safari slow, not the page (`gate.safari` is its answer). A `hurried: true` entry is a show given up for your next press, and the press after it goes to the tab after that one. `gate.stalled: true` is a tab that answered a wake moments before and then didn't.
   - `gate.pings`: their `ms` show how long the page took. Send me any over 500 ms with the time.
   - On an introduced switch, `layersBack: 'drew'` with `drewVisible` set means the page's own word ended the wait; `barrier` or `timeout` means it didn't say.
   - `showMs` is Safari's answer to the show. Over 250 ms means WebKit waited for the page.

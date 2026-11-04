@@ -95,7 +95,9 @@ globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ version: '0', content_scripts: fake.contentScripts }) },
   permissions: { contains: async () => true },
   tabs: {
+    // `fake.getMs`: how long Safari takes to answer (a slow Safari).
     get: async (id) => {
+      if (fake.getMs) await sleep(fake.getMs);
       const tab = fake.tabs.get(id);
       if (!tab) throw new Error('no tab');
       return { ...tab };
@@ -209,6 +211,7 @@ function reset(tabs) {
   fake.scriptError = null;
   fake.cutOff = null;
   fake.other = null;
+  fake.getMs = 0;
   fake.suspended = new Map();
   fake.holdsRun = false;
   fake.busyUntil = new Map();
@@ -827,7 +830,7 @@ test('S1: a page whose main thread stalls after its preparation answered isn\'t 
   const entry = entries.at(-1);
   assert.equal(entry.gate?.outcome, 'free', JSON.stringify(entry.gate));
   assert.ok(entry.gate.pings[0].ms >= 590, 'the first look waited out the stall');
-  assert.ok(entry.gate.front?.ms != null && entry.gate.front.ms < 100, 'the page in front answered at once: this page, not Safari');
+  assert.ok(entry.gate.safari?.ms != null && entry.gate.safari.ms < 100, 'Safari answered a call about no page at once: this page, not Safari');
 });
 
 test('S1: a page free as it\'s shown pays one look, and nothing else waits', async () => {
@@ -875,19 +878,44 @@ test('S1: Margin\'s holds still running in the page (keep-ready\'s, a wake\'s) d
   assert.equal(entries.at(-1).gate?.outcome, 'free');
 });
 
-test('S1: a slow page with the page in front as slow is Safari slow: shown at its first look\'s answer (the plan for a slow Safari), not waited for again', async () => {
-  for (const frontSlow of [false, true]) {
+test('S1: a slow page with Safari as slow (a call about no page unanswered 250 ms) is Safari slow: shown then, without waiting for the page (the plan for a slow Safari); a page in front as slow doesn\'t count (review, 2026-11-04)', async () => {
+  for (const how of ['page', 'safari', 'front']) {
     reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 104, url: 'https://slowlook.test/' }]);
     await knownInFront(1);
     await proven(104);
-    fake.prepare = (args) => { fake.busy(104, Date.now() + 300); return { ready: true, token: args?.[0]?.token }; };
-    fake.scriptDelay = (id, func) => (frontSlow && id === 1 && func?.name === 'pingInPage' ? 400 : 1);
+    let stalledAt = null;
+    fake.prepare = (args) => {
+      stalledAt = Date.now();
+      fake.busy(104, stalledAt + 1500);
+      if (how === 'safari') fake.getMs = 2000;
+      if (how === 'front') fake.busy(1, stalledAt + 3000);
+      return { ready: true, token: args?.[0]?.token };
+    };
     const { entries } = await logged(() => focusTab(104));
     const gate = entries.at(-1).gate;
-    assert.equal(gate.outcome, frontSlow ? 'slow safari' : 'free', JSON.stringify(gate));
-    assert.equal(gate.pings.length, frontSlow ? 1 : 2, JSON.stringify(gate));
-    assert.deepEqual(ids(), [104]);
+    const show = fake.updates.find((u) => u.id === 104);
+    assert.equal(gate.outcome, how === 'safari' ? 'slow safari' : 'free', `${how}: ${JSON.stringify(gate)}`);
+    if (how === 'safari') {
+      assert.ok(show.at - stalledAt < 600, `${how}: shown ${show.at - stalledAt} ms into the stall, not waited for`);
+      assert.equal(gate.pings[0].ms, null, 'the page\'s look still out');
+    } else assert.ok(show.at - stalledAt >= 1490, `${how}: shown ${show.at - stalledAt} ms into the stall`);
+    assert.deepEqual(ids().filter((id) => id === 104), [104]);
   }
+});
+
+test('S1: a page that answers every look slowly (busy but running) is asked 3 times at most, then shown', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 109, url: 'https://slowly.test/' }]);
+  await knownInFront(1);
+  await proven(109);
+  let gating = false;
+  fake.prepare = (args) => { gating = true; return { ready: true, token: args?.[0]?.token }; };
+  fake.scriptDelay = (id, func) => (id === 109 && gating && func?.name === 'pingInPage' ? 150 : 1);
+  const { entries } = await logged(() => focusTab(109));
+  const gate = entries.at(-1).gate;
+  assert.equal(gate.outcome, 'answered', JSON.stringify(gate));
+  assert.equal(gate.pings.length, 3);
+  assert.equal(named(109, 'pingInPage').length, 3);
+  assert.deepEqual(ids(), [109]);
 });
 
 test('S1: a later key press gives the show of a busy page up: the tab stays behind, the page before stays in front meanwhile, and the next press goes on from that tab', async () => {
@@ -1004,6 +1032,29 @@ test('S3: a page is told as it says hello whether its tab is proven with it in i
   assert.equal((await hello(122, { doc: 'doc-122c', made: true, active: false }))?.proven, false, 'made afresh');
 });
 
+// Review of 2026-11-04 (S3): the hello isn't held for that word on a
+// background just started (its storage slow): answered at once, and the word
+// written into the page's world once its tab's record is read.
+test('S3: a hello whose tab\'s record isn\'t read yet is answered at once, and the page is told it\'s proven once it is', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 123, url: 'https://cold.test/' }]);
+  await knownInFront(1);
+  await proven(123);
+  await sleep(50); // its record written
+  forgetNeverShown(); // a background started again: the records read again
+  fake.sessionMs = 300;
+  try {
+    const at = Date.now();
+    const answer = await hello(123, { doc: 'doc-123b', made: false, active: false });
+    assert.ok(Date.now() - at < 100, `answered after ${Date.now() - at} ms`);
+    assert.equal(answer?.proven, false, 'not known yet');
+    await sleep(400);
+    const told = fake.scripts.filter((x) => x.tabId === 123 && x.func.name === 'provenInPage');
+    assert.deepEqual(told.map((x) => x.args), [['doc-123b']], 'told once known, that document only');
+  } finally {
+    fake.sessionMs = 0;
+  }
+});
+
 // Review of 2026-11-04 (S5): a cut-off tab woken before the switch to it (a
 // pointer resting on its row, the key run's wake ahead: its world another
 // copy's) is a suspect, and the switch to it used to load it again 150 ms
@@ -1037,4 +1088,84 @@ test('S5: a cut-off tab a switch goes to is never loaded again as it\'s shown: p
   await sleep(700);
   assert.equal(loads().length, 1, JSON.stringify(fake.updates));
   assert.equal(loads()[0].change.active, undefined, 'a load, not a show');
+});
+
+// Review of 2026-11-04 (S1): a press that gives a busy tab's show up goes on
+// from that tab however long its gate held the switch (NAV_CHAIN_MS is 1.5 s
+// from the press; a key's gate holds up to 4 s), not from the tab in front,
+// which came back to the same busy tab.
+test('S1: a press 1.8 s into a busy tab\'s gate gives its show up and goes on from it', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 140, url: 'https://busy.test/' }, { id: 141, url: 'https://next.test/' }]);
+  const [first, last] = await threeTabs([140, 141]);
+  await proven(first);
+  await proven(last);
+  await knownInFront(1);
+  fake.prepare = (args) => {
+    if (args?.[0]?.tabId === first) fake.busy(first, Date.now() + 10_000);
+    return { ready: true, token: args?.[0]?.token };
+  };
+  const { entries } = await logged(async () => {
+    const one = navigate('next-tab', 'key', 1);
+    await sleep(1800);
+    assert.equal(front(), 1, 'still waiting on the busy tab');
+    const two = navigate('next-tab', 'key', 1);
+    await one;
+    await two;
+  });
+  assert.equal(front(), last, JSON.stringify(entries.map((e) => [e.tabId, e.gate?.outcome, e.hurried])));
+  assert.ok(!fake.updates.some((u) => u.id === first && u.change.active), 'the busy tab never shown');
+});
+
+// Review of 2026-11-04 (S1): a tab whose wake isn't answered by the cap is
+// shown as it is (its show resumes a suspended process), but one whose page
+// answered a wake moments before is running and stalled: shown, it would be
+// the empty view. Its show waits for its page as any.
+test('S1: a tab capped at its wake that answered one moments before (stalled, not suspended) waits for its page before its show', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 107, url: 'https://stalled.test/' }]);
+  await knownInFront(1);
+  await proven(107);
+  await tabsModule.wakeTab(107, { by: 'hover' });
+  tabsModule.forgetWake(107); // (its answer gone by the switch: it wakes it again)
+  fake.busy(107, Date.now() + 2600);
+  const started = Date.now();
+  const { entries } = await logged(() => focusTab(107));
+  const show = fake.updates.find((u) => u.id === 107 && u.change.active);
+  assert.ok(show.at - started >= 2550, `shown ${show.at - started} ms after the ask, its page still stalled`);
+  const entry = entries.at(-1);
+  assert.equal(entry.wakeOutcome, 'capped');
+  assert.equal(entry.gate?.stalled, true, JSON.stringify(entry.gate));
+  assert.equal(entry.gate?.outcome, 'free');
+  // (One that answered nothing lately, a process Safari suspended, is shown at
+  // the cap as before: tests/wake.test.js.)
+});
+
+// Review of 2026-11-04 (S2): the page's word that it drew since its flip
+// counts from Safari's answer to the flip, as the flip's hide does
+// (hidePending), not from when it went out: with Safari answering the flip's
+// updates late (about 110 ms for the two in Safari's log), the hide was still
+// taken as pending after the word, and a held key refused the tab
+// (passable), where a paint barrier that drew cleared it.
+test('S2: after the page\'s word that it drew since its flip, its hide is over, with Safari slow to answer the flip as with a barrier that drew', async () => {
+  const results = {};
+  const update = chrome.tabs.update;
+  chrome.tabs.update = (id, change) => sleep(50).then(() => update(id, change));
+  try {
+    for (const kind of ['barrier drew', 'page said it drew']) {
+      const id = kind === 'barrier drew' ? 120 : 121;
+      reset([{ id: 1, url: 'https://a.test/', active: true }, { id, url: `https://t${id}.test/` }]);
+      await knownInFront(1);
+      await hello(id, { made: true, active: false }); // not proven: introduced
+      fake.barrierMs = (t) => (t === id && kind === 'page said it drew' ? 800 : 20);
+      fake.drewAt = (t) => {
+        const flip = fake.updates.find((u) => u.id === id)?.at;
+        return kind === 'page said it drew' && t === id && flip != null ? flip + 5 : null;
+      };
+      const { entries } = await logged(() => focusTab(id));
+      assert.ok(flipped(id), JSON.stringify(ids()));
+      results[kind] = { layersBack: entries.at(-1).layersBack, passable: await tabsModule.passable(id, { outcome: 'awake', ms: 1, startedAt: Date.now() }) };
+    }
+  } finally {
+    chrome.tabs.update = update;
+  }
+  assert.deepEqual(results, { 'barrier drew': { layersBack: 'barrier', passable: true }, 'page said it drew': { layersBack: 'drew', passable: true } });
 });

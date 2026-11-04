@@ -969,6 +969,9 @@ export function startCore({ onTheme } = {}) {
       return `${Date.now()}-${String(Math.random()).slice(2)}`;
     }
   })();
+  // (The background's word that its tab is proven, sent once known when its
+  // hello's answer couldn't wait for it: background/tabs.js provenInPage.)
+  Margin.content.documentId = docId;
   const startedFresh = document.readyState === 'loading';
   // (Not a reload: shared/platform.js madeAfresh.)
   const madeAfresh = (() => {

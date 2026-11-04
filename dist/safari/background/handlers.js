@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, provenWith, resolveTab, shownAt, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, provenWith, resolveTab, tellProven, shownAt, wakeTab } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -292,9 +292,18 @@ const STYLE_CACHE_CHARS = 8_000_000; // and no more than this in all
 const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
 const STYLE_MAX_CHARS = 8_000_000;
 
-// How long a page's hello waits for its tab's record (a storage read slow as
-// a background starts), at most, to say whether it's proven: not said then.
-const PROVEN_WAIT_MS = 200;
+
+// A promise's value if it has settled by the end of this turn's own tasks (a
+// timer of 0: its storage read from memory has answered), else false, and
+// `later` gets it once it settles.
+/** @param {Promise<boolean>} promise @param {() => boolean | null} now @param {(value: boolean) => void} later */
+async function known(promise, now, later) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const value = now();
+  if (value != null) return value;
+  void promise.then(later, () => {});
+  return false;
+}
 
 export const handlers = {
   /** @param {{ unseen?: boolean, heard?: number, doc?: string, fresh?: boolean, made?: boolean }} message `unseen`: the page started visible in a tab whose page may have just been made; `doc`: the page's own id; `fresh`: its copy started with it; `made`: it was made from the tab's saved history, or is a tab's first page (background/tabs.js pageStarted); `heard`: its place among the activations as it came (background.js) */
@@ -304,7 +313,14 @@ export const handlers = {
     // `proven`: its tab is proven to have WebKit's mark with this page in it
     // (a link in a tab Margin had proven): the page keeps that in its world,
     // where a later copy of Margin reads it (background/tabs.js pageThere).
-    const proven = started.then(() => provenWith(sender.tab?.id, typeof doc === 'string' ? doc : null), () => false);
+    // Not waited for (review of 2026-11-04: it held every hello up to 200 ms
+    // on a background just started, its storage slow): said in the answer if
+    // known by then, else written into the page's world once it is (tellProven).
+    const pageDoc = typeof doc === 'string' ? doc : null;
+    const proven = started.then(() => provenWith(sender.tab?.id, pageDoc), () => false);
+    /** @type {boolean | null} */
+    let provenNow = null;
+    void proven.then((p) => { provenNow = p; });
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
     // Only to a page in front: one loading behind (background/tabs.js
@@ -313,7 +329,7 @@ export const handlers = {
     if (sender.tab?.id != null) forgetShowing(sender.tab.id, { later: true });
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.js).
     // `warmUp`: the warm-up after a relaunch under way, for its note in the sidebar (background/warm-up.js).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await Promise.race([proven, new Promise((resolve) => setTimeout(() => resolve(false), PROVEN_WAIT_MS))]) };
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await known(proven, () => provenNow, (p) => p && sender.tab?.id != null && pageDoc && tellProven(sender.tab.id, pageDoc)) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.js), after checking the stored owner again.
