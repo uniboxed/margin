@@ -54,8 +54,8 @@ test('cut off: a page whose world is this copy\'s isn\'t (and nothing in it is t
 });
 
 test('cut off: the world bound to the copy that\'s gone, or to none, is', async () => {
-  assert.deepEqual({ ...(await run(page())) }, { cutOff: true, busy: false, hidden: true });
-  assert.deepEqual({ ...(await run(page({ hidden: false }))) }, { cutOff: true, busy: false, hidden: false }, 'in front');
+  assert.deepEqual({ ...(await run(page())) }, { cutOff: true, busy: false, hidden: true, proven: false });
+  assert.deepEqual({ ...(await run(page({ hidden: false }))) }, { cutOff: true, busy: false, hidden: false, proven: false }, 'in front');
   assert.equal((await run(page({ id: undefined }))).cutOff, true, 'no id: Chrome\'s copy that was reloaded');
   assert.equal((await run(page({ throws: true }))).cutOff, true, 'its address can\'t be had');
   assert.equal((await run(page({ storage: 'fails' }))).cutOff, true, 'its calls fail');
@@ -118,4 +118,108 @@ test("this copy's own new-tab page, another of its files, web pages and other sc
   assert.equal(oldOwnPageAddress('chrome-extension://OLD/newtab/newtab.html', OWN), null);
   assert.equal(oldOwnPageAddress(undefined, OWN), null);
   assert.equal(oldOwnPageAddress('not a url', OWN), null);
+});
+
+// ---- 2026-11-04: the old copy's keys, its proof, and never a reload in front --
+
+test('cut off: a page found so is told in its world (its old listener for the navigation keys steps aside: shared/shortcuts.js); one bound to this copy, or to another still running, isn\'t', async () => {
+  const dead = page();
+  const deadWorld = vm.createContext({ ...dead.globals });
+  await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false)`, deadWorld);
+  assert.equal(vm.runInContext('globalThis.Margin?.cutOff', deadWorld), true);
+  for (const p of [page({ address: OWN }), page({ storage: 'answers' })]) {
+    const world = vm.createContext({ ...p.globals });
+    await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false)`, world);
+    assert.equal(vm.runInContext('globalThis.Margin?.cutOff', world), undefined);
+  }
+});
+
+test('cut off: the old copy\'s word that this document\'s tab was proven to have WebKit\'s mark comes with the answer (kept before the page is loaded again)', async () => {
+  const p = page();
+  const world = vm.createContext({ ...p.globals, Margin: { inWindowAt: 123 } });
+  const answer = await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false)`, world);
+  assert.equal(answer.proven, true);
+});
+
+// The background's side (background/tabs.js repairCutOff), against a fake
+// Safari: tabs, their pages' answer to the probe, the loads it asks for.
+const fake = { tabs: new Map(), updates: [], scripts: [], session: {}, local: {}, probe: () => ({ cutOff: false }) };
+async function background() {
+  globalThis.chrome = {
+    runtime: { id: 'x', getURL: (path) => `${OWN}${path}`, getManifest: () => ({ version: '0', content_scripts: [{ js: ['content/main.js'] }] }) },
+    permissions: { contains: async () => true },
+    windows: { get: async (id) => ({ id, focused: true }), update: async () => {} },
+    tabs: {
+      get: async (id) => { const t = fake.tabs.get(id); if (!t) throw new Error('no tab'); return { ...t }; },
+      query: async ({ active, windowId } = {}) => [...fake.tabs.values()].filter((t) => (active == null || t.active === active) && (windowId == null || t.windowId === windowId)).map((t) => ({ ...t })),
+      update: async (id, change) => { fake.updates.push({ id, change, at: Date.now() }); return { ...fake.tabs.get(id) }; },
+      reload: async (id) => { fake.updates.push({ id, change: { reload: true }, at: Date.now() }); },
+      sendMessage: async () => null,
+    },
+    scripting: {
+      executeScript: async ({ target, func, args }) => {
+        fake.scripts.push({ tabId: target.tabId, func, args });
+        return [{ result: func?.name === 'cutOffInPage' ? fake.probe(target.tabId, args) : true }];
+      },
+    },
+    storage: {
+      local: { get: async (k) => Object.fromEntries([].concat(k ?? Object.keys(fake.local)).filter((x) => x in fake.local).map((x) => [x, structuredClone(fake.local[x])])), set: async (v) => { Object.assign(fake.local, structuredClone(v)); }, remove: async () => {} },
+      session: { get: async (k) => Object.fromEntries([].concat(k).filter((x) => x in fake.session).map((x) => [x, structuredClone(fake.session[x])])), set: async (v) => { Object.assign(fake.session, structuredClone(v)); } },
+      onChanged: { addListener() {} },
+    },
+  };
+  const tabs = await import('../extension/background/tabs.js');
+  const store = await import('../extension/background/store.js');
+  await store.decided();
+  return tabs;
+}
+const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const loadsOf = (id) => fake.updates.filter((u) => u.id === id && (u.change.url || u.change.reload));
+const markOf = (id) => fake.session.inWindowTabs?.tabs?.find(([tabId]) => tabId === id)?.[1] ?? null;
+
+test('cut off, in front: put out of sight at once, not loaded again in front; loaded again once it\'s left, behind, and its tab\'s proof (its page\'s word) kept through that load', async () => {
+  const tabs = await background();
+  fake.tabs = new Map([[1, { id: 1, windowId: 1, url: 'https://front.test/a', active: true, status: 'complete' }], [2, { id: 2, windowId: 1, url: 'https://other.test/', active: false, status: 'complete' }]]);
+  fake.probe = (id, [, quiet]) => (id === 1 ? { cutOff: true, busy: false, hidden: false, proven: true, quiet } : { cutOff: false });
+  tabs.heardActivation({ tabId: 1, windowId: 1 });
+  assert.equal(await tabs.repairCutOff({ ...fake.tabs.get(1) }), 'quiet');
+  assert.deepEqual(loadsOf(1), [], 'not loaded again in front');
+  assert.ok(fake.scripts.some((x) => x.tabId === 1 && x.func.name === 'cutOffInPage' && x.args[1] === true), 'its dead sidebar put out of sight');
+  await sleepMs(20);
+  assert.equal(markOf(1)?.marked, true, 'its page\'s word kept as this copy\'s proof');
+  assert.equal(markOf(1)?.how, 'page');
+  // Left (the user's switch to tab 2): loaded again, behind.
+  fake.tabs.get(1).active = false;
+  fake.tabs.get(2).active = true;
+  tabs.heardActivation({ tabId: 2, windowId: 1 });
+  await sleepMs(250);
+  assert.deepEqual(loadsOf(1), [], 'not at once: once the switch away has landed');
+  await sleepMs(400);
+  assert.equal(loadsOf(1).length, 1, `loaded again once behind: ${JSON.stringify(fake.updates)}`);
+  assert.equal(loadsOf(1)[0].change.url, 'https://front.test/a');
+  // Its new page (a GET of its address in a tab with one entry: `navigate`,
+  // as a tab's first page) isn't taken as a new web view's: the proof stands.
+  fake.probe = () => ({ cutOff: false });
+  await tabs.pageStarted(1, { made: true, fresh: true, doc: 'reloaded', active: false, heard: tabs.activationsHeard() });
+  await sleepMs(20);
+  assert.equal(markOf(1)?.marked, true, JSON.stringify(markOf(1)));
+  assert.equal(markOf(1)?.doc, 'reloaded');
+  // A page made afresh later (Safari making the tab again) still loses it.
+  await tabs.pageStarted(1, { made: true, fresh: true, doc: 'again', active: false, heard: tabs.activationsHeard() });
+  await sleepMs(20);
+  assert.equal(markOf(1)?.marked, false);
+});
+
+test('cut off, in front and in use (something typed): put out of sight, not loaded again when it\'s left either', async () => {
+  const tabs = await background();
+  fake.updates = [];
+  fake.tabs = new Map([[5, { id: 5, windowId: 2, url: 'https://draft.test/', active: true, status: 'complete' }], [6, { id: 6, windowId: 2, url: 'https://b.test/', active: false, status: 'complete' }]]);
+  fake.probe = (id) => (id === 5 ? { cutOff: true, busy: true, hidden: false, proven: false } : { cutOff: false });
+  tabs.heardActivation({ tabId: 5, windowId: 2 });
+  assert.equal(await tabs.repairCutOff({ ...fake.tabs.get(5) }), 'quiet');
+  fake.tabs.get(5).active = false;
+  fake.tabs.get(6).active = true;
+  tabs.heardActivation({ tabId: 6, windowId: 2 });
+  await sleepMs(500);
+  assert.deepEqual(loadsOf(5), []);
 });

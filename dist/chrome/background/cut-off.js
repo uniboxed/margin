@@ -27,9 +27,15 @@
 // { cutOff: false, otherCopy: true } for one bound to another copy that still
 // answers: one Safari keeps running beside this one until it quits
 // (shared/owner.js; its pages stay out of the way themselves, and loading one
-// again would bind it to that copy again). Else { cutOff: true, busy, hidden };
-// `busy`: something typed, chosen or playing (judged as content/takeover.js
-// does), so it isn't reloaded.
+// again would bind it to that copy again). Else { cutOff: true, busy, hidden,
+// proven }; `busy`: something typed, chosen or playing (judged as
+// content/takeover.js does), so it isn't reloaded; `proven`: the world holds
+// the old copy's word that this document's tab was proven to have WebKit's
+// mark (content/core.js `inWindowAt`), kept by this copy before the page is
+// loaded again (background/tabs.js repairCutOff).
+// A page found cut off is also told so in its world (`Margin.cutOff`): the old
+// copy's listener for the navigation keys, whose messages go nowhere, then
+// lets them pass to the page and to Safari's own commands (shared/shortcuts.js).
 /** @param {string} own @param {boolean} [quiet] */
 export async function cutOffInPage(own, quiet = false) {
   const api = /** @type {any} */ (globalThis).browser ?? /** @type {any} */ (globalThis).chrome;
@@ -67,6 +73,13 @@ export async function cutOffInPage(own, quiet = false) {
     }
     return false;
   };
+  try {
+    (/** @type {any} */ (globalThis).Margin ??= {}).cutOff = true;
+  } catch {}
+  let proven = false;
+  try {
+    proven = Number.isFinite(/** @type {any} */ (globalThis).Margin?.inWindowAt);
+  } catch {}
   let busy = true;
   try {
     busy = /** @type {any} */ (navigator).mediaSession?.playbackState === 'playing' || inUse(document);
@@ -88,7 +101,7 @@ export async function cutOffInPage(own, quiet = false) {
       document.dispatchEvent(new CustomEvent('margin:box', { detail: 'off' }));
     } catch {}
   }
-  return { cutOff: true, busy, hidden: document.hidden };
+  return { cutOff: true, busy, hidden: document.hidden, proven };
 }
 
 // What to do with a page cutOffInPage answered for: nothing (it's this copy's,

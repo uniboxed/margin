@@ -183,7 +183,8 @@ test('wake: a running page answers at once and the switch goes ahead then', asyn
   const focused = await focusTab(2, { carry: 'hover', scroll: 42 });
   const waited = fake.updates[0].at - started;
   assert.ok(waited < 60, `switched after ${waited}ms`);
-  assert.equal(fake.scripts.filter((s) => s.tabId === 2).length, 3, 'the keep-awake, wake answer and sidebar preparation');
+  assert.equal(fake.scripts.filter((s) => s.tabId === 2).length, 4, 'the keep-awake, wake answer, sidebar preparation, and one look just before the show (its page free: tabs.js pingInPage)');
+  assert.equal(fake.scripts.filter((s) => s.tabId === 2).at(-1).func.name, 'pingInPage');
   assert.equal(focused.preparation.outcome, 'ready');
   const prepared = fake.scripts.find((s) => s.func.name === 'prepareSidebarInPage');
   assert.equal(prepared.args[0].scroll, 42);
@@ -595,13 +596,14 @@ test('wake: nothing to wake for the tab in front, a page Margin can\'t reach, or
 
 test('wake: a switch right after an early wake (a press, the palette) reuses it', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 7, url: 'https://g.test/' }]);
-  // (Answering within 60 ms of going out: one slower is drawn before it's shown, below.)
-  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' ? 5 : 50;
+  // (Answering within 60 ms of going out: one slower is drawn before it's shown, below.
+  // Its last look before the show, its page free by then, quick.)
+  fake.scriptDelay = (_id, func) => func.name === 'prepareSidebarInPage' || func.name === 'pingInPage' ? 5 : 50;
   const early = wakeTab(7);
   await sleep(30);
   const started = Date.now();
   const focused = await focusTab(7);
-  assert.equal(fake.scripts.length, 3, 'no second wake; only the sidebar preparation is added');
+  assert.equal(fake.scripts.length, 4, 'no second wake; only the sidebar preparation and the look before the show are added');
   assert.equal(focused.preparation.outcome, 'ready');
   const waited = fake.updates[0].at - started;
   assert.ok(waited < 45, `only the rest of the early wake: ${waited}ms`);
@@ -1820,15 +1822,20 @@ test('restoring: a page back from its cache at once (never seen loading) is foun
   }
 });
 
-test('restoring: a page too busy to answer a script once back is taken as loading (not a miss), and held up only to the usual limit (its load not seen, its document silent: Safari\'s \'complete\' says nothing)', async () => {
+test('restoring: a page too busy to answer a script once back is taken as loading (not a miss), and its restore held up only to the usual limit (its load not seen, its document silent: Safari\'s \'complete\' says nothing); its show then waits for its page to answer, until its page\'s deadline is near (2026-11-04)', async () => {
   const done = await restoring([{ id: 1, url: 'https://a.test/', active: true }, { id: 71, url: 'https://busy.test/' }], { 71: { cached: true, busyMs: 8000 } });
   try {
     const asked = Date.now();
     const result = await focusTab(71, { deadline: asked + 7000 });
     assert.equal(result.tab?.id, 71);
     const shown = fake.updates.at(-1).at - asked;
-    // (2.5 s, then the introduction's questions to the busy page.)
-    assert.ok(shown >= 2450 && shown < 4000, `shown at the usual limit, not the 4 s one (${shown}ms)`);
+    // (Its restore over at 2.5 s, then the introduction's questions to the
+    // busy page; its last look before the show, unanswered: shown as it is
+    // FORCE_SHOW_MS before the deadline, until 2026-11-04 at about 2.5 s,
+    // into a page that couldn't draw.)
+    assert.ok(fake.updates.filter((u) => u.id === 71).length >= 2, 'restored behind first');
+    assert.ok(fake.updates.find((u) => u.id === 71).at - asked < 2700, 'its restore ended at the usual limit');
+    assert.ok(shown >= 5400 && shown < 6000, `shown at its page's deadline, its page never answering (${shown}ms)`);
     assert.equal(fake.session.restoreMisses, undefined, 'not counted as Safari putting it off');
   } finally {
     done();
@@ -2107,7 +2114,8 @@ test('restoring: the check for a tab with no page doesn\'t hold up a switch to o
     const asked = Date.now();
     await focusTab(92);
     assert.ok(prepares(92)[0].at - asked < 20, 'preparation started with the wake');
-    assert.ok(fake.updates[0].at - asked < 95, `switched once both were done (${fake.updates[0].at - asked}ms)`);
+    // (Then one look more, its page free: 50 ms here.)
+    assert.ok(fake.updates[0].at - asked < 150, `switched once both were done (${fake.updates[0].at - asked}ms)`);
     assert.deepEqual(fake.updates.map((u) => u.id), [92]);
   } finally {
     done();

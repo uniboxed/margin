@@ -75,3 +75,13 @@ test('⌘T (the browser\'s New Tab moved to another shortcut): Margin\'s new tab
   }
   assert.equal(runs, 1);
 });
+
+test('the manifest commands\' keys as shortcut strings (shared/shortcuts.js commandKeysFrom); none taken on Chrome (it matches them before the page)', async () => {
+  const { commandKeysFrom, commandKeys } = shortcuts;
+  const { manifestFor } = await import('../scripts/build.js');
+  assert.deepEqual(commandKeysFrom(manifestFor('safari')), { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight' });
+  assert.deepEqual(commandKeysFrom(manifestFor('chrome')), { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight', prevSpace: 'Ctrl+Meta+ArrowLeft' });
+  assert.deepEqual(commandKeysFrom({ commands: { 'next-tab': { suggested_key: { mac: 'Command+Shift+K' } }, 'prev-tab': { suggested_key: { mac: 'Alt+Home' } } } }), { nextTab: 'Shift+Meta+KeyK' }, 'a key this can\'t match is left out');
+  assert.deepEqual(commandKeysFrom(undefined), {});
+  assert.deepEqual(commandKeys(), {}, 'Chrome (this file\'s profile)');
+});

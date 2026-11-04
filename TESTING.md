@@ -562,6 +562,28 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## A show only into a free page, and ⌃⌘↓ on every site (2026-11-04)
+
+Margin now shows a tab only once its page answers one more look just before the show, so a stalled page (Instagram on 2026-11-04) keeps the page before on screen instead of going dark. A press during that wait gives the show up and goes on from that tab. After a flip, a page that says it has drawn is shown about 0.6 s sooner. A tab's proof is kept in its page, so after an update the tabs Safari had already shown aren't flipped again. That starts from the next update, since this build starts cold. On web pages, ⌃⌘↓/↑ are taken by Margin before the page, so Outlook and Instagram no longer eat them. A cut-off tab in front is no longer reloaded in front: it's reloaded once you leave it.
+
+Before you start: run `npm run safari`. Use Dark Mode, and record the screen if you can.
+
+- [ ] On Instagram (reels) and on Outlook's message list, click into the page and press ⌃⌘↓ five times, a second or two apart. Five switches, and the reel or the selected message doesn't move.
+- [ ] Do the same from a text field (Gmail's search, a compose box): ⌃⌘↓ switches tabs.
+- [ ] ⌥⌘↓ still switches. If you set your own shortcut in Settings, it still works, and one you set to ⌃⌘↓ does what you chose.
+- [ ] On Safari's Start Page and in the address bar, ⌃⌘↓ still switches (Safari's command).
+- [ ] With a heavy tab in the cycle (Instagram with reels playing, a big Google Doc), press ⌃⌘↓ to it once. The page before stays, with its cover if it's slow, until the tab comes up with no dark frame. Then press ⌃⌘↓ twice quickly through it. The second press goes on to the next tab, and the heavy one isn't shown in between.
+- [ ] Hold ⌃⌘↓: the key repeats through tabs on web pages now, as ⌥⌘↓ did.
+- [ ] Right after `npm run safari`, with tabs open: switch through Margin to the tab in front and to the 2 tabs you used last. None is reloaded while it's in front. The background's console may say `still has Margin from before it was reloaded, and is in front`. After you leave one, it's reloaded behind; come back and it's there, with no dark frame.
+- [ ] After that first round, run `npm run safari` again and switch through Margin to tabs you visited after the first install. In the switch log they show `markReason: 'proven:page'` and `introduced: false`: no flip first.
+- [ ] Copy the switch log (start page → Settings → Switch log). For each `kind: 'switch'`:
+  - `gate.outcome` is `free` on almost every switch. `limit` is a page that never answered (shown as it is). `slow safari` is Safari slow, not the page. A `hurried: true` entry is a show given up for your next press.
+  - `gate.pings`: their `ms` show how long the page took. Send me any over 500 ms with the time.
+  - On an introduced switch, `layersBack: 'drew'` with `drewVisible` set means the page's own word ended the wait; `barrier` or `timeout` means it didn't say.
+  - `showMs` is Safari's answer to the show. Over 250 ms means WebKit waited for the page.
+
+**Send me** the switch log, the recording, and the times of any dark frame or lost press.
+
 ## No dark frame on Margin's switches (2026-11-03)
 
 Margin now introduces (an invisible flip to the tab and back) any tab it has no proof Safari has already shown with its page running, before it first shows it. It also never shows a tab before that tab's page has drawn again after a wake, a flip or a kick. The cost is about 0.3–0.4 s on the first Margin return to each such tab, under the cover. Switches made with Safari's own tab bar or keys can't be prepared and can still blink.

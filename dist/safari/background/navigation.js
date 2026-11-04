@@ -8,9 +8,12 @@ import { passing as keepReadyPassing, switchFacts } from './keep-ready.js';
 import { platform } from '../shared/platform.js';
 
 // Next/previous tab and space. Two delivery paths land here: the manifest
-// `commands` (⌃⌘ + arrows; Safari matches them in the app, so they work
-// whatever has focus and before a page's script has loaded) and the page's
-// keydown listener (key repeat and custom shortcuts from Settings).
+// `commands` (⌃⌘ + arrows; they work where Margin has no page listener:
+// Safari's own pages, the address bar, a page before its script has loaded)
+// and the page's keydown listener (key repeat, custom shortcuts from
+// Settings, and on Safari the commands' keys too: Safari runs a command only
+// once the focused page has turned the key down, and a page that calls
+// preventDefault on its arrows ate it, shared/shortcuts.js).
 //  - One key press arriving through both paths counts once.
 //  - Presses run one at a time, and each continues from the tab the previous
 //    one chose (for a moment), so fast presses all count even before Safari

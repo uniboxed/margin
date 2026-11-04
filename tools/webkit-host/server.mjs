@@ -32,6 +32,17 @@ const TALL = '<div style="height: 5000px">tall</div>';
 // A read is a <margin-read> in <html> for a moment: this counts them.
 const COUNT_READS = `<script>window.__reads = 0; new MutationObserver((records) => { for (const r of records) for (const n of r.addedNodes) if (n.localName === 'margin-read') __reads++; }).observe(document.documentElement, { childList: true });</script>`;
 const FIXTURES = {
+  // A page whose main thread stalls `stall` ms (default 1200), `after` ms
+  // (default 30) after it handles being hidden, as Instagram's did in Safari
+  // on 2026-11-04 (heavyflip); it takes 100 ms to handle being shown. Dark, so
+  // a frame of Safari's empty view isn't told from it by colour: the scenario
+  // counts layers (probeShow).
+  'heavy-visible': `<style>html, body { background: rgb(18, 18, 18); color: #eee; margin: 0 }</style><script>window.__vis = []; const q = new URLSearchParams(location.search); const stall = Number(q.get('stall') ?? 1200); const after = Number(q.get('after') ?? 30); const spin = (ms) => { const end = performance.now() + ms; while (performance.now() < end); }; document.addEventListener('visibilitychange', () => { __vis.push([document.visibilityState, Date.now()]); if (!document.hidden) return spin(100); if (after > 0) setTimeout(() => spin(stall), after); else spin(stall); });</script><h1 id=h style="height: 2000px">Heavy</h1>`,
+  // A page that takes ArrowDown whatever the modifiers, at every level, before
+  // anything else of its own (as Outlook's message list and Instagram's reels
+  // do): Margin's listener, on the window from document_start, still comes
+  // first (commandkeys).
+  'eats-arrows': `<script>window.__eaten = { window: 0, document: 0, body: 0 }; const eat = (where) => (e) => { if (e.code !== 'ArrowDown') return; __eaten[where]++; e.preventDefault(); e.stopImmediatePropagation(); }; addEventListener('keydown', eat('window'), true); document.addEventListener('keydown', eat('document'), true); addEventListener('DOMContentLoaded', () => document.body.addEventListener('keydown', eat('body')));</script><textarea id=t></textarea><p>Mail</p>`,
   // Apps that say what <body> is only after `load`, by a <style>, a <link>, a rule a script inserts, a class.
   'late-style': `<script>addEventListener('load', () => setTimeout(() => { const s = document.createElement('style'); s.textContent = 'html, body { margin: 0; height: 100% } #app { height: 100% }'; document.head.append(s); }, 300));</script><div id=app>Mail</div>`,
   'late-link': `<script>addEventListener('load', () => setTimeout(() => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'data:text/css,html, body { margin: 0; height: 100%25 } %23app { height: 100%25 }'; document.head.append(l); }, 300));</script><div id=app>Mail</div>`,

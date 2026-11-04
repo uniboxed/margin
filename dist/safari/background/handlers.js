@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, resolveTab, shownAt, wakeTab } from './tabs.js';
+import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, provenWith, resolveTab, shownAt, wakeTab } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -292,11 +292,19 @@ const STYLE_CACHE_CHARS = 8_000_000; // and no more than this in all
 const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
 const STYLE_MAX_CHARS = 8_000_000;
 
+// How long a page's hello waits for its tab's record (a storage read slow as
+// a background starts), at most, to say whether it's proven: not said then.
+const PROVEN_WAIT_MS = 200;
+
 export const handlers = {
   /** @param {{ unseen?: boolean, heard?: number, doc?: string, fresh?: boolean, made?: boolean }} message `unseen`: the page started visible in a tab whose page may have just been made; `doc`: the page's own id; `fresh`: its copy started with it; `made`: it was made from the tab's saved history, or is a tab's first page (background/tabs.js pageStarted); `heard`: its place among the activations as it came (background.js) */
   async hello({ unseen = false, heard = null, doc = null, fresh = false, made = false } = {}, sender) {
     onboarding.pageLoaded();
-    pageStarted(sender.tab?.id, { unseen, heard, doc: typeof doc === 'string' ? doc : null, fresh: fresh === true, made: made === true, active: typeof sender.tab?.active === 'boolean' ? sender.tab.active : null });
+    const started = pageStarted(sender.tab?.id, { unseen, heard, doc: typeof doc === 'string' ? doc : null, fresh: fresh === true, made: made === true, active: typeof sender.tab?.active === 'boolean' ? sender.tab.active : null });
+    // `proven`: its tab is proven to have WebKit's mark with this page in it
+    // (a link in a tab Margin had proven): the page keeps that in its world,
+    // where a later copy of Margin reads it (background/tabs.js pageThere).
+    const proven = started.then(() => provenWith(sender.tab?.id, typeof doc === 'string' ? doc : null), () => false);
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
     // Only to a page in front: one loading behind (background/tabs.js
@@ -305,7 +313,7 @@ export const handlers = {
     if (sender.tab?.id != null) forgetShowing(sender.tab.id, { later: true });
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.js).
     // `warmUp`: the warm-up after a relaunch under way, for its note in the sidebar (background/warm-up.js).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab) };
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await Promise.race([proven, new Promise((resolve) => setTimeout(() => resolve(false), PROVEN_WAIT_MS))]) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.js), after checking the stored owner again.
@@ -730,11 +738,16 @@ export const handlers = {
     await focusTab(prev.id, { source: 'cancelNewTab' });
     await api.tabs.remove(tab.id).catch(() => {});
   },
+  // Answered as soon as the press is queued, not once its switch is over: a
+  // page's listener that hears nothing back (a page cut off from Margin, its
+  // messages going nowhere) stands aside for the keys, and must not take a
+  // long switch for that (shared/shortcuts.js). True: taken.
   /** @param {{ action: string }} message */
   async navigate({ action }, sender) {
-    if (!NAV_ACTIONS.has(action)) return;
+    if (!NAV_ACTIONS.has(action)) return false;
     const windowId = sender.tab?.windowId ?? (await api.windows?.getLastFocused())?.id;
-    await navigate(action, 'page', windowId);
+    void navigate(action, 'page', windowId);
+    return true;
   },
   /** @param {{ patch: Record<string, any> }} message */
   async updateSettings({ patch }) {

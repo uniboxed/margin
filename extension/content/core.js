@@ -997,6 +997,16 @@ export function startCore({ onTheme } = {}) {
   // uncovered, a Space switch or each return to it don't start the
   // background for nothing.
   let markProven = false;
+  // That word kept in this page's world too (`Margin.inWindowAt`, not this
+  // copy's own `Margin.content`): the world outlives a copy of Margin (Safari
+  // keeps it as Margin is updated, or Margin.app opened: background/cut-off.js),
+  // and goes with this document, so the copy after reads it in its wake
+  // (background/tabs.js pageThere 'proven') and doesn't introduce the tab
+  // again. A new document has a new world, with nothing in it.
+  const provenHere = () => {
+    markProven = true;
+    if (!Number.isFinite(Margin.inWindowAt)) Margin.inWindowAt = Date.now();
+  };
   let hiddenNow = document.hidden;
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
@@ -1004,11 +1014,46 @@ export function startCore({ onTheme } = {}) {
       return;
     }
     if (wasHidden) windowSeen = cameIntoView = true;
-    if (hiddenNow && !markProven) void Promise.resolve(send('inView', { doc: docId }, false)).then((proven) => { if (proven === true) markProven = true; }, () => {});
+    if (hiddenNow && !markProven) void Promise.resolve(send('inView', { doc: docId }, false)).then((proven) => { if (proven === true) provenHere(); }, () => {});
     hiddenNow = false;
   });
   Margin.content.windowSeen = () => windowSeen;
   Margin.content.cameIntoView = () => cameIntoView;
+  // When this page last handled a change of its visibility (a switch's last
+  // look before its show: background/tabs.js pingInPage, a page just shown or
+  // hidden may still be busy with it), and when it first drew after it last
+  // became visible (Date.now: background/tabs.js drewInPage, after a flip): the
+  // first ResizeObserver or animation frame callback after that, which in the
+  // WebKit host came in the very rendering update whose commit unhid the
+  // content WebKit hid as the tab came into the window; an observer's comes
+  // in a page hidden again by then too (an animation frame's doesn't). Margin's
+  // listener runs before the page's own (added at document_start).
+  /** @type {number | null} */
+  let visibilityAt = null;
+  /** @type {number | null} */
+  let drewVisibleAt = null;
+  if (platform?.introduceTabs) {
+    document.addEventListener('visibilitychange', () => {
+      visibilityAt = Date.now();
+      if (document.visibilityState !== 'visible') return;
+      let done = false;
+      /** @type {ResizeObserver | null} */
+      let observer = null;
+      const drew = () => {
+        if (done) return;
+        done = true;
+        drewVisibleAt = Date.now();
+        try { observer?.disconnect(); } catch {}
+      };
+      try {
+        observer = new ResizeObserver(drew);
+        observer.observe(document.documentElement);
+      } catch {}
+      try { requestAnimationFrame(drew); } catch {}
+    });
+  }
+  Margin.content.visibilityChangedAt = () => visibilityAt;
+  Margin.content.drewVisibleAt = () => drewVisibleAt;
   // Never longer than this hidden (a switch that didn't happen, or a page
   // shown without its frames running).
   const ARRIVAL_MAX_MS = 3000;
@@ -1277,6 +1322,7 @@ export function startCore({ onTheme } = {}) {
     if (dormant) return;
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
     helloAnswered = true;
+    if (ctx.proven === true) provenHere();
     // The background's note named another tab with this address: undone,
     // and drawn again from storage as this tab (its space, not the noted one's).
     const wrongNote = adoptedNote && adoptedNote.tabId !== ctx.tabId;

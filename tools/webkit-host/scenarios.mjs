@@ -1341,6 +1341,41 @@ export const SCENARIOS = {
   // empty view worth a screen refresh (without the introduction, 16–21 ms in
   // this host). The page in front sees nothing of it, and Margin's state only
   // the real switch.
+  // S1 and S2 (2026-11-04): a tab Margin has no proof of (introduced first)
+  // whose page stalls 2 s as it handles being hidden again (Instagram's
+  // stalls in Safari: 1.35 s and 2.4 s): the show waits for its page to answer
+  // one more look (after its flip's hide is over, by its own word or its
+  // paint), and goes out once it's free, so WebKit holds it: its content there
+  // as it's shown. At 9f1611f it was shown once its barriers ran out, about
+  // 1 s after the flip, into the stall: WebKit's hold ran out, and Safari's
+  // empty view stayed until the page drew.
+  heavyflip: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'V', url: '/x/heavy-visible?stall=2000&after=0' }, wait(800), { op: 'install' }, drawn('A'), drawn('V'), wait(300),
+    { op: 'probeShow', name: 'V', nth: 2 }, // the first is its introduction
+    { op: 'eval', in: 'A', js: `const { tabs } = await ${STATE}("tabs"); const id = Object.values(tabs).find((t) => t.url.includes("/x/heavy-visible"))?.id; return JSON.stringify(await Margin.content.send("activateTab", { tabId: id }) ?? null)` },
+    checkPage('V', 'V is the tab shown', `!document.hidden`, 5000),
+    { op: 'checkProbe', name: 'V', maxMs: 10, label: 'V: its content there as it\'s shown, after its stall' },
+    check('V', 'the switch introduced it, and its show waited for its page', `const e = (await Margin.content.send('switchLog')).filter((x) => x.kind === 'switch' && !x.error).at(-1); globalThis.__entry = JSON.stringify(e); return e?.introduced === true && e.gate?.pings?.length >= 2`),
+    { op: 'eval', in: 'V', js: 'return globalThis.__entry' },
+  ],
+  // S4 (2026-11-04): ⌃⌘↓ on a page that takes ArrowDown at every level goes to
+  // the next tab, through Margin's listener (the host has no Safari menu: no
+  // command), and the page never sees it. In Safari the command came only
+  // after the page had turned the key down, so such a page ate it.
+  commandkeys: [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(500), { op: 'install' }, drawn('A'), wait(300),
+    { op: 'open', name: 'E', url: '/x/eats-arrows', active: true }, { op: 'open', name: 'B', url: '/p/B' }, drawn('E'), drawn('B'), wait(300),
+    key('E', ...ARROW_DOWN, ['control', 'command']),
+    checkPage('E', 'the next tab is shown (E left)', `document.hidden`, 2500),
+    checkPage('E', 'E never saw the key', `__eaten.window === 0 && __eaten.document === 0 && __eaten.body === 0`),
+    { op: 'show', name: 'E' }, wait(200),
+    { op: 'page', in: 'E', js: `document.getElementById('t').focus(); return document.activeElement.id` },
+    key('E', ...ARROW_DOWN, ['control', 'command']),
+    checkPage('E', 'from a text field too', `document.hidden && __eaten.window === 0`, 2500),
+    { op: 'show', name: 'E' }, wait(200),
+    key('E', ...ARROW_DOWN, []),
+    checkPage('E', 'a bare arrow is still the page\'s (E stays, and took it)', `!document.hidden && __eaten.window === 1`, 300),
+  ],
   introduce: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), wait(600),
     { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
@@ -1536,13 +1571,15 @@ Object.assign(SCENARIOS, {
     ...['A', 'B', 'C'].map((t) => ({ op: 'page', in: t, js: 'window.__before = true; return "marked"' })),
     { op: 'page', in: 'C', js: `document.getElementById('t').value = 'draft'; return 'typed'` },
     { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
-    checkPage('A', 'A (in front, nothing typed), left with the old copy: loaded again', '!window.__before', 8000),
     checkPage('B', 'B (behind): loaded again', '!window.__before', 8000),
-    boxed('A'), themed('A'), answers('A'),
+    // (2026-11-04: never loaded again in front. Its dead sidebar out of sight at
+    // once, and loaded again once it's left.)
+    checkPage('A', 'A (in front, nothing typed), left with the old copy: its dead sidebar out of sight, not loaded again in front', "window.__before === true && [...document.querySelectorAll('margin-sidebar-host')].every((h) => getComputedStyle(h).display === 'none')", 3000),
     checkPage('C', 'C (a draft typed): not loaded again, the draft kept', `window.__before === true && document.getElementById('t').value === 'draft'`, 3000),
     checkPage('C', 'C: the old copy\'s dead sidebar out of sight', "[...document.querySelectorAll('margin-sidebar-host')].every((h) => getComputedStyle(h).display === 'none')", 3000),
-    settled('A', 'A: covers lifted, its sidebar has every tab', 4),
-    ...click('A', 'B'), shown('B'), settled('B', 'A to B from the sidebar: covers lifted, every tab there', 4),
+    { op: 'show', name: 'B' }, shown('B'),
+    checkPage('A', 'A, left: loaded again, behind', '!window.__before && document.hidden', 4000),
+    settled('B', 'A to B: covers lifted, every tab there', 4),
     ...click('B', 'D'), shown('D'), settled('D', 'B to D (asleep) from the sidebar: loaded, covers lifted', 4),
     ...click('D', 'FC'), shown('C'),
     checkPage('C', 'C shown: still the draft, no dead cover over it', `document.getElementById('t').value === 'draft' && document.body.style.opacity !== '0' && [...document.querySelectorAll('margin-sidebar-host')].every((h) => getComputedStyle(h).display === 'none')`, 2000),
@@ -1560,11 +1597,13 @@ Object.assign(SCENARIOS, {
     { op: 'page', in: 'N', js: 'window.__before = true; return location.href' },
     { op: 'page', in: 'A', js: 'window.__before = true; return "marked"' },
     { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
-    checkPage('A', 'A: loaded again', '!window.__before', 8000),
+    // (In front: not loaded again there, 2026-11-04; once it's left, below.)
     checkPage('N', "N: loaded again at this copy's address, and it answers", "const later = (ms) => new Promise((r) => setTimeout(() => r(false), ms)); return !window.__before && location.search === '?again' && document.readyState === 'complete' && await Promise.race([browser.storage.local.get('owner').then(() => true), later(1000)])", 8000),
     wait(1500),
+    checkPage('A', 'A (in front): not loaded again in front', 'window.__before === true'),
     { op: 'show', name: 'N' },
     checkPage('N', 'N shown: still open, its sidebar has every tab', "!document.hidden && document.querySelectorAll('[data-tab-id]').length >= 3", 4000),
+    checkPage('A', 'A, left: loaded again, behind', '!window.__before && document.hidden', 4000),
     check('A', 'no hand-off closed N', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).some((t) => /newtab\\.html\\?again/.test(t.url))`, 3000),
   ],
 });
