@@ -327,6 +327,40 @@ test('which tabs: web pages unused for the setting\'s hours, the longest unused 
   assert.deepEqual(M.sleepyTabs({ ...pinned, settings: { ...pinned.settings, sleepAfterHours: 0 } }, NOW, { afterMs: 1 }).map((t) => t.id), [3, 2, 10, 4, 9], 'a pass asked for by hand: its own time');
 });
 
+test('mail, chat and calendar sites stay awake without being listed (Gmail, Outlook, Teams, Slack and the like, with their subdomains), unless that\'s turned off; the user\'s own list as well', () => {
+  const on = {};
+  assert.equal(S.staysAwake('https://mail.google.com/mail/u/0/#inbox', on), true);
+  assert.equal(S.staysAwake('https://outlook.cloud.microsoft/mail/AAMk', on), true);
+  assert.equal(S.staysAwake('https://teams.cloud.microsoft/', on), true);
+  assert.equal(S.staysAwake('https://acme.slack.com/', on), false, 'only the app\'s own address');
+  assert.equal(S.staysAwake('https://app.slack.com/client/T1', on), true);
+  assert.equal(S.staysAwake('https://www.google.com/search?q=mail', on), false);
+  assert.equal(S.staysAwake('https://notdiscord.com/', on), false);
+  assert.equal(S.staysAwake('https://mail.google.com/', { keepMessagingAwake: false }), false, 'turned off');
+  assert.equal(S.staysAwake('https://youtube.com/', { keepMessagingAwake: false, neverSleepSites: ['youtube.com'] }), true, 'the user\'s list');
+  const s = withTabs([rec(1, 'https://mail.google.com/mail/u/0/', 9), rec(2, 'https://old.test/', 9)]);
+  assert.deepEqual(M.sleepyTabs(s, NOW).map((t) => t.id), [2], 'Gmail isn\'t due');
+  assert.deepEqual(M.sleepyTabs({ ...s, settings: { ...s.settings, keepMessagingAwake: false } }, NOW).map((t) => t.id), [1, 2]);
+});
+
+test('a pass wakes a tab asleep whose site stays awake now (put to sleep before Margin kept mail and chat awake, or listed since), behind the page in front; not one that may sleep, nor any with that turned off', async () => {
+  await setUp([
+    { id: 1, url: 'https://front.test/', active: true },
+    { id: 2, url: S.sleepAddress(BASE, { url: 'https://outlook.cloud.microsoft/mail/', key: 'a' }) },
+    { id: 3, url: S.sleepAddress(BASE, { url: 'https://news.test/', key: 'b' }) },
+  ]);
+  const pass = await sleepIdle();
+  assert.equal(pass.woke, 1);
+  assert.deepEqual(fake.updates.map((u) => [u.id, u.change.url]), [[2, 'https://outlook.cloud.microsoft/mail/']]);
+  assert.ok(fake.updates.every((u) => !('active' in u.change)), 'not brought to the front');
+  await setUp([
+    { id: 1, url: 'https://front.test/', active: true },
+    { id: 2, url: S.sleepAddress(BASE, { url: 'https://outlook.cloud.microsoft/mail/', key: 'a' }) },
+  ], { keepMessagingAwake: false });
+  assert.equal((await sleepIdle()).woke, undefined);
+  assert.deepEqual(fake.updates, []);
+});
+
 test('which tabs: the time Safari was closed doesn\'t count (a relaunch moves every last use forward)', () => {
   // Used 1 and 3 hours before Safari quit; Safari opened again 10 hours later.
   const quitAt = NOW - 10 * HOUR;
@@ -622,6 +656,16 @@ test('sleepInPage: only a hidden page at the same address with nothing typed (Ma
     assert.equal(sleepInPage('https://a.test/', until).why, 'moved');
     page({ media: [el({ paused: false })] });
     assert.equal(sleepInPage('https://a.test/', until).why, 'playing');
+    // A site the user lets send notifications: asleep, it couldn't.
+    globalThis.Notification = { permission: 'granted' };
+    try {
+      page();
+      assert.equal(sleepInPage('https://a.test/', until).why, 'notifies');
+      globalThis.Notification = { permission: 'default' };
+      assert.equal(sleepInPage('https://a.test/', until).ok, true, 'not allowed: it may sleep');
+    } finally {
+      delete globalThis.Notification;
+    }
     page();
     assert.equal(sleepInPage('https://a.test/', Date.now() - 1).why, 'late');
     page({ edits: false, frames: [{ contentDocument: null }, { get contentDocument() { throw new Error('cross-origin'); } }] });

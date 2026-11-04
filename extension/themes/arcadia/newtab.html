@@ -27,6 +27,9 @@
       <label id="sleep-setting" hidden>Put tabs to sleep after not using them for (hours, 0 = never). A sleeping tab frees its memory and loads again when you go back to it
         <input id="sleep-hours" type="number" min="0" max="720" step="any">
       </label>
+      <label id="messaging-awake-setting" hidden>Keep mail, chat and calendar tabs awake (Gmail, Outlook, Teams, Slack, Discord, WhatsApp and the like), so they can notify you. Sites you let send notifications stay awake too
+        <input id="messaging-awake" type="checkbox" switch>
+      </label>
       <label id="never-sleep-setting" class="stacked" hidden>Never put these sites to sleep (one per line; each includes its subdomains)
         <textarea id="never-sleep" rows="3" spellcheck="false" autocomplete="off" placeholder="mail.example.com"></textarea>
       </label>
