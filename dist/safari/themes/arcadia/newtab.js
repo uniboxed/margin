@@ -258,11 +258,9 @@ export function mount({ api, self, send, windowed = false }) {
   // (turning sleep off wakes none: each wakes as it's shown).
   const sleepHours = $('sleep-hours');
   const neverSleep = $('never-sleep');
-  const messagingAwake = $('messaging-awake');
   const wakeAllStatus = $('wake-all-status');
   if (platform?.sleepTabs) {
-    for (const id of ['sleep-setting', 'messaging-awake-setting', 'never-sleep-setting', 'wake-all-setting']) $(id).hidden = false;
-    messagingAwake.addEventListener('change', () => send('updateSettings', { patch: { keepMessagingAwake: messagingAwake.checked } }));
+    for (const id of ['sleep-setting', 'never-sleep-setting', 'wake-all-setting']) $(id).hidden = false;
     sleepHours.addEventListener('change', () => {
       const value = Number(sleepHours.value);
       if (Number.isFinite(value) && value >= 0) send('updateSettings', { patch: { sleepAfterHours: Math.min(value, 720) } });
@@ -516,7 +514,6 @@ export function mount({ api, self, send, windowed = false }) {
     gestureGuard?.update();
     if (document.activeElement !== hours) hours.value = String(state.settings.archiveAfterHours);
     if (document.activeElement !== sleepHours) sleepHours.value = String(state.settings.sleepAfterHours ?? 4);
-    messagingAwake.checked = state.settings.keepMessagingAwake !== false;
     if (document.activeElement !== neverSleep) neverSleep.value = siteList(state.settings.neverSleepSites ?? []).join('\n');
     if (document.activeElement !== keepReady) keepReady.value = String(V.keepReadyMinutes(state.settings)); // (as stored: settings from before 2026-11-03 too)
     if (document.activeElement !== warmUpTabs) warmUpTabs.value = String(V.warmUpCount(state.settings));

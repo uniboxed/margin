@@ -55,8 +55,6 @@ export interface Settings {
   sleepAfterHours: number;
   /** hostnames whose tabs never sleep (each with its subdomains: shared/sleep.js) */
   neverSleepSites: string[];
-  /** mail, chat and calendar sites' tabs never sleep (shared/sleep.js MESSAGING_SITES); on unless false */
-  keepMessagingAwake?: boolean;
   keepLeftTabReadyMinutes: number;
   /** Safari: tabs loaded behind the page after a relaunch (background/warm-up.js); 0: off */
   warmUpTabs?: number;

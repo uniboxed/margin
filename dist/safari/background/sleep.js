@@ -37,7 +37,7 @@
 import * as M from '../state/model.js';
 import { api, cached, isOwner, load, now } from './store.js';
 import { platform } from '../shared/platform.js';
-import { SLEEP_PATH, isSleepPage, sleepAddress, staysAwake } from '../shared/sleep.js';
+import { SLEEP_PATH, isSleepPage, neverSleeps, sleepAddress } from '../shared/sleep.js';
 import { foundWithNoPage, isFocusing, mayAccess, switchBusy, wakeAsleep } from './tabs.js';
 import { hasNoPage, isHeld } from './keep-ready.js';
 import { isSlow } from './slow.js';
@@ -95,8 +95,6 @@ export function sleepInPage(expected, until) {
     if (top && location.href !== expected) return { ok: false, why: 'moved', top };
     const playing = (/** @type {Document} */ doc) => [...doc.querySelectorAll('audio, video')].some((/** @type {any} */ el) => (!el.paused && !el.ended) || (typeof MediaStream !== 'undefined' && el.srcObject instanceof MediaStream));
     if (playing(document) || /** @type {any} */ (navigator).mediaSession?.playbackState === 'playing' || /** @type {any} */ (document).pictureInPictureElement || document.fullscreenElement) return { ok: false, why: 'playing', top };
-    // A site the user lets notify: asleep, it couldn't (a message, a reminder).
-    if (top && typeof Notification !== 'undefined' && Notification.permission === 'granted') return { ok: false, why: 'notifies', top };
     const inUse = (/** @type {Document | null} */ doc, depth = 0) => {
       if (!doc || depth > 4) return false;
       for (const el of /** @type {any[]} */ ([...doc.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=search], input[type=email], input[type=url], input[type=tel], input[type=number], input[type=password]')])) if (String(el.value ?? '').trim()) return true;
@@ -162,11 +160,6 @@ export function sleepIdleThrottled() {
 async function run({ afterMs = null, max = TIMING.perRun }) {
   const startedAt = Date.now();
   const s = await load();
-  // Tabs asleep whose site stays awake now (a mail or chat site: put to sleep
-  // before Margin kept them awake, or the user's list since): woken behind
-  // the page in front, so they notify again.
-  const keptAwake = new Set(Object.values(s.tabs).filter((t) => t.sleeping && !t.active && staysAwake(t.url, s.settings)).map((t) => t.id));
-  const woke = keptAwake.size ? await wakeAll({ only: keptAwake, by: 'stays awake' }) : 0;
   const due = M.sleepyTabs(s, now(), { afterMs });
   // A pass asked for by hand asks every page again (its refusals still count).
   const byHand = afterMs != null;
@@ -203,9 +196,9 @@ async function run({ afterMs = null, max = TIMING.perRun }) {
     if (slept < max && i < due.length - 1) await pause(TIMING.gapMs);
   }
   if (refusalsChanged) writeRefusals();
-  if (due.length || woke) recordSleep({ step: 'run', due: due.length, slept, skipped, ...(stopped ? { stopped } : {}), ...(woke ? { woke } : {}), ms: Date.now() - startedAt });
+  if (due.length) recordSleep({ step: 'run', due: due.length, slept, skipped, ...(stopped ? { stopped } : {}), ms: Date.now() - startedAt });
   if (slept) console.info(`[margin] put ${slept} tab(s) to sleep`);
-  return { due: due.length, slept, skipped, stopped, ...(woke ? { woke } : {}) };
+  return { due: due.length, slept, skipped, stopped };
 }
 
 // A tab's last use: since then it's been unused (state/model.js sleepyTabs).
@@ -228,7 +221,7 @@ async function sleepTab(record, afterMs) {
   if (tab.active) return 'in front';
   if (isSleepPage(tab.url) || tab.discarded) return 'asleep';
   if (!/^https?:/i.test(tab.url ?? '')) return 'not a web page';
-  if (staysAwake(tab.url, cached()?.settings)) return 'never sleeps';
+  if (neverSleeps(tab.url, cached()?.settings?.neverSleepSites)) return 'never sleeps';
   if (tab.status !== 'complete') return 'loading';
   if (tab.audible) return 'playing';
   if (isFocusing(tab.id)) return 'switching';
@@ -409,16 +402,13 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // ---- waking --------------------------------------------------------------------
 // Settings' "Wake all sleeping tabs": every tab asleep, one after another (a
 // tab in front wakes itself). Safari: sent to its page's address (wakeAsleep);
-// Chrome: each tab discarded loaded again. How many it woke. `only`: these
-// tabs alone (a pass: tabs whose site stays awake now); `by`: the switch log's.
+// Chrome: each tab discarded loaded again. How many it woke.
 /** @type {Set<number>} */
 const wakingAll = new Set();
-/** @param {{ only?: Set<number>, by?: string }} [options] */
-export async function wakeAll({ only, by = 'all' } = {}) {
+export async function wakeAll() {
   const open = await api.tabs.query({}).catch(() => []);
   let woke = 0;
   for (const tab of open) {
-    if (only && !only.has(tab.id)) continue;
     if (tab.active || (platform?.sleepTabs === 'page' ? !isSleepPage(tab.url) : tab.discarded !== true)) continue;
     wakingAll.add(tab.id);
     const how = platform?.sleepTabs === 'page'
@@ -426,7 +416,7 @@ export async function wakeAll({ only, by = 'all' } = {}) {
       : (await Promise.resolve(api.tabs.reload(tab.id)).then(() => true, () => false)) ? 'reload' : null;
     if (how) {
       woke++;
-      recordSleep({ step: 'woke', tabId: tab.id, by, how });
+      recordSleep({ step: 'woke', tabId: tab.id, by: 'all', how });
     } else wakingAll.delete(tab.id);
     await pause(TIMING.wakeGapMs);
   }

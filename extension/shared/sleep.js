@@ -97,28 +97,6 @@ export function neverSleeps(url, sites) {
   return siteList(sites).some((site) => host === site || host.endsWith(`.${site}`));
 }
 
-// Mail, chat and calendar sites stay awake (`settings.keepMessagingAwake`, on
-// unless turned off): asleep, they'd tell of nothing new (a message, a meeting
-// about to start), and their tab's title would keep its old count. Tirth: "no
-// user would do it themselves" (a list to fill in by hand, 2026-11-04). Each
-// with its subdomains, as the user's own list. (Sites the user lets notify
-// stay awake too: background/sleep.js sleepInPage, by the page's own
-// Notification.permission.)
-export const MESSAGING_SITES = Object.freeze([
-  'mail.google.com', 'chat.google.com', 'calendar.google.com', 'messages.google.com', 'voice.google.com',
-  'outlook.live.com', 'outlook.office.com', 'outlook.office365.com', 'outlook.cloud.microsoft',
-  'teams.microsoft.com', 'teams.live.com', 'teams.cloud.microsoft',
-  'app.slack.com', 'discord.com', 'web.whatsapp.com', 'messenger.com', 'web.telegram.org',
-  'mail.yahoo.com', 'mail.proton.me', 'app.fastmail.com', 'app.hey.com',
-]);
-
-// Whether a page's tab stays awake by the settings: on the user's list, or a
-// mail, chat or calendar site (unless that's turned off).
-/** @param {unknown} url @param {{ neverSleepSites?: unknown, keepMessagingAwake?: unknown } | null | undefined} settings */
-export function staysAwake(url, settings) {
-  return neverSleeps(url, settings?.neverSleepSites) || (settings?.keepMessagingAwake !== false && neverSleeps(url, MESSAGING_SITES));
-}
-
 // ---- the sleep page ------------------------------------------------------------
 // The page a sleeping tab shows (sleep/sleep.html): its title is the page's, and
 // its icon the site's (Margin's own copy of it, read once). It looks like the

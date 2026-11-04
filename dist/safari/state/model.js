@@ -4,7 +4,7 @@
 // background can write only the keys that changed.
 import { platform, PROFILES } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
-import { readSleepAddress, siteList, staysAwake } from '../shared/sleep.js';
+import { neverSleeps, readSleepAddress, siteList } from '../shared/sleep.js';
 /** @import { State } from '../../types/margin' */
 
 const ARCHIVE_CAP = 200;
@@ -24,12 +24,9 @@ const DEFAULT_SETTINGS = Object.freeze({
   archiveAfterHours: 12,
   // Tabs not used for this many hours are put to sleep to free their memory
   // (background/sleep.js; 0: never), except on these sites (hostnames, each
-  // with its subdomains: shared/sleep.js neverSleeps), and mail, chat and
-  // calendar sites unless `keepMessagingAwake` is off (shared/sleep.js
-  // MESSAGING_SITES).
+  // with its subdomains: shared/sleep.js neverSleeps).
   sleepAfterHours: 4,
   neverSleepSites: Object.freeze([]),
-  keepMessagingAwake: true,
   // Safari: the tab just left is kept ready to show (no flash when switching
   // back to it) for this many minutes, and let go once Safari is left for
   // another app; 0: off (background/keep-ready.js).
@@ -806,7 +803,7 @@ function sleepyTabs(state, now, { afterMs = null } = {}) {
   const cutoff = now - ms;
   const lastUse = (t) => Math.max(t.lastActive ?? now, t.wokeAt ?? -Infinity);
   return Object.values(state.tabs)
-    .filter((t) => !t.active && !t.sleeping && /^https?:/i.test(t.url) && lastUse(t) < cutoff && !staysAwake(t.url, state.settings))
+    .filter((t) => !t.active && !t.sleeping && /^https?:/i.test(t.url) && lastUse(t) < cutoff && !neverSleeps(t.url, state.settings.neverSleepSites))
     .sort((a, b) => lastUse(a) - lastUse(b));
 }
 
