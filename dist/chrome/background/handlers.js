@@ -22,6 +22,7 @@ import { activeThemeId, themePackage } from './theme-package.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
 import { closeTabs, noteClosing } from './closing.js';
+import { appLink } from './app-link.js';
 import { moveIndex } from '../ui/behaviors/drop-rules.js';
 import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, plainSetting } from '../themes/packages.js';
 
@@ -214,10 +215,14 @@ async function handOff(tab) {
   // One message: the page opens its palette if it can, and says so. Not
   // waited on for long: a page Safari stopped delivering to (tabs.js) would
   // otherwise leave this tab untracked and the new-tab page without one.
-  const opened = await Promise.race([
-    api.tabs.sendMessage(prev.id, { type: 'show-palette' }).then((r) => r === true, () => false),
-    new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
-  ]);
+  // Margin.app linked: its palette opens over the page instead, in the
+  // window's overlay (the page draws no Margin UI). Else the page's own.
+  const opened = appLink.linked()
+    ? appLink.push(tab.windowId, { type: 'palette', newTab: true })
+    : await Promise.race([
+      api.tabs.sendMessage(prev.id, { type: 'show-palette' }).then((r) => r === true, () => false),
+      new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
+    ]);
   if (!opened) {
     keepHandedOff(tab.id);
     // In case it answers after all, later.
@@ -361,6 +366,10 @@ async function known(promise, now, later) {
   return false;
 }
 
+// Whether Margin.app draws the UI for a page's window, and where its box goes
+// (background/link.js): in `hello`, so a page knows before it draws.
+const appState = (windowId) => (appLink.pageState() === 'off' ? null : { state: appLink.pageState(), layout: windowId != null ? appLink.layout(windowId) : null });
+
 export const handlers = {
   /** @param {{ unseen?: boolean, heard?: number, doc?: string, fresh?: boolean, made?: boolean }} message `unseen`: the page started visible in a tab whose page may have just been made; `doc`: the page's own id; `fresh`: its copy started with it; `made`: it was made from the tab's saved history, or is a tab's first page (background/tabs.js pageStarted); `heard`: its place among the activations as it came (background.js) */
   async hello({ unseen = false, heard = null, doc = null, fresh = false, made = false } = {}, sender) {
@@ -385,7 +394,7 @@ export const handlers = {
     if (sender.tab?.id != null) forgetShowing(sender.tab.id, { later: true });
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.js).
     // `warmUp`: the warm-up after a relaunch under way, for its note in the sidebar (background/warm-up.js).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await known(proven, () => provenNow, (p) => p && sender.tab?.id != null && pageDoc && tellProven(sender.tab.id, pageDoc)) };
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, app: appState(windowId), since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await known(proven, () => provenNow, (p) => p && sender.tab?.id != null && pageDoc && tellProven(sender.tab.id, pageDoc)) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.js), after checking the stored owner again.
@@ -890,10 +899,29 @@ export const handlers = {
   },
   // ⌘T: Margin's new-tab page asks (newTabHandOff below), unless the
   // background already handed the tab off as it was created.
+  // An address chosen on Margin's new-tab page, drawn by Margin.app's
+  // overlay (its launcher): opened in that tab, as the page's own does.
+  // A key Margin.app holds while it draws the UI (⌘T), heard by a page
+  // anyway: nothing visible happens; the app is told, for its diagnostics.
+  async appKeyHeard({ command }, sender) {
+    console.info(`[margin] ${command} heard in a page while Margin.app draws the UI: left to the app`);
+    appLink.push(sender?.tab?.windowId ?? null, { type: 'keyHeard', command: String(command), from: 'page' });
+  },
+  async openHere({ tabId, url }) {
+    if (!Number.isInteger(tabId) || typeof url !== 'string' || !/^(https?|file):/i.test(url)) throw new Error('not an address');
+    const tab = await api.tabs.get(tabId);
+    if (!V.isNewTabPage(tab.url || tab.pendingUrl)) throw new Error('not a new-tab page');
+    await api.tabs.update(tabId, { url });
+    return { shown: tabId };
+  },
   async newTabPage(_, sender) {
     void newTabPageSeen(sender.tab);
     if (!sender.tab) return { openPalette: true };
-    return (await newTabHandOff(sender.tab)) ? { handled: true } : { openPalette: true };
+    if (await newTabHandOff(sender.tab)) return { handled: true };
+    // Margin.app linked: the new-tab page draws nothing, the app's overlay
+    // draws its launcher there and opens the palette over it.
+    if (appLink.linked()) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
+    return { openPalette: true };
   },
   // Escape in the palette of a fresh new tab (⌘T; newtab/newtab.js):
   // back to the tab the user was on, and this one closes, as if no tab had

@@ -110,7 +110,16 @@ function onMessage(msg) {
       if (host?.getState()) mounting = mounting.then(() => mount(msg.theme));
       return;
     case 'command':
-      if (msg.name === 'palette') runtime?.openPalette({ newTab: true });
+      // The app's keys (app/shell/Shortcuts.swift, following the Settings shortcuts).
+      if (msg.name === 'palette') {
+        if (runtime?.paletteOpen) runtime.closePalette();
+        else runtime?.openPalette({ newTab: !host?.launcher });
+      } else if (msg.name === 'toggle-sidebar') runtime?.sidebar.toggle();
+      return;
+    case 'link':
+      // The link to the copy dropped (`reconnecting`: the last picture stays,
+      // dimmed, saying so, until it's back or the app closes the overlay) or came back.
+      setReconnecting(msg.state === 'reconnecting');
       return;
     case 'pointer':
       runtime?.pointer({ x: Number(msg.x), y: Number(msg.y) });
@@ -124,8 +133,17 @@ function onMessage(msg) {
       /** @type {any} */ (document.activeElement)?.blur?.();
       return;
     case 'push':
-      if (msg.msg?.type === 'switching') runtime?.setUi({ switchingTo: Number.isInteger(msg.msg.tabId) ? msg.msg.tabId : null });
-      return;
+      switch (msg.msg?.type) {
+        // A switch the copy makes in this window (a next/previous key), and its end.
+        case 'switching': runtime?.setUi({ switchingTo: Number.isInteger(msg.msg.tabId) ? msg.msg.tabId : null }); return;
+        case 'switch-done': case 'switch-failed': runtime?.setUi({ switchingTo: null }); return;
+        // Safari's own New Tab made a tab the copy closed again (background/handlers.js
+        // newTabHandOff), or Margin's new-tab page came up: the palette, here.
+        case 'palette': runtime?.openPalette({ newTab: msg.msg.newTab === true }); return;
+        // A key the app holds, heard by the copy anyway (its command, or a page): noted.
+        case 'keyHeard': log('note', `${msg.msg.command} reached the extension (${msg.msg.from}) while the app holds it`); return;
+        default: return;
+      }
     default:
       return;
   }
@@ -161,11 +179,39 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
 /** @type {any} */
 let pendingTheme = null;
 
+// ---- the link dropped ----------------------------------------------------------------------
+// Dimmed with a note (not the theme's: Margin's own, over everything) while
+// the app waits for the copy to come back (app/shell/Shell.swift).
+/** @type {HTMLElement | null} */
+let reconnectNote = null;
+function setReconnecting(on) {
+  document.documentElement.toggleAttribute('data-reconnecting', on);
+  if (on && !reconnectNote) {
+    reconnectNote = document.createElement('div');
+    reconnectNote.id = 'margin-reconnecting';
+    reconnectNote.setAttribute('role', 'status');
+    reconnectNote.textContent = 'Reconnecting to Safari…';
+    document.body.append(reconnectNote);
+  } else if (!on && reconnectNote) {
+    reconnectNote.remove();
+    reconnectNote = null;
+  }
+}
+
+// Margin's new-tab page asked with its Settings open (#settings): open here too, once per page.
+let settingsFor = null;
+function followPage() {
+  const asked = host?.settingsAsked ? host.pageTabId : null;
+  if (asked != null && asked !== settingsFor) runtime?.setUi({ settingsOpen: true });
+  settingsFor = asked;
+}
+
 async function start() {
   const text = await post('hello');
   const hello = typeof text === 'string' ? JSON.parse(text) : text;
   if (!hello) return log('warn', 'no window for this overlay');
   host = createAppHost({ hello, post, onMessage, warn: (...args) => log('warn', ...args) });
+  host.onState(() => followPage());
   pendingTheme = hello.theme ?? null;
   if (hello.theme && host.getState()) mounting = mounting.then(() => mount(hello.theme));
 }

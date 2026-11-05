@@ -135,6 +135,8 @@ enum LinkMessage {
     // Something for one window's UI (or every window's, with no windowId): a notice, a switch under way.
     case push(epoch: String, windowId: Int?, msg: JSONObject)
     case theme(epoch: String, chunk: Chunk)
+    // The copy's shortcuts for the app's hot keys: { command: [combination] } (Shortcuts.swift).
+    case keys(epoch: String, bindings: [String: [String]])
     case reply(id: Int, body: JSONObject)
     case tock
     case bye(why: String)
@@ -186,6 +188,14 @@ enum LinkMessage {
         case "theme":
             guard let epoch, let chunk = Chunk(m) else { return nil }
             return .theme(epoch: epoch, chunk: chunk)
+        case "keys":
+            guard let epoch, let raw = m["bindings"] as? JSONObject else { return nil }
+            var bindings: [String: [String]] = [:]
+            for (command, list) in raw {
+                guard let list = list as? [Any] else { continue }
+                bindings[command] = list.compactMap { $0 as? String }.filter { $0.count <= 64 }.prefix(8).map { $0 }
+            }
+            return .keys(epoch: epoch, bindings: bindings)
         case "reply":
             guard let id = int(m["id"]) else { return nil }
             var body = m

@@ -119,8 +119,14 @@ function bundle(out, manifest) {
   write(BUNDLES.content, sidebar.js);
   sidebar.js = [BUNDLES.content];
 
-  write(BUNDLES.background, [manifest.background.service_worker]);
-  manifest.background.service_worker = BUNDLES.background;
+  // Chrome's background is a service worker; Safari's a page (`scripts`,
+  // non-persistent: platform/safari/manifest.json), since WebKit hangs a
+  // service worker that opens a WebSocket, and the link to Margin.app is one
+  // (background/link.js, PLAN.md §14 Spike 3). One bundle either way.
+  const bg = manifest.background;
+  write(BUNDLES.background, bg.service_worker ? [bg.service_worker] : bg.scripts);
+  if (bg.service_worker) bg.service_worker = BUNDLES.background;
+  else bg.scripts = [BUNDLES.background];
 
   // The page's box, in the page's world (registered by the background).
   write(BUNDLES.page, ['content/page/main.js']);

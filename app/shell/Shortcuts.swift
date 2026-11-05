@@ -4,9 +4,12 @@
 // browser is the active app and its front window has Margin's overlay, and
 // let go the moment it isn't (another app in front must get ⌃⌘← and ⌘T).
 //
-// The keys: ⌃⌘↓/↑ next and previous tab, ⌃⌘→/← next and previous space
-// (sent to the window's extension copy as `navigate`), and ⌘T, the palette
-// (opened in the front window's overlay, which then takes the typing).
+// The keys: next and previous tab and space (sent to the window's extension
+// copy as `navigate`), ⌘T, the palette (opened in the front window's overlay,
+// which then takes the typing: the app's own, with no round trip through the
+// browser), and the sidebar's show/hide key. Which combinations is the
+// copy's to say (its Settings shortcuts, and Safari's command keys: the
+// `keys` message, app/PROTOCOL.md); until it does, the defaults below.
 // Combinations are written as the extension's settings write them
 // ("Ctrl+Meta+ArrowDown": shared/shortcuts.js).
 
@@ -15,6 +18,7 @@ import Foundation
 
 enum AppCommand: String, CaseIterable {
     case nextTab = "next-tab", prevTab = "prev-tab", nextSpace = "next-space", prevSpace = "prev-space", palette
+    case toggleSidebar = "toggle-sidebar"
 }
 
 nonisolated struct Combo: Hashable, CustomStringConvertible {
@@ -30,6 +34,11 @@ nonisolated struct Combo: Hashable, CustomStringConvertible {
         "KeyY": kVK_ANSI_Y, "KeyZ": kVK_ANSI_Z, "Space": kVK_Space, "F19": kVK_F19,
         "Digit0": kVK_ANSI_0, "Digit1": kVK_ANSI_1, "Digit2": kVK_ANSI_2, "Digit3": kVK_ANSI_3, "Digit4": kVK_ANSI_4,
         "Digit5": kVK_ANSI_5, "Digit6": kVK_ANSI_6, "Digit7": kVK_ANSI_7, "Digit8": kVK_ANSI_8, "Digit9": kVK_ANSI_9,
+        "Enter": kVK_Return, "Backquote": kVK_ANSI_Grave, "Minus": kVK_ANSI_Minus, "Equal": kVK_ANSI_Equal,
+        "BracketLeft": kVK_ANSI_LeftBracket, "BracketRight": kVK_ANSI_RightBracket, "Backslash": kVK_ANSI_Backslash,
+        "Semicolon": kVK_ANSI_Semicolon, "Quote": kVK_ANSI_Quote, "Comma": kVK_ANSI_Comma, "Period": kVK_ANSI_Period, "Slash": kVK_ANSI_Slash,
+        "F1": kVK_F1, "F2": kVK_F2, "F3": kVK_F3, "F4": kVK_F4, "F5": kVK_F5, "F6": kVK_F6,
+        "F7": kVK_F7, "F8": kVK_F8, "F9": kVK_F9, "F10": kVK_F10, "F11": kVK_F11, "F12": kVK_F12,
     ]
     static let modifierBits: [String: Int] = ["Meta": cmdKey, "Ctrl": controlKey, "Alt": optionKey, "Shift": shiftKey]
 
@@ -56,12 +65,26 @@ enum ShortcutSet {
     static let defaults: [AppCommand: String] = [
         .nextTab: "Ctrl+Meta+ArrowDown", .prevTab: "Ctrl+Meta+ArrowUp",
         .nextSpace: "Ctrl+Meta+ArrowRight", .prevSpace: "Ctrl+Meta+ArrowLeft",
-        .palette: "Meta+KeyT",
+        .palette: "Meta+KeyT", .toggleSidebar: "Alt+KeyS",
     ]
 
     static var bindings: [Combo: AppCommand] {
         var out: [Combo: AppCommand] = [:]
         for (command, text) in defaults { if let combo = Combo.parse(text) { out[combo] = command } }
+        return out
+    }
+
+    // The copy's `keys` ({ command: [combination] }): a command it doesn't
+    // name keeps its default; one it names with nothing usable has none; the
+    // palette is always ⌘T too; a combination two commands name goes to the
+    // first in AppCommand's order (the copy's Settings refuse that anyway).
+    static func bindings(from keys: [String: [String]]) -> [Combo: AppCommand] {
+        var out: [Combo: AppCommand] = [:]
+        for command in AppCommand.allCases {
+            var texts = keys[command.rawValue] ?? [defaults[command]].compactMap { $0 }
+            if command == .palette, !texts.contains("Meta+KeyT") { texts.append("Meta+KeyT") }
+            for text in texts { if let combo = Combo.parse(text), out[combo] == nil { out[combo] = command } }
+        }
         return out
     }
 
@@ -121,18 +144,33 @@ final class CarbonHotKeys: HotKeyRegistrar {
 final class AppShortcuts {
     var onCommand: ((AppCommand) -> Void)?
     private let registrar: HotKeyRegistrar
-    private let bindings: [(Combo, AppCommand)]
+    private(set) var bindings: [(Combo, AppCommand)]
     private(set) var isActive = false
+    private var held = 0 // ids registered, so a rebind lets go of all of them
     // The ones another app holds (tried again each time they're taken).
     private(set) var unavailable: [Combo] = []
 
     init(registrar: HotKeyRegistrar, bindings: [Combo: AppCommand] = ShortcutSet.bindings) {
         self.registrar = registrar
-        self.bindings = bindings.sorted { $0.value.rawValue < $1.value.rawValue }
+        self.bindings = Self.ordered(bindings)
         registrar.onHit = { [weak self] id in
             guard let self, self.isActive, Int(id) < self.bindings.count else { return }
             self.onCommand?(self.bindings[Int(id)].1)
         }
+    }
+
+    private static func ordered(_ bindings: [Combo: AppCommand]) -> [(Combo, AppCommand)] {
+        bindings.sorted { ($0.value.rawValue, $0.key.keyCode, $0.key.modifiers) < ($1.value.rawValue, $1.key.keyCode, $1.key.modifiers) }
+    }
+
+    // New combinations (the copy's `keys`): held at once if the keys are held now.
+    func rebind(_ next: [Combo: AppCommand]) {
+        let ordered = Self.ordered(next)
+        guard ordered.map(\.0) != bindings.map(\.0) || ordered.map(\.1) != bindings.map(\.1) else { return }
+        let was = isActive
+        set(active: false)
+        bindings = ordered
+        set(active: was)
     }
 
     func set(active: Bool) {
@@ -140,12 +178,13 @@ final class AppShortcuts {
         isActive = active
         if active {
             unavailable = []
+            held = bindings.count
             for (i, (combo, command)) in bindings.enumerated() where !registrar.register(combo, id: UInt32(i)) {
                 unavailable.append(combo)
                 Diagnostics.warn("\(combo) (\(command.rawValue)) is another app's: not Margin's")
             }
         } else {
-            for i in bindings.indices { registrar.unregister(id: UInt32(i)) }
+            for i in 0..<max(bindings.count, held) { registrar.unregister(id: UInt32(i)) }
         }
     }
 }

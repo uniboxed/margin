@@ -1,7 +1,9 @@
 // State owner. Non-persistent: every handler reads state through load(),
 // which rehydrates from storage.local after the worker is unloaded.
-// Bundled by scripts/build.js into a classic service worker
-// (background.bundle.js): Safari ignores "type": "module" for backgrounds.
+// Bundled by scripts/build.js into one classic script (background.bundle.js):
+// Chrome's service worker, Safari's non-persistent background page (the link
+// to Margin.app needs a page: background/link.js). Safari ignores "type":
+// "module" for backgrounds.
 // The parts live in background/; every listener is registered here, at the
 // top level, as a service worker must.
 import * as M from './state/model.js';
@@ -24,6 +26,7 @@ import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
 import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
 import { platform } from './shared/platform.js';
+import { appLink } from './background/app-link.js';
 
 // ---- which copy is in charge ------------------------------------------------
 // Safari can keep an older copy of Margin running beside a newer one until it
@@ -344,7 +347,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectPage', 'fetchStyle', 'themePackage']);
+const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectPage', 'fetchStyle', 'themePackage', 'appKeyHeard']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -388,6 +391,17 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
       answer({ ok: false, error: 'Too late: Margin took too long to answer' });
     }, Math.max(0, latest - REPLY_GUARD_MS - Date.now()));
   }
+  if (message.type === 'hello') appLink.poke(); // a page starting: the app asked for again, if it wasn't there
+  route(message, sender, deadline).then(answer);
+  return true;
+});
+// A request run by its handler, as a page's (above) or Margin.app's UI's
+// (background/link.js, `sender` standing for the app's window) is:
+// answered { ok, result } or { ok: false, error, stale? }, never thrown.
+/** @param {any} message @param {any} sender @param {number} [deadline] */
+function route(message, sender, deadline = Infinity) {
+  const handler = handlers[message?.type];
+  if (!handler) return Promise.resolve({ ok: false, error: `no such request: ${message?.type}` });
   // DEVELOPMENT DIAGNOSTICS: how much of its page's wait was left as it came,
   // and what it waited for before its switch started (the switch log's
   // `before`: background/tabs.js focusTab).
@@ -396,7 +410,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   let step = Date.now();
   // A page starting asks whether this copy still owns the state (a newer
   // one may have taken over since: copies don't hear each other's writes).
-  decided()
+  return decided()
     .then(() => (message.type === 'hello' || message.type === 'owner' ? recheck() : null))
     .then(() => {
       if (arrival) [arrival.decided, step] = [since(step), Date.now()];
@@ -413,8 +427,26 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // A change made while a newer copy took over wasn't written (store.js
     // mutate). Only a copy known not to own the state says `stale` (its pages
     // then stand down for good): a storage error while deciding is an error.
-    .then(answer, (err) => answer(err instanceof StaleError || isStale() ? { ok: false, stale: true, error: String(err?.message ?? err) } : { ok: false, error: String(err?.message ?? err) }));
-  return true;
+    .then((reply) => reply, (err) => (err instanceof StaleError || isStale() ? { ok: false, stale: true, error: String(err?.message ?? err) } : { ok: false, error: String(err?.message ?? err) }));
+}
+
+// ---- Margin.app (background/link.js) ---------------------------------------------
+// Started once this copy knows it owns the state, with the settings it has.
+firstSync.then(async () => {
+  if (!isOwner()) return;
+  const s = await load().catch(() => null);
+  await appLink.start({ route, settings: s?.settings ?? null });
+}).catch((err) => console.warn('[margin] link', err?.message ?? err));
+api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && isOwner()) appLink.onStorage(changes); });
+api.windows?.onCreated?.addListener(() => appLink.windowsChanged());
+api.windows?.onRemoved?.addListener((windowId) => appLink.windowClosed(windowId));
+api.windows?.onFocusChanged?.addListener(() => appLink.windowsChanged());
+api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
+api.tabs.onActivated.addListener(() => appLink.windowsChanged());
+// A window's layout: its page in front gets its box at once (the rest read
+// it from storage, appLink, as they're shown or start).
+appLink.onLayout((windowId, layout) => {
+  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout }).catch(() => {}), () => {});
 });
 
 const keepReadyChanged = (changes) => !!changes.settings && changes.settings.oldValue?.keepLeftTabReadyMinutes !== changes.settings.newValue?.keepLeftTabReadyMinutes;
@@ -460,7 +492,18 @@ globalThis.margin = { archiveNow: archiveStale, sleepNow: (/** @type {number | u
 
 // ---- commands -------------------------------------------------------------
 
+// While Margin.app draws the UI (linked, or reconnecting), its keys are the
+// app's (Carbon hot keys following the Settings shortcuts: the `keys`
+// message): a UI command that reaches the extension anyway (⌘T, the
+// palette's, the sidebar's) does nothing visible here, and the app is told,
+// for its diagnostics. Navigation still works from here: it draws nothing.
+const APP_KEYS = new Set(['new-tab', 'open-palette', 'toggle-sidebar']);
 api.commands?.onCommand.addListener(owned(async (command, tabArg) => {
+  if (APP_KEYS.has(command) && appLink.pageState() !== 'off') {
+    console.info(`[margin] ${command} heard while Margin.app draws the UI: left to the app`);
+    appLink.push(tabArg?.windowId ?? null, { type: 'keyHeard', command, from: 'command' });
+    return;
+  }
   await untilSynced();
   if (command === 'new-tab') return newTabKey(tabArg);
   if (NAV_ACTIONS.has(command)) {

@@ -15,6 +15,11 @@
 //   window, and lets the pointer through to the page over that slot, except
 //   over what the theme draws there that takes the pointer (`hitRects`,
 //   reported as { op: 'hits' });
+// - Margin's new-tab page in front of the window (it draws nothing of its
+//   own while the app is linked: newtab/newtab.js): the theme's launcher is
+//   drawn here, in the page slot, with its Settings (`launcher`, `inNewTab`
+//   and `tabId` follow the window's tab in front), and an address chosen there
+//   opens in that tab (`openHere`);
 // - what only the app can do (`perform`): the window's own buttons. History
 //   (nav.*) isn't the app's: the runtime falls back to the copy's goBack,
 //   goForward and reload.
@@ -22,6 +27,7 @@
 // No browser API here: only the DOM and `post`.
 /** @import { Geometry, Host } from './host.js' */
 import { fromStorage } from '../shared/stored.js';
+import { isNewTabPage } from '../shared/view.js';
 
 /**
  * The stored values with a change applied, as storage.onChanged reports it
@@ -99,7 +105,7 @@ export function hitRects(root, slot, { limit = 64, getStyle = (el) => /** @type 
  *   onMessage?: (msg: any) => void,
  *   warn?: (...args: any[]) => void,
  * }} options
- * @returns {Host & { receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, destroy(): void }}
+ * @returns {Host & { receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, destroy(): void }}
  */
 export function createAppHost({ hello, post, onMessage = () => {}, warn = (...args) => console.warn('[margin]', ...args) }) {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
@@ -121,6 +127,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
   };
   const emit = () => { if (state && !destroyed) for (const cb of [...listeners]) cb(state); };
   rebuild();
+  // The window's tab in front, if it's Margin's new-tab page (its launcher is drawn here then).
+  const frontPage = () => {
+    const own = windows.find((w) => (w?.windowId ?? w?.id) === windowId);
+    const id = own?.activeTabId ?? Object.values(state?.tabs ?? {}).find((t) => t?.windowId === windowId && t?.active)?.id;
+    const tab = id != null ? state?.tabs?.[id] : null;
+    return tab && isNewTabPage(tab.url) ? { id: tab.id, url: String(tab.url) } : null;
+  };
+  const pageKey = () => JSON.stringify(frontPage());
 
   /**
    * @param {string} type @param {Record<string, any>} [payload]
@@ -128,6 +142,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
    */
   async function send(type, payload = {}) {
     if (destroyed) return undefined;
+    // An archived tab restored from the launcher takes the new-tab page's place (as there).
+    const page = type === 'restoreArchive' ? frontPage() : null;
+    if (page && payload.replaceTabId == null) payload = { ...payload, replaceTabId: page.id };
     // A request naming a tab carries its address and place (as the in-page
     // host's does): the copy trusts the id only if it's its own.
     if (Number.isInteger(payload.tabId) && !payload.hint) {
@@ -149,10 +166,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
   return {
     platform,
     windowId,
-    tabId: null,
+    get tabId() { return frontPage()?.id ?? null; },
     get mode() { return /** @type {'fullscreen' | 'windowed'} */ (mode); },
-    inNewTab: false,
-    launcher: false,
+    // Margin's start page (#launcher, #settings) chooses a new tab; a new-tab page opens it there.
+    get inNewTab() { const p = frontPage(); return !!p && !/#(launcher|settings)\b/.test(p.url); },
+    get launcher() { return !!frontPage(); },
+    // Its Settings asked for (the new-tab page's #settings: a Settings button elsewhere).
+    get settingsAsked() { return !!frontPage()?.url.includes('#settings'); },
+    get pageTabId() { return frontPage()?.id ?? null; },
     getState: () => state,
     /** @param {(state: any) => void} cb */
     onState(cb) { listeners.add(cb); return () => listeners.delete(cb); },
@@ -169,6 +190,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
     /** @param {string} name @param {any} [arg] */
     perform(name, arg) {
       switch (name) {
+        case 'navigate': {
+          // An address chosen in the launcher or palette over Margin's new-tab page: opened in that tab.
+          const page = frontPage();
+          if (!page || typeof arg?.url !== 'string') return false;
+          void send('openHere', { tabId: page.id, url: arg.url });
+          return true;
+        }
         case 'window.fullscreen':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
@@ -195,11 +223,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
           return emit();
         case 'windows': {
           if (!Array.isArray(msg.list)) return;
+          const page = pageKey();
           windows = msg.list;
           const own = windows.find((w) => (w?.windowId ?? w?.id) === windowId);
           const before = mode;
           if (own) mode = modeOf(own);
-          if (mode !== before) emit();
+          if (mode !== before || pageKey() !== page) emit();
           return;
         }
         default:

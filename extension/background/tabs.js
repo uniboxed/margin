@@ -6,6 +6,7 @@ import { hasNoPage, hiddenFor, isHeld, sessionKnown, switchFacts } from './keep-
 import { platform } from '../shared/platform.js';
 import { commandKeys } from '../shared/shortcuts.js';
 import { getScroll } from './scroll.js';
+import { appLink } from './app-link.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
 import { isSleepPage, readSleepAddress, wokeKey } from '../shared/sleep.js';
 import { readyInPage } from '../shared/page-ready.js';
@@ -3560,8 +3561,13 @@ export const switchBusy = () => switchUnderWay() || anyFocusing();
 // it ('switching', then 'switch-done' or 'switch-failed': content/core.js);
 // Margin's own pages have no content script, so they hear it as a broadcast
 // that says which page it's for (`from`).
-export const tellPage = (/** @type {{ id: number }} */ page, /** @type {any} */ message) =>
-  api.tabs.sendMessage(page.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
+// A switch under way, done or failed is told to Margin.app's overlay of the
+// window too, while it draws the UI there (it highlights the tab: app/overlay).
+const APP_TOLD = new Set(['switching', 'switch-done', 'switch-failed']);
+export const tellPage = (/** @type {{ id: number, windowId?: number }} */ page, /** @type {any} */ message) => {
+  if (APP_TOLD.has(message?.type) && appLink.linked()) appLink.push(page.windowId ?? message.windowId ?? null, { type: message.type, tabId: message.tabId });
+  return api.tabs.sendMessage(page.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
+};
 
 // ---- a new tab chosen in the palette --------------------------------------------
 // ⌘T, an address or a search, Enter: as a browser that shows the new page

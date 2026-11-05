@@ -7,7 +7,8 @@ import * as M from '../state/model.js';
 import * as O from '../shared/owner.js';
 import { FAVICONS, FAVICONS_MARK, OPEN_TABS, OPEN_TABS_KEYS, STATE_REV, fromStorage, openTabsCurrent, revOf, sameStored, storedName, toStorage } from '../shared/stored.js';
 import { platform } from '../shared/platform.js';
-import { DATA_META_KEYS, SOURCES, collectionFrom, itemsFrom, metaKey, pendingChanges, track } from '../shared/data-set.js';
+import { DATA_META_KEYS, SOURCES, collectionFrom, dataSetFrom, fingerprint, itemsFrom, metaKey, pendingChanges, stateFromDataSet, track } from '../shared/data-set.js';
+import { mergeData } from '../shared/data-merge.js';
 import { recordEmptyStart } from './diagnostics.js';
 import { timed } from './slow.js';
 /** @import { State } from '../../types/margin' */
@@ -283,14 +284,112 @@ function readMeta(raw) {
 function trackKeys(keys) {
   if (!cache) return;
   const at = Date.now();
+  /** @type {any[]} */
+  const changes = [];
   for (const [collection, sources] of Object.entries(SOURCES)) {
     if (!sources.some((key) => keys.includes(key))) continue;
-    const meta = track(dataMeta[collection] ?? null, collectionFrom(cache, collection), at);
-    if (meta === dataMeta[collection]) continue;
+    const before = dataMeta[collection] ?? null;
+    const items = collectionFrom(cache, collection);
+    const meta = track(before, items, at);
+    if (meta === before) continue;
     dataMeta[collection] = meta;
     metaUnsaved.add(collection);
+    if (dataListeners.size) changes.push(...changedItems(collection, before, meta, items));
   }
+  if (changes.length) for (const cb of [...dataListeners]) cb(changes);
 }
+// The changes one look at a collection found (its meta before and after): the
+// items with a new time, and the new tombstones.
+function changedItems(collection, before, after, items) {
+  const out = [];
+  for (const [id, [at]] of Object.entries(after.items)) {
+    if (at > 0 && before?.items?.[id]?.[0] !== at) out.push({ collection, id, updatedAt: at, value: items[id] });
+  }
+  for (const [id, at] of Object.entries(after.gone ?? {})) if (before?.gone?.[id] !== at) out.push({ collection, id, updatedAt: at, deleted: true });
+  return out;
+}
+
+// ---- the app's data (DATA.md, background/link.js) --------------------------------
+// While Margin.app is linked, every change this copy makes to the data set is
+// told as it's written (`onDataChanges`: the changes trackKeys found). What
+// the app sends (its data set, or its own changes) becomes the state here,
+// with the app's times kept for what agrees with it, so nothing it sent is
+// queued back to it as a change of this copy's.
+/** @type {Set<(changes: any[]) => void>} */
+const dataListeners = new Set();
+/** @param {(changes: any[]) => void} cb */
+export const onDataChanges = (cb) => { dataListeners.add(cb); return () => dataListeners.delete(cb); };
+// Two values the same, whatever order their keys came in (the app's JSON keeps none).
+const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
+const sameValue = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+/**
+ * A collection's meta after the state took a data set's items: an item that
+ * agrees with the set has the set's time; one that doesn't (a live change the
+ * set hasn't heard: an open tab's title) keeps its time if it hadn't changed,
+ * else now (it's queued). Tombstones: the set's, and this copy's own for
+ * items still gone.
+ * @param {any} meta @param {Record<string, any>} items @param {Record<string, any>} setItems @param {number} now
+ */
+export function metaFromSet(meta, items, setItems, now) {
+  const next = {};
+  for (const [id, value] of Object.entries(items)) {
+    const fp = fingerprint(value);
+    const s = setItems?.[id];
+    if (s && s.deleted !== true && Number.isFinite(s.updatedAt) && sameValue(s.value, value)) next[id] = [s.updatedAt, fp];
+    else if (meta?.items?.[id]?.[1] === fp) next[id] = meta.items[id];
+    else next[id] = [now, fp];
+  }
+  const gone = {};
+  for (const [id, at] of Object.entries(meta?.gone ?? {})) if (!(id in next)) gone[id] = at;
+  for (const [id, s] of Object.entries(setItems ?? {})) {
+    if (s?.deleted === true && !(id in next) && Number.isFinite(s.updatedAt)) gone[id] = Math.max(gone[id] ?? 0, s.updatedAt);
+  }
+  return { items: next, gone };
+}
+/**
+ * The state from a data set (`setFor(state)`: the app's whole set, or this
+ * copy's merged with the app's changes), keeping the live state
+ * (shared/data-set.js stateFromDataSet), with the set's times.
+ * @param {(state: State) => { items?: Record<string, Record<string, any>> }} setFor
+ */
+export function adoptDataSet(setFor) {
+  return mutate((s) => {
+    const set = setFor(s);
+    const next = stateFromDataSet(s, set);
+    const at = Date.now();
+    for (const collection of Object.keys(SOURCES)) {
+      if (!set?.items?.[collection]) continue;
+      dataMeta[collection] = metaFromSet(dataMeta[collection], collectionFrom(next, collection), set.items[collection], at);
+      metaUnsaved.add(collection);
+    }
+    writeMetaSoon();
+    return next;
+  });
+}
+/**
+ * The app's whole data set (DATA.md "For the extension's end"), with the
+ * changes this copy made after its data.hello merged on top (a snapshot
+ * crossing a change doesn't undo it), and the items the app left out
+ * (`omitted`: [[collection, id]], too big to send) kept as this copy has them.
+ * @param {{ items?: Record<string, Record<string, any>> }} set @param {{ changes?: any[], omitted?: any[] }} [options]
+ */
+export function adoptAppSet(set, { changes = [], omitted = [] } = {}) {
+  return adoptDataSet((s) => {
+    let full = set;
+    if (omitted.length) {
+      const mine = dataSetFrom(s, { metas: dataMeta });
+      const items = { ...set.items };
+      for (const [collection, id] of omitted) {
+        const item = mine.items?.[collection]?.[id];
+        if (item && items[collection]) items[collection] = { ...items[collection], [id]: item };
+      }
+      full = { ...set, items };
+    }
+    return changes.length ? mergeData(full, changes) : full;
+  });
+}
+/** The app's own changes (its UI, another window's copy), merged in by the same rule as the app's. @param {any[]} changes */
+export const takeDataChanges = (changes) => adoptDataSet((s) => mergeData(dataSetFrom(s, { metas: dataMeta }), changes));
 /** The changes queued for the app after `since` (0: all), oldest first, with the state's values now. @param {number} [since] */
 export async function pendingQueue(since = 0) {
   const state = await load();

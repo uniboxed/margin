@@ -2,6 +2,12 @@
   "add_permissions": [
     "nativeMessaging"
   ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": false
+  },
   "commands": {
     "new-tab": {
       "suggested_key": {

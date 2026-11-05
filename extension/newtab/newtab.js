@@ -13,6 +13,7 @@ import * as V from '../shared/view.js';
 import { asBrowserUi } from '../shared/dom.js';
 import { asksBackground, platform } from '../shared/platform.js';
 import { createSwitching, backgroundSwitches, SWITCH_GRACE_MS } from '../shared/switching.js';
+import { APP_LINK_KEY, appDraws } from '../shared/app-link.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -61,8 +62,21 @@ const isLauncher = location.hash === '#launcher' || location.hash === '#settings
 const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && !isLauncher && !/[?&]again\b/.test(location.search);
 const handoff = fresh ? send('newTabPage').catch(() => null) : Promise.resolve(null);
 
+// Margin.app linked (shared/app-link.js): its overlay draws the launcher and
+// Settings over this page's place (ui/host-app.js), so the page draws nothing
+// of its own; it's drawn again here (reloaded) when the app goes, and the
+// other way round.
+const { settings, [APP_LINK_KEY]: appLinkNow } = await api.storage.local.get(['settings', APP_LINK_KEY]);
+const drawnByApp = appDraws(appLinkNow);
+api.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && APP_LINK_KEY in changes && appDraws(changes[APP_LINK_KEY].newValue) !== drawnByApp) location.reload();
+});
+if (drawnByApp) {
+  document.documentElement.style.background = 'Canvas';
+  await new Promise(() => {}); // nothing more here while the app draws
+}
+
 // The theme loads right away, alongside the ⌘T answer.
-const { settings } = await api.storage.local.get('settings');
 const themeId = BUILTIN_THEMES.includes(settings?.theme) ? settings.theme : BUILTIN_THEMES[0];
 const loading = loadBuiltinTheme(themeId, { document, settings: settings?.themes?.[themeId] ?? null });
 const self = await api.tabs.getCurrent();

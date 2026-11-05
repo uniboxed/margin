@@ -5,7 +5,10 @@
 // does nothing until a linked browser is in front. Opening the app again
 // shows the set-up window again. Quitting, the copies are told first; a
 // SIGTERM quits the same way (scripts/safari.sh, before it puts a new build
-// in its place, then opens that with --background: no set-up window).
+// in its place, then opens that with --background: no set-up window). Started
+// by the extension handler for a link (Tirth, 2026-11-05: no login item
+// needed), there's no set-up window either: the handler's arguments never
+// reach a sandboxed caller's app, so it leaves a note instead (startedForLink).
 // Copied over the converter's by scripts/make-xcode.sh.
 
 import Cocoa
@@ -22,7 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // The storyboard's window, shown at launch (but opened with --background).
         if let window = NSApp.windows.first(where: { $0.contentViewController is ViewController }) {
             keep(window)
-            if CommandLine.arguments.contains("--background") {
+            if CommandLine.arguments.contains("--background") || Self.startedForLink() {
                 window.orderOut(nil)
                 NSApp.setActivationPolicy(.accessory)
             }
@@ -35,6 +38,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         terminating?.setEventHandler { RunLoop.main.perform { NSApp.terminate(nil) } }
         terminating?.resume()
         shell.start()
+    }
+
+    // Started by the extension handler for a copy's link (SafariWebExtensionHandler.swift
+    // launchApp): it left a note in its container a moment before. Read once and removed.
+    static func startedForLink() -> Bool {
+        let note = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Containers/\(marginExtensionIdentifier)/Data/Library/Caches/margin-launch")
+        guard let at = (try? FileManager.default.attributesOfItem(atPath: note.path))?[.modificationDate] as? Date else { return false }
+        try? FileManager.default.removeItem(at: note)
+        return Date().timeIntervalSince(at) < 15
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

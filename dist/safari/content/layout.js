@@ -28,6 +28,9 @@ export function startLayout(page, { loader }) {
   // ---- the page's box: the theme's page slot ----------------------------------
   /** @type {import('../ui/host.js').Geometry | null} */
   let layout = null;
+  /** @type {(() => import('../ui/host.js').Geometry | null) | null} */
+  let source = null;
+  const measure = () => (source ? source() : rt()?.measure() ?? null);
   const resizing = () => !!rt()?.view.rootElement()?.classList.contains('m-resizing');
   // The slot's insets are in the page's pixels already (the runtime measures
   // boxes there). Nothing at any edge: the page as it is, no box.
@@ -204,10 +207,15 @@ export function startLayout(page, { loader }) {
     out: () => !!rt()?.sidebar.out(),
     // The page's zoom changed: the slot is measured again (Margin's own
     // size didn't change, the page's pixels did).
-    rezoom: () => { const g = rt()?.measure(); place(g ?? layout); },
+    rezoom: () => { const g = measure(); if (source && !g && !layout) return; place(g ?? layout); },
     // After a render: the slot as drawn now (measured at once, so the box
     // moves with the same frame as the theme).
-    settle: () => { const g = rt()?.measure(); place(g ?? layout); },
+    settle: () => { const g = measure(); if (source && !g && !layout) return; place(g ?? layout); }, // (the app's layout not here yet: the first-paint box stays)
+    // Where the slot comes from while Margin.app draws the UI (content/core.js:
+    // the window's layout from the app, as this page's box), instead of the
+    // in-page runtime; null: the runtime's again.
+    /** @param {(() => import('../ui/host.js').Geometry | null) | null} fn */
+    setSource: (fn) => { source = fn; },
     // Once the UI is there: open if it was hovered or toggled before.
     reopen: () => {
       if (!wanted) return;

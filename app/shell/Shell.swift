@@ -21,7 +21,13 @@
 //    draws over the slot (`hits`), to let the pointer through to the page
 //    (PassThrough.swift).
 //  - Margin's keys (Shortcuts.swift) are the app's only while a linked
-//    browser is in front with an overlay on its front window.
+//    browser is in front with an overlay on its front window, with the
+//    combinations that window's copy sent (`keys`: its Settings shortcuts).
+//  - A link that drops (not one replaced by a newer link, not a goodbye)
+//    leaves its overlays where they are for `reconnectGrace`, dimmed and
+//    saying it's reconnecting; the copy linking again in that time takes
+//    them back as they are, else they close. The copy's pages go back to
+//    drawing their own UI on the same clock (background/link.js GONE_MS).
 
 import AppKit
 
@@ -59,6 +65,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // The lasting data's folder (DataStore.swift). Default: ~/Library/Application Support/Margin/data,
         // or a new temporary folder for a harness (a test never touches the real one).
         var dataRoot: URL?
+        var reconnectGrace: TimeInterval = 6 // a dropped link's overlays, kept dimmed (background/link.js GONE_MS)
         var bundleIds = ["safari": safariIdentifier, "chrome": "com.google.Chrome", "edge": "com.microsoft.edgemac"]
     }
 
@@ -70,6 +77,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var themeId: String?
         var outbox = LayoutOutbox()
         var resyncTimer: Timer?
+        var keys: [String: [String]]? // the copy's shortcuts, once it said
         init(_ connection: LinkConnection) { self.connection = connection }
     }
 
@@ -95,6 +103,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private var lastPointerPush: [WindowKey: TimeInterval] = [:]
     private var pointerInside: Set<WindowKey> = []
     private var stopped = false
+    // Links that dropped a moment ago: their overlays kept, dimmed, until this timer.
+    private var reconnecting: [String: Timer] = [:]
+    // Their theme and keys meanwhile: the overlays stay drawn as the link comes back, not hidden until the theme is sent again.
+    private var keptForReconnect: [String: (theme: String?, themeId: String?, keys: [String: [String]]?)] = [:]
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
@@ -125,6 +137,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     func stop(then: @escaping () -> Void) {
         stopped = true
         pollTimer?.invalidate()
+        for timer in reconnecting.values { timer.invalidate() }
+        reconnecting = [:]
         shortcuts.set(active: false)
         pointer.stop()
         apps.stop()
@@ -140,6 +154,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         entry.mirror.begin(connection.hello)
         links[connection.key] = entry
         data.linkUp(connection)
+        if let timer = reconnecting.removeValue(forKey: connection.key) {
+            timer.invalidate()
+            if let kept = keptForReconnect.removeValue(forKey: connection.key) { (entry.theme, entry.themeId, entry.keys) = kept }
+            Diagnostics.note("\(connection.key) is back: its overlays kept")
+            for overlay in overlays.values where overlay.key.link == connection.key { overlay.push(raw: #"{"type":"link","state":"linked"}"#) }
+        }
         apps.start()
         burst("linked: \(connection.key)")
     }
@@ -181,6 +201,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         case .push(_, let windowId, let msg):
             let json = jsonString(["type": "push", "msg": msg]) ?? ""
             for overlay in overlays(of: entry) where windowId == nil || overlay.key.windowId == windowId { overlay.push(raw: json) }
+        case .keys(let epoch, let bindings):
+            guard epoch == connection.epoch else { return }
+            entry.keys = bindings
+            burst("keys")
         default:
             break
         }
@@ -191,9 +215,22 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         entry.resyncTimer?.invalidate()
         links[connection.key] = nil
         data.linkDown(connection)
-        for overlay in overlays(of: entry) {
-            overlay.close()
-            overlays[overlay.key] = nil
+        let shown = overlays(of: entry)
+        // Dropped (not replaced, not a goodbye, not quitting): kept, dimmed, for a while.
+        if why != "replaced", !why.hasPrefix("stopped"), !why.hasPrefix("bye"), options.reconnectGrace > 0, !shown.isEmpty {
+            for overlay in shown { overlay.push(raw: #"{"type":"link","state":"reconnecting"}"#) }
+            reconnecting[connection.key]?.invalidate()
+            let key = connection.key
+            keptForReconnect[key] = (entry.theme, entry.themeId, entry.keys)
+            reconnecting[key] = Timer.scheduledTimer(withTimeInterval: options.reconnectGrace, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reconnectGaveUp(key) }
+            }
+            Diagnostics.note("\(key) dropped (\(why)): its overlays kept, dimmed, for \(Int(options.reconnectGrace)) s")
+        } else {
+            for overlay in shown {
+                overlay.close()
+                overlays[overlay.key] = nil
+            }
         }
         if links.isEmpty { started = false }
         burst("link down: \(connection.key)")
@@ -210,6 +247,22 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
         return data.marginTabs(of: p, space: space).filter { !open.contains($0.id) }
     }
+
+    // The copy didn't come back in time: its overlays go.
+    private func reconnectGaveUp(_ key: String) {
+        reconnecting[key] = nil
+        keptForReconnect[key] = nil
+        guard links[key] == nil else { return }
+        for overlay in overlays.values where overlay.key.link == key {
+            overlay.close()
+            overlays[overlay.key] = nil
+        }
+        Diagnostics.note("\(key) didn't come back: its overlays closed")
+        burst("gave up on \(key)")
+    }
+
+    // Whether a link's overlays are kept for it to come back (tests read it).
+    func isReconnecting(_ key: String) -> Bool { reconnecting[key] != nil }
 
     private func resync(_ entry: Link) {
         entry.connection.send(.resync(epoch: entry.connection.epoch))
@@ -341,7 +394,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
-        for (key, overlay) in overlays where ext[key] == nil {
+        // (Not a link's that dropped a moment ago, nor one back but without its state yet: kept as they are.)
+        for (key, overlay) in overlays where ext[key] == nil && reconnecting[key.link] == nil && links[key.link]?.mirror.hasState != false {
             overlay.close()
             overlays[key] = nil
         }
@@ -376,7 +430,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     private func updateKeys(list: [ServerWindow], allPids: Set<pid_t>) {
-        let has = !list.isEmpty && frontOverlay(list: list) != nil
+        let front = list.isEmpty ? nil : frontOverlay(list: list)
+        let has = front != nil
+        // The front window's copy's combinations (each profile's Settings may differ).
+        if let front, let keys = links[front.key.link]?.keys { shortcuts.rebind(ShortcutSet.bindings(from: keys)) }
         shortcuts.set(active: ShortcutSet.active(frontPid: apps.frontPid, linkedPids: allPids, frontWindowHasOverlay: has))
     }
 
@@ -418,6 +475,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         switch command {
         case .palette:
             overlay.push(raw: #"{"type":"command","name":"palette"}"#)
+        case .toggleSidebar:
+            overlay.push(raw: #"{"type":"command","name":"toggle-sidebar"}"#)
         case .nextTab, .prevTab, .nextSpace, .prevSpace:
             let windowId = overlay.key.windowId
             Task { _ = try? await entry.connection.request(type: "navigate", payload: ["action": command.rawValue, "windowId": windowId], windowId: windowId) }

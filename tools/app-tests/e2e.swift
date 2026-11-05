@@ -193,6 +193,7 @@ func scenario() async {
   let dataRoot = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: dataRoot) }
   options.dataRoot = dataRoot
+  options.reconnectGrace = 1.5
   let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: keys, options: options)
   windows.shell = shell
   shell.start()
@@ -335,7 +336,7 @@ func scenario() async {
 
   // ---- keys ----
   shell.track()
-  check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 5))
+  check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 6))
   mark = fake.events.count
   keys.press("Ctrl+Meta+ArrowDown")
   check("⌃⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
@@ -343,7 +344,14 @@ func scenario() async {
   apps.bringToFront(1)
   check("another app in front: let go", await until(2, { keys.held.isEmpty && !shell.shortcuts.isActive }))
   apps.bringToFront(browserPid)
-  check("back: held again", await until(2, { keys.held.count == 5 }))
+  check("back: held again", await until(2, { keys.held.count == 6 }))
+  // The copy's Settings shortcuts (its `keys`): held instead of the defaults, at once.
+  fake.tell(["do": "send", "id": "A", "msg": ["k": "keys", "bindings": ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"]]]])
+  check("the copy's keys: held as it says", await until(3, { Set(keys.held.values).contains(Combo.parse("Alt+Meta+ArrowDown")!) && Set(keys.held.values).contains(Combo.parse("Alt+KeyK")!) && !Set(keys.held.values).contains(Combo.parse("Alt+KeyS")!) }))
+  mark = fake.events.count
+  keys.press("Alt+KeyK")
+  // Keep open is on in the fake's state: the overlay's sidebar.toggle turns it off (a request to the copy).
+  check("its sidebar key: the overlay's sidebar toggled (Keep open off, asked of the copy)", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "updateSettings" } != nil }))
 
   // ---- the palette and typing ----
   keys.press("Meta+KeyT")
@@ -368,10 +376,21 @@ func scenario() async {
   check("a newer link for the same profile takes over", await until(3, { fake.first("close", since: mark) { $0["id"] as? String == "A" } != nil && shell.links["safari:P1"]?.connection.hello.instanceId == "fake-A2" }))
   check("and its window's overlay comes back", await until(15, { shell.overlays[k7]?.isShown == true && shell.overlays[k7] !== o7 }))
 
+  // ---- a link dropping, and coming back in time ----
+  let o7b = shell.overlays[k7]
+  fake.tell(["do": "close", "id": "A2"])
+  check("a copy's link dropping: its overlay kept, dimmed", await until(3, { shell.links["safari:P1"] == nil && shell.isReconnecting("safari:P1") && shell.overlays[k7] === o7b }))
+  fake.tell(["do": "connect", "id": "A3", "profile": "P1", "windows": [win(7, r7b, "fullscreen", focused: true)]])
+  check("back within the grace: the same overlay, shown", await until(5, { shell.links["safari:P1"] != nil && !shell.isReconnecting("safari:P1") && shell.overlays[k7] === o7b && o7b?.isShown == true }))
+  if let o7b { check("no longer dimmed", await waitJS(o7b.webView, "return !document.documentElement.hasAttribute('data-reconnecting')")) }
+
   // ---- a silent copy ----
   mark = fake.events.count
   fake.tell(["do": "mute", "id": "B", "on": true])
-  check("a copy that stops answering: closed after the limit", await until(4, { shell.links["safari:P2"] == nil }) && shell.overlays[k9] == nil)
+  check("a copy that stops answering: closed after the limit", await until(4, { shell.links["safari:P2"] == nil }))
+  check("its overlay kept a moment, dimmed, saying it's reconnecting", shell.isReconnecting("safari:P2") && shell.overlays[k9] != nil)
+  if let o9 = shell.overlays[k9] { check("the note shown", await waitJS(o9.webView, "return document.documentElement.hasAttribute('data-reconnecting') && !!document.getElementById('margin-reconnecting')")) }
+  check("then closed, the copy not back", await until(3, { shell.overlays[k9] == nil && !shell.isReconnecting("safari:P2") }))
 
   // ---- quitting ----
   mark = fake.events.count
