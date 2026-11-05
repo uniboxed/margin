@@ -21,6 +21,7 @@ import { THEMES } from '../themes/index.js';
 import { activeThemeId, themePackage } from './theme-package.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
+import { closeTabs, noteClosing } from './closing.js';
 import { moveIndex } from '../ui/behaviors/drop-rules.js';
 import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, plainSetting } from '../themes/packages.js';
 
@@ -243,8 +244,29 @@ async function handOff(tab) {
     return log('kept', `tab ${prev.id} didn't come back: ${err?.message ?? err}`), false;
   }
   await mutate((st) => M.removeTab(st, tab.id)).catch(() => {});
+  noteClosing([tab.id], 'done');
   await api.tabs.remove(tab.id).catch(() => {});
   return true;
+}
+
+// A Margin tab that isn't open (state/model.js keptTabs), clicked: opened in
+// the window where it was clicked (the last focused one if none is named),
+// at its place in the tab strip, in its space, and from then on that browser
+// tab is the Margin tab (linkKept). Its Back history and scroll position are
+// gone, as for any closed tab reopened. Answers which tab came to the front.
+/** @param {string} keptId @param {{ windowId?: number | null, deadline?: number, sidebarTop?: number }} options */
+async function openKept(keptId, { windowId = null, deadline, sidebarTop } = {}) {
+  const s = await load();
+  const kept = s.keptTabs?.[keptId];
+  if (!kept) throw new Error('That tab is no longer there');
+  const win = windowId ?? (await api.windows?.getLastFocused?.().catch(() => null))?.id ?? undefined;
+  if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop);
+  const spaceId = s.spaces.some((sp) => sp.id === kept.spaceId) ? kept.spaceId : V.activeSpaceId(s, win);
+  // The window's tabs as Safari has them now (Margin's indexes lag after closes).
+  const live = win != null ? await api.tabs.query({ windowId: win }).catch(() => null) : null;
+  const index = win != null ? M.stripIndexFor(s, win, kept.order, live) : undefined;
+  const tab = await openTab({ windowId: win, url: kept.url, spaceId, deadline, index, keptId });
+  return { shown: tab.id };
 }
 
 // Only within the window the switch was made from (another window's page
@@ -372,8 +394,11 @@ export const handlers = {
   },
   // Answers which tab came to the front ({ shown }), or fails: the tab is
   // gone, or the browser didn't show it (the page then says so).
-  /** @param {{ tabId: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number, resolved?: any, arrival?: import('./tabs.js').Arrival | null }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it), `waitsUntil` past it for the answer (a switch asked too late for its steps is shown at once); `resolved`: the tab background.js found by that address already (not asked for again); `arrival`: how the request came (the switch log: background.js) */
-  async activateTab({ tabId, hint, show, sidebarTop, deadline, waitsUntil, resolved = null, arrival = null }, sender) {
+  // `tabId` a string: a Margin tab that isn't open (state/model.js keptTabs),
+  // opened in `windowId` (else the page's own window), in its place.
+  /** @param {{ tabId: number | string, windowId?: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number, resolved?: any, arrival?: import('./tabs.js').Arrival | null }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it), `waitsUntil` past it for the answer (a switch asked too late for its steps is shown at once); `resolved`: the tab background.js found by that address already (not asked for again); `arrival`: how the request came (the switch log: background.js) */
+  async activateTab({ tabId, windowId, hint, show, sidebarTop, deadline, waitsUntil, resolved = null, arrival = null }, sender) {
+    if (typeof tabId === 'string') return openKept(tabId, { windowId: windowId ?? sender?.tab?.windowId, deadline, sidebarTop });
     const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
     const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline, waitsUntil, arrival, tab: target });
@@ -471,10 +496,14 @@ export const handlers = {
     }
     return { reloaded: true };
   },
-  // Closing from Margin archives the tab, like Arc.
-  /** @param {{ tabId: number }} message */
-  /** @param {{ tabId: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: closing the shown tab from an open sidebar keeps it open on the next one */
+  // Closing from Margin archives the tab, like Arc. One that isn't open (a
+  // string id: state/model.js keptTabs) goes to the archive as it is.
+  /** @param {{ tabId: number | string, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: closing the shown tab from an open sidebar keeps it open on the next one */
   async closeTab({ tabId, show, sidebarTop }) {
+    if (typeof tabId === 'string') {
+      await mutate((s) => M.archiveKept(s, tabId, { id: newId(), closedAt: now() }));
+      return;
+    }
     await mutate((s) => {
       const tab = s.tabs[tabId];
       return tab && /^https?:/i.test(tab.url) ? M.archiveTab(s, M.archiveEntryForTab(s, tab, { id: newId(), closedAt: now() })) : s;
@@ -492,6 +521,8 @@ export const handlers = {
         if (result?.tab) selected = stay.id;
       }
     }
+    // (Archived above: its close, heard, does nothing more.)
+    noteClosing([tabId], 'done');
     await api.tabs.remove(tabId);
     if (show && closing?.active) {
       const [next] = await api.tabs.query({ active: true, windowId: closing.windowId }).catch(() => []);
@@ -606,19 +637,22 @@ export const handlers = {
   // `folderId`/`beforeId`: where the pin goes (a folder of the tab's space,
   // before a pin or folder there; dragged in the sidebar); the end of the
   // pinned area by default. Returns the new pin's id.
-  /** @param {{ tabId: number, folderId?: string | null, beforeId?: string | null }} message */
+  // A tab that isn't open (a string id: state/model.js keptTabs) becomes the
+  // pin: its pin opens it from then on.
+  /** @param {{ tabId: number | string, folderId?: string | null, beforeId?: string | null }} message */
   async pinTab({ tabId, folderId = null, beforeId = null }) {
     const s = await load();
-    const tab = s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
+    const kept = typeof tabId === 'string' ? s.keptTabs?.[tabId] : null;
+    const tab = kept ?? (typeof tabId === 'number' ? s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null)) : null);
     if (!tab?.url) return console.warn('[margin] pin: unknown tab', tabId);
     let result = 'pinned';
     const id = newId();
     await mutate((st) => {
       // A tab Margin hasn't placed in a space yet goes to its window's space.
-      const spaceId = st.tabSpace[tabId] ?? V.activeSpaceId(st, tab.windowId);
+      const spaceId = kept ? kept.spaceId : st.tabSpace[tabId] ?? V.activeSpaceId(st, tab.windowId);
       const next = M.addPin(st, { id, spaceId, url: tab.url, title: tab.title, folderId, beforeId });
       if (next === st) result = 'not pinned (already pinned in that space, or no space)';
-      return next;
+      return kept && next !== st ? M.forgetKept(next, kept.id) : next;
     });
     console.info(`[margin] pin tab ${tabId}: ${result}`);
     return result === 'pinned' ? id : null;
@@ -628,19 +662,21 @@ export const handlers = {
   // `pinIds`, or the tab `tabId` pinned into it; at the top level before
   // `beforeId` (else in the place of the first pin it takes, else the end).
   // Returns its id.
-  /** @param {{ windowId?: number, spaceId?: string, name?: string, pinIds?: string[], tabId?: number, beforeId?: string | null }} message */
+  /** @param {{ windowId?: number, spaceId?: string, name?: string, pinIds?: string[], tabId?: number | string, beforeId?: string | null }} message `tabId` a string: a tab that isn't open (pinned into it, it's the pin from then on) */
   async createFolder({ windowId, spaceId, name, pinIds = [], tabId, beforeId = null }, sender) {
     const id = newId();
-    const pinFromTab = Number.isInteger(tabId) ? newId() : null;
-    const tab = pinFromTab ? ((await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null))) : null;
+    const pinFromTab = Number.isInteger(tabId) || typeof tabId === 'string' ? newId() : null;
+    const s = pinFromTab ? await load() : null;
+    const kept = typeof tabId === 'string' ? s?.keptTabs?.[tabId] ?? null : null;
+    const tab = kept ?? (typeof tabId === 'number' ? (s.tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null))) : null);
     await mutate((st) => {
-      const space = spaceId ?? (tab ? st.tabSpace[tab.id] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
+      const space = spaceId ?? (kept ? kept.spaceId : tab ? st.tabSpace[tab.id] : null) ?? V.activeSpaceId(st, windowId ?? sender?.tab?.windowId);
       const firstPin = st.pins.find((p) => p.id === pinIds[0] && p.spaceId === space);
       // In the place of the first pin it takes, if that's at the top level.
       const before = beforeId ?? (firstPin && !firstPin.folderId ? firstPin.id : null);
       let next = M.createFolder(st, { id, spaceId: space, name, pinIds, beforeId: before });
       if (tab?.url) next = M.addPin(next, { id: pinFromTab, spaceId: space, url: tab.url, title: tab.title, folderId: id });
-      return next;
+      return kept ? M.forgetKept(next, kept.id) : next;
     });
     return id;
   },
@@ -670,8 +706,19 @@ export const handlers = {
   // the sidebar with it (background.js tabs.onMoved).
   // Whether it moved (not: the browser can't, a tab is gone, or one is the
   // browser's own pinned tab, kept apart from the others).
-  /** @param {{ tabId: number, hint?: any, nextTo: number, nextToHint?: any, side: 'before' | 'after' }} message */
+  // A tab that isn't open (a string id) takes a place in the list next to the
+  // other (state/model.js placeKept); an open one next to one that isn't
+  // open doesn't move (its place follows the browser's tab strip).
+  /** @param {{ tabId: number | string, hint?: any, nextTo: number | string, nextToHint?: any, side: 'before' | 'after' }} message */
   async moveTab({ tabId, hint, nextTo, nextToHint, side }, sender) {
+    if (typeof tabId === 'string') {
+      const before = await load();
+      const spaceId = before.keptTabs?.[tabId]?.spaceId;
+      if (!spaceId) return false;
+      const after = await mutate((s) => M.placeKept(s, tabId, nextTo, side, spaceId));
+      return after.keptTabs?.[tabId]?.order !== before.keptTabs?.[tabId]?.order;
+    }
+    if (typeof nextTo === 'string') return false;
     if (!api.tabs.move) return false;
     const [tab, other] = await Promise.all([resolveTab(tabId, hint, sender?.tab?.windowId), resolveTab(nextTo, nextToHint, sender?.tab?.windowId)]);
     if (!tab || !other || tab.windowId !== other.windowId || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
@@ -692,17 +739,22 @@ export const handlers = {
     if (win == null) return [];
     const s = await load();
     const spaceId = V.activeSpaceId(s, win);
-    const ids = V.sidebar(s, win).tabs.map((t) => t.id);
-    if (!ids.length) return [];
+    const rows = V.sidebar(s, win).tabs;
+    // The space's tabs that aren't open go to the archive with the others.
+    const keptIds = rows.filter((t) => t.kept).map((t) => /** @type {string} */ (/** @type {unknown} */ (t.id)));
+    const ids = rows.filter((t) => !t.kept).map((t) => /** @type {number} */ (t.id));
+    if (!ids.length && !keptIds.length) return [];
     const closing = new Set(ids);
     await mutate((st) => {
       let next = st;
+      for (const id of keptIds) next = M.archiveKept(next, id, { id: newId(), closedAt: now() });
       for (const id of ids) {
         const tab = next.tabs[id];
         if (tab && /^https?:/i.test(tab.url)) next = M.archiveTab(next, M.archiveEntryForTab(next, tab, { id: newId(), closedAt: now() }));
       }
       return next;
     });
+    if (!ids.length) return keptIds;
     const [front] = await api.tabs.query({ active: true, windowId: win }).catch(() => []);
     if (front && closing.has(front.id)) {
       const stay = Object.values(s.tabs).filter((t) => t.windowId === win && !closing.has(t.id) && s.tabSpace[t.id] === spaceId)
@@ -710,8 +762,8 @@ export const handlers = {
       if (stay) await focusTab(stay.id, { source: 'clearToday' }).catch(() => null);
       else await openTab({ windowId: win, url: api.runtime.getURL('newtab/newtab.html#launcher'), spaceId }).catch(() => null);
     }
-    await api.tabs.remove(ids).catch(() => Promise.all(ids.map((id) => api.tabs.remove(id).catch(() => {}))));
-    return ids;
+    await closeTabs(ids, 'done');
+    return [...ids, ...keptIds];
   },
   // Back, forward and reload for the tab in front of a window (or `tabId`):
   // the runtime's nav.* actions when its host can't do them itself (Margin.app).
@@ -751,7 +803,10 @@ export const handlers = {
       const result = await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop, deadline, waitsUntil });
       return { shown: result?.superseded ? null : existing.id };
     }
-    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline });
+    // Its tab that isn't open, if the space has one (kept from before it was
+    // pinned): opened as that Margin tab.
+    const kept = M.keptForUrl(s, pin.url, pin.spaceId);
+    const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
     return { shown: tab.id };
   },
   /** @param {{ windowId: number, spaceId: string }} message */
@@ -796,7 +851,7 @@ export const handlers = {
   async deleteSpace({ spaceId }) {
     await mutate((s) => M.deleteSpace(s, spaceId));
   },
-  /** @param {{ tabId: number, spaceId: string }} message */
+  /** @param {{ tabId: number | string, spaceId: string }} message `tabId` a string: a tab that isn't open */
   async moveTabToSpace({ tabId, spaceId }) {
     await mutate((s) => M.moveTab(s, tabId, spaceId));
   },
@@ -849,6 +904,7 @@ export const handlers = {
     const prev = previousTab(await load(), tab);
     if (!prev) return;
     await focusTab(prev.id, { source: 'cancelNewTab' });
+    noteClosing([tab.id], 'done');
     await api.tabs.remove(tab.id).catch(() => {});
   },
   // Answered as soon as the press is queued, not once its switch is over: a

@@ -6,7 +6,8 @@
 // top level, as a service worker must.
 import * as M from './state/model.js';
 import * as V from './shared/view.js';
-import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mutate, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
+import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mutate, newId, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
+import { takeClosing } from './background/closing.js';
 import * as keepReady from './background/keep-ready.js';
 import * as warmUp from './background/warm-up.js';
 import * as restore from './background/restore.js';
@@ -195,13 +196,19 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
     console.info(`[margin] tab ${tabId} reloaded as it was shown`);
   }
 }));
-api.tabs.onRemoved.addListener(owned((tabId) => {
+// What becomes of its Margin tab (state/model.js closedTab): closed on its
+// own (Margin's ×, ⌘W, Safari's tab bar), it goes to the archive; lost with
+// its window (`isWindowClosing`), it stays, not open, in its space; closed by
+// Margin itself (background/closing.js), as Margin said (put to sleep: kept).
+api.tabs.onRemoved.addListener(owned((tabId, removeInfo) => {
   handingOff.delete(tabId);
   keepReady.closed(tabId);
   tabClosed(tabId); // gone: forgotten
   newTabHint.tabGone(tabId);
   tabGone(tabId);
   forgetCurrent(tabId);
+  const by = takeClosing(tabId);
+  const windowClosing = removeInfo?.isWindowClosing === true;
   mutate((s) => {
     const closed = s.tabs[tabId];
     const followed = closed && lastFollow.get(closed.windowId);
@@ -210,10 +217,10 @@ api.tabs.onRemoved.addListener(owned((tabId) => {
       // activation came first) and the window followed it: back.
       lastFollow.delete(closed.windowId);
       stayInSpace(closed.windowId, followed.from, tabId);
-    } else if (closed?.active) {
+    } else if (closed?.active && !windowClosing) {
       closedShown.set(closed.windowId, { spaceId: s.tabSpace[tabId], at: Date.now(), tabId });
     }
-    return M.removeTab(s, tabId);
+    return M.closedTab(s, tabId, { by, windowClosing, now: now(), archiveId: newId() });
   });
   shownAt.delete(tabId);
 }));

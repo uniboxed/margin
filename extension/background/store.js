@@ -194,9 +194,13 @@ async function read() {
   const names = M.STATE_KEYS.map(storedName);
   // The old names too, for a first start after an update (shared/stored.js).
   const raw = await api.storage.local.get([...new Set([...names, ...M.STATE_KEYS, FAVICONS_MARK])]);
-  const next = M.normalizeState(fromStorage(raw));
+  const stored = fromStorage(raw);
+  const next = M.normalizeState(stored);
   // First run: persist defaults so readers (content scripts) see a full state.
   const missing = M.STATE_KEYS.filter((key) => !(storedName(key) in raw));
+  // Tabs from before Margin's own tab ids (state/model.js), or an earlier
+  // build's lost tabs, given ids now: written, so they keep them.
+  if (role === 'owner' && M.tabIdsAdded(stored, next)) missing.push(...OPEN_TABS_KEYS, 'lostTabs');
   // Icons kept by a build before their mark: written again with it, once, so
   // pages read them only when they change (shared/stored.js readForPage).
   if (FAVICONS in raw && !(FAVICONS_MARK in raw)) missing.push(FAVICONS);

@@ -32,9 +32,11 @@ const PROFILES = {
     // setting warmUpTabs): Safari brings every tab back unloaded.
     warmUp: true,
     // How a tab not used for a while is put to sleep (background/sleep.js):
-    // Safari has no tabs.discard, so its page goes to Margin's sleep page
-    // (shared/sleep.js), and back from there as it's shown.
-    sleepTabs: 'page',
+    // Safari has no tabs.discard, so Margin closes its browser tab and keeps
+    // the Margin tab, not open, in its space (Margin 2: PLAN.md §6); a click
+    // opens it again. ('page', the sleep page of shared/sleep.js, is no
+    // longer used: Phase 3 removes it.)
+    sleepTabs: 'close',
     // Before Safari swaps web views, refresh the destination tab's own copy
     // of the sidebar while it is still hidden (background/tabs.js +
     // content/core.js). Chrome keeps hidden tabs' last frames and does not

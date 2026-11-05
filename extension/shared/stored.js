@@ -8,19 +8,21 @@
 // the archive and settings hold no ids and stay where they were.
 //
 // The open tabs, their spaces and each window's space go in one value,
-// `openTabs`: { origin, since, synced, tabs, tabSpace, activeSpaceByWindow }. One
-// key is one write (Safari writes a set() key by key and stops at the first
-// failure), so pages never see the tabs without their spaces; and it says
-// whose ids they are (`origin` and `since`, the copy that wrote it: Chrome
-// keeps its address across browser restarts) and whether that copy
-// has matched them to the open tabs (`synced`), in the same write.
-// `lostTabs` (only the background reads it) has a name of its own.
+// `openTabs`: { origin, since, synced, tabs, tabSpace, activeSpaceByWindow,
+// keptTabs }. One key is one write (Safari writes a set() key by key and stops
+// at the first failure), so pages never see the tabs without their spaces,
+// nor a tab that closed or opened in both lists or in neither (keptTabs:
+// Margin's tabs with no browser tab, state/model.js); and it says whose ids
+// they are (`origin` and `since`, the copy that wrote it: Chrome keeps its
+// address across browser restarts) and whether that copy has matched them to
+// the open tabs (`synced`), in the same write. `lostTabs` (an earlier build's,
+// moved into keptTabs as it's read, then null) has a name of its own.
 //
 // The background (background/store.js) and pages (content/core.js, the
 // new-tab page) read through here. Pure.
 
 /** The state keys kept in `openTabs`. */
-export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow']);
+export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow', 'keptTabs']);
 export const OPEN_TABS = 'openTabs';
 /** Other state keys stored under another name. */
 const RENAMED = Object.freeze({ lostTabs: 'lostTabs2' });

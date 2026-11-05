@@ -34,6 +34,13 @@
 // its row, its title and icon, its space, its pin, its archive entry all go
 // by the page's address. A switch of Margin's to one wakes it behind the page
 // in front and shows it once it has loaded (background/tabs.js restoreTab).
+//
+// Margin 2 (PLAN.md §6): in Safari a tab put to sleep is closed now
+// (platform.sleepTabs 'close'), its Margin tab kept, not open, in its space
+// (state/model.js keepTab); it opens again when clicked. Nothing is left
+// running, and nothing breaks if Margin is removed. The sleep page stays in
+// the code until Phase 3 removes it: a tab an earlier build sent there still
+// wakes (and "Wake all" wakes it). Chrome and Edge keep tabs.discard.
 import * as M from '../state/model.js';
 import { api, cached, isOwner, load, now } from './store.js';
 import { platform } from '../shared/platform.js';
@@ -43,6 +50,7 @@ import { hasNoPage, isHeld } from './keep-ready.js';
 import { isSlow } from './slow.js';
 import { warming } from './warm-up.js';
 import { recordSleep } from './diagnostics.js';
+import { noteClosing, takeClosing } from './closing.js';
 
 // Times (tests shorten them: setSleepTiming).
 const TIMING = {
@@ -229,7 +237,7 @@ async function sleepTab(record, afterMs) {
   // Safari unloaded it already: nothing to free.
   if (hasNoPage(tab.id) || foundWithNoPage(tab.id)) return 'no page';
   if (!(await mayAccess(tab.url))) return 'no access';
-  const how = platform?.sleepTabs === 'discard' ? 'discard' : 'page';
+  const how = platform?.sleepTabs === 'discard' ? 'discard' : platform?.sleepTabs === 'page' ? 'page' : 'close';
   if (how === 'discard' && typeof api.tabs.discard !== 'function') return 'no discard';
   if (!stillDue(record.id, afterMs)) return 'used';
   const answer = await ask(tab.id, tab.url);
@@ -251,6 +259,14 @@ async function sleepTab(record, afterMs) {
   if (!stillDue(record.id, afterMs)) return 'used';
   if (how === 'discard') {
     if (!(await api.tabs.discard(tab.id).then(() => true, () => false))) return 'discard failed';
+  } else if (how === 'close') {
+    // Its browser tab closed, its Margin tab kept, not open, in its space
+    // (background.js tabs.onRemoved: closing.js says it's Margin's, to keep).
+    noteClosing([tab.id], 'keep', 'sleep');
+    if (!(await Promise.resolve(api.tabs.remove(tab.id)).then(() => true, () => false))) {
+      takeClosing(tab.id);
+      return 'not closed';
+    }
   } else {
     const to = sleepAddress(api.runtime.getURL(''), { url: tab.url, title: tab.title || record.title, key: newKey() });
     if (!(await api.tabs.update(tab.id, { url: to }).then(() => true, () => false))) return 'not sent';
@@ -272,7 +288,7 @@ async function sleepTab(record, afterMs) {
 // sent a tab to Safari's error page ("Failed to open page"), with no page of
 // Margin's there to bring it back. Chrome discards: no page needed.
 async function sleepPageThere() {
-  if (platform?.sleepTabs === 'discard') return true;
+  if (platform?.sleepTabs !== 'page') return true;
   return Promise.resolve(globalThis.fetch?.(api.runtime.getURL(SLEEP_PATH))).then((response) => !!response?.ok, () => false);
 }
 
@@ -408,10 +424,13 @@ const wakingAll = new Set();
 export async function wakeAll() {
   const open = await api.tabs.query({}).catch(() => []);
   let woke = 0;
+  // (Safari closes sleeping tabs now: what's left to wake is a sleep page an
+  // earlier build left.)
+  const pages = platform?.sleepTabs !== 'discard';
   for (const tab of open) {
-    if (tab.active || (platform?.sleepTabs === 'page' ? !isSleepPage(tab.url) : tab.discarded !== true)) continue;
+    if (tab.active || (pages ? !isSleepPage(tab.url) : tab.discarded !== true)) continue;
     wakingAll.add(tab.id);
-    const how = platform?.sleepTabs === 'page'
+    const how = pages
       ? await wakeAsleep(tab)
       : (await Promise.resolve(api.tabs.reload(tab.id)).then(() => true, () => false)) ? 'reload' : null;
     if (how) {

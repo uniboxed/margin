@@ -2367,8 +2367,11 @@ export async function inPage(tabId, url, func, args = [], ms = 300) {
 
 // `deadline`: when the page that asked stops waiting (it's then told it
 // didn't happen: background.js): no tab opens past REFUSE_MS before it.
-/** @param {{ windowId?: number, url?: string, spaceId?: string, deadline?: number }} options */
-export async function openTab({ windowId, url, spaceId, deadline }) {
+// `index`: its place in the window's tab strip (the end if left out);
+// `keptId`: the Margin tab that isn't open it opens (state/model.js
+// linkKept: the new tab is that Margin tab, its id, place and space).
+/** @param {{ windowId?: number, url?: string, spaceId?: string, deadline?: number, index?: number, keptId?: string }} options */
+export async function openTab({ windowId, url, spaceId, deadline, index, keptId }) {
   tooLate(deadline);
   focusGen++; // a switch still waiting for its wake doesn't land after this
   movedOn(windowId);
@@ -2379,8 +2382,14 @@ export async function openTab({ windowId, url, spaceId, deadline }) {
   // window could stay on the other one).
   if (spaceId && windowId != null) await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
   tooLate(deadline);
-  const tab = await api.tabs.create({ windowId, url, active: true });
-  if (spaceId) await mutate((s) => M.moveTab(M.upsertTab(s, tab, now()), tab.id, spaceId));
+  const tab = await api.tabs.create({ windowId, url, active: true, ...(Number.isInteger(index) && index >= 0 ? { index } : {}) });
+  if (spaceId || keptId) {
+    await mutate((s) => {
+      let next = M.upsertTab(s, tab, now());
+      if (keptId) next = M.linkKept(next, tab.id, keptId, now());
+      return spaceId ? M.moveTab(next, tab.id, spaceId) : next;
+    });
+  }
   return tab;
 }
 

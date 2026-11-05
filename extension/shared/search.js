@@ -167,6 +167,23 @@ function paletteItems(state, ctx) {
       action: { type: 'activateTab', tabId: t.id },
     });
   }
+  // Margin's tabs that aren't open (state/model.js keptTabs): chosen, one
+  // opens in this window.
+  for (const k of Object.values(state.keptTabs ?? {})) {
+    const space = spaceOf(k.spaceId);
+    items.push({
+      id: `tab:${k.id}`,
+      kind: 'tab',
+      title: k.title || k.url,
+      subtitle: k.url,
+      url: k.url,
+      favIconUrl: V.iconFor(state, k),
+      badge: space?.name ?? '',
+      boost: space?.id === spaceId ? 25 : 8,
+      recency: k.lastActive ?? 0,
+      action: { type: 'activateTab', tabId: k.id, ...(ctx.windowId != null ? { windowId: ctx.windowId } : {}) },
+    });
+  }
   for (const p of state.pins ?? []) {
     const space = spaceOf(p.spaceId);
     const folder = p.folderId ? (state.folders ?? []).find((f) => f.id === p.folderId && f.spaceId === p.spaceId) : null;

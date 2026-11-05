@@ -108,6 +108,9 @@
 .tab { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 9px; height: 34px; padding: 0 8px; border-radius: 8px; font-size: 13.5px; font-weight: 500; color: var(--ink); }
 .tab.on { font-weight: 700; background: var(--ink); color: var(--paper); }
 .tab.asleep .title { opacity: .55; }
+/* A tab that isn't open: still in its space, dimmed; a click opens it. */
+.tab.not-open .title, .tab.not-open .fav { opacity: .5; }
+.tab.not-open .fav { border-style: dashed; }
 .tab .title { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fav { width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 5px; background: var(--paper); object-fit: cover; }
 .tab.on .fav { border-color: var(--paper); }

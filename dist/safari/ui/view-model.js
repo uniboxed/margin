@@ -68,9 +68,12 @@ export const VM_VERSION = 1;
  * (then `letter` on `color`).
  * @typedef {{ title: string, url: string, host: string, icon: string | null, letter: string, color: string }} Face
  *
+ * A tab of the space: open (its browser tab's id, a number) or not (its
+ * Margin tab's own id, a string: `open` false, `notOpen` true).
  * @typedef {Face & {
- *   kind: 'tab', id: number, active: boolean, behind: boolean,
+ *   kind: 'tab', id: number | string, active: boolean, behind: boolean,
  *   audible: boolean, asleep: boolean, loading: boolean, pinned: false,
+ *   open: boolean, notOpen: boolean,
  * }} TabRow
  * @typedef {Face & {
  *   kind: 'pin', isFolder: false, id: string, folderId: string | null, nested: boolean,
@@ -169,6 +172,7 @@ function usable(raw) {
     folders: Array.isArray(raw.folders) ? raw.folders : [],
     archive: Array.isArray(raw.archive) ? raw.archive : [],
     tabs: raw.tabs && typeof raw.tabs === 'object' ? raw.tabs : {},
+    keptTabs: raw.keptTabs && typeof raw.keptTabs === 'object' ? raw.keptTabs : {},
     tabSpace: raw.tabSpace && typeof raw.tabSpace === 'object' ? raw.tabSpace : {},
     activeSpaceByWindow: raw.activeSpaceByWindow && typeof raw.activeSpaceByWindow === 'object' ? raw.activeSpaceByWindow : {},
     favicons: raw.favicons && typeof raw.favicons === 'object' ? raw.favicons : {},
@@ -198,18 +202,25 @@ function face(state, item, title) {
 
 const isLoading = (t) => t?.status === 'loading' || t?.loading === true;
 
+// A tab's row: an open one by its browser tab's id, a Margin tab that isn't
+// open (shared/view.js `kept`) by its own id (a string), `open` false and
+// `notOpen` true: a theme draws it as not open (Arcadia and Neo-brutalism dim
+// it), and a click opens it (tab.activate) where it was clicked.
 /** @param {State} state @param {any} t @returns {TabRow} */
 function tabRow(state, t) {
+  const open = !t.kept;
   return {
     kind: 'tab',
     id: t.id,
     ...face(state, t, t.title || t.url || 'New Tab'),
-    active: !!t.active,
-    behind: !!t.behind,
-    audible: !!t.audible,
-    asleep: !!t.sleeping,
-    loading: isLoading(t),
+    active: open && !!t.active,
+    behind: open && !!t.behind,
+    audible: open && !!t.audible,
+    asleep: open && !!t.sleeping,
+    loading: open && isLoading(t),
     pinned: false,
+    open,
+    notOpen: !open,
   };
 }
 
@@ -300,13 +311,15 @@ function fresh(input) {
   });
   const today = view.tabs.map((t) => tabRow(state, t));
 
-  // A space's tab count: its tabs open in this window (pinned or not).
+  // A space's tab count: its tabs open in this window (pinned or not), and
+  // its tabs that aren't open (shown in every window).
   const counts = new Map();
   for (const t of Object.values(state.tabs)) {
     if (t.windowId !== windowId) continue;
     const s = state.tabSpace[t.id];
     counts.set(s, (counts.get(s) ?? 0) + 1);
   }
+  for (const k of Object.values(state.keptTabs ?? {})) counts.set(k.spaceId, (counts.get(k.spaceId) ?? 0) + 1);
   const spaces = state.spaces.map((s, index) => ({
     id: s.id,
     name: s.name ?? '',

@@ -57,12 +57,15 @@ export function menuItems(target, { state, space }) {
       break;
     }
     case 'tab': {
+      // An open tab (the browser's id), or a Margin tab that isn't open (its
+      // own id: the same menu; closing it archives it).
       const tabId = target.id;
-      if (!Number.isInteger(tabId) || !state.tabs?.[tabId]) return [];
+      const kept = typeof tabId === 'string' ? state.keptTabs?.[tabId] : null;
+      if (!kept && (!Number.isInteger(tabId) || !state.tabs?.[tabId])) return [];
       item('Pin Tab', 'tab.pin', tabId);
       for (const f of folders) item(`Pin to 📁 ${f.name}`, 'tab.pinAt', { tab: tabId, folder: f.id, before: null });
       item('New Folder with Tab', 'folder.newWithTab', tabId);
-      const spaceId = state.tabSpace?.[tabId];
+      const spaceId = kept ? kept.spaceId : state.tabSpace?.[tabId];
       const others = (state.spaces ?? []).filter((sp) => sp.id !== spaceId);
       if (others.length) {
         separator();
