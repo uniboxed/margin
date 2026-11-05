@@ -562,6 +562,45 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 1 (in-page development host) (2026-11-05)
+
+From `feat/ui-runtime`, run `npm run safari`. Margin now draws its sidebar, palette, menus and Settings with its new UI runtime and the Arcadia theme package. It should look like before. Switching tabs may blink: Margin 2 accepts Safari's own blink, and the switch cover is gone. Write what you see in DECISIONS.md.
+
+The sidebar:
+
+- [ ] Open a few pages. Each shows the gray frame around the page, as before. Nothing jumps when a page loads.
+- [ ] Move the pointer to the left edge: the sidebar slides out over the page. Move back over the page: it goes after a moment.
+- [ ] Press ⌥S: the sidebar comes out and stays. Press ⌥S again, or Escape, or click the page: it goes.
+- [ ] Turn on Keep open (the button at the top of the sidebar): the sidebar docks and the page moves right beside it. Switch tabs: it stays docked on every page, with no jump.
+- [ ] Drag the sidebar's right edge: the page follows as you drag. Reload a page: it keeps the new width from its first frame.
+- [ ] Click tabs, pins and space icons: each switches at once. Close a tab with its ×.
+- [ ] Clicks, scrolling and text selection on the page work everywhere inside the frame, also near its edges. The frame itself doesn't scroll the page.
+- [ ] ⌘+ to zoom a page: the sidebar and frame keep their size, and the page stays inside the frame.
+
+The palette:
+
+- [ ] ⌘T (or "+ New Tab"): the dark command bar opens over the page. Type: rows filter; ↓/↑ move; Enter opens; Escape closes.
+- [ ] A fresh ⌘T tab whose palette you close with Escape goes away again, back to the tab you were on.
+
+Menus and drag:
+
+- [ ] Right-click a tab, a pin, a folder and a space's name: each shows its menu, at the pointer, inside the window. The items work. Try it once with the page zoomed (⌘+).
+- [ ] Drag a tab up or down in the list: a copy follows the pointer, a line shows where it lands, and Safari's tab order follows. Drag a tab onto a space's icon, into a folder, and into the pinned area. Try a drag with the page zoomed too.
+- [ ] Double-click a folder's name: rename it in place; Enter saves, Escape cancels.
+- [ ] "+" at the bottom: New Folder and New Space work; a new space opens in the space editor.
+
+Settings (on Margin's start page: the palette's "Margin start page & settings", then Settings):
+
+- [ ] Every setting is there: theme, archive hours, sleep hours, never-sleep sites, Wake all, the three gesture switches, the frame with the sidebar hidden, the ⌘T hint, and the five keyboard shortcuts with Reset. Keep-ready, the warm-up and the switch log are gone on purpose.
+- [ ] Change each one: it sticks after a reload of the start page, and pages follow (for example, the frame setting).
+- [ ] Click a shortcut field and press a combination: it's saved. Press one that's taken: a red note says which shortcut has it. Escape cancels.
+- [ ] Wake all says how many tabs it woke.
+
+Theme switch:
+
+- [ ] In Settings, choose Neo-brutalism: the start page redraws in it. Pages you switch to or reload draw Neo-brutalism: a dotted colored ground, bordered cards, the page as a rounded card with a black border. The page must be fully visible inside the card. Expect a small jump when a page loads: first paint still uses Arcadia's frame until Phase 3.
+- [ ] In Neo-brutalism: the sidebar, the palette, a right-click menu, a drag, and its Settings all work. Switch back to Arcadia from its Settings.
+
 ## Sleeping tabs (2026-11-04)
 
 Margin now puts a tab you haven't used for 4 hours to sleep, to give its memory back, as Arc does. Safari has no way for an extension to unload a tab, so a sleeping tab shows Margin's own sleep page: a grey loading card with the page's title and icon. As soon as you show it (Margin's sidebar, Safari's tab bar, ⌘1–9), it goes back to its page. Margin keeps it in the sidebar as the page it was. Settings has the hours (0 = never), a list of sites that never sleep, and "Wake all sleeping tabs".
