@@ -265,7 +265,8 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const plan = ['tab.activate', 'tab.close', 'tab.new', 'tab.pin', 'tab.unpin', 'tab.moveToSpace', 'pin.open', 'folder.toggle', 'folder.new', 'space.switch', 'space.new', 'space.edit', 'today.clear', 'nav.back', 'nav.forward', 'nav.reload', 'palette.open', 'palette.close', 'sidebar.toggle', 'archive.open', 'archive.restore', 'window.close', 'window.minimise', 'window.fullscreen', 'settings.open'];
   const step2 = ['tab.move', 'tab.pinAt', 'pin.move', 'folder.newWithTab', 'folder.newWithPin', 'folder.rename', 'folder.setName', 'folder.move', 'folder.delete', 'space.rename', 'space.setName', 'space.update', 'space.delete', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color'];
   const step3 = ['notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3].sort());
+  const step4 = ['settings.run'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

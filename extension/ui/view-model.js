@@ -22,6 +22,7 @@ import { hostOf } from '../shared/dom.js';
 import { rankPalette } from '../shared/search.js';
 import { checkIconUrl } from './sanitize.js';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.js';
+import { settingsFields } from './settings-form.js';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -45,6 +46,9 @@ export const VM_VERSION = 1;
  *   notice?: { id: string, text: string, actions?: { id: string, label: string, primary?: boolean }[] } | null,
  *   prompt?: { id: string, title?: string, text: string, actions?: { id: string, label: string, primary?: boolean, danger?: boolean }[] } | null,
  *   launcher?: { allArchived?: boolean } | null,
+ *   settingsOpen?: boolean,
+ *   recording?: string | null,
+ *   settingsStatus?: Record<string, { text: string, error?: boolean }>,
  *   switchingTo?: number | null,
  *   justShown?: boolean,
  *   inNewTab?: boolean,
@@ -56,7 +60,7 @@ export const VM_VERSION = 1;
  *   state: Partial<State> & Record<string, any> | null,
  *   now?: number,
  *   ui?: UiState,
- *   platform?: { browser?: string, os?: string, marginFullscreen?: boolean },
+ *   platform?: { browser?: string, os?: string, marginFullscreen?: boolean, features?: Record<string, any> },
  *   settings?: Record<string, string | number | boolean>,
  * }} ViewModelInput
  *
@@ -120,8 +124,12 @@ export const VM_VERSION = 1;
  * archive's latest (all of it after "Show all").
  * @typedef {{
  *   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
- *   more: boolean, moreLabel: string,
+ *   more: boolean, moreLabel: string, settingsOpen: boolean,
  * }} LauncherView
+ *
+ * The launcher's Settings form (the `settings` part, in <m-settings>), while
+ * it's open: fields from ui/settings-form.js, Margin's words only.
+ * @typedef {{ fields: import('./settings-form.js').SettingsField[], hasFields: boolean }} SettingsFormView
  *
  * @typedef {{
  *   version: number,
@@ -142,6 +150,7 @@ export const VM_VERSION = 1;
  *   notice: NoticeView | null,
  *   prompt: PromptView | null,
  *   launcher: LauncherView | null,
+ *   settingsForm: SettingsFormView | null,
  *   settings: Record<string, string | number | boolean>,
  *   platform: { browser: string, os: string },
  * }} ViewModel
@@ -258,7 +267,7 @@ function fresh(input) {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, launcher: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, launcher: null, settingsForm: null, settings, platform,
     };
   }
 
@@ -424,7 +433,14 @@ function fresh(input) {
       emptyArchive: archive.length === 0,
       more: archive.length > LAUNCHER_ARCHIVE,
       moreLabel: all ? 'Show fewer' : `Show all ${archive.length}`,
+      settingsOpen: !!ui.settingsOpen,
     };
+  }
+  // Its Settings form, open (ui/settings-form.js).
+  let settingsForm = null;
+  if (launcher && ui.settingsOpen) {
+    const fields = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {} });
+    settingsForm = { fields, hasFields: fields.length > 0 };
   }
 
   return {
@@ -443,6 +459,7 @@ function fresh(input) {
     notice,
     prompt,
     launcher,
+    settingsForm,
     settings,
     platform,
   };

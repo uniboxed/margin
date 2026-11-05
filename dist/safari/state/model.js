@@ -4,6 +4,7 @@
 // background can write only the keys that changed.
 import { platform, PROFILES } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
+import { PACKAGE_THEMES } from '../themes/packages.js';
 import { neverSleeps, readSleepAddress, siteList } from '../shared/sleep.js';
 /** @import { State } from '../../types/margin' */
 
@@ -117,7 +118,7 @@ function normalizeState(raw = {}) {
       neverSleepSites: siteList(raw.settings?.neverSleepSites ?? []),
       shortcuts: normalizeShortcuts(raw.settings, base.settings),
       shortcutDefaults: base.settings.shortcutDefaults,
-      theme: THEMES[raw.settings?.theme] ? raw.settings.theme : DEFAULT_THEME,
+      theme: THEMES[raw.settings?.theme] || PACKAGE_THEMES.includes(raw.settings?.theme) ? raw.settings.theme : DEFAULT_THEME,
       themes: normalizeThemes(raw.settings),
     },
     tabs: { ...raw.tabs },

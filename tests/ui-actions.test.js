@@ -95,7 +95,7 @@ test('the mapping: each action becomes the request the background handles', () =
   assert.deepEqual(req('sidebar.toggle'), send('updateSettings', { patch: { sidebarPinnedOpen: true } }));
   assert.deepEqual(req('sidebar.toggle', undefined, { state: { ...state, settings: { sidebarPinnedOpen: true } } }), send('updateSettings', { patch: { sidebarPinnedOpen: false } }));
   assert.deepEqual(req('archive.open'), send('openLauncher', { windowId: W }));
-  assert.deepEqual(req('settings.open'), send('openLauncher', { windowId: W }));
+  assert.deepEqual(req('settings.open'), send('openLauncher', { windowId: W, settings: true }));
   assert.deepEqual(req('archive.restore', 'ar1'), send('restoreArchive', { archiveId: 'ar1', windowId: W }));
 });
 

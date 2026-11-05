@@ -53,10 +53,11 @@ async function send(type, payload = {}) {
 // also in the address bar on a new tab, not here); otherwise (⌘N's first
 // tab) the palette opens over this page.
 const nav = /** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType?.('navigation')?.[0]);
-// `newtab.html#launcher` opens the launcher on purpose and never redirects.
+// `newtab.html#launcher` opens the launcher on purpose and never redirects
+// (`#settings`: with its Settings open, from a web page's Settings button).
 // `?again`: a page from a copy of Margin that's gone, loaded again at this
 // copy's address (background/cut-off.js oldOwnPageAddress), not a new tab.
-const isLauncher = location.hash === '#launcher';
+const isLauncher = location.hash === '#launcher' || location.hash === '#settings';
 const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && !isLauncher && !/[?&]again\b/.test(location.search);
 const handoff = fresh ? send('newTabPage').catch(() => null) : Promise.resolve(null);
 
@@ -153,7 +154,11 @@ async function mount(theme) {
   const host = createInPageHost({
     api,
     window,
-    platform: { browser: platform?.name ?? 'unknown', os: 'mac', marginFullscreen: !!platform?.marginFullscreen },
+    // What Settings offers depends on the browser (ui/settings-form.js).
+    platform: {
+      browser: platform?.name ?? 'unknown', os: 'mac', marginFullscreen: !!platform?.marginFullscreen,
+      features: { sleepTabs: !!platform?.sleepTabs, blockGestures: !!platform?.blockGestures, marginFullscreen: !!platform?.marginFullscreen, newTabHint: !!platform?.newTabHint, search: platform?.search },
+    },
     tabId: self?.id ?? null,
     windowId: self?.windowId ?? null,
     mode: 'inpage',
@@ -188,7 +193,7 @@ async function mount(theme) {
   const fromBackground = backgroundSwitches();
   /** @type {any} */
   let runtime = null;
-  runtime = createRuntime({ host, theme, container: document, onPalette, onSwitchFailed: () => void host.refresh() });
+  runtime = createRuntime({ host, theme, container: document, ui: { settingsOpen: location.hash === '#settings' }, onPalette, onSwitchFailed: () => void host.refresh() });
   if (windowed) runtime.setUi({ prompt: prompts.fullscreen });
 
   let pageZoom = 1;

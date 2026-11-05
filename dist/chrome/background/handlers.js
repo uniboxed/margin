@@ -823,8 +823,9 @@ export const handlers = {
   // Margin's content script) the new-tab page opens its own palette.
   // The launcher on purpose (#launcher: it doesn't hand off to the palette).
   /** @param {{ windowId?: number }} message */
-  async openLauncher({ windowId }) {
-    await openTab({ windowId, url: api.runtime.getURL('newtab/newtab.html#launcher') });
+  /** @param {{ windowId?: number, settings?: boolean }} message `settings`: its Settings open */
+  async openLauncher({ windowId, settings = false }) {
+    await openTab({ windowId, url: api.runtime.getURL(`newtab/newtab.html#${settings ? 'settings' : 'launcher'}`) });
   },
   // A real new window (the palette's "New window"): its new-tab page opens
   // the palette, and the window inherits the space (model.inheritSpace).
@@ -863,7 +864,7 @@ export const handlers = {
   },
   /** @param {{ patch: Record<string, any> }} message */
   async updateSettings({ patch }) {
-    if ('theme' in patch && !THEMES[patch.theme]) return; // not a theme Margin has
+    if ('theme' in patch && !THEMES[patch.theme] && !PACKAGE_THEMES.includes(patch.theme)) return; // not a theme Margin has
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
   // "Margin full screen" on or off for this window (Chrome; background/fullscreen.js).

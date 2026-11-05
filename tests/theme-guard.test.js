@@ -34,7 +34,7 @@ const find = (tree, pred) => {
 const reasons = (r) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
 test('guarded parts: menus, notices, prompts and the space editor', () => {
-  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'prompt', 'space-editor']);
+  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor']);
   assert.ok(TEXT_ATTRS.includes('title') && TEXT_ATTRS.includes('aria-label') && TEXT_ATTRS.includes('alt') && TEXT_ATTRS.includes('placeholder'));
 });
 

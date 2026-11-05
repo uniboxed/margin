@@ -34,6 +34,7 @@ import { installDrag } from './behaviors/drag.js';
 import { installScroll } from './behaviors/scroll.js';
 import { installSwipe } from './behaviors/swipe.js';
 import { installPress } from './behaviors/press.js';
+import { installSettings } from './behaviors/settings.js';
 
 const CLOSED_PALETTE = Object.freeze({ open: false, query: '', selected: 0, newTab: false });
 // What's shown ahead of the state lasts this long at most (sidebar.js SHOWN_SPACE_MS).
@@ -310,8 +311,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const colors = vm?.editor ? vm.editor.colors.map((c) => c.id) : [];
     const noticeIds = vm?.notice?.actions.map((a) => a.id) ?? [];
     const promptIds = vm?.prompt?.actions.map((a) => a.id) ?? [];
-    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds }));
+    const settingIds = vm?.settingsForm?.fields.filter((f) => f.isButton && !f.disabled).map((f) => f.id) ?? [];
+    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds, settingIds }));
     if (!verdict.ok) return refuse(name, arg, /** @type {any} */ (verdict).reason);
+    // Margin's own pages (the launcher) open their Settings in place.
+    if (name === 'settings.open' && host.launcher) return local('settings.toggle', undefined, info);
     const request = requestFor(name, arg, { state, ui: { windowId: now.windowId, sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row: name === 'palette.run' ? items.find((i) => i.id === arg) : null });
     // Choosing a row closes the palette first (Arcadia's palette); one opened
     // for a new tab keeps "+ New Tab" lit while another tab comes to the front.
@@ -426,6 +430,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'notice.close': setUi({ notice: null }); return true;
       case 'prompt.close': setUi({ prompt: null }); return true;
       case 'launcher.more': setUi({ launcher: { ...ui.launcher, allArchived: !ui.launcher?.allArchived } }); return true;
+      case 'settings.toggle': setUi({ settingsOpen: !ui.settingsOpen, recording: null }); return true;
+      case 'settings.run': return behaviors.settings.run(arg);
       // The palette's own rows (shared/search.js `local` actions). "Toggle
       // sidebar" is the theme's sidebar.toggle: Keep open on or off.
       case 'palette.toggleSidebar': return dispatch('sidebar.toggle', undefined, 'behavior');
@@ -530,6 +536,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     drag: installDrag(rt),
     scroll: installScroll(rt),
     swipe: installSwipe(rt),
+    settings: installSettings(rt),
   });
   const list = Object.values(behaviors);
 

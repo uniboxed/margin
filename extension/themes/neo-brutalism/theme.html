@@ -1,4 +1,4 @@
-<div class="nb" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-style:--space="{{space.color}}">
+<div class="nb" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:newtab="{{launcher}}" m-style:--space="{{space.color}}">
 
   <div class="peek-zone" m-peek="left" aria-hidden="true"></div>
 
@@ -138,8 +138,104 @@
     </div>
   </m-if>
 
+  <m-launcher class="launcher-slot"></m-launcher>
   <m-menu class="menu-slot"></m-menu>
   <m-editor class="editor-slot"></m-editor>
+  <m-notice class="notice-slot"></m-notice>
+  <m-prompt class="prompt-slot"></m-prompt>
+
+  <template m-part="notice">
+    <div class="notice" role="status">
+      <span class="text">{{notice.text}}</span>
+      <m-for each="notice.actions" as="a">
+        <button class="btn push small" m-class:primary="{{a.primary}}" m-action="notice.run" m-arg="{{a.id}}">{{a.label}}</button>
+      </m-for>
+    </div>
+  </template>
+
+  <template m-part="prompt">
+    <div class="prompt-layer">
+      <div class="prompt" role="alertdialog" m-attr:aria-label="{{prompt.title}}">
+        <div class="prompt-title">{{prompt.title}}</div>
+        <div class="prompt-text">{{prompt.text}}</div>
+        <div class="prompt-actions">
+          <m-for each="prompt.actions" as="a">
+            <button class="btn push small" m-class:primary="{{a.primary}}" m-class:danger="{{a.danger}}" m-action="prompt.run" m-arg="{{a.id}}">{{a.label}}</button>
+          </m-for>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template m-part="launcher">
+    <main class="launcher">
+      <input class="launcher-query" m-input="launcher" placeholder="Go anywhere…" aria-label="Search or enter address" spellcheck="false" autocomplete="off">
+      <m-if test="launcher.hasPins">
+        <section>
+          <h2>Pinned</h2>
+          <ul class="pin-tiles">
+            <m-for each="launcher.pins" as="p">
+              <li>
+                <a class="tile" title="{{p.url}}" m-action="pin.open" m-arg="{{p.id}}">
+                  <m-if test="p.icon">
+                    <img class="fav" alt="" m-icon="{{p.icon}}">
+                    <m-else><span class="fav letter" m-style:--fav="{{p.color}}">{{p.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{p.title}}</span>
+                </a>
+              </li>
+            </m-for>
+          </ul>
+        </section>
+      </m-if>
+      <m-if test="launcher.hasArchive">
+        <section>
+          <h2>Recently archived</h2>
+          <ul class="archive-list">
+            <m-for each="launcher.archive" as="a">
+              <li>
+                <a class="archive-row" title="{{a.url}}" m-action="archive.restore" m-arg="{{a.id}}">
+                  <m-if test="a.icon">
+                    <img class="fav" alt="" m-icon="{{a.icon}}">
+                    <m-else><span class="fav letter" m-style:--fav="{{a.color}}">{{a.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{a.title}}</span>
+                  <span class="when">{{a.ago}}</span>
+                </a>
+              </li>
+            </m-for>
+          </ul>
+          <m-if test="launcher.more">
+            <button class="btn push small" m-action="launcher.more">{{launcher.moreLabel}}</button>
+          </m-if>
+        </section>
+      </m-if>
+      <section>
+        <button class="btn push small" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button>
+        <m-settings></m-settings>
+      </section>
+    </main>
+  </template>
+
+  <template m-part="settings">
+    <div class="settings-form">
+      <m-for each="settingsForm.fields" as="f">
+        <m-if test="f.isGroup"><div class="setting-group" role="heading" aria-level="3">{{f.label}}</div></m-if>
+        <m-if test="f.isInfo"><p class="help">{{f.label}}</p></m-if>
+        <m-if test="f.isNumber"><label class="setting"><span>{{f.label}}</span><input class="number" m-input="setting-number"></label></m-if>
+        <m-if test="f.isToggle"><label class="setting" m-class:disabled="{{f.disabled}}"><span>{{f.label}}</span><input class="toggle" m-input="setting-toggle"></label></m-if>
+        <m-if test="f.isChoice"><label class="setting"><span>{{f.label}}</span><select m-input="setting-choice"></select></label></m-if>
+        <m-if test="f.isList"><label class="setting stacked"><span>{{f.label}}</span><textarea m-input="setting-list" rows="3" spellcheck="false"></textarea></label></m-if>
+        <m-if test="f.isShortcut"><label class="setting"><span>{{f.label}}</span><input class="shortcut" m-input="setting-shortcut" m-class:recording="{{f.recording}}"></label></m-if>
+        <m-if test="f.isButton">
+          <div class="actions">
+            <button class="btn push small" m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button>
+            <m-if test="f.hasStatus"><span class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</span></m-if>
+          </div>
+        </m-if>
+      </m-for>
+    </div>
+  </template>
 
   <template m-part="menu">
     <div class="menu" role="menu" m-attr:aria-label="{{menu.label}}">

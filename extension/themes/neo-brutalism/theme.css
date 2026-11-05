@@ -21,12 +21,40 @@
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-size: 14px;
   color: var(--ink);
-  background-color: var(--space);
+  isolation: isolate;
+  -webkit-font-smoothing: antialiased;
+  /* Where the page card's box starts (its border's outer edge): right of
+     the sidebar and its gutters, or at the gutter with the sidebar hidden. */
+  --page-left: calc(var(--gutter) * 2 + var(--sidebar));
+}
+/* The dotted ground in the space's color, never under the page: the page
+   shows through Margin's page slot. The color comes from the card's own
+   spread shadow (rounded with it), the dots from this layer with the card's
+   box cut out. */
+.nb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* above the card's spread shadow (the color), under the sidebar */
+  pointer-events: none;
   background-image: radial-gradient(rgba(17, 17, 17, .18) 1.2px, transparent 1.2px);
   background-size: 18px 18px;
-  transition: background-color .3s;
-  -webkit-font-smoothing: antialiased;
+  -webkit-mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: 0 0, var(--page-left) var(--gutter);
+  -webkit-mask-size: 100% 100%, calc(100% - var(--page-left) - var(--gutter)) calc(100% - var(--gutter) * 2);
+  -webkit-mask-composite: xor;
+  mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+  mask-repeat: no-repeat;
+  mask-position: 0 0, var(--page-left) var(--gutter);
+  mask-size: 100% 100%, calc(100% - var(--page-left) - var(--gutter)) calc(100% - var(--gutter) * 2);
+  mask-composite: exclude;
 }
+[data-sidebar="hidden"], [data-sidebar="peek"] { --page-left: var(--gutter); }
+/* Margin's new-tab page: the sidebar always beside the launcher. */
+.nb.newtab { --page-left: calc(var(--gutter) * 2 + var(--sidebar)); }
+.nb.newtab .sidebar { position: relative; left: auto; top: auto; bottom: auto; width: var(--sidebar); overflow: visible; margin-left: 0; padding: 0; border: 0; background: none; box-shadow: none; z-index: 2; }
+.nb.newtab .peek-zone { display: none; }
 
 /* Buttons and icons */
 .btn {
@@ -53,7 +81,7 @@
 @keyframes nb-spin { to { transform: rotate(360deg); } }
 
 /* The sidebar */
-.sidebar { position: relative; flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; }
+.sidebar { position: relative; z-index: 2; flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; }
 .column { width: var(--sidebar); height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 .toolbar { display: flex; gap: 6px; }
 .window-bar { display: none; }
@@ -103,7 +131,7 @@
 
 /* The page: an 18 px-rounded card with a 3 px border and a 6 px shadow.
    The page itself goes inside the border. */
-.page { flex: 1; min-width: 0; position: relative; border: 3px solid var(--ink); border-radius: 18px; box-shadow: 6px 6px 0 var(--ink); }
+.page { flex: 1; min-width: 0; position: relative; z-index: 0; border: 3px solid var(--ink); border-radius: 18px; box-shadow: 6px 6px 0 var(--ink), 0 0 0 100vmax var(--space); transition: box-shadow .3s; }
 
 /* A hidden sidebar: the page takes the room; hovering the left edge (Margin's
    m-peek) shows the sidebar as a floating card over the page. */
@@ -185,7 +213,43 @@
 .tag { --tag: var(--space); flex-shrink: 0; font-size: 11px; font-weight: 700; border: 2px solid var(--ink); border-radius: 6px; padding: 2px 6px; background: var(--tag); }
 .enter { font-size: 12px; font-weight: 700; }
 
+/* Notices and prompts (Margin's words). */
+.notice { position: absolute; left: calc(var(--gutter) + 12px); bottom: calc(var(--gutter) + 12px); z-index: 14; max-width: 380px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border: 3px solid var(--ink); border-radius: 14px; background: var(--cream); box-shadow: 6px 6px 0 var(--ink); font-weight: 600; }
+.notice .text { flex: 1 1 100%; }
+.prompt-layer { position: absolute; inset: 0; z-index: 16; display: flex; align-items: center; justify-content: center; background: rgba(17, 17, 17, .35); }
+.prompt { width: min(440px, calc(100% - 64px)); padding: 18px; display: flex; flex-direction: column; gap: 10px; border: 3px solid var(--ink); border-radius: 18px; background: var(--cream); box-shadow: 10px 10px 0 var(--ink); }
+.prompt-title { font-family: 'Archivo Black', sans-serif; font-size: 18px; text-transform: uppercase; }
+.prompt-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* The new-tab page's launcher, in the page card, and Settings. */
+.launcher-slot { position: absolute; top: calc(var(--gutter) + 3px); right: calc(var(--gutter) + 3px); bottom: calc(var(--gutter) + 3px); left: calc(var(--page-left) + 3px); border-radius: 15px; overflow: hidden; z-index: 2; }
+.launcher { height: 100%; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 14vh 32px 48px; background: var(--cream); }
+.launcher > * { width: min(640px, 100%); flex: none; }
+.launcher-query { width: 100%; height: 56px; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 12px; padding: 0 16px; font: inherit; font-size: 20px; font-weight: 500; background: var(--paper); color: var(--ink); outline: none; box-shadow: 4px 4px 0 var(--ink); }
+.launcher h2 { margin: 0 0 10px; font-family: 'Archivo Black', sans-serif; font-size: 14px; text-transform: uppercase; }
+.launcher ul { list-style: none; margin: 0; padding: 0; }
+.pin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+.tile, .archive-row { display: flex; align-items: center; gap: 10px; padding: 10px; border: 2.5px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); color: inherit; text-decoration: none; }
+.tile { flex-direction: column; }
+.tile .title, .archive-row .title { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
+.archive-list { display: flex; flex-direction: column; gap: 8px; }
+.archive-row .title { flex: 1; }
+.archive-row .when { font-size: 12px; font-weight: 700; }
+.settings-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.setting { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 500; }
+.setting.stacked { flex-direction: column; align-items: stretch; }
+.setting.disabled { opacity: .45; }
+.settings-form :is(select, input, textarea) { font: inherit; color: var(--ink); background: var(--paper); border: 2.5px solid var(--ink); border-radius: 8px; padding: 4px 8px; }
+.settings-form input.number { width: 6em; }
+.settings-form input.shortcut { width: 9em; cursor: pointer; }
+.settings-form input.shortcut.recording { background: var(--yellow); }
+.settings-form input.toggle { width: auto; accent-color: var(--ink); }
+.setting-group { margin-top: 12px; font-family: 'Archivo Black', sans-serif; text-transform: uppercase; }
+.settings-form .help { margin: 0; font-size: 12px; }
+.settings-form .help.error { color: #c0262d; }
+.settings-form .actions { display: flex; align-items: center; gap: 10px; }
+
 @media (prefers-reduced-motion: reduce) {
-  .nb, .btn, .chev, .column.m-settling .swipes { transition: none; }
+  .nb, .page, .btn, .chev, .column.m-settling .swipes { transition: none; }
   .loading .ico { animation: none; }
 }

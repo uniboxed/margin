@@ -121,6 +121,47 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await page.evaluate(() => T.rtPerformedFull()), [['navigate', { url: 'https://example.org' }]], 'an address: this tab goes there');
       });
 
+      await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {
+        const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'page', blockGestures: true, newTabHint: true, search: 'learn' } };
+        await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);
+        await page.evaluate(() => T.rtSetUi({ settingsOpen: true }));
+        const form = () => page.evaluate(() => {
+          const q = (s) => [...document.querySelectorAll(s)];
+          return {
+            select: q('.settings-form select').map((s) => [s.value, [...s.options].map((o) => o.textContent)]),
+            numbers: q('.settings-form input[type="number"]').map((i) => i.value),
+            toggles: q('.settings-form input[type="checkbox"][switch]').map((i) => [i.checked, i.disabled]),
+            lists: q('.settings-form textarea').length,
+            shortcuts: q('.settings-form input.shortcut').map((i) => [i.readOnly, i.value]),
+          };
+        });
+        const f = await form();
+        assert.deepEqual(f.select, [['arcadia', ['Arcadia', 'Neo-brutalism']]]);
+        assert.equal(f.numbers.length, 2);
+        assert.equal(f.toggles.length, 5);
+        assert.equal(f.lists, 1);
+        assert.equal(f.shortcuts.length, 5);
+        assert.ok(f.shortcuts.every(([ro]) => ro));
+        const lastSent = (type) => page.evaluate((t) => T.rtSent().filter(([k]) => k === t).at(-1) ?? null, type);
+        await page.click('label:has-text("keep the frame") input');
+        assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { frameWhenHidden: false } }]);
+        await page.selectOption('.settings-form select', 'neo-brutalism');
+        assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { theme: 'neo-brutalism' } }]);
+        await page.click('label:has-text("Next tab") input');
+        await page.keyboard.press('Control+Alt+KeyN');
+        const saved = (await lastSent('updateSettings'))[1].patch.shortcuts;
+        assert.match(saved.nextTab, /KeyN$/);
+        await page.click('label:has-text("Next space") input');
+        await page.keyboard.press('Alt+KeyS');
+        assert.match(await page.evaluate(() => document.querySelector('.settings-form .help.error')?.textContent ?? ''), /already used for “Show or hide the sidebar”/);
+        await page.keyboard.press('Escape');
+        await page.click('button:has-text("Wake all sleeping tabs")');
+        await page.waitForFunction(() => /No tabs are asleep/.test(document.querySelector('.settings-form')?.textContent ?? ''));
+        assert.deepEqual(await lastSent('wakeSleeping'), ['wakeSleeping', {}]);
+        assert.deepEqual(await page.evaluate(() => T.rtRefused()), []);
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
       await t.test('Margin\'s renderer keeps guarded parts to Margin\'s labels, whatever template it\'s given', async () => {
         const r = await page.evaluate(() => T.guardedRaw());
         assert.equal(r.menu, 'Close Tab', 'no "Delete", no "Remove:" before the label');

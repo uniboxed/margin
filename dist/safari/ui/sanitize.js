@@ -252,11 +252,15 @@ export function parseHtml(html) {
     if (!closed) { report(removed, 'element', name, 'unterminated tag', line(start)); break; }
     const lname = name.toLowerCase();
     if (RAW.has(lname)) {
-      report(removed, 'element', lname, 'not allowed (dropped with its content)', line(start));
+      // Margin's Settings list (a <textarea m-input="setting-list">): kept,
+      // empty (its text is Margin's), the rest up to its end tag skipped.
+      const kept = lname === 'textarea' && attrs.some(([n, v]) => n.toLowerCase() === 'm-input' && v === 'setting-list');
+      if (!kept) report(removed, 'element', lname, 'not allowed (dropped with its content)', line(start));
       if (lname === 'plaintext') { i = n; break; }
       const re = new RegExp(`</${lname}[\\s/>]`, 'ig');
       re.lastIndex = i;
       const m = re.exec(html);
+      if (kept) top().children.push({ type: 'el', name, lname, ns: HTML, attrs, children: [], at: line(start) });
       if (!m) { i = n; break; }
       const end = html.indexOf('>', m.index);
       i = end < 0 ? n : end + 1;
@@ -281,17 +285,17 @@ export function parseHtml(html) {
 const HTML_ELEMENTS = new Set([
   'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'nav', 'main', 'aside',
   'header', 'footer', 'section', 'article', 'figure', 'figcaption', 'small', 'strong', 'b', 'i', 'em', 'u', 's',
-  'code', 'kbd', 'mark', 'br', 'hr', 'button', 'a', 'img', 'label', 'input', 'template', 'abbr', 'time', 'sup', 'sub',
+  'code', 'kbd', 'mark', 'br', 'hr', 'button', 'a', 'img', 'label', 'input', 'textarea', 'select', 'template', 'abbr', 'time', 'sup', 'sub',
   'blockquote', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'progress', 'meter', 'wbr', 'bdi',
 ]);
 // Margin's own elements: control flow and slots.
 const MARGIN_ELEMENTS = new Set([
   'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
-  'm-launcher', 'm-prompt',
+  'm-launcher', 'm-prompt', 'm-settings',
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
-  'math', 'head', 'object', 'embed', 'applet', 'frame', 'frameset', 'link', 'meta', 'base', 'select', 'option',
+  'math', 'head', 'object', 'embed', 'applet', 'frame', 'frameset', 'link', 'meta', 'base', 'option',
   'optgroup', 'video', 'audio', 'source', 'track', 'picture', 'canvas', 'portal', 'fencedframe', 'dialog', 'svg:script',
   'param', 'map', 'area', 'slot', 'datalist', 'output', 'keygen', 'menu', 'search', 'selectedcontent',
 ]);
@@ -329,6 +333,8 @@ const ELEMENT_ATTRS = {
   button: ['type', 'disabled'],
   label: ['for'],
   input: ['type', 'placeholder', 'autocomplete', 'spellcheck', 'autocapitalize', 'maxlength', 'inputmode', 'enterkeyhint', 'disabled'],
+  textarea: ['rows', 'placeholder', 'autocomplete', 'spellcheck', 'disabled'],
+  select: ['disabled'],
   td: ['colspan', 'rowspan'],
   th: ['colspan', 'rowspan', 'scope'],
   ol: ['start', 'reversed'],
@@ -355,13 +361,17 @@ const BEHAVIORS = {
   'm-rename': ['space', 'folder', 'tab'],
   'm-scroll': ['tabs', 'palette', 'archive'],
   'm-swipe': ['spaces'],
-  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher'],
+  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', ...['number', 'toggle', 'choice', 'list', 'shortcut'].map((k) => `setting-${k}`)],
 };
+// Which element each of Margin's inputs is: a Settings list is a <textarea>,
+// a choice a <select> (Margin draws its options), the rest <input>s (Margin
+// sets a number's and a toggle's type).
+const INPUT_ELEMENT = (value) => (value === 'setting-list' ? 'textarea' : value === 'setting-choice' ? 'select' : 'input');
 // Named parts a theme supplies (`<template m-part>`), which the runtime puts
 // in its slots: `menu` in <m-menu>, `space-editor` in <m-editor>, `palette`
 // in <m-palette>, `notice` in <m-notice>, `launcher` in <m-launcher>,
 // `prompt` in <m-prompt>.
-const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt']);
+const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt', 'settings']);
 
 // Margin's own words (PLAN.md §4: "a theme can still draw misleading text"):
 // the parts that show Margin's menus, notices, prompts and confirmations
@@ -371,8 +381,8 @@ const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 
 // the theme wrote there is removed and reported, and so is a static value of
 // an attribute that shows or speaks text. Icons (svg shapes), images and
 // decoration stay. ui/render.js applies the same rule again as it compiles.
-export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt']);
-export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt']);
+export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings']);
+export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings']);
 // Attributes whose value is shown (a tooltip, a placeholder, an image's
 // stand-in) or spoken (a screen reader's label).
 export const TEXT_ATTRS = Object.freeze(['title', 'alt', 'placeholder', 'aria-label', 'aria-description', 'aria-roledescription',
@@ -420,7 +430,7 @@ function staticValueOk(element, name, value, ctx) {
       if (element === 'input') return /^(text|search)$/i.test(value) ? value.toLowerCase() : null;
       return ctx.ns === SVG ? value : null;
     case 'role': return /^[a-z]+( [a-z]+)*$/.test(value) ? value : null;
-    case 'width': case 'height': case 'colspan': case 'rowspan': case 'start': case 'maxlength':
+    case 'width': case 'height': case 'colspan': case 'rowspan': case 'start': case 'maxlength': case 'rows':
       return ctx.ns === SVG ? value : (/^\d{1,5}$/.test(value) ? value : null);
     case 'autocomplete': return /^(on|off)$/.test(value) ? value : null;
     case 'spellcheck': return /^(true|false)$/.test(value) ? value : null;
@@ -500,8 +510,8 @@ function cleanNode(node, ctx) {
     ctx.stats.pages++;
     if (node.children.some((c) => c.type === 'el' || (c.type === 'text' && c.value.trim()))) report(ctx.removed, 'element', 'm-page', 'its content (the page goes there)', at);
   }
-  if (lname === 'input' && !node.attrs.some(([n]) => n.toLowerCase() === 'm-input')) {
-    report(ctx.removed, 'element', 'input', 'only Margin\'s inputs (m-input) are allowed', at);
+  if ((lname === 'input' || lname === 'textarea' || lname === 'select') && !node.attrs.some(([n, v]) => n.toLowerCase() === 'm-input' && INPUT_ELEMENT(v) === lname)) {
+    report(ctx.removed, 'element', lname, 'only Margin\'s inputs (m-input) are allowed', at);
     return null;
   }
   // A guarded slot's own attributes are guarded too (its title shows over the menu).
@@ -509,7 +519,8 @@ function cleanNode(node, ctx) {
   if (attrs === null) return null;
   if (lname === 'button' && !attrs.some(([n]) => n === 'type')) attrs.push(['type', 'button']);
   ctx.stats.nodes++;
-  const children = lname === 'm-page' ? [] : cleanChildren(node.children, sub);
+  // (A <select>'s options and a <textarea>'s text are Margin's.)
+  const children = lname === 'm-page' || lname === 'select' || lname === 'textarea' ? [] : cleanChildren(node.children, sub);
   return { type: 'el', ns: HTML, name: lname, attrs, children };
 }
 
@@ -637,7 +648,7 @@ function marginAttr(element, ns, name, value, ctx, drop) {
       return [name, value];
     default:
       if (Object.hasOwn(BEHAVIORS, name)) {
-        if (name === 'm-input' && element !== 'input') { drop(name, 'only on <input>'); return null; }
+        if (name === 'm-input' && element !== INPUT_ELEMENT(value)) { drop(name, `only on <${INPUT_ELEMENT(value)}>`); return null; }
         return BEHAVIORS[name].includes(value) ? [name, value] : (drop(name, `unknown ${name} value`), null);
       }
       drop(name, 'not one of Margin\'s attributes');

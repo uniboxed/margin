@@ -34,9 +34,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings{display:block}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty{display:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty{display:none}
 template{display:none!important}
 [m-passthrough]{pointer-events:none!important}
 :where([m-passthrough])>:where(:not(m-page)){pointer-events:auto}
@@ -62,6 +62,7 @@ const SLOTS = {
   'm-notice': { part: 'notice', test: ['notice'] },
   'm-launcher': { part: 'launcher', test: ['launcher'] },
   'm-prompt': { part: 'prompt', test: ['prompt'] },
+  'm-settings': { part: 'settings', test: ['settingsForm'] },
 };
 // Margin's own words (ui/sanitize.js GUARDED_PARTS): inside these parts and
 // slots, text the theme wrote is dropped again here, whatever tree the
@@ -220,7 +221,15 @@ function compileBlock(nodes, ctx, locals) {
           continue;
         }
         if (a === 'm-arg') continue;
-        if (a === 'm-input') { own.push({ kind: 'input', name: value }); copy.setAttribute(a, value); continue; }
+        if (a === 'm-input') {
+          own.push({ kind: 'input', name: value });
+          copy.setAttribute(a, value);
+          // Margin's Settings inputs: their type is Margin's to set.
+          if (value === 'setting-number') copy.setAttribute('type', 'number');
+          if (value === 'setting-toggle') { copy.setAttribute('type', 'checkbox'); copy.setAttribute('switch', ''); }
+          if (value === 'setting-shortcut') { copy.setAttribute('type', 'text'); copy.setAttribute('readonly', ''); }
+          continue;
+        }
         if (a.startsWith('m-')) {
           // A behavior: kept as written (a theme's CSS can select it), and
           // known to the view with the element's scope.

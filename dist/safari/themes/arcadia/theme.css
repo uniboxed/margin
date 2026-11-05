@@ -713,5 +713,22 @@
 .launcher .settings { color: var(--muted); font-size: 13px; }
 .launcher .settings-summary { display: list-item; list-style: disclosure-closed inside; }
 .launcher .settings-summary button { padding: 0; font-size: 13px; color: var(--muted); }
+.launcher .settings.open .settings-summary { list-style-type: disclosure-open; }
+/* The Settings form (Margin's `settings` part): newtab.css's #settings. */
+.settings-form label.setting { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
+.settings-form label.setting.stacked { flex-direction: column; align-items: stretch; gap: 6px; }
+.settings-form label.setting.disabled { opacity: 0.55; }
+.settings-form :is(select, input, textarea) { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+.settings-form input.number { width: 6em; flex: none; }
+.settings-form input.toggle { flex: none; width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
+.settings-form input.shortcut { width: 9em; flex: none; cursor: pointer; }
+.settings-form input.shortcut.recording { border-color: var(--accent); }
+.settings-form textarea { resize: vertical; -webkit-user-select: text; user-select: text; }
+.settings-form .help { margin: 6px 0 0; font-size: 12px; }
+.settings-form .help.error { color: #d70015; }
+.settings-form .setting-group { margin-top: 18px; }
+.settings-form .actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.settings-form .actions button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+.settings-form .actions .help { margin: 0; }
 
 @media print { .page, .card-edge { box-shadow: none !important; } }

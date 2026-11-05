@@ -79,6 +79,7 @@ export const ACTIONS = Object.freeze({
   'prompt.run': 'prompt-item',
   'prompt.close': 'none',
   'launcher.more': 'none',
+  'settings.run': 'setting-item',
 });
 
 export const ACTION_NAMES = Object.freeze(Object.keys(ACTIONS));
@@ -112,6 +113,7 @@ const isId = (value) => (typeof value === 'number' && Number.isSafeInteger(value
  *   hasPin(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
  *   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
  *   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
+ *   hasSettingItem?(id: any): boolean,
  * }} ActionContext
  */
 
@@ -161,6 +163,7 @@ export function checkAction(name, arg, ctx) {
     tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, archive: ctx.hasArchived, row: ctx.hasPaletteRow,
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
+    'setting-item': ctx.hasSettingItem ?? (() => false),
   };
   switch (kind) {
     case 'none':
@@ -200,10 +203,10 @@ export function createDispatcher({ context, run, log = () => {} }) {
  * rows of the palette while it's open (`paletteIds`, from ui/view-model.js
  * paletteItems), and the open menu's items and the editor's swatches.
  * @param {any} state @param {Iterable<string>} [paletteIds]
- * @param {{ menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string> }} [more]
+ * @param {{ menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string>, settingIds?: Iterable<string> }} [more]
  * @returns {ActionContext}
  */
-export function contextFromState(state, paletteIds = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [] } = {}) {
+export function contextFromState(state, paletteIds = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [], settingIds = [] } = {}) {
   const tabs = state?.tabs && typeof state.tabs === 'object' ? state.tabs : {};
   const ids = (list) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
   const spaces = ids(state?.spaces);
@@ -215,6 +218,7 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
   const colors = new Set(colorIds);
   const notices = new Set(noticeIds);
   const prompts = new Set(promptIds);
+  const settingButtons = new Set(settingIds);
   return {
     hasTab: (id) => Number.isInteger(id) && Object.prototype.hasOwnProperty.call(tabs, id) && tabs[id]?.id === id,
     hasSpace: (id) => spaces.has(id),
@@ -226,6 +230,7 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
     hasColor: (id) => colors.has(id),
     hasNoticeItem: (id) => notices.has(id),
     hasPromptItem: (id) => prompts.has(id),
+    hasSettingItem: (id) => settingButtons.has(id),
   };
 }
 
@@ -352,10 +357,11 @@ export const ACTION_MAP = Object.freeze({
   'prompt.run': 'local',
   'prompt.close': 'local',
   'launcher.more': 'local',
+  'settings.run': 'local',
 });
 
 const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color',
-  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more']);
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**
@@ -421,7 +427,10 @@ export function requestFor(name, arg, { state, ui, platform, row }) {
       return send(type, type === 'activateTab' || type === 'openPin' || type === 'setSpace' ? { ...payload, ...show } : payload);
     }
     case 'sidebar.toggle': return send('updateSettings', { patch: { sidebarPinnedOpen: !state?.settings?.sidebarPinnedOpen } });
-    case 'archive.open': case 'settings.open': return send('openLauncher', { windowId });
+    case 'archive.open': return send('openLauncher', { windowId });
+    // On a web page: Margin's start page, its Settings open (Margin's own
+    // pages toggle the form: ui/runtime.js).
+    case 'settings.open': return send('openLauncher', { windowId, settings: true });
     case 'archive.restore': return send('restoreArchive', { archiveId: arg, windowId });
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }

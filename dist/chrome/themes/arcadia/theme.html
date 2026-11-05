@@ -293,9 +293,45 @@
           </m-if>
         </section>
       </m-if>
-      <section class="settings">
-        <div class="settings-summary"><button m-action="settings.open">Settings</button></div>
+      <section class="settings" m-class:open="{{launcher.settingsOpen}}">
+        <div class="settings-summary"><button m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">Settings</button></div>
+        <m-settings class="settings-slot"></m-settings>
       </section>
     </main>
+  </template>
+
+  <!-- Settings (Margin's form: its fields, words and inputs are Margin's; this lays them out). -->
+  <template m-part="settings">
+    <div class="settings-form">
+      <m-for each="settingsForm.fields" as="f">
+        <m-if test="f.isGroup">
+          <div class="setting-group" role="heading" aria-level="3">{{f.label}}</div>
+        </m-if>
+        <m-if test="f.isInfo">
+          <p class="help">{{f.label}}</p>
+        </m-if>
+        <m-if test="f.isNumber">
+          <label class="setting"><span class="label">{{f.label}}</span><input class="number" m-input="setting-number"></label>
+        </m-if>
+        <m-if test="f.isToggle">
+          <label class="setting" m-class:disabled="{{f.disabled}}"><span class="label">{{f.label}}</span><input class="toggle" m-input="setting-toggle"></label>
+        </m-if>
+        <m-if test="f.isChoice">
+          <label class="setting"><span class="label">{{f.label}}</span><select class="choice" m-input="setting-choice"></select></label>
+        </m-if>
+        <m-if test="f.isList">
+          <label class="setting stacked"><span class="label">{{f.label}}</span><textarea class="list" m-input="setting-list" rows="3" spellcheck="false" autocomplete="off"></textarea></label>
+        </m-if>
+        <m-if test="f.isShortcut">
+          <label class="setting"><span class="label">{{f.label}}</span><input class="shortcut" m-input="setting-shortcut" m-class:recording="{{f.recording}}"></label>
+        </m-if>
+        <m-if test="f.isButton">
+          <div class="actions">
+            <button m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button>
+            <m-if test="f.hasStatus"><span class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</span></m-if>
+          </div>
+        </m-if>
+      </m-for>
+    </div>
   </template>
 </div>

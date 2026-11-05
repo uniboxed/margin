@@ -3,6 +3,8 @@
 // data, so the background can check a package theme's id without loading the
 // UI code. Arcadia (the default) first.
 export const PACKAGE_THEMES = Object.freeze(['arcadia', 'neo-brutalism']);
+// Their names, as Settings' theme picker shows them (ui/settings-form.js).
+export const PACKAGE_THEME_NAMES = Object.freeze({ arcadia: 'Arcadia', 'neo-brutalism': 'Neo-brutalism' });
 
 // Where the index of the user's imported themes is kept (storage.local).
 export const USER_THEMES_KEY = 'userThemes';

@@ -3,7 +3,7 @@
 
 const FORBIDDEN = new Set([
   'script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'form', 'link', 'meta', 'base', 'style', 'foreignobject',
-  'image', 'feimage', 'animate', 'animatemotion', 'animatetransform', 'set', 'math', 'noscript', 'textarea', 'select',
+  'image', 'feimage', 'animate', 'animatemotion', 'animatetransform', 'set', 'math', 'noscript',
   'video', 'audio', 'source', 'picture', 'canvas', 'dialog', 'portal', 'applet', 'svg:script', 'x:script',
 ]);
 const FORBIDDEN_ATTRS = new Set(['srcdoc', 'formaction', 'action', 'srcset', 'ping', 'target', 'xlink:href', 'contenteditable', 'popover', 'popovertarget', 'autofocus', 'name', 'accesskey', 'draggable']);
@@ -28,6 +28,9 @@ export function auditTree(tree) {
       const name = node.name.toLowerCase();
       if (FORBIDDEN.has(name) || name.includes(':')) out.push(`element <${node.name}>`);
       if (name === 'input' && !node.attrs.some(([a]) => a === 'm-input')) out.push('<input> without m-input');
+      // Margin's Settings list and choice only, empty (their text and options are Margin's).
+      if (name === 'textarea' && (!node.attrs.some(([a, v]) => a === 'm-input' && v === 'setting-list') || node.children?.length)) out.push('<textarea> not Margin\'s, or with content');
+      if (name === 'select' && (!node.attrs.some(([a, v]) => a === 'm-input' && v === 'setting-choice') || node.children?.length)) out.push('<select> not Margin\'s, or with content');
       for (const [a, v] of node.attrs) checkAttr(name, a, v, out);
     }
     for (const c of node.children ?? []) walk(c);
