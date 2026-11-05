@@ -26,6 +26,22 @@
 //     (`corrupt`: one piece's bytes changed);
 //   { do: 'send', id, msg } → msg as is, its epoch filled in;
 //   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id }.
+// The lasting data (DATA.md "Messages"), with `data` on connect:
+//   data: { acked?, queue?, wiped?, icons?, parts?, now? } → after the state
+//     (and theme), data.hello with `acked` (default 0) and `queue` (default
+//     none). `wiped`: the copy's storage is empty (Safari wiped it: Margin's
+//     defaults). `icons`: that many 60 KB site icons added to its storage.
+//     The app's data.need → { ev: 'dataNeed' } and data.snapshot of the
+//     converter's set (shared/data-set.js dataSetFromStorage, its times at
+//     `now`), in `parts` (default 1);
+//   the app's data.snapshot, all its parts → { ev: 'dataSnapshot', id, parts,
+//     bytes, counts (live items per collection), spaces (id → name),
+//     omitted, refilled } and taken as the cache: `refilled` is what
+//     stateFromDataSet makes of it (spaces' names, pins, kept tabs' ids);
+//   data.ack → { ev: 'dataAck', id, upTo } (kept as acked); data.changes →
+//     { ev: 'dataChanges', id, changes };
+//   { do: 'dataChanges', id, changes } → data.changes from the copy;
+//   { do: 'dataHello', id, acked?, queue? } → data.hello again.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
 // payload } }); setLayout → { ev: 'setLayout', msg }; resync →
@@ -39,6 +55,10 @@ import { fileURLToPath } from 'node:url';
 import { smallState } from '../../tests/ui/fixtures.js';
 import { toStorage } from '../../extension/shared/stored.js';
 import { readBuiltinTheme } from '../../extension/ui/theme-loader.js';
+import { dataSetFromStorage, stateFromDataSet } from '../../extension/shared/data-set.js';
+import { liveValues } from '../../extension/shared/data-merge.js';
+import { normalizeState } from '../../extension/state/model.js';
+import { fromStorage } from '../../extension/shared/stored.js';
 
 // The host gone (it quit): nothing more to say.
 process.stdout.on('error', () => process.exit(0));
@@ -80,10 +100,65 @@ async function sendTheme(s, id, chunkBytes = 512 * 1024, corrupt = false) {
   say({ ev: 'sent', id: s.id, what: 'theme', parts, bytes: whole.length });
 }
 
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false }) {
+// The converter's set in `parts`: every collection named in part 0, the items dealt out in turn.
+function snapshotParts(set, parts) {
+  const out = Array.from({ length: parts }, (_, i) => ({ format: 1, items: i === 0 ? Object.fromEntries(Object.keys(set.items).map((c) => [c, {}])) : {} }));
+  let n = 0;
+  for (const [c, list] of Object.entries(set.items)) {
+    for (const [itemId, item] of Object.entries(list)) {
+      const part = out[n++ % parts].items;
+      (part[c] ??= {})[itemId] = item;
+    }
+  }
+  return out;
+}
+
+function takeData(s, m) {
+  switch (m.k) {
+    case 'data.need': {
+      say({ ev: 'dataNeed', id: s.id, all: m.all, profile: m.profile });
+      const set = dataSetFromStorage(s.raw, { now: s.data.now ?? Date.now() });
+      const parts = snapshotParts(set, s.data.parts ?? 1);
+      const transfer = randomUUID();
+      parts.forEach((part, i) => s.send({ k: 'data.snapshot', profile: s.profile, format: 1, set: part, transfer, part: i, parts: parts.length }));
+      return say({ ev: 'sent', id: s.id, what: 'data.snapshot', parts: parts.length });
+    }
+    case 'data.snapshot': {
+      if (s.incoming?.transfer !== m.transfer) s.incoming = { transfer: m.transfer, parts: new Map(), bytes: 0 };
+      s.incoming.parts.set(m.part, m);
+      s.incoming.bytes += Buffer.byteLength(JSON.stringify(m));
+      if (s.incoming.parts.size < m.parts) return;
+      const items = {};
+      for (const part of s.incoming.parts.values()) for (const [c, list] of Object.entries(part.set.items)) Object.assign((items[c] ??= {}), list);
+      const set = { format: 1, items };
+      const omitted = s.incoming.parts.get(0)?.omitted ?? [];
+      const bytes = s.incoming.bytes;
+      s.incoming = null;
+      s.cache = set;
+      const state = stateFromDataSet(normalizeState(fromStorage(s.raw)), set);
+      return say({
+        ev: 'dataSnapshot', id: s.id, parts: m.parts, bytes, omitted,
+        counts: Object.fromEntries(Object.keys(items).map((c) => [c, Object.keys(liveValues(set, c)).length])),
+        spaces: Object.fromEntries(Object.entries(liveValues(set, 'spaces')).map(([sid, v]) => [sid, v.name])),
+        refilled: { spaces: state.spaces.map((x) => x.name), pins: state.pins.length, keptTabs: Object.keys(state.keptTabs ?? {}).sort() },
+      });
+    }
+    case 'data.ack':
+      s.acked = m.upTo;
+      return say({ ev: 'dataAck', id: s.id, upTo: m.upTo, profile: m.profile });
+    case 'data.changes':
+      return say({ ev: 'dataChanges', id: s.id, changes: m.changes, profile: m.profile });
+    default:
+      return say({ ev: 'message', id: s.id, msg: m });
+  }
+}
+
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null }) {
   const to = old ? kept : link;
   const ws = new WebSocket(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
-  const s = { id, ws, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw: storedState(), windows };
+  const raw = data?.wiped ? {} : storedState();
+  for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
+  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, cache: null, incoming: null };
   sockets.set(id, s);
   s.send = (m) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
   const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
@@ -104,6 +179,10 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       snapshot();
       say({ ev: 'sent', id, what: 'snapshot' });
       if (theme) void sendTheme(s, theme, chunkBytes);
+      if (data) {
+        s.send({ k: 'data.hello', profile, format: 1, acked: s.acked, queue: data.queue ?? [] });
+        say({ ev: 'sent', id, what: 'data.hello' });
+      }
       return;
     }
     switch (m.k) {
@@ -122,6 +201,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       case 'bye':
         return say({ ev: 'bye', id, why: m.why });
       default:
+        if (typeof m.k === 'string' && m.k.startsWith('data.')) return takeData(s, m);
         return say({ ev: 'message', id, msg: m });
     }
   };
@@ -170,6 +250,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     case 'send':
       s.send(c.msg);
       return say({ ev: 'sent', id: c.id, what: c.msg.k });
+    case 'dataChanges':
+      s.send({ k: 'data.changes', profile: c.profile ?? s.profile, changes: c.changes });
+      return say({ ev: 'sent', id: c.id, what: 'data.changes' });
+    case 'dataHello':
+      s.send({ k: 'data.hello', profile: s.profile, format: 1, acked: c.acked ?? s.acked, queue: c.queue ?? [] });
+      return say({ ev: 'sent', id: c.id, what: 'data.hello' });
     case 'mute':
       s.muted = c.on;
       return;

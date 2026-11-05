@@ -138,6 +138,8 @@ enum LinkMessage {
     case reply(id: Int, body: JSONObject)
     case tock
     case bye(why: String)
+    // The lasting data (DATA.md "Messages": data.hello, data.snapshot, data.changes), as it came.
+    case data(kind: String, body: JSONObject)
     // A kind this app doesn't know (a newer extension): left.
     case other(String)
 
@@ -150,6 +152,7 @@ enum LinkMessage {
               let k = m["k"] as? String else { return nil }
         let epoch = m["epoch"] as? String
         let seq = int(m["seq"])
+        if k.hasPrefix("data.") { return .data(kind: k, body: m) }
         switch k {
         case "hello":
             guard int(m["v"]) == LinkProtocol.version, let epoch, !epoch.isEmpty,
@@ -209,6 +212,8 @@ enum AppMessage {
     // Where the theme put the page in a window. `seq` counts up per window, per epoch.
     case setLayout(epoch: String, windowId: Int, seq: Int, layout: PageLayout)
     case theme(epoch: String, chunk: Chunk)
+    // The lasting data (DATA.md "Messages": data.need, data.snapshot, data.changes, data.ack).
+    case data(kind: String, body: JSONObject)
     case bye(why: String)
 
     var object: JSONObject {
@@ -226,6 +231,8 @@ enum AppMessage {
             return layout.object.merging(["k": "setLayout", "epoch": epoch, "windowId": windowId, "seq": seq, "at": at]) { $1 }
         case .theme(let epoch, let chunk):
             return chunk.fields.merging(["k": "theme", "epoch": epoch]) { $1 }
+        case .data(let kind, let body):
+            return body.merging(["k": kind]) { $1 }
         case .bye(let why):
             return ["k": "bye", "why": why]
         }

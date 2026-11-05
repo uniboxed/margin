@@ -56,6 +56,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var resyncRetry: TimeInterval = 2
         var pointerEvery: TimeInterval = 1.0 / 30 // the pointer handed to a page passing it through
         var windowedToo = false
+        // The lasting data's folder (DataStore.swift). Default: ~/Library/Application Support/Margin/data,
+        // or a new temporary folder for a harness (a test never touches the real one).
+        var dataRoot: URL?
         var bundleIds = ["safari": safariIdentifier, "chrome": "com.google.Chrome", "edge": "com.microsoft.edgemac"]
     }
 
@@ -71,6 +74,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     let link: SocketLink
+    // The lasting data, one set per browser profile (DataSync.swift: the read API is there).
+    let data: DataSync
     private let windowSource: WindowSource
     private let apps: AppWatch
     let shortcuts: AppShortcuts
@@ -97,6 +102,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         self.apps = apps
         self.shortcuts = AppShortcuts(registrar: hotKeys)
         self.options = options
+        let dataRoot = options.dataRoot
+            ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataStore.appRoot)
+        data = DataSync(store: DataStore(root: dataRoot))
         link.delegate = self
         apps.onChange = { [weak self] why in self?.burst(why) }
         shortcuts.onCommand = { [weak self] command in self?.run(command) }
@@ -131,6 +139,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let entry = Link(connection)
         entry.mirror.begin(connection.hello)
         links[connection.key] = entry
+        data.linkUp(connection)
         apps.start()
         burst("linked: \(connection.key)")
     }
@@ -167,6 +176,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             case .waiting:
                 break
             }
+        case .data(let kind, let body):
+            data.received(connection, kind, body)
         case .push(_, let windowId, let msg):
             let json = jsonString(["type": "push", "msg": msg]) ?? ""
             for overlay in overlays(of: entry) where windowId == nil || overlay.key.windowId == windowId { overlay.push(raw: json) }
@@ -179,12 +190,25 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard let entry = links[connection.key], entry.connection === connection else { return }
         entry.resyncTimer?.invalidate()
         links[connection.key] = nil
+        data.linkDown(connection)
         for overlay in overlays(of: entry) {
             overlay.close()
             overlays[overlay.key] = nil
         }
         if links.isEmpty { started = false }
         burst("link down: \(connection.key)")
+    }
+
+    // A profile's Margin tabs that aren't open: all of them for a profile not
+    // linked, else those no open tab of its copy's state carries (openTabs.tabs[*].mid).
+    func notOpenTabs(_ p: DataProfile, space: String? = nil) -> [(id: String, value: JSONObject)] {
+        let open: Set<String>
+        if let entry = links[p.key], entry.mirror.hasState, let records = (entry.mirror.value("openTabs") as? JSONObject)?["tabs"] as? JSONObject {
+            open = Set(records.values.compactMap { ($0 as? JSONObject)?["mid"] as? String })
+        } else {
+            open = []
+        }
+        return data.marginTabs(of: p, space: space).filter { !open.contains($0.id) }
     }
 
     private func resync(_ entry: Link) {

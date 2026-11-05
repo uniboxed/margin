@@ -7,7 +7,10 @@
 // list stands in for (ScriptedWindows: the browser's process is made up);
 // overlays are ordered just above them, off every display. The app never
 // activates, nothing is made key, no real hot key is taken (FakeKeys).
-// Writes the overlay's picture to MARGIN_APP_SHOT.
+// Writes the overlay's picture to MARGIN_APP_SHOT. Then the lasting data
+// (dataScenario): the first link, a relink with a queue, two profiles kept
+// apart, a wiped cache refilled, the app's own change, and a crash mid-write
+// followed by a relaunch, all in a temporary folder.
 import AppKit
 import WebKit
 
@@ -187,6 +190,9 @@ func scenario() async {
   options.overlay.harness = true
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
   options.bundleIds = ["safari": fakeBundle]
+  let dataRoot = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: dataRoot) }
+  options.dataRoot = dataRoot
   let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: keys, options: options)
   windows.shell = shell
   shell.start()
@@ -398,6 +404,7 @@ final class Runner: NSObject, NSApplicationDelegate {
     if env["MARGIN_APP_VERBOSE"] != nil { Diagnostics.echo = { print("  app:", $0) } }
     Task { @MainActor in
       await scenario()
+      await dataScenario()
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }

@@ -5,7 +5,9 @@
 // window server's (WindowMatcher.swift), the stacking check, pass-through
 // decisions (PassThrough.swift), layout reports into setLayout (Shell.swift
 // LayoutOutbox), shortcuts and their gating (Shortcuts.swift, against a
-// stand-in for Carbon), and the coordinate flips. tools/app-tests/run.sh
+// stand-in for Carbon), the coordinate flips, and the lasting data
+// (data-tests.swift: the merge's vectors, the files, the data messages).
+// tools/app-tests/run.sh
 // builds and runs them (and the end-to-end check, e2e.swift).
 import AppKit
 import Foundation
@@ -64,6 +66,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     passThrough()
     shortcuts()
     geometry()
+    dataMerge()
+    dataStore()
+    dataSync()
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }
