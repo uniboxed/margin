@@ -332,30 +332,3 @@ test('store: a copy that claims the state knows no write until its own first sta
   assert.equal(second.stateRev(), local.get('stateRev').id);
 });
 
-// ---- a tab's proof across copies (2026-11-04) --------------------------------
-// The page's content-script world outlives a copy of Margin (Safari keeps it as
-// Margin is updated or Margin.app opened: background/cut-off.js), and goes with
-// its document. Copy A's page keeps its word that its tab was proven there
-// (content/core.js `Margin.inWindowAt`); copy B's wake (background/tabs.js
-// pageThere), run in that world, reads it, and says the world is another
-// copy's, so it's asked whether it's cut off.
-test('copies: a proof copy A\'s page kept in its world is read by copy B\'s wake (no introduction: in-window.test.js); a new document\'s world has none', async () => {
-  const vm = await import('node:vm');
-  globalThis.chrome = /** @type {any} */ ({ ...fakeApi('safari-web-extension://B/'), permissions: { contains: async () => true }, tabs: { onActivated: { addListener() {} } }, scripting: {} });
-  const { pageThere } = await import('../extension/background/tabs.js?copies');
-  const world = (globals) => vm.createContext({ location: { href: 'https://a.test/' }, ...globals });
-  const ask = (context, own) => vm.runInContext(`(${pageThere})(${JSON.stringify(own)})`, context);
-  // Copy A's page: its world bound to A, its word there.
-  const keptByA = world({ Margin: { inWindowAt: 1000, content: { windowSeen: () => true, cameIntoView: () => true } }, browser: { runtime: { id: 'a', getURL: () => 'safari-web-extension://A/' } } });
-  assert.deepEqual({ ...ask(keptByA, 'safari-web-extension://B/') }, { there: 'proven', other: true }, 'B reads A\'s word, and knows the world is A\'s');
-  assert.equal(ask(keptByA, 'safari-web-extension://A/'), 'proven', 'A itself reads it too');
-  // The same page before A's word: only what A's copy knows of it.
-  const notYet = world({ Margin: { content: { windowSeen: () => true, cameIntoView: () => true } }, browser: { runtime: { id: 'a', getURL: () => 'safari-web-extension://A/' } } });
-  assert.deepEqual({ ...ask(notYet, 'safari-web-extension://B/') }, { there: 'seen', other: true });
-  // A new document (a link, a reload, Safari making the tab again): B's own world, nothing in it.
-  const fresh = world({ Margin: { content: { windowSeen: () => true, cameIntoView: () => false } }, browser: { runtime: { id: 'b', getURL: () => 'safari-web-extension://B/' } } });
-  assert.equal(ask(fresh, 'safari-web-extension://B/'), true);
-  // No Margin in the world at all (a page Margin never ran in), or an about: page.
-  assert.equal(ask(world({}), 'safari-web-extension://B/'), true);
-  assert.equal(ask(world({ location: { href: 'about:blank' } }), 'safari-web-extension://B/'), false);
-});

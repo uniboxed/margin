@@ -7,13 +7,11 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, reloadCutOff, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, provenWith, resolveTab, tellProven, shownAt, wakeTab } from './tabs.js';
+import { focusTab, reloadCutOff, handingOff, inPage, instanceId, isFocusing, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab, shownAt } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
 import { sleepIdle, wakeAll } from './sleep.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
-import * as keepReady from './keep-ready.js';
-import * as warmUp from './warm-up.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
@@ -28,28 +26,6 @@ import * as pageLoads from './page-loads.js';
 import { moveIndex } from '../ui/behaviors/drop-rules.js';
 import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, plainSetting } from '../themes/packages.js';
 
-// After a switch from the sidebar while it was open over the page (hovered,
-// toggled, or the rail expanded): the page shown next opens it the same way
-// (`why`), so the sidebar doesn't vanish and come back on every switch
-// (content/layout.js). A page that isn't listening yet (loading, or Safari
-// reloading a tab it had unloaded) gets it with `hello` for a few seconds.
-const carried = new Map(); // tab id → { why, until }
-function rememberCarry(tabId, why) {
-  const reason = why === 'toggle' ? 'toggle' : 'hover';
-  carried.set(tabId, { why: reason, until: now() + 10000 });
-  return reason;
-}
-function deliverCarry(tabId, reason) {
-  api.tabs.sendMessage(tabId, { type: 'command', command: 'carry-open', why: reason }).then(() => carried.delete(tabId), () => {});
-}
-function carryOpen(tabId, why) {
-  deliverCarry(tabId, rememberCarry(tabId, why));
-}
-function takeCarried(tabId) {
-  const entry = carried.get(tabId);
-  carried.delete(tabId);
-  return entry && entry.until > now() ? entry.why : null;
-}
 // The tab a nav request is for: the one named, the page's own, or the one
 // in front of the window.
 async function frontTab(tabId, windowId, sender) {
@@ -170,23 +146,6 @@ function rememberZoom(tab, url, zoom) {
     await api.storage.local.set({ pageZoom: next });
   }).catch(() => {});
 }
-// The sidebar coming out over the page wakes the tab used before (prewake's
-// 'reveal'), each tab at most once in this long: brought out every few
-// seconds to glance at it, it kept that tab's process running at foreground
-// priority most of the time (a 2 s hold each), what keep-ready set to 0 is
-// meant to spare. One woken that long ago may be suspended again, and its
-// switch then waits for it (tabs.js mayWait). Per background run: one
-// started again wakes it once more.
-const REVEAL_WAKE_EVERY_MS = 10_000;
-const revealWokenAt = new Map(); // tab id → when
-/** @param {number} tabId */
-function revealWakeDue(tabId, now = Date.now()) {
-  const last = revealWokenAt.get(tabId);
-  if (last != null && now - last < REVEAL_WAKE_EVERY_MS) return false;
-  for (const [id, at] of revealWokenAt) if (now - at >= REVEAL_WAKE_EVERY_MS) revealWokenAt.delete(id);
-  revealWokenAt.set(tabId, now);
-  return true;
-}
 // When each tab was last loaded again after an update (reloadForUpdate).
 const RELOAD_COOLDOWN_MS = 30000;
 const reloadedAt = new Map();
@@ -232,7 +191,7 @@ async function handOff(tab) {
   }
   log(`palette over tab ${prev.id}, new tab closed`, 'web page in this window: ⌘T (or ⌘N made into a tab by macOS)');
   try {
-    await focusTab(prev.id, { wake: false, source: 'new tab hand-off' });
+    await focusTab(prev.id, { source: 'new tab hand-off' });
   } catch (err) {
     // The page the user was on couldn't come back: the new tab stays, and
     // is tracked from here.
@@ -289,43 +248,6 @@ async function openKeptBehind(windowId, spaceId, keptIds) {
   }
 }
 
-// Only within the window the switch was made from (another window's page
-// stays visible, so its own sidebar stays open there).
-async function carryIfSameWindow(tabId, why, windowId) {
-  const tab = await api.tabs.get(tabId).catch(() => null);
-  if (tab && windowId != null && tab.windowId === windowId) carryOpen(tabId, why);
-}
-
-// For a sidebar-driven switch, preserve its open state as part of the hidden
-// destination preparation. The remembered copy is also the cold-tab path:
-// if Safari has discarded the page, its fresh content script receives it in
-// `hello`. An already-running page that could not prepare gets the ordinary
-// command after activation.
-/**
- * @param {number} tabId
- * @param {{ source?: string, show?: boolean | 'hover' | 'toggle', sourceWindowId?: number, sidebarTop?: number, deadline?: number, waitsUntil?: number, arrival?: import('./tabs.js').Arrival | null, tab?: any }} [options] `tab`: as found already (its window)
- */
-async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId, sidebarTop, deadline, waitsUntil, arrival = null, tab = null } = {}) {
-  const target = tab ?? (await load()).tabs[tabId] ?? (await api.tabs.get(tabId).catch(() => null));
-  const reason = show && sourceWindowId != null && target?.windowId === sourceWindowId ? rememberCarry(tabId, show) : null;
-  // Preparation receives the value directly; persistence can finish beside
-  // the switch instead of adding a storage.session round trip in front of it.
-  if (Number.isFinite(sidebarTop) && sourceWindowId != null) void setScroll(sourceWindowId, sidebarTop);
-  try {
-    // A page's own switch: it's covered meanwhile (content/core.js), so a tab
-    // never shown before arrives covered too.
-    const result = await focusTab(tabId, { source, carry: reason, scroll: Number.isFinite(sidebarTop) ? sidebarTop : null, deadline, waitsUntil, covered: isNeverShown(tabId), arrival });
-    if (!reason) return result;
-    if (!result?.tab) carried.delete(tabId);
-    else if (result.preparation?.outcome === 'ready') carried.delete(tabId);
-    else deliverCarry(tabId, reason);
-    return result;
-  } catch (error) {
-    if (reason) carried.delete(tabId);
-    throw error;
-  }
-}
-
 // ⌘T as Margin's own shortcut (Safari's manifest `new-tab`, with Safari's
 // File › New Tab moved to another shortcut, DECISIONS.md): Safari matches it
 // in the app, wherever the focus is. The page in front opens its palette to
@@ -355,16 +277,6 @@ export async function newTabKey(tabArg) {
   await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
 }
 
-// What a space's switch waits, at most, to carry the sidebar open to the tab
-// it brought, before it answers (setSpace).
-const CARRY_WAIT_MS = 250;
-// ...and never past this long before the page's deadline: focusTab answers
-// by 0.8 s before it at the latest (background/tabs.js ANSWER_BY_MS), and
-// background.js answers that the switch didn't happen 0.5 s before it, so a
-// carry wait after a late answer would leave a background running late (its
-// timers fire late on a loaded Mac) no time to send the real one first.
-const CARRY_ENDS_MS = 800;
-
 // Style sheets fetched for pages (fetchStyle), the latest few.
 const styleCache = new Map();
 const STYLE_CACHE_SIZE = 50;
@@ -373,47 +285,19 @@ const STYLE_CACHED_MAX_CHARS = 1_000_000; // a larger one is fetched each time
 const STYLE_MAX_CHARS = 8_000_000;
 
 
-// A promise's value if it has settled by the end of this turn's own tasks (a
-// timer of 0: its storage read from memory has answered), else false, and
-// `later` gets it once it settles.
-/** @param {Promise<boolean>} promise @param {() => boolean | null} now @param {(value: boolean) => void} later */
-async function known(promise, now, later) {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  const value = now();
-  if (value != null) return value;
-  void promise.then(later, () => {});
-  return false;
-}
-
 // Whether Margin.app draws the UI for a page's window, and where its box goes
 // (background/link.js): in `hello`, so a page knows before it draws.
 const appState = (windowId) => (appLink.pageState() === 'off' ? null : { state: appLink.pageState(), layout: windowId != null ? appLink.layout(windowId) : null });
 
 export const handlers = {
-  /** @param {{ unseen?: boolean, heard?: number, doc?: string, fresh?: boolean, made?: boolean }} message `unseen`: the page started visible in a tab whose page may have just been made; `doc`: the page's own id; `fresh`: its copy started with it; `made`: it was made from the tab's saved history, or is a tab's first page (background/tabs.js pageStarted); `heard`: its place among the activations as it came (background.js) */
-  async hello({ unseen = false, heard = null, doc = null, fresh = false, made = false } = {}, sender) {
+  // A page starting: which tab and window it is, this copy, whether the window is in Margin's
+  // full screen (Chrome), Margin.app's word on the link and the window's layout.
+  async hello(_message, sender) {
     onboarding.pageLoaded();
-    const started = pageStarted(sender.tab?.id, { unseen, heard, doc: typeof doc === 'string' ? doc : null, fresh: fresh === true, made: made === true, active: typeof sender.tab?.active === 'boolean' ? sender.tab.active : null });
-    // `proven`: its tab is proven to have WebKit's mark with this page in it
-    // (a link in a tab Margin had proven): the page keeps that in its world,
-    // where a later copy of Margin reads it (background/tabs.js pageThere).
-    // Not waited for (review of 2026-11-04: it held every hello up to 200 ms
-    // on a background just started, its storage slow): said in the answer if
-    // known by then, else written into the page's world once it is (tellProven).
-    const pageDoc = typeof doc === 'string' ? doc : null;
-    const proven = started.then(() => provenWith(sender.tab?.id, pageDoc), () => false);
-    /** @type {boolean | null} */
-    let provenNow = null;
-    void proven.then((p) => { provenNow = p; });
     const windowId = sender.tab?.windowId ?? null;
     const fullscreen = windowId != null && platform?.marginFullscreen ? await isFullscreen(windowId) : false;
-    // Only to a page in front: one loading behind (background/tabs.js
-    // restoreTab) gets it with its preparation, if its switch goes ahead.
-    const carry = sender.tab?.id != null && sender.tab.active !== false ? takeCarried(sender.tab.id) : null;
-    if (sender.tab?.id != null) forgetShowing(sender.tab.id, { later: true });
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.js).
-    // `warmUp`: the warm-up after a relaunch under way, for its note in the sidebar (background/warm-up.js).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, app: appState(windowId), since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await known(proven, () => provenNow, (p) => p && sender.tab?.id != null && pageDoc && tellProven(sender.tab.id, pageDoc)) };
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, app: appState(windowId), since: thisCopy().since };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.js), after checking the stored owner again.
@@ -424,29 +308,14 @@ export const handlers = {
   // gone, or the browser didn't show it (the page then says so).
   // `tabId` a string: a Margin tab that isn't open (state/model.js keptTabs),
   // opened in `windowId` (else the page's own window), in its place.
-  /** @param {{ tabId: number | string, windowId?: number, hint?: { url?: string, index?: number, title?: string }, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number, resolved?: any, arrival?: import('./tabs.js').Arrival | null }} message `show`: keep the sidebar open there; `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it), `waitsUntil` past it for the answer (a switch asked too late for its steps is shown at once); `resolved`: the tab background.js found by that address already (not asked for again); `arrival`: how the request came (the switch log: background.js) */
-  async activateTab({ tabId, windowId, hint, show, sidebarTop, deadline, waitsUntil, resolved = null, arrival = null }, sender) {
+  /** @param {{ tabId: number | string, windowId?: number, hint?: { url?: string, index?: number, title?: string }, sidebarTop?: number, deadline?: number, resolved?: any }} message `hint`: the row's tab address and place (background/tabs.js resolveTab); `deadline`: when the page stops waiting (no switch after it); `sidebarTop`: the list's scroll, kept for the window; `resolved`: the tab background.js found by that address already (not asked for again) */
+  async activateTab({ tabId, windowId, hint, sidebarTop, deadline, resolved = null }, sender) {
     if (typeof tabId === 'string') return openKept(tabId, { windowId: windowId ?? sender?.tab?.windowId, deadline, sidebarTop });
     const target = resolved ?? (await resolveTab(tabId, hint, sender.tab?.windowId, { deadline }));
     if (!target) throw new Error('That tab is no longer open');
-    const result = await focusWithSidebar(target.id, { source: 'activateTab', show, sourceWindowId: sender.tab?.windowId, sidebarTop, deadline, waitsUntil, arrival, tab: target });
-    return { shown: result?.superseded ? null : target.id };
-  },
-  // About to be shown, probably (a press on a sidebar row or a space's icon,
-  // the pointer or the palette resting on a row, the sidebar coming out, a
-  // swipe toward a space): its process is woken now, once, so the switch that
-  // follows doesn't wait for it (background/tabs.js wakeTab). A pin wakes its
-  // open tab. Not a tab keep-ready holds (its process runs). An earlier copy's
-  // sidebar renews a row's hold every 1.5 s while the pointer rests on it
-  // (`holdOnly`): nothing is renewed in a loop any more, so that does nothing.
-  /** @param {{ tabId?: number, pinId?: string, windowId?: number, hover?: boolean, holdOnly?: boolean, why?: string }} message `hover`: the sidebar's longer hold (a pointer resting, the sidebar coming out, a space); `why`: what asked (the switch log: 'hover', 'press', 'reveal', 'space'; a press by default) */
-  async prewake({ tabId, pinId, windowId, hover = false, holdOnly = false, why }) {
-    if (holdOnly || !platform?.wakeTabs) return; // (pages don't ask where tabs aren't woken: platform.js asksBackground)
-    const id = tabId ?? (pinId ? V.pinTabId(await load(), pinId, windowId) : null);
-    if (!Number.isInteger(id) || keepReady.isHeld(id)) return;
-    const by = why === 'hover' || why === 'reveal' || why === 'space' ? why : hover ? 'hover' : 'press';
-    if (by === 'reveal' && !revealWakeDue(id)) return;
-    void wakeTab(id, { hover, by });
+    if (Number.isFinite(sidebarTop) && sender.tab?.windowId != null) void setScroll(sender.tab.windowId, sidebarTop);
+    await focusTab(target.id, { source: 'activateTab', deadline });
+    return { shown: target.id };
   },
   // Settings' "Wake all sleeping tabs" (background/sleep.js): how many it woke.
   async wakeSleeping() {
@@ -526,8 +395,8 @@ export const handlers = {
   },
   // Closing from Margin archives the tab, like Arc. One that isn't open (a
   // string id: state/model.js keptTabs) goes to the archive as it is.
-  /** @param {{ tabId: number | string, show?: boolean | 'hover' | 'toggle', sidebarTop?: number }} message `show`: closing the shown tab from an open sidebar keeps it open on the next one */
-  async closeTab({ tabId, show, sidebarTop }) {
+  /** @param {{ tabId: number | string }} message */
+  async closeTab({ tabId }) {
     if (typeof tabId === 'string') {
       await mutate((s) => M.archiveKept(s, tabId, { id: newId(), closedAt: now() }));
       return;
@@ -540,25 +409,14 @@ export const handlers = {
     // The tab in front: the space's most recent other tab comes to the front
     // first (Arc stays in the space; the browser would pick a neighbour,
     // maybe of another space).
-    let selected = null;
     if (closing?.active) {
       const s = await load();
       const stay = M.recentTabOfSpace(s, closing.windowId, s.tabSpace[tabId], tabId);
-      if (stay) {
-        const result = await focusWithSidebar(stay.id, { source: 'closeTab', show, sourceWindowId: closing.windowId, sidebarTop }).catch(() => null);
-        if (result?.tab) selected = stay.id;
-      }
+      if (stay) await focusTab(stay.id, { source: 'closeTab' }).catch(() => null);
     }
     // (Archived above: its close, heard, does nothing more.)
     noteClosing([tabId], 'done');
     await api.tabs.remove(tabId);
-    if (show && closing?.active) {
-      const [next] = await api.tabs.query({ active: true, windowId: closing.windowId }).catch(() => []);
-      // If Margin could not select the space's own next tab above, Safari
-      // selected one while removing the old tab. That browser-chosen path
-      // cannot be prepared, so retain the established post-switch fallback.
-      if (next?.id != null && next.id !== selected) carryOpen(next.id, show);
-    }
   },
   /** @param {{ archiveId: string, windowId?: number, replaceTabId?: number }} message */
   async restoreArchive({ archiveId, windowId, replaceTabId }) {
@@ -576,43 +434,6 @@ export const handlers = {
   },
   // Page zoom (the browser's own, like ⌘+): for the page's box (in the
   // page's zoomed pixels) and Margin's pinch; remembered per site.
-  // The page in front lost focus while in sight (Safari left for another
-  // app; `at`: when), and got it back: the tabs kept ready are let go a
-  // moment later, unless Safari is back first (shared/away.js,
-  // background/keep-ready.js noteAway: not if Safari was seen in use since).
-  /** @param {{ at?: number }} request @param {any} sender */
-  async away({ at } = {}, sender) {
-    keepReady.noteAway({ at: Number.isFinite(at) ? at : null, tabId: sender?.tab?.id ?? null, windowId: sender?.tab?.windowId ?? null });
-  },
-  async back(_request, sender) {
-    keepReady.noteFocused(sender?.tab?.windowId ?? null);
-  },
-  // The page has come into view from hidden (content/core.js): with what's
-  // known of its tab, proof WebKit has seen it come into a window with its
-  // page running (background/tabs.js pageInView). Answered true once its tab
-  // is proven with this page in it (the page then stops saying so).
-  /** @param {{ doc?: string, heard?: number } | undefined} request @param {any} sender */
-  async inView({ doc = null, heard = null } = {}, sender) {
-    return pageInView(sender?.tab?.id, { doc: typeof doc === 'string' ? doc : null, heard: Number.isFinite(heard) ? heard : null });
-  },
-  // The page in front, asked whether the user is idle for the warm-up after
-  // a relaunch, says they did something since (content/idle.js): the warm-up
-  // gives way (background/warm-up.js).
-  /** @param {{ at?: number }} [request] */
-  async warmUpInput({ at } = {}) {
-    warmUp.userActed(Number.isFinite(at) ? at : Date.now());
-  },
-  // The warm-up's note in the sidebar: its × (themes/arcadia/sidebar.js),
-  // answered once the stop is kept.
-  async warmUpStop() {
-    await warmUp.stopByUser();
-  },
-  // The page in front was hidden for an instant (shared/switching.js
-  // onBlink): tabs.js pageBlinked takes it only from the page in front of a
-  // flip in its window, during the flip.
-  async pageBlinked({ hiddenAt, shownAt }, sender) {
-    pageBlinked(sender.tab?.windowId, { hiddenAt, shownAt }, sender.tab?.id ?? null);
-  },
   // Where the page in front's area sits in its window, when Safari takes part of it (the docked Web
   // Inspector: content/core.js viewportNow), for Margin.app's overlay (background/link.js viewport).
   /** @param {{ viewport?: { x: number, y: number, width: number, height: number } | null }} message */
@@ -824,19 +645,20 @@ export const handlers = {
   async unpin({ pinId }) {
     await mutate((s) => M.removePin(s, pinId));
   },
-  /** @param {{ pinId: string, windowId?: number, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number }} message `show`: keep the sidebar open there; `deadline`: as activateTab's */
-  async openPin({ pinId, windowId, show, sidebarTop, deadline, waitsUntil }) {
+  /** @param {{ pinId: string, windowId?: number, sidebarTop?: number, deadline?: number }} message `deadline`: as activateTab's */
+  async openPin({ pinId, windowId, sidebarTop, deadline }) {
     const s = await load();
     const pin = s.pins.find((p) => p.id === pinId);
     if (!pin) return;
+    if (Number.isFinite(sidebarTop) && windowId != null) void setScroll(windowId, sidebarTop);
     // Only a tab of the pin's space (as the sidebar shows it): one elsewhere
     // would switch the window to that space.
     const key = M.normalizeUrl(pin.url);
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
     const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
     if (existing) {
-      const result = await focusWithSidebar(existing.id, { source: 'openPin', show, sourceWindowId: windowId, sidebarTop, deadline, waitsUntil });
-      return { shown: result?.superseded ? null : existing.id };
+      await focusTab(existing.id, { source: 'openPin', deadline });
+      return { shown: existing.id };
     }
     // Its tab that isn't open, if the space has one (kept from before it was
     // pinned): opened as that Margin tab.
@@ -844,30 +666,14 @@ export const handlers = {
     const tab = await openTab({ windowId, url: pin.url, spaceId: pin.spaceId, deadline, ...(kept ? { keptId: kept.id } : {}) });
     return { shown: tab.id };
   },
-  /** @param {{ windowId: number, spaceId: string }} message */
-  // `bringTab: false`: only the sidebar's space, the page in front stays.
-  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean }} message */
-  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean, show?: boolean | 'hover' | 'toggle', sidebarTop?: number, deadline?: number, waitsUntil?: number }} message `show`: keep the sidebar open on the tab that comes to the front */
-  async setSpace({ windowId, spaceId, bringTab = true, show, sidebarTop, deadline, waitsUntil }, sender) {
+  // A space shown in the window (its tab most used there to the front); `bringTab: false`: only
+  // the sidebar's space, the page in front stays. Answers which tab is in front now.
+  /** @param {{ windowId?: number, spaceId: string, bringTab?: boolean, sidebarTop?: number, deadline?: number }} message */
+  async setSpace({ windowId, spaceId, bringTab = true, sidebarTop, deadline }, sender) {
     const win = windowId ?? sender?.tab?.windowId;
     if (Number.isFinite(sidebarTop) && win != null) void setScroll(win, sidebarTop);
-    const reason = show && win != null && win === sender?.tab?.windowId ? (show === 'toggle' ? 'toggle' : 'hover') : null;
-    const result = await showSpace(win, spaceId, { bringTab, carry: reason, scroll: sidebarTop, deadline, waitsUntil });
-    // Which tab is in front now (the page that swiped shows it switching).
-    const done = { shown: result?.tab?.id ?? null };
-    if (!show || win == null) return done;
-    if (result?.preparation?.outcome === 'ready') return done;
-    // Before the answer, as a rule (the page shown says hello soon after),
-    // but not past CARRY_WAIT_MS: Safari slow to answer doesn't hold the
-    // page's answer (it waits for it until its deadline).
-    const carrying = api.tabs.query({ active: true, windowId: win }).then(([front]) => {
-      if (front && front.id !== sender?.tab?.id) return carryIfSameWindow(front.id, show, sender?.tab?.windowId);
-    }).catch(() => {});
-    let timer;
-    const carryMs = Math.max(0, Math.min(CARRY_WAIT_MS, (Number.isFinite(deadline) ? /** @type {number} */ (deadline) - CARRY_ENDS_MS : Infinity) - Date.now()));
-    await Promise.race([carrying, new Promise((resolve) => { timer = setTimeout(resolve, carryMs); })]);
-    clearTimeout(timer);
-    return done;
+    const result = await showSpace(win, spaceId, { bringTab, deadline });
+    return { shown: result?.tab?.id ?? null };
   },
   /** @param {{ windowId?: number, name?: string, emoji?: string, color?: string }} message */
   async createSpace({ windowId, name, emoji, color }) {

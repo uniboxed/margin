@@ -10,7 +10,7 @@ import { platform } from '../shared/platform.js';
 import { DATA_META_KEYS, SOURCES, collectionFrom, dataSetFrom, fingerprint, itemsFrom, metaKey, pendingChanges, stateFromDataSet, track } from '../shared/data-set.js';
 import { mergeData } from '../shared/data-merge.js';
 import { recordEmptyStart } from './diagnostics.js';
-import { timed } from './slow.js';
+import { switchLog } from './switch-log.js';
 /** @import { State } from '../../types/margin' */
 
 export const api = globalThis.browser ?? globalThis.chrome;
@@ -457,6 +457,8 @@ async function flush() {
     const { [FAVICONS_MARK]: mark, ...values } = toStorage(cache, keys, { origin: me.origin, since: me.since, synced });
     const rev = nextRev();
     await api.storage.local.set(rev ? { ...values, [STATE_REV]: rev } : values);
+    // A switch's line in the log (background/switch-log.js): its tab in front, stored.
+    switchLog.stored(Object.values(cache?.tabs ?? {}).filter((t) => t?.active).map((t) => t.id));
     // Through once the icons' mark is too (a page that read before it would
     // keep the old icons).
     if (mark !== undefined) await api.storage.local.set({ [FAVICONS_MARK]: mark });
@@ -544,11 +546,11 @@ async function isFreshSession() {
 // since is in it), and the question under way, if any: a switch looking for
 // its tab by address before the first sync (tabs.js resolveTab) takes that
 // one rather than queueing a second behind it, on a Safari slow after a
-// relaunch. Timed (slow.js).
+// relaunch.
 /** @type {Promise<any[]> | null} */
 let openAsked = null;
 function askOpenTabs() {
-  const asking = timed('tabs.query', Promise.resolve().then(() => api.tabs.query({})));
+  const asking = Promise.resolve().then(() => api.tabs.query({}));
   openAsked = asking;
   const over = () => { if (openAsked === asking) openAsked = null; };
   asking.then(over, over);

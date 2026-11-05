@@ -25,23 +25,6 @@ test('normalizeState fills missing keys and keeps stored ones', () => {
   assert.deepEqual(s.tabSpace, {});
 });
 
-test('keep-ready\'s old setting (the space\'s tabs, until that long after Safari was last used) doesn\'t carry over, not even turned off: the tab just left is kept a minute until a value is saved', () => {
-  const from = (settings) => M.normalizeState({ settings }).settings;
-  assert.equal(M.DEFAULT_SETTINGS.keepLeftTabReadyMinutes, 1);
-  assert.equal(from({}).keepLeftTabReadyMinutes, 1, 'new install');
-  for (const old of [30, 0, 5, 480, -1, 'x', null]) {
-    const settings = from({ keepTabsReadyMinutes: old });
-    assert.equal(settings.keepLeftTabReadyMinutes, 1, `${old}: off was a way out of what the old one cost`);
-    assert.deepEqual(settings.keepTabsReadyMinutes, old, 'the old one kept as saved: a build from before still reads it (its default: 30)');
-  }
-  assert.equal(from({ keepTabsReadyMinutes: 0, keepLeftTabReadyMinutes: 3 }).keepLeftTabReadyMinutes, 3, 'the new one, once set, wins');
-  assert.equal(from({ keepTabsReadyMinutes: 30, keepLeftTabReadyMinutes: 0 }).keepLeftTabReadyMinutes, 0);
-  // Pages read the settings as stored (Settings shows it, a page says when Safari is left).
-  for (const settings of [{ keepTabsReadyMinutes: 0 }, { keepTabsReadyMinutes: 30 }, {}, { keepLeftTabReadyMinutes: 4 }, { keepLeftTabReadyMinutes: 0, keepTabsReadyMinutes: 30 }]) {
-    assert.equal(view.keepReadyMinutes(settings), from(settings).keepLeftTabReadyMinutes, JSON.stringify(settings));
-  }
-});
-
 test('normalizeUrl ignores fragment and bare trailing slash, and matches view.js', () => {
   const cases = ['https://a.com/', 'https://a.com', 'https://a.com/x#y', 'https://a.com/x?q=1', 'not a url', ''];
   assert.equal(M.normalizeUrl('https://a.com/'), M.normalizeUrl('https://a.com'));

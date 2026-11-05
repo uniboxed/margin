@@ -77,11 +77,10 @@ const M = await import('../extension/state/model.js');
 const V = await import('../extension/shared/view.js');
 const { mutate, load } = await import('../extension/background/store.js');
 const { showSpace, navigate } = await import('../extension/background/navigation.js');
-const { wakeTab, ensureCurrent, forgetCurrent, injectIntoOpenTabs } = await import('../extension/background/tabs.js');
+const { ensureCurrent, forgetCurrent, injectIntoOpenTabs } = await import('../extension/background/tabs.js');
 // Tabs these tests didn't prove to have WebKit's mark count as having it, as
 // every tab did before it was tracked (background/tabs.js; its own tests:
 // tests/in-window.test.js).
-(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 
 // Window 1: Personal tabs 1 (in front), 2; Work tabs 3, 4 (4 used last); window 2: Work tab 5.
 async function setup() {
@@ -168,25 +167,14 @@ test('showSpace: the space\'s tab comes to the front without waiting for the spa
   assert.equal(V.activeSpaceId(await load(), 1), 'work');
 });
 
-test('showSpace (Safari): the space is written with the next write (its tab\'s activation), and the page prepared draws from what it has', async () => {
+test('showSpace (Safari): the space is written with the next write (its tab\'s activation), not on its own before the switch', async () => {
   await setup();
   const stored = () => fake.local.openTabs?.activeSpaceByWindow?.[1] ?? null;
   const before = stored();
-  const execute = chrome.scripting.executeScript;
-  const revs = [];
-  chrome.scripting.executeScript = (details) => {
-    if (details.func?.name === 'prepareSidebarInPage') revs.push(details.args?.[0]?.rev);
-    return execute(details);
-  };
-  try {
-    await showSpace(1, 'work');
-  } finally {
-    chrome.scripting.executeScript = execute;
-  }
+  await showSpace(1, 'work');
   assert.equal(front(1), 4);
   assert.equal(V.activeSpaceId(await load(), 1), 'work', 'in the state at once');
   assert.equal(stored(), before, 'not written on its own before the switch');
-  assert.ok(revs.length && revs.every((rev) => typeof rev === 'string'), `the page told the last write is through (${JSON.stringify(revs)})`);
   // The activation (background.js) writes the open tabs: the space goes with it.
   await mutate((st) => M.activateTab(st, 4, 1, Date.now()));
   assert.equal(stored(), 'work');
@@ -250,34 +238,6 @@ test('showSpace: the tab in front moved to the space behind a write under way st
   assert.equal(V.activeSpaceId(await load(), 1), 'work');
 });
 
-test('wake: uses Margin\'s own state (no lookups before waking), but not a stale "shown" flag; "no access" isn\'t remembered', async () => {
-  await setup();
-  // Sites no earlier test woke (the access cache lives for the whole run).
-  const add = async (id, url) => {
-    fake.tabs.set(id, { id, windowId: 1, url, active: false, index: id, title: '' });
-    await mutate((st) => M.upsertTab(st, fake.tabs.get(id), 0));
-  };
-  await add(6, 'https://six.test/');
-  await add(7, 'https://seven.test/');
-  fake.calls.get = 0;
-  fake.calls.contains = 0;
-  assert.equal((await wakeTab(6)).outcome, 'awake');
-  assert.equal(fake.calls.get, 0, 'no tabs.get: the state knows the tab');
-  assert.equal(fake.calls.contains, 1);
-  await sleep(650);
-  await wakeTab(6);
-  assert.equal(fake.calls.contains, 1, 'access remembered for the site');
-  // Margin thinks 6 is in front; the browser says otherwise: it's woken.
-  await mutate((st) => ({ ...st, tabs: { ...st.tabs, 6: { ...st.tabs[6], active: true } } }));
-  await sleep(650);
-  assert.equal((await wakeTab(6)).outcome, 'awake');
-  fake.access = false;
-  assert.equal((await wakeTab(7)).outcome, 'no access');
-  fake.access = true;
-  await sleep(650);
-  assert.equal((await wakeTab(7)).outcome, 'awake', 'granted later: seen at once');
-});
-
 test('pins: only a tab of the pin\'s own space is the pin\'s (no jump to another space)', async () => {
   await setup();
   let s = await load();
@@ -333,7 +293,7 @@ test('install repair: replaces stale sidebars immediately and never reinjects a 
   assert.equal(fake.disabled.includes(6), false, 'browser-internal pages are not retried');
 });
 
-test('next/previous: a page a held key only passes through isn\'t covered (the last one is); the page is told when it\'s done or failed', async () => {
+test('next/previous: each press a plain switch, chained from the one before; the page is told it\'s switching, then done or failed', async () => {
   await setup();
   await showSpace(1, 'personal');
   fake.messages = [];
@@ -341,7 +301,7 @@ test('next/previous: a page a held key only passes through isn\'t covered (the l
   await navigate('next-tab', 'key', 1); // pressed while the first waits: tab 1 → 2 → back to 1
   await sleep(10);
   const switching = fake.messages.filter((m) => m.type === 'switching');
-  assert.deepEqual(switching.map((m) => [m.from, m.tabId, m.passing]), [[1, 2, true], [2, 1, false]]);
+  assert.deepEqual(switching.map((m) => [m.from, m.tabId]), [[1, 2], [2, 1]]);
   assert.deepEqual(fake.messages.filter((m) => m.type === 'switch-done').map((m) => [m.from, m.tabId]), [[1, 2], [2, 1]], 'each page told it landed');
   fake.messages = [];
   fake.tabs.delete(2); // closed, Margin's state still lists it
@@ -476,24 +436,6 @@ test('restore: a new-tab page opened in a window never counts as a tab coming ba
   restore.tabChanged({ ...t, url: 'https://a.com/' });
   await sleep(1700);
   assert.equal((await load()).tabSpace[400], 'personal');
-});
-
-test('hello: the sidebar carried open goes only to a page in front (one loading behind gets it with its preparation, if its switch goes ahead)', async () => {
-  await setup();
-  const { handlers } = await import('../extension/background/handlers.js');
-  const send = chrome.tabs.sendMessage;
-  chrome.tabs.sendMessage = async (tabId, message) => {
-    if (tabId === 4) throw new Error('no page yet'); // the carry stays for its hello
-    return send(tabId, message);
-  };
-  try {
-    await handlers.setSpace({ spaceId: 'work', show: 'hover' }, { tab: { id: 1, windowId: 1 } });
-    assert.equal(front(1), 4);
-    assert.equal((await handlers.hello({}, { tab: { id: 4, windowId: 1, active: false } })).carry, null, 'not to a page behind');
-    assert.equal((await handlers.hello({}, { tab: { id: 4, windowId: 1, active: true } })).carry, 'hover', 'kept for the page in front');
-  } finally {
-    chrome.tabs.sendMessage = send;
-  }
 });
 
 // The runtime's today.clear (ui/actions.js): the canvas designs' Clear.

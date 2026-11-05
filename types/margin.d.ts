@@ -74,9 +74,6 @@ export interface Settings {
   sleepAfterHours: number;
   /** hostnames whose tabs never sleep (each with its subdomains: shared/sleep.js) */
   neverSleepSites: string[];
-  keepLeftTabReadyMinutes: number;
-  /** Safari: tabs loaded behind the page after a relaunch (background/warm-up.js); 0: off */
-  warmUpTabs?: number;
   sidebarShortcut: string;
   newTabHint: boolean;
   safariSearch: { id: string; name: string; template: string; at: number } | null;

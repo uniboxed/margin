@@ -53,6 +53,7 @@ import { platform } from '../shared/platform.js';
 import { APP_LINK_KEY } from '../shared/app-link.js';
 import { navigationFor } from '../shared/shortcuts.js';
 import { DATA_FORMAT } from '../shared/data-merge.js';
+import { switchLog } from './switch-log.js';
 
 const APP = 'io.tirth.margin';
 const VERSION = 2;
@@ -667,7 +668,8 @@ export function createLink({
     }
     if (!Object.keys(message.changes).length && !message.favicons) return;
     message.seq = ++seq;
-    send(message);
+    const sent = send(message);
+    if ('openTabs' in message.changes) switchLog.delta(sent);
   }
   async function windowList() {
     const [wins, fronts] = await Promise.all([
@@ -900,7 +902,10 @@ export function createLink({
         sendKeys();
       }
       if ('uiTheme' in changes) void sendTheme();
-      if (!ws) return;
+      if (!ws) {
+        if ('openTabs' in changes) switchLog.delta(false); // (a switch's line ends at its stored state)
+        return;
+      }
       for (const key of STATE_KEYS) {
         if (!(key in changes)) continue;
         pending ??= {};

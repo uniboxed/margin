@@ -16,7 +16,7 @@
 // Which tabs (state/model.js sleepyTabs, then each tab as the browser has it
 // now): a web page, not in front, not asleep already, not playing sound, not
 // loading, not one Safari unloaded itself (nothing to free), not one a switch
-// is going to or keep-ready holds, and, asked in the page itself (sleepInPage,
+// is going to, and, asked in the page itself (sleepInPage,
 // in every frame: another site's frame can hold a draft too), hidden, nothing
 // typed into it and not sent (content/edits.js), nothing playing; a page that
 // doesn't answer in time is left for a later pass. A page that said no isn't
@@ -25,15 +25,15 @@
 // ask and before it's sent to sleep: a pass takes a while, and a tab shown
 // meanwhile (Safari's tab bar, ⌘1–9) has been used.
 // Pinned tabs sleep too. A few per pass (PER_RUN), one at a time, none while
-// a switch is asked for or under way, Safari is slow (slow.js), or the warm-up
-// after a relaunch loads tabs. A pass runs with the auto-archive's (every 15
+// a switch is asked for or under way. A pass runs
+// with the auto-archive's (every 15
 // minutes: background.js). Each pass, each tab put to sleep and each wake is
 // in the switch log (`kind: 'sleep'`: diagnostics.js recordSleep).
 //
 // Margin keeps a sleeping tab as the page it was (state/model.js seenTab):
 // its row, its title and icon, its space, its pin, its archive entry all go
 // by the page's address. A switch of Margin's to one wakes it behind the page
-// in front and shows it once it has loaded (background/tabs.js restoreTab).
+// in front (the sleep page; Safari closes and reopens tabs instead now).
 //
 // Margin 2 (PLAN.md §6): in Safari a tab put to sleep is closed now
 // (platform.sleepTabs 'close'), its Margin tab kept, not open, in its space
@@ -46,9 +46,6 @@ import { api, cached, isOwner, load, now } from './store.js';
 import { platform } from '../shared/platform.js';
 import { SLEEP_PATH, isSleepPage, neverSleeps, sleepAddress } from '../shared/sleep.js';
 import { foundWithNoPage, isFocusing, mayAccess, switchBusy, wakeAsleep } from './tabs.js';
-import { hasNoPage, isHeld } from './keep-ready.js';
-import { isSlow } from './slow.js';
-import { warming } from './warm-up.js';
 import { recordSleep } from './diagnostics.js';
 import { noteClosing, takeClosing } from './closing.js';
 
@@ -188,7 +185,7 @@ async function run({ afterMs = null, max = TIMING.perRun }) {
       skip('asked lately');
       continue;
     }
-    stopped = !isOwner() ? 'not in charge' : switchBusy() ? 'switch' : isSlow() ? 'Safari slow' : warming() ? 'warm-up' : !pageThere ? 'no sleep page' : null;
+    stopped = !isOwner() ? 'not in charge' : switchBusy() ? 'switch' : !pageThere ? 'no sleep page' : null;
     if (stopped) break;
     const outcome = await sleepTab(record, afterMs);
     if (outcome !== true) {
@@ -233,9 +230,8 @@ async function sleepTab(record, afterMs) {
   if (tab.status !== 'complete') return 'loading';
   if (tab.audible) return 'playing';
   if (isFocusing(tab.id)) return 'switching';
-  if (isHeld(tab.id)) return 'held';
   // Safari unloaded it already: nothing to free.
-  if (hasNoPage(tab.id) || foundWithNoPage(tab.id)) return 'no page';
+  if (foundWithNoPage(tab.id)) return 'no page';
   if (!(await mayAccess(tab.url))) return 'no access';
   const how = platform?.sleepTabs === 'discard' ? 'discard' : platform?.sleepTabs === 'page' ? 'page' : 'close';
   if (how === 'discard' && typeof api.tabs.discard !== 'function') return 'no discard';

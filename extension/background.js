@@ -10,11 +10,10 @@ import * as M from './state/model.js';
 import * as V from './shared/view.js';
 import { api, cached, decided, isOwner, isStale, isSynced, load, markSynced, mutate, newId, now, recheck, recheckSoon, resync, StaleError } from './background/store.js';
 import { takeClosing } from './background/closing.js';
-import * as keepReady from './background/keep-ready.js';
-import * as warmUp from './background/warm-up.js';
 import * as restore from './background/restore.js';
 import * as onboarding from './background/onboarding.js';
-import { activationsHeard, ensureCurrent, focusTab, forgetCurrent, forgetWake, handingOff, heardActivation, injectIntoOpenTabs, isIntroduction, keepHandedOff, pageChanged, pageDiscarded, resolveTab, sawActivation, setIntroductionHooks, shownAt, switchAsked, tabClosed, tabOpened, tabShown, userSwitched } from './background/tabs.js';
+import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, keepHandedOff, pageChanged, resolveTab, setActivationHook, shownAt, switchAsked, tabClosed, tabLeft, tabShown, userSwitched } from './background/tabs.js';
+import { switchLog, switchLogTo } from './background/switch-log.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
@@ -58,7 +57,6 @@ const owned = (fn) => async (...args) => {
 
 api.runtime.onInstalled.addListener(owned((details) => {
   console.log('[margin] installed', details.reason);
-  warmUp.noteInstalled(details.reason); // an update isn't a relaunch: no warm-up (background/warm-up.js)
   if (details.reason === 'install' || details.reason === 'update') injectIntoOpenTabs();
 }));
 
@@ -80,9 +78,6 @@ const firstSyncOnce = () => resync({ onSync: (sync) => {
   // has reconciled their authoritative ids, without waiting for WebKit's
   // delayed static-content-script pass.
   if (sync.fresh) void injectIntoOpenTabs();
-  // A relaunch (or a new copy): the tabs likely clicked next may be loaded
-  // behind the page once Safari has settled (background/warm-up.js decides).
-  if (sync.fresh) warmUp.freshSession();
 } }).then(() => isOwner() && markSynced());
 // Tried again if it fails (a storage error), a few times.
 const firstSync = (async () => {
@@ -122,16 +117,6 @@ async function startWorkDue() {
 }
 firstSync.then(async () => {
   if (!isOwner() || !isSynced()) return;
-  // The holds the background before this one placed, checked in a moment
-  // (not beside the switch or click that may have started it): released if
-  // keep-ready is off, no more than two kept. A background that stopped and
-  // started again holds that switch's tab left at once (holdNow: its tabs are
-  // matched as soon as it knows it owns the state). A copy's first start
-  // can't (its ids aren't the open tabs' until this sync).
-  keepReady.tickSoon();
-  // The warm-up after a relaunch: planned in a while, or one under way when
-  // this background stopped carried on (background/warm-up.js).
-  void warmUp.start();
   if (!(await startWorkDue())) return;
   void onboarding.reportAccess(); // to Margin's Mac app, if it's open (its set-up window)
   // Safari's search engine from tabs already open, if none is known yet (a
@@ -154,7 +139,6 @@ api.tabs.onCreated.addListener(owned(async (tab) => {
   // page the user was on at once (handlers.js newTabHandOff); a new tab
   // that stays is tracked as usual.
   recordCreated(tab);
-  tabOpened(tab);
   if (tab.active && V.isNewTabPage(tab.pendingUrl || tab.url)) {
     void newTabHint.newTabPageSeen(tab); // ⌘T reaches Margin: the setting is Margin
     if (await newTabHandOff(tab)) return;
@@ -175,16 +159,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
     if (!change.url || V.isNewTabPage(change.url)) return;
     keepHandedOff(tabId);
   }
-  // A tab keep-ready, or a script, found no page in may have one now
-  // (background/keep-ready.js, background/tabs.js noPageFound).
-  if (change.status || change.url) {
-    keepReady.pageChanged(tabId);
-    pageChanged(tabId);
-  }
-  // Its page going away ends a wake's hold there (background/tabs.js wakeTab).
-  if (change.status === 'loading') forgetWake(tabId);
-  // Discarded: a new web view as it's shown (background/tabs.js WebKit's mark).
-  if (change.discarded === true) pageDiscarded(tabId);
+  // A tab a script found no page in may have one now (background/tabs.js noPageFound).
+  if (change.status || change.url) pageChanged(tabId);
   // A tab Margin put to sleep, awake again (background/sleep.js; the switch log).
   if (change.url != null || change.discarded === false) sleepChanged(tabId, change);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.js).
@@ -210,7 +186,6 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
 // Margin itself (background/closing.js), as Margin said (put to sleep: kept).
 api.tabs.onRemoved.addListener(owned((tabId, removeInfo) => {
   handingOff.delete(tabId);
-  keepReady.closed(tabId);
   tabClosed(tabId); // gone: forgotten
   newTabHint.tabGone(tabId);
   tabGone(tabId);
@@ -247,25 +222,17 @@ function stayInSpace(windowId, spaceId, closedId) {
     return M.setActiveSpace(s, windowId, spaceId);
   });
 }
-// `left`: the tab it was shown in place of (onActivation); undefined: not
-// known as the activation came (it started this background, before its state
-// was read), so from the state now, before this activation is in it. Every
-// activation waits for the state the same way, so they still go on in the
-// order they came.
-/** @param {{ tabId: number, windowId: number }} info @param {number | null | undefined} left */
+// `left`: the tab it was shown in place of, as the activations came (not the
+// state's `active`, which lags a run of quick switches); null if not known.
+// Every activation waits for the state, so they go on in the order they came.
+/** @param {{ tabId: number, windowId: number }} info @param {number | null} left */
 const activated = owned(async ({ tabId, windowId }, left) => {
-  const s = await load();
+  await load();
   if (handingOff.has(tabId)) return;
-  if (left === undefined) left = keepReady.leftIn(s, windowId, tabId);
-  // The tab left stays ready to come back to for a minute (Safari can suspend
-  // it within a second: background/keep-ready.js). Safari is in use.
-  keepReady.noteFocused();
-  keepReady.shown(tabId);
-  if (left != null) keepReady.noteLeft(left); // (a switch back to it may find it suspended: background/tabs.js likelySuspended)
-  if (left != null) keepReady.holdNow(left); // (not one a held key only passed through)
+  // One found cut off while in front is loaded again now it's behind (background/tabs.js).
+  if (left != null && left !== tabId) tabLeft(left);
   userSwitched(tabId, windowId);
   tabShown(tabId);
-  warmUp.frontChanged(tabId, windowId); // its page gets the warm-up's note, if one is up
   shownAt.set(tabId, Date.now());
   // The user switched tabs themselves: shortcut chaining restarts from here.
   if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
@@ -291,33 +258,30 @@ const activated = owned(async ({ tabId, windowId }, left) => {
   // After the switch has landed (not in its way).
   setTimeout(() => isOwner() && ensureCurrent(tabId), 300);
 });
-// Not the two activations of a tab brought to the front for an instant, out of
-// sight, and the page in front straight back (tabs.js introduceTab): checked as
-// they come, in order, before anything else can.
-// The tab left is known from the activations as they come, in every copy,
-// not from the state, whose `active` lags behind a run of quick switches
-// (background/keep-ready.js frontChanged); so is a tab closed or moved away
-// from the front, in order with them.
-const onActivation = (/** @type {{ tabId: number, windowId: number }} */ info) => activated(info, handingOff.has(info.tabId) ? null : keepReady.frontChanged(info.windowId, info.tabId, cached()));
+// The tab in front of each window as the activations come, in order (the tab
+// each one leaves): a tab closed or moved away is no longer in front.
+/** @type {Map<number, number>} */
+const frontByWindow = new Map();
+const onActivation = (/** @type {{ tabId: number, windowId: number }} */ info) => {
+  const left = handingOff.has(info.tabId) ? null : frontByWindow.get(info.windowId) ?? (Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === info.windowId && t.active && t.id !== info.tabId)?.id ?? null);
+  if (!handingOff.has(info.tabId)) frontByWindow.set(info.windowId, info.tabId);
+  return activated(info, left);
+};
 api.tabs.onActivated.addListener((info) => {
-  if (isIntroduction(info)) return undefined;
-  sawActivation(info); // (tabs.js answeredLate)
-  heardActivation(info); // in the order they came (tabs.js pageStarted)
+  switchLog.activated(info.tabId, info.windowId); // (a switch's line in Margin.app's log)
   return onActivation(info);
 });
-api.tabs.onRemoved.addListener((tabId) => keepReady.frontGone(tabId));
-api.tabs.onDetached?.addListener((tabId) => keepReady.frontGone(tabId));
-// An activation left out after all (Safari left the tab in front); a tab whose
-// hold ended as it was shown for that instant isn't held again (keep-ready
-// holds only the tab just left, once).
-setIntroductionHooks({ activated: onActivation, introduced: (tabId) => keepReady.shown(tabId) });
+const notInFront = (/** @type {number} */ tabId) => { for (const [w, id] of frontByWindow) if (id === tabId) frontByWindow.delete(w); };
+api.tabs.onRemoved.addListener(notInFront);
+api.tabs.onDetached?.addListener(notInFront);
+// A ⌘T tab that stays after all: its activation, left out while it was handed off, told now.
+setActivationHook(onActivation);
+// Each switch's line goes to Margin.app's log (background/switch-log.js).
+switchLogTo((line) => appLink.note(line));
 // Coming back to a window (or to Safari) shows its tab without onActivated:
-// that tab is checked too (a stale copy there: tabs.js ensureCurrent). No
-// window focused (WINDOW_ID_NONE: Safari left for another app): the tabs
-// kept ready are let go (background/keep-ready.js noteAway).
+// that tab is checked too (a stale copy there: tabs.js ensureCurrent).
 api.windows?.onFocusChanged?.addListener(owned((windowId) => {
-  if (windowId == null || windowId < 0) return keepReady.noteAway();
-  keepReady.noteFocused(windowId);
+  if (windowId == null || windowId < 0) return;
   api.tabs.query({ active: true, windowId }).then(([tab]) => tab && setTimeout(() => isOwner() && ensureCurrent(tab.id), 300), () => {});
 }));
 api.tabs.onMoved.addListener(owned(() => resync({ fresh: false })));
@@ -352,7 +316,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp', 'pageLoading', 'gesture', 'viewport']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp', 'pageLoading', 'gesture', 'viewport']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -367,10 +331,6 @@ const REPLY_GUARD_MS = 500;
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handler = handlers[message?.type];
   if (!handler) return false;
-  // A page starting, or saying it came into view: its place among the
-  // activations as it came, before the waits below (background/tabs.js
-  // pageStarted, pageInView).
-  if (message.type === 'hello' || message.type === 'inView') message = { ...message, heard: activationsHeard() };
   const deadline = TIMED.has(message.type) && Number.isFinite(message.deadline) ? message.deadline : Infinity;
   // A page that waits past its deadline (content/core.js SWITCH_GRACE_MS):
   // answered by then. Its switch still plans to its deadline (focusTab); the
@@ -463,7 +423,6 @@ appLink.onLayout((windowId, layout) => {
   void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout }).catch(() => {}), () => {});
 });
 
-const keepReadyChanged = (changes) => !!changes.settings && changes.settings.oldValue?.keepLeftTabReadyMinutes !== changes.settings.newValue?.keepLeftTabReadyMinutes;
 // What a page's zoom answer keeps (handlers.js getZoom), in every copy: a
 // copy that doesn't own the state now may again.
 api.tabs.onZoomChange?.addListener(zoomChanged);
@@ -475,8 +434,6 @@ api.storage.onChanged.addListener((changes, area) => {
 const linkTurned = (change) => !!change && appDraws(change.oldValue) !== appDraws(change.newValue);
 api.storage.onChanged.addListener(owned((changes, area) => {
   if (area === 'local' && (changes.settings || linkTurned(changes[APP_LINK_KEY]))) queueRegistrations();
-  // Keep-ready turned off: its holds end (background/keep-ready.js).
-  if (area === 'local' && keepReadyChanged(changes)) keepReady.tickSoon();
 }));
 owned(queueRegistrations)();
 
@@ -489,11 +446,10 @@ if (api.alarms) {
     await archiveStale();
     await sleepIdle();
   }));
-  // The alarm the keep-ready before renewed its holds by, if a copy still has
-  // it: cleared, in every copy and profile (it started the background every
-  // minute for nothing). Nothing is renewed now.
+  // The alarm an old keep-ready renewed its holds by, if a copy still has it:
+  // cleared, in every copy and profile (keep-ready is gone: Phase 2 step 8).
   api.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === keepReady.KEEP_READY_ALARM) void Promise.resolve(api.alarms.clear(keepReady.KEEP_READY_ALARM)).catch(() => {});
+    if (alarm.name === 'margin-keep-ready') void Promise.resolve(api.alarms.clear('margin-keep-ready')).catch(() => {});
   });
   api.alarms.get(ARCHIVE_ALARM).then((alarm) => alarm || api.alarms.create(ARCHIVE_ALARM, { periodInMinutes: 15 }));
   console.log('[margin] auto-archive via browser.alarms');

@@ -134,7 +134,6 @@ const V = await import('../extension/shared/view.js');
 const { setSleepTiming } = await import('../extension/background/sleep.js');
 const { platform } = await import('../extension/shared/platform.js');
 setSleepTiming({ gapMs: 1, askMs: 100 });
-(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 
 // Spaces as the test wants them, once the first sync is through.
 for (let i = 0; i < 100 && !store.isSynced(); i++) await sleep(10);

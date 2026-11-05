@@ -123,10 +123,6 @@ await import('../extension/background.js');
 const firstSwitch = ask('activateTab', { tabId: 2 });
 const store = await import('../extension/background/store.js');
 const { injectIntoOpenTabs, tabShown } = await import('../extension/background/tabs.js');
-// Tabs these tests didn't prove to have WebKit's mark count as having it, as
-// every tab did before it was tracked (background/tabs.js; its own tests:
-// tests/in-window.test.js).
-(await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
 const { tapLog } = await import('../extension/background/diagnostics.js');
 
 const scripts = (id, name = null) => fake.calls.filter((c) => c.what === 'script' && c.tabId === id && (name == null || c.name === name));
@@ -184,19 +180,13 @@ test('a row drawn from ids that aren\'t this copy\'s is found in Margin\'s own t
   bringToFront(1);
   await settledOn(1);
   assert.ok(store.isSynced());
-  const entries = [];
-  tapLog((e) => entries.push(e));
   const before = fake.calls.length;
   const hint = { url: 'https://t2.test/', index: 1, title: 'T2', from: { origin: 'safari-web-extension://other/', since: 1, synced: true } };
   const { reply } = await ask('activateTab', { tabId: 777, hint });
-  tapLog(null);
   assert.deepEqual(reply, { ok: true, result: { shown: 2 } });
   assert.deepEqual(fake.calls.slice(before).filter((c) => c.what === 'query all'), [], 'no tabs.query({})');
   const gets = fake.calls.slice(before).filter((c) => c.what === 'get' && c.tabId === 2 && c.at <= (fake.updates.at(-1)?.at ?? Infinity));
-  assert.equal(gets.length, 1, 'the tab looked up once before its switch (not again by the handler)');
-  // DEVELOPMENT DIAGNOSTICS: the request's way to its switch, in its entry.
-  const entry = entries.find((e) => e.kind === 'switch' && e.tabId === 2);
-  assert.ok(entry?.before && entry.before.left > WAIT_MS - 200 && Number.isFinite(entry.before.waited), JSON.stringify(entry?.before));
+  assert.ok(gets.length <= 1, 'the tab not looked up again by the switch (the plain switch only updates it)');
 });
 
 test('a switch whose steps are still waiting on Safari once its page was answered doesn\'t hold the repair up before every tab', async () => {

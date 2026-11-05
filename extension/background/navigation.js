@@ -1,58 +1,36 @@
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, cached, isSynced, load, mutate, now, recheckSoon, StaleError } from './store.js';
-import { timed } from './slow.js';
-import { activating, anyFocusing, focusTab, openTab, passable, shownInPassing, tellPage, userSwitched, wakeTab } from './tabs.js';
-import { recordSwitch } from './diagnostics.js';
-import { passing as keepReadyPassing, switchFacts } from './keep-ready.js';
-import { platform } from '../shared/platform.js';
+import { anyFocusing, focusTab, openTab, tellPage } from './tabs.js';
 
-// Next/previous tab and space. Two delivery paths land here: the manifest
-// `commands` (⌃⌘ + arrows; they work where Margin has no page listener:
-// Safari's own pages, the address bar, a page before its script has loaded)
-// and the page's keydown listener (key repeat, custom shortcuts from
-// Settings, and on Safari the commands' keys too: Safari runs a command only
-// once the focused page has turned the key down, and a page that calls
-// preventDefault on its arrows ate it, shared/shortcuts.js).
-//  - One key press arriving through both paths counts once.
+// Next/previous tab and space. Three delivery paths land here: Margin.app's
+// keys (`navigate` requests, while it draws Margin), the manifest `commands`
+// (⌃⌘ + arrows; they work where Margin has no page listener: Safari's own
+// pages, the address bar, a page before its script has loaded) and the
+// page's keydown listener (key repeat, custom shortcuts from Settings, and on
+// Safari the commands' keys too: Safari runs a command only once the focused
+// page has turned the key down, and a page that calls preventDefault on its
+// arrows ate it, shared/shortcuts.js).
+//  - One key press arriving through two paths counts once.
 //  - Presses run one at a time, and each continues from the tab the previous
 //    one chose (for a moment), so fast presses all count even before Safari
 //    has finished switching.
-//  - The window isn't re-focused when it already is (that could move keyboard
-//    focus out of the page), and the sidebar highlight updates immediately.
+//  - Each is the plain switch (background/tabs.js focusTab): no wakes ahead,
+//    no passing checks (Phase 2 step 8).
+//  - The window's page and Margin.app's overlay are told the switch is under
+//    way ('switching': the overlay highlights the tab at once, and keeps it
+//    until the state has it in front), then done or failed.
 const NAV_DEDUPE_MS = 150;
 const NAV_CHAIN_MS = 1500;
-const PASS_THROUGH_MS = 70;
 const lastNav = { action: null, source: null, at: 0 };
 export const navTarget = new Map(); // windowId → { tabId, at }
 let navQueue = Promise.resolve();
-let queued = 0; // presses waiting their turn
-// The last tab woken ahead of a press (below): whether its page answered in
-// time (null until it has, or ran out of time), and the tab a press since
-// would wake ahead once it has.
-/** @typedef {{ at: number, answered: boolean | null, next: number | null }} Ahead */
-/** @type {Ahead | null} */
-let ahead = null;
-/** @param {number} tabId */
-function wakeAhead(tabId) {
-  /** @type {Ahead} */
-  const mark = { at: now(), answered: null, next: null };
-  ahead = mark;
-  void wakeTab(tabId, { by: 'keys' }).then((woke) => woke.outcome !== 'timeout', () => true).then((answered) => {
-    mark.answered = answered;
-    if (answered && mark.next != null && ahead === mark) wakeAhead(mark.next);
-  });
-}
 
 export function navigate(action, source, windowId) {
   const t = now();
   if (action === lastNav.action && source !== lastNav.source && t - lastNav.at < NAV_DEDUPE_MS) return navQueue;
   Object.assign(lastNav, { action, source, at: t });
-  queued++;
-  navQueue = navQueue.then(() => {
-    queued--;
-    return runNavigation(action, windowId);
-  }).catch((err) => console.warn('[margin] navigate', err));
+  navQueue = navQueue.then(() => runNavigation(action, windowId)).catch((err) => console.warn('[margin] navigate', err));
   return navQueue;
 }
 
@@ -67,90 +45,27 @@ async function runNavigation(action, windowId) {
     const next = V.cycleTab(s, windowId, current, action === 'next-tab' ? 1 : -1);
     if (next == null) return;
     navTarget.set(windowId, { tabId: next, at: now() });
-    // The page on screen highlights it already and covers itself until the
-    // switch lands (shared/switching.js); not waited for. Not covered while
-    // more presses wait (a held key): that page is only passed through and
-    // stays visible. Margin's own new-tab page gets it too (Chrome), or only
-    // the broadcast (Safari, where it has no content script); `from` says
-    // which page it's for.
-    // It's told when the switch is done or failed (closed meanwhile), as a
-    // page's own switch learns from its request (shared/switching.js).
-    const passing = queued > 0;
+    // The page on screen and the overlay highlight it at once; told when it's
+    // done or failed (closed meanwhile). `from` says which page it's for
+    // (Margin's own pages hear it as a broadcast).
     const shownPage = api.tabs.query({ active: true, windowId }).then(([shown]) => {
       if (!shown || shown.id === next) return null;
-      tellPage(shown, { type: 'switching', tabId: next, from: shown.id, passing });
+      tellPage(shown, { type: 'switching', tabId: next, from: shown.id });
       return shown;
     }, () => null);
     const told = (type, reason = null) => shownPage.then((shown) => shown && tellPage(shown, { type, tabId: next, from: shown.id, ...(reason ? { reason } : {}) }));
     try {
-      // A tab only passed through (more presses waiting: a held key) isn't
-      // waited for long, so the switching stops when the key does.
-      if (passing) {
-        const asked = Date.now();
-        const facts = switchFacts(next, asked); // DEVELOPMENT DIAGNOSTICS
-        const wake = await Promise.race([wakeTab(next, { by: 'keys' }), new Promise((resolve) => setTimeout(() => resolve(null), PASS_THROUGH_MS))]);
-        userSwitched(null, windowId); // a switch still waiting for its wake doesn't land after this one
-        // A tab Safari unloaded isn't shown in passing (its empty view, and its
-        // load in front, for an instant): the highlight moves on, and the tab
-        // the key stops on is loaded behind the page (background/tabs.js restoreTab).
-        // Nor one whose wake hasn't answered by then (Safari suspended it, and
-        // resumes it at background priority, or it's too busy to draw anyway):
-        // shown, it would be Safari's empty view until the next press. The
-        // tab the key stops on waits for its answer (tabs.js mayWait). Nor
-        // one Margin has no proof WebKit has seen in a window with its page
-        // running, or whose content a flip of its own hid (tabs.js passable):
-        // it isn't introduced or drawn first in passing.
-        if ((wake?.outcome === 'no page' && platform?.restoreTabs) || (wake == null && platform?.wakeTabs) || !(await passable(next, wake))) {
-          recordSwitch({ source: action, tabId: next, asked, ...facts, wake, layersBack: 'skipped:passing', error: 'passed over' });
-          void told('switch-done');
-          return;
-        }
-        activating(next);
-        // Keep-ready doesn't hold it for this once it's left, and counts it by
-        // its use before (background/keep-ready.js passing).
-        keepReadyPassing(next, s.tabs[next]?.lastActive);
-        await api.tabs.update(next, { active: true });
-        if (wake?.outcome === 'awake') shownInPassing(next);
-        recordSwitch({ source: action, tabId: next, asked, ...facts, wake, layersBack: 'skipped:running', shownAfter: Date.now() - asked });
-      } else {
-        // The last key in a run is the frame the user keeps. Give it the same
-        // hidden render acknowledgement as a click; intermediate held-key
-        // tabs stay on the short pass-through path above. One that isn't
-        // ready to show isn't waited for once another press comes: that one
-        // goes on from it (the tab stays behind, loading).
-        const focused = await focusTab(next, { source: action, hurry: () => queued > 0 });
-        if (!focused?.tab) {
-          // Given up for the next press (its page not ready): that press goes
-          // on from this tab however long it was waited for (a busy page's
-          // show waits up to 4 s, past NAV_CHAIN_MS from this press), not
-          // from the tab in front, which would come back to this one.
-          if (focused?.hurried) navTarget.set(windowId, { tabId: next, at: now() });
-          told(focused?.hurried ? 'switch-done' : 'switch-failed');
-          return;
-        }
-      }
+      await focusTab(next, { source: action });
     } catch (err) {
-      told('switch-failed', String(err?.message ?? err));
+      void told('switch-failed', String(err?.message ?? err));
       throw err;
     }
-    told('switch-done');
+    void told('switch-done');
     await mutate((st) => M.activateTab(st, next, windowId, now()));
-    // Presses come in runs: the tab after this one is woken now, so the
-    // next press doesn't wait for it (background/tabs.js wakeTab). Only once
-    // the one woken ahead before answered in time (or in another run of
-    // presses): one that didn't was a process Safari suspended, resumed at
-    // background priority, and another wake would only queue behind it. One
-    // that hasn't answered yet (a held key's presses come faster than a busy
-    // page answers): this one goes out as it does, if it does in time.
-    const after = V.cycleTab(await load(), windowId, next, action === 'next-tab' ? 1 : -1);
-    if (after != null && after !== current) {
-      if (!ahead || ahead.answered || now() - ahead.at >= NAV_CHAIN_MS) wakeAhead(after);
-      else if (ahead.answered === null) ahead.next = after;
-    }
   } else if (action === 'next-space' || action === 'prev-space') {
     const spaceId = V.cycleSpace(s, windowId, action === 'next-space' ? 1 : -1);
     if (spaceId == null) return;
-    await showSpace(windowId, spaceId, { bringTab: queued === 0, hurry: () => queued > 0 });
+    await showSpace(windowId, spaceId);
     // Show where you landed (auto-hide mode); Margin's own pages ignore it.
     const [tab] = await api.tabs.query({ active: true, windowId });
     if (tab) api.tabs.sendMessage(tab.id, { type: 'command', command: 'peek' }).catch(() => {});
@@ -163,36 +78,32 @@ export const NAV_ACTIONS = new Set(['next-tab', 'prev-tab', 'next-space', 'prev-
 // most recent tab in that window comes to the front (the tab shown stays if
 // it's already one of the space's); with none there, Margin's start page
 // opens in it, or the untouched start or new-tab page in front moves to it
-// (no pile of empty pages). `bringTab: false`: only the sidebar's space
-// (held keys pass spaces; the last press brings the tab).
-// `hurry`: as focusTab's.
-// A switch to one of its tabs doesn't wait for the space to be written
-// where pages are prepared (Safari): the write waits for the next one, the
-// activation's (which sets the same space: background.js followTab),
-// SPACE_WRITE_MS at most. A write under way as the tab is prepared would make
-// the page read storage before drawing (store.js stateRev), and the page
-// draws its own tab's space anyway (content/core.js stateForShow). What to
-// bring is still read from the state the change is made to, behind every
-// change queued before it (the cache can be behind those while a write is
-// under way): the tab used last, a tab just moved to the space staying.
+// (no pile of empty pages). `bringTab: false`: only the sidebar's space.
+// A switch to one of its tabs doesn't wait for the space to be written: the
+// write waits for the next one, the activation's (which sets the same space:
+// background.js followTab), SPACE_WRITE_MS at most, so the switch isn't held
+// up behind a storage write. What to bring is still read from the state the
+// change is made to, behind every change queued before it (the cache can be
+// behind those while a write is under way): the tab used last, a tab just
+// moved to the space staying.
 const SPACE_WRITE_MS = 2000;
 // The tab in front of the window: Safari's answer, or, past FRONT_KNOWN_MS,
 // Margin's own (its tabs matched to the open ones): after a reboot Safari
 // took seconds to answer (2026-11-03), and a space's switch waited that long
-// before it started. Timed (slow.js).
+// before it started.
 const FRONT_KNOWN_MS = 150;
 /** @param {number} windowId */
 async function frontOf(windowId) {
   /** @type {Promise<{ tab: any }>} */
-  const asking = timed('tabs.query', Promise.resolve().then(() => api.tabs.query({ active: true, windowId }))).then(([tab]) => ({ tab: tab ?? null }));
+  const asking = Promise.resolve().then(() => api.tabs.query({ active: true, windowId })).then(([tab]) => ({ tab: tab ?? null }));
   const known = isSynced() ? Object.values(cached()?.tabs ?? {}).find((t) => t.windowId === windowId && t.active) ?? null : null;
   if (!known) return (await asking).tab;
   let timer;
   const answer = await Promise.race([asking.catch(() => null), new Promise((resolve) => { timer = setTimeout(() => resolve(null), FRONT_KNOWN_MS); })]).finally(() => clearTimeout(timer));
   return /** @type {{ tab: any } | null} */ (answer)?.tab ?? known;
 }
-/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, carry?: 'hover' | 'toggle' | null, scroll?: number | null, deadline?: number, waitsUntil?: number, hurry?: (() => boolean) | null }} [options] */
-export async function showSpace(windowId, spaceId, { bringTab = true, carry = null, scroll = null, deadline, waitsUntil, hurry = null } = {}) {
+/** @param {number} windowId @param {string} spaceId @param {{ bringTab?: boolean, deadline?: number }} [options] @returns {Promise<{ tab: any } | undefined>} */
+export async function showSpace(windowId, spaceId, { bringTab = true, deadline } = {}) {
   if (windowId == null) return;
   const shown = bringTab ? await frontOf(windowId) : null;
   /** @param {import('../../types/margin').State} st */
@@ -203,14 +114,14 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
   const switching = (st) => bringTab && st.spaces.some((x) => x.id === spaceId) && !(shown && st.tabSpace[shown.id] === spaceId) && candidatesIn(st).length > 0;
   // The write that waits doesn't ask whether this copy still owns the state
   // (store.js flush does, as it writes): asked here (at most once a second),
-  // so a copy a newer one replaced fails as stale, and its page stands down,
-  // rather than switching tabs from its own state, out of date.
-  if (platform?.prepareSidebar && (await recheckSoon()) !== 'owner') throw new StaleError();
+  // so a copy a newer one replaced fails as stale rather than switching tabs
+  // from its own state, out of date.
+  if ((await recheckSoon()) !== 'owner') throw new StaleError();
   let before = null;
   const s = await mutate((st) => {
     before = V.activeSpaceId(st, windowId);
     return M.setActiveSpace(st, windowId, spaceId);
-  }, platform?.prepareSidebar ? { within: (st) => (switching(st) ? SPACE_WRITE_MS : null) } : undefined);
+  }, { within: (st) => (switching(st) ? SPACE_WRITE_MS : null) });
   if (V.activeSpaceId(s, windowId) !== spaceId || !bringTab) return; // no such space, or only the sidebar
   if (shown && s.tabSpace[shown.id] === spaceId) return;
   const candidates = candidatesIn(s);
@@ -223,17 +134,12 @@ export async function showSpace(windowId, spaceId, { bringTab = true, carry = nu
   };
   for (const tab of candidates) {
     try {
-      const result = await focusTab(tab.id, { source: 'space', carry, scroll, deadline, waitsUntil, hurry, retry: true });
-      // Called off while its tab loaded behind the page (Escape on its cover),
-      // not by another switch of Margin's (that one sets its own space) nor a
-      // key press (the next press goes on from this space).
-      if (!result?.tab && !result?.hurried && !anyFocusing()) await goBack();
-      return result;
+      return await focusTab(tab.id, { source: 'space', deadline });
     } catch (err) {
       // Closed meanwhile: the next one. Anything else (Safari didn't switch,
       // too late) is this switch failing, not a reason to open a start page.
       if (!/No tab with id/i.test(String(err?.message ?? err))) {
-        await goBack();
+        if (!anyFocusing()) await goBack();
         throw err;
       }
     }

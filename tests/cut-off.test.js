@@ -202,39 +202,23 @@ async function background() {
 }
 const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const loadsOf = (id) => fake.updates.filter((u) => u.id === id && (u.change.url || u.change.reload));
-const markOf = (id) => fake.session.inWindowTabs?.tabs?.find(([tabId]) => tabId === id)?.[1] ?? null;
 
-test('cut off, in front: put out of sight at once, not loaded again in front; loaded again once it\'s left, behind, and its tab\'s proof (its page\'s word) kept through that load', async () => {
+test('cut off, in front: put out of sight at once, not loaded again in front; loaded again once it\'s left, behind', async () => {
   const tabs = await background();
   fake.tabs = new Map([[1, { id: 1, windowId: 1, url: 'https://front.test/a', active: true, status: 'complete' }], [2, { id: 2, windowId: 1, url: 'https://other.test/', active: false, status: 'complete' }]]);
   fake.probe = (id, [, quiet]) => (id === 1 ? { cutOff: true, busy: false, hidden: false, proven: true, quiet } : { cutOff: false });
-  tabs.heardActivation({ tabId: 1, windowId: 1 });
   assert.equal(await tabs.repairCutOff({ ...fake.tabs.get(1) }), 'quiet');
   assert.deepEqual(loadsOf(1), [], 'not loaded again in front');
   assert.ok(fake.scripts.some((x) => x.tabId === 1 && x.func.name === 'cutOffInPage' && x.args[1] === true), 'its dead sidebar put out of sight');
-  await sleepMs(20);
-  assert.equal(markOf(1)?.marked, true, 'its page\'s word kept as this copy\'s proof');
-  assert.equal(markOf(1)?.how, 'page');
   // Left (the user's switch to tab 2): loaded again, behind.
   fake.tabs.get(1).active = false;
   fake.tabs.get(2).active = true;
-  tabs.heardActivation({ tabId: 2, windowId: 1 });
+  tabs.tabLeft(1);
   await sleepMs(250);
   assert.deepEqual(loadsOf(1), [], 'not at once: once the switch away has landed');
   await sleepMs(400);
   assert.equal(loadsOf(1).length, 1, `loaded again once behind: ${JSON.stringify(fake.updates)}`);
   assert.equal(loadsOf(1)[0].change.url, 'https://front.test/a');
-  // Its new page (a GET of its address in a tab with one entry: `navigate`,
-  // as a tab's first page) isn't taken as a new web view's: the proof stands.
-  fake.probe = () => ({ cutOff: false });
-  await tabs.pageStarted(1, { made: true, fresh: true, doc: 'reloaded', active: false, heard: tabs.activationsHeard() });
-  await sleepMs(20);
-  assert.equal(markOf(1)?.marked, true, JSON.stringify(markOf(1)));
-  assert.equal(markOf(1)?.doc, 'reloaded');
-  // A page made afresh later (Safari making the tab again) still loses it.
-  await tabs.pageStarted(1, { made: true, fresh: true, doc: 'again', active: false, heard: tabs.activationsHeard() });
-  await sleepMs(20);
-  assert.equal(markOf(1)?.marked, false);
 });
 
 test('cut off, in front and in use (something typed): put out of sight, not loaded again when it\'s left either', async () => {
@@ -242,11 +226,10 @@ test('cut off, in front and in use (something typed): put out of sight, not load
   fake.updates = [];
   fake.tabs = new Map([[5, { id: 5, windowId: 2, url: 'https://draft.test/', active: true, status: 'complete' }], [6, { id: 6, windowId: 2, url: 'https://b.test/', active: false, status: 'complete' }]]);
   fake.probe = (id) => (id === 5 ? { cutOff: true, busy: true, hidden: false, proven: false } : { cutOff: false });
-  tabs.heardActivation({ tabId: 5, windowId: 2 });
   assert.equal(await tabs.repairCutOff({ ...fake.tabs.get(5) }), 'quiet');
   fake.tabs.get(5).active = false;
   fake.tabs.get(6).active = true;
-  tabs.heardActivation({ tabId: 6, windowId: 2 });
+  tabs.tabLeft(5);
   await sleepMs(500);
   assert.deepEqual(loadsOf(5), []);
 });
@@ -265,10 +248,9 @@ test('cut off, with a switch to it under way (behind still): put out of sight in
   // Shown, then left.
   fake.tabs.get(7).active = true;
   fake.tabs.get(8).active = false;
-  tabs.heardActivation({ tabId: 7, windowId: 3 });
   fake.tabs.get(7).active = false;
   fake.tabs.get(8).active = true;
-  tabs.heardActivation({ tabId: 8, windowId: 3 });
+  tabs.tabLeft(7);
   await sleepMs(700);
   assert.equal(loadsOf(7).length, 1);
 });

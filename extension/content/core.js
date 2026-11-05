@@ -11,9 +11,7 @@
 import * as V from '../shared/view.js';
 import { hideHost, mark, marginHosts } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
-import { asksBackground, madeAfresh as madeAfreshNavigation, platform } from '../shared/platform.js';
-import { watchAway } from '../shared/away.js';
-import { listenForHolds } from './hold.js';
+import { platform } from '../shared/platform.js';
 import { watchEdits } from './edits.js';
 import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
@@ -22,7 +20,6 @@ import { startPinch } from './pinch.js';
 import { SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { startLoads } from './loads.js';
-import { createIdleWatch } from './idle.js';
 import { STATE_REV, fromStorage, knowsState, onlyMark, openTabsCurrent, readForPage, revAfter, revOf, takesChanges, withChanges } from '../shared/stored.js';
 import { APP_LINK_KEY, appDraws, boxFromLayout, layoutFor } from '../shared/app-link.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
@@ -39,9 +36,6 @@ export function startCore() {
   // open pages, in the same world, when Margin's site permissions change.
   if (Margin.content) return false;
   Margin.content = { api, startedAt: Date.now() }; // see background.js injectIntoOpenTabs
-  // Keep-ready's holds (content/hold.js), from the start: a tab left is held
-  // at once. `holding()`: how many run (the WebKit host counts them).
-  if (platform?.keepTabsReady) Margin.content.holding = listenForHolds(api);
   // What the user typed here and hasn't sent: a tab with a draft isn't put to
   // sleep (background/sleep.js asks: content/edits.js).
   if (platform?.sleepTabs) Margin.content.edits = watchEdits();
@@ -101,15 +95,14 @@ export function startCore() {
     // Margin was reloaded or removed since this copy started (Chrome takes its
     // id away, and sendMessage throws "Extension context invalidated"): a
     // new copy has the page now, this one stays quiet. So does one a newer
-    // copy replaced. Nor a request this browser has no use for (platform.js
-    // asksBackground).
-    if (!api.runtime?.id || dormant || !asksBackground(type)) return;
+    // copy replaced.
+    if (!api.runtime?.id || dormant) return;
     // A request naming a tab also says the tab's address and place, so the
     // background finds it even if its id is from before (background/tabs.js
     // resolveTab), and trusts the id only if they're its own. Not for this
     // page's own tab as its background named it (hello).
     const ownTab = helloAnswered && (/** @type {any} */ (payload)).tabId === tabId;
-    if (Number.isInteger((/** @type {any} */ (payload)).tabId) && !(/** @type {any} */ (payload)).hint && type !== 'prewake' && !ownTab) {
+    if (Number.isInteger((/** @type {any} */ (payload)).tabId) && !(/** @type {any} */ (payload)).hint && !ownTab) {
       const tab = state?.tabs?.[/** @type {any} */ (payload).tabId];
       if (tab) payload = /** @type {any} */ ({ ...payload, hint: { url: tab.url, index: tab.index, title: tab.title, from: /** @type {any} */ (state)?.openTabsBy ?? null } });
     }
@@ -356,10 +349,6 @@ export function startCore() {
   let helloWindowId = null;
   let windowId = null;
 
-  // Safari left for another app with this page in front: the background lets
-  // go of the tab it keeps ready (background/keep-ready.js). Safari, and on.
-  watchAway({ isOn: () => !!platform?.keepTabsReady && V.keepReadyMinutes(state?.settings) > 0, holdMs: () => V.keepReadyMinutes(state?.settings) * 60_000, send: (type, payload) => send(type, payload, false) });
-
   // ---- this copy, and standing back ---------------------------------------------
   // Until this copy owns the state and has matched the open tabs (after Safari
   // starts, or Margin is updated), the stored tabs are another copy's. Its
@@ -414,14 +403,7 @@ export function startCore() {
   // Read again whenever the page is shown (Safari suspends tabs it isn't
   // showing, and they miss storage events meanwhile; a page from the
   // back/forward cache missed them too).
-  // A preparation under way for a switch to this page (prepareForShow, below).
-  /** @type {{ token: string, at: number } | null} */
-  let preparedShow = null;
-  // Preparations called off before they took `preparedShow`: they stop there.
-  // The last few only; each token is used once.
-  const calledOff = new Set();
   function shown() {
-    preparedShow = null;
     // Drawn at once from what changed while hidden (below), before storage
     // is read again.
     if (changedWhileHidden && state) render();
@@ -507,178 +489,12 @@ export function startCore() {
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
     if (!missed) staleRead = false; // what's taken now is storage as read, newer than any change taken before
     knownRev = missed ? null : revOf(raw);
-    // Brought to the front without preparation (a tab Safari restores as it's
-    // shown): until `hello` says which tab this is, the background's note does
-    // (background/tabs.js noteShowing), so its window's layout is known.
-    const noted = tabId == null && !dormant ? notedShowing(next.showing) : null;
-    if (noted) {
-      adoptedNote = noted;
-      tabId = noted.tabId;
-      helloWindowId = noted.windowId;
-      console.debug(`[margin] taken as tab ${noted.tabId}, the one being shown (before hello)`);
-    }
-    state = stateForShow(next, show ?? (noted ? { tabId: noted.tabId, windowId: noted.windowId } : null));
+    state = stateForShow(next, show);
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1)); // its size from the start
     render();
     refreshTimes = { readMs, renderMs: msSince(renderFrom) }; // DEVELOPMENT DIAGNOSTICS
     return true;
   }
-  // The state the page has, taken for a show as a read would take it
-  // (prepareForShow: the page knows the last write).
-  /** @param {{ tabId: number, windowId: number }} show */
-  function drawKnown(show) {
-    const renderFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
-    state = stateForShow(state, show);
-    const zoom = /** @type {any} */ (state).pageZoom;
-    if (!zoomAnswered) applyZoom(Number((zoom?.[location.origin] ?? zoom?.['*'])?.[0] ?? 1));
-    render();
-    refreshTimes = { readMs: 0, renderMs: msSince(renderFrom) }; // DEVELOPMENT DIAGNOSTICS
-    return true;
-  }
-  let adoptedNote = null; // until hello confirms it (or not)
-  const SHOWING_MS = 10000;
-  const sameDocument = (a, b) => String(a ?? '').split('#')[0] === String(b ?? '').split('#')[0];
-  // Only for a page that started as the note was written: the tab Safari
-  // loads as Margin brings it to the front, not a page reloaded by hand a
-  // few seconds later.
-  const startedWith = (at) => performance.timeOrigin - at > -1000 && performance.timeOrigin - at < 3000;
-  function notedShowing(showing) {
-    if (!showing || !startedWith(showing.at) || !Number.isInteger(showing.tabId) || Date.now() - showing.at > SHOWING_MS || document.hidden) return null;
-    return sameDocument(showing.url, location.href) ? showing : null;
-  }
-
-  // ---- a tab shown for the first time ------------------------------------------
-  // (Phase 3 deletes this with the background's switching machinery.)
-  // WebKit waits for a tab's first paint before showing it only for a view
-  // that has been in a window before (WebPageProxy::dispatchActivityStateChange);
-  // the background introduces a tab it can't prove has been (background/tabs.js
-  // pageThere, mayIntroduce). The page says as it starts (hello) how it was
-  // made, whether its copy started with it (`fresh`), and its own id (`doc`),
-  // and says each time it comes into view from hidden (`inView`), until the
-  // background answers that its tab is proven.
-  const docId = (() => {
-    try {
-      return globalThis.crypto.randomUUID();
-    } catch {
-      return `${Date.now()}-${String(Math.random()).slice(2)}`;
-    }
-  })();
-  Margin.content.documentId = docId;
-  const startedFresh = document.readyState === 'loading';
-  // (Not a reload: shared/platform.js madeAfresh.)
-  const madeAfresh = (() => {
-    try {
-      return madeAfreshNavigation(/** @type {PerformanceNavigationTiming | undefined} */ (performance.getEntriesByType('navigation')[0])?.type, history.length);
-    } catch {
-      return false;
-    }
-  })();
-  const startedVisible = !document.hidden && document.readyState === 'loading' && madeAfresh;
-  let wasHidden = !startedVisible;
-  let windowSeen = !startedVisible;
-  let cameIntoView = false;
-  let markProven = false;
-  // The background's word kept in this page's world too (`Margin.inWindowAt`):
-  // the world outlives a copy of Margin, and the copy after reads it
-  // (background/tabs.js pageThere 'proven').
-  const provenHere = () => {
-    markProven = true;
-    if (!Number.isFinite(Margin.inWindowAt)) Margin.inWindowAt = Date.now();
-  };
-  let hiddenNow = document.hidden;
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      wasHidden = hiddenNow = true;
-      return;
-    }
-    if (wasHidden) windowSeen = cameIntoView = true;
-    if (hiddenNow && !markProven) void Promise.resolve(send('inView', { doc: docId }, false)).then((proven) => { if (proven === true) provenHere(); }, () => {});
-    hiddenNow = false;
-  });
-  Margin.content.windowSeen = () => windowSeen;
-  Margin.content.cameIntoView = () => cameIntoView;
-  // When this page last handled a change of its visibility, and when it
-  // first drew after it last became visible (background/tabs.js pingInPage,
-  // drewInPage).
-  /** @type {number | null} */
-  let visibilityAt = null;
-  /** @type {number | null} */
-  let drewVisibleAt = null;
-  if (platform?.introduceTabs) {
-    document.addEventListener('visibilitychange', () => {
-      visibilityAt = Date.now();
-      if (document.visibilityState !== 'visible') return;
-      let done = false;
-      /** @type {ResizeObserver | null} */
-      let observer = null;
-      const drew = () => {
-        if (done) return;
-        done = true;
-        drewVisibleAt = Date.now();
-        try { observer?.disconnect(); } catch {}
-      };
-      try {
-        observer = new ResizeObserver(drew);
-        observer.observe(document.documentElement);
-      } catch {}
-      try { requestAnimationFrame(drew); } catch {}
-    });
-  }
-  Margin.content.visibilityChangedAt = () => visibilityAt;
-  Margin.content.drewVisibleAt = () => drewVisibleAt;
-
-  // The background's preparation of a hidden tab before it shows it
-  // (background/tabs.js prepareTabForShow, through scripting.executeScript in
-  // this world). Nothing is drawn here, so there's nothing to get ready: the
-  // page takes its tab, window and state for the show (its box is its
-  // window's), and answers that it isn't a page that draws (as every page
-  // did while the app drew, before Phase 2 step 5; Phase 3 removes the call).
-  // `sentAt`, and the answer's `timings`: DEVELOPMENT DIAGNOSTICS.
-  /** @param {{ token?: string, tabId?: number, windowId?: number, until?: number, rev?: string | null, sentAt?: number }} [context] */
-  Margin.content.prepareForShow = async ({ token, tabId: targetId, windowId: targetWindow, rev = null, sentAt } = {}) => {
-    const lagMs = Number.isFinite(sentAt) ? Date.now() - /** @type {number} */ (sentAt) : null; // DEVELOPMENT DIAGNOSTICS
-    if (!token || !Number.isInteger(targetId) || targetWindow == null) return { ready: false, reason: 'bad context' };
-    // What the page was told before this came runs first (WebKit queues a
-    // visibilitychange as a task): a message to itself.
-    await new Promise((resolve) => {
-      const turn = new MessageChannel();
-      turn.port1.onmessage = () => {
-        turn.port1.close();
-        resolve(undefined);
-      };
-      turn.port2.postMessage(null);
-    });
-    // Called off meanwhile (cancelPreparedShow).
-    if (calledOff.delete(token)) {
-      preparedShow = null;
-      return { ready: false, reason: 'superseded' };
-    }
-    preparedShow = { token, at: Date.now() };
-    tabId = targetId;
-    helloWindowId = targetWindow;
-    const known = !firstRender && !!state?.spaces?.length && knowsState(rev, { known: knownRev, reading, staleRead });
-    const taken = known ? drawKnown({ tabId: targetId, windowId: targetWindow }) : await refresh({ tabId: targetId, windowId: targetWindow });
-    if (preparedShow?.token !== token) return { ready: false, reason: 'superseded' };
-    preparedShow = null;
-    const { readMs, renderMs } = refreshTimes; // DEVELOPMENT DIAGNOSTICS
-    return { ready: false, reason: taken && state ? 'nothing drawn in pages' : 'state not ready', timings: { lagMs, readMs, renderMs, known: known ? 1 : 0, revSent: typeof rev === 'string' ? 1 : 0 } };
-  };
-  // A page is never covered for its arrival (nothing is drawn here).
-  Margin.content.coverArrival = () => false;
-  Margin.content.cancelPreparedShow = (token) => {
-    if (!preparedShow || preparedShow.token !== token) {
-      // Perhaps a preparation that hasn't taken the page yet (above).
-      if (typeof token === 'string') {
-        calledOff.add(token);
-        if (calledOff.size > 8) calledOff.delete(calledOff.values().next().value);
-      }
-      return false;
-    }
-    preparedShow = null;
-    void refresh();
-    return true;
-  };
-
   Margin.content.getState = () => ({ state, tabId, windowId });
   // Hidden, a page keeps its state current from the change events (they
   // carry the values) without taking them further: shown() does it at once.
@@ -756,17 +572,11 @@ export function startCore() {
   if (document.readyState === 'complete') setTimeout(logTiming);
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
   void refresh();
-  send('hello', { ...(windowSeen ? {} : { unseen: true }), doc: docId, fresh: startedFresh, made: madeAfresh }).then((ctx) => {
+  send('hello').then((ctx) => {
     if (dormant) return;
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
     helloAnswered = true;
-    if (ctx.proven === true) provenHere();
-    // The background's note named another tab with this address: taken
-    // again from storage as this tab.
-    const wrongNote = adoptedNote && adoptedNote.tabId !== ctx.tabId;
-    adoptedNote = null;
     tabId = ctx.tabId;
-    if (wrongNote) void refresh();
     Margin.content.instanceId = ctx.instanceId; // see background.js injectIntoOpenTabs
     // Which copy's tab ids this page may trust: the stored ones are checked
     // again against it (Chrome keeps its address across restarts).
@@ -782,7 +592,6 @@ export function startCore() {
       if (ctx.app?.layout && ctx.windowId != null) layouts[ctx.windowId] = ctx.app.layout;
       setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, layouts } : { state: 'off', layouts });
     }
-    if (ctx.warmUp && ctx.warmUp.state !== 'running') idle.end();
     render(); // its window is known now
   });
 
@@ -807,25 +616,7 @@ export function startCore() {
   else reportIcon();
   addEventListener('load', reportIcon, { once: true });
 
-  // ---- the warm-up after a relaunch (background/warm-up.js) ------------------
-  // Whether the user is idle here, asked by the background before it loads a
-  // tab behind this page, and the first input after that said to it
-  // (content/idle.js). (Its note was drawn in the in-page sidebar; Phase 3
-  // deletes the warm-up.)
-  const idle = createIdleWatch({
-    busy: () => (!active() ? 'out of the way' : null),
-    acted: (at) => void send('warmUpInput', { at }, false),
-  });
-
   const onMessage = (message, _, sendResponse) => {
-    if (message?.type === 'warm-up-idle') return sendResponse(dormant ? { idle: false, why: 'not in charge', retryMs: 5000 } : message.prime ? idle.watch() : idle.ask(message));
-    if (message?.type === 'warm-up') {
-      if (message.progress && message.progress.state !== 'running') idle.end();
-      return;
-    }
-    // The background switching from this tab to another (next/previous
-    // tab): answered that this page isn't covered (nothing is drawn here).
-    if (message?.type === 'switching') return sendResponse(false);
     // Whether this page was opened from nothing (no referrer, its first
     // history entry), for the note on Safari's "New tabs open with"
     // (background/newtab-hint.js: Margin.app's overlay says it).

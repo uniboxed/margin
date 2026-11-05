@@ -28,14 +28,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   // with its subdomains: shared/sleep.js neverSleeps).
   sleepAfterHours: 4,
   neverSleepSites: Object.freeze([]),
-  // Safari: the tab just left is kept ready to show (no flash when switching
-  // back to it) for this many minutes, and let go once Safari is left for
-  // another app; 0: off (background/keep-ready.js).
-  keepLeftTabReadyMinutes: 1,
-  // Safari: after a relaunch, this many of the tabs likely to be clicked next
-  // are loaded behind the page, one at a time, while the user is idle; 0: off
-  // (background/warm-up.js).
-  warmUpTabs: 6,
   // Searches use the browser's engine (shared/search.js). Safari: the one
   // learned from Safari's own address-bar searches, { id, name, template, at }.
   safariSearch: null,

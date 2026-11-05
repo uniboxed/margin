@@ -6,7 +6,7 @@
 // out. What each field saves stays here (`saveField`, `runField`), checked
 // against the field's own kind and bounds; a theme only says which field.
 // The same settings as the form before Margin 2 (themes/arcadia/newtab.js),
-// less keep-ready and the warm-up (PLAN.md §8 deletes them) and the switch
+// less keep-ready and the warm-up (gone in Margin 2 Phase 2 step 8) and the switch
 // log (development diagnostics). Pure: runs in Node.
 import * as S from '../shared/search.js';
 import * as shortcuts from '../shared/shortcuts.js';

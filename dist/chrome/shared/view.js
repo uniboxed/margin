@@ -249,27 +249,5 @@ function letterAvatar(label) {
   return { letter: text.charAt(0).toUpperCase(), color: `hsl(${hue(text)} 55% 48%)` };
 }
 
-// How long keep-ready keeps the tab just left ready (minutes; 0: off), from
-// the settings as stored. Settings saved by a build before 2026-11-03 have
-// only `keepTabsReadyMinutes` (up to six tabs, until that long after Safari
-// was last used): it doesn't carry over, not even as off. It measured
-// something else, and turning it off was a way out of what it cost (Tirth
-// did, to save his battery), which the tab just left alone doesn't: the
-// default, 1, until a value is saved. Pages read the settings as stored, so
-// they need this too (state/model.js gives the default the same way).
-function keepReadyMinutes(settings) {
-  if (!settings || !('keepLeftTabReadyMinutes' in settings)) return 1;
-  const minutes = Number(settings.keepLeftTabReadyMinutes);
-  return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
-}
 
-// How many tabs the warm-up after a relaunch loads (settings.warmUpTabs:
-// background/warm-up.js), 0 (off) to WARM_UP_MAX; 6 for settings from before it.
-const WARM_UP_MAX = 12;
-function warmUpCount(settings) {
-  if (!settings || !('warmUpTabs' in settings)) return 6;
-  const count = Number(settings.warmUpTabs);
-  return Number.isFinite(count) && count > 0 ? Math.min(Math.round(count), WARM_UP_MAX) : 0;
-}
-
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar, keepReadyMinutes, warmUpCount, WARM_UP_MAX };
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar };
