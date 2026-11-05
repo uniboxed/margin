@@ -1,27 +1,28 @@
 # Build "Margin" — an Arc-style sidebar for Safari (prototype)
 
+> **Margin 2 (Tirth's decision, 2026-11-04): `PLAN.md` is the plan now.** A Mac app, Margin.app, draws all of Margin's UI in its own windows around the browser's page area (Safari, Chrome, Edge); the extension keeps the state, tabs, windows, the page box and sleeping tabs. Themes are HTML and CSS packages with no JavaScript, and a theme decides the layout, including where the page sits. A tab switch is a plain activation: Safari's own blink in the page area is accepted. On the Mac the app is required (users without it are asked to install it); Chrome and Edge on Windows and Linux get the same UI inside pages. Where this file and `PLAN.md` disagree, the rules below marked *Margin 2* and `PLAN.md` win; the milestones further down are the first prototype's history.
+
 You are building a working prototype of **Margin**, a Safari Web Extension for macOS that recreates the feel of the Arc browser *inside real Safari*: a hover-reveal sidebar with spaces and pinned tabs, a custom new-tab page, and a command palette. Work autonomously through the milestones below. Commit after each milestone. Do not stop to ask me questions unless you hit a genuine blocker; when a decision is ambiguous, pick the simplest reasonable option, note it in `DECISIONS.md`, and keep going.
 
 ## Environment (important)
 
-You are running in a **Linux cloud session** with no Xcode, no `xcodebuild`, no macOS, and no Safari. Your job is the extension itself (`extension/`), plus tests and docs. Tirth wraps and builds it for Safari locally on his Mac. So:
-- Never try to install or run Xcode, `xcrun`, or Safari tooling.
-- Your verification is `node --test` for pure logic, plus **Playwright with headless Chromium** loading `extension/` as an unpacked extension (use `--headless=new`, `--disable-extensions-except`, `--load-extension`). Chromium runs the same MV3 manifest, content scripts, newtab override, and `tabs` API, so it's the closest automated check available.
-- Anything Safari-specific that Chromium can't prove goes into `TESTING.md` as a manual check for Tirth, marked clearly.
-- Push your work to the GitHub repo branch after each milestone.
+Development happens on Tirth's Mac (macOS 27), with Xcode, Safari, Chrome, Edge, Node at `/opt/homebrew/bin`, Playwright's Chromium and WebKit, and the off-screen WebKit host (`tools/webkit-host`). Tests that act in Tirth's real browsers follow the on-screen rules: one dry run first, anything that opens windows does it once and checks it, the test stops at the first failure, and it cleans up only what it made. Anything only Tirth can confirm goes into `TESTING.md` as a manual check.
 
 ## Hard constraints (already researched — do not re-litigate)
 
-- **Safari extensions cannot modify Safari's own UI.** No sidebar API (no `sidePanel`, no `sidebarAction`), no tab bar changes, no toolbar changes. The ONLY way to show a sidebar is a **content script that injects an overlay into each web page**, plus the same sidebar rendered on our own new-tab page.
+- **Margin 2:** on the Mac, Margin.app draws the UI in native windows (NSPanels holding WKWebViews) kept just above each browser window, with no Accessibility permission and no private macOS calls; the extension and the app talk over a link (native messaging to start, then a local WebSocket for Safari; native messaging for Chrome and Edge). Safari's background is a page, not a service worker, for that link. The in-page overlay described below is used only by Chrome and Edge on Windows and Linux.
+- **(First prototype)** **Safari extensions cannot modify Safari's own UI.** No sidebar API (no `sidePanel`, no `sidebarAction`), no tab bar changes, no toolbar changes. The ONLY way to show a sidebar is a **content script that injects an overlay into each web page**, plus the same sidebar rendered on our own new-tab page.
 - **Cmd+T, Cmd+W, Cmd+N, Cmd+Q, Cmd+R, Cmd+L, Ctrl+Tab are never delivered to web pages in Safari.** Do not try to intercept them with `keydown`. Instead, take over new tabs with `"chrome_url_overrides": { "newtab": "newtab/newtab.html" }`. The user must select the extension under Safari → Settings → General → "New tabs open with" — put this in onboarding/docs.
-- **The sidebar overlays the page by default.** Overlay with `position: fixed; z-index: 2147483647`, hidden by default, revealed when the mouse touches the left edge of the viewport or via shortcut. When revealed by hover it's a floating card inset from the window edges. With "Keep open" it docks flush left and an Arc-style frame (same color as the sidebar, rounded page corners, small margin top/right/bottom) wraps the page's box.
+- **Margin 2:** the sidebar's place, its reveal and docking, the frame and the page's place are the theme's layout: the theme's `<m-page>` slot gives the page box its four insets and corner radius, per window. A switch is a plain `tabs.update({active: true})`; Margin hides no blink.
+- **(First prototype)** **The sidebar overlays the page by default.** Overlay with `position: fixed; z-index: 2147483647`, hidden by default, revealed when the mouse touches the left edge of the viewport or via shortcut. When revealed by hover it's a floating card inset from the window edges. With "Keep open" it docks flush left and an Arc-style frame (same color as the sidebar, rounded page corners, small margin top/right/bottom) wraps the page's box.
 - **Exception (Tirth's decision, 2026-11-01, replacing the push and the fitted layout): every page Margin touches sits in a box beside it, with no iframe.** `<html>` is the box and `<body>` scrolls inside it (`shared/page-box.js`, `content/page/`, both browsers). With "Keep open" the box starts at the sidebar's edge; hidden, at the frame's. Sheets are adopted, screen only, never page markup or inline styles. A script in the page's own world, registered only while pages have a box, answers what a page asks about its window for the box, and rewrites media queries and viewport units. With no box (the frame turned off, Chrome outside full screen) the page is untouched and none of that loads. Hover never moves the page.
 - **Exception (Tirth's decision, 2026-10-31): with the sidebar hidden, Margin's frame stays around the page** (a setting, on by default), the page in its box inside it. Hovering the sidebar still moves nothing. Turning "Keep open" off slides the sidebar away with the frame's edge.
 - **Isolate our UI in a closed Shadow DOM** so site CSS can't affect it and ours can't leak.
 - **Safari has no `tabs.hide`, no `bookmarks`, no `history` API, no `tabGroups`.** "Spaces" are a Margin concept: the sidebar filters to show the active space's tabs. Safari's own tab bar will still show all tabs — that's accepted.
 - **The background script can be unloaded at any time** (non-persistent). Never rely on in-memory state; persist everything to `browser.storage.local` and rehydrate on wake.
 - **No third-party network requests.** No favicon services, no analytics, no CDNs. If `tab.favIconUrl` is unavailable (always, in Safari), the background fetches the visited site's own icon once (from the page's `<link rel=icon>` or `/favicon.ico`; no cookies; cross-site icon hosts must be https and non-local), shrinks it and stores it as a `data:` URL so showing it makes no further requests (Tirth's decision, 2026-10-25). If that fails, render a colored letter avatar.
-- **Out of scope:** split view, iframing other sites, header stripping, a native companion app, iOS, syncing, accounts, monetization.
+- **Out of scope:** split view, iframing other sites, header stripping, iOS, syncing, accounts, monetization. (A native companion app was out of scope until Margin 2.)
+- **Distribution (Margin 2):** Margin.app ships with Developer ID, notarized, with its own updates. No App Store version.
 
 ## Tech choices (decided)
 
@@ -31,9 +32,12 @@ You are running in a **Linux cloud session** with no Xcode, no `xcodebuild`, no 
   Put that command, plus how to rebuild after pulling new changes, in `README.md` under "Building for Safari (local, macOS)". Add `xcode/` to `.gitignore` unless Tirth later commits it himself.
 - Unit tests for pure state logic with **`node --test`** (no test framework installs). E2E tests with **Playwright** (Chromium only) in `tests/e2e/`. Dev dependencies, declared in a root `package.json`, are Playwright, esbuild and TypeScript (the type checker; pinned versions). The extension itself stays dependency-free.
 - Use `browser.*` APIs (Safari supports them); fall back to `chrome.*` only if needed.
-- **Themes (Tirth's decision, 2026-10-25):** everything visual (components, structure, CSS, icons, fonts, the new-tab layout, first-paint placeholders) lives in a theme under `extension/themes/<id>/`; behavior stays in core. Arcadia is the default. Each theme has its own settings (`settings.themes[id]`). Only the active theme's code loads (its content bundle is a registered content script; the new-tab page imports only its module). Themes ship inside the extension: MV3 and App Store review forbid downloading code, so a downloadable theme could only be data (CSS, colors, fonts), and a shipped theme can't be deleted from the app.
+- **Themes, Margin 2 (Tirth's decision, 2026-11-04):** a theme is a package of `theme.json`, `theme.html`, `theme.css` and bundled fonts and images. No theme runs JavaScript, built-in or user-made: Margin's UI runtime renders the template (`{{paths}}`, `<m-for>`, `<m-if>`, bound attributes), runs only actions from its fixed list (arguments checked against the state), and provides the behaviors (drag and drop, resize, peek, rename, menus, palette). A theme can't load anything remote: the sanitizer allows only listed elements and attributes, CSS has no `@import` and `url()` only to bundled files or `data:`, and the app's web views add a Content Security Policy with no network. User themes are imported from a file (a gallery later). Built-in: Arcadia (default), Neo-brutalism, Pixel.
+- **(First prototype) Themes (Tirth's decision, 2026-10-25):** everything visual (components, structure, CSS, icons, fonts, the new-tab layout, first-paint placeholders) lives in a theme under `extension/themes/<id>/`; behavior stays in core. Arcadia is the default. Each theme has its own settings (`settings.themes[id]`). Only the active theme's code loads (its content bundle is a registered content script; the new-tab page imports only its module). Themes ship inside the extension: MV3 and App Store review forbid downloading code, so a downloadable theme could only be data (CSS, colors, fonts), and a shipped theme can't be deleted from the app.
 
 ## Repo layout (target)
+
+Margin 2 adds `extension/ui/` (the UI runtime: view model, renderer, actions, behaviors, host adapters), turns `extension/themes/<id>/` into theme packages, and grows `app/` into Margin.app. The tree below is the first prototype's.
 
 ```
 margin/
@@ -76,6 +80,8 @@ margin/
 
 ## Data model (storage.local)
 
+Margin 2: `settings.themes[id]` holds each theme's declared settings, imported theme packages are stored (size-capped), and each window's layout (insets, radius, mode) lives in session storage. `keepLeftTabReadyMinutes` and `warmUpTabs` go.
+
 ```js
 {
   spaces: [{ id, name, emoji, color }],        // default: one "Personal" space
@@ -91,6 +97,8 @@ margin/
 On browser restart, tab ids change: rebuild `tabSpace` by matching open tabs to pins by URL; unmatched tabs go to the active space.
 
 ## Milestones
+
+The first prototype's milestones, kept as history. Margin 2's phases are in `PLAN.md`.
 
 ### M1 — Skeleton that loads in Safari
 - `manifest.json` (MV3): `permissions: ["tabs", "storage"]`, `host_permissions: ["<all_urls>"]`, background script, content script on `<all_urls>` at `document_start`, `all_frames: false`, newtab override, icons, a `commands` entry for toggling the sidebar.

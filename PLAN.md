@@ -1,0 +1,268 @@
+# Margin 2: the app draws the UI, themes are HTML and CSS
+
+Draft plan, 2026-11-04. Nothing here is built yet. Once Tirth approves it, the decisions move into `SPEC.md` (which this plan changes, see the last section) and `DECISIONS.md`, and the work starts at Phase 0.
+
+## 1. What we're building, in one picture
+
+```text
+            ┌──────────────────────── Margin UI (one web app) ────────────────────────┐
+            │  runtime (Margin's JS only): state mirror · renderer · actions · behaviors │
+            │  theme (HTML + CSS only, no JS): Arcadia · Neo-brutalism · Pixel · users'  │
+            └──────────────▲──────────────────────────────────────▲─────────────────────┘
+                           │ host adapter                         │ host adapter
+        ┌──────────────────┴───────────────┐        ┌─────────────┴────────────────────┐
+        │ Margin.app (Mac): native windows │        │ In-page host: a closed shadow     │
+        │ around the browser's page area,  │        │ root in each page, as today.      │
+        │ Safari, Chrome, Edge             │        │ Chrome and Edge on Windows, Linux │
+        └──────────────────▲───────────────┘        └─────────────▲────────────────────┘
+                           │ link (snapshot, deltas, requests)    │ runtime messages
+            ┌──────────────┴──────────────────────────────────────┴─────────────────────┐
+            │ Extension: state owner, tabs and windows, page box, sleeping tabs, palette  │
+            │ key, search, icons, archive. No UI of its own when the app is there.        │
+            └────────────────────────────────────────────────────────────────────────────┘
+```
+
+Decided already (2026-11-04):
+
+- Safari's own blink in the page area during a switch is accepted. A switch is a plain `tabs.update({active: true})`. All the machinery that hid the blink goes (section 8).
+- Margin.app draws every Margin element: sidebar, borders and frame, palette, prompts, window controls, future UI. The page area itself is left to the browser.
+- No Accessibility permission, no private macOS calls. Tested: window tracking with the window server's list, panels over full-screen windows, app-registered shortcuts, typing in a panel without Safari losing focus, and moving the browser's window through the extension (`windows.update`), all without permissions.
+- On the Mac the app is used for every browser (Safari, Chrome, Edge). Mac users without the app are asked to install it (Tirth, 2026-11-04); they don't get an in-page UI. Only Chrome and Edge on Windows and Linux get the same UI inside pages. So Safari never runs the in-page UI.
+- Distribution: **Developer ID** (notarized, outside the App Store, with Margin's own updates). No App Store version (Tirth, 2026-11-04).
+- In a normal window, Margin covers the browser's toolbar (no browser can hide it), and dragging Margin's frame moves the browser window through the extension. Margin's windows move to wherever the browser reports it landed, and the frame's edges reach a little past the window's edges, more on fast drags. Tirth checked it by hand: it works, a bit laggy, accepted for now.
+
+New in this plan (Tirth, 2026-11-04):
+
+- **A theme decides the layout**, including where the page sits: sidebar left or right, a top bar, a bottom shelf, a framed card. Margin reads the page's place from the theme and tells the extension, which fits every page there.
+- **Themes are HTML and CSS only.** Users can add their own. No theme may run JavaScript: Margin's own runtime drives the theme through declarative bindings, and the security rules in section 4 make that hold.
+- **Two new built-in themes**, Neo-brutalism and Pixel, from Tirth's "Browser Theme Explorations" canvas.
+
+## 2. The parts and who owns what
+
+| Part | Owns | Doesn't |
+|---|---|---|
+| Extension | The state (spaces, tabs, pins, folders, archive, settings, icons), tab and window actions, the page box in every page, sleeping tabs, cut-off repair and copies, search, the ⌘T and palette keys where only a page can catch them | Draw any UI when the app is linked |
+| Margin UI runtime | The state mirror, rendering the theme, the action list, the behaviors (drag and drop, resize, peek, palette keys, context menus, inline rename), measuring the theme's page slot | Talk to the browser: everything goes through the host |
+| Theme | Structure (HTML), look (CSS), layout (where the page slot is), fonts and images bundled with it, its settings (as CSS variables) | Any script, any network request, any action Margin doesn't list |
+| Margin.app host | Native windows per browser window, following the window, the link to each browser's extension, app shortcuts, keyboard focus for the palette, the window drag in windowed mode | The state: it's a mirror of the extension's |
+| In-page host | A closed shadow root per page holding the runtime and theme (today's model, with the new UI inside), for Chrome and Edge on Windows and Linux | Run on the Mac: there, without the app, Margin shows a prompt to install it |
+
+## 3. Themes, version 2
+
+### A theme package
+
+```text
+my-theme/
+  theme.json      manifest: id, name, version, author, modes, settings, fonts, layout hints
+  theme.html      the template: one root, Margin's elements and bindings
+  theme.css       the styles; may use the settings as CSS variables
+  fonts/*.woff2   bundled font files (no font services)
+  images/*        bundled images (png, jpg, webp, gif, svg after sanitizing)
+```
+
+Built-in themes are packages too (Arcadia first), in `extension/themes/<id>/`, so Margin uses its own format. User themes are imported from a folder or a `.margintheme` zip in Settings and stored in `storage.local` (size-capped).
+
+### The template language
+
+It's close to the Design canvas format Tirth's artifacts use (`{{holes}}`, `sc-for`, `sc-if`), so those designs port almost line for line, but every piece of logic lives in Margin:
+
+- `{{space.name}}`: text from the view model, dotted paths only, never expressions.
+- `<m-for each="space.today" as="t"> … </m-for>`, `<m-if test="space.hasToday"> … </m-if>`, `<m-else>`.
+- `m-attr:aria-pressed="{{s.active}}"`, `m-class:on="{{t.active}}"`, `m-style:--accent="{{space.color}}"`: bound attributes, classes and CSS variables. Plain `style` and `class` attributes are allowed as written; bound values only go through these.
+- `m-action="tab.activate" m-arg="{{t.id}}"` on a `button` or `a`: a click runs one action from Margin's list (below). No `on*` attributes, ever.
+- Margin's slots, where the runtime puts its own pieces:
+  - `<m-page>` (required, exactly one): where the browser's page goes. Its box (size, position, corner radius from CSS) is the page's place.
+  - `<m-window-controls>`: close, minimise, full screen in windowed mode (themes style them; Margin wires them).
+  - `<m-palette>`, `<m-notice>`, `<m-menu>`: the palette, prompts and context menus, drawn from theme parts (`<template m-part="palette-row">` and so on) so they match the theme.
+  - `<m-drag-region>`: in windowed mode, where a drag moves the window.
+- Behaviors, opted into with attributes and implemented by Margin: `m-drag="tab"`, `m-drop="folder|space|tabs"`, `m-resize="sidebar"`, `m-peek="left"` (hover zone that reveals a hidden sidebar), `m-rename="space"`, `m-scroll="tabs"` (scroll remembered per window), `m-input="palette"`.
+
+### What a theme can read (the view model)
+
+One documented, versioned object, the same in both hosts: `window` (mode `fullscreen|windowed|inpage`, focused, sidebar `open|hidden|peek`), `space` (name, color, emoji, index, tab count, `folders[]` with `tabs[]`, `pins[]`, `today[]`, `hasToday`), `spaces[]`, `tab` (the active one: title, host, url, loading, audible, asleep), `archive[]`, `palette` (open, query, rows), `notice`, `settings` (the theme's own), `platform` (browser, os). Each tab row carries id, title, host, icon (a `data:` URL Margin already stores), active, audible, asleep, pinned.
+
+### Actions (the whole list a theme can trigger)
+
+`tab.activate`, `tab.close`, `tab.new`, `tab.pin`, `tab.unpin`, `tab.moveToSpace`, `pin.open`, `folder.toggle`, `folder.new`, `space.switch`, `space.new`, `space.edit`, `today.clear`, `nav.back`, `nav.forward`, `nav.reload`, `palette.open`, `palette.close`, `sidebar.toggle`, `archive.open`, `archive.restore`, `window.close`, `window.minimise`, `window.fullscreen`, `settings.open`. Each argument is checked against the current state: a tab id must be an open tab, a space id an existing space. An unknown action or argument is ignored and logged.
+
+### Layout: from the theme to the page box
+
+1. The runtime renders the theme at the browser window's size and measures `<m-page>`: `left, top, right, bottom` insets and the corner radius.
+2. The host sends that layout to the extension for that window (`setLayout {windowId, insets, radius, mode}`).
+3. The extension keeps it per window and hands it to the pages: live pages get it over the existing `margin:box` message (it already carries four insets), and new pages get it before their first paint (Phase 3 changes the first-paint path so it isn't one file per width).
+4. When the theme's layout changes (sidebar hidden, a theme switch, the window resized, windowed versus full screen), steps 1–3 repeat. Themes can animate the change; the page follows the end state.
+
+The theme's `theme.json` also declares layout hints Margin needs before it can render, such as the reveal edge for a hidden sidebar and the minimum and maximum sidebar width, so first paint and the in-page fallback can work out the box without a render.
+
+### Modes
+
+A theme styles three modes with attribute selectors on its root: `[data-mode="fullscreen"]`, `[data-mode="windowed"]` (covers the toolbar: the theme shows `<m-window-controls>`, an address or palette button, `<m-drag-region>`), `[data-mode="inpage"]` (the fallback, where the window's own toolbar stays). A theme that leaves a mode out gets sensible defaults from the runtime.
+
+## 4. Security: HTML and CSS from strangers
+
+Themes see every tab's title and address (they have to, to draw them). So the rules are about one thing above all: **a theme must not be able to run code or send anything anywhere.** Checked when a theme is imported, again every time it loads, and enforced by the host on top.
+
+**HTML (allowlist sanitizer, `shared/theme-sanitize.js`):**
+
+- Allowed elements: layout and text elements, lists, `button`, `a` (no `href` except `#` or Margin actions), `img` (bundled files and `data:` images only), `svg` drawing elements, `label`, `input` (only inside Margin parts that bind it), Margin's `m-*` elements and `template`.
+- Removed: `script`, `iframe`, `frame`, `object`, `embed`, `form`, `link`, `meta`, `base`, `style` inside the template (styles go in `theme.css`), `svg` `script`, `foreignObject`, `animate`/`set` with `href`, `use` pointing outside the template.
+- Removed attributes: every `on*`, `srcdoc`, `formaction`, `action`, `href`/`src`/`xlink:href` that isn't a bundled file, `#`, or `data:image/*`; `style` values that contain `url(` to anything not bundled.
+- Bindings can only set text, listed attributes (`aria-*`, `title`, `alt`, `class`, data attributes, CSS variables), never `href`, `src`, `style` text or element names.
+
+**CSS (`theme.css`, parsed and rewritten):**
+
+- No `@import`. `url()` only to the theme's bundled files or `data:` images and fonts. No remote fonts (the canvas designs use Google Fonts; their families are SIL-licensed and get bundled as `.woff2`).
+- This blocks the classic CSS leak (attribute selectors plus a background URL that tells a server what's on the page).
+- Size and complexity limits (bytes, rule count, nesting) so a theme can't freeze the UI.
+
+**At run time (both hosts):**
+
+- Margin.app's web views load the UI from the app's own scheme with a Content Security Policy of `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'none'`. The theme's files are served from a separate path the policy doesn't allow scripts from. WebKit's content rules can also block all network loads from these views.
+- In pages, the UI lives in a closed shadow root, as now; the theme's CSS is an adopted sheet and its bindings go through the same renderer.
+- Actions are only the list above; arguments are validated.
+- The palette and other inputs are Margin's, so a theme can't make a field that sends what's typed anywhere. A theme can still draw misleading text (a fake prompt): imported themes show their name and author in Settings, and Margin's own prompts are drawn in a fixed, theme-proof part.
+
+**Tests:** a sanitizer test suite with known XSS and CSS-leak payloads, and a check that every built-in theme passes the same rules as a user theme.
+
+## 5. The link between the app and the extension
+
+Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), generalised to several windows and browsers:
+
+- **Safari:** native message to wake the app, then the app sends a port and token through `SFSafariApplication.dispatchMessage`, then a WebSocket to `127.0.0.1` with the token checked. This needs Safari's background to be a **page** (`background.scripts`), not a service worker: WebKit hangs a service worker that opens a WebSocket (seen again on 2026-11-04 with the test extension).
+- **Chrome and Edge:** native messaging (`connectNative`). Margin.app installs the host manifests for each browser; the host is a tiny helper inside Margin.app that relays to the running app. An open native port also keeps Chrome's service worker alive.
+- Messages: `snapshot` and `delta` (state, with epoch and sequence numbers; a gap asks for a resync), `windows` (each window's id, bounds, state, focus, active tab), `req`/`reply` (actions from the UI), `setLayout` (insets per window), `move` (the windowed-mode drag), `theme` (the active theme's package).
+- **Matching browser windows to the window server's windows:** by bounds (`windows.get` against the window server's list), with focus to break ties (two full-screen windows have the same bounds, but only the one on the current Space is on screen).
+
+## 6. Margin.app
+
+- An accessory app (no Dock icon), started at login, that does nothing until a browser is in front.
+- **Window tracking:** the window server's window list, read a few times a second when nothing moves and at full speed during a drag. Follows every window of every linked browser.
+- **Per browser window:** Margin's windows, kept just above that browser window (stacking verified to work across apps), joining full-screen Spaces.
+- **Drawing the theme around the page.** Two ways, decided by Spike 1:
+  - one transparent window over the whole browser window, with the page slot left empty (and clicks there falling through to the page), or
+  - edge windows around the page (sidebar, top, right, bottom), which the runtime opens with `window.open` so they share one web process and one script (tested: about 18 MB for four windows plus the app's 21 MB).
+- **Windowed mode:** Margin covers the toolbar. A drag on `<m-drag-region>` asks the extension to move the window (`windows.update`); Margin's windows move to the position the extension reports, and the frame's edges reach past the window's edges by a mouse step on fast drags.
+- **Keys:** ⌃⌘↑/↓/←/→ and the palette as app shortcuts while a linked browser is in front (no Accessibility needed; tested). ⌘T stays with the extension where Safari routes it.
+- **Typing:** the palette and inputs take the keyboard in a panel that doesn't make Margin the active app (tested: Safari stays in front and doesn't dim).
+- **Distribution: Developer ID** (Tirth, 2026-11-04). Signed and notarized, outside the App Store, with Margin's own update channel (Sparkle). No App Sandbox requirement, so installing Chrome's and Edge's native-messaging host files (`~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` and the others) is straightforward. Hardened runtime on.
+- Reuse from `feat/native-panel`: ExtensionLink, LinkSocket, LinkMessage, StateMirror, PanelWebView (own scheme), PanelController (minus the private calls), AppDelegate, the Xcode scripts. Not reused: SkyLight (private), AXSafari (Accessibility), Safari-sidebar Eligibility.
+
+## 7. The extension, changed
+
+- **Switching:** `focusTab` becomes `tabs.update(active) + windows.update(focused)` (about 20 lines, from about 1,100). Navigation (next/previous tab and space) keeps its chaining, without wakes and passing checks.
+- **Page box:** insets come from the theme's layout per window instead of `sidebarWidth` and a hard-coded 8 px frame (`box.js FRAME`, `build-styles.js FRAME`, `registered.js FRAME_LEFT`).
+  - First paint: the registered first-paint CSS carries the insets as CSS variables (`boxRules` already writes them on `<html>`), and the page's world reads them from there instead of from one `at-<width>.js` file per width.
+  - Per-layout first-paint CSS is generated at run time and registered, instead of 35 files per theme.
+- **UI in pages only on Windows and Linux:** the in-page host mounts the UI runtime only in Chrome and Edge outside the Mac. On the Mac, pages get only the box and the small scripts that must run in a page (gestures, pinch, the draft check, the palette key); with no app linked, the extension shows a prompt (a notice on its new-tab page and the toolbar button) to install Margin.app.
+- **Sleeping tabs:** kept; their checks no longer look at keep-ready, warm-up, slow Safari or switch state.
+- **Safari manifest:** background as a page (for the link), `nativeMessaging` kept.
+- **Settings:** `keepLeftTabReadyMinutes` and `warmUpTabs` go. `sidebarPinnedOpen`, `frameWhenHidden` and `themes.arcadia.sidebarWidth` become theme settings and layout state.
+
+## 8. What gets deleted
+
+Counted on `feat/sleeping-tabs` (wc -l). About 9,000 lines of extension code and about 11,000 lines of tests and scenarios.
+
+| Where | Goes | Why |
+|---|---|---|
+| `background/tabs.js` | about 3,200 of 4,018 lines: wakes, holds, sidebar preparation, cover and paint barriers, ping gate, `focusTabNow`, WebKit's mark and introductions, kicks, restore behind, warm tab | Anti-blackout switching |
+| `background/keep-ready.js` (577), `warm-up.js` (586), `slow.js` (134) | Whole files | Anti-blackout switching |
+| `background/diagnostics.js` (159) and the switch-log button | Whole file | Development diagnostics |
+| `background.js`, `handlers.js`, `navigation.js` | Introduction and warm-up hooks, the deadline guard and `arrival`, `prewake`, `away`, `inView`, `warmUp*`, `pageBlinked`, `switchLog`, carry-open | Anti-blackout and in-page-only |
+| `content/core.js` | about 700 of 1,496 lines: first show, prepared show, covers, warm-up note, switching cover | Anti-blackout |
+| `content/hold.js` (72), `idle.js` (135), `shared/page-ready.js` (197), `shared/away.js` (80) | Whole files | Anti-blackout |
+| `themes/register.js`, theme JS bundles, `assets.js`, 35 `docked/w-*.css` per theme, `at-<width>.js` | Replaced by theme packages and run-time layout CSS | Themes v2 |
+| `themes/arcadia/sidebar.js` (1,742), `chrome.js`, `content.js`, `palette.js`, `newtab.js` | Their behavior moves into the runtime (about 1,600 lines); their structure and look into Arcadia's HTML and CSS; hover prewake and the warm-up note are deleted | Themes v2 |
+| `shared/platform.js` | `wakeTabs`, `keepTabsReady`, `introduceTabs`, `restoreTabs`, `warmUp`, `prepareSidebar`, `hiddenPaints`, `asksBackground()`, `madeAfresh()` | Anti-blackout |
+| Tests | in-window, wake (except its new-tab-hint and sleeping-switch cases), keep-ready, warm-up, slow-safari, page-ready, hold, idle, away; parts of answer-in-time, startup, slow-start, spaces-switch | They test deleted code |
+| WebKit host scenarios | unseen, unseennav, prepared, introduce, arrival, behind*, shell*, heavyflip, unloaded*, deferred, loadcover, twins, slowunloaded, restartrepair, recorder | They test deleted code |
+| `DECISIONS.md` | Nothing deleted: a new entry marks the anti-blackout sections (2026-10-26 to 2026-11-04) and the theme-JS sections as superseded, by heading | History stays readable |
+
+Kept as they are: state model, stored state and copies, restore, tab updates, cut-off, site icons, search engine, archive, sleep (decoupled), the page box in the page's world, gestures, pinch, edits, and their tests.
+
+## 9. The three built-in themes
+
+Each is a theme package, passes the security rules, and covers all three modes.
+
+- **Arcadia:** today's look, ported from `sidebar.js` and its CSS. The reference for every binding and behavior. Done first, so nothing looks different when the runtime switches over.
+- **Neo-brutalism** (the canvas's "Neo-brutalism" board): dotted background in the space's color, 256 px sidebar of 2.5 px-bordered cards with hard offset shadows, Archivo Black and Space Grotesk (bundled), the page as an 18 px-rounded card with a 3 px border and a 6 px shadow, 16 px gutters. Spaces as color chips, folders as bordered cards, a yellow New Tab button, a palette dialog with a 10 px shadow.
+- **Pixel** (the canvas's "Sidebar · Pixel / 8-bit" board): a dark dotted ground, Press Start 2P and Pixelify Sans (bundled), 3 px pixel borders made of box-shadows, a `▶` blinking cursor on the active tab, folders as `▼`/`▶` lists, spaces as numbered "worlds", the palette as "SELECT DESTINATION". `svg` with crisp edges for the pixel icons.
+
+Parts of those designs Margin doesn't have yet are left out of the first version and planned as future features (Tirth, 2026-11-04; section 13): the **Ask** panel, the **mini player**, and the **favorites** tiles. The themes keep their place in the layout, and each arrives later as new actions and view-model fields, not theme code.
+
+## 10. Phases
+
+Each phase ends with the unit tests passing, the in-page fallback working in Chromium (Playwright), the WebKit host scenarios that apply passing, and a TESTING.md checklist for Tirth's Safari. Branches are named `type/short-description`; on-screen tests follow the test rules (one dry run first, create once and verify, stop at the first failure).
+
+### Phase 0: spikes (decide the open questions with evidence)
+
+1. One transparent window over the browser window with an empty page slot: do clicks, scrolling, text selection and drags in the page reach the browser? What does it cost in memory, versus edge windows? Decides section 6's drawing method.
+2. Template renderer and sanitizer prototype: render Neo-brutalism from a sanitized package at 60 fps with 200 tabs; run the XSS and CSS-leak payload list.
+3. The link in today's Safari with the background as a page, and Chrome native messaging with a relay helper: round trip, wake from idle, reconnects.
+4. First paint with insets read from registered CSS variables: no jump on a fresh page, in Safari and Chrome.
+
+### Phase 1: the UI runtime and themes v2, in pages (no app yet)
+
+- In pages so the runtime can be built and tested before the app exists (in Chromium with Playwright, and in Safari as a temporary development host). Afterwards the in-page host stays only for Chrome and Edge on Windows and Linux.
+- The runtime (`extension/ui/`): view model, renderer, actions, behaviors (drag and drop, resize, peek, rename, menus, palette), host adapter interface.
+- The theme format, sanitizer, packaging in `scripts/build.js`, `theme.json` schema and checks.
+- Arcadia ported; the in-page host uses the runtime. The old theme JS path goes.
+- Done when: every current in-page feature works through the new runtime with Arcadia, and the e2e suite (rewritten for the new DOM) passes.
+
+### Phase 2: Margin.app, full screen, Safari
+
+- The app grows out of `app/safari/`: link, mirror, window tracking, per-window windows, the theme drawn around the page, app shortcuts, palette focus.
+- The extension's background becomes a page in Safari; the link replaces in-page UI when the app is there.
+- Done when: in full-screen Safari, every feature works from the app's windows, pages fit the theme's slot, and nothing is drawn in pages.
+
+### Phase 3: slim the extension
+
+- Delete section 8's code and tests. `focusTab` becomes the plain switch. Page box insets from layouts; the new first-paint path; sleep decoupled.
+- Done when: the code is gone, the tests pass, and switching in Safari is plain (Safari's own blink, no Margin covers).
+
+### Phase 4: windowed mode
+
+- Covering the toolbar, window controls, the drag through `windows.update`, Margin following the reported position, edges reaching past the window on fast drags, several windows.
+- Done when: windowed Safari works with one and with several windows, measured with the screen-frame test.
+
+### Phase 5: Chrome and Edge on the Mac
+
+- Native messaging host install, window matching for Chromium windows, both browsers at once.
+
+### Phase 6: Neo-brutalism and Pixel, and user themes
+
+- The two themes; theme import, preview and removal in Settings; the security suite in CI.
+
+### Phase 7: distribution and onboarding
+
+- Developer ID signing and notarization, Sparkle updates, login item, the set-up window extended to Chrome and Edge, the install-the-app prompt for Mac users without it, removing the remaining development diagnostics.
+
+## 11. Decisions and open questions
+
+Decided (Tirth, 2026-11-04):
+
+- Distribution: Developer ID, no App Store.
+- Mac users without Margin.app are asked to install it; no in-page UI on the Mac.
+- Ask, mini player and favorites: future features (section 13).
+- Bundling the canvas fonts (Archivo Black, Space Grotesk, Press Start 2P, Pixelify Sans; all SIL Open Font License) in the themes: OK.
+- User themes: imported from a file for now; a theme gallery comes later (section 13). Importing shows no extra note about what a theme can see.
+
+Still open:
+
+1. **Drawing around the page:** one transparent window or edge windows? Phase 0's spike will recommend one.
+
+## 12. Changes to SPEC.md, once approved
+
+- *Hard constraints:* the in-page overlay stops being the only way; the app draws the UI on the Mac, in-page is the fallback. A switch is a plain activation; Safari's blink is accepted.
+- *Hard constraints:* the sidebar's place, hover reveal, keep-open docking and the frame become theme layout, not fixed rules. The page box's insets come from the theme.
+- *Out of scope:* remove "a native companion app".
+- *Tech choices, Themes:* themes are HTML and CSS packages with declarative bindings and no JS; user themes allowed under the security rules; the runtime is Margin's JS.
+- *Repo layout:* `extension/ui/` (runtime), `extension/themes/<id>/` (packages), the app under `app/`.
+- *Data model:* `settings.themes[id]` holds the theme's declared settings; user theme packages in storage; `layout` per window in session storage.
+- *Environment:* now Tirth's Mac with Xcode, Safari and the WebKit host (the Linux note is stale).
+
+## 13. Future features (planned, not in the first version)
+
+- **Ask:** a panel that answers questions about the page in front and the space's tabs. Needs a decision on where answers come from (an on-device model or a service, and what that means for "no third-party network requests").
+- **Mini player:** controls for whatever tab is playing (title, play/pause), from the audible tab and the page's media session, shown by themes that have a place for it.
+- **Favorites:** a small grid of always-there sites above the space's tabs, across spaces (Arc's favorites), as their own list in the state.
+- **Theme gallery:** themes listed inside Margin's Settings and installed with one click, on top of file import. Needs hosting, a listing review, and the same checks as an imported file on every download.
