@@ -7,6 +7,9 @@
 // it's only event names and whether Margin may run everywhere). The reply
 // says whether the app was open to hear it (access it didn't hear is sent
 // again later).
+// A copy asking for its link to the app (wantLink, app/PROTOCOL.md) is passed
+// on the same way, as only its type and nonce: the app answers into the
+// extension itself (app/shell/ExtensionLink.swift).
 // Copied into the generated Xcode project by scripts/make-xcode.sh, which
 // also sets marginAppIdentifier.
 
@@ -25,10 +28,17 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
         let appOpen = !NSRunningApplication.runningApplications(withBundleIdentifier: marginAppIdentifier).isEmpty
 
-        // Only what the extension sends for the set-up window: a status or an event.
-        if let body = message as? [String: Any],
-           let type = body["type"] as? String, type == "status" || type == "event",
-           let data = try? JSONSerialization.data(withJSONObject: body),
+        // Only what the extension sends for the set-up window (a status or an
+        // event), and a copy's wantLink (with nothing but its nonce).
+        let body = message as? [String: Any]
+        var passOn: [String: Any]?
+        if let body, let type = body["type"] as? String, type == "status" || type == "event" {
+            passOn = body
+        } else if let body, body["type"] as? String == "wantLink", let nonce = body["nonce"] as? String, (1...128).contains(nonce.count) {
+            passOn = ["type": "wantLink", "nonce": nonce]
+        }
+        if let passOn,
+           let data = try? JSONSerialization.data(withJSONObject: passOn),
            let json = String(data: data, encoding: .utf8) {
             if appOpen {
                 DistributedNotificationCenter.default().postNotificationName(marginNotification, object: json, userInfo: nil, deliverImmediately: true)

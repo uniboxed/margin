@@ -1,0 +1,151 @@
+// Margin's keys as the app's own shortcuts (PLAN.md §6, tested in Phase 0):
+// Carbon's RegisterEventHotKey needs no Accessibility, and a key registered
+// so never reaches the browser. So they're registered only while a linked
+// browser is the active app and its front window has Margin's overlay, and
+// let go the moment it isn't (another app in front must get ⌃⌘← and ⌘T).
+//
+// The keys: ⌃⌘↓/↑ next and previous tab, ⌃⌘→/← next and previous space
+// (sent to the window's extension copy as `navigate`), and ⌘T, the palette
+// (opened in the front window's overlay, which then takes the typing).
+// Combinations are written as the extension's settings write them
+// ("Ctrl+Meta+ArrowDown": shared/shortcuts.js).
+
+import Carbon
+import Foundation
+
+enum AppCommand: String, CaseIterable {
+    case nextTab = "next-tab", prevTab = "prev-tab", nextSpace = "next-space", prevSpace = "prev-space", palette
+}
+
+nonisolated struct Combo: Hashable, CustomStringConvertible {
+    let keyCode: UInt32
+    let modifiers: UInt32 // Carbon's cmdKey, controlKey, optionKey, shiftKey
+
+    static let keyCodes: [String: Int] = [
+        "ArrowDown": kVK_DownArrow, "ArrowUp": kVK_UpArrow, "ArrowLeft": kVK_LeftArrow, "ArrowRight": kVK_RightArrow,
+        "KeyA": kVK_ANSI_A, "KeyB": kVK_ANSI_B, "KeyC": kVK_ANSI_C, "KeyD": kVK_ANSI_D, "KeyE": kVK_ANSI_E, "KeyF": kVK_ANSI_F,
+        "KeyG": kVK_ANSI_G, "KeyH": kVK_ANSI_H, "KeyI": kVK_ANSI_I, "KeyJ": kVK_ANSI_J, "KeyK": kVK_ANSI_K, "KeyL": kVK_ANSI_L,
+        "KeyM": kVK_ANSI_M, "KeyN": kVK_ANSI_N, "KeyO": kVK_ANSI_O, "KeyP": kVK_ANSI_P, "KeyQ": kVK_ANSI_Q, "KeyR": kVK_ANSI_R,
+        "KeyS": kVK_ANSI_S, "KeyT": kVK_ANSI_T, "KeyU": kVK_ANSI_U, "KeyV": kVK_ANSI_V, "KeyW": kVK_ANSI_W, "KeyX": kVK_ANSI_X,
+        "KeyY": kVK_ANSI_Y, "KeyZ": kVK_ANSI_Z, "Space": kVK_Space, "F19": kVK_F19,
+        "Digit0": kVK_ANSI_0, "Digit1": kVK_ANSI_1, "Digit2": kVK_ANSI_2, "Digit3": kVK_ANSI_3, "Digit4": kVK_ANSI_4,
+        "Digit5": kVK_ANSI_5, "Digit6": kVK_ANSI_6, "Digit7": kVK_ANSI_7, "Digit8": kVK_ANSI_8, "Digit9": kVK_ANSI_9,
+    ]
+    static let modifierBits: [String: Int] = ["Meta": cmdKey, "Ctrl": controlKey, "Alt": optionKey, "Shift": shiftKey]
+
+    // "Ctrl+Meta+ArrowDown" → the key and its modifiers; nil if it isn't one (no modifier, an unknown key).
+    static func parse(_ text: String) -> Combo? {
+        let parts = text.split(separator: "+").map(String.init)
+        guard let last = parts.last, let code = keyCodes[last], parts.count >= 2 else { return nil }
+        var mods = 0
+        for p in parts.dropLast() {
+            guard let bit = modifierBits[p], mods & bit == 0 else { return nil }
+            mods |= bit
+        }
+        guard mods & (cmdKey | controlKey | optionKey) != 0 else { return nil }
+        return Combo(keyCode: UInt32(code), modifiers: UInt32(mods))
+    }
+
+    var description: String {
+        let names = [(controlKey, "⌃"), (optionKey, "⌥"), (shiftKey, "⇧"), (cmdKey, "⌘")].filter { modifiers & UInt32($0.0) != 0 }.map(\.1).joined()
+        return names + (Self.keyCodes.first { $0.value == Int(keyCode) }?.key ?? "#\(keyCode)")
+    }
+}
+
+enum ShortcutSet {
+    static let defaults: [AppCommand: String] = [
+        .nextTab: "Ctrl+Meta+ArrowDown", .prevTab: "Ctrl+Meta+ArrowUp",
+        .nextSpace: "Ctrl+Meta+ArrowRight", .prevSpace: "Ctrl+Meta+ArrowLeft",
+        .palette: "Meta+KeyT",
+    ]
+
+    static var bindings: [Combo: AppCommand] {
+        var out: [Combo: AppCommand] = [:]
+        for (command, text) in defaults { if let combo = Combo.parse(text) { out[combo] = command } }
+        return out
+    }
+
+    /// Whether Margin's keys are the app's now: a linked browser is the active
+    /// app and its front window has Margin's overlay showing.
+    static func active(frontPid: pid_t?, linkedPids: Set<pid_t>, frontWindowHasOverlay: Bool) -> Bool {
+        guard let frontPid else { return false }
+        return linkedPids.contains(frontPid) && frontWindowHasOverlay
+    }
+}
+
+// Registering and letting go of a hot key (Carbon's, or a test's stand-in).
+protocol HotKeyRegistrar: AnyObject {
+    // False if it can't be had (another app has it).
+    func register(_ combo: Combo, id: UInt32) -> Bool
+    func unregister(id: UInt32)
+    var onHit: ((UInt32) -> Void)? { get set }
+}
+
+final class CarbonHotKeys: HotKeyRegistrar {
+    var onHit: ((UInt32) -> Void)?
+    private var refs: [UInt32: EventHotKeyRef] = [:]
+    private var handler: EventHandlerRef?
+    static let signature = OSType(0x4D52_474E) // 'MRGN'
+    // The one instance Carbon's C callback reaches.
+    nonisolated(unsafe) private static weak var current: CarbonHotKeys?
+
+    init() {
+        Self.current = self
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+            var id = EventHotKeyID()
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                                           MemoryLayout<EventHotKeyID>.size, nil, &id)
+            guard status == noErr, id.signature == CarbonHotKeys.signature else { return OSStatus(eventNotHandledErr) }
+            let hit = id.id
+            DispatchQueue.main.async { MainActor.assumeIsolated { CarbonHotKeys.current?.onHit?(hit) } }
+            return noErr
+        }, 1, &spec, nil, &handler)
+    }
+
+    func register(_ combo: Combo, id: UInt32) -> Bool {
+        unregister(id: id)
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, EventHotKeyID(signature: Self.signature, id: id), GetApplicationEventTarget(), 0, &ref)
+        guard status == noErr, let ref else { return false }
+        refs[id] = ref
+        return true
+    }
+
+    func unregister(id: UInt32) {
+        if let ref = refs.removeValue(forKey: id) { UnregisterEventHotKey(ref) }
+    }
+}
+
+// Margin's keys, held while they should be (ShortcutSet.active) and let go otherwise.
+final class AppShortcuts {
+    var onCommand: ((AppCommand) -> Void)?
+    private let registrar: HotKeyRegistrar
+    private let bindings: [(Combo, AppCommand)]
+    private(set) var isActive = false
+    // The ones another app holds (tried again each time they're taken).
+    private(set) var unavailable: [Combo] = []
+
+    init(registrar: HotKeyRegistrar, bindings: [Combo: AppCommand] = ShortcutSet.bindings) {
+        self.registrar = registrar
+        self.bindings = bindings.sorted { $0.value.rawValue < $1.value.rawValue }
+        registrar.onHit = { [weak self] id in
+            guard let self, self.isActive, Int(id) < self.bindings.count else { return }
+            self.onCommand?(self.bindings[Int(id)].1)
+        }
+    }
+
+    func set(active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        if active {
+            unavailable = []
+            for (i, (combo, command)) in bindings.enumerated() where !registrar.register(combo, id: UInt32(i)) {
+                unavailable.append(combo)
+                Diagnostics.warn("\(combo) (\(command.rawValue)) is another app's: not Margin's")
+            }
+        } else {
+            for i in bindings.indices { registrar.unregister(id: UInt32(i)) }
+        }
+    }
+}

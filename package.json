@@ -7,6 +7,7 @@
     "test": "tsc -p . && node --test tests/*.test.js",
     "test:e2e": "node scripts/build.js && node --test --test-concurrency=1 tests/e2e/*.test.js",
     "test:theme": "node --test --test-concurrency=1 tests/theme/*.test.js",
+    "test:app": "tools/app-tests/run.sh",
     "bench:theme": "node tests/theme/bench.js",
     "icons": "node scripts/make-icons.js",
     "styles": "node scripts/build-styles.js",
