@@ -39,6 +39,7 @@ let hello = LinkMessage.Hello(epoch: "e1", profile: "P1", browser: "safari", ext
 
 final class FakeRegistrar: HotKeyRegistrar {
   var onHit: ((UInt32) -> Void)?
+  var onRelease: ((UInt32) -> Void)?
   var held: [UInt32: Combo] = [:]
   var taken: Set<Combo> = [] // another app's
   var registrations = 0
@@ -398,6 +399,46 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("the same keys again: nothing registered again", fake.registrations == before)
     keys.set(active: false)
     check("let go after a rebind: none held", fake.held.isEmpty)
+
+    // A held key repeats at the Mac's repeat (a test clock), until let go.
+    var waits: [(TimeInterval, () -> Void)] = []
+    var mods = true
+    var rep = KeyRepeat()
+    rep.delay = { 0.4 }
+    rep.interval = { 0.05 }
+    rep.after = { seconds, run in
+      var live = true
+      waits.append((seconds, { if live { run() } }))
+      return { live = false }
+    }
+    rep.modifiersDown = { _ in mods }
+    let fake2 = FakeRegistrar()
+    let held = AppShortcuts(registrar: fake2, keyRepeat: rep)
+    var ran2: [AppCommand] = []
+    held.onCommand = { ran2.append($0) }
+    held.set(active: true)
+    let down = fake2.held.first { $0.value == Combo.parse("Ctrl+Meta+ArrowDown") }!.key
+    func runNext() { if !waits.isEmpty { waits.removeFirst().1() } }
+    fake2.onHit?(down)
+    check("held: once at the press", ran2 == [.nextTab] && waits.first?.0 == 0.4)
+    runNext(); runNext(); runNext()
+    check("held: again after the delay, then at the rate", ran2.count == 4 && waits.first?.0 == 0.05)
+    fake2.onRelease?(down)
+    runNext()
+    check("let go: no more", ran2.count == 4)
+    fake2.onHit?(down)
+    mods = false
+    runNext()
+    check("the release missed, the modifiers up: it stops", ran2.count == 5 && waits.isEmpty)
+    mods = true
+    let palette = fake2.held.first { $0.value == Combo.parse("Meta+KeyT") }!.key
+    ran2 = []
+    fake2.onHit?(palette)
+    check("the palette key doesn't repeat", ran2 == [.palette] && waits.isEmpty)
+    fake2.onHit?(down)
+    held.set(active: false)
+    runNext()
+    check("keys let go (another app in front): the repeat stops", ran2 == [.palette, .nextTab])
     keys.rebind(ShortcutSet.bindings)
     check("new keys while let go: none held", fake.held.isEmpty && !keys.isActive)
     // Carbon itself, with a key no one uses (held for a moment, never pressed).

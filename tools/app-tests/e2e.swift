@@ -116,6 +116,7 @@ final class ScriptedWindows: WindowSource {
 
 final class FakeKeys: HotKeyRegistrar {
   var onHit: ((UInt32) -> Void)?
+  var onRelease: ((UInt32) -> Void)?
   var held: [UInt32: Combo] = [:]
   func register(_ combo: Combo, id: UInt32) -> Bool { held[id] = combo; return true }
   func unregister(id: UInt32) { held[id] = nil }

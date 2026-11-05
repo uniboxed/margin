@@ -7,18 +7,41 @@
 // The keys: next and previous tab and space (sent to the window's extension
 // copy as `navigate`), ⌘T, the palette (opened in the front window's overlay,
 // which then takes the typing: the app's own, with no round trip through the
-// browser), and the sidebar's show/hide key. Which combinations is the
+// browser), and the sidebar's show/hide key. A held tab or space key repeats
+// at the Mac's key repeat (a hot key fires only once per press). Which combinations is the
 // copy's to say (its Settings shortcuts, and Safari's command keys: the
 // `keys` message, app/PROTOCOL.md); until it does, the defaults below.
 // Combinations are written as the extension's settings write them
 // ("Ctrl+Meta+ArrowDown": shared/shortcuts.js).
 
+import AppKit
 import Carbon
 import Foundation
 
 enum AppCommand: String, CaseIterable {
     case nextTab = "next-tab", prevTab = "prev-tab", nextSpace = "next-space", prevSpace = "prev-space", palette
     case toggleSidebar = "toggle-sidebar"
+
+    // Held down, these run again at the Mac's key repeat (a hot key itself fires once).
+    var repeats: Bool { self == .nextTab || self == .prevTab || self == .nextSpace || self == .prevSpace }
+}
+
+// A held key's repeat: the Mac's own delay and rate (Keyboard settings), a
+// way to wait (a test's clock), and whether the combination's modifiers are
+// still down (the release can be missed, e.g. when another app comes forward:
+// the repeat then stops at the next tick).
+struct KeyRepeat {
+    var delay: () -> TimeInterval = { NSEvent.keyRepeatDelay }
+    var interval: () -> TimeInterval = { NSEvent.keyRepeatInterval }
+    var after: (TimeInterval, @escaping () -> Void) -> (() -> Void) = { seconds, run in
+        let timer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in MainActor.assumeIsolated { run() } }
+        return { timer.invalidate() }
+    }
+    var modifiersDown: (UInt32) -> Bool = { modifiers in
+        let now = NSEvent.modifierFlags
+        let want: [(Int, NSEvent.ModifierFlags)] = [(cmdKey, .command), (controlKey, .control), (optionKey, .option), (shiftKey, .shift)]
+        return want.allSatisfy { modifiers & UInt32($0.0) == 0 || now.contains($0.1) }
+    }
 }
 
 nonisolated struct Combo: Hashable, CustomStringConvertible {
@@ -102,10 +125,12 @@ protocol HotKeyRegistrar: AnyObject {
     func register(_ combo: Combo, id: UInt32) -> Bool
     func unregister(id: UInt32)
     var onHit: ((UInt32) -> Void)? { get set }
+    var onRelease: ((UInt32) -> Void)? { get set }
 }
 
 final class CarbonHotKeys: HotKeyRegistrar {
     var onHit: ((UInt32) -> Void)?
+    var onRelease: ((UInt32) -> Void)?
     private var refs: [UInt32: EventHotKeyRef] = [:]
     private var handler: EventHandlerRef?
     static let signature = OSType(0x4D52_474E) // 'MRGN'
@@ -114,16 +139,22 @@ final class CarbonHotKeys: HotKeyRegistrar {
 
     init() {
         Self.current = self
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        var specs = [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+                     EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))]
         InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
             var id = EventHotKeyID()
             let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
                                            MemoryLayout<EventHotKeyID>.size, nil, &id)
             guard status == noErr, id.signature == CarbonHotKeys.signature else { return OSStatus(eventNotHandledErr) }
             let hit = id.id
-            DispatchQueue.main.async { MainActor.assumeIsolated { CarbonHotKeys.current?.onHit?(hit) } }
+            let released = GetEventKind(event) == UInt32(kEventHotKeyReleased)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if released { CarbonHotKeys.current?.onRelease?(hit) } else { CarbonHotKeys.current?.onHit?(hit) }
+                }
+            }
             return noErr
-        }, 1, &spec, nil, &handler)
+        }, 2, &specs, nil, &handler)
     }
 
     func register(_ combo: Combo, id: UInt32) -> Bool {
@@ -150,13 +181,48 @@ final class AppShortcuts {
     // The ones another app holds (tried again each time they're taken).
     private(set) var unavailable: [Combo] = []
 
-    init(registrar: HotKeyRegistrar, bindings: [Combo: AppCommand] = ShortcutSet.bindings) {
+    private let keyRepeat: KeyRepeat
+    // The held key repeating now (its id), and how to stop its next tick.
+    private var repeating: UInt32?
+    private var cancelTick: (() -> Void)?
+
+    init(registrar: HotKeyRegistrar, bindings: [Combo: AppCommand] = ShortcutSet.bindings, keyRepeat: KeyRepeat = KeyRepeat()) {
         self.registrar = registrar
         self.bindings = Self.ordered(bindings)
+        self.keyRepeat = keyRepeat
         registrar.onHit = { [weak self] id in
             guard let self, self.isActive, Int(id) < self.bindings.count else { return }
-            self.onCommand?(self.bindings[Int(id)].1)
+            let (combo, command) = self.bindings[Int(id)]
+            self.stopRepeat()
+            self.onCommand?(command)
+            if command.repeats { self.startRepeat(id, combo, command) }
         }
+        registrar.onRelease = { [weak self] id in
+            guard let self, self.repeating == id else { return }
+            self.stopRepeat()
+        }
+    }
+
+    // Held: again after the Mac's repeat delay, then at its rate, until let go.
+    private func startRepeat(_ id: UInt32, _ combo: Combo, _ command: AppCommand) {
+        repeating = id
+        func tick(_ wait: TimeInterval) {
+            cancelTick = keyRepeat.after(wait) { [weak self] in
+                guard let self, self.repeating == id, self.isActive, self.keyRepeat.modifiersDown(combo.modifiers) else {
+                    self?.stopRepeat()
+                    return
+                }
+                self.onCommand?(command)
+                tick(max(0.02, self.keyRepeat.interval()))
+            }
+        }
+        tick(max(0.05, keyRepeat.delay()))
+    }
+
+    private func stopRepeat() {
+        cancelTick?()
+        cancelTick = nil
+        repeating = nil
     }
 
     private static func ordered(_ bindings: [Combo: AppCommand]) -> [(Combo, AppCommand)] {
@@ -184,6 +250,7 @@ final class AppShortcuts {
                 Diagnostics.warn("\(combo) (\(command.rawValue)) is another app's: not Margin's")
             }
         } else {
+            stopRepeat()
             for i in 0..<max(bindings.count, held) { registrar.unregister(id: UInt32(i)) }
         }
     }
