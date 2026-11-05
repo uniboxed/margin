@@ -2071,3 +2071,7 @@ Tirth's decision. Tabs live in Margin's data (in Margin.app on the Mac); a brows
 ## Margin 2 ships for macOS only (2026-11-04)
 
 Tirth's decision. Windows and Linux are not planned for now. Margin 2 is Margin.app plus its extensions for Safari, Chrome and Edge on the Mac. The UI runtime still runs inside pages during Phase 1, to build and test it before the app exists, and in automated tests, but no product build ships an in-page UI; without the app, the extension asks the user to install it. Where `PLAN.md` mentioned Windows and Linux (the in-page host as a product, the extension's storage as the main store there), it no longer applies.
+
+## Margin 2: full screen is macOS's own for now; spaces of other profiles switch by window (2026-11-04)
+
+Tirth's decision, after testing Arc-style switches between spaces of different browser profiles (`PLAN.md` section 15). A profile's spaces live in that profile's window; switching to one brings that window forward through its own copy of Margin (`windows.update({focused: true})`). In macOS full screen each window is its own Space, so the switch is macOS's slide (about 366 ms) and Margin's overlay drops out for about 210 ms; screen-filling windows stacked one per profile switched in about 51 ms with nothing in between. Margin builds on macOS full screen now; its own screen-filling mode, with instant profile switches, comes later with windowed mode, since both need Margin to cover the browser's toolbar.

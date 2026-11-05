@@ -309,3 +309,18 @@ All four spikes ran; the raw notes, numbers and code are on the spike branches. 
 - Per window: the most common layout is registered; other windows get one `insertCSS` sheet on `webNavigation.onCommitted` (a new `webNavigation` permission). It arrived before the first rendering update in 96 of 96 pages.
 - Results: right in the first frame in 64 of 64 WebKit-host pages and in Chromium, including with the content script held back 250 ms the way Safari delays it; without the fix-up, every page jumped at about 255 ms.
 - Still to check in Safari itself: where its content scripts and `insertCSS` land against its first paint, and whether the leftover registered CSS survives a relaunch.
+
+## 15. Spaces across profiles (tested 2026-11-04)
+
+Tirth wants Arc-style swiping between spaces that belong to different browser profiles. A browser window belongs to one profile, so a space of another profile lives in that profile's own window, and switching to it brings that window forward: the target profile's copy of Margin calls `windows.update(id, {focused: true})` (no permission needed). Tested with two Chrome for Testing profiles (scratchpad `profile-swap/`):
+
+| | Switch | In between | Margin's overlay |
+|---|---|---|---|
+| macOS full screen, each profile's window in its own Space | about 366 ms (about 0.2 s, then macOS's Space slide) | both pages sliding, 14–20 frames per switch | drops out for about 210 ms per switch and slides in with the new Space |
+| Screen-filling windows, one per profile, stacked | 51 ms median (36–78 ms) | nothing (0 bad frames in 21 switches) | drawn in every frame, menu bar included |
+
+An instant Space switch needs private macOS calls, so native full screen can't be seamless. The app can't focus a window in another full-screen Space either (its Accessibility window list omits it); the profile's own copy can.
+
+**Decided (Tirth, 2026-11-04):** Margin builds on **macOS's own full screen** now (Phase 2). Switching to another profile's space focuses that profile's full-screen window, with macOS's slide. **Margin's own screen-filling mode** (one window per profile, stacked; instant, clean profile switches; Margin covering the toolbar and the menu bar, handling the Dock and the green button) comes later, together with windowed mode (Phase 4), since it needs the same toolbar-covering work.
+
+Still to decide when it's built: how spaces map to profiles in the data (each Margin tab already belongs to a profile through its copy), and which profile's window a new space opens in.
