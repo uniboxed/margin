@@ -16,7 +16,7 @@ import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
 import { recordCreated } from './background/diagnostics.js';
-import { queueRegistrations } from './background/registered.js';
+import { queueRegistrations, watchCommits } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { sleepChanged, sleepIdle, sleepIdleThrottled, wokeToAddress } from './background/sleep.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
@@ -424,6 +424,8 @@ api.storage.onChanged.addListener(owned((changes, area) => {
   if (area === 'local' && keepReadyChanged(changes)) keepReady.tickSoon();
 }));
 owned(queueRegistrations)();
+// Each window's layout reaches its new pages as they commit (registered.js fixUp).
+watchCommits();
 
 // ---- auto-archive -----------------------------------------------------------
 

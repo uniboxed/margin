@@ -19,7 +19,7 @@
     content: "" !important;
     position: fixed !important;
     inset: 0 !important;
-    border-radius: 6.25px !important;
+    border-radius: {{RADIUS}} !important;
     /* The card's shadow (as sidebar.css .card-edge), then the frame in the
        same fixed color as the sidebar (sidebar.css --frame). */
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06), 0 0 0 100vmax #9c9da1 !important;

@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState, registeredLayout } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -297,8 +297,11 @@ test('Keep open: sidebar and box are in place while the page is still loading', 
 });
 
 test('Keep open registers the first-paint placeholder for the current width; Margin takes over on the page', async () => {
-  const registered = () =>
-    ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r[0]?.css?.[0] ?? null));
+  // The placeholder file, and where its box starts (its layout's left inset).
+  const registered = async () => {
+    const { placeholder: file, left } = await registeredLayout(ctx.worker);
+    return file && `${file}@${left}`;
+  };
   const placeholder = (page) =>
     page.evaluate(() => ({
       content: getComputedStyle(document.documentElement, '::after').content,
@@ -307,7 +310,7 @@ test('Keep open registers the first-paint placeholder for the current width; Mar
     }));
 
   await setKeepOpen(true);
-  await waitFor(async () => (await registered())?.endsWith('themes/arcadia/docked/w-260.css'));
+  await waitFor(async () => (await registered()) === 'themes/arcadia/docked/layout.css@260');
   const page = await openPage('placeholder');
   // The placeholder placed the first paint; the page's own box now holds the
   // same width and the placeholder is switched off on this page.
@@ -316,14 +319,14 @@ test('Keep open registers the first-paint placeholder for the current width; Mar
 
   const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'placeholder').id;
   await ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
-  await waitFor(async () => (await registered())?.endsWith('closed.css'));
+  await waitFor(async () => (await registered()) === 'themes/arcadia/docked/layout-closed.css@8');
   await waitFor(async () => (await placeholder(page)).left === '8px');
 
   await setKeepOpen(true);
   await waitFor(async () => (await placeholder(page)).left === '260px');
-  await waitFor(async () => (await registered())?.endsWith('w-260.css'));
+  await waitFor(async () => (await registered()) === 'themes/arcadia/docked/layout.css@260');
   await setKeepOpen(false);
-  await waitFor(async () => (await registered())?.endsWith('closed.css'));
+  await waitFor(async () => (await registered()) === 'themes/arcadia/docked/layout-closed.css@8');
   await page.close();
 });
 

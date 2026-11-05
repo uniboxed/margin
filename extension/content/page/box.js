@@ -28,7 +28,10 @@ const READ_PROPERTY = /^(margin|padding|border|box-?sizing|width|min-?width|max-
 const CHAIN_PROPERTY = /^(margin|font|zoom|--)/i;
 const INHERITED_INTO = /^(margin|padding|width|min-?width|max-?width|height|min-?height|max-?height)/i;
 
-export function startBox(left = DEFAULT_LEFT) {
+// `start`: where the box starts, from the first-paint layout (main.js), or a
+// left edge alone from an earlier build's at-<left>.js, inside the frame.
+/** @param {{ left?: number, top?: number, right?: number, bottom?: number, radius?: number }} [start] */
+export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bottom = FRAME, radius = null } = {}) {
   let html = document.documentElement; // a page can replace it (rootArrived)
   // Sheets of the page's own world: `<style>` and style attributes are blocked by strict CSPs.
   const { replaceSync } = CSSStyleSheet.prototype;
@@ -63,9 +66,11 @@ export function startBox(left = DEFAULT_LEFT) {
   // its origin is in the window, and its scale: what coordinates go through.
   const box = {
     on: true,
-    left, top: FRAME, right: FRAME, bottom: FRAME,
-    dw: left + FRAME, dh: 2 * FRAME,
-    scale: 1, x: left, y: FRAME,
+    left, top, right, bottom,
+    dw: left + right, dh: top + bottom,
+    /** The card's corner, for what draws the frame; the box itself is square. @type {number | null} */
+    radius,
+    scale: 1, x: left, y: top,
     ours,
     body: () => document.body ?? html,
     // Full screen is the whole window again, read live: the resize that goes
@@ -100,6 +105,8 @@ export function startBox(left = DEFAULT_LEFT) {
     ownFlag: (node) => node === readFlag || node === holdFlag,
     loaded,
     set,
+    /** Margin's content script has said where the box goes (page-link.js). */
+    told: false,
   };
 
   // Never dropped by a page that assigns its own list, or edits the one it has,
@@ -845,11 +852,13 @@ export function startBox(left = DEFAULT_LEFT) {
       return;
     }
     if (!(next?.left >= 0) || refused) return;
+    if (Number.isFinite(next.radius)) box.radius = next.radius;
     on({ left: next.left, top: next.top, right: next.right, bottom: next.bottom }, !!next.live);
     if (next.scale != null) setZoom(next.scale, next.tx ?? 0, next.ty ?? 0, !!next.moving);
   }
   document.addEventListener('margin:box', (event) => {
     event.preventDefault();
+    box.told = true;
     set(/** @type {CustomEvent} */ (event).detail);
   });
   bodyArrived();

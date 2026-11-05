@@ -1,0 +1,13 @@
+# First paint at any insets (Margin 2, Phase 0 spike 4)
+
+Checks that a fresh page is in its box at a layout's insets (left, top, right, bottom, and the card's corner) from its first frame, with no file per inset value, in both engines, without showing anything on screen.
+
+How the prototype does it (`shared/page-box.js`, `background/registered.js`): the default layout is registered as CSS variables, one file per decimal digit of each inset (`content/layout/<side>-<place>-<digit>.css`, 164 files in all, 20 per layout), with the page's script. The theme's first-paint file (`themes/arcadia/docked/layout*.css`) and the page's world (`content/page/main.js`) read the variables. A window whose layout isn't the registered one gets its own as one `scripting.insertCSS` sheet when its page commits (`webNavigation.onCommitted`, or `tabs.onUpdated` to compare). The background takes layouts with `setLayout` (`{ windowId, layout }`, or `{ pin: true, layout }` to register one whatever the windows have).
+
+- `pages.mjs`: the test pages (`/fp/light/<name>`, `/fp/heavy/<name>`: the page red, `<body>` green, so a screenshot shows the box) and the probe: `<html>`'s place at the document's start, in the page's first script (where Margin's page-world script started the box), at each of the first 90 rendering updates, and when Margin's content script moved the box.
+- `chromium.mjs [runs]`: Playwright's Chromium, headless, with `dist/chrome`. Fresh loads in a new tab for each layout: registered, then in a second window with its own layout (fix-up on commit, on update, or none), then layouts changed at run time. Each load is judged by the probe and by the frames Chromium composited (a screencast). `FP_REAL=0` leaves out Wikipedia.
+- `webkit.sh [out] [rounds]`: the `fp-*` scenarios of the WebKit host (`tools/webkit-host/scenarios.mjs`), then `webkit-summary.mjs`, which adds WebKit's own paint milestone (the first visually non-empty layout, from `renderingProgressDidChange`) to each page's frames.
+
+`?late=<ms>` on a test page holds Margin's content-script box messages that long (`content/page-link.js`, a spike-only hook), as Safari's content scripts come late, so what the first-paint CSS and the page's world do alone shows. The page's world reads the variables again as `<head>`/`<body>` arrive and at its first three rendering updates (`content/page/main.js`), since both engines apply registered CSS after it starts and a window's own sheet arrives after the commit. Results: `DECISIONS.md`, 2026-11-04, "Margin 2, spike 4".
+
+Run `npm run build` first. Neither touches a real browser profile or shows a window.

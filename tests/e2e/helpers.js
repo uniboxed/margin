@@ -155,6 +155,22 @@ export async function gotoLauncher(page, ctx) {
 // One key of Margin's state, from the worker. The open tabs, their spaces and
 // each window's space are stored together as `openTabs`, and lostTabs as
 // `lostTabs2` (extension/shared/stored.js); everything else under its own name.
+// What the background registered for the first paint (background/registered.js):
+// the theme's placeholder file, and the layout's left inset, read back from
+// its digit files (shared/page-box.js layoutFiles).
+export function registeredLayout(worker) {
+  return worker.evaluate(async () => {
+    const [docked] = await chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] });
+    const [page] = await chrome.scripting.getRegisteredContentScripts({ ids: ['margin-page'] });
+    let left = page ? 0 : null;
+    for (const file of page?.css ?? []) {
+      const m = /layout\/left-(\d)-(\d)\.css$/.exec(file);
+      if (m) left += Number(m[2]) * 10 ** Number(m[1]) * 0.25;
+    }
+    return { placeholder: docked?.css?.[0] ?? null, left };
+  });
+}
+
 export function readState(worker, key) {
   return worker.evaluate((k) => chrome.storage.local.get(null).then((raw) => {
     if (['tabs', 'tabSpace', 'activeSpaceByWindow'].includes(k)) return raw.openTabs?.[k];

@@ -39,6 +39,10 @@ export default Object.freeze({
   placeholder: (settings) => `themes/arcadia/docked/w-${sidebarWidth(settings)}.css`,
   // While it isn't: the frame around the page, the page where it is.
   closedPlaceholder: 'themes/arcadia/docked/closed.css',
+  // The same two for any layout, from its first-paint variables
+  // (background/registered.js): the ones registered now.
+  layoutPlaceholder: 'themes/arcadia/docked/layout.css',
+  layoutClosedPlaceholder: 'themes/arcadia/docked/layout-closed.css',
   // Where the page's box starts: the sidebar's edge (background/registered.js).
   sidebarWidth,
 });

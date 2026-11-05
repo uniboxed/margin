@@ -15,9 +15,11 @@ import { startTopLayer } from './top-layer.js';
 import { startCoords } from './coords.js';
 import { startMedia } from './media.js';
 import { startSheets } from './sheets.js';
+import { readLayoutVars } from '../../shared/page-box.js';
 
 (() => {
-  // Written by content/page/at-<L>.js, right before this script.
+  // Written by content/page/fullscreen-only.js (or an earlier build's
+  // content/page/at-<L>.js), right before this script.
   const START = Symbol.for('margin.page.start');
   const start = /** @type {any} */ (window)[START];
   delete (/** @type {any} */ (window))[START];
@@ -35,7 +37,40 @@ import { startSheets } from './sheets.js';
   if (start?.fullscreenOnly && outerHeight - innerHeight * (outerWidth / innerWidth || 1) > 40) return;
   Object.defineProperty(window, RAN, { value: true });
 
-  const box = startBox(start?.left);
+  // Where the box starts: the first-paint layout's variables, registered
+  // with this script or given to this window as the page committed
+  // (shared/page-box.js readLayoutVars); else an earlier build's at-<left>.js.
+  const layout = readLayoutVars(getComputedStyle(root));
+  const box = startBox(layout ?? (start?.left != null ? { left: start.left } : {}));
+  // Spike only (tools/first-paint): where this started the box, and from what.
+  Object.defineProperty(window, Symbol.for('margin.page.started'), { value: { t: performance.now(), vars: !!layout, left: box.left, top: box.top, right: box.right, bottom: box.bottom } });
+  // The first-paint variables can come after this script has started: WebKit
+  // applies registered CSS after it (by the page's first script), and a window
+  // with a layout of its own gets it as its page commits
+  // (background/registered.js fixUp). Looked at again as the page's <head> and
+  // <body> arrive (before its own scripts run) and at the first three
+  // rendering updates (before each is drawn), until Margin's content script
+  // says where the box goes.
+  const follow = () => {
+    if (box.told || !box.on) return false;
+    const now = readLayoutVars(getComputedStyle(root));
+    if (now && (now.left !== box.left || now.top !== box.top || now.right !== box.right || now.bottom !== box.bottom)) {
+      const message = JSON.stringify(now);
+      box.set(message);
+      document.dispatchEvent(new CustomEvent('margin:box-self', { detail: message })); // (tools/first-paint)
+    }
+    return true;
+  };
+  const arriving = new MutationObserver(() => {
+    if (!follow() || document.body) arriving.disconnect();
+  });
+  arriving.observe(root, { childList: true });
+  let looks = 3;
+  const onFrame = () => {
+    if (follow() && --looks > 0) requestAnimationFrame(onFrame);
+    else arriving.disconnect();
+  };
+  requestAnimationFrame(onFrame);
   startViewport(box);
   startCoords(box);
   startInView(box);

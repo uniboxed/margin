@@ -15,7 +15,7 @@ import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js'
 import * as keepReady from './keep-ready.js';
 import * as warmUp from './warm-up.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
-import { queueRegistrations, whenRegistered } from './registered.js';
+import { fixLog, layoutOf, queueRegistrations, setLayout, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
@@ -330,7 +330,7 @@ export const handlers = {
     if (sender.tab?.id != null) forgetShowing(sender.tab.id, { later: true });
     // `since`: with the page's own address, which copy's tab ids it may trust (shared/stored.js).
     // `warmUp`: the warm-up after a relaunch under way, for its note in the sidebar (background/warm-up.js).
-    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await known(proven, () => provenNow, (p) => p && sender.tab?.id != null && pageDoc && tellProven(sender.tab.id, pageDoc)) };
+    return { tabId: sender.tab?.id ?? null, windowId, instanceId, fullscreen, carry, layout: windowId != null ? await layoutOf(windowId) : null, since: thisCopy().since, warmUp: warmUp.noteFor(sender.tab), proven: await known(proven, () => provenNow, (p) => p && sender.tab?.id != null && pageDoc && tellProven(sender.tab.id, pageDoc)) };
   },
   // Whether this copy owns the state: only an owner answers this (the others
   // say `stale`, background.js), after checking the stored owner again.
@@ -832,6 +832,37 @@ export const handlers = {
     });
     await api.scripting.executeScript({ target, world: 'MAIN', injectImmediately: true, files: ['content/page.bundle.js'] });
     return true;
+  },
+  // Margin 2: the theme's layout for a window (PLAN.md §3 setLayout), from
+  // the app, or from a test: registered for new pages where it's the most
+  // windows', given to that window's new pages as they commit otherwise, and
+  // sent to its open pages now (content/core.js `layout`). `pin`: registered
+  // whatever the windows have; `fixup`: how other windows get theirs
+  // (registered.js), both for measuring.
+  /** @param {{ windowId?: number, layout?: any, pin?: boolean, fixup?: string, register?: string }} message */
+  async setLayout({ windowId, layout = null, pin = false, fixup, register }, sender) {
+    const win = windowId ?? (pin ? null : sender.tab?.windowId ?? null);
+    await setLayout({ windowId: win, layout, pin, fixup, register });
+    // Each open page of the window, or of every window for a pinned one, gets its window's layout now.
+    const tabs = win != null && !pin ? await api.tabs.query({ windowId: win }).catch(() => []) : pin ? await api.tabs.query({}).catch(() => []) : [];
+    const each = new Map();
+    for (const tab of tabs) {
+      if (!each.has(tab.windowId)) each.set(tab.windowId, layoutOf(tab.windowId));
+      void each.get(tab.windowId).then((own) => api.tabs.sendMessage(tab.id, { type: 'layout', layout: own })).catch(() => {});
+    }
+    return { windowId: win };
+  },
+  async layoutLog() {
+    return fixLog;
+  },
+  // Spike only (tools/first-paint): content-script registrations as they are,
+  // or changed, to see what a browser does with the CSS of one changed or gone.
+  /** @param {{ op?: 'get' | 'register' | 'update' | 'unregister', scripts?: any[], ids?: string[] }} message */
+  async spikeRegistrations({ op = 'get', scripts = [], ids = [] }) {
+    if (op === 'register') await api.scripting.registerContentScripts(scripts);
+    if (op === 'update') await api.scripting.updateContentScripts(scripts);
+    if (op === 'unregister') await api.scripting.unregisterContentScripts(ids.length ? { ids } : undefined);
+    return (await api.scripting.getRegisteredContentScripts()).map((s) => ({ id: s.id, css: s.css, js: s.js }));
   },
   // A style sheet the page can't read (another origin's, no CORS:
   // content/page-link.js). No cookies, as a <link> of another origin needs none.

@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, evalInShadow, sidebarSnapshot, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, evalInShadow, sidebarSnapshot, waitFor, gotoLauncher, registeredLayout } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -26,8 +26,7 @@ const setSettings = async (patch) => {
   if (Object.keys(rest).length) await control.evaluate((p) => chrome.runtime.sendMessage({ type: 'updateSettings', patch: p }), rest);
   if (sidebarWidth != null) await control.evaluate((w) => chrome.runtime.sendMessage({ type: 'updateThemeSettings', themeId: 'arcadia', patch: { sidebarWidth: w } }), sidebarWidth);
 };
-const registered = () =>
-  ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r[0]?.css?.[0] ?? null));
+const registered = () => registeredLayout(ctx.worker);
 const panelWidth = (page) => evalInShadow(page, 'margin-sidebar-host', function () {
   return Math.round(this.querySelector('.margin-sidebar').getBoundingClientRect().width);
 });
@@ -78,7 +77,7 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
     return { left: e.getBoundingClientRect().left, open: e.classList.contains('open'), radius: s.borderTopLeftRadius, shadow: s.boxShadow !== 'none', opacity: s.opacity };
   });
   assert.deepEqual(edge, { left: 330, open: true, radius: '6.25px', shadow: true, opacity: '1' }, 'card shadow follows');
-  await waitFor(async () => (await registered())?.endsWith('themes/arcadia/docked/w-330.css'));
+  await waitFor(async () => (await registered()).left === 330 && (await registered()).placeholder === 'themes/arcadia/docked/layout.css');
 
   // Other tabs pick the width up.
   const other = await openPage('resize-other');

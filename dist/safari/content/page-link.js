@@ -13,7 +13,18 @@ export function startPageLink(send) {
   const can = html instanceof HTMLHtmlElement && !html.hasAttribute('data-margin-shell') && !html.hasAttribute('data-margin-frameless');
 
   // Cancelled by the page's world: it heard. Nothing there means no script yet.
-  const say = (detail) => !document.dispatchEvent(new CustomEvent('margin:box', { detail, cancelable: true }));
+  const sayNow = (detail) => !document.dispatchEvent(new CustomEvent('margin:box', { detail, cancelable: true }));
+  // Spike only (tools/first-paint): `data-fp-late` on <html>, set by the test's
+  // probe, holds what this says until that many ms into the page, as Safari's
+  // content scripts come that late; what the page's world does alone shows.
+  let held = null; // the latest held message, said once at `late`
+  const say = (detail) => {
+    const late = Number(html.getAttribute?.('data-fp-late')) || 0;
+    if (performance.now() >= late && held == null) return sayNow(detail);
+    if (held == null) setTimeout(() => { const last = held; held = null; sayNow(last); }, Math.max(0, late - performance.now()));
+    held = detail;
+    return true;
+  };
 
   let last = null; // the last message, sent again when the script arrives
   let asked = false;

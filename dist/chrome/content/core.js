@@ -15,6 +15,7 @@ import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startLoader } from './loader.js';
 import { startPageLink } from './page-link.js';
+import { readLayoutVars } from '../shared/page-box.js';
 import { startPinch } from './pinch.js';
 import { createSwitching, backgroundSwitches, NEW_TAB, SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
@@ -325,8 +326,19 @@ export function startCore({ onTheme } = {}) {
   /** @type {{ left: number, top: number, right: number, bottom: number } | null} */
   let box = null;
   const pinch = startPinch({ host }, { box: () => box, link });
+  // Margin 2: the window's layout, where the page sits whatever the sidebar
+  // does (content/layout.js). Until the background says (hello, `layout`),
+  // what the first-paint CSS says when asked, as the page's world reads it
+  // (content/page/main.js): not once at the start, since WebKit applies
+  // registered CSS after this script starts, and a window's own layout comes
+  // as its page commits. A guess from the settings meanwhile would move the
+  // box the page's world has right.
+  /** @type {{ left: number, top: number, right: number, bottom: number, radius: number } | null} */
+  let windowLayout = null;
+  let layoutHeard = false;
   const page = {
     api, host, send, link, pinch,
+    windowLayout: () => (layoutHeard ? windowLayout : link.can ? readLayoutVars(getComputedStyle(document.documentElement)) : null),
     // Where the box is now (content/layout.js).
     boxed: () => !!box,
     setBox: (next, options) => {
@@ -1348,6 +1360,8 @@ export function startCore({ onTheme } = {}) {
       if (storageSeen) ownerSeen(storedOwner, storedTabsBy);
     }
     helloWindowId = ctx.windowId;
+    windowLayout = ctx.layout ?? null;
+    layoutHeard = true;
     fullscreen = ctx.fullscreen;
     if (ctx.warmUp) showWarmUp(ctx.warmUp);
     render();
@@ -1462,6 +1476,12 @@ export function startCore({ onTheme } = {}) {
       return sendResponse(true);
     }
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
+    // This window's layout changed (background handlers.js setLayout): the box follows.
+    if (message?.type === 'layout') {
+      windowLayout = message.layout ?? null;
+      layoutHeard = true;
+      return layout.rezoom();
+    }
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
     else if (message.command === 'peek') Margin.content.peek?.();

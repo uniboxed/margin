@@ -11,15 +11,20 @@
 // in their computed style (content/page/box.js). Nothing on <body> here: the
 // placeholders must leave it alone, because the page's world reads what the
 // page says about it (bodyFitCss) with its own rules taken off.
+// An inset is a number of pixels, or a CSS length (LAYOUT_BOX: the first-paint
+// layout's variables, below), so one sheet fits any insets.
+const len = (v) => (typeof v === 'number' ? `${v}px` : v);
+const neg = (v) => (typeof v === 'number' ? `${-v}px` : `calc(-1 * ${v})`);
+const sum = (a, b) => (typeof a === 'number' && typeof b === 'number' ? `${a + b}px` : `(${len(a)} + ${len(b)})`);
 export function boxRules(selector, { left, top, right, bottom }, zoom = 1) {
   return `${selector} {
     position: absolute !important; left: 0 !important; top: 0 !important;
-    transform: translate(${left}px, ${top}px) !important; transform-origin: 0 0 !important;
-    width: calc(${100 / zoom}vw - ${left + right}px) !important; height: calc(${100 / zoom}vh - ${top + bottom}px) !important;
+    transform: translate(${len(left)}, ${len(top)}) !important; transform-origin: 0 0 !important;
+    width: calc(${100 / zoom}vw - ${sum(left, right)}) !important; height: calc(${100 / zoom}vh - ${sum(top, bottom)}) !important;
     min-width: 0 !important; max-width: none !important; min-height: 0 !important; max-height: none !important;
     margin: 0 !important; padding: 0 !important; box-sizing: border-box !important;
-    --margin-left: ${left}px; --margin-top: ${top}px; --margin-shift-x: ${-left}px; --margin-shift-y: ${-top}px;
-    --margin-out-r: ${-right}px; --margin-out-b: ${-bottom}px;
+    --margin-left: ${len(left)}; --margin-top: ${len(top)}; --margin-shift-x: ${neg(left)}; --margin-shift-y: ${neg(top)};
+    --margin-out-r: ${neg(right)}; --margin-out-b: ${neg(bottom)};
   }`;
 }
 
@@ -118,4 +123,85 @@ export function boxCss(box, zoom = 1) {
     /* Full screen is the whole window again. */
     :fullscreen { --margin-dw: 0px; --margin-dh: 0px; }
   }`;
+}
+
+// ---- the first-paint layout: any insets, from the theme ----------------------
+// Registered content-script CSS can only list files, and a registered script
+// can't be given a value, so a layout is spelled in files of one decimal
+// digit each, of each inset's count of quarter pixels:
+// content/layout/<side>-<place>-<digit>.css sets --margin-at-<side>-<place> to
+// digit * 10^place quarter pixels, and content/layout/at.css adds a side's
+// places up into --margin-at-<side>. The background registers at.css with one
+// file for every place of the default layout, zeros too (20 files; 164 in all
+// cover every inset from 0 to 1023.75px and a radius to 63.75px). Every
+// place, because WebKit keeps applying the CSS of a registration it changed or
+// took away to every new page (DECISIONS.md, 2026-11-04: until it relaunches;
+// the sheet added last wins): a property set by every registration is the
+// newest one's whatever is left over, where a sum of only the bits that are
+// set would add the old ones in. A window with other insets gets them as one
+// sheet of plain values as its page commits (scripting.insertCSS), which
+// outweighs the sums. The first-paint box (a theme's docked/layout*.css) and
+// the page's world (content/page/main.js) read the variables. They change
+// nothing by themselves, so they're on every page, taken over or not: the page's
+// world can read them whenever they come (WebKit applies registered CSS after
+// the page's world script has started).
+export const LAYOUT_SIDES = Object.freeze(['left', 'top', 'right', 'bottom', 'radius']);
+const MAX_QUARTERS = Object.freeze({ left: 4095, top: 4095, right: 4095, bottom: 4095, radius: 255 });
+const QUARTER = 0.25;
+const placesOf = (side) => String(MAX_QUARTERS[side]).length;
+// The box's rules: not on a page an old copy laid out, which stays as it is
+// until it reloads, nor once Margin's content script has taken over there
+// (content/layout.js).
+export const PLACED = 'html:not([data-margin-docked="off"], [data-margin-shell], [data-margin-frameless])';
+const VARS = ':root';
+const VARS_OWN = 'html:root'; // outweighs VARS: a window's own layout
+export const LAYOUT_SUM_FILE = 'content/layout/at.css';
+export const layoutDigitFile = (side, place, digit) => `content/layout/${side}-${place}-${digit}.css`;
+const placeName = (side, place) => `--margin-at-${side}-${place}`;
+const quarters = (side, value) => Math.max(0, Math.min(MAX_QUARTERS[side], Math.round((Number(value) || 0) / QUARTER)));
+/** A layout as it's spelled: quarter pixels, within range. @param {Record<string, number>} layout */
+export const spelled = (layout) => Object.fromEntries(LAYOUT_SIDES.map((side) => [side, quarters(side, layout?.[side]) * QUARTER]));
+/** What to register for a layout: at.css, then one digit file for every place of every side. @param {Record<string, number>} layout */
+export function layoutFiles(layout) {
+  const files = [LAYOUT_SUM_FILE];
+  for (const side of LAYOUT_SIDES) {
+    const q = quarters(side, layout?.[side]);
+    for (let place = 0; place < placesOf(side); place++) files.push(layoutDigitFile(side, place, Math.floor(q / 10 ** place) % 10));
+  }
+  return files;
+}
+/** Every file a layout may list, with its CSS: [path, css]. */
+export function allLayoutFiles() {
+  const files = [[LAYOUT_SUM_FILE, layoutSumCss()]];
+  for (const side of LAYOUT_SIDES) {
+    for (let place = 0; place < placesOf(side); place++) {
+      const top = Math.min(9, Math.floor(MAX_QUARTERS[side] / 10 ** place));
+      for (let digit = 0; digit <= top; digit++) files.push([layoutDigitFile(side, place, digit), `${VARS} { ${placeName(side, place)}: ${digit * 10 ** place * QUARTER}px; }\n`]);
+    }
+  }
+  return files;
+}
+function layoutSumCss() {
+  const sums = LAYOUT_SIDES.map((side) => `--margin-at-${side}: calc(${Array.from({ length: placesOf(side) }, (_, place) => `var(${placeName(side, place)}, 0px)`).join(' + ')});`);
+  return `${VARS} { --margin-at: 1; ${sums.join(' ')} }\n`;
+}
+/** A window's own layout, as one sheet (scripting.insertCSS). @param {Record<string, number>} layout */
+export function layoutOwnCss(layout) {
+  const values = spelled(layout);
+  // --margin-own: when it arrived can be seen (tools/first-paint).
+  return `${VARS_OWN} { --margin-at: 1; --margin-own: 1; ${LAYOUT_SIDES.map((side) => `--margin-at-${side}: ${values[side]}px;`).join(' ')} }`;
+}
+// The box from those variables: one sheet for any layout (boxRules).
+export const LAYOUT_BOX = Object.freeze({ left: 'var(--margin-at-left)', top: 'var(--margin-at-top)', right: 'var(--margin-at-right)', bottom: 'var(--margin-at-bottom)' });
+// A side's variable as computed: its bits' sum, unworked ("calc(0px + 4px +
+// …)"), or a plain value. Every term is added, so its pixels add up.
+const pixels = (text) => {
+  let total = 0;
+  for (const [, n] of text.matchAll(/(-?\d*\.?\d+(?:e[-+]?\d+)?)px/gi)) total += Number(n);
+  return total;
+};
+/** The layout the first-paint CSS gave this page, or null. @param {CSSStyleDeclaration} style <html>'s computed style */
+export function readLayoutVars(style) {
+  if (style.getPropertyValue('--margin-at').trim() !== '1') return null;
+  return /** @type {{ left: number, top: number, right: number, bottom: number, radius: number }} */ (Object.fromEntries(LAYOUT_SIDES.map((side) => [side, pixels(style.getPropertyValue(`--margin-at-${side}`))])));
 }

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { DOCKED_WIDTHS } from '../scripts/build-styles.js';
 import { LEGACY_LAYOUT_FILES, LEGACY_THEME_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
 import { THEMES } from '../extension/themes/index.js';
+import { allLayoutFiles } from '../extension/shared/page-box.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -51,6 +52,9 @@ test('each build loads one bundled script per context', () => {
     assert.equal(manifest.content_scripts.find((c) => c.world === 'MAIN'), undefined, target);
     assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), /left: 8 /);
     for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width} `));
+    // Any layout's first-paint variables, a digit to a file (shared/page-box.js).
+    for (const [file, css] of allLayoutFiles()) assert.equal(readFileSync(join(dir, file), 'utf8'), css, `${target}/${file}`);
+    assert.match(readFileSync(join(dir, 'content/layout/left-2-1.css'), 'utf8'), /--margin-at-left-2: 25px/);
     // Each theme: a content bundle the background registers ('margin-theme',
     // the path from theme.js) and a new-tab module exporting mount().
     assert.match(background, /margin-theme/, `${target}: the background registers the theme`);

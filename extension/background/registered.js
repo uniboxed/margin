@@ -6,6 +6,7 @@
 import { platform } from '../shared/platform.js';
 import { themeFor } from '../themes/index.js';
 import { api } from './store.js';
+import { layoutFiles, layoutOwnCss, spelled } from '../shared/page-box.js';
 
 // ---- the theme -------------------------------------------------------------
 
@@ -43,23 +44,134 @@ const anyFullscreen = async () => (await api.windows.getAll().catch(() => [])).s
 // What to register: [{ id, css, matches }], from the settings. Only where Margin
 // works in every window: CSS can't tell one window from another, so in Chrome's
 // full-screen-only mode the box and frame come with the page's script, which can.
-export function placeholderPlan(settings, { theme = themeFor(settings), showing = worksInWindows(settings) } = {}) {
+// The file is the theme's one for any layout (docked/layout.css, or
+// layout-closed.css for the frame alone): its insets are the variables
+// registered with the page's script (pagePlan), so a new layout changes that
+// one registration, not this.
+export function placeholderPlan(settings, { theme = themeFor(settings), showing = worksInWindows(settings), explicit = false } = {}) {
   if (!showing) return [];
-  const css = settings?.sidebarPinnedOpen ? theme.placeholder?.(settings) : settings?.frameWhenHidden !== false ? theme.closedPlaceholder : null;
+  const css = settings?.sidebarPinnedOpen ? theme.layoutPlaceholder : settings?.frameWhenHidden !== false || explicit ? theme.layoutClosedPlaceholder : null;
   return css ? [{ id: DOCKED_ID, css: [css], matches: ['<all_urls>'] }] : [];
+}
+
+// A registration changed in place where the browser can (no moment with
+// none, for a page starting then), else taken away and made again.
+async function replaceRegistration(current, want) {
+  if (current && want && api.scripting.updateContentScripts && layoutsCache?.register !== 'again') return api.scripting.updateContentScripts([want]);
+  if (current) await api.scripting.unregisterContentScripts({ ids: [current.id] });
+  if (want) await api.scripting.registerContentScripts([want]);
 }
 
 async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
-  const want = placeholderPlan(settings);
-  const current = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
-  const key = (list) => JSON.stringify(list.map((s) => [s.id, s.css ?? []]));
-  if (key(want) === key(current)) return;
-  if (current.length) await api.scripting.unregisterContentScripts({ ids: current.map((s) => s.id) });
-  if (want.length) {
-    await api.scripting.registerContentScripts(want.map(({ id, css, matches }) => ({ id, css, matches, runAt: 'document_start', allFrames: false })));
+  const want = placeholderPlan(settings, { explicit: !!(await defaultLayout(settings)).explicit });
+  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
+  if (JSON.stringify(want[0]?.css ?? null) === JSON.stringify(current?.css ?? null)) return;
+  await replaceRegistration(current, want[0] && { ...want[0], runAt: 'document_start', allFrames: false });
+}
+
+// ---- the windows' layouts (Margin 2) -------------------------------------------
+
+// Where the page sits in each window: its insets and the card's corner, from
+// the theme's layout (PLAN.md §3 setLayout), in Margin's pixels. A window with
+// none set has today's: beside the sidebar with Keep open, else in the frame.
+// Registrations are the same for every window, so the layout most windows
+// share is registered (pagePlan), and a page of a window with another one
+// gets its own as it commits (fixUp): scripting.insertCSS, the earliest a
+// page of that tab can be reached.
+/** @typedef {{ left: number, top: number, right: number, bottom: number, radius: number }} Layout */
+const FRAME = 8;
+const RADIUS = 6.25; // Arcadia's card (theme geometry.radius)
+/** @returns {Layout | null} */
+export function layoutFromSettings(settings, theme = themeFor(settings)) {
+  if (settings?.sidebarPinnedOpen) return { left: theme.sidebarWidth?.(settings) ?? 260, top: FRAME, right: FRAME, bottom: FRAME, radius: RADIUS };
+  return settings?.frameWhenHidden !== false ? { left: FRAME, top: FRAME, right: FRAME, bottom: FRAME, radius: RADIUS } : null;
+}
+// storage.session: { windows: { [windowId]: { layout, at } }, pinned: Layout | null,
+// fixup: 'committed' (webNavigation.onCommitted) | 'updated' (tabs.onUpdated,
+// loading) | 'off' }. `pinned` and `fixup` are for measuring (tests/spike).
+const LAYOUTS_KEY = 'marginLayouts';
+let layoutsCache = null;
+async function layouts() {
+  layoutsCache ??= (await api.storage.session?.get(LAYOUTS_KEY).catch(() => ({})))?.[LAYOUTS_KEY] ?? { windows: {}, pinned: null, fixup: 'committed' };
+  return layoutsCache;
+}
+const keyOf = (layout) => JSON.stringify(spelled(layout));
+/** The one to register: pinned, else the most windows', ties to the latest set. @returns {{ layout: Layout | null, explicit: boolean }} */
+export function chooseDefault(settings, { windows = {}, pinned = null } = {}) {
+  if (pinned) return { layout: pinned, explicit: true };
+  const count = new Map();
+  for (const { layout, at } of Object.values(windows)) {
+    const key = keyOf(layout);
+    const seen = count.get(key) ?? { layout, n: 0, at: -Infinity };
+    count.set(key, { layout, n: seen.n + 1, at: Math.max(seen.at, at) });
   }
+  const best = [...count.values()].sort((a, b) => b.n - a.n || b.at - a.at)[0];
+  return best ? { layout: best.layout, explicit: true } : { layout: layoutFromSettings(settings), explicit: false };
+}
+const defaultLayout = async (settings) => chooseDefault(settings, await layouts());
+let registeredKey = null; // the layout pages get from the registration, as spelled
+/** A window's layout: its own, else the one registered if set, else null (today's, from the settings). */
+export async function layoutOf(windowId) {
+  const all = await layouts();
+  const own = all.windows[windowId]?.layout;
+  if (own) return own;
+  const { settings } = await api.storage.local.get('settings');
+  const chosen = chooseDefault(settings, all);
+  return chosen.explicit ? chosen.layout : null;
+}
+/** @param {{ windowId?: number | null, layout?: Layout | null, pin?: boolean, fixup?: string, register?: string }} message */
+export async function setLayout({ windowId = null, layout = null, pin = false, fixup, register }) {
+  const all = await layouts();
+  const next = { ...all, windows: { ...all.windows } };
+  if (fixup) next.fixup = fixup;
+  if (register) next.register = register; // 'again': unregister and register, not update (measuring)
+  if (pin) next.pinned = layout ? spelled(layout) : null;
+  else if (windowId != null) {
+    if (layout) next.windows[windowId] = { layout: spelled(layout), at: Date.now() };
+    else delete next.windows[windowId];
+  }
+  layoutsCache = next;
+  await api.storage.session?.set({ [LAYOUTS_KEY]: next }).catch(() => {});
+  return queueRegistrations();
+}
+export const forgetWindowLayout = async (windowId) => {
+  if ((await layouts()).windows[windowId]) await setLayout({ windowId, layout: null });
+};
+
+// The tab's window, known without asking (webNavigation's details have none).
+const tabWindow = new Map();
+export function noteTab(tab) {
+  if (tab?.id != null && tab.windowId != null) tabWindow.set(tab.id, tab.windowId);
+}
+/** What fixUp did, for measuring: [{ tabId, how, at, took, ok }]. */
+export const fixLog = [];
+async function fixUp(tabId, how, documentId) {
+  const all = await layouts();
+  if (all.fixup !== how) return;
+  const windowId = tabWindow.get(tabId) ?? (await api.tabs.get(tabId).catch(() => null))?.windowId;
+  const own = all.windows[windowId]?.layout;
+  if (!own || keyOf(own) === registeredKey) return;
+  const at = performance.now();
+  const target = documentId ? { tabId, documentIds: [documentId] } : { tabId, frameIds: [0] };
+  const ok = await api.scripting.insertCSS({ target, css: layoutOwnCss(own) }).then(() => true, (err) => String(err?.message ?? err));
+  fixLog.push({ tabId, how, at: Math.round(at), took: Math.round(performance.now() - at), ok });
+  if (fixLog.length > 200) fixLog.shift();
+}
+// (Tabs open before this are asked for once, when they commit: fixUp.)
+export function watchCommits() {
+  api.tabs.onCreated.addListener(noteTab);
+  api.tabs.onAttached.addListener((tabId, { newWindowId }) => tabWindow.set(tabId, newWindowId));
+  api.tabs.onRemoved.addListener((tabId) => tabWindow.delete(tabId));
+  api.webNavigation?.onCommitted.addListener(({ tabId, frameId, documentId, url }) => {
+    if (frameId === 0 && /^(https?|file):/.test(url ?? '')) void fixUp(tabId, 'committed', documentId).catch(() => {});
+  });
+  api.tabs.onUpdated.addListener((tabId, change, tab) => {
+    noteTab(tab);
+    if (change.status === 'loading') void fixUp(tabId, 'updated').catch(() => {});
+  });
+  api.windows?.onRemoved.addListener((windowId) => void forgetWindowLayout(windowId));
 }
 
 // ---- the page's box ----------------------------------------------------------
@@ -67,31 +179,32 @@ async function syncDockedCss() {
 // Its script in the page's world (content/page/main.js), in the top frame.
 // Registered only while pages have a box, so a page Margin leaves alone loads
 // nothing there: Keep open (at the sidebar's edge), or hidden with the frame (at
-// the frame's). The file before it says where the box starts (built by
-// scripts/build.js): one file per width, because a script registered here
-// can't be given a value. Where Margin works only in full screen (Chrome):
-// only while a window is, and the script itself stays out of windows with a
-// toolbar (content/page/fullscreen-only.js). A page that misses it asks for it
-// (content/page-link.js, handlers.js injectPage).
+// the frame's), or wherever a window's layout is set. Where the box starts
+// comes with it as CSS: the default layout's variables, a digit to a file
+// (shared/page-box.js layoutFiles), which the script and the theme's
+// placeholder read, since a script registered here can't be given a value.
+// Where Margin works only in full screen (Chrome): only while a window is,
+// and the script itself stays out of windows with a toolbar
+// (content/page/fullscreen-only.js); the variables alone change nothing. A
+// page that misses it asks for it (content/page-link.js, handlers.js injectPage).
 const PAGE_ID = 'margin-page';
 const PAGE_JS = 'content/page.bundle.js';
-const FRAME_LEFT = 8;
 const FULLSCREEN_ONLY_JS = 'content/page/fullscreen-only.js';
-/** @returns {string[] | null} the scripts, or null: no box */
-export function pagePlan(settings, { theme = themeFor(settings), showing = worksInWindows(settings) } = {}) {
-  if (!showing) return null;
-  const left = settings?.sidebarPinnedOpen ? theme.sidebarWidth?.(settings) ?? 260 : settings?.frameWhenHidden !== false ? FRAME_LEFT : null;
-  if (left == null) return null;
-  return [`content/page/at-${left}.js`, ...(worksInWindows(settings) ? [] : [FULLSCREEN_ONLY_JS]), PAGE_JS];
+/** @returns {{ js: string[], css: string[] } | null} what to register, or null: no box */
+export function pagePlan(settings, { showing = worksInWindows(settings), layout = layoutFromSettings(settings) } = {}) {
+  if (!showing || !layout) return null;
+  return { js: [...(worksInWindows(settings) ? [] : [FULLSCREEN_ONLY_JS]), PAGE_JS], css: layoutFiles(layout) };
 }
 async function syncPage() {
   if (!api.scripting?.registerContentScripts) return;
   const { settings } = await api.storage.local.get('settings');
-  const want = pagePlan(settings, { showing: worksInWindows(settings) || await anyFullscreen() });
+  const { layout } = await defaultLayout(settings);
+  const want = pagePlan(settings, { showing: worksInWindows(settings) || await anyFullscreen(), layout });
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [PAGE_ID] });
-  if (JSON.stringify(want) === JSON.stringify(current?.js ?? null)) return;
-  if (current) await api.scripting.unregisterContentScripts({ ids: [PAGE_ID] });
-  if (want) await api.scripting.registerContentScripts([{ id: PAGE_ID, js: want, matches: ['<all_urls>'], runAt: 'document_start', allFrames: false, world: 'MAIN' }]);
+  if (JSON.stringify(want) !== JSON.stringify(current ? { js: current.js ?? [], css: current.css ?? [] } : null)) {
+    await replaceRegistration(current, want && { id: PAGE_ID, ...want, matches: ['<all_urls>'], runAt: 'document_start', allFrames: false, world: 'MAIN' });
+  }
+  registeredKey = want ? keyOf(layout) : null;
 }
 
 let registrations = Promise.resolve();

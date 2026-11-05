@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as shortcuts from '../extension/shared/shortcuts.js';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { buildAssets, buildClosed, buildDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
+import { buildAssets, buildClosed, buildDocked, buildLayout, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
 import { THEMES } from '../extension/themes/index.js';
 import { WIDTH } from '../extension/themes/arcadia/theme.js';
 
@@ -87,8 +87,12 @@ test('first-paint placeholders: one up-to-date file per sidebar width, nothing e
   for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
   assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match Arcadia\'s theme.js');
   const names = expected.map((w) => `w-${w}.css`).sort();
-  assert.deepEqual(readdirSync(new URL('themes/arcadia/docked/', root)).sort(), [...names, 'closed.css'].sort());
+  assert.deepEqual(readdirSync(new URL('themes/arcadia/docked/', root)).sort(), [...names, 'closed.css', 'layout.css', 'layout-closed.css'].sort());
   assert.equal(readFileSync(new URL('themes/arcadia/docked/closed.css', root), 'utf8'), buildClosed('arcadia'), 'closed.css is stale: run npm run styles');
+  assert.equal(readFileSync(new URL('themes/arcadia/docked/layout.css', root), 'utf8'), buildLayout('arcadia'), 'layout.css is stale: run npm run styles');
+  assert.equal(readFileSync(new URL('themes/arcadia/docked/layout-closed.css', root), 'utf8'), buildLayout('arcadia', { closed: true }), 'layout-closed.css is stale: run npm run styles');
+  assert.match(buildLayout('arcadia'), /translate\(var\(--margin-at-left\), var\(--margin-at-top\)\)/, 'any layout: the box from the variables');
+  assert.ok(!buildLayout('arcadia').includes('{{') && !buildLayout('arcadia', { closed: true }).includes('{{'));
   for (const w of expected) {
     const css = readFileSync(new URL(`themes/arcadia/docked/w-${w}.css`, root), 'utf8');
     assert.equal(css, buildDocked('arcadia', w), `w-${w}.css is stale: run npm run styles`);
@@ -116,8 +120,9 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   const radius = decl(sidebar, '.frame .hole, .card-edge {', 'border-radius');
   const shadow = decl(sidebar, '.card-edge {\n  right: auto', 'box-shadow');
   assert.equal(radius, '6.25px');
-  const docked = read('themes/arcadia/docked.template.css');
+  const docked = read('themes/arcadia/docked/w-260.css');
   assert.equal(decl(docked, 'html:not([data-margin-docked="off"])::after', 'border-radius'), radius);
+  assert.equal(decl(read('themes/arcadia/docked/layout.css'), 'html:not([data-margin-docked="off"])::after', 'border-radius'), `var(--margin-at-radius, ${radius})`, 'any layout: its own corner, else the card\'s');
   assert.ok(decl(docked, 'html:not([data-margin-docked="off"])::after', 'box-shadow').startsWith(`${shadow}, 0 0 0 100vmax`), 'placeholder: same shadow, then the frame');
   const newtab = read('themes/arcadia/styles/newtab.css');
   assert.equal(decl(newtab, '#launcher, #page-card {', 'border-radius'), radius);

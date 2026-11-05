@@ -13,6 +13,7 @@ let scenario = try! JSONSerialization.jsonObject(with: Data(contentsOf: URL(file
 let t0 = Date()
 func log(_ s: String) { print(String(format: "[%6.0f] ", Date().timeIntervalSince(t0) * 1000) + s); fflush(stdout) }
 var failures = 0
+let firstPaintProbe = ProcessInfo.processInfo.environment["MARGIN_HOST_PROBE"].flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
 func fail(_ label: String, _ why: String) { failures += 1; log("FAIL \(label): \(why)") }
 
 // A page-world recorder in every frame: the page's own console errors and warnings, uncaught
@@ -66,6 +67,8 @@ let pageRecorder = """
         note(); document.addEventListener('visibilitychange', note); })();
       """, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     cfg.userContentController.addUserScript(WKUserScript(source: pageRecorder, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+    // The first-paint probe (tools/first-paint/pages.mjs PROBE), where run.sh gives one.
+    if let probe = firstPaintProbe { cfg.userContentController.addUserScript(WKUserScript(source: probe, injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
     if !restoredSession.isEmpty, let data = try? JSONSerialization.data(withJSONObject: restoredSession), let json = String(data: data, encoding: .utf8) {
       // Before any other script of the page: its session storage as it was (an origin's, once,
       // into an empty storage, as a restored tab's first load finds it).
@@ -83,6 +86,12 @@ let pageRecorder = """
       unsafeBitCast(method_getImplementation(m), to: Setter.self)(wv, noOcclusion, false)
     }
     wv.navigationDelegate = self
+    // WebKit's own paint milestones for the first-paint scenarios (renderingProgressDidChange).
+    let observe = NSSelectorFromString("_setObservedRenderingProgressEvents:")
+    if firstPaintProbe != nil, let m = class_getInstanceMethod(WKWebView.self, observe) {
+      typealias Setter = @convention(c) (AnyObject, Selector, UInt) -> Void
+      unsafeBitCast(method_getImplementation(m), to: Setter.self)(wv, observe, 0x1FF)
+    }
     webView = wv
     loadingObs = [
       wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controllers.forEach { $0.didChangeTabProperties([.loading], for: self) } } },
@@ -103,6 +112,11 @@ let pageRecorder = """
     decisionHandler(.allow)
   }
   func webView(_ wv: WKWebView, didCommit navigation: WKNavigation!) { log("nav \(name) committed \(wv.url?.absoluteString.prefix(1200) ?? "?")") }
+  // Paint milestones, with the wall clock (ms) to line up with a page's performance.timeOrigin:
+  // 2 first visually non-empty layout, 4 first paint with significant area, 64 first paint.
+  @objc(_webView:renderingProgressDidChange:) func renderingProgress(_ wv: WKWebView, didChange events: UInt) {
+    log(String(format: "paint \(name) events \(events) at %.1f", Date().timeIntervalSince1970 * 1000))
+  }
   func webView(_ wv: WKWebView, didFinish navigation: WKNavigation!) { log("nav \(name) loaded \(wv.url?.absoluteString.prefix(1200) ?? "?")") }
   func webView(_ wv: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { log("nav \(name) failed \(error.localizedDescription)") }
   func webView(_ wv: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { log("nav \(name) failed early \(error.localizedDescription)") }

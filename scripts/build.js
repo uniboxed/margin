@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { THEMES } from '../extension/themes/index.js';
 import { DOCKED_WIDTHS } from './build-styles.js';
+import { allLayoutFiles } from '../extension/shared/page-box.js';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
@@ -106,6 +107,9 @@ function bundle(out, manifest) {
   // Where the page's box starts (background/registered.js pagePlan): read by
   // the page's script, and gone again.
   for (const left of PAGE_LEFTS) writeFileSync(`${out}/content/page/at-${left}.js`, `window[Symbol.for('margin.page.start')] = { left: ${left} };\n`);
+  // Any layout's first-paint insets, a digit to a file (shared/page-box.js).
+  mkdirSync(`${out}/content/layout`, { recursive: true });
+  for (const [file, css] of allLayoutFiles()) writeFileSync(`${out}/${file}`, css);
   for (const file of [...LEGACY_LAYOUT_FILES, ...LEGACY_THEME_FILES]) {
     mkdirSync(dirname(`${out}/${file}`), { recursive: true });
     writeFileSync(`${out}/${file}`, '');

@@ -28,6 +28,8 @@ export function startLayout(page, { loader }) {
     const frame = pagePx(inset());
     return { left: pagePx(left), top: frame, right: frame, bottom: frame };
   };
+  // A window's layout (content/core.js windowLayout), in Margin's pixels.
+  const ownBox = ({ left, top, right, bottom, radius }) => ({ left: pagePx(left), top: pagePx(top), right: pagePx(right), bottom: pagePx(bottom), radius: pagePx(radius) });
   // While resizing: move the frame edge and, with "Keep open", the page's box
   // along with it (at most once per animation frame). The page's own layout
   // follows when it rests (content/page/box.js).
@@ -72,7 +74,9 @@ export function startLayout(page, { loader }) {
     // one in charge.
     const place = () => {
       if (page.dormant()) return;
-      const box = docked ? boxAt(width) : framed ? boxAt(inset()) : null;
+      // Margin 2: the window's layout, from the theme, places the page whatever the sidebar does.
+      const own = page.active() ? page.windowLayout?.() : null;
+      const box = own ? ownBox(own) : docked ? boxAt(width) : framed ? boxAt(inset()) : null;
       page.setBox(box);
       mark(host, 'box', box ? String(box.left) : 'off');
     };

@@ -199,7 +199,50 @@ const asleepAt = (tab, name) => [
 // Back at its page, one history entry (no sleep page in its Back list), its content there.
 const awakeAt = (tab, name, label) => checkPage(tab, `${tab}: ${label}`, `location.pathname === '/p/${name}' && history.length === 1 && document.title === '${name}' && !!document.body?.textContent.includes('${name}')`, 4000);
 
+// fp-<how>-<layout>: first paint at any insets (tools/first-paint/README.md).
+// The window's layout is registered (`registered`), or another one is and the
+// window's own reaches its pages as they commit (`committed`:
+// webNavigation.onCommitted, `updated`: tabs.onUpdated) or only through
+// Margin's content script (`off`). Four fresh pages each (light, heavy,
+// twice), within the 4 s the host's background lives; the probe's frames are
+// logged (`page Ln: …`) for tools/first-paint/webkit-summary.mjs. The
+// registered ones check that every frame had the layout.
+const FP_LAYOUTS = {
+  left: { left: 260, top: 8, right: 8, bottom: 8, radius: 6.25 },
+  right: { left: 8, top: 8, right: 260, bottom: 8, radius: 6.25 },
+  top: { left: 8, top: 60, right: 8, bottom: 8, radius: 6.25 },
+  card: { left: 16, top: 16, right: 16, bottom: 16, radius: 18 },
+};
+const FP_FRAME = { left: 8, top: 8, right: 8, bottom: 8, radius: 6.25 };
+const FP_PAGES = [['L1', 'light', 450], ['H1', 'heavy', 650], ['L2', 'light', 450], ['H2', 'heavy', 650]];
+const fpAll = (l) => `const f = (window.__fp?.frames ?? []).filter((x) => x.kind === 'frame'); const ok = (x) => Math.abs(x.x - ${l.left}) < 0.05 && Math.abs(x.y - ${l.top}) < 0.05 && Math.abs(1200 - x.x - x.w - ${l.right}) < 0.05 && Math.abs(800 - x.y - x.h - ${l.bottom}) < 0.05; return f.length >= 5 && f.every(ok)`;
+// (`again`: registered, the registration made again rather than updated.
+// `late`: Margin's content script holds its box messages for 250 ms, as
+// Safari's content scripts come that late: what the page's world does alone.)
+function fpScenario(how, name, late = false) {
+  const layout = FP_LAYOUTS[name];
+  const reg = how === 'registered' || how === 'again';
+  const registered = reg ? layout : name === 'left' ? FP_FRAME : FP_LAYOUTS.left;
+  return [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), themed('A'),
+    { op: 'eval', in: 'A', js: `return JSON.stringify(await Margin.content.send('setLayout', { pin: true, layout: ${JSON.stringify(registered)}, fixup: '${reg ? 'committed' : how}', register: '${how === 'again' ? 'again' : 'update'}' }))` },
+    ...(reg ? [] : [{ op: 'eval', in: 'A', js: `return JSON.stringify(await Margin.content.send('setLayout', { layout: ${JSON.stringify(layout)} }))` }]),
+    wait(150),
+    ...FP_PAGES.flatMap(([tab, kind, ms]) => [{ op: 'open', name: tab, url: `/fp/${kind}/${how}${name}${tab}${late ? '?late=250' : ''}`, active: true }, wait(ms)]),
+    { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('layoutLog')))` },
+    ...FP_PAGES.map(([tab]) => ({ op: 'page', in: tab, js: `return 'FP ' + JSON.stringify({ layout: ${JSON.stringify(layout)}, fp: { ...window.__fp, started: window[Symbol.for('margin.page.started')] ?? null }, head: window.__fpHead ?? null })` })),
+    ...(reg ? FP_PAGES.map(([tab]) => checkPage(tab, `${tab}: every frame drawn had the page in its box at ${name}`, fpAll(layout), 1000)) : []),
+    // A, open as the layout changed at run time, followed it.
+    checkPage('A', `A (open): moved to ${name} at run time`, `${AT} const s = getComputedStyle(document.documentElement); return at.x === ${layout.left} && at.y === ${layout.top} && Math.abs(parseFloat(s.width) - ${1200 - layout.left - layout.right}) < 0.1 && Math.abs(parseFloat(s.height) - ${800 - layout.top - layout.bottom}) < 0.1`, 1000),
+  ];
+}
+const FP_SCENARIOS = Object.fromEntries(['registered', 'again', 'committed', 'updated', 'off'].flatMap((how) => Object.keys(FP_LAYOUTS).flatMap((name) => [
+  [`fp-${how}-${name}`, fpScenario(how, name)],
+  ...(['registered', 'committed', 'off'].includes(how) ? [[`fp-${how}-${name}-late`, fpScenario(how, name, true)]] : []),
+])));
+
 export const SCENARIOS = {
+  ...FP_SCENARIOS,
   // Pages open at install get Margin (WebKit adds the core, the background
   // the theme); switching through Margin, including to a tab Safari unloaded.
   switching: [

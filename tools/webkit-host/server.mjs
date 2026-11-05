@@ -18,6 +18,7 @@
 //   /slow?ms=N an image that arrives N ms after it's asked for
 //   POST /log  one log line, printed with a timestamp
 import { createServer } from 'node:http';
+import { serveFp } from '../first-paint/pages.mjs'; // /fp/<light|heavy>/<name>: the first-paint pages
 
 const PORT = Number(process.env.MARGIN_HOST_PORT) || 47811;
 const t0 = Date.now();
@@ -156,6 +157,7 @@ createServer((req, res) => {
     res.setHeader('access-control-allow-methods', 'POST');
     return res.end();
   }
+  if (serveFp(req.url, res)) return;
   if (req.url === '/other.css') {
     res.setHeader('content-type', 'text/css');
     return res.end('@media (max-width: 1000px) { #w { color: rgb(1, 2, 3); } }');

@@ -45,6 +45,12 @@ run_one() {
   else
     "$NODE" scenarios.mjs "$name" > "$BUILD/$name.json" || return 2
   fi
+  # First-paint scenarios (fp*): the probe in every page (tools/first-paint/pages.mjs).
+  if [[ "$(basename "$1")" == fp* ]]; then
+    "$NODE" -e "import('../first-paint/pages.mjs').then((m) => process.stdout.write(m.PROBE))" > "$BUILD/probe.js" && export MARGIN_HOST_PROBE="$BUILD/probe.js"
+  else
+    unset MARGIN_HOST_PROBE
+  fi
   "$NODE" server.mjs > "$BUILD/server.log" 2>&1 &
   local server=$!
   sleep 0.5
