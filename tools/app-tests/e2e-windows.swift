@@ -172,9 +172,15 @@ func windowsScenario() async {
   watch.on = false
   _ = await watcher.value
   check("windows: never an overlay over another window, never a binding wrong (\(watch.looks) looks)", watch.wrong.isEmpty && watch.looks > 100, "\(watch.wrong.prefix(5))")
-  check("windows: every binding made in the log with why", said.contains { $0.hasPrefix("safari:P2#1 is window \(wC.windowNumber): focus moved to it") }
-        && said.contains { $0.hasPrefix("safari:P1#2 is window \(wB.windowNumber): the only free window with its bounds") }
-        && said.contains { $0.hasPrefix("safari:P1#2 is no longer window \(wB.windowNumber): closed in the browser") })
+  // Which rule binds a window first depends on timing (a loaded Mac's reads come late:
+  // focus moved, or settled focus, or elimination); each binding must be logged with one.
+  let why = ["focus moved", "the only free window with its bounds", "settled focus", "made by Margin", "created", "two focus changes said so", "its bounds"]
+  let bindingLines = said.filter { $0.contains(" is window ") }
+  let saidWhy = { (prefix: String) in bindingLines.contains { line in line.hasPrefix(prefix) && why.contains { line.contains($0) } } }
+  check("windows: every binding made in the log with why", saidWhy("safari:P2#1 is window \(wC.windowNumber): ")
+        && saidWhy("safari:P1#2 is window \(wB.windowNumber): ")
+        && said.contains { $0.hasPrefix("safari:P1#2 is no longer window \(wB.windowNumber): closed in the browser") },
+        "\(bindingLines.filter { $0.contains("P2#1") || $0.contains("P1#2") }.prefix(4))")
   var stopped = false
   shell.stop { stopped = true }
   _ = await until(3, { stopped })
