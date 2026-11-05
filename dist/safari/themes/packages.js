@@ -1,8 +1,9 @@
 // The themes Margin ships as HTML and CSS packages (extension/themes/<id>/
 // theme.json, theme.html, theme.css: ui/theme-loader.js loads them). Plain
 // data, so the background can check a package theme's id without loading the
-// UI code. Arcadia joins in Phase 1 step 3.
-export const PACKAGE_THEMES = Object.freeze(['neo-brutalism']);
+// UI code. Arcadia's package is `arcadia-2` while the old `arcadia` (theme
+// JS) still runs today's pages; Phase 1 step 4 renames it.
+export const PACKAGE_THEMES = Object.freeze(['neo-brutalism', 'arcadia-2']);
 
 // Where the index of the user's imported themes is kept (storage.local).
 export const USER_THEMES_KEY = 'userThemes';

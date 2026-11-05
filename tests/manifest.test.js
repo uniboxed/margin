@@ -124,8 +124,12 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   assert.equal(decl(newtab, '#page-card {\n', 'box-shadow'), shadow);
   // The theme's geometry (content.js) agrees with the CSS.
   assert.match(read('themes/arcadia/content.js'), new RegExp(`geometry: \\{ inset: 8, radius: '${radius}' \\}`));
+  // Arcadia's package (themes/arcadia-2): the same card, radius and shadow.
+  const pkg = read('themes/arcadia-2/theme.css');
+  assert.equal(pkg.match(/\n  --card-radius: ([^;]+);/)[1], radius);
+  assert.equal(decl(pkg, '.card-edge { pointer-events: none;', 'box-shadow'), shadow);
   // Plain CSS only: nothing for the browser to load (no images, no url()).
-  for (const css of [sidebar, docked, newtab]) assert.doesNotMatch(css, /border-image|url\(/);
+  for (const css of [sidebar, docked, newtab, pkg]) assert.doesNotMatch(css, /border-image|url\(/);
 });
 
 test('no CSS corner-shape (yet): Safari\'s experimental version passes @supports but draws squares', () => {
