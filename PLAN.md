@@ -159,18 +159,18 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 
 ## 7. The extension, changed
 
-- **Switching:** `focusTab` becomes `tabs.update(active) + windows.update(focused)` (about 20 lines, from about 1,100). Navigation (next/previous tab and space) keeps its chaining, without wakes and passing checks.
+- **Switching (done in Phase 2 step 8, 2026-11-05):** `focusTab` is `tabs.update(active)`, and `windows.update(focused)` only if the window isn't focused (`background/tabs.js`, from about 1,100 lines). Navigation (next/previous tab and space) keeps its chaining, without wakes and passing checks. Each switch is one line in Margin.app's log (`background/switch-log.js`).
 - **Page box:** insets come from the theme's layout per window instead of `sidebarWidth` and a hard-coded 8 px frame (`box.js FRAME`, `build-styles.js FRAME`, `registered.js FRAME_LEFT`).
   - First paint: the registered first-paint CSS carries the insets as CSS variables (`boxRules` already writes them on `<html>`), and the page's world reads them from there instead of from one `at-<width>.js` file per width.
   - Per-layout first-paint CSS is generated at run time and registered, instead of 35 files per theme.
 - **No UI in pages (done in Phase 2 step 5):** pages get only the box, while the app is linked (none otherwise: the page as it is), and the small scripts that must run in a page (gestures, pinch, the draft check, the navigation and ⌘T keys). The UI runtime, the theme loader and the in-page host are out of the content script and the new-tab page. With no app linked, Margin's new-tab page says Margin.app isn't running, with a button that starts it and an address field; Phase 7 makes that the prompt to install the app (and adds the toolbar button).
-- **Sleeping tabs:** kept; their checks no longer look at keep-ready, warm-up, slow Safari or switch state.
+- **Sleeping tabs:** kept; their checks no longer look at keep-ready, warm-up or slow Safari (done in Phase 2 step 8); they still wait for a switch under way.
 - **Safari manifest:** background as a page (for the link), `nativeMessaging` kept.
-- **Settings:** `keepLeftTabReadyMinutes` and `warmUpTabs` go. `sidebarPinnedOpen`, `frameWhenHidden` and `themes.arcadia.sidebarWidth` become theme settings and layout state.
+- **Settings:** `keepLeftTabReadyMinutes` and `warmUpTabs` are gone (Phase 2 step 8; saved values are left alone). `sidebarPinnedOpen`, `frameWhenHidden` and `themes.arcadia.sidebarWidth` become theme settings and layout state.
 
 ## 8. What gets deleted
 
-Counted on `feat/sleeping-tabs` (wc -l). About 9,000 lines of extension code and about 11,000 lines of tests and scenarios.
+Counted on `feat/sleeping-tabs` (wc -l). About 9,000 lines of extension code and about 11,000 lines of tests and scenarios. Phase 2 step 8 deleted the switching rows below (about 6,000 lines of extension code and 8,600 of tests); the rest is still Phase 3's.
 
 | Where | Goes | Why |
 |---|---|---|
@@ -229,6 +229,7 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 ### Phase 3: slim the extension
 
 - Delete section 8's code and tests. `focusTab` becomes the plain switch. Page box insets from layouts; the new first-paint path; sleep decoupled.
+- **Partly done in Phase 2 step 8 (2026-11-05)**, because the old switching made the overlay's highlight flicker in Tirth's Safari: the plain switch, and the whole background side of the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers and paint barriers, the ping gate, keep-ready, the warm-up, slow Safari), `content/hold.js`, `idle.js`, `shared/page-ready.js`, `away.js`, the pages' preparation and first-show code, the switch log's entries, the two settings, their platform flags and their tests and WebKit scenarios (DECISIONS.md "Margin 2, Phase 2 step 8"). Still Phase 3's: the sleep page (`extension/sleep/`), `diagnostics.js` (now only repairs, sleep and created tabs), the state's write numbers for prepared pages (`platform.prepareSidebar`, `stateRev`), theme JS leftovers, page box insets from layouts and the new first-paint path.
 - Done when: the code is gone, the tests pass, and switching in Safari is plain (Safari's own blink, no Margin covers).
 
 ### Phase 4: windowed mode
