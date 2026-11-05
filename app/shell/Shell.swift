@@ -9,8 +9,9 @@
 //    browser is in front, 1 otherwise), and 30 times a second for a moment
 //    after anything that moves windows (an app activated, the Space or the
 //    displays changed, a press, a window list from the extension).
-//  - Each copy's windows are matched to the window server's
-//    (WindowMatcher.swift). A window gets an overlay once its copy's state
+//  - Each copy's windows are bound to the window server's, from evidence,
+//    never on a guess (WindowMatcher.swift WindowBinder): a window not bound
+//    yet gets nothing drawn over it. A window gets an overlay once its copy's state
 //    and theme are here; the overlay shows (just above the window, at its
 //    bounds) once its page has drawn, while the window is on screen and in
 //    full screen (windowed mode is Phase 4: `windowedToo`), and is put back
@@ -69,6 +70,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var bundleIds = ["safari": safariIdentifier, "chrome": "com.google.Chrome", "edge": "com.microsoft.edgemac"]
         var profileSwitch = ProfileSwitch.Options() // switching to another profile's space (ProfileSwitch.swift)
         var switchClock: SwitchClock = RunLoopClock()
+        // Seconds since 1970, the clock the extension's focusedAt and createdAt use (tests set it).
+        var clock: () -> Double = { Date().timeIntervalSince1970 }
     }
 
     final class Link {
@@ -96,6 +99,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private(set) var links: [String: Link] = [:]
     private(set) var overlays: [WindowKey: OverlayController] = [:]
     private(set) var matches: [WindowKey: Int] = [:]
+    // Each browser's window bindings (WindowMatcher.swift).
+    private(set) var binders: [String: WindowBinder] = [:]
     // A linked browser has been in front since the first link came up: the shell is at work.
     private(set) var started = false
     private(set) var tracks = 0
@@ -378,30 +383,38 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let list = windowSource.windows(of: own)
         let byNumber = Dictionary(list.map { ($0.number, $0) }, uniquingKeysWith: { a, _ in a })
 
-        // Each browser's windows, matched.
+        // Each browser's windows, bound (WindowBinder: it logs every binding made, moved or dropped, and why).
         var next: [WindowKey: Int] = [:]
         var ext: [WindowKey: (ExtWindow, Link)] = [:]
+        let wallNow = options.clock()
         for (browser, pids) in byBrowser {
-            let entries = links.values.filter { $0.connection.hello.browser == browser && $0.mirror.hasState }
+            let all = links.values.filter { $0.connection.hello.browser == browser }
+            let entries = all.filter { $0.mirror.hasState }
             let windows = entries.flatMap { entry in ExtWindow.parse(entry.mirror.windows, link: entry.connection.key).map { ($0, entry) } }
             for (w, entry) in windows { ext[w.key] = (w, entry) }
-            let matched = WindowMatcher.match(ext: windows.map(\.0), server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, previous: matches)
-            next.merge(matched) { a, _ in a }
-        }
-        for key in next.keys where matches[key] != next[key] {
-            Diagnostics.note("\(key) is window \(next[key]!)")
+            // Kept as they are: a link without its state yet, one that dropped a moment ago.
+            let held = Set(all.filter { !$0.mirror.hasState }.map(\.connection.key)).union(reconnecting.keys.filter { $0.hasPrefix(browser + ":") })
+            var copies: [String: String] = [:]
+            for entry in entries { copies[entry.connection.key] = entry.connection.hello.instanceId ?? entry.connection.hello.since.map { "\($0)" } ?? entry.connection.epoch }
+            let binder = binders[browser] ?? WindowBinder(browser: browser)
+            binders[browser] = binder
+            let bound = binder.update(now: wallNow, ext: windows.map(\.0), reporting: Set(entries.map(\.connection.key)), copies: copies, held: held,
+                                      server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false)
+            next.merge(bound) { a, _ in a }
         }
         matches = next
 
         // The overlays: made when wanted, shown when they can be, closed when their window is gone.
         for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
             let wanted = (w.state == "fullscreen" || options.windowedToo) && entry.theme != nil
-            guard wanted else {
+            // The window a profile switch is making: its overlay's page loads while it goes full screen.
+            let early = !wanted && entry.theme != nil && switcher.busy && switcher.target?.profile == key.link && switcher.newWindow == key.windowId
+            guard wanted || early else {
                 overlays[key]?.hide()
                 continue
             }
             let overlay = overlays[key] ?? makeOverlay(key)
-            guard let number = next[key], let server = byNumber[number], server.onScreen else {
+            guard wanted, let number = next[key], let server = byNumber[number], server.onScreen else {
                 overlay.hide()
                 continue
             }
@@ -431,6 +444,16 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pollTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
         }
+    }
+
+    // A window the app's own request made (the profile switch's openSpaceWindow, asked at `asked`):
+    // its binder binds it to the one new window the window server lists from then (WindowMatcher.swift).
+    func windowMade(_ link: String, windowId: Int, asked: Double) {
+        guard let browser = links[link]?.connection.hello.browser else { return }
+        let binder = binders[browser] ?? WindowBinder(browser: browser)
+        binders[browser] = binder
+        binder.expect(WindowKey(link: link, windowId: windowId), since: asked, now: options.clock(), why: "made by Margin's openSpaceWindow")
+        burst("window made")
     }
 
     private func makeOverlay(_ key: WindowKey) -> OverlayController {

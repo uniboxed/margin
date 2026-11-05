@@ -1,8 +1,8 @@
 // Checks of Margin.app's shell logic (app/shell/), with no browser, no window
 // on screen and no link: the link's messages (LinkMessage.swift, version 2),
 // its WebSocket by hand (LinkSocket.swift), chunks (Chunks.swift), the app's
-// copy of a copy's state (StateMirror.swift), matching browser windows to the
-// window server's (WindowMatcher.swift), the stacking check, pass-through
+// copy of a copy's state (StateMirror.swift), binding browser windows to the
+// window server's (WindowMatcher.swift, in window-tests.swift), the stacking check, pass-through
 // decisions (PassThrough.swift), layout reports into setLayout (Shell.swift
 // LayoutOutbox), shortcuts and their gating (Shortcuts.swift, against a
 // stand-in for Carbon), the coordinate flips, and the lasting data
@@ -62,7 +62,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     chunks()
     mirror()
     layouts()
-    matching()
+    windowBinding() // window-tests.swift
     stacking()
     passThrough()
     shortcuts()
@@ -269,46 +269,6 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("forgotten: sent again, numbered on", outbox.offer(windowId: 7, resized)?.seq == 4)
     outbox.reset()
     check("a new link: from 1", outbox.offer(windowId: 7, resized)?.seq == 1)
-  }
-
-  static func matching() {
-    let link = "safari:P1"
-    let k7 = WindowKey(link: link, windowId: 7), k8 = WindowKey(link: link, windowId: 8)
-    func ext(_ id: Int, _ r: CGRect, state: String = "fullscreen", focused: Bool = false, link: String = link) -> ExtWindow {
-      ExtWindow(key: WindowKey(link: link, windowId: id), bounds: r, state: state, focused: focused, activeTabId: nil)
-    }
-    let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
-    let parsed = ExtWindow.parse([["windowId": 7, "left": 0, "top": 0, "width": 1512, "height": 982, "state": "fullscreen", "focused": true, "activeTabId": 3], ["id": 8, "state": "minimized"], ["nope": 1]], link: link)
-    check("windows parsed (id or windowId; none without one)", parsed.count == 2 && parsed[0].bounds == screen && parsed[0].focused && parsed[0].activeTabId == 3 && parsed[1].bounds == nil && parsed[1].state == "minimized")
-    // One window, exact.
-    let one = WindowMatcher.match(ext: [ext(7, screen, focused: true)], server: [ServerWindow(number: 100, pid: 1, bounds: screen)], pids: [1], browserInFront: true)
-    check("one window by its bounds", one == [k7: 100])
-    check("a few points off: still it", WindowMatcher.match(ext: [ext(7, screen.offsetBy(dx: 3, dy: -2))], server: [ServerWindow(number: 100, pid: 1, bounds: screen)], pids: [1], browserInFront: false) == [k7: 100])
-    check("far off: not it", WindowMatcher.match(ext: [ext(7, screen.insetBy(dx: 40, dy: 40))], server: [ServerWindow(number: 100, pid: 1, bounds: screen)], pids: [1], browserInFront: false).isEmpty)
-    check("another app's window with the same bounds: not it", WindowMatcher.match(ext: [ext(7, screen)], server: [ServerWindow(number: 100, pid: 2, bounds: screen)], pids: [1], browserInFront: false).isEmpty)
-    check("a browser window of another layer (a menu, the toolbar in full screen): not it", WindowMatcher.match(ext: [ext(7, screen)], server: [ServerWindow(number: 100, pid: 1, layer: 25, bounds: screen)], pids: [1], browserInFront: false).isEmpty)
-    check("an invisible one: not it", WindowMatcher.match(ext: [ext(7, screen)], server: [ServerWindow(number: 100, pid: 1, bounds: screen, alpha: 0)], pids: [1], browserInFront: false).isEmpty)
-    check("a minimized window: no match", WindowMatcher.match(ext: [ext(7, screen, state: "minimized")], server: [ServerWindow(number: 100, pid: 1, bounds: screen)], pids: [1], browserInFront: false).isEmpty)
-    // Two full-screen windows in two Spaces: the same bounds.
-    let a = ServerWindow(number: 100, pid: 1, bounds: screen, onScreen: true, order: 5)
-    let b = ServerWindow(number: 200, pid: 1, bounds: screen, onScreen: false, order: 40)
-    let focusA = WindowMatcher.match(ext: [ext(7, screen, focused: true), ext(8, screen)], server: [b, a], pids: [1], browserInFront: true)
-    check("two full-screen windows: the focused one is the one on screen", focusA == [k7: 100, k8: 200], "\(focusA)")
-    let focusB = WindowMatcher.match(ext: [ext(7, screen), ext(8, screen, focused: true)], server: [a, b], pids: [1], browserInFront: true)
-    check("the other focused: the other way round", focusB == [k7: 200, k8: 100], "\(focusB)")
-    let behind = WindowMatcher.match(ext: [ext(7, screen), ext(8, screen)], server: [a, b], pids: [1], browserInFront: false, previous: [k7: 200, k8: 100])
-    check("browser not in front (focus says nothing): the matches before kept", behind == [k7: 200, k8: 100], "\(behind)")
-    let fresh = WindowMatcher.match(ext: [ext(7, screen), ext(8, screen)], server: [a, b], pids: [1], browserInFront: false)
-    check("nothing to go by: still one each, the same every time", fresh.count == 2 && Set(fresh.values) == [100, 200] && fresh == WindowMatcher.match(ext: [ext(8, screen), ext(7, screen)], server: [b, a], pids: [1], browserInFront: false))
-    let newcomer = WindowMatcher.match(ext: [ext(7, screen), ext(9, screen)], server: [a, b], pids: [1], browserInFront: false, previous: [k7: 100])
-    check("a new window prefers one not matched before", newcomer[k7] == 100 && newcomer[WindowKey(link: link, windowId: 9)] == 200)
-    // Two profiles (two copies), one window each.
-    let other = "safari:P2"
-    let left = CGRect(x: 0, y: 0, width: 756, height: 982), right = CGRect(x: 756, y: 0, width: 756, height: 982)
-    let two = WindowMatcher.match(ext: [ext(7, left, state: "normal"), ext(7, right, state: "normal", link: other)],
-                                  server: [ServerWindow(number: 300, pid: 1, bounds: right), ServerWindow(number: 301, pid: 1, bounds: left)], pids: [1], browserInFront: false)
-    check("two profiles' windows with the same id: told apart by link and bounds", two == [k7: 301, WindowKey(link: other, windowId: 7): 300], "\(two)")
-    check("a popover-sized window isn't a browser window", WindowMatcher.candidates([ServerWindow(number: 1, pid: 1, bounds: CGRect(x: 0, y: 0, width: 300, height: 80))], pids: [1]).isEmpty)
   }
 
   static func stacking() {

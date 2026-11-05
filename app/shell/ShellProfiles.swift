@@ -247,10 +247,15 @@ extension Shell: SwitchWorld {
 
     func request(_ profile: String, _ type: String, _ payload: JSONObject, windowId: Int?, done: @escaping (JSONObject?, String?) -> Void) {
         guard let entry = links[profile] else { return done(nil, "not linked") }
+        let asked = options.clock()
         Task {
             do {
                 let reply = try await entry.connection.request(type: type, payload: payload, windowId: windowId)
-                if reply["ok"] as? Bool == true { done(reply["result"] as? JSONObject ?? [:], nil) } else { done(nil, reply["error"] as? String ?? "refused") }
+                if reply["ok"] as? Bool == true {
+                    let result = reply["result"] as? JSONObject ?? [:]
+                    if type == "openSpaceWindow", let id = int(result["windowId"]) { self.windowMade(profile, windowId: id, asked: asked) }
+                    done(result, nil)
+                } else { done(nil, reply["error"] as? String ?? "refused") }
             } catch {
                 done(nil, "\(error)")
             }
