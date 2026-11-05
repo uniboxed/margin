@@ -1,0 +1,268 @@
+// Spaces across a browser's profiles (PLAN.md §15, DATA.md "Spaces across
+// profiles"): which profile each space is in, the one order of every
+// profile's spaces the person controls, and each profile's name, emoji and
+// color. One file per browser, beside its profiles' data sets:
+//
+//   data/<browser>/browser.json
+//     { format, browser, order: [[profile, space]], profiles: { id: info }, savedAt }
+//
+// A space is in the profile whose data set has it: nothing in a set names
+// its profile. `order` is kept as the person left it and read against the
+// sets each time (resolve()): a space no set has any more is left out; each
+// profile's spaces fill the places its spaces had, in that profile's own
+// order (its spaces' `order`), so a move made in one profile while the app
+// wasn't there still shows; a new space goes right after the one before it
+// in its profile's order (the first of its profile: before that profile's
+// first); a profile not in the order yet comes last. A move here
+// (move()) gives back the profile's own order when it changed, for the app
+// to write into its set, so the profile's copy shows the same order alone.
+//
+// Profile names: browsers don't give them (Safari: none without
+// permissions), so the person names each profile once; until then
+// "Default" for Safari's default profile (`s-default`) and "Profile N" for
+// the others, in the order Margin first saw them.
+
+import Foundation
+
+nonisolated struct SpaceKey: Hashable, Comparable, CustomStringConvertible {
+    let profile: String
+    let space: String
+    var description: String { "\(profile)/\(space)" }
+    static func < (a: SpaceKey, b: SpaceKey) -> Bool { (a.profile, a.space) < (b.profile, b.space) }
+}
+
+struct ProfileInfo: Equatable {
+    var name = ""
+    var emoji = ""
+    var color = ""
+    var named = false // the person named it
+    var firstSeen: Double = 0
+    var lastSeen: Double = 0 // linked last (or now, while it is)
+    var hidden = false // forgotten by the person: left out until its copy links again
+
+    var json: JSONObject {
+        ["name": name, "emoji": emoji, "color": color, "named": named, "firstSeen": firstSeen, "lastSeen": lastSeen, "hidden": hidden]
+    }
+    init() {}
+    init(json o: JSONObject) {
+        name = o["name"] as? String ?? ""
+        emoji = o["emoji"] as? String ?? ""
+        color = o["color"] as? String ?? ""
+        named = o["named"] as? Bool ?? false
+        firstSeen = num(o["firstSeen"]) ?? 0
+        lastSeen = num(o["lastSeen"]) ?? 0
+        hidden = o["hidden"] as? Bool ?? false
+    }
+}
+
+final class BrowserProfiles {
+    static let format = 1
+    static let defaultProfile = "s-default"
+    // A profile's mark until it's given a color: one of these, by when Margin first saw it.
+    static let colors = ["#6c5ce7", "#00b894", "#e17055", "#0984e3", "#fdcb6e", "#e84393", "#636e72", "#00cec9"]
+    // Not linked for this long: the profile's menu says when it was last seen.
+    static let staleMs: Double = 30 * 86_400_000
+
+    let browser: String
+    let url: URL?
+    var now: () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded() }
+    private(set) var stored: [SpaceKey] = [] // as the person left it
+    private(set) var order: [SpaceKey] = [] // resolved against the sets (refresh)
+    private(set) var info: [String: ProfileInfo] = [:]
+    private(set) var saves = 0
+
+    // `root`: the data folder (DataStore.root); nil keeps it in memory (the unit tests).
+    init(browser: String, root: URL?) {
+        self.browser = browser
+        url = root?.appendingPathComponent(DataStore.fileName(browser), isDirectory: true).appendingPathComponent("browser.json")
+        load()
+    }
+
+    private func load() {
+        guard let url else { return }
+        let data = (try? Data(contentsOf: url)) ?? (try? Data(contentsOf: URL(fileURLWithPath: url.path + ".bak")))
+        guard let data, let o = (try? JSONSerialization.jsonObject(with: data)) as? JSONObject, int(o["format"]) == Self.format else { return }
+        stored = (o["order"] as? [Any] ?? []).compactMap { entry in
+            guard let pair = entry as? [Any], pair.count == 2, let p = pair[0] as? String, let s = pair[1] as? String else { return nil }
+            return SpaceKey(profile: p, space: s)
+        }
+        for (id, value) in o["profiles"] as? JSONObject ?? [:] {
+            if let value = value as? JSONObject { info[id] = ProfileInfo(json: value) }
+        }
+        order = stored
+    }
+
+    func save() {
+        saves += 1
+        guard let url else { return }
+        let body: JSONObject = [
+            "format": Self.format, "browser": browser, "savedAt": now(),
+            "order": stored.map { [$0.profile, $0.space] },
+            "profiles": info.mapValues(\.json),
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
+        do { try DataStore.writeAtomically(data, to: url) } catch { Diagnostics.warn("\(browser): browser.json not saved: \(error)") }
+    }
+
+    // ---- profiles ----
+
+    // Every profile Margin knows, in the order it first saw them (hidden ones too).
+    var profiles: [String] {
+        info.keys.sorted { (info[$0]!.firstSeen, $0) < (info[$1]!.firstSeen, $1) }
+    }
+
+    func defaultName(_ profile: String) -> String {
+        if profile == Self.defaultProfile { return "Default" }
+        let others = profiles.filter { $0 != Self.defaultProfile }
+        let n = (others.firstIndex(of: profile) ?? others.count) + (info[Self.defaultProfile] == nil ? 1 : 2)
+        return "Profile \(n)"
+    }
+
+    func name(_ profile: String) -> String {
+        let i = info[profile]
+        return i?.named == true && !(i?.name.isEmpty ?? true) ? i!.name : defaultName(profile)
+    }
+
+    func color(_ profile: String) -> String {
+        if let c = info[profile]?.color, !c.isEmpty { return c }
+        return Self.colors[(profiles.firstIndex(of: profile) ?? 0) % Self.colors.count]
+    }
+
+    // Named by the person (an empty name: back to the default).
+    @discardableResult func rename(_ profile: String, name: String, emoji: String, color: String?) -> Bool {
+        guard var i = info[profile] else { return false }
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+        i.name = trimmed
+        i.named = !trimmed.isEmpty
+        i.emoji = String(emoji.prefix(8))
+        if let color, color.range(of: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$", options: .regularExpression) != nil { i.color = color }
+        info[profile] = i
+        save()
+        return true
+    }
+
+    // Forgotten: its spaces leave the list (its data stays) until its copy links again.
+    @discardableResult func forget(_ profile: String) -> Bool {
+        guard var i = info[profile], !i.hidden else { return false }
+        i.hidden = true
+        info[profile] = i
+        order.removeAll { $0.profile == profile }
+        save()
+        return true
+    }
+
+    // ---- the order ----
+
+    // The profiles' spaces as their sets have them now (each profile's in its
+    // own order) and which profiles are linked: the order resolved, new
+    // profiles taken in, the linked ones seen now. Saved when anything lasting changed.
+    @discardableResult func refresh(spaces: [String: [String]], linked: Set<String>) -> Bool {
+        var changed = false
+        let t = now()
+        for p in Set(spaces.keys).union(linked).sorted() where info[p] == nil {
+            var i = ProfileInfo()
+            i.firstSeen = t + Double(info.count) * 0.001 // apart, in the order they're met
+            i.lastSeen = linked.contains(p) ? t : 0
+            info[p] = i
+            changed = true
+        }
+        for p in linked {
+            guard var i = info[p] else { continue }
+            if i.hidden { i.hidden = false; changed = true } // it's back
+            // Seen now: written at most once an hour (it only says how long it's been).
+            if t - i.lastSeen > 3_600_000 { changed = true }
+            i.lastSeen = t
+            info[p] = i
+        }
+        let visible = spaces.filter { info[$0.key]?.hidden != true }
+        let resolved = Self.resolve(stored: stored, spaces: visible, profiles: profiles)
+        if resolved != stored { stored = resolved; changed = true }
+        order = resolved
+        if changed { save() }
+        return changed
+    }
+
+    // The slots rule (above). `spaces`: each profile's space ids in its own
+    // order; `profiles`: in the order Margin first saw them.
+    static func resolve(stored: [SpaceKey], spaces: [String: [String]], profiles: [String]) -> [SpaceKey] {
+        var out = stored.filter { spaces[$0.profile]?.contains($0.space) ?? false }
+        var seen = Set<SpaceKey>()
+        out = out.filter { seen.insert($0).inserted }
+        let known = profiles + spaces.keys.filter { !profiles.contains($0) }.sorted()
+        for p in known {
+            guard let own = spaces[p], !own.isEmpty else { continue }
+            let slots = out.indices.filter { out[$0].profile == p }
+            if slots.isEmpty {
+                out += own.map { SpaceKey(profile: p, space: $0) }
+                continue
+            }
+            // New ones: each right after the one before it in the profile's order.
+            let placed = Set(slots.map { out[$0].space })
+            for (n, id) in own.enumerated() where !placed.contains(id) {
+                let key = SpaceKey(profile: p, space: id)
+                let before = own[..<n].last { s in out.contains(SpaceKey(profile: p, space: s)) }
+                if let before, let at = out.firstIndex(of: SpaceKey(profile: p, space: before)) {
+                    out.insert(key, at: at + 1)
+                } else if let first = out.firstIndex(where: { $0.profile == p }) {
+                    out.insert(key, at: first)
+                } else {
+                    out.append(key)
+                }
+            }
+            // Its places, filled in its own order.
+            let places = out.indices.filter { out[$0].profile == p }
+            for (i, at) in places.enumerated() { out[at] = SpaceKey(profile: p, space: own[i]) }
+        }
+        return out
+    }
+
+    // A space moved one place along (dir -1 or 1) in the whole order. The
+    // profile's own order afterwards, if it changed (the app writes it into
+    // the set), else nil. False if it can't move.
+    func move(_ key: SpaceKey, by dir: Int) -> (moved: Bool, ownOrder: [String]?) {
+        guard let at = order.firstIndex(of: key) else { return (false, nil) }
+        let to = at + (dir < 0 ? -1 : 1)
+        guard order.indices.contains(to) else { return (false, nil) }
+        let before = order.filter { $0.profile == key.profile }.map(\.space)
+        order.swapAt(at, to)
+        stored = order
+        save()
+        let after = order.filter { $0.profile == key.profile }.map(\.space)
+        return (true, after == before ? nil : after)
+    }
+
+    // The space before or after in the whole order, wrapping around; nil with one space.
+    func neighbour(of key: SpaceKey, _ dir: Int) -> SpaceKey? {
+        guard order.count > 1, let at = order.firstIndex(of: key) else { return nil }
+        return order[(at + (dir < 0 ? -1 : 1) + order.count) % order.count]
+    }
+
+    var profilesShown: [String] { profiles.filter { p in order.contains { $0.profile == p } } }
+
+    // What an overlay of `profile`'s window draws besides its own state
+    // (ui/host-app.js `across`): every shown profile, and every space in the
+    // one order. `spaces`: each profile's spaces' values (name, emoji,
+    // color); `counts`: profile → space → its tabs; `linked`; `switching`:
+    // the cross-profile switch under way, if any.
+    func across(for profile: String, spaces: [String: [String: JSONObject]], counts: [String: [String: Int]], linked: Set<String>, switching: JSONObject? = nil) -> JSONObject {
+        let t = now()
+        let shown = profilesShown.isEmpty ? [profile] : profilesShown
+        let list: [JSONObject] = (shown + (shown.contains(profile) ? [] : [profile])).map { p in
+            let i = info[p] ?? ProfileInfo()
+            return [
+                "id": p, "name": name(p), "emoji": i.emoji, "color": color(p), "named": i.named,
+                "here": p == profile, "linked": linked.contains(p),
+                "lastSeen": i.lastSeen, "stale": !linked.contains(p) && i.lastSeen > 0 && t - i.lastSeen > Self.staleMs,
+                "spaces": order.filter { $0.profile == p }.count,
+            ]
+        }
+        let entries: [JSONObject] = order.map { k in
+            let v = spaces[k.profile]?[k.space] ?? [:]
+            return ["profile": k.profile, "id": k.space, "name": v["name"] as? String ?? "", "emoji": v["emoji"] as? String ?? "",
+                    "color": v["color"] as? String ?? "", "tabCount": counts[k.profile]?[k.space] ?? 0]
+        }
+        var out: JSONObject = ["v": 1, "profile": profile, "profiles": list, "spaces": entries]
+        if let switching { out["switching"] = switching }
+        return out
+    }
+}

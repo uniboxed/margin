@@ -43,6 +43,13 @@
 //     { ev: 'dataChanges', id, changes };
 //   { do: 'dataChanges', id, changes } → data.changes from the copy;
 //   { do: 'dataHello', id, acked?, rev?, queue? } → data.hello again.
+// Spaces across profiles (e2e-profiles.swift): connect's `spaces` replaces the
+// fixture's spaces (and puts its tabs in the first), and `newWindow` (bounds)
+// makes it play its window requests as Safari would: openSpaceWindow adds a
+// full-screen window with those bounds (ids from 90) to its list, sends the
+// list and answers { windowId, state }; closeWindow takes the window out and
+// sends the list; focusWindow and setSpace answer ok (setSpace also makes
+// the space the window's). Each says { ev: 'req', … } first, as any req.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
 // payload } }); setLayout → { ev: 'setLayout', msg }; resync →
@@ -157,12 +164,53 @@ function takeData(s, m) {
   }
 }
 
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null }) {
+// A window request played as Safari would (above); null: the usual echo.
+function playWindow(s, m) {
+  if (!s.newWindow) return null;
+  const sendWindows = () => s.send({ k: 'windows', seq: ++s.seq, list: s.windows });
+  switch (m.type) {
+    case 'openSpaceWindow': {
+      const id = s.nextWindow++;
+      const b = s.newWindow;
+      s.windows = [...s.windows, { windowId: id, left: b.left, top: b.top, width: b.width, height: b.height, state: 'fullscreen', focused: true, activeTabId: 13 }];
+      setSpace(s, id, m.payload?.spaceId);
+      sendWindows();
+      return { windowId: id, state: 'fullscreen' };
+    }
+    case 'closeWindow':
+      s.windows = s.windows.filter((w) => w.windowId !== m.payload?.windowId);
+      sendWindows();
+      return {};
+    case 'focusWindow':
+      return { windowId: m.payload?.windowId, state: 'fullscreen' };
+    case 'setSpace':
+      setSpace(s, m.payload?.windowId, m.payload?.spaceId);
+      return { shown: null };
+    default:
+      return null;
+  }
+}
+function setSpace(s, windowId, spaceId) {
+  if (windowId == null || typeof spaceId !== 'string') return;
+  const open = structuredClone(s.raw.openTabs);
+  open.activeSpaceByWindow = { ...open.activeSpaceByWindow, [windowId]: spaceId };
+  s.raw.openTabs = open;
+  s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
+}
+
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null }) {
   const to = old ? kept : link;
   const ws = new WebSocket(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
+  if (spaces) {
+    raw.spaces = spaces;
+    const open = structuredClone(raw.openTabs);
+    open.tabSpace = Object.fromEntries(Object.keys(open.tabSpace ?? {}).map((t) => [t, spaces[0].id]));
+    open.activeSpaceByWindow = Object.fromEntries(Object.keys(open.activeSpaceByWindow ?? {}).map((w) => [w, spaces[0].id]));
+    raw.openTabs = open;
+  }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
-  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null };
+  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow: 90 };
   sockets.set(id, s);
   s.send = (m) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
   const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
@@ -194,9 +242,11 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
         say({ ev: 'tick', id });
         if (!s.muted) s.send({ k: 'tock', at: Date.now() });
         return;
-      case 'req':
+      case 'req': {
         say({ ev: 'req', id, msg: m });
-        return s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: { type: m.type, windowId: m.windowId, payload: m.payload } });
+        const played = m.epoch === s.epoch ? playWindow(s, m) : null;
+        return s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: played ?? { type: m.type, windowId: m.windowId, payload: m.payload } });
+      }
       case 'setLayout':
         return say({ ev: 'setLayout', id, msg: m });
       case 'resync':
