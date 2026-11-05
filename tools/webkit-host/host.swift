@@ -251,6 +251,31 @@ let pageRecorder = """
   let window = Win()
   override init() { super.init(); controller.delegate = self }
   func webExtensionController(_ c: WKWebExtensionController, openWindowsFor x: WKWebExtensionContext) -> [any WKWebExtensionWindow] { [window] }
+  // Native messaging, as Safari's extension handler and Margin.app do it (app/PROTOCOL.md):
+  // a copy's wantLink goes to the app's real end of the link (link-server/main.swift, started
+  // by an `appStart` step), whose dispatches come into the copy's lasting port. Without it,
+  // the handler's answer: the app isn't open.
+  func webExtensionController(_ c: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier id: String?, for x: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
+    let body = message as? [String: Any]
+    let type = body?["type"] as? String ?? "?"
+    if type == "wantLink", let nonce = body?["nonce"] as? String, appLink.running {
+      log("native: wantLink (to the app)")
+      appLink.tell(["wantLink": nonce])
+    } else if type != "ping" {
+      log("native: \(type)\(appLink.running ? "" : " (no app)")")
+    }
+    replyHandler(["ok": true, "appOpen": appLink.running, "launching": false], nil)
+  }
+  func webExtensionController(_ c: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort, for x: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+    log("native: a lasting port opened")
+    appLink.port = port
+    port.messageHandler = { message, _ in
+      // The copy's pings keep its background alive (Safari): answered, as the handler does.
+      if (message as? [String: Any])?["type"] as? String == "ping" { appLink.pings += 1 }
+    }
+    port.disconnectHandler = { _ in log("native: the port closed") }
+    completionHandler(nil)
+  }
   func webExtensionController(_ c: WKWebExtensionController, focusedWindowFor x: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { window }
   // tabs.move (WebKit's private delegate call, as Safari answers it): the tabs to that place
   // in the window, in order, each move told.
@@ -392,6 +417,54 @@ let noNap = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idl
 let host = MainActor.assumeIsolated { Host() }
 // Extension pages' web views a tab left for a web page (Tab.loadURL), kept.
 var retiredViews: [WKWebView] = []
+// Margin.app's end of the link, for the `app*` steps (tools/webkit-host/link-server).
+@MainActor final class AppLinkProcess {
+  var process: Process?
+  var input: FileHandle?
+  var port: WKWebExtension.MessagePort?
+  var pings = 0
+  var running: Bool { process?.isRunning == true }
+  func start() {
+    guard let path = ProcessInfo.processInfo.environment["MARGIN_LINK_SERVER"] else { return log("appStart: no MARGIN_LINK_SERVER") }
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: path)
+    let inPipe = Pipe(), outPipe = Pipe()
+    p.standardInput = inPipe
+    p.standardOutput = outPipe
+    var pending = Data()
+    outPipe.fileHandleForReading.readabilityHandler = { h in
+      let data = h.availableData
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          pending.append(data)
+          while let nl = pending.firstIndex(of: 10) {
+            let line = pending[pending.startIndex..<nl]
+            pending = Data(pending[(nl + 1)...])
+            guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
+            if let name = o["dispatch"] as? String, let info = o["info"],
+               let json = try? JSONSerialization.data(withJSONObject: info), let text = String(data: json, encoding: .utf8) {
+              log("app: dispatch \(name)")
+              self.port?.sendMessage(["name": name, "userInfo": ["e": text]]) { error in if let error { log("app: dispatch failed \(error)") } }
+            } else {
+              log("app: \(String(decoding: line, as: UTF8.self).prefix(400))")
+            }
+          }
+        }
+      }
+    }
+    try? p.run()
+    process = p
+    input = inPipe.fileHandleForWriting
+    log("appStart: pid \(p.processIdentifier)")
+  }
+  func tell(_ o: [String: Any]) {
+    guard let data = try? JSONSerialization.data(withJSONObject: o) else { return }
+    input?.write(data + Data([10]))
+  }
+  func kill() { process?.terminate(); log("appKill") }
+}
+let appLink = MainActor.assumeIsolated { AppLinkProcess() }
+
 // Each tab's web content process as a 'pid' step saw it (name → pid).
 var recordedPids: [String: Int32] = [:]
 
@@ -633,6 +706,10 @@ Task { @MainActor in
       }
     case "pinch": // { op: 'pinch', deltas, x?, y? }: real magnify events handed to the shown tab's web view
       if let wv = host.window.active?.webView { await pinchOn(wv, step) }
+    case "appStart": appLink.start(); try? await Task.sleep(nanoseconds: 300_000_000)
+    case "appQuit": appLink.tell(["bye": true]); log("appQuit")
+    case "appKill": appLink.kill()
+    case "appPings": log("app: \(appLink.pings) pings on the port so far")
     case "zoom": // { op: 'zoom', factor }: the shown tab's page zoom, as ⌘+ / ⌘− do
       host.window.active?.webView?.pageZoom = CGFloat(step["factor"] as! Double); log("zoom \(step["factor"]!)")
     case "state":
@@ -647,6 +724,7 @@ Task { @MainActor in
     }
   }
   log(failures == 0 ? "all checks passed" : "\(failures) check(s) failed")
+  appLink.process?.terminate()
   exit(failures == 0 ? 0 : 1)
 }
 // A pinch: the first of `deltas` as its Began (a real one is never 0), the rest Changed, then Ended.

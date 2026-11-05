@@ -36,6 +36,9 @@
 //                              answered only ms later (Safari's update of a tab whose process hangs)
 //   { op: 'pid', name }        keep the tab's web content process id now (logged)
 //   { op: 'pidGone', name, label, timeout? }  that process has exited (its memory given back)
+//   { op: 'appStart' } / { op: 'appQuit' } / { op: 'appKill' } / { op: 'appPings' }  Margin.app's
+//                              real end of the link (link-server/), started (native messaging
+//                              goes to it), saying goodbye, killed; the copy's pings logged
 //   { op: 'deferLoads' }       from now on, a tab asleep loads only if it's still the one shown
 //                              once the run loop turn is over (Safari putting its load off); its
 //                              view is made as it's selected all the same (no page: a script there
@@ -1602,6 +1605,35 @@ export const SCENARIOS = {
     check('A', 'A: off: the in-page UI again', `!Margin.content.appDraws() && !!Margin.content.runtime()`),
     // (A page starting while linked isn't played here: its background, not linked in the host,
     // answers its hello with the link off, which wins over storage: background/link.js.)
+  ],
+  // The real extension linked to Margin.app's real end of the link (link-server: app/shell's
+  // ExtensionLink, LinkSocket, LinkMessage, Chunks), through the host's native messaging:
+  // wantLink, the link dispatched into the copy's port, the WebSocket with its token and the
+  // app's key, hello, the snapshot, the theme in pieces, a setLayout the page's box follows,
+  // a request from the app run by the background. Then the app quitting (pages draw again at
+  // once), coming back (linked again), and crashing (reconnecting, then pages draw again).
+  'app-link': [
+    { op: 'appStart' },
+    { op: 'open', name: 'A', url: '/p/T', active: true }, wait(800), { op: 'install' },
+    check('A', 'A: linked to the app: the page draws no Margin UI', `Margin.content?.appDraws?.() === true`, 8000),
+    checkPage('A', 'A: no Margin host in the page', `!document.querySelector('margin-sidebar-host')`, 3000),
+    check('A', 'A: the box is where the app\'s setLayout put the page (300, 40)', `${AT} return at.x === 300 && at.y === 40 - Math.max(0, outerHeight - innerHeight)`, 5000),
+    check('A', 'A: the app\'s request (updateSettings) ran in the background', `const { settings } = await browser.storage.local.get('settings'); return settings?.sidebarShortcut === 'Alt+KeyJ'`, 5000),
+    check('A', 'A: pages are told it\'s linked', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'linked' && Object.keys(appLink.layouts ?? {}).length === 1`, 3000),
+    // ⌘T reaching the page while the app draws (its hot key would have taken it in Safari):
+    // nothing visible, no tab made, the app told (the link server logs the push `keyHeard`).
+    { op: 'key', in: 'A', keyCode: 17, chars: 't', mods: ['command'] },
+    wait(400),
+    check('A', 'A: ⌘T in the page while linked: no palette, no host, no new tab', `const { openTabs } = await browser.storage.local.get('openTabs'); return !document.querySelector('margin-sidebar-host') && !Margin.content.runtime() && Object.keys(openTabs?.tabs ?? {}).length === 1`, 2000),
+    { op: 'appQuit' },
+    check('A', 'A: the app quit (bye): the page draws its own UI again at once', `Margin.content.appDraws() === false && !!Margin.content.runtime()`, 3000),
+    drawn('A'),
+    { op: 'appStart' }, reload('A'),
+    check('A', 'A: the app back, a page starting: linked again', `Margin.content?.appDraws?.() === true`, 9000),
+    { op: 'appKill' },
+    wait(800),
+    check('A', 'A: the app gone without a word: reconnecting, still nothing drawn', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'reconnecting' && Margin.content.appDraws() === true`, 3000),
+    check('A', 'A: and once it\'s clear it\'s gone, the page draws again', `Margin.content.appDraws() === false && !!Margin.content.runtime()`, 9000),
   ],
   // A picture of a page in its box, for a look (build/screenshot.png).
   screenshot: [
