@@ -21,6 +21,7 @@ import * as V from '../shared/view.js';
 import { hostOf } from '../shared/dom.js';
 import { rankPalette } from '../shared/search.js';
 import { checkIconUrl } from './sanitize.js';
+import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.js';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -37,8 +38,10 @@ export const VM_VERSION = 1;
  *   focused?: boolean,
  *   sidebar?: SidebarState | null,
  *   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean },
- *   menu?: { kind: string, id?: string | number | null, x?: number, y?: number } | null,
+ *   menu?: { kind: string, id?: string | number | null, x?: number, y?: number, confirming?: string | null } | null,
  *   editing?: { kind: 'space' | 'folder', id: string } | null,
+ *   editor?: { spaceId: string, name: string, emoji: string, color: string, confirmDelete?: boolean } | null,
+ *   newTabPending?: boolean,
  *   notice?: { id: string, text: string } | null,
  *   switchingTo?: number | null,
  *   justShown?: boolean,
@@ -88,6 +91,17 @@ export const VM_VERSION = 1;
  *   selected: boolean, goes: boolean,
  * }} PaletteRow
  *
+ * A context menu's row: an item (its label; what it runs stays in Margin)
+ * or a separator. `confirming`: pressed once, it asks again ("Really delete?").
+ * @typedef {{ id: string, label: string, separator: boolean, danger: boolean, confirming: boolean }} MenuRow
+ *
+ * The space editor (`<m-editor>`, the theme's `space-editor` part).
+ * @typedef {{
+ *   id: string, name: string, emoji: string, color: string,
+ *   colors: { id: string, color: string, selected: boolean }[],
+ *   canDelete: boolean, cannotDelete: boolean, confirmDelete: boolean, deleteLabel: string, deleteTitle: string,
+ * }} EditorView
+ *
  * @typedef {{
  *   version: number,
  *   ready: boolean,
@@ -101,8 +115,9 @@ export const VM_VERSION = 1;
  *   archive: ArchiveRow[],
  *   hasArchive: boolean,
  *   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
- *   menu: { kind: string, id: string | number | null, x: number, y: number } | null,
+ *   menu: { kind: string, id: string | number | null, x: number, y: number, items: MenuRow[], hasItems: boolean } | null,
  *   editing: { kind: 'space' | 'folder', id: string } | null,
+ *   editor: EditorView | null,
  *   notice: { id: string, text: string } | null,
  *   settings: Record<string, string | number | boolean>,
  *   platform: { browser: string, os: string },
@@ -209,7 +224,6 @@ function fresh(input) {
     pinnedOpen,
   };
   const paletteUi = ui.palette ?? {};
-  const menu = ui.menu ? { kind: String(ui.menu.kind), id: ui.menu.id ?? null, x: Number(ui.menu.x) || 0, y: Number(ui.menu.y) || 0 } : null;
   const editing = ui.editing ? { kind: ui.editing.kind, id: ui.editing.id } : null;
   const notice = ui.notice ? { id: String(ui.notice.id), text: String(ui.notice.text) } : null;
   if (!state) {
@@ -218,13 +232,13 @@ function fresh(input) {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu, editing, notice, settings, platform,
+      menu: null, editing, editor: null, notice, settings, platform,
     };
   }
 
   const currentTabId = ui.tabId ?? null;
   const view = V.sidebar(state, windowId, currentTabId, {
-    newTabPending: !!(paletteUi.open && paletteUi.newTab),
+    newTabPending: !!(paletteUi.open && paletteUi.newTab) || !!ui.newTabPending,
     switchingTo: ui.switchingTo ?? null,
     justShown: !!ui.justShown,
   });
@@ -328,6 +342,41 @@ function fresh(input) {
     selected = at >= 0 ? items[at].id : null;
   }
 
+  // A context menu (ui/behaviors/menus.js): its rows, from what it's for.
+  let menu = null;
+  if (ui.menu) {
+    const items = menuItems(/** @type {any} */ (ui.menu), { state, space });
+    if (items.length) {
+      menu = {
+        kind: String(ui.menu.kind), id: ui.menu.id ?? null, x: Number(ui.menu.x) || 0, y: Number(ui.menu.y) || 0,
+        items: items.map((i) => {
+          const confirming = !!i.confirm && ui.menu?.confirming === i.id;
+          return { id: i.id, label: confirming ? CONFIRM_LABEL : i.label, separator: i.separator, danger: i.danger, confirming };
+        }),
+        hasItems: true,
+      };
+    }
+  }
+
+  // The space editor (ui/behaviors/editor.js), while a space is edited.
+  let editor = null;
+  const edited = ui.editor ? state.spaces.find((s) => s.id === ui.editor?.spaceId) : null;
+  if (ui.editor && edited) {
+    const only = state.spaces.length < 2;
+    editor = {
+      id: edited.id,
+      name: String(ui.editor.name ?? ''),
+      emoji: String(ui.editor.emoji ?? ''),
+      color: String(ui.editor.color ?? ''),
+      colors: SPACE_COLORS.map((color, i) => ({ id: `c${i}`, color, selected: color === ui.editor?.color })),
+      canDelete: !only,
+      cannotDelete: only,
+      confirmDelete: !!ui.editor.confirmDelete,
+      deleteLabel: ui.editor.confirmDelete ? CONFIRM_LABEL : 'Delete',
+      deleteTitle: only ? 'The last space can’t be deleted' : 'Tabs and pins move to the first space',
+    };
+  }
+
   return {
     version: VM_VERSION,
     ready: true,
@@ -340,6 +389,7 @@ function fresh(input) {
     palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows, hasRows: rows.length > 0, selected },
     menu,
     editing,
+    editor,
     notice,
     settings,
     platform,

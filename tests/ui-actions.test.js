@@ -4,7 +4,7 @@
 // Arcadia's sidebar and palette send today.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIONS, ACTION_MAP, checkAction, contextFromState, requestFor } from '../extension/ui/actions.js';
+import { ACTIONS, ACTION_MAP, BEHAVIOR_ONLY, checkAction, contextFromState, createDispatcher, requestFor } from '../extension/ui/actions.js';
 import { paletteItems } from '../extension/ui/view-model.js';
 import { readFileSync } from 'node:fs';
 import { smallState, W } from './ui/fixtures.js';
@@ -14,7 +14,7 @@ const HANDLERS = new Set([...readFileSync(new URL('../extension/background/handl
 const handlers = Object.fromEntries([...HANDLERS].map((name) => [name, () => {}]));
 
 const state = smallState();
-const ctx = contextFromState(state, ['tab:12', 'go']);
+const ctx = contextFromState(state, ['tab:12', 'go'], { menuIds: ['i0', 'i1'], colorIds: ['c0'] });
 const ok = (name, arg) => checkAction(name, arg, ctx).ok;
 
 test('arguments are checked against the state: open tabs (any window), spaces, folders, pins, archive, palette rows', () => {
@@ -83,8 +83,12 @@ test('the mapping: each action becomes the request the background handles', () =
   assert.deepEqual(req('space.switch', 'work'), send('setSpace', { windowId: W, spaceId: 'work' }));
   assert.deepEqual(req('space.new', undefined), send('createSpace', { windowId: W }));
   assert.deepEqual(req('space.edit', 'side'), { kind: 'local', name: 'space.edit', arg: 'side' });
-  assert.equal(req('today.clear', undefined).kind, 'none');
-  for (const name of ['nav.back', 'nav.forward', 'nav.reload', 'window.close', 'window.minimise', 'window.fullscreen']) assert.deepEqual(req(name), { kind: 'host', name });
+  assert.deepEqual(req('today.clear', undefined), send('clearToday', { windowId: W }), 'the canvas designs\' Clear');
+  // The host first (the page's own history in pages); the background's handler for a host that has none (the app).
+  assert.deepEqual(req('nav.back'), { kind: 'host', name: 'nav.back', fallback: { type: 'goBack', payload: { windowId: W } } });
+  assert.deepEqual(req('nav.forward'), { kind: 'host', name: 'nav.forward', fallback: { type: 'goForward', payload: { windowId: W } } });
+  assert.deepEqual(req('nav.reload'), { kind: 'host', name: 'nav.reload', fallback: { type: 'reload', payload: { windowId: W } } });
+  for (const name of ['window.close', 'window.minimise', 'window.fullscreen']) assert.deepEqual(req(name), { kind: 'host', name });
   assert.deepEqual(req('window.fullscreen', undefined, { platform: { marginFullscreen: true } }), send('toggleFullscreen', { windowId: W }), 'Chrome\'s Margin full screen');
   assert.deepEqual(req('palette.open'), { kind: 'local', name: 'palette.open' });
   assert.deepEqual(req('palette.close'), { kind: 'local', name: 'palette.close' });
@@ -121,4 +125,71 @@ test('palette.run: the row\'s own request, as shared/search.js made it', () => {
   assert.equal(req('palette.run', 'tab:999', { row: undefined }).kind, 'none');
   // Every request a row can make is a background handler.
   for (const item of [...items, ...typed]) if (!item.action.local) assert.equal(typeof handlers[item.action.type], 'function', item.action.type);
+});
+
+test('two-value actions: exactly their fields, each checked against the state', () => {
+  assert.equal(ok('tab.move', { tab: 14, nextTo: 12, side: 'before' }), true);
+  assert.equal(ok('tab.move', { tab: 14, nextTo: 12, side: 'above' }), false, 'a side is before or after');
+  assert.equal(ok('tab.move', { tab: 14, nextTo: 99, side: 'after' }), false, 'next to an open tab');
+  assert.equal(ok('tab.pinAt', { tab: 14, folder: 'f1', before: 'pb' }), true);
+  assert.equal(ok('tab.pinAt', { tab: 14, folder: null, before: null }), true, 'the end of the top level');
+  assert.equal(ok('tab.pinAt', { tab: 14, folder: null, before: 'f2' }), true, 'before a folder');
+  assert.equal(ok('tab.pinAt', { tab: 14, folder: 'f9', before: null }), false);
+  assert.equal(ok('tab.pinAt', { tab: 14, folder: null }), false, 'every field, even a null one');
+  assert.equal(ok('pin.move', { pin: 'pa', folder: 'f2', before: null }), true);
+  assert.equal(ok('pin.move', { pin: 'zz', folder: 'f2', before: null }), false);
+  assert.equal(ok('folder.move', { folder: 'f2', before: 'pd' }), true);
+  assert.equal(ok('folder.setName', { folder: 'f1', name: 'Reading list' }), true);
+  assert.equal(ok('folder.setName', { folder: 'f1', name: 'x'.repeat(41) }), false, 'at most 40 characters');
+  assert.equal(ok('folder.setName', { folder: 'f1', name: 'a\u0000b' }), false, 'no control characters');
+  assert.equal(ok('space.setName', { space: 'work', name: 'Deeper Work' }), true);
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#00b894' }), true);
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: null }), true, 'no color: the space keeps its own');
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠', color: 'url(x)' }), false, 'a color is #rgb or #rrggbb');
+  assert.equal(ok('space.update', { space: 'work', name: 'W', emoji: '🧠'.repeat(9), color: '#000' }), false);
+  assert.equal(ok('tab.moveToSpace', Object.assign(Object.create({ evil: 1 }), { tab: 14, space: 'work' })), false, 'a plain object only');
+  assert.equal(ok('tab.move', [14, 12, 'before']), false);
+});
+
+test('menu items, swatches and menus a button opens are checked too', () => {
+  assert.equal(ok('menu.run', 'i1'), true);
+  assert.equal(ok('menu.run', 'i7'), false, 'not an item of the open menu');
+  assert.equal(ok('editor.color', 'c0'), true);
+  assert.equal(ok('editor.color', 'c9'), false);
+  assert.equal(ok('menu.open', 'add'), true);
+  assert.equal(ok('menu.open', 'tab'), false);
+  assert.equal(ok('folder.rename', 'f1'), true);
+  assert.equal(ok('folder.delete', 'f9'), false);
+  assert.equal(ok('space.delete', 'side'), true);
+  assert.equal(checkAction('menu.run', 'i0', contextFromState(state)).ok, false, 'no menu open: no items');
+});
+
+test('only behaviors and menus run two-value actions and space.delete; a theme\'s click never does', () => {
+  assert.deepEqual([...BEHAVIOR_ONLY].sort(), ['folder.move', 'folder.setName', 'pin.move', 'space.delete', 'space.setName', 'space.update', 'tab.move', 'tab.moveToSpace', 'tab.pinAt']);
+  const ran = [];
+  const log = [];
+  const dispatch = createDispatcher({ context: () => ctx, run: (n, a) => ran.push([n, a]), log: (e) => log.push(e) });
+  assert.equal(dispatch('tab.moveToSpace', { tab: 14, space: 'work' }), false);
+  assert.equal(dispatch('space.delete', 'side'), false);
+  assert.equal(dispatch('folder.delete', 'f1'), true, 'a folder\'s pins stay: a button may delete it');
+  assert.deepEqual(ran, [['folder.delete', 'f1']]);
+  assert.match(log[0].reason, /only Margin's behaviors/);
+});
+
+test('the mapping: the behaviors\' and menus\' actions become the requests today\'s sidebar sends', () => {
+  const send = (type, payload) => ({ kind: 'send', type, payload });
+  const hint = { url: 'https://mail.example/', index: 1, title: 'Mail', from: state.openTabsBy };
+  assert.deepEqual(req('tab.move', { tab: 14, nextTo: 12, side: 'after' }), send('moveTab', { tabId: 14, nextTo: 12, side: 'after', nextToHint: hint }), 'with the address and place of the tab it goes next to');
+  assert.deepEqual(req('tab.pinAt', { tab: 14, folder: 'f1', before: 'pb' }), send('pinTab', { tabId: 14, folderId: 'f1', beforeId: 'pb' }));
+  assert.deepEqual(req('pin.move', { pin: 'pa', folder: null, before: 'pd' }), send('movePin', { pinId: 'pa', folderId: null, beforeId: 'pd' }));
+  assert.deepEqual(req('folder.move', { folder: 'f2', before: null }), send('moveFolder', { folderId: 'f2', beforeId: null }));
+  assert.deepEqual(req('folder.newWithTab', 14), send('createFolder', { windowId: W, tabId: 14 }));
+  assert.deepEqual(req('folder.newWithPin', 'pa'), send('createFolder', { windowId: W, pinIds: ['pa'] }));
+  assert.deepEqual(req('folder.setName', { folder: 'f1', name: 'Later' }), send('renameFolder', { folderId: 'f1', name: 'Later' }));
+  assert.deepEqual(req('folder.delete', 'f1'), send('deleteFolder', { folderId: 'f1' }));
+  assert.deepEqual(req('space.setName', { space: 'work', name: 'Deeper' }), send('renameSpace', { spaceId: 'work', name: 'Deeper' }));
+  assert.deepEqual(req('space.update', { space: 'work', name: 'W', emoji: '🧠', color: '#00b894' }), send('renameSpace', { spaceId: 'work', name: 'W', emoji: '🧠', color: '#00b894' }));
+  assert.deepEqual(req('space.delete', 'side'), send('deleteSpace', { spaceId: 'side' }));
+  for (const name of ['folder.rename', 'space.rename', 'menu.run', 'editor.color']) assert.equal(req(name, 'x').kind, 'local', name);
+  for (const name of ['menu.close', 'editor.save', 'editor.cancel', 'editor.delete']) assert.deepEqual(req(name), { kind: 'local', name });
 });

@@ -131,11 +131,12 @@ for (const [name, engine] of ENGINES) {
           ['activateTab', { tabId: today[2] }],
           ['setSpace', { windowId: 1, spaceId: 'work' }],
           ['setFolderOpen', { folderId: 'personal-f0', open: false }],
+          ['clearToday', { windowId: 1 }],
           ['updateSettings', { patch: { sidebarPinnedOpen: false } }],
           ['openLauncher', { windowId: 1 }],
         ]);
         assert.deepEqual(await page.evaluate(() => T.rtPerformed()), ['nav.back'], 'the page\'s history is the host\'s');
-        assert.deepEqual((await page.evaluate(() => T.rtRefused())).map(([n]) => n), ['today.clear'], 'no handler yet');
+        assert.deepEqual(await page.evaluate(() => T.rtRefused()), [], 'nothing refused');
 
         // The palette: "New tab" opens it (local), a row runs its own request and closes it.
         await click('.new-tab');
@@ -145,14 +146,14 @@ for (const [name, engine] of ENGINES) {
         assert.equal((await page.evaluate(() => T.rtUi().palette)).open, false);
         assert.equal(await page.evaluate(() => T.rtCount('.palette-row')), 0);
         const sent = await page.evaluate(() => T.rtSent());
-        assert.equal(sent.length, 6);
-        assert.equal(sent[5][0], 'activateTab', 'the second row of an empty query is a tab');
+        assert.equal(sent.length, 7);
+        assert.equal(sent[6][0], 'activateTab', 'the second row of an empty query is a tab');
 
         // Abuse through dispatch: refused, nothing sent.
         assert.equal(await page.evaluate(() => T.rtDispatch('tab.close', 999999)), false);
         assert.equal(await page.evaluate(() => T.rtDispatch('palette.run', 'tab:1000')), false, 'the palette is closed');
         assert.equal(await page.evaluate(() => T.rtDispatch('space.switch', '__proto__')), false);
-        assert.equal((await page.evaluate(() => T.rtSent())).length, 6);
+        assert.equal((await page.evaluate(() => T.rtSent())).length, 7);
 
         // The sidebar setting goes off in the state: the page's place follows, and is reported.
         await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: false }));

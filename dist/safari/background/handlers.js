@@ -20,6 +20,8 @@ import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
+import { moveIndex } from '../ui/behaviors/drop-rules.js';
+import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, plainSetting } from '../themes/packages.js';
 
 // After a switch from the sidebar while it was open over the page (hovered,
 // toggled, or the rail expanded): the page shown next opens it the same way
@@ -43,6 +45,36 @@ function takeCarried(tabId) {
   carried.delete(tabId);
   return entry && entry.until > now() ? entry.why : null;
 }
+// The tab a nav request is for: the one named, the page's own, or the one
+// in front of the window.
+async function frontTab(tabId, windowId, sender) {
+  if (Number.isInteger(tabId)) return tabId;
+  const win = windowId ?? sender?.tab?.windowId;
+  if (win == null) return sender?.tab?.id ?? null;
+  const [front] = await api.tabs.query({ active: true, windowId: win }).catch(() => []);
+  return front?.id ?? null;
+}
+
+// A package theme's settings (themes/packages.js: a built-in one, or one the
+// user imported), merged into what's saved: names as theme.json's, plain
+// values, at most MAX_SETTINGS. The theme's spec checks each value again
+// where it's applied (ui/theme-loader.js resolveSettings).
+async function updatePackageThemeSettings(themeId, patch) {
+  if (typeof themeId !== 'string' || !patch || typeof patch !== 'object' || Array.isArray(patch)) return;
+  if (!PACKAGE_THEMES.includes(themeId)) {
+    const index = (await api.storage.local.get(USER_THEMES_KEY).catch(() => ({})))?.[USER_THEMES_KEY];
+    if (!Array.isArray(index) || !index.some((e) => e?.id === themeId)) return; // not a theme Margin has
+  }
+  const clean = Object.fromEntries(Object.entries(patch).filter(([k, v]) => SETTING_NAME.test(k) && plainSetting(v)));
+  if (!Object.keys(clean).length) return;
+  await mutate((s) => {
+    const themes = s.settings.themes ?? {};
+    const own = { ...(themes[themeId] && typeof themes[themeId] === 'object' ? themes[themeId] : {}), ...clean };
+    if (Object.keys(own).length > MAX_SETTINGS) return s;
+    return { ...s, settings: { ...s.settings, themes: { ...themes, [themeId]: own } } };
+  });
+}
+
 // ⌘T: the browser opened a new tab (extensions can't stop it) with Margin's
 // new-tab page. Arc keeps the page and opens its palette over it: so the
 // palette opens on the tab the user was on (its sidebar highlights "+ New
@@ -643,11 +675,62 @@ export const handlers = {
     const [tab, other] = await Promise.all([resolveTab(tabId, hint, sender?.tab?.windowId), resolveTab(nextTo, nextToHint, sender?.tab?.windowId)]);
     if (!tab || !other || tab.windowId !== other.windowId || tab.id === other.id || !!tab.pinned !== !!other.pinned) return false;
     // Above it in the list: just after it in the window; below it: just before.
-    const index = side === 'before'
-      ? (tab.index < other.index ? other.index : other.index + 1)
-      : (tab.index < other.index ? other.index - 1 : other.index);
+    const index = moveIndex(tab.index, other.index, side);
     if (index === tab.index) return false;
     return api.tabs.move(tab.id, { index }).then(() => true, () => false);
+  },
+  // "Clear" (the canvas designs' Today): the window's space's tabs that
+  // aren't pinned close, as the sidebar lists them (shared/view.js sidebar),
+  // archived as closing one does. The tab in front among them: the space's
+  // most recent tab left (an open pin) comes to the front first, else its
+  // start page opens, so the window stays in the space and isn't left empty.
+  // Returns the tabs closed.
+  /** @param {{ windowId?: number }} message */
+  async clearToday({ windowId }, sender) {
+    const win = windowId ?? sender?.tab?.windowId;
+    if (win == null) return [];
+    const s = await load();
+    const spaceId = V.activeSpaceId(s, win);
+    const ids = V.sidebar(s, win).tabs.map((t) => t.id);
+    if (!ids.length) return [];
+    const closing = new Set(ids);
+    await mutate((st) => {
+      let next = st;
+      for (const id of ids) {
+        const tab = next.tabs[id];
+        if (tab && /^https?:/i.test(tab.url)) next = M.archiveTab(next, M.archiveEntryForTab(next, tab, { id: newId(), closedAt: now() }));
+      }
+      return next;
+    });
+    const [front] = await api.tabs.query({ active: true, windowId: win }).catch(() => []);
+    if (front && closing.has(front.id)) {
+      const stay = Object.values(s.tabs).filter((t) => t.windowId === win && !closing.has(t.id) && s.tabSpace[t.id] === spaceId)
+        .sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
+      if (stay) await focusTab(stay.id, { source: 'clearToday' }).catch(() => null);
+      else await openTab({ windowId: win, url: api.runtime.getURL('newtab/newtab.html#launcher'), spaceId }).catch(() => null);
+    }
+    await api.tabs.remove(ids).catch(() => Promise.all(ids.map((id) => api.tabs.remove(id).catch(() => {}))));
+    return ids;
+  },
+  // Back, forward and reload for the tab in front of a window (or `tabId`):
+  // the runtime's nav.* actions when its host can't do them itself (Margin.app).
+  /** @param {{ windowId?: number, tabId?: number }} message */
+  async goBack({ windowId, tabId }, sender) {
+    const id = await frontTab(tabId, windowId, sender);
+    if (id == null || !api.tabs.goBack) return false;
+    return api.tabs.goBack(id).then(() => true, () => false);
+  },
+  /** @param {{ windowId?: number, tabId?: number }} message */
+  async goForward({ windowId, tabId }, sender) {
+    const id = await frontTab(tabId, windowId, sender);
+    if (id == null || !api.tabs.goForward) return false;
+    return api.tabs.goForward(id).then(() => true, () => false);
+  },
+  /** @param {{ windowId?: number, tabId?: number }} message */
+  async reload({ windowId, tabId }, sender) {
+    const id = await frontTab(tabId, windowId, sender);
+    if (id == null) return false;
+    return api.tabs.reload(id).then(() => true, () => false);
   },
   /** @param {{ pinId: string }} message */
   async unpin({ pinId }) {
@@ -799,7 +882,7 @@ export const handlers = {
   /** @param {{ themeId: string, patch: object }} message */
   async updateThemeSettings({ themeId, patch }) {
     const theme = THEMES[themeId];
-    if (!theme) return;
+    if (!theme) return updatePackageThemeSettings(themeId, patch);
     await mutate((s) => {
       const themes = s.settings.themes ?? {};
       const own = theme.settingsOf({ themes: { [themeId]: { ...themes[themeId], ...patch } } });

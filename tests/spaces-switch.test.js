@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], disabled: [], probes: 0, probeHangs: false, };
+const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], disabled: [], probes: 0, probeHangs: false, removed: [], history: [] };
 const asTab = (t) => ({ ...t });
 globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/other.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
@@ -27,6 +27,14 @@ globalThis.chrome = {
       for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
       return asTab(tab);
     },
+    remove: async (ids) => {
+      const list = [].concat(ids);
+      fake.removed.push(list);
+      for (const id of list) fake.tabs.delete(id);
+    },
+    goBack: async (id) => { fake.history.push(['back', id]); },
+    goForward: async (id) => { fake.history.push(['forward', id]); },
+    reload: async (id) => { fake.history.push(['reload', id]); },
     create: async ({ windowId, url, active }) => {
       const tab = { id: fake.nextId++, windowId, url, active: !!active, index: 99, title: '' };
       if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = false;
@@ -483,6 +491,65 @@ test('hello: the sidebar carried open goes only to a page in front (one loading 
   } finally {
     chrome.tabs.sendMessage = send;
   }
+});
+
+// The runtime's today.clear (ui/actions.js): the canvas designs' Clear.
+test('clearToday: the window\'s space\'s tabs no pin shows close, archived; the tab in front gives way to the space\'s pinned tab first', async () => {
+  await setup();
+  fake.removed = [];
+  await mutate((s) => M.addPin(s, { id: 'pp', spaceId: 'personal', url: 'https://p2.com/', title: 'P2' }));
+  const { handlers } = await import('../extension/background/handlers.js');
+  assert.deepEqual(await handlers.clearToday({ windowId: 1 }, {}), [1], 'tab 2 is the pin\'s');
+  assert.equal(front(1), 2, 'the space\'s pinned tab came to the front first');
+  assert.deepEqual(fake.removed, [[1]]);
+  assert.deepEqual([...fake.tabs.keys()].sort(), [2, 3, 4, 5], 'other spaces and windows untouched');
+  assert.equal((await load()).archive[0].url, 'https://p1.com/', 'archived, as closing one is');
+  await mutate((s) => M.removeTab(s, 1)); // the browser's onRemoved, as background.js handles it
+  assert.deepEqual(await handlers.clearToday({ windowId: 1 }, {}), [], 'nothing left to clear');
+  assert.deepEqual(fake.removed, [[1]]);
+});
+
+test('clearToday: nothing of the space left open: its start page opens in it first, so the window stays in the space', async () => {
+  await setup();
+  fake.removed = [];
+  await showSpace(1, 'work');
+  assert.equal(front(1), 4);
+  const { handlers } = await import('../extension/background/handlers.js');
+  const closed = await handlers.clearToday({}, { tab: { id: 4, windowId: 1 } });
+  assert.deepEqual(closed.sort(), [3, 4], 'the window from the page that asked');
+  assert.deepEqual(fake.calls.create, ['safari-web-extension://test/newtab/newtab.html#launcher']);
+  const opened = front(1);
+  assert.equal((await load()).tabSpace[opened], 'work');
+  assert.ok(fake.tabs.has(5), 'Work\'s tab in window 2 stays');
+});
+
+test('goBack, goForward, reload: the tab in front of the window (the app\'s nav buttons)', async () => {
+  await setup();
+  fake.history = [];
+  const { handlers } = await import('../extension/background/handlers.js');
+  assert.equal(await handlers.goBack({ windowId: 1 }, {}), true);
+  assert.equal(await handlers.goForward({ windowId: 2 }, {}), true);
+  assert.equal(await handlers.reload({ tabId: 2 }, {}), true);
+  assert.equal(await handlers.goBack({}, { tab: { id: 4, windowId: 1 } }), true, 'a page\'s own window');
+  assert.deepEqual(fake.history, [['back', 1], ['forward', 5], ['reload', 2], ['back', 1]]);
+  assert.equal(await handlers.goBack({}, {}), false, 'no window, no tab');
+});
+
+test('updateThemeSettings: a package theme\'s settings (built in, or imported), plain values only', async () => {
+  await setup();
+  const { handlers } = await import('../extension/background/handlers.js');
+  await handlers.updateThemeSettings({ themeId: 'neo-brutalism', patch: { sidebarWidth: '300px', evil: { url: 'x' }, 'Bad Name': 1, long: 'x'.repeat(200) } });
+  assert.deepEqual((await load()).settings.themes['neo-brutalism'], { sidebarWidth: '300px' });
+  await handlers.updateThemeSettings({ themeId: 'neo-brutalism', patch: { dots: true } });
+  assert.deepEqual((await load()).settings.themes['neo-brutalism'], { sidebarWidth: '300px', dots: true }, 'merged');
+  await handlers.updateThemeSettings({ themeId: 'nope', patch: { a: 1 } });
+  assert.equal((await load()).settings.themes.nope, undefined, 'not a theme Margin has');
+  fake.local.userThemes = [{ id: 'mine', name: 'Mine', version: '1.0.0' }];
+  await handlers.updateThemeSettings({ themeId: 'mine', patch: { accent: '#ff0000' } });
+  assert.deepEqual((await load()).settings.themes.mine, { accent: '#ff0000' }, 'an imported theme');
+  delete fake.local.userThemes;
+  await handlers.updateThemeSettings({ themeId: 'arcadia', patch: { sidebarWidth: 333 } });
+  assert.equal((await load()).settings.themes.arcadia.sidebarWidth, 330, 'Arcadia\'s own, as before (snapped)');
 });
 
 // (Last: this copy is stale from here on.)

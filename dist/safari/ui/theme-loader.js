@@ -15,9 +15,10 @@
 import { checkCssValue, sanitizeCss, sanitizeTemplate } from './sanitize.js';
 import { checkManifest, settingValueOk } from './theme-schema.js';
 import { buildTemplate } from './render.js';
+import { PACKAGE_THEMES, USER_THEMES_KEY } from '../themes/packages.js';
 
-/** The themes Margin ships as packages (extension/themes/<id>/). Arcadia joins in Phase 1 step 3. */
-export const BUILTIN_THEMES = Object.freeze(['neo-brutalism']);
+/** The themes Margin ships as packages (extension/themes/<id>/, themes/packages.js). Arcadia joins in Phase 1 step 3. */
+export const BUILTIN_THEMES = PACKAGE_THEMES;
 
 // Caps on a package, beyond the sanitizer's own (template and stylesheet
 // 256 KB each, theme.json 32 KB: ui/sanitize.js LIMITS).
@@ -257,7 +258,7 @@ export async function loadBuiltinTheme(id, { readFile, document, settings } = {}
 // The stored value: { format: 2, id, version, savedAt, manifest, html, css,
 // files: { [path]: base64 } }. It's checked again every time it loads.
 
-export const USER_THEMES = 'userThemes';
+export const USER_THEMES = USER_THEMES_KEY;
 export const STORED_FORMAT = 2;
 /** @param {string} id */
 export const userThemeKey = (id) => `userTheme:${id}`;

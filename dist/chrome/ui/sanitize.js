@@ -286,7 +286,7 @@ const HTML_ELEMENTS = new Set([
 ]);
 // Margin's own elements: control flow and slots.
 const MARGIN_ELEMENTS = new Set([
-  'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu',
+  'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
@@ -343,17 +343,23 @@ const BINDABLE = (name, element) => /^aria-[a-z]+$/.test(name) || /^data-[a-z][a
   || ['title', 'alt', 'hidden', 'disabled', 'lang', 'dir'].includes(name) || (name === 'placeholder' && element === 'input');
 const BOOLEAN_ATTRS = new Set(['hidden', 'disabled', 'reversed']);
 
-// Margin's behaviors (PLAN.md §3), by attribute: the values each takes.
+// Margin's behaviors (PLAN.md §3), by attribute: the values each takes
+// (ui/behaviors/ implements them; they stay on the element, so a theme's CSS
+// can select them).
 const BEHAVIORS = {
   'm-drag': ['tab', 'pin', 'folder', 'space'],
-  'm-drop': ['folder', 'space', 'tabs'],
+  'm-drop': ['folder', 'space', 'tabs', 'pins'],
   'm-resize': ['sidebar'],
   'm-peek': ['left', 'right', 'top', 'bottom'],
   'm-rename': ['space', 'folder', 'tab'],
   'm-scroll': ['tabs', 'palette', 'archive'],
-  'm-input': ['palette'],
+  'm-swipe': ['spaces'],
+  'm-input': ['palette', 'space-name', 'space-emoji'],
 };
-const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls']);
+// Named parts a theme supplies (`<template m-part>`), which the runtime puts
+// in its slots: `menu` in <m-menu>, `space-editor` in <m-editor>, `palette`
+// in <m-palette>, `notice` in <m-notice>.
+const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette']);
 
 const ID_VALUE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const FRAGMENT_URL = /^url\(\s*#[A-Za-z][A-Za-z0-9_-]*\s*\)$/;
