@@ -562,6 +562,34 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 2 step 4: spaces across Safari profiles (2026-11-05)
+
+Needs two Safari profiles (Safari › Settings › Profiles; here "Default" and "Work"), Margin turned on in both, and step 3's checks done. Each switch to the other profile's space creates a full-screen window and closes one, with macOS's slide: tell Tirth before starting, and do one switch first and check it before doing more. Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (lines `profile switch: …` and `link down (…)`).
+
+**First, the crux: does a profile's copy stay running with no window?** Safari 27.2's own code (read off screen, DECISIONS.md) says: at launch only the default profile's extensions load; a named profile's load when its first window opens, and stay loaded until Safari quits. Margin's port pings keep the background page alive.
+
+- [ ] Open a Work window and a Default window, both full screen; both copies link (`linked: safari:s-…` twice in the log). Close the Work window (⌘⇧W). Wait 2 minutes. **Expected:** no `link down (safari:s-<Work>)`; Develop › Web Extension Background Content still lists Margin for Work. If it does go down: Margin's switch to Work works only while a Work window exists; every other time it asks the person to open one (that's the fallback built in), and a way to keep the copy alive is needed (tell Tirth: a choice).
+- [ ] Quit Safari with only a Default window open, then open Safari again. **Expected (from Safari's code):** only the Default copy links (`linked: safari:s-default`), not Work's, until a Work window opens. Then the first switch to a Work space after each Safari launch shows "Work isn't open in Safari. Open one of its windows (File › New Window › New Work Window)…"; opening it (menu or Dock) shows that space there and closes the Default window. If Work's copy does link at launch without a window: the notice never shows; note it.
+
+**The sidebar across profiles** (with both copies linked):
+
+- [ ] Both profiles' spaces are in one row of chips, Default's first; Work's have a small badge with "P" (Profile 2, until named) and a divider before them. Hovering a chip's title says "Office · Profile 2". With one profile (Margin on in only one, or a Safari with no profiles): the chips look as before, no badges.
+- [ ] Right-click a Work space: Switch to Space, Move Left/Right, Edit Profile "Profile 2"…, New Space in Profile 2. Edit Profile: name it "Work" with an emoji and a color: every window's badges follow, and `~/Library/Application Support/Margin/data/safari/browser.json` has the name (read it only if Tirth agrees).
+- [ ] Move a Default space past a Work one and back: the order sticks after a Safari relaunch; a Default window alone (Margin.app quit) shows its spaces in the same relative order.
+- [ ] "+" › New Space in Work: it appears among Work's spaces at once (no switch).
+- [ ] Neo-brutalism: Work's chips have a dashed edge and a corner tag; the gap between profiles shows.
+
+**The switch** (the full-screen Default window in front, a Work space not open anywhere):
+
+- [ ] Click a Work space's chip. **Expected:** about 0.4–0.65 s: macOS slides to a new full-screen Space with a Work window showing that space's last used tab (the Work tabs that were open with it open behind a moment later); the sidebar is drawn on it with that space active; then the Default window closes. Mission Control shows one Safari Space. Note the time, any flash of the desktop, and whether the overlay was missing for long.
+- [ ] Switch back (click a Default space, or ⌃⌘→/← across the boundary): a Default window comes back full screen with that space's tabs, the last used in front; Back is empty in them (expected); nothing lost from either profile's sidebar.
+- [ ] The log says `profile switch: created window … (fullscreen)`. If it says `(normal)` then `asked for full screen`: Safari doesn't create full-screen windows directly; note how it looked (a window appearing, then sliding to full screen).
+- [ ] ⌃⌘→/← and the two-finger swipe over the sidebar run through all spaces in the one order: within a profile as before (no window change), across with the switch.
+- [ ] Switch, then switch again at once (two clicks quickly): it ends on the last one asked, with one window.
+- [ ] While a switch slides, close the new window (⌘⇧W): the Default window stays (the log: `cancelled`).
+- [ ] If macOS ever ends on the desktop after a switch, the log shows `not in front after the close: focused again`, and the Work window comes back within about a second.
+- [ ] Quit Safari right after clicking a Work space: on reopening, Safari restores its windows (perhaps both, perhaps one); every space's tabs are still in the sidebar (open or not open). Note which windows came back.
+
 ## Margin 2 Phase 2 step 3a: the extension linked to Margin.app (2026-11-05)
 
 `npm run safari` from `feat/margin-app` once step 3 is merged (the app's shell and the extension's end together). Margin.app needn't be open: the extension starts it.

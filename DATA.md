@@ -112,3 +112,23 @@ What the app does with each:
 - Take the app's `data.snapshot` as the cache (`stateFromDataSet`) once all its parts are here, with any change made after the `data.hello` was sent merged into it first, so a snapshot crossing a change doesn't undo it.
 - Keep the `rev` from the app's `data.snapshot` (part 0) once the snapshot is applied, and the `rev` of each `data.ack` that has one; send it in `data.hello`. Drop it whenever the cache stops being the app's set plus the copy's own queued changes (storage wiped, defaults written, a cache refilled from anything but the app), so the next `data.hello` gets the snapshot.
 - A refill isn't the copy's own change: its meta (`dataMeta:<collection>`) should take the set's times, or the next queue sends the app's items back as new ones.
+
+## Spaces across profiles
+
+Margin 2, Phase 2 step 4 (`PLAN.md` §15). Each space belongs to one browser profile: the profile whose data set has it. Nothing in a set names its profile, so a space can't be in two, and a profile's copy needs nothing new to keep its own.
+
+What spans profiles is kept by the app, one file per browser, beside its profiles' sets (`app/shell/BrowserProfiles.swift`):
+
+```text
+data/<browser>/browser.json   { format: 1, browser, order: [[profile, spaceId]], profiles: { id: info }, savedAt }
+```
+
+- **`order`:** every profile's spaces in the one order the person controls (the sidebar's chips, next/previous space, the swipe). It's read against the sets each time ("the slots rule"): a space no set has any more is left out; each profile's spaces fill the places its spaces have in the order, in that profile's own order (its spaces' `order`), so a reorder made in one profile while the app wasn't there still shows; a new space goes right after the one before it in its profile's order (the profile's first: before the others); a profile not in the order yet comes last. A move in the whole order that changes a profile's own order is written into that profile's set too (`orderSpaces` to its copy, or the set's `order` fields when it isn't linked), so the copy alone (the in-page host) shows the same order.
+- **`profiles`:** per profile id, `name`, `emoji`, `color`, `named` (the person named it), `firstSeen`, `lastSeen` (linked last), `hidden` (forgotten by the person). Browsers don't give profile names (Safari: none without permissions, `PLAN.md` §15), so the person names each one once; until then Safari's default profile (`s-default`) is "Default" and the others "Profile 2", "Profile 3"… by when Margin first saw them, each with a color of its own.
+- **A profile not seen for a long time** stays as it is: its data set and spaces are kept, never deleted by Margin. Not linked for 30 days, its menu says so ("Forget … (not seen for a month)"). **Forgetting** one (only one that isn't linked) takes its spaces out of the order and leaves its data alone; its copy linking again brings it back.
+- **A profile's last space** can't be deleted (each copy needs a space), as before with one profile.
+- Written like the sets' files (a temporary file, `fsync`, `.bak`, rename), at once (it's a few KB).
+
+**Not-open tabs of a profile with no window** are the app's (`Shell.notOpenTabs`: all of a profile's Margin tabs when it isn't linked) and the copy's own kept tabs (`keptTabs`): a window closed by the switch keeps its tabs there (step 1's rule for a window closing), and the profile's copy opens them again when the space is switched back to (`state/model.js spaceWindowTabs`: in front, the space's tab used last; behind it, the others that were open with it in that window, in their old order). They start fresh, with no Back history.
+
+What each overlay is sent (`across`, `ui/host-app.js`, `shared/across.js`): `{ v: 1, profile, profiles: [{ id, name, emoji, color, named, here, linked, lastSeen, stale, spaces }], spaces: [{ profile, id, name, emoji, color, tabCount }], switching? }`, in the overlay's `hello` and again (`{ type: 'across' }`) whenever it changes. `tabCount` is the space's Margin tabs in the app's set, open or not. `switching`: the cross-profile switch under way (`profile`, `space`, `phase`) and, when the person has something to do or it failed, `notice` (Margin's words).
