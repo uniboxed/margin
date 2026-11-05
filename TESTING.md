@@ -562,6 +562,21 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 2 step 3a: the extension linked to Margin.app (2026-11-05)
+
+`npm run safari` from `feat/margin-app` once step 3 is merged (the app's shell and the extension's end together). Margin.app needn't be open: the extension starts it.
+
+- [ ] **Started on demand.** Quit Margin.app (or log in fresh), then open Safari: Margin.app starts by itself within a second or two, with no Dock icon flashing, no set-up window and no change of the app in front (Safari stays in front, its window doesn't dim). Activity Monitor shows one Margin, not two, also with two Safari profiles' windows open.
+- [ ] Opening Margin.app yourself (Finder, Launchpad) still shows its set-up window.
+- [ ] **Linked, full screen.** A Safari window in full screen: Margin's sidebar and frame are drawn around the page by the app, and nothing of Margin's is in the page (Develop › Show Web Inspector on a page: no `margin-sidebar-host` element). The page sits exactly in the theme's slot: no gap or overlap at the sidebar's edge, top, right or bottom; also with Safari's toolbar shown at the top of the screen (move the pointer up) and with Safari's own sidebar open.
+- [ ] A new page in that window: how close its first paint gets to its place (expected: right with Arcadia, Keep open on, the default width; a jump at the content script otherwise: the new first-paint path is Phase 3's). Note what you see.
+- [ ] **Keys.** ⌘T opens the palette in the app's overlay (typing goes there, Safari stays in front), not Safari's new tab and not a palette in the page. ⌃⌘↓/↑, ⌥⌘↓/↑, ⌃⌘→/←, ⌥S work. Change a shortcut in Settings (say the sidebar's to ⌥J): the new one works at once, the old one goes back to Safari. Choose an address in the palette: it opens; a tab: it comes to the front.
+- [ ] ⌘T never makes a new tab while the app draws (if one ever appears, note it: the app's hot key lost to Safari's own).
+- [ ] **Settings and the new-tab page.** The sidebar's Settings (and a new window's first tab): Margin's new-tab page comes up, its launcher and Settings drawn by the app in the page slot; typing in its field works, an address chosen opens in that tab.
+- [ ] **The link dropping.** Quit Margin.app (its menu is hidden: `killall -TERM Margin` in Terminal): the pages draw Margin's in-page UI again within a second (the app said goodbye). Force-quit it instead (`killall -KILL Margin`): the overlay is gone at once (its process is), pages stay without Margin's UI for about 6 s, then draw their own. Open Safari again, or a page: the app starts again and takes over.
+- [ ] **Asleep.** Leave Safari idle for 10 minutes with the app linked, then switch tabs: Margin still works at once (the extension's background stayed alive: its lasting port is used every 20 s).
+- [ ] Safari's console for the background (Develop › Web Extension Background Content › Margin): `[margin] link: linked on <port>`, and no errors.
+
 ## Margin 2 Phase 2 step 1: Margin's tabs (in-page development host) (2026-11-05)
 
 Margin's sidebar is now the real list of tabs. A tab whose browser tab is gone stays in its space as a dimmed row ("not open"), and opens again when you click it. Run `npm run safari`. Have a space with a few tabs and a second space. To watch what happens, open the background's console (Develop → Web Extension Background Content → Margin). Write what you see in DECISIONS.md.
