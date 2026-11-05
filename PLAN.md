@@ -11,14 +11,14 @@ Draft plan, 2026-11-04. Nothing here is built yet. Once Tirth approves it, the d
             └──────────────▲──────────────────────────────────────▲─────────────────────┘
                            │ host adapter                         │ host adapter
         ┌──────────────────┴───────────────┐        ┌─────────────┴────────────────────┐
-        │ Margin.app (Mac): native windows │        │ In-page host: a closed shadow     │
-        │ around the browser's page area,  │        │ root in each page, as today.      │
-        │ Safari, Chrome, Edge             │        │ Development and tests only.       │
+        │ Margin.app (Mac): native windows │        │ In-page host: browser tests only  │
+        │ around the browser's page area,  │        │ (tests/theme/). Not in the        │
+        │ Safari, Chrome, Edge             │        │ extension since Phase 2 step 5.   │
         └──────────────────▲───────────────┘        └─────────────▲────────────────────┘
                            │ link (snapshot, deltas, requests)    │ runtime messages
             ┌──────────────┴──────────────────────────────────────┴─────────────────────┐
             │ Extension: state owner, tabs and windows, page box, sleeping tabs, palette  │
-            │ key, search, icons, archive. No UI of its own when the app is there.        │
+            │ key, search, icons, archive. No UI of its own: none in pages (Phase 2).    │
             └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,11 +41,11 @@ New in this plan (Tirth, 2026-11-04):
 
 | Part | Owns | Doesn't |
 |---|---|---|
-| Extension | Live tab and window state (tab ids, which tab is in which window and space), a cached copy of the app's data, tab and window actions, the page box in every page, sleeping tabs, cut-off repair and copies, search, the ⌘T and palette keys where only a page can catch them | Draw any UI when the app is linked |
+| Extension | Live tab and window state (tab ids, which tab is in which window and space), a cached copy of the app's data, tab and window actions, the page box in every page (while the app is linked), sleeping tabs, cut-off repair and copies, search, the ⌘T and palette keys where only a page can catch them | Draw any UI in pages, linked or not (gone in Phase 2 step 5); not linked, only its new-tab page's notice that Margin.app isn't running |
 | Margin UI runtime | The state mirror, rendering the theme, the action list, the behaviors (drag and drop, resize, peek, palette keys, context menus, inline rename), measuring the theme's page slot | Talk to the browser: everything goes through the host |
 | Theme | Structure (HTML), look (CSS), layout (where the page slot is), fonts and images bundled with it, its settings (as CSS variables) | Any script, any network request, any action Margin doesn't list |
 | Margin.app host | Native windows per browser window, following the window, the link to each browser's extension, app shortcuts, keyboard focus for the palette, the window drag in windowed mode, and **the lasting data on the Mac** (section 6, "Where data lives") | Live tab state: tab ids exist only inside the running browser |
-| In-page host | A closed shadow root per page holding the runtime and theme, used only to build and test the runtime before the app exists (Phase 1) and in automated tests | Ship: Margin is Mac-only, and without the app the extension shows a prompt to install it |
+| In-page host | The runtime and theme in a closed shadow root (`ui/host.js`), for the browser tests only (`tests/theme/`). It drew Margin in pages until Phase 2 step 5, when it left the extension | Ship, or run in the extension: Margin is Mac-only, and without the app pages are left as they are and the new-tab page says the app isn't running (the install prompt: Phase 7) |
 
 ## 3. Themes, version 2
 
@@ -141,7 +141,7 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 - **Per browser window:** Margin's windows, kept just above that browser window (stacking verified to work across apps), joining full-screen Spaces.
 - **Drawing the theme around the page (decided by Spike 1):** one transparent overlay window per browser window, the whole theme in one web view, the page slot left empty. The overlay ignores the mouse while the pointer is over the slot (mouse monitors, no Accessibility), so clicks, scrolling and text selection reach the page; transparency alone does not let them through. The overlay is re-ordered just above the browser window whenever the browser is clicked or activated. Cost: about 20 MB for the app plus 15 MB for its web process, and no measurable extra window-server work while the page scrolls.
 - **Windowed mode:** Margin covers the toolbar. A drag on `<m-drag-region>` asks the extension to move the window (`windows.update`); Margin's windows move to the position the extension reports, and the frame's edges reach past the window's edges by a mouse step on fast drags.
-- **Keys:** while linked, the app owns Margin's keys (Tirth, 2026-11-05): the tab and space keys, ⌘T (the palette, opened in the overlay with no round trip through the browser) and the sidebar's key, as app shortcuts (Carbon hot keys, no Accessibility; tested) while a linked browser is in front, following the Settings shortcuts the copy sends (`keys`, `app/PROTOCOL.md`). The extension is involved only when the user acts in the palette (a `req`). The extension's own ⌘T command and the page's ⌘T do nothing visible while the app draws; not linked, they work as before (the in-page development host).
+- **Keys:** while linked, the app owns Margin's keys (Tirth, 2026-11-05): the tab and space keys, ⌘T (the palette, opened in the overlay with no round trip through the browser) and the sidebar's key, as app shortcuts (Carbon hot keys, no Accessibility; tested) while a linked browser is in front, following the Settings shortcuts the copy sends (`keys`, `app/PROTOCOL.md`). The extension is involved only when the user acts in the palette (a `req`). The extension's own ⌘T command and the page's ⌘T do nothing visible while the app draws; not linked, they open Margin's new-tab page, which says the app isn't running (Phase 2 step 5).
 - **Typing:** the palette and inputs take the keyboard in a panel that doesn't make Margin the active app (tested: Safari stays in front and doesn't dim).
 - **Distribution: Developer ID** (Tirth, 2026-11-04). Signed and notarized, outside the App Store, with Margin's own update channel (Sparkle). No App Sandbox requirement, so installing Chrome's and Edge's native-messaging host files (`~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` and the others) is straightforward. Hardened runtime on.
 - **Where data lives (Tirth, 2026-11-04):** on the Mac, Margin.app owns the lasting data, in files under `~/Library/Application Support/Margin/` (one data set per browser and profile, keyed by the profile id the link already carries): spaces, pins (by address), folders, the archive, settings, theme settings, user themes and site icons. Reasons: Safari can wipe an extension's storage (it came back empty after Safari blocked and re-enabled Margin on 2026-11-04), the extension quota (about 10 MB) no longer limits themes and icons, Time Machine backs the files up, and one place decides, so the code that reconciles Margin's copies shrinks.
@@ -163,7 +163,7 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 - **Page box:** insets come from the theme's layout per window instead of `sidebarWidth` and a hard-coded 8 px frame (`box.js FRAME`, `build-styles.js FRAME`, `registered.js FRAME_LEFT`).
   - First paint: the registered first-paint CSS carries the insets as CSS variables (`boxRules` already writes them on `<html>`), and the page's world reads them from there instead of from one `at-<width>.js` file per width.
   - Per-layout first-paint CSS is generated at run time and registered, instead of 35 files per theme.
-- **No UI in pages:** pages get only the box and the small scripts that must run in a page (gestures, pinch, the draft check, the palette key); with no app linked, the extension shows a prompt (a notice on its new-tab page and the toolbar button) to install Margin.app.
+- **No UI in pages (done in Phase 2 step 5):** pages get only the box, while the app is linked (none otherwise: the page as it is), and the small scripts that must run in a page (gestures, pinch, the draft check, the navigation and ⌘T keys). The UI runtime, the theme loader and the in-page host are out of the content script and the new-tab page. With no app linked, Margin's new-tab page says Margin.app isn't running, with a button that starts it and an address field; Phase 7 makes that the prompt to install the app (and adds the toolbar button).
 - **Sleeping tabs:** kept; their checks no longer look at keep-ready, warm-up, slow Safari or switch state.
 - **Safari manifest:** background as a page (for the link), `nativeMessaging` kept.
 - **Settings:** `keepLeftTabReadyMinutes` and `warmUpTabs` go. `sidebarPinnedOpen`, `frameWhenHidden` and `themes.arcadia.sidebarWidth` become theme settings and layout state.
@@ -201,7 +201,7 @@ Parts of those designs Margin doesn't have yet are left out of the first version
 
 ## 10. Phases
 
-Each phase ends with the unit tests passing, the in-page fallback working in Chromium (Playwright), the WebKit host scenarios that apply passing, and a TESTING.md checklist for Tirth's Safari. Branches are named `type/short-description`; on-screen tests follow the test rules (one dry run first, create once and verify, stop at the first failure).
+Each phase ends with the unit tests passing, the WebKit host scenarios that apply passing, and a TESTING.md checklist for Tirth's Safari (through Phase 1 also the in-page fallback working in Chromium with Playwright; there's no in-page fallback from Phase 2 step 5, and the e2e suite is to be rewritten). Branches are named `type/short-description`; on-screen tests follow the test rules (one dry run first, create once and verify, stop at the first failure).
 
 ### Phase 0: spikes (decide the open questions with evidence)
 
@@ -212,7 +212,7 @@ Each phase ends with the unit tests passing, the in-page fallback working in Chr
 
 ### Phase 1: the UI runtime and themes v2, in pages (no app yet)
 
-- In pages so the runtime can be built and tested before the app exists (in Chromium with Playwright, and in Safari as a temporary development host). Afterwards the in-page host stays only as a development and test host; it isn't shipped.
+- In pages so the runtime can be built and tested before the app exists (in Chromium with Playwright, and in Safari as a temporary development host). Afterwards the in-page host stays only as a test host; it isn't shipped (it left the extension in Phase 2 step 5; `ui/host.js` stays for the browser tests).
 - The runtime (`extension/ui/`): view model, renderer, actions, behaviors (drag and drop, resize, peek, rename, menus, palette), host adapter interface.
 - The theme format, sanitizer, packaging in `scripts/build.js`, `theme.json` schema and checks.
 - Arcadia ported; the in-page host uses the runtime. The old theme JS path goes.
@@ -223,7 +223,7 @@ Each phase ends with the unit tests passing, the in-page fallback working in Chr
 - Margin's tabs (section 6): lasting tab records in the app, not-open tabs in the sidebar, opening on click, the keep and archive rules, matching after a relaunch.
 - The app's data store (section 6, "Where data lives"): per-profile files, the extension's cache and its refill, queued changes and the merge, and moving today's extension data into the app the first time they link.
 - The app grows out of `app/safari/`: link, mirror, window tracking, per-window windows, the theme drawn around the page, app shortcuts, palette focus.
-- The extension's background becomes a page in Safari; the link replaces in-page UI when the app is there.
+- The extension's background becomes a page in Safari; the link replaces the in-page UI, which then leaves the extension altogether (step 5: pages never draw Margin's UI, linked or not, so what's tested in Safari is the app's).
 - Done when: in full-screen Safari, every feature works from the app's windows, pages fit the theme's slot, and nothing is drawn in pages.
 
 ### Phase 3: slim the extension
@@ -246,7 +246,7 @@ Each phase ends with the unit tests passing, the in-page fallback working in Chr
 
 ### Phase 7: distribution and onboarding
 
-- Developer ID signing and notarization, Sparkle updates, starting at login as an optional setting (for a faster first paint; the extension starts the app on demand anyway), the set-up window extended to Chrome and Edge, the install-the-app prompt for Mac users without it, removing the remaining development diagnostics.
+- Developer ID signing and notarization, Sparkle updates, starting at login as an optional setting (for a faster first paint; the extension starts the app on demand anyway), the set-up window extended to Chrome and Edge, the install-the-app prompt for Mac users without it (in place of the new-tab page's plain notice from Phase 2 step 5), removing the remaining development diagnostics.
 
 ## 11. Decisions and open questions
 
