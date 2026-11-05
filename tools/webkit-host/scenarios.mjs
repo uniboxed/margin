@@ -1570,6 +1570,39 @@ export const SCENARIOS = {
     check('A', 'A: B\'s new fragment alone waits', `const { tabs } = await ${STATE}('tabs'); return !tabs[__b]?.url.endsWith('#inbox')`),
     check('A', 'A: then is stored', `const { tabs } = await ${STATE}('tabs'); return !!tabs[__b]?.url.endsWith('/p/B/next#inbox')`, 1500),
   ],
+  // Safari's background is a page now (Margin 2: the link to Margin.app
+  // needs one). As a service worker it stopped about 5 s after install here
+  // (README): a page should still answer well after.
+  'bg-page': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'),
+    wait(12000),
+    check('A', 'A: the background still answers 12 s after install (20 requests)', `const zooms = await Promise.all(Array.from({ length: 20 }, () => Margin.content.send('getZoom', {}, false))); return zooms.every((z) => Number(z) > 0)`, 4000),
+    wait(10000),
+    check('A', 'A: and 22 s after', `const zooms = await Promise.all(Array.from({ length: 20 }, () => Margin.content.send('getZoom', {}, false))); return zooms.every((z) => Number(z) > 0)`, 4000),
+  ],
+  // Margin.app linked (the copy's appLink, shared/app-link.js, written here as
+  // the link client would): the page draws no Margin UI (no runtime, no host
+  // in the document), its box is the window's layout less where the viewport
+  // sits (none here: the host's outer size is 0); reconnecting, still none; off, the in-page
+  // UI again, its box the theme's.
+  'app-linked': [
+    { op: 'open', name: 'A', url: '/p/T', active: true }, wait(800), { op: 'install' }, drawn('A'), themed('A'), boxed('A', 8),
+    { op: 'eval', in: 'A', js: `const w = Margin.content.getState().windowId; await browser.storage.local.set({ appLink: { state: 'linked', epoch: 'e1', at: Date.now(), layouts: { [w]: { insets: { left: 300, top: 60, right: 20, bottom: 24 }, radius: 10, container: { width: outerWidth, height: outerHeight }, mode: 'fullscreen', seq: 1, epoch: 'e1' } } } }); return 'linked ' + w + ' ' + (outerHeight - innerHeight)` },
+    checkPage('A', 'A: linked: no Margin host in the page', `!document.querySelector('margin-sidebar-host')`, 3000),
+    check('A', 'A: linked: no runtime', `!Margin.content.runtime() && Margin.content.appDraws()`),
+    check('A', 'A: linked: the box is the layout from the app, less the title bar above the viewport', `${AT} const top = 60 - Math.max(0, outerHeight - innerHeight); return at.x === 300 && at.y === top`, 3000),
+    checkPage('A', 'A: linked: the page is as big as the box', `innerWidth === 1200 - 300 - 20 && document.scrollingElement === document.body`, 3000),
+    { op: 'eval', in: 'A', js: `const w = Margin.content.getState().windowId; const { appLink } = await browser.storage.local.get('appLink'); await browser.storage.local.set({ appLink: { ...appLink, layouts: { [w]: { ...appLink.layouts[w], insets: { left: 256, top: 60, right: 16, bottom: 16 }, seq: 2 } } } }); return 'moved'` },
+    check('A', 'A: a new layout: the box follows', `${AT} return at.x === 256`, 3000),
+    { op: 'eval', in: 'A', js: `const { appLink } = await browser.storage.local.get('appLink'); await browser.storage.local.set({ appLink: { ...appLink, state: 'reconnecting' } }); return 'reconnecting'` },
+    wait(400),
+    checkPage('A', 'A: reconnecting: still nothing drawn', `!document.querySelector('margin-sidebar-host')`),
+    { op: 'eval', in: 'A', js: `const { appLink } = await browser.storage.local.get('appLink'); await browser.storage.local.set({ appLink: { ...appLink, state: 'off' } }); return 'off'` },
+    drawn('A'), themed('A'), boxed('A', 8),
+    check('A', 'A: off: the in-page UI again', `!Margin.content.appDraws() && !!Margin.content.runtime()`),
+    // (A page starting while linked isn't played here: its background, not linked in the host,
+    // answers its hello with the link off, which wins over storage: background/link.js.)
+  ],
   // A picture of a page in its box, for a look (build/screenshot.png).
   screenshot: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'),

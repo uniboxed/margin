@@ -298,3 +298,75 @@ test('the queue for Margin.app: each change made since the data set\'s times beg
   const all = await store.pendingQueue(0);
   assert.equal(all.some((c) => c.collection === 'spaces' && c.id === 'personal'), false);
 });
+
+test('Margin.app\'s data (background/link.js): its data set becomes the cache with its times, its changes merged by time, this copy\'s changes told as they\'re written', async () => {
+  const told = [];
+  const off = store.onDataChanges((changes) => told.push(...changes));
+  try {
+    const t0 = Date.now();
+    const T = t0 - 60_000; // (the app's times: a minute ago, within the tombstones' keep)
+    // The app's whole set: a space and a pin it has, the space this copy has.
+    const s0 = await state();
+    const mine = s0.spaces[0];
+    const set = { format: 1, items: {
+      spaces: { [mine.id]: { updatedAt: T + 1000, value: { name: mine.name, emoji: mine.emoji ?? '', color: mine.color ?? '', order: 0 } }, 'from-app': { updatedAt: T + 2000, value: { name: 'From the app', emoji: '📦', color: '#123456', order: 1 } } },
+      pins: { 'pin-app': { updatedAt: T + 2000, value: { spaceId: 'from-app', url: 'https://pinned.test/', title: 'Pinned', folderId: null, pos: 0 } } },
+    } };
+    await store.adoptDataSet(() => set);
+    const s1 = await state();
+    assert.ok(s1.spaces.some((sp) => sp.id === 'from-app' && sp.name === 'From the app'), 'the app\'s space is here');
+    assert.ok(s1.pins.some((p) => p.id === 'pin-app'), 'and its pin');
+    const metas = store.dataMetas();
+    assert.equal(metas.spaces.items['from-app'][0], T + 2000, 'with the app\'s time, not now');
+    assert.equal(metas.pins.items['pin-app'][0], T + 2000);
+    assert.deepEqual(told, [], 'nothing it sent is told back as this copy\'s change');
+    assert.equal((await store.pendingQueue(t0 - 1)).filter((c) => c.id === 'from-app' || c.id === 'pin-app').length, 0, 'nor queued');
+    // The app's own changes: a newer one wins, an older one doesn't.
+    await store.takeDataChanges([
+      { collection: 'spaces', id: 'from-app', updatedAt: T + 3000, value: { name: 'Renamed in the app', emoji: '📦', color: '#123456', order: 1 } },
+      { collection: 'pins', id: 'pin-app', updatedAt: T + 1500, deleted: true },
+    ]);
+    const s2 = await state();
+    assert.equal(s2.spaces.find((sp) => sp.id === 'from-app').name, 'Renamed in the app');
+    assert.ok(s2.pins.some((p) => p.id === 'pin-app'), 'an older deletion: the pin stays');
+    await store.takeDataChanges([{ collection: 'pins', id: 'pin-app', updatedAt: T + 4000, deleted: true }]);
+    assert.ok(!(await state()).pins.some((p) => p.id === 'pin-app'), 'a newer deletion: gone');
+    assert.equal(store.dataMetas().pins.gone['pin-app'], T + 4000, 'its tombstone with the app\'s time');
+    assert.deepEqual(told, [], 'still nothing told back');
+    // A change of this copy's: told as it's written, with its time.
+    await ask('renameSpace', { spaceId: 'from-app', name: 'Renamed here' });
+    for (let i = 0; i < 50 && !told.length; i++) await sleep(10);
+    const change = told.find((c) => c.collection === 'spaces' && c.id === 'from-app');
+    assert.ok(change && change.updatedAt >= t0 && change.value.name === 'Renamed here', JSON.stringify(told));
+  } finally {
+    off();
+  }
+});
+
+test('Margin.app\'s data: an item the cache has that disagrees with the app\'s set (a live change it hasn\'t heard) keeps a time of its own, and is queued', () => {
+  const meta = { items: { a: [10, 'xxxxxxxx'] }, gone: { z: 5 } };
+  const next = store.metaFromSet(meta, { a: { t: 'live' }, b: { x: 1 } }, { a: { updatedAt: 50, value: { t: 'old' } }, b: { updatedAt: 60, value: { x: 1 } }, c: { updatedAt: 70, deleted: true } }, 99);
+  assert.equal(next.items.a[0], 99, 'a differs: now');
+  assert.equal(next.items.b[0], 60, 'b agrees: the app\'s time');
+  assert.deepEqual(next.gone, { z: 5, c: 70 }, 'tombstones: this copy\'s still gone, and the app\'s');
+  const same = store.metaFromSet(null, { k: { b: 2, a: 1 } }, { k: { updatedAt: 7, value: { a: 1, b: 2 } } }, 99);
+  assert.equal(same.items.k[0], 7, 'the same value with its keys in another order agrees');
+});
+
+test('Margin.app\'s data: its snapshot taken with this copy\'s changes since its hello on top, and what it left out kept as this copy has it', async () => {
+  const s0 = await state();
+  const T = Date.now() - 30_000;
+  await ask('createSpace', { name: 'Kept here' });
+  const kept = (await state()).spaces.find((sp) => sp.name === 'Kept here');
+  const spaces = Object.fromEntries(s0.spaces.map((sp, i) => [sp.id, { updatedAt: T, value: { name: sp.name, emoji: sp.emoji ?? '', color: sp.color ?? '', order: i } }]));
+  // The app's set renames the first space; this copy renamed it since (a newer change), and the app left `kept` out.
+  const first = s0.spaces[0];
+  spaces[first.id] = { updatedAt: T + 1, value: { ...spaces[first.id].value, name: 'App name' } };
+  await store.adoptAppSet({ format: 1, items: { spaces } }, {
+    changes: [{ collection: 'spaces', id: first.id, updatedAt: T + 5, value: { ...spaces[first.id].value, name: 'Newer here' } }],
+    omitted: [['spaces', kept.id]],
+  });
+  const s1 = await state();
+  assert.equal(s1.spaces.find((sp) => sp.id === first.id).name, 'Newer here', 'the change since the hello stays');
+  assert.ok(s1.spaces.some((sp) => sp.id === kept.id), 'the item left out is kept');
+});

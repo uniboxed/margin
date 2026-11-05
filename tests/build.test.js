@@ -39,7 +39,9 @@ test('each build loads one bundled script per context', () => {
     assert.deepEqual(manifest.content_scripts[0].js, ['content/content.bundle.js'], target);
     // background/tabs.js injectIntoOpenTabs finds the sidebar's entry this way.
     assert.deepEqual(manifest.content_scripts.find((c) => c.world !== 'MAIN').js, ['content/content.bundle.js'], target);
-    assert.equal(manifest.background.service_worker, 'background.bundle.js', target);
+    // Safari's background is a page (the link to Margin.app: background/link.js), Chrome's a worker.
+    if (target === 'safari') assert.deepEqual(manifest.background, { scripts: ['background.bundle.js'], persistent: false }, target);
+    else assert.deepEqual(manifest.background, { service_worker: 'background.bundle.js' }, target);
     const background = readFileSync(join(dir, 'background.bundle.js'), 'utf8');
     assert.match(background, /content\/page\.bundle\.js/, `${target}: the background registers the page's script`);
     assert.doesNotMatch(background, /importScripts\(/, `${target}: nothing left to import`);

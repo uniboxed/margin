@@ -28,6 +28,7 @@ import { createReadiness } from './ready.js';
 import { createIdleWatch } from './idle.js';
 import { readyInPage } from '../shared/page-ready.js';
 import { STATE_REV, fromStorage, knowsState, onlyMark, openTabsCurrent, readForPage, revAfter, revOf, takesChanges, withChanges } from '../shared/stored.js';
+import { APP_LINK_KEY, appDraws, boxFromLayout, layoutFor } from '../shared/app-link.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -71,8 +72,26 @@ export function startCore({ onTheme } = {}) {
   const { host, shadow } = createHost(document, 'margin-sidebar-host', { fill: true });
   const retired = () => dormant || host.style.getPropertyValue('display') === 'none';
 
+  // ---- Margin.app ---------------------------------------------------------------
+  // While Margin.app is linked (or reconnecting: shared/app-link.js), it draws
+  // all of Margin's UI around this window: the page draws none (no runtime,
+  // no shadow host in the document), and keeps only its box, from the app's
+  // layout for its window, its gestures, pinch, the draft check and the keys.
+  // Not linked, the in-page development host draws as before. Known from
+  // storage (appLink, in the page's first read), then from the background
+  // (hello, its `appLayout` messages, appLink's change events).
+  /** @type {any} */
+  let appLink; // undefined until the first read
+  const appUi = () => appDraws(appLink);
+  // The host goes into the page only once it's known the page draws Margin.
+  const wantHost = () => appLink !== undefined && !appUi();
+
   // Some pages replace <html>'s children; put the host back if it's removed.
   const attach = () => {
+    if (!wantHost()) {
+      if (host.isConnected) host.remove();
+      return;
+    }
     if (!host.isConnected) mountHost(host);
     if (host.parentNode) observer.observe(host.parentNode, { childList: true }); // <margin-app>: the host taken out of it
   };
@@ -344,7 +363,7 @@ export function startCore({ onTheme } = {}) {
       const files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))]));
       const theme = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: state?.settings?.themes?.[pkg.id] ?? null });
       if (!theme.ok) return void console.error('[margin] theme', pkg.id, 'refused:', /** @type {any} */ (theme).report.errors);
-      if (retired()) return;
+      if (retired() || appUi()) return;
       // An unknown id gets the default: the one the state names, as far as this page goes.
       themeId = want;
       mountUi(theme);
@@ -358,6 +377,21 @@ export function startCore({ onTheme } = {}) {
   }
   // Once per shadow root: no page context menu, selection or zoom there.
   let browserUi = false;
+  let themeTold = false; // onTheme: once (the palette's keys), whatever is mounted again
+  // Margin.app took over drawing: the in-page UI goes (drawn again if the link goes).
+  function unmountUi() {
+    if (!runtime) return;
+    const before = runtime;
+    runtime = null;
+    view = null;
+    themeId = null;
+    try {
+      before.destroy();
+      before.theme?.unload?.();
+    } catch (err) {
+      console.warn('[margin] taking the in-page UI down:', err);
+    }
+  }
   function mountUi(theme) {
     const before = runtime;
     const keep = before ? { palette: before.ui.palette } : {};
@@ -379,7 +413,8 @@ export function startCore({ onTheme } = {}) {
     view = uiView;
     if (!browserUi) asBrowserUi(shadow);
     browserUi = true;
-    if (!before) onTheme?.(runtime);
+    if (!themeTold) onTheme?.(runtime);
+    themeTold = true;
     if (state) render();
     layout.reopen(); // hovered or toggled before it was there
     offerFittedReload();
@@ -401,6 +436,7 @@ export function startCore({ onTheme } = {}) {
   // The theme for the state: loaded once the state says which, and again
   // when Settings changes it. If it didn't work, the next state change asks again.
   function requestTheme() {
+    if (appUi()) return void unmountUi();
     if (!state || loadingTheme != null || (runtime && wantedTheme() === themeId)) return;
     void loadUi(wantedTheme());
   }
@@ -544,6 +580,58 @@ export function startCore({ onTheme } = {}) {
   addEventListener('resize', checkFullscreen);
   const layout = startLayout(page, { loader });
   Margin.content.sidebar = { show: layout.show, hide: layout.hide, toggle: layout.toggle };
+
+  // The box from Margin.app's layout for this window (shared/app-link.js):
+  // its insets from the window's edges, less where this viewport sits in the
+  // window, in this page's zoomed pixels. No layout for the window yet: the
+  // box stays as it is (the first-paint one, registered from the settings).
+  function appGeometry() {
+    const l = layoutFor(appLink, windowId ?? helloWindowId);
+    if (!l) return null;
+    const box = boxFromLayout(l, { outerWidth, outerHeight, innerWidth, innerHeight, zoom: pageZoom });
+    const insets = box ?? { left: 0, top: 0, right: 0, bottom: 0 };
+    const radius = Number(l.radius) || 0;
+    /** @type {import('../ui/host.js').Geometry} */
+    const g = { insets, radius, radii: Array.isArray(l.radii) ? l.radii : [radius, radius, radius, radius], outer: { ...insets, radius }, container: { width: innerWidth, height: innerHeight } };
+    return g;
+  }
+  function applyApp() {
+    if (!appUi()) return;
+    const g = appGeometry();
+    if (g) layout.apply(g);
+  }
+  // What the background says of the link: the page draws, or doesn't, from now on.
+  const appKey = (l) => JSON.stringify([l?.state ?? null, l?.layouts ?? null]);
+  function setAppLink(next) {
+    const value = next && typeof next === 'object' ? next : { state: 'off', layouts: {} };
+    if (appLink !== undefined && appKey(value) === appKey(appLink)) return;
+    const was = appLink === undefined ? null : appUi();
+    appLink = value;
+    const now = appUi();
+    mark(host, 'app', String(appLink.state ?? 'off')); // test/debug hook
+    attach();
+    layout.setSource(now ? appGeometry : null);
+    if (now) {
+      if (was !== true) console.debug('[margin] Margin.app draws the UI: none in this page');
+      unmountUi();
+      switching.end();
+      readiness.wait(false);
+      applyApp();
+    } else if (was === true) {
+      console.debug('[margin] Margin.app is gone: the page draws the UI again');
+      render();
+    }
+  }
+  Margin.content.appDraws = () => appUi();
+  addEventListener('resize', applyApp);
+  // While the app draws: ⌘T is the app's (its hot key, PLAN.md §6); one that
+  // reaches the page anyway does nothing visible, and the app is told.
+  addEventListener('keydown', (e) => {
+    if (!appUi() || !e.isTrusted || e.code !== 'KeyT' || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!e.repeat) void send('appKeyHeard', { command: 'palette' }, false);
+  }, true);
   Margin.content.peek = layout.peek;
 
   // ---- data ---------------------------------------------------------------
@@ -889,7 +977,9 @@ export function startCore({ onTheme } = {}) {
     }
     const readMs = msSince(readFrom), renderFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     for (const key of Object.keys(raw)) seenKeys.add(key);
+    seenKeys.add(APP_LINK_KEY); // read every time from now on
     if (raw.uiTheme) storedTheme = raw.uiTheme;
+    if (mine === version || appLink === undefined) setAppLink(raw[APP_LINK_KEY]);
     const missed = changedDuringRead !== missedBefore;
     if (missed) staleRead = true;
     const next = fromStorage(raw);
@@ -1349,6 +1439,13 @@ export function startCore({ onTheme } = {}) {
       storedTheme = changes.uiTheme.newValue ?? null;
       if (Object.keys(changes).length === 1) return; // nothing else to draw
     }
+    // Margin.app's link (background/link.js): not state.
+    if (APP_LINK_KEY in changes) {
+      setAppLink(changes[APP_LINK_KEY].newValue);
+      const { [APP_LINK_KEY]: _, ...rest } = changes;
+      if (!Object.keys(rest).length) return;
+      changes = rest;
+    }
     // The data set's times for Margin.app, written on their own (background/
     // store.js): nothing a page draws or reads.
     if (Object.keys(changes).every((key) => key.startsWith('dataMeta:'))) return;
@@ -1428,6 +1525,13 @@ export function startCore({ onTheme } = {}) {
     }
     helloWindowId = ctx.windowId;
     fullscreen = ctx.fullscreen;
+    // The background's word on the link (it may be newer than storage's).
+    if (ctx.app !== undefined) {
+      const layouts = { ...(appLink?.layouts ?? {}) };
+      if (ctx.app?.layout && ctx.windowId != null) layouts[ctx.windowId] = ctx.app.layout;
+      setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, layouts } : { state: 'off', layouts });
+    }
+    applyApp(); // its window is known now
     if (ctx.warmUp) showWarmUp(ctx.warmUp);
     render();
     const carry = ctx.carry ?? carriedWhy;
@@ -1541,6 +1645,12 @@ export function startCore({ onTheme } = {}) {
       return sendResponse(true);
     }
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
+    // Margin.app's layout for this window, as it changes (background/link.js).
+    if (message?.type === 'appLayout' && Number.isInteger(message.windowId)) {
+      if (!appLink) return;
+      setAppLink({ ...appLink, layouts: { ...(appLink.layouts ?? {}), [message.windowId]: message.layout } });
+      return;
+    }
     if (message?.type !== 'command') return;
     if (message.command === 'toggle-sidebar') Margin.content.sidebar.toggle();
     else if (message.command === 'peek') Margin.content.peek?.();

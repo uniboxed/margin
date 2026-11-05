@@ -110,6 +110,10 @@ final class FakeRegistrar: HotKeyRegistrar {
     if case .tock? = LinkMessage.decode(#"{"k":"tock","at":1}"#) { check("tock", true) } else { check("tock decodes", false) }
     if case .bye(let why)? = LinkMessage.decode(#"{"k":"bye","why":"turned off"}"#) { check("bye", why == "turned off") } else { check("bye decodes", false) }
     if case .other(let k)? = LinkMessage.decode(#"{"k":"later"}"#) { check("a kind not known: other", k == "later") } else { check("unknown kind decodes", false) }
+    if case .keys(let epoch, let bindings)? = LinkMessage.decode(#"{"k":"keys","epoch":"e","bindings":{"next-tab":["Alt+Meta+ArrowDown","Ctrl+Meta+ArrowDown",3],"palette":["Meta+KeyT"],"odd":"x"}}"#) {
+      check("keys: each command's combinations (strings only)", epoch == "e" && bindings["next-tab"] == ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"] && bindings["palette"] == ["Meta+KeyT"] && bindings["odd"] == nil)
+    } else { check("keys decodes", false) }
+    check("keys need their epoch", LinkMessage.decode(#"{"k":"keys","bindings":{}}"#) == nil)
   }
 
   static func appMessages() {
@@ -345,7 +349,15 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a key not known: not one", Combo.parse("Meta+Banana") == nil)
     check("a modifier twice: not one", Combo.parse("Meta+Meta+KeyT") == nil)
     check("its name", Combo.parse("Ctrl+Meta+ArrowRight")?.description == "⌃⌘ArrowRight")
-    check("five keys by default", ShortcutSet.bindings.count == 5 && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
+    check("six keys by default", ShortcutSet.bindings.count == 6 && Set(ShortcutSet.bindings.values) == Set(AppCommand.allCases))
+    let fromCopy = ShortcutSet.bindings(from: ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"], "palette": [], "prev-space": ["Banana"]])
+    check("the copy's keys: both of a command's combinations", fromCopy[Combo.parse("Alt+Meta+ArrowDown")!] == .nextTab && fromCopy[Combo.parse("Ctrl+Meta+ArrowDown")!] == .nextTab)
+    check("the copy's keys: the sidebar's own", fromCopy[Combo.parse("Alt+KeyK")!] == .toggleSidebar && fromCopy[Combo.parse("Alt+KeyS")!] == nil)
+    check("the copy's keys: the palette is always ⌘T", fromCopy[Combo.parse("Meta+KeyT")!] == .palette)
+    check("the copy's keys: a command not named keeps its default", fromCopy[Combo.parse("Ctrl+Meta+ArrowUp")!] == .prevTab)
+    check("the copy's keys: a combination that isn't one: none for it", !fromCopy.values.contains(.prevSpace))
+    check("the copy's keys: one combination, one command", ShortcutSet.bindings(from: ["next-tab": ["Meta+KeyT"]])[Combo.parse("Meta+KeyT")!] == .nextTab)
+    check("keys Settings can record: punctuation and F keys", Combo.parse("Alt+Comma") != nil && Combo.parse("Ctrl+F5") != nil && Combo.parse("Meta+Backquote") != nil)
     check("gate: the linked browser in front with its overlay", ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: true))
     check("gate: another app in front", !ShortcutSet.active(frontPid: 11, linkedPids: [10], frontWindowHasOverlay: true))
     check("gate: the browser in front, its front window without an overlay", !ShortcutSet.active(frontPid: 10, linkedPids: [10], frontWindowHasOverlay: false))
@@ -356,9 +368,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     keys.onCommand = { ran.append($0) }
     check("not held at first", fake.held.isEmpty && !keys.isActive)
     keys.set(active: true)
-    check("held while active", fake.held.count == 5 && keys.isActive)
+    check("held while active", fake.held.count == 6 && keys.isActive)
     keys.set(active: true)
-    check("not registered twice", fake.registrations == 5)
+    check("not registered twice", fake.registrations == 6)
     let nextTab = fake.held.first { $0.value == Combo.parse("Ctrl+Meta+ArrowDown") }!.key
     fake.onHit?(nextTab)
     check("a key: its command", ran == [.nextTab])
@@ -368,8 +380,21 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a stray hit after letting go: nothing", ran == [.nextTab])
     fake.taken = [Combo.parse("Meta+KeyT")!]
     keys.set(active: true)
-    check("one another app holds: the rest still Margin's", fake.held.count == 4 && keys.unavailable == [Combo.parse("Meta+KeyT")!])
+    check("one another app holds: the rest still Margin's", fake.held.count == 5 && keys.unavailable == [Combo.parse("Meta+KeyT")!])
+    fake.taken = []
+    keys.rebind(fromCopy)
+    check("new keys while held: the new ones held at once", keys.isActive && Set(fake.held.values) == Set(fromCopy.keys) && fake.held.count == fromCopy.count)
+    let toggle = fake.held.first { $0.value == Combo.parse("Alt+KeyK") }!.key
+    ran = []
+    fake.onHit?(toggle)
+    check("a new key: its command", ran == [.toggleSidebar])
+    let before = fake.registrations
+    keys.rebind(fromCopy)
+    check("the same keys again: nothing registered again", fake.registrations == before)
     keys.set(active: false)
+    check("let go after a rebind: none held", fake.held.isEmpty)
+    keys.rebind(ShortcutSet.bindings)
+    check("new keys while let go: none held", fake.held.isEmpty && !keys.isActive)
     // Carbon itself, with a key no one uses (held for a moment, never pressed).
     let carbon = CarbonHotKeys()
     let odd = Combo.parse("Ctrl+Alt+Shift+Meta+F19")!
