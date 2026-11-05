@@ -432,6 +432,9 @@
 .margin-sidebar .editor input:focus { border-color: var(--space-color); }
 .margin-sidebar .editor .emoji { width: 40px; flex: none; text-align: center; font-size: 15px; }
 .margin-sidebar .editor .name { flex: 1; }
+.margin-sidebar .editor .name:disabled { opacity: 0.7; }
+.margin-sidebar .editor .note { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.margin-sidebar .chip .profile-mark .profile-symbol { display: block; width: 8px; height: 8px; margin: 1.5px auto 0; }
 .margin-sidebar .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .margin-sidebar .swatch { width: 20px; height: 20px; padding: 0; border-radius: 50%; background: var(--chip-color); }
 .margin-sidebar .swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--frame), 0 0 0 4px var(--chip-color); }

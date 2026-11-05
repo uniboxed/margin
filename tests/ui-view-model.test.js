@@ -242,7 +242,7 @@ test('Margin\'s own words: the menu\'s and the editor\'s labels, a notice\'s and
     notice: { id: 'fs', text: 'Margin works in full screen.', actions: [{ id: 'go', label: 'Full screen', primary: true }, { id: 'no', label: 'Not now' }] },
     prompt: { id: 'app', title: 'Install Margin.app', text: 'Margin needs its app on the Mac.', actions: [{ id: 'ok', label: 'Install', primary: true }] } });
   assert.equal(vm.menu.label, 'Tab');
-  assert.deepEqual(vm.editor.labels, { title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel' });
+  assert.deepEqual(vm.editor.labels, { title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel', note: '' });
   assert.deepEqual(vm.notice, { id: 'fs', text: 'Margin works in full screen.', hasActions: true, actions: [{ id: 'go', label: 'Full screen', primary: true, danger: false }, { id: 'no', label: 'Not now', primary: false, danger: false }] });
   assert.deepEqual([vm.prompt.title, vm.prompt.text, vm.prompt.actions.map((a) => a.label)], ['Install Margin.app', 'Margin needs its app on the Mac.', ['Install']]);
   const plain = build(state, { notice: { id: 'n', text: 'Hi' } });

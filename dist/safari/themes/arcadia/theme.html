@@ -129,7 +129,7 @@
         <m-for each="spaces" as="s">
           <!-- Several browser profiles (Margin.app): a thin divider where one profile's spaces give way to another's, and another profile's spaces carry its mark. -->
           <m-if test="s.profileStart"><span class="profile-divider" aria-hidden="true"></span></m-if>
-          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:foreign="{{s.foreign}}" m-class:switching="{{s.switching}}" title="{{s.label}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.emoji}}<m-if test="s.profileMark"><span class="profile-mark" m-style:--profile-color="{{s.profile.color}}" aria-hidden="true">{{s.profile.initial}}</span></m-if></button>
+          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:foreign="{{s.foreign}}" m-class:switching="{{s.switching}}" title="{{s.label}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.emoji}}<m-if test="s.profileMark"><span class="profile-mark" m-style:--profile-color="{{s.profile.color}}" aria-hidden="true"><m-if test="s.profile.symbol"><img class="profile-symbol" alt="" m-icon="{{s.profile.symbol}}"><m-else>{{s.profile.initial}}</m-else></m-if></span></m-if></button>
         </m-for>
       </nav>
       <button class="bar-button add" title="New folder or space" aria-label="New folder or space" m-action="menu.open" m-arg="add">
@@ -223,8 +223,9 @@
     <div class="editor" role="form" m-attr:aria-label="{{editor.labels.title}}">
       <div class="row">
         <input class="emoji" type="text" m-input="space-emoji" maxlength="8" m-attr:aria-label="{{editor.labels.emoji}}" autocomplete="off" spellcheck="false">
-        <input class="name" type="text" m-input="space-name" maxlength="40" m-attr:placeholder="{{editor.labels.name}}" m-attr:aria-label="{{editor.labels.name}}" autocomplete="off" spellcheck="false">
+        <input class="name" type="text" m-input="space-name" maxlength="40" m-attr:placeholder="{{editor.labels.name}}" m-attr:aria-label="{{editor.labels.name}}" m-attr:disabled="{{editor.nameLocked}}" autocomplete="off" spellcheck="false">
       </div>
+      <m-if test="editor.nameLocked"><div class="note">{{editor.labels.note}}</div></m-if>
       <div class="swatches" role="radiogroup" m-attr:aria-label="{{editor.labels.colors}}">
         <m-for each="editor.colors" as="c">
           <button class="swatch" role="radio" title="{{c.color}}" m-attr:aria-checked="{{c.selected}}" m-style:--chip-color="{{c.color}}" m-action="editor.color" m-arg="{{c.id}}"></button>

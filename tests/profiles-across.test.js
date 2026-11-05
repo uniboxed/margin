@@ -118,6 +118,33 @@ test('view model: the profile editor uses the space editor\'s part; a profile\'s
   assert.match(ed.deleteTitle, /profile’s last space/);
 });
 
+test('Safari\'s own names (step 9): marked as Safari\'s, its symbol\'s picture on the mark, and Edit Profile shows the name without changing it', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const raw = rawAcross();
+  raw.profiles[1] = { ...raw.profiles[1], name: 'Personal', nameFrom: 'safari', symbol: PNG };
+  const a = acrossOf(raw);
+  assert.equal(a.profiles[1].nameFrom, 'safari');
+  assert.equal(a.profiles[1].symbol, PNG);
+  assert.equal(a.profiles[0].nameFrom, '', 'Margin\'s own name');
+  const odd = acrossOf({ ...raw, profiles: [{ ...raw.profiles[1], nameFrom: 'chrome?', symbol: 'javascript:alert(1)' }, { ...raw.profiles[1], id: 'x', symbol: 'data:image/svg+xml;base64,PHN2Zz4=' }] });
+  assert.equal(odd.profiles[0].nameFrom, '');
+  assert.equal(odd.profiles[0].symbol, '', 'only a PNG data URL');
+  assert.equal(odd.profiles[1].symbol, '', 'never an SVG');
+  const vm = build({ ...smallState(), across: a });
+  const work = vm.profiles.find((p) => p.id === WORK);
+  assert.equal(work.fromBrowser, true);
+  assert.equal(work.symbol, PNG);
+  assert.equal(vm.profiles.find((p) => p.id === HERE).symbol, null);
+  const chip = vm.spaces.find((s) => s.foreign);
+  assert.equal(chip.profile.symbol, PNG, 'the chip\'s profile mark can draw it');
+  const ed = build({ ...smallState(), across: a }, { editor: { profileId: WORK, name: 'Personal', emoji: '💼', color: '#00b894' } }).editor;
+  assert.equal(ed.nameLocked, true);
+  assert.match(ed.labels.note, /Safari’s.*Settings › Profiles/);
+  const own = build(withAcross(), { editor: { profileId: WORK, name: 'Job', emoji: '💼', color: '#00b894' } }).editor;
+  assert.equal(own.nameLocked, false);
+  assert.equal(own.labels.note, '');
+});
+
 test('actions: another profile\'s space is a space; profiles are checked; the new actions map to the app or the copy', () => {
   const state = withAcross();
   const ctx = contextFromState(state);

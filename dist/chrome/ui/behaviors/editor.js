@@ -10,7 +10,8 @@
 // Enter saves, Escape cancels. Delete asks first ("Really delete?"), and the
 // last space can't be deleted. With several profiles (Margin.app), the same
 // part edits a profile's name, emoji and color (`profile.edit`: the editor's
-// `isProfile`), saved by the app (host.perform 'profile.rename').
+// `isProfile`), saved by the app (host.perform 'profile.rename'); a name
+// that's Safari's (`nameLocked`) is shown, not changed: the app keeps it.
 import { SPACE_COLORS } from './menu-items.js';
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -38,7 +39,8 @@ export function installEditor(rt) {
     if (!p) return false;
     rt.behaviors.menus?.close();
     focusName = true;
-    rt.setUi({ editor: { profileId, name: p.named ? p.name : '', emoji: p.emoji ?? '', color: p.color ?? '', confirmDelete: false, fresh: false } });
+    const name = p.nameFrom === 'safari' || p.named ? p.name : '';
+    rt.setUi({ editor: { profileId, name, emoji: p.emoji ?? '', color: p.color ?? '', confirmDelete: false, fresh: false } });
     return true;
   }
   // `deleted`: it's gone (no showing it).
@@ -110,10 +112,11 @@ export function installEditor(rt) {
       const name = view.input('space-name');
       const emoji = view.input('space-emoji');
       if (focusName) {
-        // Opened: the fields show the space as it is, the name selected.
+        // Opened: the fields show the space as it is, the name selected (Safari's name: the emoji).
         if (name) name.value = vm.editor.name;
         if (emoji) emoji.value = vm.editor.emoji;
-        if (name) { focusName = false; name.focus({ preventScroll: true }); name.select(); }
+        const first = vm.editor.nameLocked ? emoji : name;
+        if (first) { focusName = false; first.focus({ preventScroll: true }); first.select(); }
       }
     },
     busy: () => rt.ui.editor != null,

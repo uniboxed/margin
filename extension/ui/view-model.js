@@ -88,9 +88,13 @@ export const VM_VERSION = 1;
  * }} FolderRow
  * A browser profile (several, with Margin.app: shared/across.js). `initial`:
  * the letter its mark shows when it has no emoji; `here`: this window's.
+ * `fromBrowser`: the name is the browser's own (Safari's, read with Full
+ * Disk Access); `symbol`: the browser's symbol for it, a small white picture
+ * (an `m-icon`), or null.
  * @typedef {{
  *   id: string, name: string, emoji: string, color: string, initial: string,
  *   here: boolean, linked: boolean, stale: boolean, spaces: number,
+ *   fromBrowser: boolean, symbol: string | null,
  * }} ProfileChip
  * A space's chip. With spaces in several profiles (`multiProfile`):
  * `profile` is its profile, `foreign` true for another profile's (a click
@@ -128,9 +132,13 @@ export const VM_VERSION = 1;
  *   id: string, name: string, emoji: string, color: string,
  *   colors: { id: string, color: string, selected: boolean }[],
  *   canDelete: boolean, cannotDelete: boolean, confirmDelete: boolean, deleteLabel: string, deleteTitle: string,
- *   labels: { title: string, name: string, emoji: string, colors: string, save: string, cancel: string },
+ *   labels: { title: string, name: string, emoji: string, colors: string, save: string, cancel: string, note: string },
  *   isProfile: boolean,
+ *   nameLocked: boolean,
  * }} EditorView
+ * `nameLocked`: a profile whose name is Safari's (Margin never writes to
+ * Safari): the name field shows it and can't be changed, `labels.note` says
+ * where to rename it; the emoji and color are Margin's.
  *
  * A notice or a prompt: Margin's words, and its buttons' (each runs
  * notice.run / prompt.run with its id). The theme's `notice` and `prompt`
@@ -479,8 +487,9 @@ function fresh(input) {
       confirmDelete: false,
       deleteLabel: 'Delete',
       deleteTitle: '',
-      labels: PROFILE_EDITOR_LABELS,
+      labels: editedProfile.fromBrowser ? PROFILE_EDITOR_SAFARI_LABELS : PROFILE_EDITOR_LABELS,
       isProfile: true,
+      nameLocked: editedProfile.fromBrowser,
     };
   } else if (ui.editor && edited) {
     const only = state.spaces.length < 2;
@@ -497,6 +506,7 @@ function fresh(input) {
       deleteTitle: only ? (multiProfile ? 'A profile’s last space can’t be deleted' : 'The last space can’t be deleted') : 'Tabs and pins move to the first space',
       labels: EDITOR_LABELS,
       isProfile: false,
+      nameLocked: false,
     };
   }
 
@@ -559,6 +569,7 @@ function profileChip(p) {
   return {
     id: p.id, name: p.name, emoji: p.emoji, color: p.color, initial: [...String(p.name ?? '').trim()][0]?.toUpperCase() ?? '',
     here: p.here, linked: p.linked, stale: p.stale, spaces: p.spaces,
+    fromBrowser: p.nameFrom === 'safari', symbol: p.symbol && checkIconUrl(p.symbol) ? p.symbol : null,
   };
 }
 
@@ -596,8 +607,12 @@ const LAUNCHER_ARCHIVE = 12;
 // The words of Margin's own parts (the menu's and the editor's), which a
 // theme binds rather than writes (ui/sanitize.js GUARDED_PARTS).
 const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New' });
-const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel' });
-const PROFILE_EDITOR_LABELS = Object.freeze({ title: 'Edit profile', name: 'Profile name', emoji: 'Profile emoji', colors: 'Profile color', save: 'Save', cancel: 'Cancel' });
+const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel', note: '' });
+const PROFILE_EDITOR_LABELS = Object.freeze({ title: 'Edit profile', name: 'Profile name', emoji: 'Profile emoji', colors: 'Profile color', save: 'Save', cancel: 'Cancel', note: '' });
+const PROFILE_EDITOR_SAFARI_LABELS = Object.freeze({
+  ...PROFILE_EDITOR_LABELS, name: 'Profile name (Safari’s)',
+  note: 'The name is Safari’s: rename the profile in Safari › Settings › Profiles and Margin follows. The emoji and color are Margin’s.',
+});
 
 // Rows that go somewhere (Arcadia's arrow button).
 const GOES = new Set(['tab', 'pin', 'archive', 'go']);
