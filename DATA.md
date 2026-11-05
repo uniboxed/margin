@@ -1,6 +1,6 @@
 # Margin's lasting data
 
-What Margin keeps between launches, the shape Margin.app stores it in on the Mac (`PLAN.md` §6, "Where data lives"), and how the extension and the app exchange it. Built on the extension's side in Margin 2, Phase 2 step 1; the app's store and the link use it in step 3.
+What Margin keeps between launches, the shape Margin.app stores it in on the Mac (`PLAN.md` §6, "Where data lives"), and how the extension and the app exchange it. Built on the extension's side in Margin 2, Phase 2 step 1; the app's store and the link's data messages in step 3.
 
 ## What's lasting and what's live
 
@@ -64,16 +64,48 @@ A change is `{ collection, id, updatedAt, value }` or `{ collection, id, updated
 
 `stateFromDataSet(state, set)` gives the extension's state from a data set (the app's, merged with the queue): spaces, pins, folders, the archive, settings, theme settings and site icons from the set; open tabs keep their browser tabs and take their Margin tab's space and place; Margin tabs that aren't open become kept tabs. The live state stays.
 
-## Messages (step 3)
+## The app's files
 
-On the link (`PLAN.md` §5), next to the state messages. Each names the `profile`.
+Margin.app keeps each profile's data set in `~/Library/Application Support/Margin/data/` (`app/shell/DataStore.swift`):
+
+```text
+data/<browser>/<profile>/set.json                  { format, browser, profile, acked, savedAt }
+data/<browser>/<profile>/items/<collection>.json   { format, collection, items: { id: item } }
+```
+
+- One file per collection, so a change to a space doesn't rewrite every site icon. `set.json` says the profile has a data set, and keeps `acked`: the newest `upTo` the app has confirmed to that profile's copy (`data.ack`).
+- Folder names are the browser's and profile's ids with everything but `a–z`, `0–9`, `_` and `-` written as `%XX` (profile `P1` is `%501`), so no id can be `..`, and two ids that differ only in case stay apart on a case-insensitive disk. Margin's collections keep their names (`themeSettings.json`); any other collection (a later format's) is written the same way after `x-`. The real names are the ones inside the files.
+- **Writing:** the whole file goes to a temporary file beside it (`.<name>.<random>.tmp`, flushed with `fsync`), the version it replaces is kept as `<name>.bak` (a hard link, so the file is never missing), then the new one is renamed over it. Only the collections that changed are written, then `set.json`, last. The copy gets `data.ack` only once all of it is on disk.
+- **Reading:** a file that can't be read is taken from its `.bak`; temporary files a crash left are removed. A profile without `set.json` (or its `.bak`) has no data set. A file of a later `format` leaves that profile's data alone: not read, never written over.
+- **A crash mid-write** leaves every file whole, each the old version or the new, though the collections can be a mix of both. Nothing was acked, so the copy sends the same queue on its next link, and the merge (which gives the same result applied twice) makes the set whole again. A write the disk lost after the ack (a power cut: macOS's `fsync` doesn't flush the drive's cache), or files restored from an older backup, show up as a copy with more confirmed (`acked`) than `set.json` has: the app then asks for the whole set (`data.need`) and merges it in.
+- Tombstones are dropped when a set is saved once they're older than 60 days, and beyond the newest 2,000 in a collection (the extension's limits).
+- Tests use a temporary folder (`Shell.Options.dataRoot`; a harness without one gets a new temporary folder), never the real one.
+
+The rest of the app reads the data through `Shell.data` (`DataSync`): `profiles(browser:)`, `set(of:)`, `values(_:of:)` (a collection's live values), `marginTabs(of:space:)`, `onChange`, and `change(_:_:)` for the app's own changes; `Shell.notOpenTabs(_:space:)` gives a profile's Margin tabs that aren't open (all of them for a profile that isn't linked).
+
+## Messages
+
+On the link (`app/PROTOCOL.md`), next to the state messages, any time after `hello`. Each names the `profile`; the app's also carry the link's `epoch`. A message only ever touches the data set of the link it came on (its browser and profile): one naming another profile, or another epoch, is ignored.
 
 | Message | From | Body |
 |---|---|---|
-| `data.hello` | extension | `format`, `acked` (the newest `updatedAt` the app has confirmed, 0 for never), `queue` (the changes after `acked`) |
-| `data.need` | app | `{ all: true }`: the app has no data set for this profile; the extension answers with `data.snapshot` |
-| `data.snapshot` | either | `format`, `set` (a whole data set). From the extension: the converter's, for the first link. From the app: its data set merged with the queue, which the extension takes as its cache (`stateFromDataSet`) |
-| `data.changes` | either | `changes` (per-item changes, oldest first): the extension's as they're made while linked, the app's own (its UI, another window's copy) |
-| `data.ack` | app | `upTo`: the newest `updatedAt` it has stored; the extension keeps it as `acked` |
+| `data.hello` | extension | `format`, `acked` (the newest `upTo` the app has confirmed, 0 for never), `queue` (the changes after `acked`, oldest first) |
+| `data.need` | app | `all: true`: the app has no data set for this profile, or one older than the copy's `acked`; the extension answers with `data.snapshot` |
+| `data.snapshot` | either | `format`, `set` (a whole data set, or one part of one), `transfer`, `part`, `parts`; from the app, `omitted` on part 0 when it left anything out |
+| `data.changes` | either | `changes` (per-item changes, oldest first): the extension's as they're made while linked; the app's own, and its answers to changes that lost |
+| `data.ack` | app | `upTo` (below); the extension keeps it as `acked` |
 
-On link: the extension sends `data.hello`; the app merges the queue into its data set (or asks for `data.snapshot` with `data.need`), stores it, sends `data.snapshot` back, then `data.ack`. A message from the app to Chrome's or Edge's extension over 1 MB kills the port (`PLAN.md` §14, spike 3), so a large `data.snapshot` goes in parts: `part` and `parts` on each, the set split by collection and item.
+What the app does with each:
+
+- **`data.hello`:** if it has the profile's set and `acked` isn't above the set's own `acked`, it merges the queue, stores the set, sends it back whole (`data.snapshot`), then `data.ack`. Otherwise it sends `data.need` and holds the queue until the copy's `data.snapshot` comes.
+- **`data.snapshot` from the extension** (the converter's, `dataSetFromStorage`): with no set for the profile, the held queue and then the snapshot are merged into nothing and stored as the profile's set, then `data.ack`; nothing is sent back (the copy has it all). With a set (a copy with more `acked` than the app's files, or a snapshot the app didn't ask for), it's merged into the app's set, stored, sent back merged, then `data.ack`.
+- **`data.changes` from the extension:** merged, stored, then `data.ack`. A change that lost to a newer item of the app's (or to a tombstone of the same time) is answered with that item in `data.changes` before the ack, so the copy's cache follows. Changes that come while the app waits for a snapshot, or before it has a set, are held and merged after it.
+- **The app's own changes** (its UI, step 4): merged, stored, and sent in `data.changes` to the profile's copy if it's linked; if not, the copy's next `data.hello` gets them in the snapshot.
+- **`upTo`:** the newest `updatedAt` among the extension's changes the app has stored (its queue, its snapshot, its `data.changes`; one that lost the merge counts too, as it's settled), never lower than the copy's `acked`. Sent only once the set is on disk: a write that fails sends nothing, and the copy keeps its queue.
+
+**Parts.** Nothing from the app is over 1 MB (a bigger message kills Chrome's and Edge's port: `PLAN.md` §14, spike 3), so the app's `data.snapshot` is split by collection and item: each part is a data set of its own with at most about 900 KB of items, the parts of one snapshot share a `transfer` (any string) and are numbered `part` from 0 of `parts` (1 when it fits). Every collection of the set is named in part 0, an empty one too (`{}`), so the copy learns that a collection is now empty. The whole is the union of the parts' items. An item whose JSON alone is over the limit (a user theme package can be 4.5 MB) can't go: it's left out and listed in part 0's `omitted: [[collection, id]]`, and the extension keeps its own copy (user themes will go as `theme` pieces, Phase 6). A long `data.changes` from the app goes as several, in order. The extension may send its `data.snapshot` whole (the app takes messages up to 64 MB) or in parts the same way.
+
+**For the extension's end:**
+
+- Take the app's `data.snapshot` as the cache (`stateFromDataSet`) once all its parts are here, with any change made after the `data.hello` was sent merged into it first, so a snapshot crossing a change doesn't undo it.
+- A refill isn't the copy's own change: its meta (`dataMeta:<collection>`) should take the set's times, or the next queue sends the app's items back as new ones.

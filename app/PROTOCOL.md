@@ -1,6 +1,6 @@
 # The link between Margin's extension and Margin.app, version 2
 
-What each end says, in order. The app's end is `app/shell/` (`ExtensionLink.swift`, `LinkMessage.swift`, `Chunks.swift`, `StateMirror.swift`, `Shell.swift`); the extension's end is Phase 2 step 3's. `tools/app-tests/fake-extension.mjs` is a working stand-in for the extension's end and the quickest way to see every message in use.
+What each end says, in order. The app's end is `app/shell/` (`ExtensionLink.swift`, `LinkMessage.swift`, `Chunks.swift`, `StateMirror.swift`, `Shell.swift`, and for the lasting data `DataSync.swift` and `DataStore.swift`); the extension's end is Phase 2 step 3's. `tools/app-tests/fake-extension.mjs` is a working stand-in for the extension's end and the quickest way to see every message in use.
 
 Version 1 was `feat/native-panel`'s (one link, a `cover` lease for the sidebar panel). Version 2 has one link per browser profile, no lease, `setLayout`, and chunked themes.
 
@@ -40,6 +40,7 @@ One JSON object per WebSocket text frame. `k` names the kind. Unknown kinds are 
 | `reply` | `id`, `ok`, `result`? / `error`?, `stale`? | The answer to the app's `req` with that `id`: what the background's handler returned, as a page's `runtime.sendMessage` gets it. |
 | `tock` | `at` | The answer to `tick`. |
 | `bye` | `why` | The copy is going (turned off, updating). |
+| `data.hello`, `data.snapshot`, `data.changes` | see `DATA.md` | The lasting data: the copy's queue on link, its whole set when asked, its changes while linked (`DATA.md` "Messages"). Any time after `hello`. |
 
 `seq` counts `snapshot`, `delta` and `windows` together, from 1 in each epoch, one up each time. A `snapshot` may come with any `seq`; the app takes it and counts on from it.
 
@@ -53,6 +54,7 @@ One JSON object per WebSocket text frame. `k` names the kind. Unknown kinds are 
 | `setLayout` | `epoch`, `windowId`, `seq`, `insets`, `radius`, `radii`, `container`, `mode`, `at` | Where the theme put the page in that window (its `<m-page>` content box): `insets: { left, top, right, bottom }` from the **window's** edges, in points (the overlay is exactly over the window), rounded to half a point; `radius`/`radii` the slot's inner corners (top-left, top-right, bottom-right, bottom-left); `container: { width, height }`, the window's size it was measured at (only a layout measured at the window's current size is sent); `mode`: `fullscreen` or `windowed`. `seq` counts up per window per epoch; only a change is sent. The copy keeps the latest per window and gives it to that window's pages as their box. The page box's insets are from the page's viewport, so the copy subtracts where the viewport sits in the window (a toolbar shown above the page in full screen, for instance). No reply. |
 | `resync` | `epoch` | A `seq` was missed: send a `snapshot`. Sent again every 2 s until one comes. |
 | `theme` | as above | The app may send a theme the same way (once it holds user themes, step 3). |
+| `data.need`, `data.snapshot`, `data.changes`, `data.ack` | see `DATA.md` | The lasting data: asking for the whole set, the app's set (in parts), its changes, and what it has stored (`DATA.md` "Messages"). |
 | `bye` | `why` | The app is quitting. |
 
 ### Liveness
@@ -72,4 +74,5 @@ A theme package is sent as the UTF-8 JSON of `{ id, manifest, html, css, files: 
 
 - One mirror per link (`StateMirror.swift`); deltas apply in order; a gap asks for a resync, and until the snapshot comes, deltas are ignored.
 - Windows: matched to the window server's by bounds, with focus and being on screen to break ties (`WindowMatcher.swift`). A full-screen window of a linked copy gets an overlay drawing the theme once the copy's state and theme are here.
+- The lasting data: one data set per browser profile in the app's files (`DATA.md` "The app's files"); a link's data messages touch only its own profile's set.
 - Each overlay's page gets the stored values and passes changes on as they come (`extension/ui/host-app.js`); its actions come back as `req` for its window; its layout goes out as `setLayout`.
