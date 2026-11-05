@@ -121,7 +121,9 @@ export const knowsState = (rev, { known, reading, staleRead }) => typeof rev ===
 // open tabs (read in full when `openTabs` isn't there), lostTabs (only the
 // background's), or the envelope an old development build kept.
 const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', FAVICONS_MARK, STATE_REV]);
-const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup']);
+// The active theme's package (`uiTheme`, background/theme-package.js): in a
+// page's first read, then kept from change events (content/core.js).
+const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup', 'uiTheme']);
 /** @param {Iterable<string>} seen storage keys a page has seen @returns {string[]} */
 export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key));
 

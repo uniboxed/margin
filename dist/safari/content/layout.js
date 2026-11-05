@@ -46,6 +46,7 @@ export function startLayout(page, { loader }) {
     mark(host, 'box', box ? String(Math.round(box.left)) : 'off'); // test/debug hook
     const sidebar = rt()?.vm?.window.sidebar;
     if (sidebar) mark(host, 'open', String(sidebar !== 'hidden' && page.active())); // test/debug hook; reveals nothing private
+    passThrough(); // the slot may have moved under the pointer (or the UI is new)
     if (page.state()) syncPlaceholder();
   }
 
@@ -98,14 +99,19 @@ export function startLayout(page, { loader }) {
   // Over the page's slot the pointer goes to the page under it, past the
   // theme's root (its frame strips take it: they're Margin's); what the
   // theme draws over the page (a sidebar out over it, a menu) still takes it
-  // (ui/render.js m-passthrough). Set as it crosses the slot's edge.
+  // (ui/render.js m-passthrough). On unless the pointer is on the frame
+  // itself, so the page's own hit tests (elementFromPoint, a press with no
+  // move before it) find the page; switched as the pointer crosses the
+  // slot's edge.
   let through = null;
+  /** @type {{ x: number, y: number } | null} */
+  let pointerAt = null; // over this window, or null (away)
   const inSlot = (x, y) => {
-    if (!layout) return false;
+    if (!layout || !Number.isFinite(x)) return true;
     const { left, top, right, bottom } = layout.insets;
     return x >= left && y >= top && x <= innerWidth - right && y <= innerHeight - bottom;
   };
-  function passThrough(x, y) {
+  function passThrough(x = pointerAt?.x, y = pointerAt?.y) {
     const root = rt()?.view.rootElement();
     if (!root) return;
     const on = inSlot(x, y);
@@ -117,7 +123,8 @@ export function startLayout(page, { loader }) {
   // the runtime's reveal edge. Out of the way, reaching the edge offers full
   // screen instead (content/core.js).
   const onMove = (/** @type {MouseEvent} */ e) => {
-    passThrough(e.clientX, e.clientY);
+    pointerAt = { x: e.clientX, y: e.clientY };
+    passThrough();
     if (e.target === host) return;
     if (!page.active()) {
       if (e.clientX <= edgePx()) page.offerFullscreen();
@@ -130,12 +137,15 @@ export function startLayout(page, { loader }) {
   // Cursor left the window.
   document.addEventListener('mouseout', (e) => {
     if (e.relatedTarget) return;
+    pointerAt = null;
+    passThrough();
     rt()?.pointerLeft({ x: e.clientX, y: e.clientY });
   });
   // Clicking the page closes a toggled sidebar (clicks inside are retargeted
   // to the host).
   document.addEventListener('mousedown', (e) => {
-    passThrough(e.clientX, e.clientY);
+    pointerAt = { x: e.clientX, y: e.clientY };
+    passThrough();
     if (rt()?.sidebar.reason() === 'toggle' && e.target !== host) rt()?.sidebar.hide();
   }, true);
 

@@ -244,7 +244,8 @@ function fresh(input) {
   const platform = { browser: input.platform?.browser ?? 'unknown', os: input.platform?.os ?? 'unknown' };
   const settings = input.settings ?? {};
   const pinnedOpen = !!state?.settings?.sidebarPinnedOpen;
-  const sidebar = ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen ? 'open' : 'hidden';
+  // Margin's own pages (the launcher) always show the sidebar beside it.
+  const sidebar = ui.sidebar === 'open' || ui.sidebar === 'hidden' || ui.sidebar === 'peek' ? ui.sidebar : pinnedOpen || ui.launcherPage ? 'open' : 'hidden';
   const windowId = ui.windowId ?? null;
   const win = {
     id: windowId,

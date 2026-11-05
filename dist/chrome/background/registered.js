@@ -8,6 +8,7 @@
 import { platform } from '../shared/platform.js';
 import { themeFor } from '../themes/index.js';
 import { api } from './store.js';
+import { storeActiveTheme } from './theme-package.js';
 
 // ---- first-paint placeholder ------------------------------------------------
 
@@ -84,6 +85,8 @@ export const queueRegistrations = () => {
     .catch((err) => console.warn('[margin] docked css', err))
     .then(syncPage)
     .catch((err) => console.warn('[margin] page box', err))
+    .then(storeActiveTheme) // not a registration: the theme pages read with the state
+    .catch((err) => console.warn('[margin] theme', err))
     .then(dropOld);
   return registrations;
 };

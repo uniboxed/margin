@@ -99,6 +99,8 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
   assert.equal(vm({}).settingsForm, null, 'a web page');
   assert.equal(vm({ launcherPage: true }).settingsForm, null, 'closed');
   assert.equal(vm({ launcherPage: true }).launcher.settingsOpen, false);
+  assert.equal(vm({ launcherPage: true }).window.sidebar, 'open', 'the sidebar beside the launcher, Keep open or not');
+  assert.equal(vm({}).window.sidebar, 'hidden');
   const open = vm({ launcherPage: true, settingsOpen: true });
   assert.equal(open.launcher.settingsOpen, true);
   assert.ok(open.settingsForm.fields.some((f) => f.id === 'wakeAll'));

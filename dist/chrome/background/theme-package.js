@@ -54,6 +54,23 @@ export async function readThemePackage(id, { fetchFile = (path) => fetch(api.run
   return { id, manifest, html, css, files };
 }
 
+// The active theme's package, also kept in storage.local (`uiTheme`: { id,
+// version, pkg }), written when it changes (the settings' theme, a new
+// build, even one with the same version): a page reads it with the state,
+// so its UI draws without waiting for the background to wake for a message
+// (Safari unloads it when idle), and asks for it only when it isn't there
+// or is another theme's. Copies of Margin share storage: whichever wrote
+// last, a page still checks the package as any (ui/theme-loader.js).
+export const STORED_THEME = 'uiTheme';
+export async function storeActiveTheme() {
+  const got = await api.storage.local.get(['settings', STORED_THEME]);
+  const id = activeThemeId(got.settings);
+  const pkg = await themePackage(id);
+  const stored = got[STORED_THEME];
+  if (stored?.id === id && JSON.stringify(stored.pkg) === JSON.stringify(pkg)) return;
+  await api.storage.local.set({ [STORED_THEME]: { id, version: api.runtime.getManifest?.().version ?? null, pkg } });
+}
+
 /** The package for `id`, read once. @param {string} id */
 export function themePackage(id) {
   if (!cache.has(id)) {

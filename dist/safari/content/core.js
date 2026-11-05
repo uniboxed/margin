@@ -329,11 +329,17 @@ export function startCore({ onTheme } = {}) {
   /** @type {string | null} */
   let loadingTheme = null; // a load under way (one at a time)
   const wantedTheme = () => String(state?.settings?.theme ?? 'arcadia');
+  // The package as the background keeps it in storage (`uiTheme`: read with
+  // the state, kept from change events), if it's the one wanted; else asked
+  // for.
+  /** @type {any} */
+  let storedTheme = null;
   /** @param {string} want */
   async function loadUi(want) {
     loadingTheme = want;
     try {
-      const pkg = /** @type {any} */ (await send('themePackage', { id: want }));
+      const stored = storedTheme?.id === want && storedTheme?.pkg?.id === want ? storedTheme.pkg : null;
+      const pkg = /** @type {any} */ (stored ?? await send('themePackage', { id: want }));
       if (!pkg || typeof pkg !== 'object' || typeof pkg.id !== 'string') return;
       const files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))]));
       const theme = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: state?.settings?.themes?.[pkg.id] ?? null });
@@ -360,7 +366,10 @@ export function startCore({ onTheme } = {}) {
     try {
       uiHost ??= makeUiHost();
       uiHost.identify({ tabId, windowId });
-      runtime = createRuntime({ host: uiHost, theme, container: shadow, ui: keep, onSwitchSlow, onSwitchFailed: () => switchFailed() });
+      runtime = createRuntime({
+        host: uiHost, theme, container: shadow, ui: keep, onSwitchSlow, onSwitchFailed: () => switchFailed(),
+        onSwitching: (id) => mark(host, 'switchingTo', id == null ? '' : String(id)), // test/debug hook
+      });
       runtime.theme = theme;
     } catch (err) {
       runtime = null;
@@ -880,6 +889,7 @@ export function startCore({ onTheme } = {}) {
     }
     const readMs = msSince(readFrom), renderFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     for (const key of Object.keys(raw)) seenKeys.add(key);
+    if (raw.uiTheme) storedTheme = raw.uiTheme;
     const missed = changedDuringRead !== missedBefore;
     if (missed) staleRead = true;
     const next = fromStorage(raw);
@@ -1335,6 +1345,10 @@ export function startCore({ onTheme } = {}) {
   let changedWhileHidden = false;
   const onStorageChanged = (changes, area) => {
     if (area !== 'local' || dormant) return;
+    if ('uiTheme' in changes) {
+      storedTheme = changes.uiTheme.newValue ?? null;
+      if (Object.keys(changes).length === 1) return; // nothing else to draw
+    }
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!firstRender && onlyShowing(changes)) return;
     // The write this brings, if the state takes it (one read instead: the

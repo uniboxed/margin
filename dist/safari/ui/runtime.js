@@ -62,7 +62,9 @@ const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
  *   onSwitchSlow?: (slow: boolean) => void,
  *   onSwitchFailed?: () => void,
  *   onPalette?: (what: 'run' | 'close', request?: any) => void,
+ *   onSwitching?: (tabId: number | null) => void,
  * }} options `ui`: the UI state to start from; `log`: every action refused;
+ * `onSwitching`: the tab a switch from the UI is highlighting (null: none);
  * `onPalette`: the palette closed, a row chosen (`run`, with what it sends
  * or does: ui/actions.js requestFor) or not (`close`), for the new-tab
  * page's hand-off (newtab/newtab.js);
@@ -70,7 +72,7 @@ const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
  * while, or didn't happen (shared/switching.js; the in-page host's loading
  * pill and notice)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette }) {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching }) {
   /** @type {UiState & Record<string, any>} */
   let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, ...start };
   /** @type {ViewModel | null} */
@@ -159,7 +161,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   doc.addEventListener('visibilitychange', onVisibility);
   offs.push(() => doc.removeEventListener('visibilitychange', onVisibility));
   const switching = createSwitching({
-    onChange: (id) => { if (!destroyed) setUi({ switchingTo: id }); },
+    onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id }); },
     onSlow: (slow) => { if (!destroyed) onSwitchSlow?.(slow); },
     failed: (result) => result === undefined,
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
