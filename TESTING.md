@@ -562,6 +562,33 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 2 step 7: notices, loading and gestures drawn by Margin.app (2026-11-05)
+
+`npm run safari` from the branch with step 7 (it changes Margin.app's shell too, so the app needs the new build). A Safari window in full screen, linked. What pages used to say or draw now comes from the window's overlay, in the theme's own notice style. `npm run log:app` shows the copy's side (`notice …`, `tab … loaded again from the notice`). Write what you see in DECISIONS.md.
+
+**Notices** (each one at most once per page; Not now, OK or a button never brings it back for that page):
+
+- [ ] **Margin isn't responding on this page.** Type something into a field on a page (so Margin won't reload it by itself), leave it in front, and run `npm run safari` again (Safari reloads Margin while the page stays open). Within a few seconds of the new copy linking, the overlay says "Margin isn't responding on this page (it was probably updated). Reload the page to fix it." with Reload and Not now. Reload: the page loads again (your typing is gone: you chose it) and gets its box. Not now: the notice goes and doesn't come back for that page. Switch to another tab while it's up: it goes. *If it never shows:* paste `npm run log:app` (look for `still has Margin from before it was reloaded`).
+- [ ] **Margin was updated while Safari was open.** Only when Safari keeps two copies of Margin running (after some updates; the log says `a newer copy of Margin is running`): a page in front bound to the older copy shows "Margin was updated while Safari was open. Quit and reopen Safari to finish updating it." with OK. If you can't make it happen, note that; the WebKit host can't run two copies with the link either.
+- [ ] **A switch that didn't happen.** Close a tab from Safari's tab bar and, quickly, click its row before the sidebar drops it (or use a row of a tab another window just closed): "That tab is no longer open." for about 4 s. Hard to hit on purpose; note it if you see any of the three ("didn't answer", "couldn't show") during normal use, with what you did.
+- [ ] **Safari's New Tab setting.** Set Safari Settings › General › "New tabs open with" to Homepage (or Favorites). Open a new tab with the tab bar's + twice (not ⌘T: the app holds it). After the second, its window shows "If a new tab opened this page instead of Margin's: in Safari Settings › General, set "New tabs open with" to Margin…" with OK and Don't show again. Don't show again: Settings' "Tell me when a new tab seems to open Safari's homepage…" toggle is off (it's in the app's Settings now). Set the setting back to Margin.
+- [ ] Every notice in Arcadia and in Neo-brutalism (Settings › Theme): drawn in the theme's notice, its buttons clickable over the page, the page still taking clicks around it.
+
+**Loading** (no hover needed: check with the sidebar hidden too):
+
+- [ ] Click a link to a slow site (or ⌘R on a heavy page): Arcadia's pill in the frame's top strip shows at once, before the next page arrives, and goes when it has loaded; in Neo-brutalism the striped bar above the page marches and the reload button spins. With the sidebar hidden, the pill (or the bar) still shows.
+- [ ] A tab loading behind (⌘-click a link): its row's icon pulses (Arcadia) or its icon box blinks (Neo-brutalism) until it has loaded.
+- [ ] A "Leave page?" prompt (a page with unsaved changes, then ⌘R and Cancel): the indicator goes once you cancel.
+- [ ] A single-page app navigating within itself (Gmail between folders, GitHub between tabs of a repository): the indicator shows while a slow one runs. Note sites where it shows for too long or never.
+
+**Gestures** (Settings: Margin's trackpad gestures on):
+
+- [ ] Pull down at the top of a page: a round badge (Arcadia; a square one in Neo-brutalism) comes down over the top of the page as you pull, turns the space's color (yellow in Neo-brutalism) once letting go would reload, and the page reloads when you let go. Pull a little and let go: the badge goes, no reload.
+- [ ] Two-finger swipe sideways where nothing scrolls sideways: the arrow badge comes in from the left (back) or right (forward), and fills once letting go would go there. *Tell me how far it lags your fingers*: it goes page → Margin → app → overlay, about one round trip of the link.
+- [ ] The badges never take a click or a scroll from the page.
+
+**Pages' first read.** Nothing to check by hand: pages no longer read the theme's package (the WebKit host measured the read: DECISIONS.md).
+
 ## Margin 2 Phase 2 step 5: only Margin.app draws Margin (2026-11-05)
 
 `npm run safari` from the branch with step 5. Pages never draw any of Margin's UI now, linked to Margin.app or not: what you see of Margin is the app's. The lists below for Phase 1 and step 1 that say "in-page development host" now check the app's UI (there's no in-page one to fall back to). Write what you see in DECISIONS.md.
@@ -573,7 +600,7 @@ Not linked (quit Margin.app with `killall -TERM Margin`; it starts again on dema
 - [ ] ⌘T (with Safari's New Tab moved to another shortcut, as the set-up window asks), and Safari's own New Tab: Margin's new-tab page, which says "Margin.app isn't running", with a "Start Margin.app" button and an address field (focused). Type an address and Return: it opens in that tab; type words: Safari's search engine (the one Settings names) searches them there.
 - [ ] Press "Start Margin.app": "Starting Margin.app…", the app starts with no window and no Dock icon, and the page turns into the app's launcher (the page itself shows nothing of its own). Pages get their box back as they're shown.
 - [ ] ⌃⌘↓/↑ and ⌃⌘→/← still switch tabs and spaces while not linked; ⌥S does nothing (it's typed into the page, as without Margin).
-- [ ] Pinch on a page: Safari's own zoom (no box, so nothing to keep in it). Two-finger swipe and pull-to-refresh still work if they're on in Settings (with no badge: drawn by nothing yet).
+- [ ] Pinch on a page: Safari's own zoom (no box, so nothing to keep in it). Two-finger swipe and pull-to-refresh still work if they're on in Settings (with no badge: the app draws it, step 7, and it isn't linked).
 
 Linked:
 
