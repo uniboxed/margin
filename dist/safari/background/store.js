@@ -228,20 +228,47 @@ async function read() {
   // top-level sidebarWidth became Arcadia's): save, for the same reason.
   else if (raw.settings && ('searchEngine' in raw.settings || 'sidebarWidth' in raw.settings || !raw.settings.themes || raw.settings.theme !== next.settings.theme)) missing.push('settings');
   cache ??= next;
-  if (missing.length || metaUnsaved.size) write(missing);
+  if (missing.length) write(missing);
+  writeMetaSoon();
   return cache;
 }
 
 // ---- the queue for Margin.app (shared/data-set.js) ------------------------------
 // Each tracked collection's meta: what its items were when last written, since
 // when, and what's been deleted (tombstones). Looked at again for the
-// collections whose state keys a write takes, and written in the same set()
-// as those keys. The queue of changes made while the app isn't linked is
-// every item and tombstone with a time (pendingQueue). Margin.app takes it on
-// link (step 3: DATA.md).
+// collections whose state keys a write takes (with their times then), and
+// written in a set() of its own META_WRITE_MS later, off a switch's way: in
+// the same set() as the state, its larger writes and change events made a
+// carried sidebar miss a switched-to page's first frame in the WebKit host
+// (`switching`, 2 of 4 runs). A meta write lost with the background is made
+// good at the collection's next write (it's looked at against the stored
+// meta again), with that later time. The queue of changes made while the app
+// isn't linked is every item and tombstone with a time (pendingQueue).
+// Margin.app takes it on link (step 3: DATA.md).
 /** @type {Record<string, any>} */
 let dataMeta = {};
 const metaUnsaved = new Set();
+const META_WRITE_MS = 1500;
+let metaTimer = null;
+function writeMetaSoon() {
+  if (metaTimer || !metaUnsaved.size) return;
+  metaTimer = setTimeout(() => {
+    metaTimer = null;
+    queue = queue.then(writeMeta);
+  }, META_WRITE_MS);
+}
+async function writeMeta() {
+  if (role !== 'owner' || !metaUnsaved.size) return;
+  const metas = [...metaUnsaved];
+  metaUnsaved.clear();
+  try {
+    await api.storage.local.set(Object.fromEntries(metas.map((collection) => [metaKey(collection), dataMeta[collection]])));
+  } catch (err) {
+    console.warn('[margin] saving the data set\'s times failed; trying again with the next write:', err?.message ?? err);
+    for (const collection of metas) metaUnsaved.add(collection);
+    writeMetaSoon();
+  }
+}
 /** @param {Record<string, any>} raw */
 function readMeta(raw) {
   const metas = {};
@@ -312,21 +339,23 @@ function dropLater() {
 // False if this copy doesn't own the state (any more): nothing was written.
 async function flush() {
   if (role !== 'owner') return false;
-  if ((!unsaved.size && !metaUnsaved.size) || !cache) return true;
+  if (!unsaved.size || !cache) {
+    writeMetaSoon();
+    return true;
+  }
   if ((await recheck()) !== 'owner') return false; // a newer copy took over meanwhile
   const keys = [...unsaved];
   unsaved.clear();
   dropLater();
+  // The changes' times for Margin.app's queue, now; written a moment later.
   trackKeys(keys);
-  const metas = [...metaUnsaved];
-  metaUnsaved.clear();
+  writeMetaSoon();
   try {
     // The icons' mark in a set() of its own, once the icons are stored: Safari
     // writes one set()'s keys in no set order and stops at the first that
     // fails, so a new mark could land over the old icons, and a page holding
     // them would never read the new ones (shared/stored.js readForPage).
     const { [FAVICONS_MARK]: mark, ...values } = toStorage(cache, keys, { origin: me.origin, since: me.since, synced });
-    for (const collection of metas) values[metaKey(collection)] = dataMeta[collection];
     const rev = nextRev();
     await api.storage.local.set(rev ? { ...values, [STATE_REV]: rev } : values);
     // Through once the icons' mark is too (a page that read before it would
@@ -338,7 +367,6 @@ async function flush() {
     doneRev = null; // not known which keys went through: pages read until the next write does
     console.warn('[margin] saving', keys.join(', '), `failed; trying again in ${retryMs}ms:`, err?.message ?? err);
     for (const key of keys) if (!unsaved.has(key)) unsaved.add(key);
-    for (const collection of metas) metaUnsaved.add(collection);
     clearTimeout(retryTimer);
     retryTimer = setTimeout(() => write([]), retryMs);
     retryMs = Math.min(retryMs * 2, 5000);

@@ -1349,6 +1349,9 @@ export function startCore({ onTheme } = {}) {
       storedTheme = changes.uiTheme.newValue ?? null;
       if (Object.keys(changes).length === 1) return; // nothing else to draw
     }
+    // The data set's times for Margin.app, written on their own (background/
+    // store.js): nothing a page draws or reads.
+    if (Object.keys(changes).every((key) => key.startsWith('dataMeta:'))) return;
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!firstRender && onlyShowing(changes)) return;
     // The write this brings, if the state takes it (one read instead: the

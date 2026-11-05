@@ -81,8 +81,13 @@ export function toStorage(state, keys, { origin, since, synced }) {
   if (keys.includes(FAVICONS)) out[FAVICONS_MARK] = faviconsMark(state[FAVICONS]);
   return out;
 }
-/** Only the icons' mark changed: nothing to draw (the icons came before it). @param {Record<string, unknown>} changes */
-export const onlyMark = (changes) => Object.keys(changes).every((key) => key === FAVICONS_MARK);
+/**
+ * Only the icons' mark changed (the icons came before it), or the data set's
+ * times for Margin.app (`dataMeta:<collection>`, written on their own:
+ * background/store.js): nothing to draw.
+ * @param {Record<string, unknown>} changes
+ */
+export const onlyMark = (changes) => Object.keys(changes).every((key) => key === FAVICONS_MARK || key.startsWith('dataMeta:'));
 
 // Which write of the state storage has (`stateRev`: { id, after }), in the
 // same set() as the state's keys (background/store.js flush), so one change

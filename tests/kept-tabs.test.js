@@ -291,7 +291,8 @@ test('the queue for Margin.app: each change made since the data set\'s times beg
   await ask('deleteSpace', { spaceId: reading.id });
   const gone = (await store.pendingQueue(before - 1)).find((c) => c.collection === 'spaces' && c.id === reading.id);
   assert.equal(gone.deleted, true, 'a tombstone');
-  // Stored with the state (the queue lasts across the background's restarts).
+  // Stored (the queue lasts across the background's restarts).
+  await sleep(1700); // (written a moment after the state: background/store.js)
   assert.ok(fake.local['dataMeta:spaces'].gone[reading.id] >= before);
   // The base (what the cache had when its times began) isn't queued: it's at 0.
   const all = await store.pendingQueue(0);
