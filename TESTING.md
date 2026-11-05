@@ -562,6 +562,23 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 2 step 6: which window is which (2026-11-05)
+
+`npm run safari` from `feat/margin-app` with step 6 merged. Two Safari profiles with Margin on in both. After each check, `npm run log:app` (or `scripts/margin-log.sh 10 | grep -E "is window|no longer|isn't bound|kept"`) shows every binding and why; paste it in if anything is off.
+
+- [ ] **The swap, again.** One full-screen window per profile (same display). Swipe between them ten times, slowly and quickly, and with ⌃→/⌃←. Each Space always shows its own profile's sidebar, spaces and tabs, never the other's, not even for a moment. *If wrong:* a flash of the other profile's sidebar; the log has a `(was …)` or `no longer` line at that time.
+- [ ] **Two windows of one profile, same space.** Two full-screen windows of one profile showing the same Margin space: each sidebar marks its own window's tab in front (switch tabs in one; the other's highlight doesn't move). *If wrong:* the highlight follows the other window.
+- [ ] **Same profile, different spaces.** Put the two windows on different Margin spaces: each shows its own space, also after swiping back and forth. *If wrong:* both show the space of whichever was focused last.
+- [ ] **Different profiles.** Covered by the first check; also a profile's not-open tabs show only in its own windows.
+- [ ] **Full screen and not.** One window full screen, one windowed on the desktop: the overlay only over the full-screen one; swiping to the desktop puts it away, back brings it.
+- [ ] **New window.** In full screen, File › New Window (⌘N): the new window gets its own sidebar within about 2 s (the log: `focus moved` or `created together`); the old one keeps its own. Close it: the log says `closed in the browser`, nothing else changes.
+- [ ] **Leaving and entering full screen.** ⌃⌘F out of full screen and back in on one of two full-screen windows: no `no longer` line in the log, and its sidebar comes back on its own window.
+- [ ] **Profile switch (step 4).** Click another profile's space: the new window's sidebar shows as the slide ends (the log: `made by Margin's openSpaceWindow`), the old window's binding goes (`closed in the browser`). Both ways.
+- [ ] **Mission Control.** With two full-screen windows, open Mission Control and close it (Esc), then open it and click the other Space: no overlay on the wrong window afterwards, and no `no longer` or `(was …)` line in the log.
+- [ ] **Two displays.** A full-screen window on each display: each has its own sidebar at once (`the only free window with its bounds`).
+- [ ] **Margin.app relaunched with windows open.** Two full-screen windows: `killall -TERM Margin`, then switch tabs to start it again. The front window's sidebar comes within about 6 s, or at the next swipe; the log says `isn't bound: 2 windows have its bounds` until then, then why it bound. *Tell me how long it took* and paste the lines: they show whether Safari's copies call only the key window focused, and whether a copy hears its window focused when it comes forward from another profile's.
+- [ ] **Safari quitting** with both windows open, then reopening: the log shows each binding dropped (`gone from the window server` or `its copy isn't linked`), then made again; every window's sidebar is its own.
+
 ## Margin 2 Phase 2 step 4: spaces across Safari profiles (2026-11-05)
 
 Needs two Safari profiles (Safari › Settings › Profiles; here "Default" and "Work"), Margin turned on in both, and step 3's checks done. Each switch to the other profile's space creates a full-screen window and closes one, with macOS's slide: tell Tirth before starting, and do one switch first and check it before doing more. Margin.app's log: `/usr/bin/log stream --predicate 'subsystem == "io.tirth.margin"'` (lines `profile switch: …` and `link down (…)`).
