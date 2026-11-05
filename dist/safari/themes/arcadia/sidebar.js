@@ -8,12 +8,6 @@ import { el, hostOf, siteModalOpen } from '../../shared/dom.js';
 import { platform } from '../../shared/platform.js';
 import { WIDTH, clampWidth, snapWidth, sidebarWidth } from './theme.js';
 
-function hue(text) {
-  let h = 0;
-  for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
-  return h;
-}
-
 // Favicon if the browser gave us one, else a colored letter. Never asks a
 // third-party service for icons.
 function avatar(doc, { title, url, favIconUrl }) {
@@ -23,12 +17,10 @@ function avatar(doc, { title, url, favIconUrl }) {
   letterIfBroken(doc, img);
   return img;
 }
-const letterAvatar = (doc, label) => el(doc, 'span', {
-  class: 'avatar letter',
-  text: label.charAt(0).toUpperCase(),
-  style: `background: hsl(${hue(label)} 55% 48%)`,
-  'aria-hidden': 'true',
-});
+const letterAvatar = (doc, label) => {
+  const { letter, color } = V.letterAvatar(label); // the theme view model's letters too
+  return el(doc, 'span', { class: 'avatar letter', text: letter, style: `background: ${color}`, 'aria-hidden': 'true' });
+};
 // An icon that doesn't load becomes the letter (also in a copy of a row,
 // which doesn't carry the listener).
 /** @param {Document} doc @param {HTMLImageElement} img */

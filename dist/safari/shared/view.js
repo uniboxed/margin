@@ -223,6 +223,22 @@ function iconFor(state, item) {
   return (origin && state?.favicons?.[origin]?.data) || '';
 }
 
+// A letter avatar, for a row with no icon: the first letter of its site
+// (else its title), on a color worked out from the same text, so a site
+// keeps its color everywhere (Arcadia's sidebar and palette, and the theme
+// view model: ui/view-model.js).
+/** @param {string} text */
+function hue(text) {
+  let h = 0;
+  for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return h;
+}
+/** @param {string} label @returns {{ letter: string, color: string }} */
+function letterAvatar(label) {
+  const text = label || '?';
+  return { letter: text.charAt(0).toUpperCase(), color: `hsl(${hue(text)} 55% 48%)` };
+}
+
 // How long keep-ready keeps the tab just left ready (minutes; 0: off), from
 // the settings as stored. Settings saved by a build before 2026-11-03 have
 // only `keepTabsReadyMinutes` (up to six tabs, until that long after Safari
@@ -246,4 +262,4 @@ function warmUpCount(settings) {
   return Number.isFinite(count) && count > 0 ? Math.min(Math.round(count), WARM_UP_MAX) : 0;
 }
 
-export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, keepReadyMinutes, warmUpCount, WARM_UP_MAX };
+export { normalizeUrl, activeSpaceId, sidebar, pinTabId, isNewTabPage, guessWindow, revealZone, cycleTab, cycleSpace, originOf, pickIconHref, iconFor, hue, letterAvatar, keepReadyMinutes, warmUpCount, WARM_UP_MAX };

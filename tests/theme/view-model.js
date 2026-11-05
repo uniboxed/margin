@@ -1,10 +1,12 @@
-// A mock theme view model, shaped like PLAN.md §3 ("What a theme can read"):
-// window, space (folders with tabs, pins, today), spaces, tab, archive,
-// palette, notice, settings, platform. Three spaces; Personal holds 200 tabs.
-// Updates are immutable, as a state mirror applying deltas would make them:
-// a changed tab is a new object, its lists and space are new, everything
-// else is the same object as before (the renderer skips rows whose item is).
-// Runs in Node and in pages.
+// Margin's stored state, as pages read it (shared/stored.js fromStorage),
+// for the theme tests and the benchmark: three spaces in one window, pins in
+// folders and loose, sleeping and playing tabs, sites with no icon, an
+// archive. Personal holds 200 rows (30 pins in two folders, 170 tabs).
+// `MockState` changes it immutably, as the background's writes reach a page
+// (a changed tab is a new record, the rest the same), and builds the theme
+// view model from it with ui/view-model.js, passing the last model so that
+// what didn't change is shared. Runs in Node and in pages.
+import { buildViewModel } from '../../extension/ui/view-model.js';
 
 // --- Tiny PNG icons, as data: URLs (Margin stores icons this way). --------
 
@@ -49,9 +51,9 @@ export function pngIcon([r, g, b]) {
   return `data:image/png;base64,${base64(bytes)}`;
 }
 
-// --- The data ---------------------------------------------------------------
+// --- The sites --------------------------------------------------------------
 
-const SITES = [
+export const SITES = [
   ['The quiet return of the analog camera | The Lantern', 'thelantern.example', '/culture/analog-return', [179, 38, 30]],
   ['Sourdough Hydration Chart: Stiff to Open Crumb – Bread Notes', 'breadnotes.example', '/hydration-chart', [138, 90, 25]],
   ['Slow software — Margins', 'margins.example', '/essays/slow-software', [31, 78, 121]],
@@ -69,164 +71,165 @@ const SITES = [
   ['Late-night focus set — 2 hours of ambient synth - Streamly', 'streamly.example', '/watch?v=nightfocus', [124, 77, 255]],
   ['Render queue · Cloudrender', 'cloudrender.example', '/queue', [234, 88, 12]],
 ];
-const ICONS = SITES.map((s) => pngIcon(s[3]));
-const hex = ([r, g, b]) => `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+// Two sites Margin has no icon for: their rows show a letter.
+export const NO_ICON = new Set(['skyroute.example', 'pinwall.example']);
 
-let nextId = 1000;
-function makeTab(n, { active = false } = {}) {
-  const [title, host, path, rgb] = SITES[n % SITES.length];
-  const id = nextId++;
-  const noIcon = n % 7 === 3; // some sites have no icon: a letter avatar
-  return Object.freeze({
-    id,
-    title: n < SITES.length ? title : `${title} (${Math.floor(n / SITES.length) + 1})`,
-    host,
-    url: `https://${host}${path}`,
-    icon: noIcon ? null : ICONS[n % ICONS.length],
-    letter: host[0].toUpperCase(),
-    color: hex(rgb),
-    active,
-    audible: n % 23 === 5,
-    asleep: n % 11 === 4,
-    pinned: false,
-  });
-}
+const ICONS = Object.fromEntries(SITES.filter((s) => !NO_ICON.has(s[1])).map((s) => [`https://${s[1]}`, { data: pngIcon(s[3]), href: `https://${s[1]}/favicon.ico`, at: 1 }]));
 
 const SPACES = [
-  { id: 'personal', name: 'Personal', abbr: 'ME', emoji: '🙂', color: '#ffd23f', folders: [['Reading', 20], ['Lisbon', 10]], today: 170 },
-  { id: 'work', name: 'Work', abbr: 'WK', emoji: '💼', color: '#7fb3ff', folders: [['Q4', 3], ['Team', 2]], today: 3 },
-  { id: 'studio', name: 'Studio', abbr: 'ST', emoji: '🎨', color: '#ff8fd8', folders: [['Campaign', 3], ['Assets', 2]], today: 3 },
+  { id: 'personal', name: 'Personal', emoji: '🙂', color: '#ffd23f', folders: [['Reading', 20], ['Lisbon', 10]], loose: 0, today: 170 },
+  { id: 'work', name: 'Work', emoji: '💼', color: '#7fb3ff', folders: [['Q4', 3], ['Team', 2]], loose: 1, today: 3 },
+  { id: 'studio', name: 'Studio Space', emoji: '🎨', color: '#ff8fd8', folders: [['Campaign', 3], ['Assets', 2]], loose: 0, today: 3 },
 ];
 
-const countTabs = (s) => s.folders.reduce((n, f) => n + f.tabs.length, 0) + s.pins.length + s.today.length;
-const freezeSpace = (s) => Object.freeze({ ...s, tabCount: countTabs(s), hasToday: s.today.length > 0 });
+export const WINDOW = 1;
+
+/**
+ * The big state: every pin open in a tab of its space (so the folders' rows
+ * are tabs too), tab ids from 1000, the first pin of Personal's first folder
+ * the active tab.
+ */
+export function bigState() {
+  let n = 0;
+  let id = 1000;
+  const tabs = {};
+  const tabSpace = {};
+  const pins = [];
+  const folders = [];
+  const makeTab = (spaceId, url, title) => {
+    const k = n++;
+    const t = { id: id++, windowId: WINDOW, index: k, title, url, favIconUrl: '', active: false, lastActive: k };
+    if (k % 11 === 4) t.sleeping = { at: 1, how: 'page' };
+    if (k % 23 === 5) t.audible = true;
+    tabs[t.id] = t;
+    tabSpace[t.id] = spaceId;
+    return t;
+  };
+  const site = () => SITES[n % SITES.length];
+  const page = (spaceId, extra = '') => {
+    const [title, host, path] = site();
+    const round = Math.floor(n / SITES.length);
+    return { url: `https://${host}${path}${round || extra ? `?n=${n}${extra}` : ''}`, title: round ? `${title} (${round + 1})` : title };
+  };
+  for (const def of SPACES) {
+    def.folders.forEach(([name, count], fi) => {
+      const folderId = `${def.id}-f${fi}`;
+      folders.push({ id: folderId, spaceId: def.id, name, open: true, pos: fi });
+      for (let i = 0; i < count; i++) {
+        const { url, title } = page(def.id);
+        const t = makeTab(def.id, url, title);
+        pins.push({ id: `pin-${t.id}`, spaceId: def.id, url, title, folderId, pos: i });
+      }
+    });
+    for (let i = 0; i < def.loose; i++) {
+      const { url, title } = page(def.id);
+      const t = makeTab(def.id, url, title);
+      pins.push({ id: `pin-${t.id}`, spaceId: def.id, url, title, pos: def.folders.length + i });
+    }
+    for (let i = 0; i < def.today; i++) {
+      const { url, title } = page(def.id);
+      makeTab(def.id, url, title);
+    }
+  }
+  tabs[1000] = { ...tabs[1000], active: true };
+  return {
+    spaces: SPACES.map(({ id: sid, name, emoji, color }) => ({ id: sid, name, emoji, color })),
+    activeSpaceByWindow: { [WINDOW]: 'personal' },
+    tabSpace,
+    tabs,
+    pins,
+    folders,
+    archive: [
+      { id: 'a1', url: 'https://old.example/', title: 'An archived page', spaceId: 'personal', favIconUrl: '', closedAt: 2 },
+      { id: 'a2', url: 'https://thelantern.example/old', title: 'An older one', spaceId: 'work', favIconUrl: '', closedAt: 1 },
+    ],
+    settings: { sidebarPinnedOpen: true, theme: 'arcadia', themes: {} },
+    favicons: ICONS,
+    openTabsBy: { origin: 'safari-web-extension://margin', since: 1, synced: true },
+    nextId: id,
+  };
+}
+
+const freeze = (o) => Object.freeze(o);
 
 export class MockState {
   constructor() {
-    nextId = 1000;
-    let n = 0;
-    this.spaces = new Map();
-    SPACES.forEach((def, index) => {
-      const folders = def.folders.map(([name, count], fi) => Object.freeze({
-        id: `${def.id}-f${fi}`, name, open: true,
-        tabs: Object.freeze(Array.from({ length: count }, () => makeTab(n++, { active: false }))),
-      }));
-      const today = Array.from({ length: def.today }, () => makeTab(n++));
-      this.spaces.set(def.id, freezeSpace({
-        id: def.id, name: def.name, abbr: def.abbr, emoji: def.emoji, color: def.color, index,
-        folders: Object.freeze(folders), pins: Object.freeze([]), today: Object.freeze(today),
-      }));
-    });
-    this.tabCounter = n;
-    this.spaceId = 'personal';
-    this.sidebar = 'open';
-    this.mode = 'fullscreen';
-    this.palette = Object.freeze({ open: false, query: '', rows: Object.freeze([]) });
-    // The first tab of the first folder is the active one.
-    this.activeId = this.space.folders[0].tabs[0].id;
-    this.setActive(this.activeId);
+    const { nextId, ...state } = bigState();
+    this.nextId = nextId;
+    this.state = state;
+    this.ui = { windowId: WINDOW, tabId: null, mode: 'fullscreen', sidebar: 'open', palette: freeze({ open: false, query: '', selected: 0, newTab: false }) };
+    this.vm = null;
     this.build();
   }
 
-  get space() { return this.spaces.get(this.spaceId); }
+  get space() { return this.vm.space; }
 
   build() {
-    const space = this.space;
-    let active = null;
-    for (const f of space.folders) for (const t of f.tabs) if (t.active) active = t;
-    for (const t of space.today) if (t.active) active = t;
-    active ??= space.folders[0]?.tabs[0] ?? space.today[0];
-    this.chips ??= new Map();
-    const spaces = [...this.spaces.values()].map((s) => {
-      const on = s.id === this.spaceId;
-      const key = `${s.id}:${on}`;
-      if (!this.chips.has(key)) this.chips.set(key, Object.freeze({ id: s.id, name: s.name, abbr: s.abbr, emoji: s.emoji, color: s.color, index: s.index, active: on }));
-      return this.chips.get(key);
-    });
-    this.vm = Object.freeze({
-      window: Object.freeze({ mode: this.mode, focused: true, sidebar: this.sidebar, sidebarOpen: this.sidebar === 'open' }),
-      space,
-      spaces: Object.freeze(spaces),
-      tab: Object.freeze({ id: active.id, title: active.title, host: active.host, url: active.url, loading: false, audible: active.audible, asleep: false }),
-      archive: Object.freeze([{ id: 'a1', title: 'An archived page', host: 'old.example', url: 'https://old.example/', closedAt: 0 }]),
-      palette: this.palette,
-      notice: null,
-      settings: Object.freeze({}),
-      platform: Object.freeze({ browser: 'safari', os: 'mac' }),
-      // Not for themes: lets the action checks see every space's tabs.
-      allSpaces: Object.freeze([...this.spaces.values()]),
-    });
+    this.vm = buildViewModel({ state: this.state, ui: this.ui, platform: { browser: 'safari', os: 'mac' }, settings: {} }, this.vm);
     return this.vm;
   }
 
-  // Replaces one tab (by id) in the current space, wherever it is.
-  mapTab(id, fn) {
-    const s = this.space;
-    let folders = s.folders;
-    let today = s.today;
-    const fi = folders.findIndex((f) => f.tabs.some((t) => t.id === id));
-    if (fi >= 0) {
-      const f = folders[fi];
-      const tabs = Object.freeze(f.tabs.map((t) => (t.id === id ? Object.freeze(fn(t)) : t)));
-      folders = Object.freeze(folders.map((x, i) => (i === fi ? Object.freeze({ ...f, tabs }) : x)));
-    } else if (today.some((t) => t.id === id)) {
-      today = Object.freeze(today.map((t) => (t.id === id ? Object.freeze(fn(t)) : t)));
-    } else return;
-    this.spaces.set(s.id, freezeSpace({ ...s, folders, today }));
-  }
-
-  setActive(id) {
-    for (const space of this.spaces.values()) {
-      const was = [...space.folders.flatMap((f) => f.tabs), ...space.today].find((t) => t.active);
-      if (was && was.id !== id) { const keep = this.spaceId; this.spaceId = space.id; this.mapTab(was.id, (t) => ({ ...t, active: false })); this.spaceId = keep; }
-    }
-    this.mapTab(id, (t) => ({ ...t, active: true }));
-    this.activeId = id;
-  }
+  /** @param {(tabs: any) => any} fn */
+  tabs(fn) { this.state = { ...this.state, tabs: fn({ ...this.state.tabs }) }; }
 
   // --- The updates the benchmark and tests make. Each returns the new vm.
 
-  retitle(id, title) { this.mapTab(id, (t) => ({ ...t, title })); return this.build(); }
-  activate(id) { this.setActive(id); return this.build(); }
+  retitle(id, title) { this.tabs((tabs) => ({ ...tabs, [id]: { ...tabs[id], title } })); return this.build(); }
+  activate(id) {
+    this.tabs((tabs) => {
+      for (const t of Object.values(tabs)) if (t.active && t.id !== id) tabs[t.id] = { ...t, active: false };
+      tabs[id] = { ...tabs[id], active: true };
+      return tabs;
+    });
+    return this.build();
+  }
+  // New tabs at the end of the window: the top of the list (newest first).
   addTabs(count) {
-    const s = this.space;
-    const fresh = Array.from({ length: count }, () => makeTab(this.tabCounter++));
-    this.spaces.set(s.id, freezeSpace({ ...s, today: Object.freeze([...fresh, ...s.today]) }));
+    const space = this.space.id;
+    const top = Math.max(...Object.values(this.state.tabs).map((t) => t.index)) + 1;
+    const tabSpace = { ...this.state.tabSpace };
+    this.tabs((tabs) => {
+      for (let i = 0; i < count; i++) {
+        const [title, host, path] = SITES[(top + i) % SITES.length];
+        const t = { id: this.nextId++, windowId: WINDOW, index: top + i, title: `${title} (new ${i})`, url: `https://${host}${path}?new=${this.nextId}`, favIconUrl: '', active: false, lastActive: 0 };
+        tabs[t.id] = t;
+        tabSpace[t.id] = space;
+      }
+      return tabs;
+    });
+    this.state = { ...this.state, tabSpace };
     return this.build();
   }
   removeTabs(count) {
-    const s = this.space;
-    this.spaces.set(s.id, freezeSpace({ ...s, today: Object.freeze(s.today.slice(count)) }));
+    const gone = this.space.today.slice(0, count).map((t) => t.id);
+    this.tabs((tabs) => { for (const id of gone) delete tabs[id]; return tabs; });
     return this.build();
   }
+  // A tab moved in the list (as the sidebar shows it: newest first): the
+  // window's order changes, nothing else.
   moveTab(from, to) {
-    const s = this.space;
-    const today = [...s.today];
-    const [t] = today.splice(from, 1);
-    today.splice(to, 0, t);
-    this.spaces.set(s.id, freezeSpace({ ...s, today: Object.freeze(today) }));
+    const ids = this.space.today.map((t) => t.id);
+    const slots = ids.map((id) => this.state.tabs[id].index).sort((a, b) => b - a);
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    this.tabs((tabs) => { ids.forEach((id, k) => { if (tabs[id].index !== slots[k]) tabs[id] = { ...tabs[id], index: slots[k] }; }); return tabs; });
     return this.build();
   }
-  clearToday() { const s = this.space; this.spaces.set(s.id, freezeSpace({ ...s, today: Object.freeze([]) })); return this.build(); }
+  clearToday() {
+    const gone = this.space.today.map((t) => t.id);
+    this.tabs((tabs) => { for (const id of gone) delete tabs[id]; return tabs; });
+    return this.build();
+  }
   toggleFolder(id) {
-    const s = this.space;
-    const folders = Object.freeze(s.folders.map((f) => (f.id === id ? Object.freeze({ ...f, open: !f.open }) : f)));
-    this.spaces.set(s.id, freezeSpace({ ...s, folders }));
+    this.state = { ...this.state, folders: this.state.folders.map((f) => (f.id === id ? { ...f, open: !f.open } : f)) };
     return this.build();
   }
-  switchSpace(id) { if (this.spaces.has(id)) this.spaceId = id; return this.build(); }
-  setSidebar(state) { this.sidebar = state; return this.build(); }
-  setMode(mode) { this.mode = mode; return this.build(); }
-  openPalette(query = '') {
-    const s = this.space;
-    const tabs = [...s.folders.flatMap((f) => f.tabs), ...s.today].slice(0, 4);
-    const rows = tabs.map((t, i) => Object.freeze({ id: `row-${t.id}`, tag: 'TAB', text: t.title, color: s.color, selected: i === 0 }));
-    rows.push(Object.freeze({ id: 'row-search', tag: 'SEARCH', text: query || 'Search the web', color: '#5cf0a8', selected: false }));
-    this.palette = Object.freeze({ open: true, query, rows: Object.freeze(rows) });
+  switchSpace(id) {
+    this.state = { ...this.state, activeSpaceByWindow: { ...this.state.activeSpaceByWindow, [WINDOW]: id } };
     return this.build();
   }
-  closePalette() { this.palette = Object.freeze({ open: false, query: '', rows: Object.freeze([]) }); return this.build(); }
-
-  // A tab row in today, by position.
-  todayTab(i) { return this.space.today[i]; }
+  setSidebar(sidebar) { this.ui = { ...this.ui, sidebar }; return this.build(); }
+  setMode(mode) { this.ui = { ...this.ui, mode }; return this.build(); }
+  openPalette(query = '') { this.ui = { ...this.ui, palette: freeze({ open: true, query, selected: 0, newTab: false }) }; return this.build(); }
+  closePalette() { this.ui = { ...this.ui, palette: freeze({ open: false, query: '', selected: 0, newTab: false }) }; return this.build(); }
 }
