@@ -143,11 +143,23 @@ const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).
 // Each theme's settings, filled in by the theme (which also takes over what
 // it used to keep among the top-level settings). Themes this build doesn't
 // have keep what's saved.
+// Arcadia's package was `arcadia-2` while the old theme still ran pages
+// (Margin 2, Phase 1): what it saved joins Arcadia's own, Arcadia's
+// sidebarWidth first, then the package's, then a top-level one from before
+// themes (theme.js settingsOf snaps it to 10 px, 160–500).
+const OLD_NAMES = Object.freeze({ arcadia: ['arcadium', 'arcadia-2'] });
+const objectOr = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
 function normalizeThemes(rawSettings) {
-  const saved = rawSettings?.themes && typeof rawSettings.themes === 'object' ? rawSettings.themes : {};
+  const saved = objectOr(rawSettings?.themes) ?? {};
   const themes = { ...saved };
-  for (const theme of Object.values(THEMES)) themes[theme.id] = theme.settingsOf(rawSettings);
-  delete themes.arcadium; // Arcadia's earlier name: taken over just now
+  for (const theme of Object.values(THEMES)) {
+    if (typeof theme.settingsOf !== 'function') continue; // a package theme: its settings as saved
+    const earlier = (OLD_NAMES[theme.id] ?? []).map((name) => objectOr(saved[name])).filter(Boolean);
+    const own = objectOr(saved[theme.id]);
+    const merged = earlier.length ? Object.assign({}, ...[...earlier].reverse(), own ?? {}) : own;
+    themes[theme.id] = theme.settingsOf({ ...rawSettings, themes: { ...saved, [theme.id]: merged ?? undefined } });
+    for (const name of OLD_NAMES[theme.id] ?? []) delete themes[name]; // taken over just now
+  }
   return themes;
 }
 

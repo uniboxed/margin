@@ -1,4 +1,4 @@
-// Arcadia as a theme package (extension/themes/arcadia-2/) in real engines:
+// Arcadia as a theme package (extension/themes/arcadia/) in real engines:
 // Playwright's WebKit and Chromium, headless, every network request refused.
 // It loads as a built-in theme, passes the sanitizer with nothing removed,
 // renders the sidebar and every part (palette, menu, space editor, notice,
@@ -18,7 +18,7 @@ const script = harnessScript();
 const pkg = themeForPage(ARCADIA);
 
 for (const [name, engine] of ENGINES) {
-  test(`arcadia-2 in ${name}`, async (t) => {
+  test(`Arcadia's package in ${name}`, async (t) => {
     const browser = await engine.launch({ headless: true });
     try {
       const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -32,9 +32,9 @@ for (const [name, engine] of ENGINES) {
       const layout = async () => { await page.waitForFunction(() => T.rtLayouts().length > 0); return (await page.evaluate(() => T.rtLayouts())).at(-1); };
 
       await t.test('loads as a built-in theme: theme.json, the template and the stylesheet, nothing removed', async () => {
-        const r = await page.evaluate((p) => T.loadBuiltin(p, 'arcadia-2'), pkg);
+        const r = await page.evaluate((p) => T.loadBuiltin(p, 'arcadia'), pkg);
         assert.equal(r.ok, true);
-        assert.equal(r.id, 'arcadia-2');
+        assert.equal(r.id, 'arcadia');
         assert.deepEqual(r.read.sort(), ['theme.css', 'theme.html', 'theme.json']);
       });
 
@@ -56,9 +56,9 @@ for (const [name, engine] of ENGINES) {
       });
 
       await t.test('the width is the theme\'s setting (160–500, step 10); hidden, the page sits in the frame or fills the window', async () => {
-        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia-2': { sidebarWidth: 330 } } } }));
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia': { sidebarWidth: 330 } } } }));
         assert.equal((await layout()).left, 330);
-        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia-2': { sidebarWidth: 900 } } } }));
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { themes: { 'arcadia': { sidebarWidth: 900 } } } }));
         assert.equal((await layout()).left, 260, 'out of range: the default');
         await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false } }));
         assert.deepEqual(await layout(), { left: 8, top: 8, right: 8, bottom: 8, radius: 6.25, width: 1280, height: 800, windowId: 1, mode: 'inpage' }, 'the frame alone around the page');

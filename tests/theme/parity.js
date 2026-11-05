@@ -30,7 +30,7 @@ const script = buildSync({
   entryPoints: [fileURLToPath(new URL('./parity-harness.js', import.meta.url))],
   bundle: true, format: 'iife', write: false, target: 'es2022', logLevel: 'silent',
 }).outputFiles[0].text;
-const pkg = themeForPage(fileURLToPath(new URL('../../extension/themes/arcadia-2/', import.meta.url)));
+const pkg = themeForPage(fileURLToPath(new URL('../../extension/themes/arcadia/', import.meta.url)));
 
 async function shoot(browser, which, name, dark) {
   const context = await browser.newContext({ viewport: VIEWPORT, colorScheme: dark ? 'dark' : 'light', deviceScaleFactor: 1, reducedMotion: 'no-preference' });

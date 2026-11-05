@@ -6,9 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 
 export const NEO = fileURLToPath(new URL('../../extension/themes/neo-brutalism/', import.meta.url));
-export const ARCADIA = fileURLToPath(new URL('../../extension/themes/arcadia-2/', import.meta.url));
+export const ARCADIA = fileURLToPath(new URL('../../extension/themes/arcadia/', import.meta.url));
 
 const PACKAGE_FILES = new Set(['theme.json', 'theme.html', 'theme.css']);
+// A package's own files: the three, and what's under fonts/ and images/.
+// (Arcadia's folder also holds its first-paint placeholders and their
+// descriptor, theme.js: not the package's.)
+const BUNDLED = /^(fonts|images)\//;
 
 /** @returns {{ manifest: string, html: string, css: string, files: Record<string, Buffer> }} */
 export function readTheme(dir = NEO) {
@@ -16,8 +20,8 @@ export function readTheme(dir = NEO) {
   const walk = (sub) => {
     for (const name of readdirSync(join(dir, sub))) {
       const rel = sub ? `${sub}/${name}` : name;
-      if (statSync(join(dir, rel)).isDirectory()) walk(rel);
-      else if (!PACKAGE_FILES.has(rel) && name !== '.DS_Store') files[rel] = readFileSync(join(dir, rel));
+      if (statSync(join(dir, rel)).isDirectory()) { if (BUNDLED.test(`${rel}/`)) walk(rel); }
+      else if (!PACKAGE_FILES.has(rel) && BUNDLED.test(rel) && name !== '.DS_Store') files[rel] = readFileSync(join(dir, rel));
     }
   };
   walk('');

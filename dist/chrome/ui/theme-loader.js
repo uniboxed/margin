@@ -17,7 +17,7 @@ import { checkManifest, settingValueOk } from './theme-schema.js';
 import { buildTemplate } from './render.js';
 import { PACKAGE_THEMES, USER_THEMES_KEY } from '../themes/packages.js';
 
-/** The themes Margin ships as packages (extension/themes/<id>/, themes/packages.js). Arcadia joins in Phase 1 step 3. */
+/** The themes Margin ships as packages (extension/themes/<id>/, themes/packages.js). */
 export const BUILTIN_THEMES = PACKAGE_THEMES;
 
 // Caps on a package, beyond the sanitizer's own (template and stylesheet

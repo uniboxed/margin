@@ -3,7 +3,7 @@
 A theme is HTML and CSS, no JavaScript. Margin's runtime (`extension/ui/`)
 renders it from a view model, runs its buttons as checked actions, and
 gives it behaviors (drag and drop, resizing, menus…) through attributes.
-The built-in themes are packages like any other: `arcadia-2/` (Margin's
+The built-in themes are packages like any other: `arcadia/` (Margin's
 default, today's look) and `neo-brutalism/` (uses every binding, behavior
 and part). Read them next to this guide. The plan behind it is `PLAN.md`
 §3 and §4.

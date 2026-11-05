@@ -76,3 +76,21 @@ test('the theme\'s earlier name: its id falls back, its own settings carry over,
   assert.equal(settings.themes.arcadia.sidebarWidth, 330);
   assert.equal('arcadium' in settings.themes, false);
 });
+
+test('Arcadia\'s package\'s earlier name (arcadia-2): its settings join Arcadia\'s, snapped and clamped, and the old entry goes', () => {
+  const norm = (settings) => M.normalizeState({ settings }).settings;
+  // Only the package's: its width, snapped to 10 px and clamped to 160–500.
+  let s = norm({ themes: { 'arcadia-2': { sidebarWidth: 333 } } });
+  assert.deepEqual(s.themes.arcadia, { sidebarWidth: 330 });
+  assert.equal('arcadia-2' in s.themes, false);
+  assert.equal(norm({ themes: { 'arcadia-2': { sidebarWidth: 900 } } }).themes.arcadia.sidebarWidth, 500);
+  assert.equal(norm({ themes: { 'arcadia-2': { sidebarWidth: 20 } } }).themes.arcadia.sidebarWidth, 160);
+  // Arcadia's own width wins over the package's, which wins over a top-level one.
+  s = norm({ sidebarWidth: 410, themes: { arcadia: { sidebarWidth: 287 }, 'arcadia-2': { sidebarWidth: 333 } } });
+  assert.equal(s.themes.arcadia.sidebarWidth, 290);
+  assert.equal(norm({ sidebarWidth: 410, themes: { 'arcadia-2': { sidebarWidth: 333 } } }).themes.arcadia.sidebarWidth, 330);
+  assert.equal(norm({ sidebarWidth: 414, themes: { 'arcadia-2': {} } }).themes.arcadia.sidebarWidth, 410);
+  assert.ok(!('sidebarWidth' in s), 'the top-level key is dropped');
+  // Other themes' settings stay as saved.
+  assert.deepEqual(norm({ themes: { 'arcadia-2': { sidebarWidth: 300 }, 'neo-brutalism': { sidebarWidth: '300px' } } }).themes['neo-brutalism'], { sidebarWidth: '300px' });
+});

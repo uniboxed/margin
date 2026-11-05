@@ -245,7 +245,7 @@ test('a built-in theme is read from its files: theme.json first, then only what 
   assert.ok(pkg.files['fonts/archivo-black-latin.woff2'] instanceof Uint8Array);
   assert.deepEqual(checkPackage(pkg), []);
   assert.equal(sanitizeTheme({ ...pkg, files: Object.keys(pkg.files) }).ok, true);
-  await assert.rejects(readBuiltinTheme('arcadia', { readFile: async () => '' }), /no built-in theme/);
+  await assert.rejects(readBuiltinTheme('gone', { readFile: async () => '' }), /no built-in theme/);
   // A manifest naming a path outside the package: never asked for.
   const asked = [];
   await readBuiltinTheme('neo-brutalism', { readFile: async (p) => { asked.push(p); return p === 'theme.json' ? JSON.stringify({ ...base, fonts: [{ family: 'A', file: '../../../secret.woff2' }, { family: 'B', file: 'https://evil.test/x.woff2' }] }) : ''; } });
