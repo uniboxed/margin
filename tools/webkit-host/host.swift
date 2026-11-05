@@ -254,17 +254,25 @@ let pageRecorder = """
   // Native messaging, as Safari's extension handler and Margin.app do it (app/PROTOCOL.md):
   // a copy's wantLink goes to the app's real end of the link (link-server/main.swift, started
   // by an `appStart` step), whose dispatches come into the copy's lasting port. Without it,
-  // the handler's answer: the app isn't open.
+  // the handler's answer: the app isn't open. After an `appOnDemand` step, a wantLink with
+  // the app not running starts it, as the handler does (NSWorkspace.openApplication), and
+  // answers `launching`.
   func webExtensionController(_ c: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier id: String?, for x: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
     let body = message as? [String: Any]
     let type = body?["type"] as? String ?? "?"
+    var launching = false
     if type == "wantLink", let nonce = body?["nonce"] as? String, appLink.running {
       log("native: wantLink (to the app)")
       appLink.tell(["wantLink": nonce])
+    } else if type == "wantLink", appLink.onDemand {
+      log("native: wantLink: the app isn't running, started (launching)")
+      appLink.onDemand = false
+      appLink.start(layout: appLink.onDemandLayout)
+      launching = true
     } else if type != "ping" {
       log("native: \(type)\(appLink.running ? "" : " (no app)")")
     }
-    replyHandler(["ok": true, "appOpen": appLink.running, "launching": false], nil)
+    replyHandler(["ok": true, "appOpen": appLink.running && !launching, "launching": launching], nil)
   }
   func webExtensionController(_ c: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort, for x: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
     log("native: a lasting port opened")
@@ -423,11 +431,19 @@ var retiredViews: [WKWebView] = []
   var input: FileHandle?
   var port: WKWebExtension.MessagePort?
   var pings = 0
+  var onDemand = false
+  var onDemandLayout: [Double]?
   var running: Bool { process?.isRunning == true }
-  func start() {
+  // `layout`: the page slot's insets the app reports (left, top, right, bottom; link-server/).
+  func start(layout: [Double]? = nil) {
     guard let path = ProcessInfo.processInfo.environment["MARGIN_LINK_SERVER"] else { return log("appStart: no MARGIN_LINK_SERVER") }
     let p = Process()
     p.executableURL = URL(fileURLWithPath: path)
+    if let layout, layout.count == 4 {
+      var env = ProcessInfo.processInfo.environment
+      env["MARGIN_LINK_LAYOUT"] = layout.map { String($0) }.joined(separator: ",")
+      p.environment = env
+    }
     let inPipe = Pipe(), outPipe = Pipe()
     p.standardInput = inPipe
     p.standardOutput = outPipe
@@ -706,7 +722,12 @@ Task { @MainActor in
       }
     case "pinch": // { op: 'pinch', deltas, x?, y? }: real magnify events handed to the shown tab's web view
       if let wv = host.window.active?.webView { await pinchOn(wv, step) }
-    case "appStart": appLink.start(); try? await Task.sleep(nanoseconds: 300_000_000)
+    case "appStart": // { op: 'appStart', layout?: [left, top, right, bottom] }
+      appLink.start(layout: (step["layout"] as? [NSNumber])?.map { $0.doubleValue }); try? await Task.sleep(nanoseconds: 300_000_000)
+    case "appOnDemand": // { op: 'appOnDemand', layout? }: the handler starts the app at the next wantLink
+      appLink.onDemand = true; appLink.onDemandLayout = (step["layout"] as? [NSNumber])?.map { $0.doubleValue }; log("appOnDemand")
+    case "appLayout": // { op: 'appLayout', layout: [left, top, right, bottom] }: the app's overlay measured the slot again
+      appLink.tell(["layout": (step["layout"] as? [NSNumber])?.map { $0.doubleValue } ?? []]); log("appLayout \(step["layout"] ?? "")")
     case "appQuit": appLink.tell(["bye": true]); log("appQuit")
     case "appKill": appLink.kill()
     case "appPings": log("app: \(appLink.pings) pings on the port so far")

@@ -6,9 +6,11 @@
 // part of the link and says on stdout, one JSON object a line, what it heard:
 //   { dispatch: name, info }  for the host to deliver into the extension's port
 //   { ev: ... }               what happened (logged by the host)
-// As the copy links, it sends a setLayout for the copy's first window (300/40/20/24), and
-// once the theme's pieces add up, a request (`updateSettings`, the sidebar's shortcut to
-// ⌥J) whose effect a page can see. Stdin: { wantLink: nonce } | { bye: true }.
+// As the copy links, it sends a setLayout for the copy's first window (300/40/20/24, or
+// MARGIN_LINK_LAYOUT="left,top,right,bottom"), and once the theme's pieces add up, a request
+// (`updateSettings`, the sidebar's shortcut to ⌥J) whose effect a page can see. Stdin:
+// { wantLink: nonce } | { bye: true } | { layout: [left, top, right, bottom] } (a new
+// setLayout for the linked copy's first window: the host's `appLayout` step).
 // Built by run.sh with the app's flags; never shows anything.
 import AppKit
 import Foundation
@@ -23,12 +25,30 @@ struct StdoutDispatch: ExtensionDispatch {
   func dispatch(_ name: String, _ info: JSONObject) { say(["dispatch": name, "info": info]) }
 }
 
+// The insets the app's overlay would measure for the page slot (left, top, right, bottom).
+var insets: [Double] = {
+  let parts = (ProcessInfo.processInfo.environment["MARGIN_LINK_LAYOUT"] ?? "").split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+  return parts.count == 4 ? parts : [300, 40, 20, 24]
+}()
+
 final class Harness: ExtensionLinkDelegate {
   let link: SocketLink
   var assembler = ChunkAssembler()
   var laidOut = Set<String>()
   var asked = Set<String>()
   var firstWindow: [String: Int] = [:]
+  var size: [String: (Double, Double)] = [:]
+  var seq: [String: Int] = [:]
+  var current: LinkConnection?
+
+  func layout(_ c: LinkConnection, _ epoch: String) {
+    guard let id = firstWindow[epoch], let (width, height) = size[epoch] else { return }
+    let n = (seq[epoch] ?? 0) + 1
+    seq[epoch] = n
+    let layout = PageLayout(left: insets[0], top: insets[1], right: insets[2], bottom: insets[3], radius: 10, radii: [10, 10, 10, 10], width: width, height: height, mode: "fullscreen")
+    c.send(.setLayout(epoch: epoch, windowId: id, seq: n, layout: layout))
+    say(["ev": "setLayout sent", "windowId": id, "insets": insets, "seq": n])
+  }
 
   init() {
     link = SocketLink(dispatch: StdoutDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.link.\(getpid())"))
@@ -38,6 +58,7 @@ final class Harness: ExtensionLinkDelegate {
   }
 
   func linkUp(_ c: LinkConnection) {
+    current = c
     let h = c.hello
     say(["ev": "hello", "profile": h.profile, "browser": h.browser, "owner": h.owner, "ext": h.ext ?? NSNull(), "origin": h.origin ?? NSNull()])
   }
@@ -51,9 +72,8 @@ final class Harness: ExtensionLinkDelegate {
       laidOut.insert(epoch)
       firstWindow[epoch] = id
       let width = num(w["width"]) ?? 1200, height = num(w["height"]) ?? 800
-      let layout = PageLayout(left: 300, top: 40, right: 20, bottom: 24, radius: 10, radii: [10, 10, 10, 10], width: width > 0 ? width : 1200, height: height > 0 ? height : 800, mode: "fullscreen")
-      c.send(.setLayout(epoch: epoch, windowId: id, seq: 1, layout: layout))
-      say(["ev": "setLayout sent", "windowId": id])
+      size[epoch] = (width > 0 ? width : 1200, height > 0 ? height : 800)
+      layout(c, epoch)
     case .delta(_, let seq, let changes, _):
       say(["ev": "delta", "seq": seq, "keys": Array(changes.keys).sorted()])
     case .windows(_, let seq, let list):
@@ -87,7 +107,10 @@ final class Harness: ExtensionLinkDelegate {
     }
   }
 
-  func linkDown(_ c: LinkConnection, _ why: String) { say(["ev": "down", "why": why]) }
+  func linkDown(_ c: LinkConnection, _ why: String) {
+    if current === c { current = nil }
+    say(["ev": "down", "why": why])
+  }
 }
 
 let harness = Harness()
@@ -103,6 +126,10 @@ FileHandle.standardInput.readabilityHandler = { handle in
       MainActor.assumeIsolated {
         if let nonce = object["wantLink"] as? String { harness.link.wantLink(nonce: nonce) }
         if object["bye"] as? Bool == true { harness.link.stop(why: "Margin.app quit") { say(["ev": "stopped"]); exit(0) } }
+        if let given = object["layout"] as? [Double], given.count == 4 {
+          insets = given
+          if let c = harness.current { harness.layout(c, c.epoch) } else { say(["ev": "layout kept: no copy linked"]) }
+        }
       }
     }
   }
