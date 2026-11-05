@@ -17,10 +17,13 @@
 // (move()) gives back the profile's own order when it changed, for the app
 // to write into its set, so the profile's copy shows the same order alone.
 //
-// Profile names: browsers don't give them (Safari: none without
-// permissions), so the person names each profile once; until then
+// Profile names: with Full Disk Access, Safari's own (SafariProfiles.swift,
+// `useBrowserNames`), kept in step with Safari, which win over a typed one;
+// Edit Profile then keeps the emoji and color only (Margin never writes to
+// Safari). Without it, the person names each profile once; until then
 // "Default" for Safari's default profile (`s-default`) and "Profile N" for
-// the others, in the order Margin first saw them.
+// the others, in the order Margin first saw them. A profile deleted in Safari
+// keeps the name Safari last gave it, as if typed.
 
 import Foundation
 
@@ -39,9 +42,13 @@ struct ProfileInfo: Equatable {
     var firstSeen: Double = 0
     var lastSeen: Double = 0 // linked last (or now, while it is)
     var hidden = false // forgotten by the person: left out until its copy links again
+    var browserId = "" // the browser's own id for the profile, once its name was read (Safari: its server_id)
+    var browserName = "" // the name the browser last gave it
 
     var json: JSONObject {
-        ["name": name, "emoji": emoji, "color": color, "named": named, "firstSeen": firstSeen, "lastSeen": lastSeen, "hidden": hidden]
+        var o: JSONObject = ["name": name, "emoji": emoji, "color": color, "named": named, "firstSeen": firstSeen, "lastSeen": lastSeen, "hidden": hidden]
+        if !browserId.isEmpty { o["browserId"] = browserId; o["browserName"] = browserName }
+        return o
     }
     init() {}
     init(json o: JSONObject) {
@@ -52,6 +59,8 @@ struct ProfileInfo: Equatable {
         firstSeen = num(o["firstSeen"]) ?? 0
         lastSeen = num(o["lastSeen"]) ?? 0
         hidden = o["hidden"] as? Bool ?? false
+        browserId = o["browserId"] as? String ?? ""
+        browserName = o["browserName"] as? String ?? ""
     }
 }
 
@@ -70,6 +79,9 @@ final class BrowserProfiles {
     private(set) var order: [SpaceKey] = [] // resolved against the sets (refresh)
     private(set) var info: [String: ProfileInfo] = [:]
     private(set) var saves = 0
+    // The browser's own names now (with the permission; not saved as such): profile → name and SF Symbol.
+    private(set) var browserNames: [String: BrowserName] = [:]
+    struct BrowserName: Equatable { var name: String; var symbol: String }
 
     // `root`: the data folder (DataStore.root); nil keeps it in memory (the unit tests).
     init(browser: String, root: URL?) {
@@ -119,6 +131,7 @@ final class BrowserProfiles {
     }
 
     func name(_ profile: String) -> String {
+        if let b = browserNames[profile] { return b.name }
         let i = info[profile]
         return i?.named == true && !(i?.name.isEmpty ?? true) ? i!.name : defaultName(profile)
     }
@@ -128,12 +141,15 @@ final class BrowserProfiles {
         return Self.colors[(profiles.firstIndex(of: profile) ?? 0) % Self.colors.count]
     }
 
-    // Named by the person (an empty name: back to the default).
+    // Named by the person (an empty name: back to the default). While the
+    // browser's name is shown, the name is the browser's: only the emoji and color change.
     @discardableResult func rename(_ profile: String, name: String, emoji: String, color: String?) -> Bool {
         guard var i = info[profile] else { return false }
-        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
-        i.name = trimmed
-        i.named = !trimmed.isEmpty
+        if browserNames[profile] == nil {
+            let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+            i.name = trimmed
+            i.named = !trimmed.isEmpty
+        }
         i.emoji = String(emoji.prefix(8))
         if let color, color.range(of: "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$", options: .regularExpression) != nil { i.color = color }
         info[profile] = i
@@ -151,6 +167,66 @@ final class BrowserProfiles {
         return true
     }
 
+    // ---- the browser's own names ----
+
+    private var browserList: [SafariProfile]? // the browser's profiles as last read
+
+    // What the browser has now (SafariProfiles.read): each of its profiles that
+    // Margin's copy runs in gets the browser's name and symbol; one linked
+    // before (by `browserId`) keeps it while the browser still has that
+    // profile, even if the copy's entry can't be read this time. A profile the
+    // browser no longer has keeps its last name as a typed one (unless one was
+    // typed). True if a name shown changed.
+    @discardableResult func useBrowserNames(_ list: [SafariProfile]) -> Bool {
+        browserList = list
+        let before = browserNames
+        if associate() { save() }
+        return browserNames != before
+    }
+
+    // No names from the browser (no permission, or none readable): the typed ones again.
+    @discardableResult func dropBrowserNames() -> Bool {
+        browserList = nil
+        guard !browserNames.isEmpty else { return false }
+        browserNames = [:]
+        return true
+    }
+
+    // The names from `browserList`, and each known profile's link to the
+    // browser's (`browserId`, `browserName`) brought up to date. True if the
+    // links changed (to be saved).
+    private func associate() -> Bool {
+        guard let list = browserList else { return false }
+        var names: [String: BrowserName] = [:]
+        var changed = false
+        let byId = Dictionary(list.map { ($0.serverId, $0) }, uniquingKeysWith: { a, _ in a })
+        for p in list where !p.name.isEmpty {
+            if let margin = p.margin, names[margin] == nil { names[margin] = BrowserName(name: p.name, symbol: p.symbol) }
+        }
+        for id in info.keys.sorted() {
+            guard var i = info[id] else { continue }
+            let known = i.browserId.isEmpty ? nil : byId[i.browserId]
+            if names[id] == nil, let known, !known.name.isEmpty { names[id] = BrowserName(name: known.name, symbol: known.symbol) }
+            if let mapped = list.first(where: { $0.margin == id }) ?? known {
+                guard i.browserId != mapped.serverId || i.browserName != mapped.name else { continue }
+                i.browserId = mapped.serverId
+                i.browserName = mapped.name
+            } else if !i.browserId.isEmpty {
+                // Deleted in the browser: the last name it gave stays, as if typed.
+                Diagnostics.note("\(browser): profile “\(i.browserName)” (\(i.browserId)) is gone from the browser: \(id) keeps \(i.named ? "its typed name" : "that name")")
+                if !i.named, !i.browserName.isEmpty { i.name = String(i.browserName.prefix(40)); i.named = true }
+                i.browserId = ""
+                i.browserName = ""
+            } else {
+                continue
+            }
+            info[id] = i
+            changed = true
+        }
+        browserNames = names
+        return changed
+    }
+
     // ---- the order ----
 
     // The profiles' spaces as their sets have them now (each profile's in its
@@ -166,6 +242,7 @@ final class BrowserProfiles {
             info[p] = i
             changed = true
         }
+        if changed { _ = associate() } // a new profile linked to the browser's, if it's read
         for p in linked {
             guard var i = info[p] else { continue }
             if i.hidden { i.hidden = false; changed = true } // it's back
@@ -244,17 +321,24 @@ final class BrowserProfiles {
     // one order. `spaces`: each profile's spaces' values (name, emoji,
     // color); `counts`: profile → space → its tabs; `linked`; `switching`:
     // the cross-profile switch under way, if any.
-    func across(for profile: String, spaces: [String: [String: JSONObject]], counts: [String: [String: Int]], linked: Set<String>, switching: JSONObject? = nil) -> JSONObject {
+    // `symbol`: a symbol's picture (ProfileSymbols.dataURL), for a profile with the browser's name.
+    func across(for profile: String, spaces: [String: [String: JSONObject]], counts: [String: [String: Int]], linked: Set<String>, switching: JSONObject? = nil,
+                symbol: (String) -> String? = { _ in nil }) -> JSONObject {
         let t = now()
         let shown = profilesShown.isEmpty ? [profile] : profilesShown
         let list: [JSONObject] = (shown + (shown.contains(profile) ? [] : [profile])).map { p in
             let i = info[p] ?? ProfileInfo()
-            return [
+            var o: JSONObject = [
                 "id": p, "name": name(p), "emoji": i.emoji, "color": color(p), "named": i.named,
                 "here": p == profile, "linked": linked.contains(p),
                 "lastSeen": i.lastSeen, "stale": !linked.contains(p) && i.lastSeen > 0 && t - i.lastSeen > Self.staleMs,
                 "spaces": order.filter { $0.profile == p }.count,
             ]
+            if let b = browserNames[p] {
+                o["nameFrom"] = browser // the browser's name: Edit Profile shows it and leaves it
+                if let picture = symbol(b.symbol) { o["symbol"] = picture }
+            }
+            return o
         }
         let entries: [JSONObject] = order.map { k in
             let v = spaces[k.profile]?[k.space] ?? [:]

@@ -97,6 +97,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var switchClock: SwitchClock = RunLoopClock()
         // Seconds since 1970, the clock the extension's focusedAt and createdAt use (tests set it).
         var clock: () -> Double = { Date().timeIntervalSince1970 }
+        // Safari's data folder, for its profiles' names (SafariProfiles.swift); nil: not read (the harness, the tests).
+        var safariData: URL?
+        var safariWatch = SafariProfileWatcher.Options()
     }
 
     final class Link {
@@ -148,6 +151,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var acrossQueued = false
     var spaceAim: [WindowKey: (key: SpaceKey, at: Double)] = [:] // the next/previous keys, chained
     var switchNotice: JSONObject?
+    var safariNames: SafariProfileWatcher? // Safari's profile names (ShellProfiles.swift startSafariNames)
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
@@ -170,12 +174,15 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // The app's own: Safari through the window server and NSWorkspace, Carbon's hot keys.
     static func forApp() -> Shell {
-        Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys())
+        var options = Options()
+        options.safariData = SafariProfiles.safariFolder
+        return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
     }
 
     func start() {
         stopped = false
         link.start()
+        startSafariNames()
     }
 
     func stop(then: @escaping () -> Void) {
@@ -186,6 +193,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         shortcuts.set(active: false)
         pointer.stop()
         apps.stop()
+        safariNames?.stop()
         for overlay in overlays.values { overlay.close() }
         overlays = [:]
         link.stop(why: "Margin.app quit", then: then)

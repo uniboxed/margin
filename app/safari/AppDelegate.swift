@@ -44,8 +44,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         terminating?.setEventHandler { RunLoop.main.perform { NSApp.terminate(nil) } }
         terminating?.resume()
         shell.start()
-        // A one-off look at where Safari keeps its profiles' names (SafariProfileProbe.swift).
-        DispatchQueue.global(qos: .utility).async { SafariProfileProbe.run() }
         idleCheck = Timer.scheduledTimer(withTimeInterval: Self.idleCheckEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkIdle() }
         }

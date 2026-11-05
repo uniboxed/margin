@@ -71,6 +71,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     dataStore()
     dataSync()
     profilesTests()
+    safariProfilesTests() // safari-profiles-tests.swift
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }

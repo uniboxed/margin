@@ -58,7 +58,7 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/safari/AppDelegate.swift ../../app/safari/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/safari/SafariWebExtensionHandler.swift
-  build tests tests.swift data-tests.swift profiles-tests.swift window-tests.swift "${SHELL_SOURCES[@]}"
+  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift window-tests.swift "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then

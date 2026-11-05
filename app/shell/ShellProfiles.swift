@@ -20,6 +20,26 @@ extension Shell: SwitchWorld {
         return p
     }
 
+    // Safari's own names for its profiles, kept in step (SafariProfiles.swift),
+    // with Full Disk Access; without it the typed names stay.
+    func startSafariNames() {
+        guard let folder = options.safariData, safariNames == nil else { return }
+        let watcher = SafariProfileWatcher(folder: folder, options: options.safariWatch)
+        watcher.onChange = { [weak self] outcome in
+            guard let self else { return }
+            let profiles = self.profilesOf("safari")
+            let changed: Bool
+            switch outcome {
+            case .read(let list): changed = profiles.useBrowserNames(list)
+            case .noAccess, .noSafari, .failed: changed = profiles.dropBrowserNames()
+            case .busy: changed = false
+            }
+            if changed { self.acrossSoon() }
+        }
+        safariNames = watcher
+        watcher.start()
+    }
+
     // Each profile's spaces in its own order (its set's, or its copy's state while linked).
     private func ownSpaces(_ browser: String) -> (ids: [String: [String]], values: [String: [String: JSONObject]]) {
         var ids: [String: [String]] = [:]
@@ -82,7 +102,7 @@ extension Shell: SwitchWorld {
         }
         for (key, overlay) in overlays {
             guard let entry = links[key.link], let (profiles, values, counts, linked) = made[entry.connection.hello.browser] else { continue }
-            guard let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: counts, linked: linked, switching: switchingJSON())) else { continue }
+            guard let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: counts, linked: linked, switching: switchingJSON(), symbol: { ProfileSymbols.dataURL($0) })) else { continue }
             if acrossSent[key] == json { continue }
             acrossSent[key] = json
             overlay.push(raw: #"{"type":"across","across":"# + json + "}")
@@ -97,7 +117,7 @@ extension Shell: SwitchWorld {
         let linked = linkedProfiles(browser)
         let profiles = profilesOf(browser)
         profiles.refresh(spaces: ids, linked: linked)
-        let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: tabCounts(browser, Array(ids.keys)), linked: linked, switching: switchingJSON()))
+        let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: tabCounts(browser, Array(ids.keys)), linked: linked, switching: switchingJSON(), symbol: { ProfileSymbols.dataURL($0) }))
         acrossSent[overlay.key] = json
         return json
     }
