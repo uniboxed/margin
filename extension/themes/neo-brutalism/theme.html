@@ -38,27 +38,38 @@
 
       <div class="tabs" m-scroll="tabs">
         <div class="folders">
-          <m-for each="space.folders" as="g">
-            <div class="folder" m-class:open="{{g.open}}">
-              <button class="btn row folder-head" m-attr:aria-expanded="{{g.open}}" m-action="folder.toggle" m-arg="{{g.id}}">
-                <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
-                <span class="folder-name">{{g.name}}</span>
-                <span class="folder-count">{{g.tabs.length}}</span>
-              </button>
-              <m-if test="g.open">
-                <div class="folder-tabs">
-                  <m-for each="g.tabs" as="t">
-                    <button class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-action="tab.activate" m-arg="{{t.id}}">
-                      <m-if test="t.icon">
-                        <img class="fav" alt="" m-icon="{{t.icon}}">
-                        <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
-                      </m-if>
-                      <span class="title">{{t.title}}</span>
-                    </button>
-                  </m-for>
-                </div>
-              </m-if>
-            </div>
+          <m-for each="space.pinned" as="g">
+            <m-if test="g.isFolder">
+              <div class="folder" m-class:open="{{g.open}}">
+                <button class="btn row folder-head" m-attr:aria-expanded="{{g.open}}" m-action="folder.toggle" m-arg="{{g.id}}">
+                  <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                  <span class="folder-name">{{g.name}}</span>
+                  <span class="folder-count">{{g.count}}</span>
+                </button>
+                <m-if test="g.hasShown">
+                  <div class="folder-tabs">
+                    <m-for each="g.shown" as="t">
+                      <button class="btn row tab pin" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-class:open="{{t.open}}"m-action="pin.open" m-arg="{{t.id}}">
+                        <m-if test="t.icon">
+                          <img class="fav" alt="" m-icon="{{t.icon}}">
+                          <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                        </m-if>
+                        <span class="title">{{t.title}}</span>
+                      </button>
+                    </m-for>
+                  </div>
+                </m-if>
+              </div>
+              <m-else>
+                <button class="btn row tab pin loose" title="{{g.title}}" m-class:on="{{g.active}}" m-class:asleep="{{g.asleep}}" m-action="pin.open" m-arg="{{g.id}}">
+                  <m-if test="g.icon">
+                    <img class="fav" alt="" m-icon="{{g.icon}}">
+                    <m-else><span class="fav letter" m-style:--fav="{{g.color}}">{{g.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{g.title}}</span>
+                </button>
+              </m-else>
+            </m-if>
           </m-for>
         </div>
 
@@ -69,7 +80,7 @@
           </m-if>
         </div>
 
-        <button class="btn push new-tab" m-action="palette.open">
+        <button class="btn push new-tab" m-class:on="{{space.newTab.active}}" m-action="tab.new">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
           <span class="grow left">NEW TAB</span>
           <kbd class="kbd">⌘T</kbd>
@@ -115,8 +126,8 @@
         <input id="palette-input" class="palette-input" m-input="palette" placeholder="Go anywhere…" autocomplete="off" spellcheck="false">
         <m-for each="palette.rows" as="r">
           <button class="btn row palette-row" m-class:on="{{r.selected}}" m-action="palette.run" m-arg="{{r.id}}">
-            <span class="tag" m-style:--tag="{{r.color}}">{{r.tag}}</span>
-            <span class="grow left ellipsis">{{r.text}}</span>
+            <span class="tag" m-style:--tag="{{r.color}}">{{r.badge}}</span>
+            <span class="grow left ellipsis">{{r.title}}</span>
             <span class="enter">↵</span>
           </button>
         </m-for>

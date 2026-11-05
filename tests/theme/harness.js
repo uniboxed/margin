@@ -1,9 +1,12 @@
 // The browser side of the theme tests and the benchmark, bundled into one
 // script (tests/theme/package.js harnessScript) and added to a blank page.
 // Node drives it with page.evaluate through `window.T`.
-import { sanitizeTheme, sanitizeCss } from '../../extension/ui/sanitize.js';
-import { buildTemplate, View, loadTheme } from '../../extension/ui/render.js';
-import { createDispatcher, contextFromViewModel } from '../../extension/ui/actions.js';
+import { sanitizeCss } from '../../extension/ui/sanitize.js';
+import { buildTemplate, View } from '../../extension/ui/render.js';
+import { loadTheme, loadBuiltinTheme, sanitizeTheme } from '../../extension/ui/theme-loader.js';
+import { createRuntime } from '../../extension/ui/runtime.js';
+import { createMockHost } from '../../extension/ui/host.js';
+import { createDispatcher, contextFromState } from '../../extension/ui/actions.js';
 import { MockState } from './view-model.js';
 import { auditDom } from './audit.js';
 import { HTML_PAYLOADS, CSS_PAYLOADS, CSS_TARGET, EVIL_VM, wrap } from './payloads.js';
@@ -56,7 +59,7 @@ const T = {
       target = el.attachShadow({ mode: closed ? 'closed' : 'open' });
     }
     const dispatch = createDispatcher({
-      context: () => contextFromViewModel(mock.vm),
+      context: () => contextFromState(mock.state),
       run: (name, arg) => state.actions.push([name, arg]),
       log: (entry) => state.refused.push(entry),
     });
@@ -131,7 +134,7 @@ const T = {
     const mock = new MockState();
     const vm = { ...mock.vm, evil: EVIL_VM };
     const dispatch = createDispatcher({
-      context: () => contextFromViewModel(vm),
+      context: () => contextFromState(mock.state),
       run: (name, arg) => state.actions.push([name, arg]),
       log: (entry) => state.refused.push(entry),
     });
@@ -292,6 +295,89 @@ const T = {
     return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, { js: stat(v.js), layout: stat(v.layout) }]));
   },
 };
+
+// --- The runtime (ui/runtime.js) with a mock host -------------------------------
+
+const rt = { runtime: null, host: null, mock: null, el: null, target: null, theme: null };
+
+Object.assign(T, {
+  // Neo-brutalism as a built-in theme: its files read through readFile (here
+  // from the package handed over, in the extension from its own URL).
+  async loadBuiltin(pkg) {
+    const p = unpack(pkg);
+    const text = { 'theme.json': p.manifest, 'theme.html': p.html, 'theme.css': p.css };
+    const read = [];
+    const theme = await loadBuiltinTheme('neo-brutalism', { readFile: async (path) => { read.push(path); return text[path] ?? p.files[path]; } });
+    rt.theme = theme;
+    return { ok: theme.ok, id: theme.id, read, fontErrors: theme.fontErrors, fonts: ['Archivo Black', 'Space Grotesk'].map((f) => document.fonts.check(`16px "${f}"`)) };
+  },
+
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true } } = {}) {
+    T.unmountRuntime();
+    const mock = new MockState();
+    const host = createMockHost({ state: mock.state, windowId: 1, platform, mode: 'fullscreen', replies: { createSpace: () => ({ spaceId: 'studio' }) } });
+    let target;
+    let el = null;
+    if (container === 'document') {
+      // The whole window, following its size (Margin.app's web view).
+      document.documentElement.style.cssText = 'margin:0;height:100%';
+      document.body.style.cssText = 'margin:0;height:100%';
+      target = document;
+    } else {
+      el = hostElement(width, height);
+      target = el.attachShadow({ mode: closed ? 'closed' : 'open' });
+    }
+    const runtime = createRuntime({ host, theme: rt.theme, container: target, onWarn: () => {} });
+    Object.assign(rt, { runtime, host, mock, el, target });
+    w.__rt = rt;
+    return true;
+  },
+  unmountRuntime() {
+    if (!rt.runtime) return;
+    rt.runtime.destroy();
+    rt.el?.remove();
+    rt.runtime = null;
+    document.documentElement.style.cssText = '';
+    document.body.style.cssText = '';
+  },
+  // A change to the stored state (a MockState op), handed to the host, with
+  // every DOM mutation it made.
+  rtChange(op, ...args) {
+    const root = rt.target.nodeType === 9 ? rt.target.body : rt.target;
+    const mo = new MutationObserver(() => {});
+    mo.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
+    rt.mock[op](...args);
+    rt.host.setState(rt.mock.state);
+    const records = mo.takeRecords();
+    mo.disconnect();
+    return { records: records.length, text: records.filter((r) => r.type === 'characterData').length };
+  },
+  rtSettings(patch) {
+    rt.mock.state = { ...rt.mock.state, settings: { ...rt.mock.state.settings, ...patch } };
+    rt.host.setState(rt.mock.state);
+  },
+  rtSent() { return rt.host.sent.map((s) => [s.type, s.payload]); },
+  rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
+  rtRefused() { return rt.runtime.refused.map((r) => [r.name, r.reason]); },
+  rtPerformed() { return rt.host.performed.map((p) => p.name); },
+  rtUi() { const { palette, sidebar, editing } = rt.runtime.ui; return { palette, sidebar, editing }; },
+  rtVm() { const vm = rt.runtime.vm; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
+  rtCount(selector) { return rt.target.querySelectorAll(selector).length; },
+  rtText(selector) { return [...rt.target.querySelectorAll(selector)].map((e) => e.textContent.trim()); },
+  rtTodayIds() { return rt.runtime.vm.space.today.slice(0, 3).map((t) => t.id); },
+  rtDispatch(name, arg) { return rt.runtime.dispatch(name, arg); },
+  // Where to click an element (the shadow root is closed: clicks go by
+  // position), scrolled into view in its list first.
+  rtBox(selector, nth = 0) {
+    const el = rt.target.querySelectorAll(selector)[nth];
+    if (!el) return null;
+    el.scrollIntoView({ block: 'nearest' });
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  },
+});
+
+function hostElement(width, height) { return host(width, height); }
 
 // The CSS payloads' target, built with DOM APIs.
 function target() {

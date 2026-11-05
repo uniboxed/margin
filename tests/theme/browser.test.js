@@ -61,7 +61,8 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await page.evaluate(() => T.mutate('removeTabs', 10)), { text: 1, attributes: [], added: 0, removed: 10, moved: 0 });
         assert.deepEqual(await page.evaluate(() => T.mutate('moveTab', 0, 120)), { text: 0, attributes: [], added: 0, removed: 0, moved: 1 }, 'a reorder moves one node');
         const ids = await page.evaluate(() => T.vmIds());
-        assert.deepEqual(await page.evaluate((i) => T.mutate('activate', i), ids.today[1]), { text: 0, attributes: ['class', 'class'], added: 0, removed: 0, moved: 0 }, 'old and new active rows');
+        // The window's active tab changes: old and new rows, and the address (its host, its label).
+        assert.deepEqual(await page.evaluate((i) => T.mutate('activate', i), ids.today[1]), { text: 1, attributes: ['aria-label', 'class', 'class'], added: 0, removed: 0, moved: 0 }, 'old and new active rows, and the address');
         assert.deepEqual(await page.evaluate((f) => T.mutate('toggleFolder', f), ids.folder), { text: 0, attributes: ['class', 'aria-expanded'], added: 0, removed: 1, moved: 0 }, 'folder closes: one subtree out');
         assert.deepEqual(await page.evaluate((f) => T.mutate('toggleFolder', f), ids.folder), { text: 0, attributes: ['class', 'aria-expanded'], added: 1, removed: 0, moved: 0 }, 'and back');
         assert.equal(await page.evaluate(() => T.tag('.today .tab', 'first-row')), true);
@@ -86,7 +87,88 @@ for (const [name, engine] of ENGINES) {
         await page.click('.new-tab');
         await page.evaluate(() => document.querySelector('.margin-host').shadowRoot.querySelector('.today .tab').click());
         const { ran } = await page.evaluate(() => T.actions());
-        assert.deepEqual(ran, [['tab.activate', ids.today[2]], ['space.switch', 'work'], ['folder.toggle', ids.folder], ['palette.open', undefined]]);
+        assert.deepEqual(ran, [['tab.activate', ids.today[2]], ['space.switch', 'work'], ['folder.toggle', ids.folder], ['tab.new', undefined]]);
+      });
+
+      await t.test('the runtime: Neo-brutalism as a built-in theme, a mock host, real clicks', async () => {
+        await page.evaluate(() => T.unmountAll());
+        const b = await page.evaluate((p) => T.loadBuiltin(p), pkg);
+        assert.equal(b.ok, true);
+        assert.equal(b.id, 'neo-brutalism');
+        assert.deepEqual(b.read.slice(0, 3).sort(), ['theme.css', 'theme.html', 'theme.json'], 'theme.json, the template and the stylesheet');
+        assert.equal(b.read.filter((f) => f.endsWith('.woff2')).length, 4, 'and the fonts it lists, nothing else');
+        assert.deepEqual(b.fontErrors, []);
+        assert.deepEqual(b.fonts, [true, true]);
+
+        await page.evaluate(() => T.mountRuntime({ closed: true }));
+        assert.equal(await page.evaluate(() => T.rtCount('.tab')), 200);
+        assert.deepEqual(await page.evaluate(() => T.rtText('.space-name')), ['Personal']);
+        assert.equal(await page.evaluate(() => T.rtCount('[m-action], m-for, m-if')), 0);
+        // The first layout, once a frame has gone by.
+        await page.waitForFunction(() => T.rtLayouts().length > 0);
+        assert.deepEqual((await page.evaluate(() => T.rtLayouts())).at(-1), { left: 291, top: 19, right: 19, bottom: 19, radius: 15, width: 1440, height: 900, windowId: 1, mode: 'fullscreen' });
+
+        // A state change from the host: one title, one text node and its title attribute.
+        const id = (await page.evaluate(() => T.rtTodayIds()))[0];
+        assert.deepEqual(await page.evaluate((i) => T.rtChange('retitle', i, 'Changed by the host'), id), { records: 2, text: 1 });
+        assert.ok((await page.evaluate(() => T.rtText('.today .title'))).includes('Changed by the host'));
+
+        // Real clicks, by position (the shadow root is closed).
+        const click = async (selector, nth = 0) => {
+          const box = await page.evaluate(({ s, n }) => T.rtBox(s, n), { s: selector, n: nth });
+          assert.ok(box, selector);
+          await page.mouse.click(box.x, box.y);
+        };
+        const today = await page.evaluate(() => T.rtTodayIds());
+        await click('.today .tab', 2);
+        await click('.chip', 1);
+        await click('.folder-head', 0);
+        await click('[aria-label="Back"]');
+        await click('.clear');
+        await click('[aria-label="Toggle sidebar"]');
+        await click('[aria-label="Archive and library"]');
+        assert.deepEqual(await page.evaluate(() => T.rtSent()), [
+          ['activateTab', { tabId: today[2] }],
+          ['setSpace', { windowId: 1, spaceId: 'work' }],
+          ['setFolderOpen', { folderId: 'personal-f0', open: false }],
+          ['updateSettings', { patch: { sidebarPinnedOpen: false } }],
+          ['openLauncher', { windowId: 1 }],
+        ]);
+        assert.deepEqual(await page.evaluate(() => T.rtPerformed()), ['nav.back'], 'the page\'s history is the host\'s');
+        assert.deepEqual((await page.evaluate(() => T.rtRefused())).map(([n]) => n), ['today.clear'], 'no handler yet');
+
+        // The palette: "New tab" opens it (local), a row runs its own request and closes it.
+        await click('.new-tab');
+        assert.deepEqual(await page.evaluate(() => T.rtUi().palette), { open: true, query: '', selected: 0, newTab: true });
+        assert.ok(await page.evaluate(() => T.rtCount('.palette-row')) > 3);
+        await click('.palette-row', 1);
+        assert.equal((await page.evaluate(() => T.rtUi().palette)).open, false);
+        assert.equal(await page.evaluate(() => T.rtCount('.palette-row')), 0);
+        const sent = await page.evaluate(() => T.rtSent());
+        assert.equal(sent.length, 6);
+        assert.equal(sent[5][0], 'activateTab', 'the second row of an empty query is a tab');
+
+        // Abuse through dispatch: refused, nothing sent.
+        assert.equal(await page.evaluate(() => T.rtDispatch('tab.close', 999999)), false);
+        assert.equal(await page.evaluate(() => T.rtDispatch('palette.run', 'tab:1000')), false, 'the palette is closed');
+        assert.equal(await page.evaluate(() => T.rtDispatch('space.switch', '__proto__')), false);
+        assert.equal((await page.evaluate(() => T.rtSent())).length, 6);
+
+        // The sidebar setting goes off in the state: the page's place follows, and is reported.
+        await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: false }));
+        await page.waitForFunction(() => T.rtLayouts().at(-1).left === 19);
+        assert.deepEqual((await page.evaluate(() => T.rtLayouts())).at(-1), { left: 19, top: 19, right: 19, bottom: 19, radius: 15, width: 1440, height: 900, windowId: 1, mode: 'fullscreen' });
+        assert.equal((await page.evaluate(() => T.rtVm())).sidebar, 'hidden');
+        // And the window resized, in the document itself.
+        await page.evaluate(() => T.mountRuntime({ container: 'document', width: 1280, height: 800 }));
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await page.waitForFunction(() => T.rtLayouts().some((l) => l.width === 1280));
+        assert.deepEqual((await page.evaluate(() => T.rtLayouts())).at(-1), { left: 291, top: 19, right: 19, bottom: 19, radius: 15, width: 1280, height: 800, windowId: 1, mode: 'fullscreen' });
+        await page.setViewportSize({ width: 1100, height: 700 });
+        await page.waitForFunction(() => T.rtLayouts().some((l) => l.width === 1100));
+        assert.deepEqual((await page.evaluate(() => T.rtLayouts())).at(-1), { left: 291, top: 19, right: 19, bottom: 19, radius: 15, width: 1100, height: 700, windowId: 1, mode: 'fullscreen' }, 'a resize is reported through the ResizeObserver');
+        await page.evaluate(() => T.unmountRuntime());
+        await page.setViewportSize({ width: 1440, height: 900 });
       });
 
       await t.test('<m-page> reports its insets and radius', async () => {
