@@ -15,6 +15,12 @@
 //   m-action + m-arg        a click runs one of Margin's actions (actions.js)
 //   m-icon                  an <img>'s src from a data: image in the view model
 //   <m-page>                the page's place, reported as insets and a radius
+//   m-drag, m-drop, m-peek, m-resize, m-rename, m-scroll, m-swipe, m-input
+//                           behaviors (ui/behaviors/): kept on the element, which
+//                           the view knows with its scope (behaviorOf, subjectOf)
+//   <template m-part>       a named part, shown in its slot (<m-menu>: `menu`,
+//                           <m-editor>: `space-editor`, <m-palette>: `palette`,
+//                           <m-notice>: `notice`) while the view model says so
 // Theme packages are loaded (sanitized, fonts made, sheets built) by
 // ui/theme-loader.js, and driven by ui/runtime.js.
 import { checkCssValue, checkIconUrl, parseInterpolation } from './sanitize.js';
@@ -25,9 +31,22 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor{display:block}
+m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty{display:none}
 template{display:none!important}
+.m-drag-ghost{position:fixed!important;margin:0!important;pointer-events:none!important;z-index:2147483601!important;box-sizing:border-box}
+[contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
 `;
+
+// Margin's slots, and what each shows: a theme's part (`<template m-part>`),
+// else what the theme put inside the slot, while `test` holds.
+const SLOTS = {
+  'm-menu': { part: 'menu', test: ['menu'] },
+  'm-editor': { part: 'space-editor', test: ['editor'] },
+  'm-palette': { part: 'palette', test: ['palette', 'open'] },
+  'm-notice': { part: 'notice', test: ['notice'] },
+};
 
 // ---------------------------------------------------------------------------
 // From the sanitizer's tree to DOM.
@@ -151,7 +170,7 @@ function compileBlock(nodes, ctx, locals) {
         bindings.push({ kind: 'if', path, test, neg, yes, no });
         continue;
       }
-      if (name === 'template') continue; // theme parts: not rendered (yet)
+      if (name === 'template') continue; // a part: compiled once (View), shown in its slot
       const copy = el.namespaceURI === SVG_NS ? ctx.doc.createElementNS(SVG_NS, el.localName) : ctx.doc.createElement(name);
       const own = [];
       for (const attr of [...el.attributes]) {
@@ -169,8 +188,15 @@ function compileBlock(nodes, ctx, locals) {
           continue;
         }
         if (a === 'm-arg') continue;
-        if (a === 'm-input') { own.push({ kind: 'input', name: value }); continue; }
-        if (a.startsWith('m-')) { ctx.behaviors.push({ name: a, value }); continue; }
+        if (a === 'm-input') { own.push({ kind: 'input', name: value }); copy.setAttribute(a, value); continue; }
+        if (a.startsWith('m-')) {
+          // A behavior: kept as written (a theme's CSS can select it), and
+          // known to the view with the element's scope.
+          ctx.behaviors.push({ name: a, value });
+          own.push({ kind: 'behavior', name: a, value });
+          copy.setAttribute(a, value);
+          continue;
+        }
         const parts = interpolation(value);
         if (parts) { for (const p of parts) if (typeof p !== 'string') usePath(p); own.push({ kind: 'interp', name: a, parts }); continue; }
         copy.setAttribute(a, value);
@@ -178,7 +204,15 @@ function compileBlock(nodes, ctx, locals) {
       if (name === 'm-page') own.push({ kind: 'page' });
       if (own.length) bindings.push({ kind: 'element', path, own });
       parent.appendChild(copy);
-      if (name !== 'm-page') visit(copy, [...el.childNodes], path);
+      const slot = el.namespaceURI !== SVG_NS ? SLOTS[name] : null;
+      if (slot) {
+        // Its part (or what's inside it) goes in while the test holds.
+        usePath(slot.test);
+        const inside = [...el.childNodes].filter((c) => c.nodeType === 1 || /\S/.test(c.nodeValue ?? ''));
+        const fallback = inside.length ? compileBlock(inside, ctx, locals) : null;
+        if (fallback) for (const h of fallback.heads) heads.add(h);
+        bindings.push({ kind: 'slot', path, slot: name, part: slot.part, test: slot.test, fallback });
+      } else if (name !== 'm-page') visit(copy, [...el.childNodes], path);
     }
   };
   visit(frag, nodes, []);
@@ -254,6 +288,7 @@ function makeBinding(b, node, view, scope) {
     case 'element': return new ElementBinding(node, b.own, view, scope);
     case 'for': return new ForBinding(node, b, view);
     case 'if': return new IfBinding(node, b, view);
+    case 'slot': return new SlotBinding(node, b, view);
   }
   throw new Error(`renderer: unknown binding ${b.kind}`);
 }
@@ -277,7 +312,12 @@ class ElementBinding {
     this.last = own.map(() => undefined);
     for (const o of own) {
       if (o.kind === 'action') view.actions.set(el, { name: o.name, p: o.p, literal: o.literal, scope });
-      if (o.kind === 'input') view.inputs.set(el, o.name);
+      if (o.kind === 'input') { view.inputs.set(el, o.name); view.scopes.set(el, scope); }
+      if (o.kind === 'behavior') {
+        let entry = view.behaviorEls.get(el);
+        if (!entry) { entry = { attrs: {}, scope }; view.behaviorEls.set(el, entry); }
+        entry.attrs[o.name] = o.value;
+      }
       if (o.kind === 'page') view.pageEl = el;
     }
   }
@@ -345,6 +385,31 @@ class IfBinding {
     else blk.scope = scope;
     blk.update();
     blk.insertBefore(this.anchor.parentNode, this.anchor);
+  }
+}
+
+// A slot (<m-menu>, <m-editor>, ...): the theme's part for it, made once and
+// kept, inside it while the view model's test holds.
+class SlotBinding {
+  constructor(el, b, view) {
+    this.el = el;
+    this.b = b;
+    this.view = view;
+    this.block = null;
+    this.shown = false;
+  }
+  update(scope) {
+    const on = Boolean(lookup(scope, this.b.test));
+    if (!on) {
+      if (this.shown) { this.block.remove(); this.shown = false; }
+      return;
+    }
+    const plan = this.view.parts.get(this.b.part) ?? this.b.fallback;
+    if (!plan) return;
+    if (!this.block) this.block = new Block(plan, this.view, scope);
+    else this.block.scope = scope;
+    this.block.update();
+    if (!this.shown) { this.block.insertBefore(this.el, null); this.shown = true; }
   }
 }
 
@@ -452,7 +517,7 @@ class ForBinding {
 
 /**
  * @typedef {{
- *   onAction?: (name: string, arg: any, info: { element: Element }) => void,
+ *   onAction?: (name: string, arg: any, info: { element: Element, event: Event }) => void,
  *   onInput?: (name: string, value: string) => void,
  *   onLayout?: (layout: any) => void,
  *   onWarn?: (message: string) => void,
@@ -474,10 +539,28 @@ export class View {
     this.options = options;
     this.actions = new WeakMap();
     this.inputs = new WeakMap();
+    this.scopes = new WeakMap(); // an input's scope
+    this.behaviorEls = new WeakMap(); // element -> { attrs: { 'm-drag': 'tab', ... }, scope }
     this.pageEl = null;
     this.behaviors = [];
     this.warn = options.onWarn ?? null;
     const ctx = { doc: this.doc, behaviors: this.behaviors };
+    // The theme's parts, compiled once, before the template that shows them.
+    /** @type {Map<string, Plan>} */
+    this.parts = new Map();
+    const findParts = (nodes) => {
+      for (const n of nodes) {
+        if (n.nodeType !== 1) continue;
+        const el = /** @type {Element} */ (n);
+        if (el.localName === 'template' && el.namespaceURI !== SVG_NS) {
+          const name = el.getAttribute('m-part');
+          if (name && !this.parts.has(name)) this.parts.set(name, compileBlock([...el.childNodes], ctx, new Set()));
+          continue;
+        }
+        findParts(el.childNodes);
+      }
+    };
+    findParts(template.childNodes);
     this.plan = compileBlock([...template.childNodes], ctx, new Set());
     this.rootScope = { name: null, value: {}, parent: null };
     this.block = null;
@@ -515,7 +598,7 @@ export class View {
           e.preventDefault();
           if (this.options.trustedOnly !== false && !e.isTrusted) return;
           const arg = action.p ? lookup(action.scope, action.p) : (action.literal ?? undefined);
-          this.options.onAction?.(action.name, arg, { element: n });
+          this.options.onAction?.(action.name, arg, { element: n, event: e });
           return;
         }
         n = n.parentNode;
@@ -536,6 +619,77 @@ export class View {
       if (this.pageEl) ro.observe(this.pageEl);
       this.listeners.push(() => ro.disconnect());
     }
+  }
+
+  // --- What behaviors ask of the view (ui/behaviors/) -------------------------
+
+  /** The theme's root element (the template's one root). @returns {Element | null} */
+  rootElement() {
+    let n = this.block?.first ?? null;
+    while (n && n.nodeType !== 1) n = n.nextSibling;
+    return /** @type {Element | null} */ (n);
+  }
+  /** Whether a node is in what this view drew (not the container's host, not the page). */
+  owns(node) {
+    const root = this.rootElement();
+    return !!root && !!node && (node === root || root.contains(node));
+  }
+  /** The behaviors an element of the theme has, and its scope: { attrs, scope } or null. */
+  behaviorOf(el) { return this.behaviorEls.get(el) ?? null; }
+  /**
+   * The nearest element from `node` up (to the container) with behavior
+   * `name` (and `value`, if given): { el, value, scope }.
+   * @param {Node | null} node @param {string} name @param {string} [value]
+   */
+  behaviorAt(node, name, value) {
+    for (let n = /** @type {any} */ (node); n && n !== this.container && n !== this.doc; n = n.parentNode) {
+      const b = this.behaviorEls.get(n);
+      if (b && Object.hasOwn(b.attrs, name) && (value === undefined || b.attrs[name] === value)) return { el: /** @type {Element} */ (n), value: b.attrs[name], scope: b.scope };
+    }
+    return null;
+  }
+  /** The nearest element from `node` up with an action: { el, name, arg }. @param {Node | null} node */
+  actionAt(node) {
+    for (let n = /** @type {any} */ (node); n && n !== this.container && n !== this.doc; n = n.parentNode) {
+      const a = this.actions.get(n);
+      if (a) return { el: /** @type {Element} */ (n), name: a.name, arg: a.p ? lookup(a.scope, a.p) : (a.literal ?? undefined) };
+    }
+    return null;
+  }
+  /** An action element's action and argument now. @param {Element} el */
+  actionOf(el) {
+    const a = this.actions.get(el);
+    return a ? { name: a.name, arg: a.p ? lookup(a.scope, a.p) : (a.literal ?? undefined) } : null;
+  }
+  /**
+   * What a row is drawn from: the item of the innermost <m-for> around an
+   * element with a behavior or an action (a tab row, a pin, a folder, a
+   * space's chip), or null outside any list.
+   * @param {Element} el
+   */
+  subjectOf(el) {
+    const scope = this.behaviorEls.get(el)?.scope ?? this.actions.get(el)?.scope ?? this.scopes.get(el);
+    return scope?.parent ? scope.value : null;
+  }
+  /** The connected elements with behavior `name` (`value`), in document order. @param {string} name @param {string} [value] */
+  marked(name, value) {
+    const root = this.rootElement();
+    if (!root) return [];
+    const sel = value === undefined ? `[${name}]` : `[${name}="${value}"]`;
+    const all = [...(root.matches(sel) ? [root] : []), ...root.querySelectorAll(sel)];
+    return all.filter((el) => { const b = this.behaviorEls.get(el); return !!b && Object.hasOwn(b.attrs, name); });
+  }
+  /** The connected elements with action `name`, in document order. @param {string} name @param {Element} [within] */
+  actionElements(name, within) {
+    const root = within ?? this.rootElement();
+    if (!root) return [];
+    return [...root.querySelectorAll('button, a')].filter((el) => this.actions.get(el)?.name === name);
+  }
+  /** The input bound to `name` (m-input), if one is drawn. @param {string} name @returns {HTMLInputElement | null} */
+  input(name) {
+    const root = this.rootElement();
+    const el = root?.querySelector(`input[m-input="${name}"]`);
+    return el && this.inputs.get(el) === name ? /** @type {HTMLInputElement} */ (el) : null;
   }
 
   scheduleLayout() {
