@@ -75,7 +75,7 @@ struct ExtWindow: Equatable {
     }
 }
 
-enum WindowMatcher {
+nonisolated enum WindowMatcher {
     // How far each edge may be off (points): browsers round, and a window being animated lags a poll.
     static let tolerance: CGFloat = 8
     // The smallest window that can be a browser window (not a popover, a sheet, a tooltip).

@@ -120,7 +120,8 @@ function bundle(out, manifest) {
   sidebar.js = [BUNDLES.content];
 
   // Chrome's background is a service worker; Safari's a page (`scripts`,
-  // non-persistent: platform/safari/manifest.json), since WebKit hangs a
+  // non-persistent, Manifest V3's default, so no `persistent` key: the converter
+  // warns on it; platform/safari/manifest.json), since WebKit hangs a
   // service worker that opens a WebSocket, and the link to Margin.app is one
   // (background/link.js, PLAN.md §14 Spike 3). One bundle either way.
   const bg = manifest.background;

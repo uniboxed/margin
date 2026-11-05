@@ -36,8 +36,28 @@ build() { # name sources...
   fi
 }
 
+# The app's own code with the settings its Xcode target has (scripts/make-xcode.sh;
+# Approachable Concurrency, main actor by default, member import visibility):
+# any warning fails here, before it shows up in npm run safari's build.
+XCODE_FLAGS=(-swift-version 5 -default-isolation MainActor
+  -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault
+  -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature GlobalActorIsolatedTypesUsability
+  -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature MemberImportVisibility)
+warnings() { # label flags... -- sources...
+  local label="$1"; shift
+  local out
+  out=$(swiftc -typecheck -parse-as-library "$@" 2>&1 | grep -E "(warning|error):" || true)
+  if [ -n "$out" ]; then
+    echo "FAIL $label: the Xcode build would warn:"; echo "$out" | head -20; status=1
+  else
+    echo "ok   $label: no compiler warnings with the Xcode target's settings"
+  fi
+}
+
 status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
+  warnings "the app" "${XCODE_FLAGS[@]}" ../../app/safari/AppDelegate.swift ../../app/safari/ViewController.swift "${SHELL_SOURCES[@]}"
+  warnings "the extension handler" -swift-version 5 ../../app/safari/SafariWebExtensionHandler.swift
   build tests tests.swift data-tests.swift profiles-tests.swift window-tests.swift "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" "$BUILD/tests" || status=1
 fi

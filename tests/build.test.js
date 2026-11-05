@@ -40,7 +40,7 @@ test('each build loads one bundled script per context', () => {
     // background/tabs.js injectIntoOpenTabs finds the sidebar's entry this way.
     assert.deepEqual(manifest.content_scripts.find((c) => c.world !== 'MAIN').js, ['content/content.bundle.js'], target);
     // Safari's background is a page (the link to Margin.app: background/link.js), Chrome's a worker.
-    if (target === 'safari') assert.deepEqual(manifest.background, { scripts: ['background.bundle.js'], persistent: false }, target);
+    if (target === 'safari') assert.deepEqual(manifest.background, { scripts: ['background.bundle.js'] }, target); // non-persistent: Manifest V3's default (WebKit), and Safari's converter warns on the key
     else assert.deepEqual(manifest.background, { service_worker: 'background.bundle.js' }, target);
     const background = readFileSync(join(dir, 'background.bundle.js'), 'utf8');
     assert.match(background, /content\/page\.bundle\.js/, `${target}: the background registers the page's script`);
