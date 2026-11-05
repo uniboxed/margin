@@ -330,4 +330,12 @@ An instant Space switch needs private macOS calls, so native full screen can't b
 - A setting can turn the instant switch off.
 - To check when it's built (Phase 2): real browser-profile windows in full screen with Margin's overlay on top; the overlay stays drawn; typing lands in the new page; Mission Control, the three-finger swipe and the Dock still agree with what's on screen afterwards; behavior across a macOS update.
 
+**Verified with real browser-profile windows (2026-11-05, scratchpad `instant-profiles/`):** two Chrome for Testing profiles in native full screen. Every private switch was a one-frame cut (13–47 ms to the new page, no slide or other frames), Margin's overlay was drawn in every frame of all 18 switches, and typing landed in the right page 7 of 7 times. But the design above needs these changes before it's built:
+- **macOS's state can disagree with the screen:** after the private call, the active Space and the Dock's "Current Space" can still name the old Space while the new window shows; both windows keep reporting on screen; Mission Control showed the right Space highlighted but the wrong windows, and the Dock brought another app forward while it was open.
+- **A stronger check:** the target must be the first normal (layer 0) window in the on-screen list *and* the active Space must equal the target; "on screen" alone is always true after the first private switch.
+- **Never mix the two kinds of switch:** once the private call has been used, a focus-only switch (`windows.update(focused)`) no longer changes Spaces; it restacks windows and leaves macOS disagreeing. So every switch between full-screen Spaces goes through the private call (followed by the focus call, needed when the windows belong to different apps).
+- **The fallback needs rethinking:** in that mixed state the public switch doesn't slide and hides the problem. It needs a recovery step that brings macOS back in sync before falling back.
+- **The covered page keeps rendering:** Chrome still reports it visible, so it costs power; the extension should tell it it's hidden, or Margin should accept the cost.
+- **Mission Control disagreeing** is a known cost unless a way to make the Dock catch up turns up.
+
 Still to decide when it's built: how spaces map to profiles in the data (each Margin tab already belongs to a profile through its copy), and which profile's window a new space opens in.
