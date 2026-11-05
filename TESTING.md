@@ -562,6 +562,21 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 2 step 9: Safari's own profile names (2026-11-05)
+
+`npm run safari` from the branch with step 9 (it changes Margin.app; the Xcode project is made again because a shell file was added and one removed). Margin.app has Full Disk Access already (System Settings › Device Control and Data Access › Full Disk Access). Two Safari profiles with Margin on in both, and a window of each opened once this session.
+
+- [ ] The log says how each profile was linked: `scripts/margin-log.sh 5 | grep "safari profiles"` shows one line like `3 profiles: “Work” (DefaultProfile, person.fill) → s-default; “Personal” (A8C3B0E9-…, person.lanyardcard.fill) → s-8d454f81-…; “Test” (CDC954CA-…) → …`. The profile whose copy said `s-8d454f81-4100-489d-ba9f-e788bec2daeb` in the log before should be the one shown with it. A profile where Margin has never run says `no copy yet`. Send me the line if a profile you use says `no copy yet` or names the wrong copy.
+- [ ] The sidebar's profile marks, the space menus ("Edit Profile “Work”…", "New Space in …") and the switch's words use Safari's names: your default profile shows as "Work", not "Default".
+- [ ] The profile mark on another profile's chips shows Safari's symbol for it (a small white glyph in Arcadia, a black one in Neo-brutalism) instead of the initial. Tell me if it's too small to read; the initial is the fallback.
+- [ ] Rename a profile in Safari › Settings › Profiles: within a couple of seconds the sidebar shows the new name, with no click or switch. Change its symbol there: the mark follows.
+- [ ] Edit Profile on a Safari-named profile: the name field shows Safari's name, greyed and not editable, with a line saying to rename it in Safari; change the emoji and color and Save: they stick, the name stays Safari's.
+- [ ] Set-up window (open Margin.app): the "Show Safari's profile names" step is ticked and says Margin has Full Disk Access.
+- [ ] Turn Margin.app off in Full Disk Access: within about 10 s the names go back to the ones typed in Edit Profile ("Default" / "Profile N" if none); the set-up window's step shows it's not given, with the Open Full Disk Access button (it opens System Settings at that list). Turn it on again: the names come back within about 10 s. If they don't until Margin.app is quit and opened again, tell me (macOS may hold the old answer for a running app).
+- [ ] Add a third profile in Safari and open a window of it (Margin on there): its spaces appear with its Safari name once its copy links.
+- [ ] Delete a test profile in Safari (one with a space in Margin): the log says `profile “…” (…) is gone from the browser`; the profile keeps that name in Margin (now as a typed name you can change), and can be forgotten from its menu as before.
+- [ ] Nothing slows Safari: browse and switch tabs for a minute; the log shows at most one `safari profiles` line per change of names, and Activity Monitor shows Margin.app near 0% CPU while you browse (it reads Safari's database at most once a second while Safari writes it, and logs only when the names change).
+
 ## Margin 2 Phase 2 step 7: notices, loading and gestures drawn by Margin.app (2026-11-05)
 
 `npm run safari` from the branch with step 7 (it changes Margin.app's shell too, so the app needs the new build). A Safari window in full screen, linked. What pages used to say or draw now comes from the window's overlay, in the theme's own notice style. `npm run log:app` shows the copy's side (`notice …`, `tab … loaded again from the notice`). Write what you see in DECISIONS.md.
