@@ -13,12 +13,15 @@
 //   optional-space — nothing, or an existing space;
 //   tab-space — { tab, space }: only behaviors (a drop, a menu) make one,
 //     never `m-arg`, which carries one value.
+// `tab.unpin` takes the pin's id: a pinned tab is drawn as its pin's row
+// (shared/view.js sidebar), whose id is the pin's, and a pin not open has
+// no tab at all (the background's `unpin` takes a pin id too).
 export const ACTIONS = Object.freeze({
   'tab.activate': 'tab',
   'tab.close': 'tab',
   'tab.new': 'optional-space',
   'tab.pin': 'tab',
-  'tab.unpin': 'tab',
+  'tab.unpin': 'pin',
   'tab.moveToSpace': 'tab-space',
   'pin.open': 'pin',
   'folder.toggle': 'folder',
@@ -92,37 +95,6 @@ export function checkAction(name, arg, ctx) {
 }
 
 /**
- * The checks' view of a theme view model (PLAN.md §3): ids that are in it are
- * the ones that exist. The real runtime asks the state mirror instead, which
- * also knows the tabs of the spaces not on screen.
- * @param {any} vm
- * @returns {ActionContext}
- */
-export function contextFromViewModel(vm) {
-  const tabs = new Set();
-  const folders = new Set();
-  const pins = new Set();
-  const addTabs = (list) => { for (const t of list ?? []) tabs.add(t.id); };
-  for (const s of vm.allSpaces ?? [vm.space]) {
-    if (!s) continue;
-    for (const f of s.folders ?? []) { folders.add(f.id); addTabs(f.tabs); }
-    for (const p of s.pins ?? []) { pins.add(p.id); if (p.tabId != null) tabs.add(p.tabId); }
-    addTabs(s.today);
-  }
-  const spaces = new Set((vm.spaces ?? []).map((s) => s.id));
-  const archived = new Set((vm.archive ?? []).map((a) => a.id));
-  const rows = new Set(vm.palette?.open ? (vm.palette.rows ?? []).map((r) => r.id) : []);
-  return {
-    hasTab: (id) => tabs.has(id),
-    hasSpace: (id) => spaces.has(id),
-    hasFolder: (id) => folders.has(id),
-    hasPin: (id) => pins.has(id),
-    hasArchived: (id) => archived.has(id),
-    hasPaletteRow: (id) => rows.has(id),
-  };
-}
-
-/**
  * Margin's side of a theme's clicks: checks each one, then hands the good
  * ones to `run`. `log` hears about every refused one.
  * @param {{ context: () => ActionContext, run: (name: string, arg: any) => void, log?: (entry: { name: string, arg: any, reason: string }) => void }} options
@@ -137,4 +109,160 @@ export function createDispatcher({ context, run, log = () => {} }) {
     run(name, arg);
     return true;
   };
+}
+
+/**
+ * The checks' view of Margin's state (the host's, as pages read it): every
+ * open tab in any window, every space, folder, pin and archived entry, and
+ * the rows of the palette while it's open (`paletteIds`, from
+ * ui/view-model.js paletteItems).
+ * @param {any} state @param {Iterable<string>} [paletteIds]
+ * @returns {ActionContext}
+ */
+export function contextFromState(state, paletteIds = []) {
+  const tabs = state?.tabs && typeof state.tabs === 'object' ? state.tabs : {};
+  const ids = (list) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
+  const spaces = ids(state?.spaces);
+  const folders = ids(state?.folders);
+  const pins = ids(state?.pins);
+  const archived = ids(state?.archive);
+  const rows = new Set(paletteIds);
+  return {
+    hasTab: (id) => Number.isInteger(id) && Object.prototype.hasOwnProperty.call(tabs, id) && tabs[id]?.id === id,
+    hasSpace: (id) => spaces.has(id),
+    hasFolder: (id) => folders.has(id),
+    hasPin: (id) => pins.has(id),
+    hasArchived: (id) => archived.has(id),
+    hasPaletteRow: (id) => rows.has(id),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// From a theme's action to what Margin does (PLAN.md §3 "Actions"): a
+// request to the background's handler of that name (background/handlers.js,
+// as Arcadia's sidebar and palette send them today), something the UI does
+// itself (`local`: the palette, the space editor), something only the host
+// can do (`host`: the page's own history in pages, the window's buttons in
+// the app), or nothing yet (`none`: no handler exists).
+//
+// | Action             | Argument     | Goes to                       | Payload                                 |
+// |--------------------|--------------|-------------------------------|-----------------------------------------|
+// | tab.activate       | tab id       | activateTab                   | { tabId, show? }                        |
+// | tab.close          | tab id       | closeTab (archives it)        | { tabId, show? }                        |
+// | tab.new            | none         | local: the palette, new tab   | (Arcadia's "+ New Tab")                 |
+// | tab.new            | space id     | newTab                        | { windowId, spaceId }                   |
+// | tab.pin            | tab id       | pinTab                        | { tabId }                               |
+// | tab.unpin          | pin id       | unpin                         | { pinId }                               |
+// | tab.moveToSpace    | {tab, space} | moveTabToSpace                | { tabId, spaceId }                      |
+// | pin.open           | pin id       | openPin                       | { pinId, windowId, show? }              |
+// | folder.toggle      | folder id    | setFolderOpen                 | { folderId, open: !folder.open }        |
+// | folder.new         | none         | createFolder                  | { windowId }                            |
+// | space.switch       | space id     | setSpace                      | { windowId, spaceId, show? }            |
+// | space.new          | none         | createSpace, then local edit  | { windowId }                            |
+// | space.edit         | space id     | local: the space editor       | (it sends renameSpace, deleteSpace)     |
+// | today.clear        | none         | none: no handler yet          |                                         |
+// | nav.back, .forward, .reload | none| host                          | (in pages: the page's own history)      |
+// | palette.open, .close | none       | local                         |                                         |
+// | palette.run        | row id       | the row's own request         | shared/search.js rankPalette's action:  |
+// |                    |              |                               | activateTab, openPin, restoreArchive,   |
+// |                    |              |                               | setSpace, newTab, search, pinTab,       |
+// |                    |              |                               | newWindow, openLauncher,                |
+// |                    |              |                               | toggleFullscreen; or local:             |
+// |                    |              |                               | toggleSidebar, navigate, search         |
+// | sidebar.toggle     | none         | updateSettings                | { patch: { sidebarPinnedOpen: !now } }  |
+// | archive.open       | none         | openLauncher                  | { windowId }                            |
+// | archive.restore    | archive id   | restoreArchive                | { archiveId, windowId }                 |
+// | window.close       | none         | host (the app's window)       |                                         |
+// | window.minimise    | none         | host (the app's window)       |                                         |
+// | window.fullscreen  | none         | toggleFullscreen where the    | { windowId }; else host                 |
+// |                    |              | browser has Margin full screen|                                         |
+// | settings.open      | none         | openLauncher                  | { windowId }                            |
+//
+// `show`: while the sidebar is open over the page (peek), a switch keeps it
+// open on the page that comes to the front (Arcadia's openOverPage, the
+// background's carryOpen).
+
+/** @typedef {{ kind: 'send', type: string, payload: Record<string, any> } | { kind: 'local', name: string, arg?: any } | { kind: 'host', name: string } | { kind: 'none', reason: string }} ActionRequest */
+
+/** Each action's way out, as the table above says. */
+export const ACTION_MAP = Object.freeze({
+  'tab.activate': 'activateTab',
+  'tab.close': 'closeTab',
+  'tab.new': 'newTab | local',
+  'tab.pin': 'pinTab',
+  'tab.unpin': 'unpin',
+  'tab.moveToSpace': 'moveTabToSpace',
+  'pin.open': 'openPin',
+  'folder.toggle': 'setFolderOpen',
+  'folder.new': 'createFolder',
+  'space.switch': 'setSpace',
+  'space.new': 'createSpace',
+  'space.edit': 'local',
+  'today.clear': 'none',
+  'nav.back': 'host',
+  'nav.forward': 'host',
+  'nav.reload': 'host',
+  'palette.open': 'local',
+  'palette.close': 'local',
+  'palette.run': 'row',
+  'sidebar.toggle': 'updateSettings',
+  'archive.open': 'openLauncher',
+  'archive.restore': 'restoreArchive',
+  'window.close': 'host',
+  'window.minimise': 'host',
+  'window.fullscreen': 'toggleFullscreen | host',
+  'settings.open': 'openLauncher',
+});
+
+/**
+ * What a checked action becomes (`checkAction` first: this trusts its
+ * argument). `state`: the host's state; `ui`: the UI's own (its window, the
+ * sidebar); `platform`: the host's (whether the browser has Margin full
+ * screen); `row`: for palette.run, the palette item its row id names
+ * (ui/view-model.js paletteItems), with its `action`.
+ * @param {string} name @param {any} arg
+ * @param {{ state: any, ui: { windowId?: number | null, sidebar?: string | null }, platform?: { marginFullscreen?: boolean }, row?: any }} ctx
+ * @returns {ActionRequest}
+ */
+export function requestFor(name, arg, { state, ui, platform, row }) {
+  const windowId = ui.windowId ?? undefined;
+  const show = ui.sidebar === 'peek' ? { show: true } : {};
+  /** @returns {ActionRequest} */
+  const send = (type, payload) => ({ kind: 'send', type, payload });
+  switch (name) {
+    case 'tab.activate': return send('activateTab', { tabId: arg, ...show });
+    case 'tab.close': return send('closeTab', { tabId: arg, ...show });
+    case 'tab.new':
+      return arg == null || arg === '' ? { kind: 'local', name: 'palette.open', arg: { newTab: true } } : send('newTab', { windowId, spaceId: arg });
+    case 'tab.pin': return send('pinTab', { tabId: arg });
+    case 'tab.unpin': return send('unpin', { pinId: arg });
+    case 'tab.moveToSpace': return send('moveTabToSpace', { tabId: arg.tab, spaceId: arg.space });
+    case 'pin.open': return send('openPin', { pinId: arg, windowId, ...show });
+    case 'folder.toggle': {
+      const folder = (state?.folders ?? []).find((f) => f.id === arg);
+      return send('setFolderOpen', { folderId: arg, open: folder?.open === false });
+    }
+    case 'folder.new': return send('createFolder', { windowId });
+    case 'space.switch': return send('setSpace', { windowId, spaceId: arg, ...show });
+    case 'space.new': return send('createSpace', { windowId });
+    case 'space.edit': return { kind: 'local', name, arg };
+    case 'today.clear': return { kind: 'none', reason: 'today.clear: no handler yet (background/handlers.js has none that clears a space\'s tabs)' };
+    case 'nav.back': case 'nav.forward': case 'nav.reload':
+    case 'window.close': case 'window.minimise':
+      return { kind: 'host', name };
+    case 'window.fullscreen':
+      return platform?.marginFullscreen ? send('toggleFullscreen', { windowId }) : { kind: 'host', name };
+    case 'palette.open': case 'palette.close': return { kind: 'local', name };
+    case 'palette.run': {
+      const action = row?.action;
+      if (!action) return { kind: 'none', reason: 'palette.run: no such row' };
+      if (action.local) return { kind: 'local', name: `palette.${action.local}`, arg: action };
+      const { type, ...payload } = action;
+      return send(type, type === 'activateTab' || type === 'openPin' || type === 'setSpace' ? { ...payload, ...show } : payload);
+    }
+    case 'sidebar.toggle': return send('updateSettings', { patch: { sidebarPinnedOpen: !state?.settings?.sidebarPinnedOpen } });
+    case 'archive.open': case 'settings.open': return send('openLauncher', { windowId });
+    case 'archive.restore': return send('restoreArchive', { archiveId: arg, windowId });
+    default: return { kind: 'none', reason: `${name}: no mapping` };
+  }
 }

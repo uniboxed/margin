@@ -15,7 +15,9 @@
 //   m-action + m-arg        a click runs one of Margin's actions (actions.js)
 //   m-icon                  an <img>'s src from a data: image in the view model
 //   <m-page>                the page's place, reported as insets and a radius
-import { checkCssValue, checkIconUrl, parseInterpolation, sanitizeTheme } from './sanitize.js';
+// Theme packages are loaded (sanitized, fonts made, sheets built) by
+// ui/theme-loader.js, and driven by ui/runtime.js.
+import { checkCssValue, checkIconUrl, parseInterpolation } from './sanitize.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -586,7 +588,10 @@ export class View {
   }
 }
 
-const sameLayout = (a, b) => b && ['left', 'top', 'right', 'bottom'].every((k) => a.insets[k] === b.insets[k]) && a.radius === b.radius;
+// A layout is new when the page's insets or radius changed, or the
+// container's size did (the window resized: the page's box with it).
+const sameLayout = (a, b) => b && ['left', 'top', 'right', 'bottom'].every((k) => a.insets[k] === b.insets[k]) && a.radius === b.radius
+  && a.container.width === b.container.width && a.container.height === b.container.height;
 
 const bases = new WeakMap();
 function baseSheet(doc) {
@@ -611,43 +616,4 @@ export function render(container, template, vm, options) {
   const view = new View(container, template, options);
   view.update(vm);
   return view;
-}
-
-// ---------------------------------------------------------------------------
-// A theme package, loaded: sanitized, its template built, its style sheet
-// constructed, its fonts made from bytes Margin already has (FontFace with an
-// ArrayBuffer: no URL, no fetch, and it works in a shadow root, where
-// @font-face rules don't in Chromium).
-
-const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', svg: 'image/svg+xml', woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf' };
-
-function base64(bytes) {
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-}
-
-/**
- * @param {{ manifest: string, html: string, css: string, files: Record<string, Uint8Array> }} pkg
- * @param {{ document?: Document }} [options]
- */
-export async function loadTheme(pkg, { document: doc = document } = {}) {
-  const files = pkg.files ?? {};
-  const assetUrl = (path) => {
-    const ext = path.split('.').pop().toLowerCase();
-    return `data:${MIME[ext] ?? 'application/octet-stream'};base64,${base64(files[path])}`;
-  };
-  const report = sanitizeTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.keys(files) }, { assetUrl });
-  if (!report.ok) return { ok: false, report };
-  const template = buildTemplate(report.tree);
-  const sheet = new doc.defaultView.CSSStyleSheet();
-  sheet.replaceSync(report.css);
-  const fonts = [];
-  for (const f of report.manifest.fonts) {
-    const bytes = files[f.file];
-    const face = new doc.defaultView.FontFace(f.family, bytes.slice().buffer, { weight: f.weight, style: f.style, ...(f.unicodeRange ? { unicodeRange: f.unicodeRange } : {}), display: 'block' });
-    fonts.push(face.load().then((loaded) => { doc.fonts.add(loaded); return loaded; }));
-  }
-  await Promise.all(fonts);
-  return { ok: true, report, manifest: report.manifest, template, sheet };
 }

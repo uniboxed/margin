@@ -14,7 +14,8 @@
 // size and rule-count limits.
 //
 // Everything removed is reported. No DOM here: it runs in Node (the unit
-// tests) as well as in pages.
+// tests) as well as in pages. theme.json is checked by ui/theme-schema.js,
+// and the whole package (all three, with its files) by ui/theme-loader.js.
 import { isAction } from './actions.js';
 
 export const LIMITS = Object.freeze({
@@ -1114,96 +1115,4 @@ export function checkCssValue(value) {
     }
   }
   return true;
-}
-
-// ---------------------------------------------------------------------------
-// theme.json
-
-const MODES = ['fullscreen', 'windowed', 'inpage'];
-const FONT_FAMILY = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$/;
-const UNICODE_RANGE = /^U\+[0-9A-Fa-f?]{1,6}(-[0-9A-Fa-f]{1,6})?(\s*,\s*U\+[0-9A-Fa-f?]{1,6}(-[0-9A-Fa-f]{1,6})?)*$/;
-
-/**
- * Checks a theme's manifest. Unknown fields are removed.
- * @returns {{ manifest: any, removed: any[], errors: string[] }}
- */
-export function checkManifest(text, { files = [] } = {}) {
-  const removed = [];
-  const errors = [];
-  let raw;
-  try {
-    if (typeof text !== 'string' || text.length > LIMITS.manifestBytes) throw new Error('too large or not text');
-    raw = JSON.parse(text);
-  } catch (e) {
-    return { manifest: null, removed, errors: [`theme.json: ${e.message}`] };
-  }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { manifest: null, removed, errors: ['theme.json: not an object'] };
-  const m = {};
-  const str = (key, re, required) => {
-    const v = raw[key];
-    if (v === undefined) { if (required) errors.push(`theme.json: ${key} missing`); return; }
-    if (typeof v !== 'string' || !re.test(v)) { errors.push(`theme.json: bad ${key}`); return; }
-    m[key] = v;
-  };
-  str('id', /^[a-z0-9][a-z0-9-]{0,40}$/, true);
-  str('name', /^[^\u0000-\u001f<>]{1,60}$/, true);
-  str('version', /^\d{1,4}\.\d{1,4}\.\d{1,4}$/, true);
-  str('author', /^[^\u0000-\u001f<>]{1,80}$/, false);
-  str('description', /^[^\u0000-\u001f<>]{0,280}$/, false);
-  str('licence', /^[^\u0000-\u001f<>]{1,200}$/, false);
-  if (raw.modes !== undefined) {
-    if (!Array.isArray(raw.modes) || raw.modes.some((x) => !MODES.includes(x))) errors.push('theme.json: bad modes'); else m.modes = [...new Set(raw.modes)];
-  }
-  m.fonts = [];
-  for (const [idx, f] of (Array.isArray(raw.fonts) ? raw.fonts : []).entries()) {
-    const bad = (why) => report(removed, 'font', `fonts[${idx}]`, why);
-    if (!f || typeof f !== 'object') { bad('not an object'); continue; }
-    if (typeof f.family !== 'string' || !FONT_FAMILY.test(f.family)) { bad('bad family'); continue; }
-    if (!isBundledPath(f.file, files) || !/\.woff2$/.test(f.file)) { bad('file must be a bundled .woff2'); continue; }
-    const font = { family: f.family, file: f.file, weight: '400', style: 'normal' };
-    if (f.weight !== undefined) { if (/^\d{3}( \d{3})?$/.test(String(f.weight))) font.weight = String(f.weight); else { bad('bad weight'); continue; } }
-    if (f.style !== undefined) { if (f.style === 'normal' || f.style === 'italic') font.style = f.style; else { bad('bad style'); continue; } }
-    if (f.unicodeRange !== undefined) { if (typeof f.unicodeRange === 'string' && UNICODE_RANGE.test(f.unicodeRange)) font.unicodeRange = f.unicodeRange; else { bad('bad unicodeRange'); continue; } }
-    m.fonts.push(font);
-  }
-  m.settings = {};
-  if (raw.settings && typeof raw.settings === 'object') {
-    for (const [key, spec] of Object.entries(raw.settings)) {
-      if (!/^[a-z][A-Za-z0-9]{0,31}$/.test(key) || !spec || typeof spec !== 'object') { report(removed, 'setting', key, 'bad name'); continue; }
-      if (!['color', 'length', 'number', 'choice'].includes(spec.type) || !checkCssValue(spec.default)) { report(removed, 'setting', key, 'bad type or default'); continue; }
-      const kept = { type: spec.type, default: spec.default };
-      if (typeof spec.label === 'string' && spec.label.length <= 60) kept.label = spec.label;
-      if (spec.type === 'choice' && Array.isArray(spec.choices) && spec.choices.every(checkCssValue)) kept.choices = spec.choices.slice(0, 16);
-      m.settings[key] = kept;
-    }
-  }
-  if (raw.layout && typeof raw.layout === 'object') {
-    const l = raw.layout;
-    m.layout = {};
-    if (['left', 'right', 'top', 'bottom', 'none'].includes(l.reveal)) m.layout.reveal = l.reveal;
-    for (const k of ['sidebarMin', 'sidebarMax', 'sidebarDefault']) if (Number.isFinite(l[k]) && l[k] >= 0 && l[k] <= 2000) m.layout[k] = l[k];
-  }
-  const known = new Set(['id', 'name', 'version', 'author', 'description', 'licence', 'modes', 'fonts', 'settings', 'layout', 'format']);
-  for (const key of Object.keys(raw)) if (!known.has(key)) report(removed, 'manifest', key, 'unknown field');
-  if (raw.format !== undefined && raw.format !== 2) errors.push('theme.json: format must be 2');
-  return { manifest: errors.length ? null : m, removed, errors };
-}
-
-/**
- * The whole package: manifest, template and style sheet, with one report.
- * @param {{ manifest: string, html: string, css: string, files: string[] }} pkg
- * @param {{ assetUrl?: (path: string) => string }} [options]
- */
-export function sanitizeTheme(pkg, { assetUrl = (p) => p } = {}) {
-  const files = pkg.files ?? [];
-  const manifest = checkManifest(pkg.manifest, { files });
-  const html = sanitizeTemplate(pkg.html, { files, assetUrl });
-  const css = sanitizeCss(pkg.css ?? '', { files, assetUrl });
-  const removed = [
-    ...manifest.removed.map((r) => ({ file: 'theme.json', ...r })),
-    ...html.removed.map((r) => ({ file: 'theme.html', ...r })),
-    ...css.removed.map((r) => ({ file: 'theme.css', ...r })),
-  ];
-  const errors = [...manifest.errors, ...html.errors, ...css.errors];
-  return { ok: errors.length === 0, manifest: manifest.manifest, tree: html.tree, css: css.css, removed, errors, stats: { ...html.stats, ...css.stats } };
 }

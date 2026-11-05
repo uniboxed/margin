@@ -4,10 +4,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  sanitizeTheme, sanitizeTemplate, sanitizeCss, sanitizeDeclarations, checkCssValue, checkIconUrl, checkManifest,
+  sanitizeTemplate, sanitizeCss, sanitizeDeclarations, checkCssValue, checkIconUrl,
   tokenizeCss, parseInterpolation, isBundledPath, LIMITS,
 } from '../extension/ui/sanitize.js';
-import { ACTIONS, checkAction, contextFromViewModel, createDispatcher, isAction } from '../extension/ui/actions.js';
+import { ACTIONS, checkAction, contextFromState, createDispatcher, isAction } from '../extension/ui/actions.js';
+import { checkManifest } from '../extension/ui/theme-schema.js';
+import { sanitizeTheme } from '../extension/ui/theme-loader.js';
 import { HTML_PAYLOADS, CSS_PAYLOADS, ACTION_PAYLOADS, wrap } from './theme/payloads.js';
 import { auditTree } from './theme/audit.js';
 import { readTheme } from './theme/package.js';
@@ -250,7 +252,7 @@ test('theme.json: fields checked, unknown ones removed, fonts must be bundled wo
   const r = checkManifest(JSON.stringify({ format: 2, id: 'x', name: 'X', version: '1.0.0', script: 'alert(1)', fonts: [{ family: 'A', file: 'fonts/a.woff2' }, { family: 'B', file: 'https://evil.test/b.woff2' }, { family: 'C"; src:url(x)', file: 'fonts/a.woff2' }] }), { files: ['fonts/a.woff2'] });
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.manifest.fonts.map((f) => f.family), ['A']);
-  assert.deepEqual(r.removed.map((x) => x.name), ['fonts[1]', 'fonts[2]', 'script']);
+  assert.deepEqual(r.removed.map((x) => x.name).sort(), ['fonts[1]', 'fonts[2]', 'script']);
   assert.match(checkManifest('{"id":"X Y"}').errors.join(), /bad id/);
   assert.match(checkManifest('nope').errors.join(), /theme\.json/);
   const s = checkManifest(JSON.stringify({ format: 2, id: 'x', name: 'X', version: '1.0.0', settings: { accent: { type: 'color', default: 'url(https://evil.test/beacon)' }, gap: { type: 'length', default: '16px' } } }));
@@ -267,7 +269,7 @@ test('the action list is PLAN.md §3\'s, plus palette.run', () => {
 });
 
 const mock = new MockState();
-const ctx = contextFromViewModel(mock.vm);
+const ctx = contextFromState(mock.state);
 
 for (const [name, action, arg] of ACTION_PAYLOADS) {
   test(`action abuse: ${name}`, () => {
