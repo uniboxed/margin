@@ -1,16 +1,15 @@
 // The pinch on a page with a box: Margin's own, not Safari's, which would
-// magnify the sidebar with the page. The page scales at <html> (the box, so
-// what's fixed scales with it: content/page/box.js), its origin kept under the
-// fingers, and the sidebar's host gets the opposite, so it stays where it is.
-// Two fingers then move the zoomed page, and scroll it at its edges. Called
-// by content/trackpad.js, and by content/layout.js when the box moves.
-import { setHostPinch } from '../shared/dom.js';
+// magnify the page past its box, under Margin's UI around it (drawn by
+// Margin.app). The page scales at <html> (the box, so what's fixed scales
+// with it: content/page/box.js), its origin kept under the fingers. Two
+// fingers then move the zoomed page, and scroll it at its edges. Called by
+// content/trackpad.js, and by content/core.js when the box moves.
 
 const ZOOM_MAX = 3;
 const SPRING_MS = 180;
 
 // `box()`: the box now, in the page's pixels, or null. `link`: content/page-link.js.
-export function startPinch(page, { box, link }) {
+export function startPinch({ box, link }) {
   const zoom = { scale: 1, x: 0, y: 0, from: 1, atX: 0, atY: 0, startX: 0, startY: 0 };
   let spring = 0;
 
@@ -18,11 +17,6 @@ export function startPinch(page, { box, link }) {
     const now = box();
     if (!now) return;
     link.setZoom(now, { scale: zoom.scale, x: zoom.x, y: zoom.y, moving });
-    setHostPinch(page.host, zoom.scale === 1 ? null : {
-      x: now.left - (now.left + zoom.x) / zoom.scale,
-      y: now.top - (now.top + zoom.y) / zoom.scale,
-      scale: 1 / zoom.scale,
-    });
   }
   // In the box's bounds; below its size, in the middle of it.
   function keepInBox() {
@@ -34,8 +28,7 @@ export function startPinch(page, { box, link }) {
     zoom.x = within(zoom.x, width);
     zoom.y = within(zoom.y, height);
   }
-  // Back inside the limits, with a short spring, frame by frame, so the page
-  // and the sidebar's host stay in step.
+  // Back inside the limits, with a short spring, frame by frame.
   function settle(animate = true) {
     cancelAnimationFrame(spring);
     let scale = Math.min(ZOOM_MAX, Math.max(1, zoom.scale));

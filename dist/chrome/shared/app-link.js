@@ -2,11 +2,12 @@
 // `appLink`, which the background's link client (background/link.js) writes:
 // { state, epoch, at, layouts }.
 //
-// - `state`: 'linked' (the app draws Margin's UI around this copy's windows:
-//   pages draw none), 'reconnecting' (the link dropped a moment ago and is
-//   being tried again: the app keeps the last picture dimmed meanwhile, and
-//   pages still draw none), 'off' (no app: pages draw the in-page
-//   development host, as before Margin 2's app).
+// - `state`: 'linked' (the app draws Margin's UI around this copy's
+//   windows, and pages have their box from its layout), 'reconnecting' (the
+//   link dropped a moment ago and is being tried again: the app keeps the
+//   last picture dimmed meanwhile, and pages keep their box), 'off' (no app:
+//   pages are left as they are, with no box). No page draws Margin's UI in
+//   any state (Margin 2 Phase 2 step 5).
 // - `layouts`: each window's page slot as the app's overlay measured it
 //   (setLayout): { [windowId]: { insets, radius, radii, container, mode,
 //   seq, epoch } }, insets in points from the window's edges.
@@ -17,7 +18,7 @@
 
 export const APP_LINK_KEY = 'appLink';
 
-/** Whether pages should draw no Margin UI (the app draws it, or will again in a moment). @param {any} link */
+/** Whether the app draws Margin around the window (or will again in a moment): pages have their box. @param {any} link */
 export const appDraws = (link) => link?.state === 'linked' || link?.state === 'reconnecting';
 
 const finite = (v) => (Number.isFinite(v) ? v : 0);

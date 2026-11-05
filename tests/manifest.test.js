@@ -70,9 +70,9 @@ test('no third-party URLs in extension code (search engine templates excepted)',
   }
 });
 
-test('the theme reaches web pages from the background, and nothing on web pages fetches', () => {
+test('nothing exposed to web pages, and nothing on web pages fetches or draws a theme', () => {
   assert.equal(manifest.web_accessible_resources, undefined, 'nothing exposed to web pages');
-  assert.match(readFileSync(new URL('content/core.js', root), 'utf8'), /send\('themePackage'/, 'the content script asks the background for the theme');
+  assert.doesNotMatch(readFileSync(new URL('content/core.js', root), 'utf8'), /themePackage|ui\/runtime|ui\/host/, 'pages draw no theme (Margin.app does)');
   for (const f of sources(['.js']).filter((p) => p.startsWith('content/') || p.startsWith('themes/'))) {
     assert.ok(!readFileSync(new URL(f, root), 'utf8').includes('fetch('), `${f} must not fetch`);
   }

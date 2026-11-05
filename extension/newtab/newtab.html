@@ -5,9 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>New Tab</title>
-  <!-- The theme's root fills the window (ui/runtime.js draws it in <body>). -->
-  <style>html, body { margin: 0; height: 100%; overflow: hidden; background: #9c9da1; }</style>
+  <!-- Linked to Margin.app, the app draws over this page and it shows nothing
+       (newtab.js); not linked, the notice and the address field below. -->
+  <style>
+    html, body { margin: 0; height: 100%; background: Canvas; color: CanvasText; }
+    body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; display: grid; place-items: center; }
+    main { width: min(440px, calc(100% - 48px)); display: grid; gap: 14px; }
+    h1 { font-size: 17px; font-weight: 600; margin: 0; }
+    p { margin: 0; opacity: 0.75; }
+    input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); background: Canvas; color: CanvasText; width: 100%; box-sizing: border-box; }
+    button { font: inherit; justify-self: start; padding: 6px 14px; border-radius: 8px; }
+    #status:empty { display: none; }
+  </style>
   <script src="newtab.js" type="module"></script>
 </head>
-<body></body>
+<body>
+  <main id="notice" hidden>
+    <h1>Margin.app isn’t running</h1>
+    <p id="why">Margin’s sidebar, palette and Settings are drawn by Margin.app.</p>
+    <button id="start" type="button" hidden>Start Margin.app</button>
+    <p id="status" role="status"></p>
+    <form id="go"><input id="address" type="text" placeholder="Search or enter an address" aria-label="Search or enter an address" autocomplete="off" spellcheck="false"></form>
+  </main>
+</body>
 </html>

@@ -18,7 +18,6 @@ import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES } from '../themes/index.js';
-import { activeThemeId, themePackage } from './theme-package.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
 import { closeTabs, noteClosing } from './closing.js';
@@ -79,20 +78,20 @@ async function updatePackageThemeSettings(themeId, patch) {
 }
 
 // ⌘T: the browser opened a new tab (extensions can't stop it) with Margin's
-// new-tab page. Arc keeps the page and opens its palette over it: so the
-// palette opens on the tab the user was on (its sidebar highlights "+ New
-// Tab" until it closes; content/palette.js), that tab is shown again, and
-// the new one closes. Started as soon as the tab is created when the browser
+// new-tab page. Arc keeps the page and opens its palette over it: so, while
+// Margin.app is linked, the app's palette opens over the tab the user was
+// on, that tab is shown again, and the new one closes. Started as soon as the tab is created when the browser
 // says what it shows (background.js onCreated; Chrome does), else when the
 // page asks (newTabPage): every moment the new tab is in front shows. In the
 // order that shows least of it: out of the sidebar first, the palette ready
 // before its page is back, no wake (it was shown a moment ago). False when
-// it can't (a new window, a previous tab that isn't a web page or has no
-// Margin): the palette then opens on the new-tab page.
+// it can't (a new window, a previous tab that isn't a web page, Margin.app
+// not linked): the new-tab page stays (linked, the app's palette opens over
+// it; not linked, it says the app isn't running: newtab/newtab.js).
 const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
 
-// The zoom each site was last seen at, so its pages draw Margin at its size
-// before they've asked (content/core.js, shared/dom.js setPageZoom); Safari
+// The zoom each site was last seen at, so its pages place their box at its
+// size before they've asked (content/core.js); Safari
 // and Chrome keep a site's zoom across its pages. Storage `pageZoom`:
 // origin → [zoom, when], only sites zoomed away from the browser's default
 // zoom (Chrome's setting; 100% where unknown), which is kept once as '*';
@@ -168,7 +167,6 @@ function rememberZoom(tab, url, zoom) {
     await api.storage.local.set({ pageZoom: next });
   }).catch(() => {});
 }
-const SHOW_PALETTE_MS = 1000;
 // The sidebar coming out over the page wakes the tab used before (prewake's
 // 'reveal'), each tab at most once in this long: brought out every few
 // seconds to glance at it, it kept that tab's process running at foreground
@@ -211,41 +209,31 @@ async function handOff(tab) {
   // + button, its File menu). Not a tab Margin opened itself (newTabKey below).
   if (!openedByMargin()) onboarding.reportEvent('safariNewTab');
   if (!/^https?:/.test(prev.url)) return log('palette on the new-tab page', `tab ${prev.id} isn't a web page`), false;
+  // Not linked to Margin.app: no palette to hand off to (pages draw none of
+  // Margin's UI); the new-tab page stays, with its notice and address field.
+  if (!appLink.linked()) return log('kept', 'Margin.app isn\'t linked: no palette'), false;
   handingOff.add(tab.id);
-  // One message: the page opens its palette if it can, and says so. Not
-  // waited on for long: a page Safari stopped delivering to (tabs.js) would
-  // otherwise leave this tab untracked and the new-tab page without one.
-  // Margin.app linked: its palette opens over the page instead, in the
-  // window's overlay (the page draws no Margin UI). Else the page's own.
-  const opened = appLink.linked()
-    ? appLink.push(tab.windowId, { type: 'palette', newTab: true })
-    : await Promise.race([
-      api.tabs.sendMessage(prev.id, { type: 'show-palette' }).then((r) => r === true, () => false),
-      new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
-    ]);
-  if (!opened) {
+  // The app's palette opens over the page the user was on, in the window's
+  // overlay.
+  if (!appLink.push(tab.windowId, { type: 'palette', newTab: true })) {
     keepHandedOff(tab.id);
-    // In case it answers after all, later.
-    api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
-    return log('palette on the new-tab page', `previous tab ${prev.id} has no Margin palette (yet)`), false;
+    return log('palette on the new-tab page', 'the link to Margin.app went meanwhile'), false;
   }
   // Still the untouched new tab in front? The user may have typed an address
   // meanwhile, switched away, or another extension opened it to navigate it
-  // (background.js onUpdated then lets it go): it stays, and the palette closes.
+  // (background.js onUpdated then lets it go): it stays.
   const cur = handingOff.has(tab.id) ? await api.tabs.get(tab.id).catch(() => null) : null;
   if (!cur?.active || !V.isNewTabPage(cur.pendingUrl || cur.url)) {
     keepHandedOff(tab.id);
-    api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
     return log('kept', 'the new tab was used or left meanwhile'), false;
   }
   log(`palette over tab ${prev.id}, new tab closed`, 'web page in this window: ⌘T (or ⌘N made into a tab by macOS)');
   try {
     await focusTab(prev.id, { wake: false, source: 'new tab hand-off' });
   } catch (err) {
-    // The page the user was on couldn't come back: the new tab stays, with
-    // its own palette, and is tracked from here.
+    // The page the user was on couldn't come back: the new tab stays, and
+    // is tracked from here.
     keepHandedOff(tab.id);
-    api.tabs.sendMessage(prev.id, { type: 'hide-palette' }).catch(() => {});
     return log('kept', `tab ${prev.id} didn't come back: ${err?.message ?? err}`), false;
   }
   await mutate((st) => M.removeTab(st, tab.id)).catch(() => {});
@@ -342,22 +330,26 @@ async function focusWithSidebar(tabId, { source = 'other', show, sourceWindowId,
 // what its "+ New Tab" does; anything else (Safari's own pages, PDFs, sites
 // Margin can't reach) gets a new tab with Margin's new-tab page, as Safari's
 // ⌘T did (its palette opens there).
+// Not linked to Margin.app (linked, the app holds ⌘T: background.js), so
+// with no palette to open: Margin's new-tab page, which says the app isn't
+// running and has an address field; on that page already, its field. One
+// press can come both as Safari's command and as the key in the page
+// (content/core.js): taken once per window.
+const NEW_TAB_KEY_ONCE_MS = 600;
+const newTabKeyAt = new Map(); // window id → when
 export async function newTabKey(tabArg) {
   onboarding.reportEvent('cmdTKey');
   const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
+  const now = Date.now();
+  if (now - (newTabKeyAt.get(windowId ?? -1) ?? 0) < NEW_TAB_KEY_ONCE_MS) return;
+  newTabKeyAt.set(windowId ?? -1, now);
   const [tab] = await api.tabs.query({ active: true, ...(windowId != null ? { windowId } : { currentWindow: true }) });
   if (!tab) return;
   if (V.isNewTabPage(tab.url || tab.pendingUrl)) {
     return api.runtime.sendMessage({ type: 'command', command: 'new-tab', tabId: tab.id }).catch(() => {});
   }
-  const opened = await Promise.race([
-    api.tabs.sendMessage(tab.id, { type: 'show-palette' }).then((r) => r === true, () => false),
-    new Promise((resolve) => setTimeout(() => resolve(false), SHOW_PALETTE_MS)),
-  ]);
-  if (!opened) {
-    markMarginOpening();
-    await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
-  }
+  markMarginOpening();
+  await api.tabs.create({ windowId: tab.windowId, url: api.runtime.getURL('newtab/newtab.html') });
 }
 
 // What a space's switch waits, at most, to carry the sidebar open to the tab
@@ -579,9 +571,8 @@ export const handlers = {
       await mutate((st) => M.setActiveSpace(M.removeArchived(st, archiveId), tab.windowId, spaceId));
     }
   },
-  // Page zoom (the browser's own, like ⌘+): for Margin's pinch, and so
-  // Margin's UI keeps its size on a zoomed page; remembered per site.
-  // ⌘T reached Margin on a page (content/palette.js installNewTabKey).
+  // Page zoom (the browser's own, like ⌘+): for the page's box (in the
+  // page's zoomed pixels) and Margin's pinch; remembered per site.
   // The page in front lost focus while in sight (Safari left for another
   // app; `at`: when), and got it back: the tabs kept ready are let go a
   // moment later, unless Safari is back first (shared/away.js,
@@ -618,9 +609,6 @@ export const handlers = {
   // flip in its window, during the flip.
   async pageBlinked({ hiddenAt, shownAt }, sender) {
     pageBlinked(sender.tab?.windowId, { hiddenAt, shownAt }, sender.tab?.id ?? null);
-  },
-  async newTabKeyUsed() {
-    onboarding.reportEvent('cmdTKey');
   },
   async getZoom(_, sender) {
     if (!sender.tab) return null;
@@ -994,12 +982,24 @@ export const handlers = {
   },
   async newTabPage(_, sender) {
     void newTabPageSeen(sender.tab);
-    if (!sender.tab) return { openPalette: true };
+    if (!sender.tab) return { app: false };
     if (await newTabHandOff(sender.tab)) return { handled: true };
     // Margin.app linked: the new-tab page draws nothing, the app's overlay
-    // draws its launcher there and opens the palette over it.
+    // draws its launcher there and opens the palette over it. Not linked,
+    // the page shows its notice (newtab/newtab.js).
     if (appLink.linked()) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
-    return { openPalette: true };
+    return { app: false };
+  },
+  // ⌘T reaching a page while Margin.app isn't linked (content/core.js): Margin's new-tab page.
+  async newTabKey(_, sender) {
+    await newTabKey(sender?.tab ?? null);
+  },
+  // The new-tab page's "Start Margin.app" (not linked): the link asked for
+  // now, which has Margin's extension handler start the app if it isn't
+  // running (background/link.js). False where there's no link (Chrome, a
+  // copy that doesn't own the state).
+  async startApp() {
+    return appLink.askNow();
   },
   // Escape in the palette of a fresh new tab (⌘T; newtab/newtab.js):
   // back to the tab the user was on, and this one closes, as if no tab had
@@ -1053,16 +1053,6 @@ export const handlers = {
       return { ...s, settings: { ...s.settings, themes: { ...themes, [themeId]: own } } };
     });
   },
-  // The active theme's package (background/theme-package.js) for a page's
-  // UI: Margin's content script draws it (ui/runtime.js) once it has it.
-  // `id`: one of the built-in themes instead (Settings' preview).
-  /** @param {{ id?: string }} [message] */
-  async themePackage({ id } = {}) {
-    if (typeof id === 'string' && PACKAGE_THEMES.includes(id)) return themePackage(id);
-    const { settings } = await load();
-    return themePackage(activeThemeId(settings));
-  },
-
   // The page's script in the page's world, for a page that didn't get it from
   // its registration (content/page-link.js): `left`, then the script, as
   // content/page/at-<L>.js and the registration do it.

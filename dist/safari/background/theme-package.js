@@ -1,11 +1,10 @@
-// The active theme's package for pages (Margin 2, PLAN.md §3): its three
-// texts and the files its theme.json names (fonts, images), read from the
-// extension's own files and handed over in a message, so a web page's
-// content script never loads an extension URL (nothing needs
-// web_accessible_resources, and a page can't tell Margin is there by
-// probing one). The page checks it as any package (ui/theme-loader.js
-// loadTheme: sanitized, size-capped) before it draws a thing. Read once per
-// background run and kept.
+// The active theme's package for Margin.app (Margin 2, PLAN.md §3): its
+// three texts and the files its theme.json names (fonts, images), read from
+// the extension's own files and sent on the link (background/link.js
+// `theme`); the app checks it as any package (ui/theme-loader.js loadTheme:
+// sanitized, size-capped) before it draws a thing. Pages draw no theme
+// (Phase 2 step 5), and nothing needs web_accessible_resources. Read once
+// per background run and kept.
 import { PACKAGE_THEMES } from '../themes/packages.js';
 import { DEFAULT_THEME } from '../themes/index.js';
 import { api } from './store.js';
@@ -56,11 +55,10 @@ export async function readThemePackage(id, { fetchFile = (path) => fetch(api.run
 
 // The active theme's package, also kept in storage.local (`uiTheme`: { id,
 // version, pkg }), written when it changes (the settings' theme, a new
-// build, even one with the same version): a page reads it with the state,
-// so its UI draws without waiting for the background to wake for a message
-// (Safari unloads it when idle), and asks for it only when it isn't there
-// or is another theme's. Copies of Margin share storage: whichever wrote
-// last, a page still checks the package as any (ui/theme-loader.js).
+// build, even one with the same version): its change event sends it to
+// Margin.app (background/link.js onStorage), and the link reads it from
+// there. (Before Phase 2 step 5, pages read it with the state to draw their
+// own UI; they ignore it now.)
 export const STORED_THEME = 'uiTheme';
 export async function storeActiveTheme() {
   const got = await api.storage.local.get(['settings', STORED_THEME]);

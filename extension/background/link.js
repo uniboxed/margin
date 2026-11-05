@@ -1,6 +1,6 @@
 // The extension's end of the link to Margin.app (app/PROTOCOL.md; the app's
 // end is app/shell/ExtensionLink.swift). While it's up, the app draws all of
-// Margin's UI around this copy's windows and pages draw none: they keep only
+// Margin's UI around this copy's windows (pages never draw any): pages have
 // their box, which comes from the app's layout per window (setLayout).
 // Safari only (platform.nativeApp), in the copy that owns its profile's state.
 //
@@ -31,8 +31,8 @@
 //
 // What pages see (storage.local appLink, shared/app-link.js): 'linked', then
 // on a drop 'reconnecting' for GONE_MS (the app keeps the last picture,
-// dimmed, saying it's reconnecting), and only then 'off' (pages draw their
-// own UI again). The app saying goodbye (it quit) is 'off' at once. Each
+// dimmed, saying it's reconnecting), and only then 'off' (pages lose their
+// box: no Margin then). The app saying goodbye (it quit) is 'off' at once. Each
 // window's layout is kept there too (pages new and old read it), and the
 // window's page in front is told at once (`appLayout`).
 //
@@ -64,9 +64,9 @@ const OPEN_WAIT_MS = 2000; // a socket opening, and the app's welcome
 const KEPT_WAIT_MS = 400; // the kept link, at a start
 export const RECONNECT_MS = [250, 500, 1000, 2000, 4000];
 export const ASK_MS = [5000, 60_000]; // asked again after this long, doubling up to the second
-export const GONE_MS = 6000;
+export const GONE_MS = 6000; // a drop not mended in this long: 'off', pages lose their box
 export const LAUNCH_ASK_MS = 500; // the app being started on demand: asked again this often…
-export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other time // a drop not mended in this long: pages draw their own UI again
+export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other time
 const DELTA_MS = 16;
 export const WINDOWS_MS = 1000;
 const LAYOUT_WRITE_MS = 120;
@@ -370,7 +370,7 @@ export function createLink({
     return failed();
   }
   // No app to link to: asked again later (and when a page starts, or the app
-  // says it's up). Pages draw their own UI once it's clear.
+  // says it's up). Pages lose their box once it's clear.
   let launches = 0;
   function failed({ appGone = false, launching = false } = {}) {
     if (appGone) gone();
@@ -508,8 +508,8 @@ export function createLink({
     dropped(why);
     try { socket.close(1000, why); } catch {}
   }
-  // `bye`: the app said goodbye (it quit): pages draw their own UI again at
-  // once, and the app is asked for later. Else a drop: tried again.
+  // `bye`: the app said goodbye (it quit): pages lose their box at once, and
+  // the app is asked for later. Else a drop: tried again.
   function dropped(why, { bye = false } = {}) {
     if (!ws) return;
     ws = null;
@@ -869,6 +869,17 @@ export function createLink({
     // A page started: if the app wasn't there when last asked, asked again now.
     poke() {
       if (on && !ws && !busy && askTimer) void link({ kept: false });
+    },
+    // Asked for by the person (the new-tab page's "Start Margin.app"): the
+    // link asked for now, from the start of the waits (the handler starts the
+    // app if it isn't running). False where there's no link to ask for.
+    askNow() {
+      if (!on) return false;
+      if (ws) return true;
+      askMs = 0;
+      launches = 0;
+      void link({ kept: false });
+      return true;
     },
     // storage.onChanged (background.js), for the app's copy of the state.
     onStorage(changes) {

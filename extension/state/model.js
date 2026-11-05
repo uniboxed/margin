@@ -472,7 +472,7 @@ function placeKept(state, keptId, nextTo, side, spaceId) {
 // Settings that no longer exist: `searchEngine` (Margin's own engine
 // choice, replaced by the browser's); `sidebarWidth` (now Arcadia's own,
 // settings.themes.arcadia; normalizeThemes moves a saved one there);
-// `paletteShortcut` (⌥K: ⌘T opens the same palette, content/palette.js).
+// `paletteShortcut` (⌥K: ⌘T opens the same palette).
 // Not `keepTabsReadyMinutes` (up to six tabs of the space in front, until
 // that long after Safari was last used: most of Tirth's battery; replaced by
 // keepLeftTabReadyMinutes, the tab just left only, whose default it doesn't

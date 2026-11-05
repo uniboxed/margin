@@ -123,7 +123,6 @@ const { focusTab, isNeverShown, tabOpened, tabShown } = await import('../extensi
 // every tab did before it was tracked (background/tabs.js; its own tests:
 // tests/in-window.test.js).
 (await import('../extension/background/tabs.js')).assumeMarkedForTests(true);
-const { copyAlive, mayNotice } = await import('../extension/shared/no-answer.js');
 
 const front = () => [...fake.tabs.values()].find((t) => t.active).id;
 const sender = (id) => ({ tab: { ...fake.tabs.get(id) }, url: fake.tabs.get(id).url });
@@ -345,19 +344,6 @@ test('an introduction\'s activations Safari sends late, after a switch out of ti
   await settledOn(8);
   assert.deepEqual(handled, [8], 'only the show taken as a switch, not the introduction\'s way there and back');
   tabShown(8);
-});
-
-test('a request that says Margin isn\'t responding only for requests someone waits on', () => {
-  for (const type of ['prewake', 'away', 'back', 'pageBlinked', 'pageIcon', 'fetchStyle', 'getZoom', 'switchLog']) assert.equal(mayNotice(type), false, type);
-  for (const type of ['activateTab', 'openPin', 'setSpace', 'hello', 'closeTab', 'newTab']) assert.equal(mayNotice(type), true, type);
-});
-
-test('the copy is alive when its storage answers, however late its background; gone when the call fails or never answers', async () => {
-  assert.equal(await copyAlive({ storage: { local: { get: async () => ({}) } } }, 100), true);
-  assert.equal(await copyAlive({ storage: { local: { get: () => sleep(50).then(() => ({})) } } }, 100), true);
-  assert.equal(await copyAlive({ storage: { local: { get: () => never() } } }, 100), false);
-  assert.equal(await copyAlive({ storage: { local: { get: async () => { throw new Error('Extension context invalidated'); } } } }, 100), false);
-  assert.equal(await copyAlive({ storage: { local: { get: () => { throw new Error('no storage'); } } } }, 100), false);
 });
 
 test.after(() => setTimeout(() => process.exit(0), 50));

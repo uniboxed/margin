@@ -286,6 +286,27 @@ test('link: an app started on demand (the handler says `launching`) is asked aga
   }
 });
 
+test('link: asked for now (the new-tab page\'s "Start Margin.app"): from the start of the waits, not at the next one; false while the link isn\'t started', async () => {
+  const app = await startFakeApp();
+  let up = false;
+  const api = browser({ app, appOpen: () => up });
+  const { link } = makeLink(api, { timing: { ...FAST, ask: [5000, 5000] } });
+  try {
+    assert.equal(link.askNow(), false, 'not started: nothing to ask with');
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(!link.linked(), 'no app yet: the next ask is 5 s away');
+    const asked = api.native.filter((m) => m.type === 'wantLink').length;
+    up = true;
+    assert.equal(link.askNow(), true);
+    assert.ok(await until(() => link.linked(), 1000), 'linked at once');
+    assert.equal(api.native.filter((m) => m.type === 'wantLink').length, asked + 1);
+    assert.equal(link.askNow(), true, 'linked: nothing more to do');
+  } finally {
+    link.stop();
+    await app.close();
+  }
+});
+
 test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pages, resync', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
@@ -372,7 +393,7 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
   }
 });
 
-test('link: a drop — reconnecting for pages, the kept link tried again, linked again; the app gone — pages draw again', async () => {
+test('link: a drop — reconnecting for pages, the kept link tried again, linked again; the app gone — pages lose their box', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
   const { link, changed } = makeLink(api);
@@ -392,7 +413,7 @@ test('link: a drop — reconnecting for pages, the kept link tried again, linked
     api.app = null;
     await app.close();
     assert.ok(await until(() => link.pageState() === 'reconnecting', 1000));
-    assert.ok(await until(() => link.pageState() === 'off', 1500), 'pages draw their own UI once it\'s clear the app is gone');
+    assert.ok(await until(() => link.pageState() === 'off', 1500), 'off (pages lose their box) once it\'s clear the app is gone');
     assert.ok(await until(() => api.storage.local.data[APP_LINK_KEY]?.state === 'off'));
   } finally {
     link.stop();
@@ -400,7 +421,7 @@ test('link: a drop — reconnecting for pages, the kept link tried again, linked
   }
 });
 
-test('link: the app says goodbye (it quit) — pages draw again at once', async () => {
+test('link: the app says goodbye (it quit) — off for pages at once', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
   const { link, changed } = makeLink(api, { timing: { ...FAST, dead: 10_000 } });

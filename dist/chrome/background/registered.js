@@ -1,11 +1,15 @@
-// Content scripts registered at runtime, following the settings: the active
-// theme's first-paint placeholder and the page's box. Safari keeps
+// Content scripts registered at runtime, following the settings and the link
+// to Margin.app: the active theme's first-paint placeholder and the page's
+// box, only while the app is linked (or reconnecting: shared/app-link.js
+// appDraws). Not linked, no page has a box or a frame (Margin 2 Phase 2 step
+// 5): nothing is registered, and a page loads none of Margin's page scripts. Safari keeps
 // registrations across launches and loads none of them if a file one lists
 // is missing, so a path registered once must stay in the build (see
 // scripts/build.js LEGACY_LAYOUT_FILES). The theme itself isn't registered
 // any more: Margin's content script asks the background for its package
 // (Margin 2: background/theme-package.js).
 import { platform } from '../shared/platform.js';
+import { APP_LINK_KEY, appDraws } from '../shared/app-link.js';
 import { themeFor } from '../themes/index.js';
 import { api } from './store.js';
 import { storeActiveTheme } from './theme-package.js';
@@ -22,6 +26,13 @@ const DOCKED_ID = 'margin-docked';
 
 // Chrome, where Margin works only in full screen.
 const worksInWindows = (settings) => !platform?.marginFullscreen || settings?.fullscreenOnly === false;
+// What the registrations follow, as stored (the link's state as pages see it:
+// background/link.js writes it as the copy in charge, and keeps it across a
+// background's restart).
+const read = async () => {
+  const got = await api.storage.local.get(['settings', APP_LINK_KEY]);
+  return { settings: got.settings, linked: appDraws(got[APP_LINK_KEY]) };
+};
 const anyFullscreen = async () => (await api.windows.getAll().catch(() => [])).some((win) => win.state === 'fullscreen');
 
 // What to register: [{ id, css, matches }], from the settings. Only where Margin
@@ -35,8 +46,8 @@ export function placeholderPlan(settings, { theme = themeFor(settings), showing 
 
 async function syncDockedCss() {
   if (!api.scripting?.registerContentScripts) return;
-  const { settings } = await api.storage.local.get('settings');
-  const want = placeholderPlan(settings);
+  const { settings, linked } = await read();
+  const want = placeholderPlan(settings, { showing: linked && worksInWindows(settings) });
   const current = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
   const key = (list) => JSON.stringify(list.map((s) => [s.id, s.css ?? []]));
   if (key(want) === key(current)) return;
@@ -70,8 +81,8 @@ export function pagePlan(settings, { theme = themeFor(settings), showing = works
 }
 async function syncPage() {
   if (!api.scripting?.registerContentScripts) return;
-  const { settings } = await api.storage.local.get('settings');
-  const want = pagePlan(settings, { showing: worksInWindows(settings) || await anyFullscreen() });
+  const { settings, linked } = await read();
+  const want = pagePlan(settings, { showing: linked && (worksInWindows(settings) || await anyFullscreen()) });
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [PAGE_ID] });
   if (JSON.stringify(want) === JSON.stringify(current?.js ?? null)) return;
   if (current) await api.scripting.unregisterContentScripts({ ids: [PAGE_ID] });
@@ -85,7 +96,7 @@ export const queueRegistrations = () => {
     .catch((err) => console.warn('[margin] docked css', err))
     .then(syncPage)
     .catch((err) => console.warn('[margin] page box', err))
-    .then(storeActiveTheme) // not a registration: the theme pages read with the state
+    .then(storeActiveTheme) // not a registration: the theme Margin.app is sent
     .catch((err) => console.warn('[margin] theme', err))
     .then(dropOld);
   return registrations;

@@ -1,8 +1,9 @@
 // Margin's trackpad gestures on the page (Safari builds): the guard that keeps
 // Safari's swipe, pinch for all tabs and bounce from leaving or distorting the
-// page, and Margin's own pull-to-refresh and swipe back/forward, which the
-// theme draws (view.setPull, setSwipe), and the pinch on a page with a box
-// (content/pinch.js). Called by content/core.js.
+// page, and Margin's own pull-to-refresh and swipe back/forward, and the
+// pinch on a page with a box (content/pinch.js). Called by content/core.js.
+// (Their badges were drawn by the in-page UI, before Margin 2's app; the app
+// doesn't draw them yet.)
 import { mark } from '../shared/dom.js';
 import { installGestureGuard, atPageTop, canSwipe } from '../shared/gestures.js';
 import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.js';
@@ -13,7 +14,7 @@ import { platform } from '../shared/platform.js';
 // copy's swipe stays off (its pull-to-refresh doesn't: two reloads are one).
 /** @param {any} page @param {{ replacing: () => boolean }} options */
 export function startTrackpad(page, { replacing }) {
-  const { host, pinch } = page;
+  const { marks, pinch } = page;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
   // Not in a copy that stood back for a newer one (content/core.js): that one's guard is enough.
@@ -49,16 +50,14 @@ export function startTrackpad(page, { replacing }) {
   // same reload), unlike swipe below (two would go back twice).
   const pullEnabled = () => !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.pullToRefresh !== false;
   /** @param {{ state: string, progress?: number }} pull */
-  function showPull({ state: phase, progress }) {
+  function showPull({ state: phase }) {
     if (pullRefreshing) return;
-    if (phase === 'trigger') return refreshFromPull();
-    page.view()?.setPull({ phase, progress }); // 'idle' | 'tracking' | 'armed'
+    if (phase === 'trigger') refreshFromPull();
   }
   function refreshFromPull() {
     pullRefreshing = true;
-    page.view()?.setPull({ phase: 'refreshing' });
-    mark(host, 'pullRefresh', 'true'); // test/debug hook
-    // A moment to see it start, then reload (the next page's pill follows).
+    mark(marks, 'pullRefresh', 'true'); // test/debug hook
+    // A moment for the pull to end, then reload.
     setTimeout(() => {
       location.reload();
       // If the page stays (a cancelled "Leave page?" prompt), the next click
@@ -71,35 +70,25 @@ export function startTrackpad(page, { replacing }) {
     if (!pullRefreshing) return;
     pullRefreshing = false;
     clearTimeout(pullStuckTimer);
-    page.view()?.setPull({ phase: 'idle' });
-    mark(host, 'pullRefresh');
+    mark(marks, 'pullRefresh');
   }
   addEventListener('pageshow', (event) => { if (event.persisted) resetPull(); });
 
   // ---- swipe back/forward (Safari builds) ------------------------------------
   // Safari's two-finger swipe is blocked by the gesture guard; this is
-  // Margin's, with Arc's edge badge: swipe sideways where nothing scrolls
+  // Margin's: swipe sideways where nothing scrolls
   // sideways, past the threshold, and let go to go back (fingers moving
   // right) or forward. The gesture logic is shared/pull.js (axis x).
   const swipeEnabled = () => !replacing() && !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
-  let swipeHideTimer = null;
   /** @param {{ state: string, progress?: number, direction?: number }} swipe */
-  function showSwipe({ state: phase, progress, direction }) {
-    if (phase === 'trigger') return navigateBySwipe(direction);
-    if (phase === 'idle' || !direction) return page.view()?.setSwipe({ phase: 'idle' });
-    clearTimeout(swipeHideTimer);
-    page.view()?.setSwipe({ phase, progress, direction }); // 'tracking' | 'armed'
+  function showSwipe({ state: phase, direction }) {
+    if (phase === 'trigger') navigateBySwipe(direction);
   }
   function navigateBySwipe(direction) {
-    page.view()?.setSwipe({ phase: 'going', direction });
-    mark(host, 'swipe', direction > 0 ? 'forward' : 'back'); // test/debug hook
+    mark(marks, 'swipe', direction > 0 ? 'forward' : 'back'); // test/debug hook
     if (direction > 0) history.forward();
     else history.back();
-    // Same-page history (and no history at all) doesn't unload: fade it out.
-    clearTimeout(swipeHideTimer);
-    swipeHideTimer = setTimeout(() => showSwipe({ state: 'idle' }), 450);
   }
-  addEventListener('pageshow', (event) => { if (event.persisted) showSwipe({ state: 'idle' }); });
   // With the Navigation API (Safari 26, Chrome), only swipe where there's
   // history to go to; without it, any swipe may try (as before).
   const nav = globalThis.navigation;
@@ -120,8 +109,8 @@ export function startTrackpad(page, { replacing }) {
     // the event's path, which can cost a layout, only while it matters.
     const onWheel = (/** @type {WheelEvent} */ event) => {
       if (event.ctrlKey) return; // a pinch
-      // Not over Margin's own panels; pixel deltas only (a trackpad).
-      const usable = () => event.deltaMode === 0 && !event.composedPath().some((node) => node === host || /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
+      // Not over an earlier copy's sidebar; pixel deltas only (a trackpad).
+      const usable = () => event.deltaMode === 0 && !event.composedPath().some((node) => /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
       const zoomed = pinch.zoomed(); // the wheel pans it: no gestures
       const pulling = pullEnabled() && !pullRefreshing && !zoomed;

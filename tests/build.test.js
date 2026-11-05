@@ -54,11 +54,17 @@ test('each build loads one bundled script per context', () => {
     assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), /left: 8 /);
     for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width} `));
     // Each built-in theme ships as its package (read by the background for
-    // pages, and by the new-tab page); no theme script is registered, and the
-    // one earlier versions registered is dropped (background/registered.js).
+    // Margin.app); no theme script is registered, and the one earlier
+    // versions registered is dropped (background/registered.js).
     for (const id of PACKAGE_THEMES) for (const f of ['theme.json', 'theme.html', 'theme.css']) assert.ok(statSync(join(dir, `themes/${id}/${f}`)).size > 0, `${target}/themes/${id}/${f}`);
     assert.match(background, /margin-theme/, `${target}: the old registration is dropped`);
-    assert.match(background, /themePackage/, `${target}: pages ask for the theme`);
+    // Pages draw none of Margin's UI (Margin 2 Phase 2 step 5): the UI
+    // runtime, the theme loader and the in-page host aren't in the content
+    // script or the new-tab page.
+    for (const file of ['content/content.bundle.js', 'newtab/newtab.bundle.js']) {
+      const text = readFileSync(join(dir, file), 'utf8');
+      for (const word of ['createRuntime', 'createInPageHost', 'loadTheme', 'sanitizeCss', 'attachShadow']) assert.ok(!text.includes(word), `${target}/${file}: no ${word}`);
+    }
     // Safari drops every registered script if a file one lists is missing, so
     // the sources an earlier version registered must still be there.
     // Safari loads none of its registrations if a path one names is missing.

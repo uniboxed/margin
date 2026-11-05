@@ -27,6 +27,7 @@ import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
 import { platform } from './shared/platform.js';
 import { appLink } from './background/app-link.js';
+import { APP_LINK_KEY, appDraws } from './shared/app-link.js';
 
 // ---- which copy is in charge ------------------------------------------------
 // Safari can keep an older copy of Margin running beside a newer one until it
@@ -347,7 +348,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectPage', 'fetchStyle', 'themePackage', 'appKeyHeard']);
+const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -456,9 +457,11 @@ api.tabs.onZoomChange?.addListener(zoomChanged);
 api.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.pageZoom) zoomStored();
 });
-// The theme, its placeholder and the page's box follow the settings.
+// The theme, its placeholder and the page's box follow the settings, and the
+// link to Margin.app (registered only while it's linked: background/registered.js).
+const linkTurned = (change) => !!change && appDraws(change.oldValue) !== appDraws(change.newValue);
 api.storage.onChanged.addListener(owned((changes, area) => {
-  if (area === 'local' && changes.settings) queueRegistrations();
+  if (area === 'local' && (changes.settings || linkTurned(changes[APP_LINK_KEY]))) queueRegistrations();
   // Keep-ready turned off: its holds end (background/keep-ready.js).
   if (area === 'local' && keepReadyChanged(changes)) keepReady.tickSoon();
 }));
@@ -496,7 +499,11 @@ globalThis.margin = { archiveNow: archiveStale, sleepNow: (/** @type {number | u
 // app's (Carbon hot keys following the Settings shortcuts: the `keys`
 // message): a UI command that reaches the extension anyway (⌘T, the
 // palette's, the sidebar's) does nothing visible here, and the app is told,
-// for its diagnostics. Navigation still works from here: it draws nothing.
+// for its diagnostics. Not linked, there's no palette or sidebar to show
+// (pages draw none of Margin's UI): ⌘T and the palette's key open Margin's
+// new-tab page (its notice that the app isn't running, and an address
+// field), the sidebar's does nothing. Navigation works either way: it draws
+// nothing.
 const APP_KEYS = new Set(['new-tab', 'open-palette', 'toggle-sidebar']);
 api.commands?.onCommand.addListener(owned(async (command, tabArg) => {
   if (APP_KEYS.has(command) && appLink.pageState() !== 'off') {
@@ -505,18 +512,10 @@ api.commands?.onCommand.addListener(owned(async (command, tabArg) => {
     return;
   }
   await untilSynced();
-  if (command === 'new-tab') return newTabKey(tabArg);
+  if (command === 'new-tab' || command === 'open-palette') return newTabKey(tabArg);
   if (NAV_ACTIONS.has(command)) {
     const windowId = tabArg?.windowId ?? (await api.windows?.getLastFocused())?.id;
     return navigate(command, 'command', windowId);
   }
-  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
-  if (!tab) return;
-  try {
-    await api.tabs.sendMessage(tab.id, { type: 'command', command });
-  } catch {
-    // No content script: maybe our own new-tab page, which listens on
-    // runtime messages. Otherwise a Safari internal page, PDF, etc.
-    api.runtime.sendMessage({ type: 'command', command, tabId: tab.id }).catch(() => {});
-  }
+  console.info(`[margin] ${command}: nothing to show, Margin.app isn't linked`);
 }));
