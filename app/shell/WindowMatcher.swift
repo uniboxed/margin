@@ -55,9 +55,19 @@ struct ExtWindow: Equatable {
     // windows.onFocusChanged name it, and windows.onCreated (nil: not heard since the copy started).
     var focusedAt: Double?
     var createdAt: Double?
+    // Where its tab in front's page area sits in it (top left, from the window's corner, in points),
+    // when that's less than the whole window: the docked Web Inspector (or Safari's sidebar) takes
+    // the rest (background/link.js `viewport`). Nil: the whole window.
+    var viewport: CGRect?
 
-    init(key: WindowKey, bounds: CGRect?, state: String, focused: Bool, activeTabId: Int?, focusedAt: Double? = nil, createdAt: Double? = nil) {
-        (self.key, self.bounds, self.state, self.focused, self.activeTabId, self.focusedAt, self.createdAt) = (key, bounds, state, focused, activeTabId, focusedAt, createdAt)
+    init(key: WindowKey, bounds: CGRect?, state: String, focused: Bool, activeTabId: Int?, focusedAt: Double? = nil, createdAt: Double? = nil, viewport: CGRect? = nil) {
+        (self.key, self.bounds, self.state, self.focused, self.activeTabId, self.focusedAt, self.createdAt, self.viewport) = (key, bounds, state, focused, activeTabId, focusedAt, createdAt, viewport)
+    }
+
+    private static func viewport(_ v: Any?) -> CGRect? {
+        guard let o = v as? JSONObject, let x = num(o["x"]), let y = num(o["y"]), let w = num(o["width"]), let h = num(o["height"]),
+              [x, y, w, h].allSatisfy(\.isFinite), w > 0, h > 0 else { return nil }
+        return CGRect(x: x, y: y, width: w, height: h)
     }
 
     static func parse(_ list: [JSONObject], link: String) -> [ExtWindow] {
@@ -70,7 +80,7 @@ struct ExtWindow: Equatable {
             let ms = { (v: Any?) in num(v).flatMap { $0 > 0 ? $0 / 1000 : nil } }
             return ExtWindow(key: WindowKey(link: link, windowId: id), bounds: bounds, state: w["state"] as? String ?? "normal",
                              focused: w["focused"] as? Bool ?? false, activeTabId: int(w["activeTabId"]),
-                             focusedAt: ms(w["focusedAt"]), createdAt: ms(w["createdAt"]))
+                             focusedAt: ms(w["focusedAt"]), createdAt: ms(w["createdAt"]), viewport: viewport(w["viewport"]))
         }
     }
 }
@@ -90,10 +100,32 @@ nonisolated enum WindowMatcher {
         server.filter { pids.contains($0.pid) && $0.layer == 0 && $0.alpha > 0 && $0.bounds.width >= minSize && $0.bounds.height >= minSize }
     }
 
+    /// A full-screen browser window's toolbar, which Safari draws as a window of its own (Tirth's
+    /// Safari, 2026-11-05, recorded with the window server's list): the same process, layer 0, the
+    /// window's left edge and width, short (52 pt; more with a tab bar or Favorites), parked just
+    /// above the window's top (y = top − its height) and sliding down over the window's top when
+    /// revealed; listed above the window. Margin's overlay goes between the two, so the toolbar
+    /// slides over Margin as it does over the page. The nearest such window above it, if any.
+    static let toolbarMaxHeight: CGFloat = 160
+    static func fullScreenToolbar(_ list: [ServerWindow], browser: ServerWindow) -> ServerWindow? {
+        let b = browser.bounds
+        return list.filter { w in
+            w.number != browser.number && w.pid == browser.pid && w.layer == 0 && w.order < browser.order
+                && abs(w.bounds.minX - b.minX) <= 1 && abs(w.bounds.width - b.width) <= 1
+                && w.bounds.height > 0 && w.bounds.height <= toolbarMaxHeight
+                && w.bounds.minY >= b.minY - w.bounds.height - 1 && w.bounds.minY <= b.minY + 1
+        }.max { $0.order < $1.order }
+    }
+
     /// Whether `overlay` is just above `browser` in the window server's list:
     /// both on screen, the overlay nearer the front, and no other normal or
     /// higher window (any app's, another overlay) between them.
-    static func stackedAbove(_ list: [ServerWindow], overlay: Int, browser: Int) -> Bool {
+    /// And below the browser window's full-screen toolbar (`toolbar`, fullScreenToolbar), when it has one.
+    static func stackedAbove(_ list: [ServerWindow], overlay: Int, browser: Int, toolbar: Int? = nil) -> Bool {
+        if let toolbar {
+            let all = list.sorted { $0.order < $1.order }
+            if let t = all.firstIndex(where: { $0.number == toolbar }), let o = all.firstIndex(where: { $0.number == overlay }), t > o { return false }
+        }
         let shown = list.filter(\.onScreen).sorted { $0.order < $1.order }
         guard let o = shown.firstIndex(where: { $0.number == overlay }), let b = shown.firstIndex(where: { $0.number == browser }), o < b else { return false }
         let browserPid = shown[b].pid

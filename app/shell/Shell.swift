@@ -506,9 +506,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             overlay.browserPid = server.pid
             let wasShown = overlay.isShown && overlay.aboveWindow == number
-            overlay.size(to: server.bounds)
-            if overlay.show(over: number, frame: server.bounds, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen"), wasShown,
-               !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number) {
+            // Over the part of the window that's the page's and Margin's: not the docked Web Inspector.
+            let frame = Shell.overlayFrame(window: server.bounds, viewport: w.state == "fullscreen" ? w.viewport : nil)
+            if frame != server.bounds, overlay.windowFrame != server.bounds || overlay.frameTopLeft != frame {
+                Diagnostics.note("\(key): Safari takes part of its window (the Web Inspector docked?): Margin draws in \(frame) of \(server.bounds)")
+            }
+            overlay.windowFrame = server.bounds
+            overlay.size(to: frame)
+            // Below the window's full-screen toolbar (its own window), so it slides over Margin too.
+            let toolbar = WindowMatcher.fullScreenToolbar(list, browser: server)?.number
+            if overlay.show(over: number, frame: frame, toolbar: toolbar, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen"), wasShown,
+               !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar) {
                 overlay.reorder()
             }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
@@ -530,6 +538,18 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pollTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
         }
+    }
+
+    // Where an overlay goes over a window (top left): the whole window, or, when its copy says the
+    // tab in front's page area is only part of it (`viewport`: the Web Inspector docked at the bottom,
+    // left or right), that part, so Margin is laid out beside the inspector, draws nothing over it,
+    // and the pointer always reaches it. A part too small to lay a theme out in (under 200 pt) or
+    // outside the window: the whole window.
+    static func overlayFrame(window: CGRect, viewport: CGRect?) -> CGRect {
+        guard let viewport else { return window }
+        let part = viewport.offsetBy(dx: window.minX, dy: window.minY).intersection(window)
+        guard !part.isNull, part.width >= 200, part.height >= 200 else { return window }
+        return part.integral == part ? part : CGRect(x: part.minX.rounded(), y: part.minY.rounded(), width: part.width.rounded(), height: part.height.rounded())
     }
 
     // A window the app's own request made (the profile switch's openSpaceWindow, asked at `asked`):
@@ -687,7 +707,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     func layoutChanged(_ overlay: OverlayController, _ layout: PageLayout) {
         let size = overlay.frameTopLeft.size
         guard abs(layout.width - size.width) < 1, abs(layout.height - size.height) < 1 else { return }
-        guard let entry = links[overlay.key.link], let (seq, rounded) = entry.outbox.offer(windowId: overlay.key.windowId, layout) else { return }
+        let window = overlay.windowFrame ?? overlay.frameTopLeft
+        let inWindow = layout.inWindow(overlay: overlay.frameTopLeft, window: window)
+        guard let entry = links[overlay.key.link], let (seq, rounded) = entry.outbox.offer(windowId: overlay.key.windowId, inWindow) else { return }
         entry.connection.send(.setLayout(epoch: entry.connection.epoch, windowId: overlay.key.windowId, seq: seq, layout: rounded))
     }
 

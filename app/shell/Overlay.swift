@@ -78,7 +78,11 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     private(set) var hits: [CGRect] = []
     private(set) var captureAll = false
     private(set) var frameTopLeft: CGRect = .zero
+    // Its browser window's bounds (top left): the overlay's frame, or more when Safari takes part of
+    // the window (Shell.overlayFrame).
+    var windowFrame: CGRect?
     private(set) var aboveWindow: Int?
+    private(set) var belowWindow: Int? // the browser window's full-screen toolbar, when it has one
     private(set) var ignoring = false
     private(set) var hasKeyboard = false
     // Which pointer positions its page wants (PointerWant): all, until it says.
@@ -158,7 +162,10 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     // `restack`: the overlay was just ordered (the guard goes back above it).
     func placeEdge(restack: Bool = false) {
         guard let edgePanel else { return }
-        let want = isShown ? EdgeGuard.frame(for: frameTopLeft, slot: slot, width: options.edgeWidth) : nil
+        // (Only at the window's own left edge: with the Web Inspector docked on the left, the overlay
+        // starts beside it, and the inspector is Safari's.)
+        let atWindowEdge = windowFrame.map { abs($0.minX - frameTopLeft.minX) < 1 } ?? true
+        let want = isShown && atWindowEdge ? EdgeGuard.frame(for: frameTopLeft, slot: slot, width: options.edgeWidth) : nil
         guard let want, allowed(ScreenGeometry.appKitRect(want)) else {
             if edgeFrame != nil { edgePanel.orderOut(nil) }
             edgeFrame = nil
@@ -198,8 +205,10 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     /// Over the browser window `number`, at its bounds (`frame`, top left),
     /// just above it. False if it can't be shown (not drawn yet, or a test's
     /// frame on a display).
+    /// `toolbar`: the window's full-screen toolbar (WindowMatcher.fullScreenToolbar): the overlay goes
+    /// just below it, so it still slides over Margin as over the page.
     @discardableResult
-    func show(over number: Int, frame: CGRect, why: String = "its window is on screen") -> Bool {
+    func show(over number: Int, frame: CGRect, toolbar: Int? = nil, why: String = "its window is on screen") -> Bool {
         guard isReady, crashBudgetOK else { return false }
         let appKit = ScreenGeometry.appKitRect(frame)
         guard allowed(appKit) else { return false }
@@ -211,12 +220,10 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             CATransaction.commit()
             frameTopLeft = frame
         }
-        let ordered = !isShown || aboveWindow != number
-        if ordered {
-            panel.order(.above, relativeTo: number)
-            reorders += 1
-        }
+        let ordered = !isShown || aboveWindow != number || belowWindow != toolbar
         aboveWindow = number
+        belowWindow = toolbar
+        if ordered { orderInPlace() }
         if !isShown {
             isShown = true
             Diagnostics.note("overlay shown over \(key) (window \(number)): \(why)")
@@ -227,10 +234,15 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
 
     // Put back just above its browser window (something came between them: a click raised the browser).
     func reorder() {
-        guard isShown, let aboveWindow else { return }
-        panel.order(.above, relativeTo: aboveWindow)
-        reorders += 1
+        guard isShown, aboveWindow != nil else { return }
+        orderInPlace()
         placeEdge(restack: true)
+    }
+
+    // Just above the browser window, and below its full-screen toolbar when it has one.
+    private func orderInPlace() {
+        if let belowWindow { panel.order(.below, relativeTo: belowWindow) } else if let aboveWindow { panel.order(.above, relativeTo: aboveWindow) }
+        reorders += 1
     }
 
     // `why`: for the log (only a shown overlay put away is logged).
@@ -240,6 +252,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         panel.orderOut(nil)
         isShown = false
         aboveWindow = nil
+        belowWindow = nil
         setIgnoring(false)
         placeEdge()
     }

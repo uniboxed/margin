@@ -253,13 +253,68 @@ export function startCore() {
   function appGeometry() {
     const l = layoutFor(appLink, windowId ?? helloWindowId);
     if (!l) return null;
-    const insets = boxFromLayout(l, { outerWidth, outerHeight, innerWidth, innerHeight, zoom: pageZoom }) ?? { left: 0, top: 0, right: 0, bottom: 0 };
+    const at = viewportNow();
+    const insets = boxFromLayout(l, { outerWidth, outerHeight, innerWidth, innerHeight, zoom: pageZoom, x: at?.x, y: at?.y }) ?? { left: 0, top: 0, right: 0, bottom: 0 };
     const radius = Number(l.radius) || 0;
     /** @type {import('./layout.js').Geometry} */
     const g = { insets, radius, radii: Array.isArray(l.radii) ? l.radii : [radius, radius, radius, radius] };
     return g;
   }
-  const applyApp = () => layout.settle();
+  // ---- where this page's area sits in its window (Phase 2 step 8) ---------------
+  // Safari can take part of a full-screen window: the Web Inspector docked at
+  // the bottom, left or right (Safari's sidebar on the left). The page's area
+  // is then smaller than the window, and Margin.app draws only over it
+  // (app/shell/Shell.swift overlayFrame), beside the inspector. Its size is
+  // the viewport's; where it starts is known exactly from any pointer event
+  // (the event's screen point less the window's corner and its own point in
+  // the page), else taken as: the width missing on the left (Safari's
+  // sidebar, an inspector on the left), the height missing at the bottom in
+  // full screen (the inspector: the toolbar is a window of its own there),
+  // at the top otherwise (the toolbar). Told to the copy when it changes, by
+  // the page in front only (the inspector is a tab's): `viewport`, in the
+  // window's points, null for the whole window.
+  /** @type {{ x: number, y: number, w: number, h: number } | null} */
+  let pointerOrigin = null; // as found for the viewport size w × h
+  const viewportNow = () => {
+    const z = pageZoom || 1;
+    const w = innerWidth * z;
+    const h = innerHeight * z;
+    const offX = Math.max(0, outerWidth - w);
+    const offY = Math.max(0, outerHeight - h);
+    if (offX < 1 && offY < 1) return null;
+    const known = pointerOrigin && Math.abs(pointerOrigin.w - w) < 1 && Math.abs(pointerOrigin.h - h) < 1 ? pointerOrigin : null;
+    const full = outerWidth >= screen.width - 1 && outerHeight >= screen.height - 60;
+    const x = known ? known.x : offX;
+    const y = known ? known.y : full ? 0 : offY;
+    const half = (v) => Math.round(v * 2) / 2;
+    return { x: half(x), y: half(y), width: half(w), height: half(h) };
+  };
+  const learnOrigin = (/** @type {MouseEvent} */ e) => {
+    const z = pageZoom || 1;
+    const w = innerWidth * z;
+    const h = innerHeight * z;
+    if (pointerOrigin && Math.abs(pointerOrigin.w - w) < 1 && Math.abs(pointerOrigin.h - h) < 1) return;
+    if (outerWidth - w < 1 && outerHeight - h < 1) return;
+    const x = e.screenX - screenX - e.clientX * z;
+    const y = e.screenY - screenY - e.clientY * z;
+    if (!(x >= -1 && x <= outerWidth - w + 1 && y >= -1 && y <= outerHeight - h + 1)) return;
+    pointerOrigin = { x: Math.max(0, x), y: Math.max(0, y), w, h };
+    tellViewport();
+    layout.settle();
+  };
+  for (const type of ['pointermove', 'pointerdown']) addEventListener(type, learnOrigin, { capture: true, passive: true });
+  let toldViewport = 'unset';
+  function tellViewport() {
+    if (document.hidden || !appUi() || retired()) return;
+    const v = viewportNow();
+    const key = JSON.stringify(v);
+    if (key === toldViewport) return;
+    toldViewport = key;
+    void send('viewport', { viewport: v }, false);
+  }
+  addEventListener('resize', () => setTimeout(tellViewport, 120));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { toldViewport = 'unset'; tellViewport(); } });
+  const applyApp = () => { layout.settle(); tellViewport(); };
   // What the background says of the link: the page's box from the app's
   // layout from now on, or none.
   const appKey = (l) => JSON.stringify([l?.state ?? null, l?.layouts ?? null]);

@@ -11,6 +11,7 @@
 // chunks. Nothing the app sends is over 1 MB (Chrome closes a native port on
 // a bigger message from the app, PLAN.md §14): encode() refuses it.
 
+import CoreGraphics
 import Foundation
 
 typealias JSONObject = [String: Any]
@@ -50,6 +51,16 @@ struct PageLayout: Equatable {
 
     init(left: Double, top: Double, right: Double, bottom: Double, radius: Double, radii: [Double], width: Double, height: Double, mode: String) {
         (self.left, self.top, self.right, self.bottom, self.radius, self.radii, self.width, self.height, self.mode) = (left, top, right, bottom, radius, radii, width, height, mode)
+    }
+
+    // Measured in an overlay at `overlay` over a window at `window` (both top left): the insets from
+    // the window's edges, as setLayout carries them. The overlay is the window, unless Safari takes
+    // part of it (the docked Web Inspector: Shell.overlayFrame).
+    func inWindow(overlay: CGRect, window: CGRect) -> PageLayout {
+        guard overlay != window else { return self }
+        return PageLayout(left: left + Double(overlay.minX - window.minX), top: top + Double(overlay.minY - window.minY),
+                          right: right + Double(window.maxX - overlay.maxX), bottom: bottom + Double(window.maxY - overlay.maxY),
+                          radius: radius, radii: radii, width: Double(window.width), height: Double(window.height), mode: mode)
     }
 
     // To half a point: what the page box can show (and what's compared before sending again).

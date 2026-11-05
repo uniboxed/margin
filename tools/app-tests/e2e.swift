@@ -402,6 +402,24 @@ func scenario() async {
   windows.browser[0] = w7Server
   check("shown again once the window server says its window is on screen", await until(3, { o7.isShown }))
 
+  // ---- the Web Inspector docked at the bottom of the window (Phase 2 step 8) ----
+  let rw = w7Server.bounds
+  var docked7 = win(7, rw, "fullscreen", focused: true)
+  docked7["activeTabId"] = 12
+  docked7["viewport"] = ["x": 0, "y": 0, "width": rw.width, "height": rw.height - 300]
+  mark = fake.events.count
+  fake.tell(["do": "windows", "id": "A", "list": [docked7, win(8, r8, "normal")]])
+  check("the inspector docked at the bottom: the overlay over the part above it only", await until(3, { o7.frameTopLeft == CGRect(x: rw.minX, y: rw.minY, width: rw.width, height: rw.height - 300) }), "\(o7.frameTopLeft)")
+  check("the theme laid out there, setLayout's insets still from the window's edges (the inspector's 300 pt in the bottom)",
+        await until(10, { (fake.all("setLayout", since: mark).last.flatMap { ($0["msg"] as? JSONObject)?["insets"] as? JSONObject }).map { num($0["bottom"]).map { $0 >= 300 } ?? false } ?? false }),
+        "\(fake.all("setLayout", since: mark).last ?? [:])")
+  check("nothing of Margin's over the inspector: the pointer is Safari's there", !o7.frameTopLeft.contains(CGPoint(x: rw.minX + 600, y: rw.maxY - 100)))
+  mark = fake.events.count
+  fake.tell(["do": "windows", "id": "A", "list": [win(7, rw, "fullscreen", focused: true), win(8, r8, "normal")]])
+  let wholeAgain = await until(3, { o7.frameTopLeft == rw })
+  let insetsAgain = await until(10, { (fake.all("setLayout", since: mark).last.flatMap { ($0["msg"] as? JSONObject)?["insets"] as? JSONObject }).map { num($0["bottom"]).map { $0 < 50 } ?? false } ?? false })
+  check("closed: the whole window again, and its layout", wholeAgain && insetsAgain)
+
   // ---- keys ----
   shell.track()
   check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 6))

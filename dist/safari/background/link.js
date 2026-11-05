@@ -674,13 +674,23 @@ export function createLink({
       Promise.resolve(api.windows?.getAll?.()).catch(() => null),
       Promise.resolve(api.tabs.query({ active: true })).catch(() => []),
     ]);
-    return (wins ?? []).filter((w) => w?.id != null).map((w) => ({
-      windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
-      state: w.state ?? 'normal', focused: !!w.focused, activeTabId: (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null,
-      ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
-      ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
-    }));
+    return (wins ?? []).filter((w) => w?.id != null).map((w) => {
+      const activeTabId = (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null;
+      const vp = viewports.get(w.id);
+      return {
+        windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
+        state: w.state ?? 'normal', focused: !!w.focused, activeTabId,
+        ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
+        ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
+        // Only its tab in front's word: the inspector is a tab's (app/PROTOCOL.md `viewport`).
+        ...(vp && vp.tabId === activeTabId ? { viewport: vp.rect } : {}),
+      };
+    });
   }
+  // Where each window's tab in front says its page area sits in the window, when that's less than
+  // all of it (content/core.js viewportNow: the docked Web Inspector): windowId → { tabId, rect }.
+  /** @type {Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number } }>} */
+  const viewports = new Map();
   // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
   // app tells same-bounds windows apart by them (app/shell/WindowMatcher.swift). Not kept past the background.
   /** @type {Map<number, number>} */
@@ -913,9 +923,21 @@ export function createLink({
       if (Number.isInteger(windowId) && windowId >= 0) createdAt.set(windowId, at);
       void windowsNow();
     },
+    // A page in front saying where its area sits in its window (handlers.js viewport; null: all of it).
+    /** @param {number} windowId @param {number} tabId @param {{ x: number, y: number, width: number, height: number } | null} rect */
+    viewport(windowId, tabId, rect) {
+      if (!Number.isInteger(windowId) || !Number.isInteger(tabId)) return;
+      const had = JSON.stringify(viewports.get(windowId) ?? null);
+      if (rect) viewports.set(windowId, { tabId, rect });
+      else if (viewports.get(windowId)?.tabId === tabId || rect === null) viewports.delete(windowId);
+      if (JSON.stringify(viewports.get(windowId) ?? null) !== had) void windowsNow();
+    },
+    // A switch's timeline (background/switch-log.js) and other lines for Margin.app's log.
+    note: (/** @type {any[]} */ ...args) => note(...args),
     windowClosed(windowId) {
       focusedAt.delete(windowId);
       createdAt.delete(windowId);
+      viewports.delete(windowId);
       if (pageState.layouts[windowId]) {
         const layouts = { ...pageState.layouts };
         delete layouts[windowId];

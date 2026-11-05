@@ -68,6 +68,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     shortcuts()
     geometry()
     edgeAndPointer()
+    safariParts()
     dataMerge()
     dataStore()
     dataSync()
@@ -447,6 +448,49 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("not a window still on the desktop, going full screen", !ScreenGeometry.fillsDisplay(CGRect(x: 100, y: 120, width: 1200, height: 760), displays: displays))
     check("not a window across two displays", !ScreenGeometry.fillsDisplay(CGRect(x: 1000, y: 0, width: 1200, height: 982), displays: displays))
     check("not off every display", !ScreenGeometry.fillsDisplay(CGRect(x: -20000, y: -20000, width: 1280, height: 800), displays: displays))
+  }
+
+  // Safari's own parts of the window (Phase 2 step 8): the full-screen toolbar, a window of its own,
+  // from Tirth's recorded list (scratchpad winrec/rec.log, 2026-11-05), and the docked Web Inspector.
+  static func safariParts() {
+    let pid: pid_t = 501
+    let main = ServerWindow(number: 14375, pid: pid, bounds: CGRect(x: 0, y: 33, width: 1512, height: 949), order: 165)
+    let overlay = ServerWindow(number: 14589, pid: 9, bounds: main.bounds, order: 9)
+    let parked = ServerWindow(number: 14553, pid: pid, bounds: CGRect(x: 0, y: -19, width: 1512, height: 52), order: 113)
+    let sliding = ServerWindow(number: 14553, pid: pid, bounds: CGRect(x: 0, y: 13, width: 1512, height: 52), order: 113)
+    let down = ServerWindow(number: 14553, pid: pid, bounds: CGRect(x: 0, y: 33, width: 1512, height: 52), order: 112)
+    check("the toolbar parked above the window's top: found", WindowMatcher.fullScreenToolbar([overlay, parked, main], browser: main)?.number == 14553)
+    check("sliding down, and down over the window's top: found", WindowMatcher.fullScreenToolbar([overlay, sliding, main], browser: main)?.number == 14553 && WindowMatcher.fullScreenToolbar([overlay, down, main], browser: main)?.number == 14553)
+    let tall = ServerWindow(number: 3, pid: pid, bounds: CGRect(x: 0, y: -85, width: 1512, height: 118), order: 100)
+    check("taller with a tab bar and Favorites: found", WindowMatcher.fullScreenToolbar([tall, main], browser: main)?.number == 3)
+    let popover = ServerWindow(number: 4, pid: pid, bounds: CGRect(x: 600, y: 40, width: 300, height: 120), order: 50)
+    let otherApp = ServerWindow(number: 5, pid: 77, bounds: parked.bounds, order: 60)
+    let below = ServerWindow(number: 6, pid: pid, bounds: parked.bounds, order: 200)
+    let lower = ServerWindow(number: 7, pid: pid, bounds: CGRect(x: 0, y: 500, width: 1512, height: 52), order: 100)
+    check("not a popover, another app's window, one behind the window, nor one lower down", WindowMatcher.fullScreenToolbar([popover, otherApp, below, lower, main], browser: main) == nil)
+    check("no toolbar (windowed, or none drawn yet): none", WindowMatcher.fullScreenToolbar([overlay, main], browser: main) == nil)
+    // Margin goes between the window and its toolbar: the toolbar slides over Margin as over the page.
+    let between = ServerWindow(number: 14589, pid: 9, bounds: main.bounds, order: 120)
+    check("the overlay above the toolbar (as recorded): put back", !WindowMatcher.stackedAbove([overlay, parked, main], overlay: 14589, browser: 14375, toolbar: 14553))
+    check("between the toolbar and the window: in place", WindowMatcher.stackedAbove([parked, between, main], overlay: 14589, browser: 14375, toolbar: 14553))
+    check("and with the toolbar down over the window", WindowMatcher.stackedAbove([down, between, main], overlay: 14589, browser: 14375, toolbar: 14553))
+    check("no toolbar: just above the window, as before", WindowMatcher.stackedAbove([overlay, main], overlay: 14589, browser: 14375, toolbar: nil))
+    // The docked Web Inspector: the overlay over the page's part only, setLayout's insets still from the window's edges.
+    let win = CGRect(x: 0, y: 33, width: 1512, height: 949)
+    check("no viewport said: the whole window", Shell.overlayFrame(window: win, viewport: nil) == win)
+    check("docked at the bottom: the part above it", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1512, height: 600)) == CGRect(x: 0, y: 33, width: 1512, height: 600))
+    check("docked on the right: the part left of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1000, height: 949)) == CGRect(x: 0, y: 33, width: 1000, height: 949))
+    check("docked on the left: the part right of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 512, y: 0, width: 1000, height: 949)) == CGRect(x: 512, y: 33, width: 1000, height: 949))
+    check("a part too small to lay out in, or outside the window: the whole window", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 150, height: 949)) == win && Shell.overlayFrame(window: win, viewport: CGRect(x: 4000, y: 0, width: 800, height: 900)) == win)
+    let measured = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1000, height: 949, mode: "fullscreen")
+    let right = measured.inWindow(overlay: CGRect(x: 512, y: 33, width: 1000, height: 949), window: win)
+    check("insets from the window's edges: the inspector on the left adds its width to the left", right.left == 772 && right.right == 8 && right.top == 8 && right.width == 1512)
+    let bottom = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1512, height: 600, mode: "fullscreen").inWindow(overlay: CGRect(x: 0, y: 33, width: 1512, height: 600), window: win)
+    check("at the bottom: its height added to the bottom", bottom.bottom == 357 && bottom.left == 260 && bottom.height == 949)
+    check("the whole window: as measured", measured.inWindow(overlay: win, window: win) == measured)
+    // Over the inspector the overlay isn't there at all: the pointer is Safari's.
+    let slot = PassThrough.slot(in: CGRect(x: 0, y: 33, width: 1512, height: 600), layout: PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 0, radii: [0, 0, 0, 0], width: 1512, height: 600, mode: "fullscreen"))
+    check("the slot ends above the inspector", slot.rect.maxY == 33 + 600 - 8)
   }
 
   static func edgeAndPointer() {

@@ -119,6 +119,15 @@ test('link: helpers — the keys from Settings, the theme in checked pieces, wha
   assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1024, innerHeight: 640, zoom: 1.25 }), { left: 208, top: 6.5, right: 6.5, bottom: 6.5 }, 'zoomed: in the page\'s pixels');
   assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1060, innerHeight: 800 }), { left: 40, top: 8, right: 8, bottom: 8 }, 'Safari\'s sidebar open (220 pt): the left inset less that');
   assert.equal(boxFromLayout({ insets: { left: 0, top: 0, right: 0, bottom: 0 } }, { outerWidth: 1, outerHeight: 1, innerWidth: 1, innerHeight: 1 }), null);
+  // The Web Inspector docked (Phase 2 step 8): the overlay is over the page's part only, and the
+  // insets the app sends are from the window's edges (the inspector's size in them).
+  const bottom = { insets: { left: 260, top: 8, right: 8, bottom: 308 } };
+  assert.deepEqual(boxFromLayout(bottom, { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 500, x: 0, y: 0 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'docked at the bottom: the page\'s own frame below it');
+  const right = { insets: { left: 260, top: 8, right: 408, bottom: 8 } };
+  assert.deepEqual(boxFromLayout(right, { outerWidth: 1280, outerHeight: 800, innerWidth: 880, innerHeight: 800, x: 0, y: 0 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'docked on the right');
+  const left = { insets: { left: 660, top: 8, right: 8, bottom: 8 } };
+  assert.deepEqual(boxFromLayout(left, { outerWidth: 1280, outerHeight: 800, innerWidth: 880, innerHeight: 800, x: 400, y: 0 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'docked on the left');
+  assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1060, innerHeight: 800, x: 9999 }), { left: 40, top: 8, right: 8, bottom: 8 }, 'a corner past the room there is: held to it');
   assert.ok(STATE_KEYS.includes('openTabs') && !STATE_KEYS.includes('uiTheme'));
   for (const type of ['activateTab', 'navigate', 'openHere', 'search']) assert.ok(APP_REQUESTS.has(type), type);
   for (const type of ['hello', 'reloadForUpdate', 'getZoom', 'injectPage', 'fetchStyle', 'switchLog']) assert.ok(!APP_REQUESTS.has(type), type);
@@ -360,6 +369,14 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
     const from2 = app.received.length;
     link.windowClosed(8);
     assert.equal((await app.next('windows', { from: from2, test: (m) => m.list.length === 1 })).list[0].focusedAt, 1_800_000_000_200);
+    // The Web Inspector docked: the tab in front says where its area sits, the window's entry carries it.
+    const from3 = app.received.length;
+    link.viewport(7, 13, { x: 0, y: 0, width: 1440, height: 500 });
+    assert.deepEqual((await app.next('windows', { from: from3, test: (m) => !!m.list[0].viewport })).list[0].viewport, { x: 0, y: 0, width: 1440, height: 500 });
+    const from4 = app.received.length;
+    link.viewport(7, 99, { x: 0, y: 0, width: 1000, height: 800 }); // a tab behind (its inspector isn't shown): not the window's
+    link.viewport(7, 13, null); // closed
+    assert.ok(!('viewport' in (await app.next('windows', { from: from4, test: (m) => !m.list[0].viewport })).list[0]), 'only the tab in front\'s, and gone when it closes');
     // The app's layout for window 7: kept for pages, the page in front told.
     const told = [];
     link.onLayout((w, l) => told.push([w, l.insets.left]));
