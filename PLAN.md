@@ -13,7 +13,7 @@ Draft plan, 2026-11-04. Nothing here is built yet. Once Tirth approves it, the d
         ┌──────────────────┴───────────────┐        ┌─────────────┴────────────────────┐
         │ Margin.app (Mac): native windows │        │ In-page host: a closed shadow     │
         │ around the browser's page area,  │        │ root in each page, as today.      │
-        │ Safari, Chrome, Edge             │        │ Chrome and Edge on Windows, Linux │
+        │ Safari, Chrome, Edge             │        │ Development and tests only.       │
         └──────────────────▲───────────────┘        └─────────────▲────────────────────┘
                            │ link (snapshot, deltas, requests)    │ runtime messages
             ┌──────────────┴──────────────────────────────────────┴─────────────────────┐
@@ -27,7 +27,7 @@ Decided already (2026-11-04):
 - Safari's own blink in the page area during a switch is accepted. A switch is a plain `tabs.update({active: true})`. All the machinery that hid the blink goes (section 8).
 - Margin.app draws every Margin element: sidebar, borders and frame, palette, prompts, window controls, future UI. The page area itself is left to the browser.
 - No Accessibility permission, no private macOS calls. Tested: window tracking with the window server's list, panels over full-screen windows, app-registered shortcuts, typing in a panel without Safari losing focus, and moving the browser's window through the extension (`windows.update`), all without permissions.
-- On the Mac the app is used for every browser (Safari, Chrome, Edge). Mac users without the app are asked to install it (Tirth, 2026-11-04); they don't get an in-page UI. Only Chrome and Edge on Windows and Linux get the same UI inside pages. So Safari never runs the in-page UI.
+- On the Mac the app is used for every browser (Safari, Chrome, Edge). Mac users without the app are asked to install it (Tirth, 2026-11-04); they don't get an in-page UI. Margin 2 ships for macOS only (Tirth, 2026-11-04): Windows and Linux are not planned for now, so no product build runs the UI inside pages.
 - Distribution: **Developer ID** (notarized, outside the App Store, with Margin's own updates). No App Store version (Tirth, 2026-11-04).
 - In a normal window, Margin covers the browser's toolbar (no browser can hide it), and dragging Margin's frame moves the browser window through the extension. Margin's windows move to wherever the browser reports it landed, and the frame's edges reach a little past the window's edges, more on fast drags. Tirth checked it by hand: it works, a bit laggy, accepted for now.
 
@@ -41,11 +41,11 @@ New in this plan (Tirth, 2026-11-04):
 
 | Part | Owns | Doesn't |
 |---|---|---|
-| Extension | Live tab and window state (tab ids, which tab is in which window and space), a cached copy of the app's data on the Mac (the main store on Windows and Linux), tab and window actions, the page box in every page, sleeping tabs, cut-off repair and copies, search, the ⌘T and palette keys where only a page can catch them | Draw any UI when the app is linked |
+| Extension | Live tab and window state (tab ids, which tab is in which window and space), a cached copy of the app's data, tab and window actions, the page box in every page, sleeping tabs, cut-off repair and copies, search, the ⌘T and palette keys where only a page can catch them | Draw any UI when the app is linked |
 | Margin UI runtime | The state mirror, rendering the theme, the action list, the behaviors (drag and drop, resize, peek, palette keys, context menus, inline rename), measuring the theme's page slot | Talk to the browser: everything goes through the host |
 | Theme | Structure (HTML), look (CSS), layout (where the page slot is), fonts and images bundled with it, its settings (as CSS variables) | Any script, any network request, any action Margin doesn't list |
 | Margin.app host | Native windows per browser window, following the window, the link to each browser's extension, app shortcuts, keyboard focus for the palette, the window drag in windowed mode, and **the lasting data on the Mac** (section 6, "Where data lives") | Live tab state: tab ids exist only inside the running browser |
-| In-page host | A closed shadow root per page holding the runtime and theme (today's model, with the new UI inside), for Chrome and Edge on Windows and Linux | Run on the Mac: there, without the app, Margin shows a prompt to install it |
+| In-page host | A closed shadow root per page holding the runtime and theme, used only to build and test the runtime before the app exists (Phase 1) and in automated tests | Ship: Margin is Mac-only, and without the app the extension shows a prompt to install it |
 
 ## 3. Themes, version 2
 
@@ -146,7 +146,6 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 - **Where data lives (Tirth, 2026-11-04):** on the Mac, Margin.app owns the lasting data, in files under `~/Library/Application Support/Margin/` (one data set per browser and profile, keyed by the profile id the link already carries): spaces, pins (by address), folders, the archive, settings, theme settings, user themes and site icons. Reasons: Safari can wipe an extension's storage (it came back empty after Safari blocked and re-enabled Margin on 2026-11-04), the extension quota (about 10 MB) no longer limits themes and icons, Time Machine backs the files up, and one place decides, so the code that reconciles Margin's copies shrinks.
   - The extension keeps the live state (tab ids, `tabSpace`, open tabs per window), which only exists in the running browser, and a cached copy of the app's data, so it works from Safari's first page before the app has connected (first-paint layout, restoring which tab belongs to which space).
   - The app is the truth; the extension's copy is a cache. A wiped cache is refilled from the app as soon as they link. Changes made while unlinked are queued with their time and sent on link; the app merges them (last write wins per item, with deletions kept as tombstones so they don't come back).
-  - Windows and Linux (no app): the extension's storage stays the main store, as today.
 - **Margin's tabs (Tirth, 2026-11-04):** Margin's sidebar is the real list of tabs, kept in the app's data with the rest; a browser tab is just the open form of a Margin tab (Arc's model). Each Margin tab has its own lasting id, address, title, icon, space, place in the list, last use, and, while it's open, the browser window and tab it's open in.
   - **Safari has a tab Margin doesn't know:** it's added to the window's active space, as today.
   - **Margin has a tab Safari doesn't (not open):** it stays in its space in the sidebar, drawn as not open, and opens in the window where it's clicked (`tabs.create` with its address), then is linked to that tab. A space's not-open tabs show in every window showing that space.
@@ -155,7 +154,6 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
   - **Auto-archive** still moves tabs unused for `archiveAfterHours` into the archive, open or not.
   - Reopening a not-open tab starts fresh: its Back history and scroll position are gone, as when reopening any closed tab.
   - **Sleeping tabs become closed-but-kept (Tirth, 2026-11-04):** after `sleepAfterHours` unused, Margin closes the browser tab itself and keeps it as a not-open Margin tab, with the same skips as now (the tab in front, playing sound, drafts, the never-sleep list). This frees all of its memory (no sleep page left running) and leaves nothing broken if Margin is removed. Chrome and Edge keep `tabs.discard`, which keeps the tab and its history at no memory cost. The sleep page (`extension/sleep/`, the sleep-page parts of `shared/sleep.js`, the copy moves and Back guards) goes in Phase 3; the choice of which tabs sleep and the draft check stay.
-  - Windows and Linux: the same Margin tabs, in the extension's storage.
 - Reuse from `feat/native-panel`: ExtensionLink, LinkSocket, LinkMessage, StateMirror, PanelWebView (own scheme), PanelController (minus the private calls), AppDelegate, the Xcode scripts. Not reused: SkyLight (private), AXSafari (Accessibility), Safari-sidebar Eligibility.
 
 ## 7. The extension, changed
@@ -164,7 +162,7 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 - **Page box:** insets come from the theme's layout per window instead of `sidebarWidth` and a hard-coded 8 px frame (`box.js FRAME`, `build-styles.js FRAME`, `registered.js FRAME_LEFT`).
   - First paint: the registered first-paint CSS carries the insets as CSS variables (`boxRules` already writes them on `<html>`), and the page's world reads them from there instead of from one `at-<width>.js` file per width.
   - Per-layout first-paint CSS is generated at run time and registered, instead of 35 files per theme.
-- **UI in pages only on Windows and Linux:** the in-page host mounts the UI runtime only in Chrome and Edge outside the Mac. On the Mac, pages get only the box and the small scripts that must run in a page (gestures, pinch, the draft check, the palette key); with no app linked, the extension shows a prompt (a notice on its new-tab page and the toolbar button) to install Margin.app.
+- **No UI in pages:** pages get only the box and the small scripts that must run in a page (gestures, pinch, the draft check, the palette key); with no app linked, the extension shows a prompt (a notice on its new-tab page and the toolbar button) to install Margin.app.
 - **Sleeping tabs:** kept; their checks no longer look at keep-ready, warm-up, slow Safari or switch state.
 - **Safari manifest:** background as a page (for the link), `nativeMessaging` kept.
 - **Settings:** `keepLeftTabReadyMinutes` and `warmUpTabs` go. `sidebarPinnedOpen`, `frameWhenHidden` and `themes.arcadia.sidebarWidth` become theme settings and layout state.
@@ -213,7 +211,7 @@ Each phase ends with the unit tests passing, the in-page fallback working in Chr
 
 ### Phase 1: the UI runtime and themes v2, in pages (no app yet)
 
-- In pages so the runtime can be built and tested before the app exists (in Chromium with Playwright, and in Safari as a temporary development host). Afterwards the in-page host stays only for Chrome and Edge on Windows and Linux.
+- In pages so the runtime can be built and tested before the app exists (in Chromium with Playwright, and in Safari as a temporary development host). Afterwards the in-page host stays only as a development and test host; it isn't shipped.
 - The runtime (`extension/ui/`): view model, renderer, actions, behaviors (drag and drop, resize, peek, rename, menus, palette), host adapter interface.
 - The theme format, sanitizer, packaging in `scripts/build.js`, `theme.json` schema and checks.
 - Arcadia ported; the in-page host uses the runtime. The old theme JS path goes.
@@ -256,6 +254,7 @@ Decided (Tirth, 2026-11-04):
 - Distribution: Developer ID, no App Store.
 - Mac users without Margin.app are asked to install it; no in-page UI on the Mac.
 - Ask, mini player and favorites: future features (section 13).
+- macOS only: Windows and Linux are not planned for now.
 - Bundling the canvas fonts (Archivo Black, Space Grotesk, Press Start 2P, Pixelify Sans; all SIL Open Font License) in the themes: OK.
 - Margin's sidebar is the real list of tabs: tabs lost when a window closes or Safari quits, crashes or doesn't restore them stay in their spaces as not-open tabs and reopen on click; a tab closed on its own goes to the archive. Sleeping tabs are closed and kept the same way (Chrome and Edge keep `tabs.discard`), replacing the sleep page.
 - On the Mac, Margin.app owns the lasting data; the extension keeps the live tab state and a cache (section 6).
