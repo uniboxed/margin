@@ -138,9 +138,7 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 - An accessory app (no Dock icon), started at login, that does nothing until a browser is in front.
 - **Window tracking:** the window server's window list, read a few times a second when nothing moves and at full speed during a drag. Follows every window of every linked browser.
 - **Per browser window:** Margin's windows, kept just above that browser window (stacking verified to work across apps), joining full-screen Spaces.
-- **Drawing the theme around the page.** Two ways, decided by Spike 1:
-  - one transparent window over the whole browser window, with the page slot left empty (and clicks there falling through to the page), or
-  - edge windows around the page (sidebar, top, right, bottom), which the runtime opens with `window.open` so they share one web process and one script (tested: about 18 MB for four windows plus the app's 21 MB).
+- **Drawing the theme around the page (decided by Spike 1):** one transparent overlay window per browser window, the whole theme in one web view, the page slot left empty. The overlay ignores the mouse while the pointer is over the slot (mouse monitors, no Accessibility), so clicks, scrolling and text selection reach the page; transparency alone does not let them through. The overlay is re-ordered just above the browser window whenever the browser is clicked or activated. Cost: about 20 MB for the app plus 15 MB for its web process, and no measurable extra window-server work while the page scrolls.
 - **Windowed mode:** Margin covers the toolbar. A drag on `<m-drag-region>` asks the extension to move the window (`windows.update`); Margin's windows move to the position the extension reports, and the frame's edges reach past the window's edges by a mouse step on fast drags.
 - **Keys:** ⌃⌘↑/↓/←/→ and the palette as app shortcuts while a linked browser is in front (no Accessibility needed; tested). ⌘T stays with the extension where Safari routes it.
 - **Typing:** the palette and inputs take the keyboard in a panel that doesn't make Margin the active app (tested: Safari stays in front and doesn't dim).
@@ -246,9 +244,7 @@ Decided (Tirth, 2026-11-04):
 - Bundling the canvas fonts (Archivo Black, Space Grotesk, Press Start 2P, Pixelify Sans; all SIL Open Font License) in the themes: OK.
 - User themes: imported from a file for now; a theme gallery comes later (section 13). Importing shows no extra note about what a theme can see.
 
-Still open:
-
-1. **Drawing around the page:** one transparent window or edge windows? Phase 0's spike will recommend one.
+Still open: nothing. Phase 0 settled the drawing method (section 14).
 
 ## 12. Changes to SPEC.md, once approved
 
@@ -266,3 +262,34 @@ Still open:
 - **Mini player:** controls for whatever tab is playing (title, play/pause), from the audible tab and the page's media session, shown by themes that have a place for it.
 - **Favorites:** a small grid of always-there sites above the space's tabs, across spaces (Arc's favorites), as their own list in the state.
 - **Theme gallery:** themes listed inside Margin's Settings and installed with one click, on top of file import. Needs hosting, a listing review, and the same checks as an imported file on every download.
+
+## 14. Phase 0 results (2026-11-04)
+
+All four spikes ran; the raw notes, numbers and code are on the spike branches. These results update the sections above; where they differ, this section wins until the sections are rewritten in Phase 1.
+
+**Spike 1, drawing around the page:** see section 6. One overlay window per browser window with pointer-based pass-through over the page slot.
+
+**Spike 2, theme renderer and sanitizer** (`spike/theme-renderer`: `extension/ui/sanitize.js`, `render.js`, `actions.js`, `themes/neo-brutalism/`; 847 unit and 16 browser tests):
+- Margin parses theme HTML with its own strict tokenizer into a plain tree and builds the DOM with `createElement`/`setAttribute`; the browser never parses theme text (no `DOMParser`, no `innerHTML`). CSS goes through a CSS Syntax 3 tokenizer with an allowlist of functions.
+- With 200 tabs: first render about 3 ms; every update under 1 ms of Margin's code and under 4 ms with the browser's layout, except switching back to a 200-tab space in WebKit (5 ms; `content-visibility: auto` on rows helps).
+- 82 HTML, 50 CSS and 25 action-abuse payloads in WebKit and Chromium: nothing ran, no request was made.
+- Changes to section 3: `m-icon` (only stored `data:` images reach `src`); negation and enum tests in `m-if`; `<m-else>` inside `<m-if>`; `key` on `<m-for>` (default `id`); reusable fragments (`<m-use part>`); `palette.run` added to the actions; `tab.moveToSpace` only through behaviors and menus; the view model adds `space.abbr`, each tab's `letter` and `color`, ids on palette rows, and is immutable (unchanged objects shared, so unchanged rows are skipped); `<m-page>` is forced to `background: none; pointer-events: none`; fonts are declared in `theme.json` and loaded as `FontFace` from their bytes (Chromium ignores `@font-face` inside shadow roots).
+- Changes to section 4: `m-style` values and theme setting defaults are checked at run time (no `url()`, strings, escapes or `!important`), so an attribute selector can't learn which sites are open; `id` values follow a safe pattern and `name` is dropped; link clicks are blocked. What no sanitizer can stop: a theme drawing an invisible button over the window, misleading text, heavy selectors (limited only by size caps).
+
+**Spike 3, the link:**
+- **Safari:** a WebSocket alone doesn't keep the background alive: Safari unloaded it about 25–31 s after load and didn't wake it until a browser event. One-off native messages every 20 s didn't help either. A lasting `runtime.connectNative` port used every 20 s (the native-panel branch's method; "a port used within 2 min") kept all three profile copies alive for 6 minutes, including 3 minutes with no traffic. Round trip: median about 20 ms (5–36 ms, one 196 ms spike). Each Safari profile runs its own copy and keeps its background alive.
+- **Chrome and Edge:** a Swift relay helper started by `connectNative`, linked to the app over a Unix socket. Connects in 5–12 ms; round trip 0.1 ms median; a 200 KB snapshot in 2.5–7 ms; nothing dropped. The open port kept the service worker alive for 10 minutes, 5 of them idle. Changes to section 5:
+  - the helper holds Chrome's port and waits for the app (relinks in 36–44 ms), and exits on a version mismatch so Chrome restarts the new one after an update;
+  - messages from the app to the extension over 1 MB kill the port, so theme packages are sent in chunks;
+  - a heartbeat with a timeout (a stopped helper is invisible to both ends);
+  - the socket path stays under 104 bytes (`~/Library/Application Support/Margin/`), mode 0600, and the app checks the peer's code signature;
+  - the helper knows which browser started it (its parent process), which matches windows to the window server's list; several profiles send a per-profile id;
+  - the app rewrites the host manifests at every launch, for Chrome (and Beta, Dev, Canary), Edge, Brave (and Chrome's folder too) and Arc, with every extension id in `allowed_origins`.
+
+**Spike 4, first paint at any insets** (`spike/first-paint-insets`):
+- Insets reach the page before its first paint as registered CSS variables, one small file per decimal digit and place (164 files built, 20 registered per layout), added up by one `at.css`; one first-paint file per theme builds the box from the variables. This replaces the 35 `w-*.css` and `at-*.js` files.
+- The page's world has to read the variables again after it starts (when `<head>` and `<body>` arrive and at its first rendering updates): neither engine has applied registered CSS by the time that script runs.
+- WebKit keeps applying an updated or unregistered registration's old CSS to new pages. So every registration sets every digit place (zeros included), and re-registrations stay rare.
+- Per window: the most common layout is registered; other windows get one `insertCSS` sheet on `webNavigation.onCommitted` (a new `webNavigation` permission). It arrived before the first rendering update in 96 of 96 pages.
+- Results: right in the first frame in 64 of 64 WebKit-host pages and in Chromium, including with the content script held back 250 ms the way Safari delays it; without the fix-up, every page jumped at about 255 ms.
+- Still to check in Safari itself: where its content scripts and `insertCSS` land against its first paint, and whether the leftover registered CSS survives a relaunch.
