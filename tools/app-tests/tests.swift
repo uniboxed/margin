@@ -67,6 +67,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     passThrough()
     shortcuts()
     geometry()
+    edgeAndPointer()
     dataMerge()
     dataStore()
     dataSync()
@@ -437,5 +438,31 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a pointer flipped", ScreenGeometry.topLeftPoint(CGPoint(x: 5, y: 990), mainHeight: 1000) == CGPoint(x: 5, y: 10))
     check("the overlay's window: in every Space, beside full screen, out of the window cycle",
           OverlayController.collectionBehavior == [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle])
+    check("the experiment: only the Space it's shown in, beside full screen", OverlayController.ownSpaceBehavior == [.managed, .fullScreenAuxiliary, .ignoresCycle])
+    // A full-screen window fills its display's height; one going into full screen doesn't (Phase 2 step 8).
+    let displays: [(frame: CGRect, topInset: CGFloat)] = [(CGRect(x: 0, y: 0, width: 1512, height: 982), 32), (CGRect(x: 1512, y: -200, width: 2560, height: 1440), 0)]
+    check("full screen: the whole display", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 0, width: 1512, height: 982), displays: displays))
+    check("full screen below the camera housing", ScreenGeometry.fillsDisplay(CGRect(x: 0, y: 32, width: 1512, height: 950), displays: displays))
+    check("one side of a Split View, on the second display", ScreenGeometry.fillsDisplay(CGRect(x: 1512, y: -200, width: 1280, height: 1440), displays: displays))
+    check("not a window still on the desktop, going full screen", !ScreenGeometry.fillsDisplay(CGRect(x: 100, y: 120, width: 1200, height: 760), displays: displays))
+    check("not a window across two displays", !ScreenGeometry.fillsDisplay(CGRect(x: 1000, y: 0, width: 1200, height: 982), displays: displays))
+    check("not off every display", !ScreenGeometry.fillsDisplay(CGRect(x: -20000, y: -20000, width: 1280, height: 800), displays: displays))
+  }
+
+  static func edgeAndPointer() {
+    let frame = CGRect(x: 100, y: 50, width: 1280, height: 800)
+    let hidden = PassThrough.slot(in: frame, layout: PageLayout(geometry: ["insets": ["left": 0, "top": 0, "right": 0, "bottom": 0], "container": ["width": 1280, "height": 800]])!)
+    let docked = PassThrough.slot(in: frame, layout: PageLayout(geometry: ["insets": ["left": 260, "top": 8, "right": 8, "bottom": 8], "container": ["width": 1280, "height": 800]])!)
+    let edge = CGRect(x: 100, y: 50, width: EdgeGuard.width, height: 800)
+    check("the edge guard: the window's left edge, its height, the sidebar hidden", EdgeGuard.frame(for: frame, slot: hidden) == edge)
+    check("docked too (a quick move from the page reaches the edge in one step), and before a layout", EdgeGuard.frame(for: frame, slot: docked) == edge && EdgeGuard.frame(for: frame, slot: nil) == edge)
+    check("none while the overlay takes the whole window", EdgeGuard.frame(for: frame, slot: Slot(rect: hidden.rect, captureAll: true)) == nil)
+    check("none with no width", EdgeGuard.frame(for: frame, slot: hidden, width: 0) == nil)
+    let size = CGSize(width: 1280, height: 800)
+    let edges = PointerWant(["mode": "edges", "edges": ["left"], "zone": 24])
+    check("pointer: the reveal zone only while hidden", edges.wants(CGPoint(x: 3, y: 400), in: size) && edges.wants(CGPoint(x: 24, y: 400), in: size) && !edges.wants(CGPoint(x: 25, y: 400), in: size) && !edges.wants(CGPoint(x: 1279, y: 400), in: size))
+    check("a right-hand theme's", PointerWant(["mode": "edges", "edges": ["right"], "zone": 10]).wants(CGPoint(x: 1275, y: 1), in: size))
+    check("none while docked", !PointerWant(["mode": "none"]).wants(CGPoint(x: 0, y: 0), in: size))
+    check("all while out, and before the page says", PointerWant(["mode": "all"]).wants(CGPoint(x: 600, y: 400), in: size) && PointerWant([:]).mode == .all)
   }
 }

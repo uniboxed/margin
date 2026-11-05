@@ -43,11 +43,24 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         var level: NSWindow.Level = .normal
         var crashLimit = 3 // reloads after the page's process died, within crashWindow; past that, it stays put away
         var crashWindow: TimeInterval = 300
+        var edgeWidth: CGFloat = EdgeGuard.width // the edge guard's (PassThrough.swift EdgeGuard); 0: none
+        // Joining only its window's Space instead of every Space (an experiment for Tirth's Safari:
+        // `defaults write io.tirth.margin MarginOverlayOwnSpace -bool YES`; Shell.forApp).
+        var ownSpace = false
     }
 
     // PLAN.md §6 and Phase 0's overlay probe: in every Space (a full-screen one too), beside a
     // full-screen window, not moved by Mission Control, not in ⌘-Tab's or the window cycle.
+    // With it, an overlay is in every Space, so it stays drawn while macOS slides from Safari's
+    // full-screen Space to another (the desktop) until the shell hears the Space changed and puts it
+    // away (Shell.spaceChanged). `ownSpace`: a managed window joining only the Space it's shown in
+    // (the full-screen window's, `.fullScreenAuxiliary`), which would slide away with it; not the
+    // default until it's checked over real full-screen Safari (DECISIONS.md, Phase 2 step 8).
     static let collectionBehavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    static let ownSpaceBehavior: NSWindow.CollectionBehavior = [.managed, .fullScreenAuxiliary, .ignoresCycle]
+    // The thin panel at the window's left edge (PassThrough.swift EdgeGuard): nil with `edgeWidth` 0.
+    let edgePanel: OverlayPanel?
+    private(set) var edgeFrame: CGRect?
 
     weak var delegate: OverlayDelegate?
     let key: WindowKey
@@ -68,6 +81,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     private(set) var aboveWindow: Int?
     private(set) var ignoring = false
     private(set) var hasKeyboard = false
+    // Which pointer positions its page wants (PointerWant): all, until it says.
+    private(set) var pointerWant = PointerWant.all
     // For the tests: each time the keyboard went back to the browser, and each re-order.
     private(set) var handedBack = 0
     private(set) var reorders = 0
@@ -79,6 +94,24 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         let start = NSRect(x: -20000, y: -20000, width: 800, height: 600)
         panel = OverlayPanel(contentRect: start, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         webView = pages.makeWebView(size: start.size)
+        let behavior = options.ownSpace ? Self.ownSpaceBehavior : Self.collectionBehavior
+        if options.edgeWidth > 0 {
+            // Never key, never ignoring the mouse; filled just above nothing, since the window server
+            // passes the pointer through a window's fully transparent pixels.
+            let edge = OverlayPanel(contentRect: NSRect(x: -20000, y: -20000, width: options.edgeWidth, height: 600), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+            edge.level = options.level
+            edge.hidesOnDeactivate = false
+            edge.isOpaque = false
+            edge.hasShadow = false
+            edge.backgroundColor = NSColor(calibratedWhite: 0, alpha: 0.01)
+            edge.animationBehavior = .none
+            edge.isReleasedWhenClosed = false
+            edge.collectionBehavior = behavior
+            edge.ignoresMouseEvents = false
+            edgePanel = edge
+        } else {
+            edgePanel = nil
+        }
         super.init()
         panel.level = options.level
         panel.hidesOnDeactivate = false
@@ -89,7 +122,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         panel.backgroundColor = .clear
         panel.animationBehavior = .none
         panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = Self.collectionBehavior
+        panel.collectionBehavior = behavior
         panel.acceptsMouseMovedEvents = true
         let content = NSView(frame: NSRect(origin: .zero, size: start.size))
         content.wantsLayer = true
@@ -113,12 +146,32 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     }
 
     func close() {
-        hide()
+        hide("closed")
         pages.bridge.unregister(webView)
         webView.navigationDelegate = nil
         webView.stopLoading()
         panel.close()
+        edgePanel?.close()
     }
+
+    // The edge guard where this overlay's slot needs it, just above the overlay; away otherwise.
+    // `restack`: the overlay was just ordered (the guard goes back above it).
+    func placeEdge(restack: Bool = false) {
+        guard let edgePanel else { return }
+        let want = isShown ? EdgeGuard.frame(for: frameTopLeft, slot: slot, width: options.edgeWidth) : nil
+        guard let want, allowed(ScreenGeometry.appKitRect(want)) else {
+            if edgeFrame != nil { edgePanel.orderOut(nil) }
+            edgeFrame = nil
+            return
+        }
+        let appKit = ScreenGeometry.appKitRect(want)
+        if edgePanel.frame != appKit { edgePanel.setFrame(appKit, display: false) }
+        let new = edgeFrame == nil
+        edgeFrame = want
+        if new || restack { edgePanel.order(.above, relativeTo: panel.windowNumber) }
+    }
+
+    var edgeWindowNumber: Int? { edgeFrame != nil ? edgePanel?.windowNumber : nil }
 
     // ---- where it is ----
 
@@ -146,7 +199,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     /// just above it. False if it can't be shown (not drawn yet, or a test's
     /// frame on a display).
     @discardableResult
-    func show(over number: Int, frame: CGRect) -> Bool {
+    func show(over number: Int, frame: CGRect, why: String = "its window is on screen") -> Bool {
         guard isReady, crashBudgetOK else { return false }
         let appKit = ScreenGeometry.appKitRect(frame)
         guard allowed(appKit) else { return false }
@@ -158,15 +211,17 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             CATransaction.commit()
             frameTopLeft = frame
         }
-        if !isShown || aboveWindow != number {
+        let ordered = !isShown || aboveWindow != number
+        if ordered {
             panel.order(.above, relativeTo: number)
             reorders += 1
         }
         aboveWindow = number
         if !isShown {
             isShown = true
-            Diagnostics.note("overlay shown over \(key) (window \(number))")
+            Diagnostics.note("overlay shown over \(key) (window \(number)): \(why)")
         }
+        placeEdge(restack: ordered)
         return true
     }
 
@@ -175,15 +230,18 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         guard isShown, let aboveWindow else { return }
         panel.order(.above, relativeTo: aboveWindow)
         reorders += 1
+        placeEdge(restack: true)
     }
 
-    func hide() {
+    // `why`: for the log (only a shown overlay put away is logged).
+    func hide(_ why: String) {
         if hasKeyboard { handBack() }
-        if isShown { Diagnostics.note("overlay put away (\(key))") }
+        if isShown { Diagnostics.note("overlay put away (\(key)): \(why)") }
         panel.orderOut(nil)
         isShown = false
         aboveWindow = nil
         setIgnoring(false)
+        placeEdge()
     }
 
     var windowNumber: Int { panel.windowNumber }
@@ -230,6 +288,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         case "layout":
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
             self.layout = layout
+            placeEdge()
             delegate?.layoutChanged(self, layout)
             delegate?.overlayChanged(self, "layout")
         case "hits":
@@ -239,9 +298,12 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             }
             hits = Array(rects.prefix(64))
             captureAll = body["all"] as? Bool == true || rects.count > 64
+            placeEdge()
             delegate?.overlayChanged(self, "hits")
         case "focus":
             if body["on"] as? Bool == true { takeKeyboard() } else { handBack() }
+        case "pointerWant":
+            pointerWant = PointerWant(body)
         case "perform":
             delegate?.perform(from: self, body["name"] as? String ?? "", body["arg"])
         case "log":
@@ -252,10 +314,23 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         }
     }
 
+    // When the app's palette key was last sent to this page (Shell.run), for the log: how long until the keyboard was here.
+    var paletteKeyAt: TimeInterval?
+
     // A text field of Margin's has focus: the keyboard is the overlay's (the browser stays the active app).
+    // The web view is made the panel's first responder too: a panel made key with nothing in it as its
+    // first responder keeps the keys itself, so a palette opened by the app's key, with no click in the
+    // overlay before, showed its field focused while what was typed went nowhere.
     func takeKeyboard() {
+        let had = hasKeyboard
         panel.allowKey = true
         hasKeyboard = true
+        if panel.firstResponder !== webView { panel.makeFirstResponder(webView) }
+        if !had {
+            let after = paletteKeyAt.map { " \(Diagnostics.ms(since: $0)) after the palette's key" } ?? ""
+            Diagnostics.note("\(key) took the keyboard\(after)\(isShown ? "" : ", but it isn't shown")")
+        }
+        paletteKeyAt = nil
         guard !options.harness, isShown else { return }
         panel.makeKey()
     }
@@ -288,7 +363,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         let now = Diagnostics.now()
         crashes = crashes.filter { now - $0 < options.crashWindow } + [now]
-        hide()
+        hide("its page stopped")
         guard crashes.count <= options.crashLimit else {
             Diagnostics.warn("an overlay's page stopped \(crashes.count) times in \(Int(options.crashWindow / 60)) minutes: put away until Margin.app opens again")
             crashBudgetOK = false

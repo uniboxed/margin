@@ -364,6 +364,44 @@ func scenario() async {
   fake.tell(["do": "theme", "id": "A", "theme": "arcadia"])
   check("back to Arcadia", await until(5, { shell.links["safari:P1"]?.themeId == "arcadia" }))
 
+  // ---- the left edge, and the pointer peek needs (Phase 2 step 8) ----
+  let guardFrame = CGRect(x: o7.frameTopLeft.minX, y: o7.frameTopLeft.minY, width: EdgeGuard.width, height: o7.frameTopLeft.height)
+  check("docked: the edge guarded too (a fast move from the page reaches the edge in one step), and no pointer positions wanted", await until(5, { o7.edgeFrame == guardFrame && o7.pointerWant.mode == .none }), "\(String(describing: o7.edgeFrame)) \(o7.pointerWant)")
+  let stateNow = shell.links["safari:P1"]?.mirror.stateJSON().flatMap { try? JSONSerialization.jsonObject(with: $0) as? JSONObject } ?? [:]
+  let settings = (stateNow["settings"] as? JSONObject) ?? [:]
+  func keepOpen(_ on: Bool) { var s = settings; s["sidebarPinnedOpen"] = on; fake.tell(["do": "delta", "id": "A", "changes": ["settings": ["newValue": s]]]) }
+  keepOpen(false)
+  check("the guard: the window's left edge, its height, above the overlay, never ignoring the mouse", o7.edgePanel?.frame == ScreenGeometry.appKitRect(guardFrame) && o7.edgePanel?.isVisible == true
+        && o7.edgePanel?.ignoresMouseEvents == false && o7.edgePanel?.collectionBehavior == o7.panel.collectionBehavior,
+        "\(String(describing: o7.edgePanel?.frame))")
+  check("hidden: the edges' positions wanted (peek's reveal zone)", await until(5, { o7.pointerWant.mode == .edges }) && o7.pointerWant.mode == .edges && o7.pointerWant.edges.contains("left") && o7.pointerWant.wants(CGPoint(x: 2, y: 300), in: o7.frameTopLeft.size) && !o7.pointerWant.wants(CGPoint(x: 600, y: 300), in: o7.frameTopLeft.size), "\(o7.pointerWant)")
+  // The pointer at the guard: its position reaches the page's peek (the guard is inside the overlay's frame).
+  let pushesBefore = shell.pointerPushes
+  shell.pointerMovedForTests(CGPoint(x: r7.minX + 600, y: r7.minY + 300))
+  check("over the page with the sidebar hidden: nothing handed to the page", shell.pointerPushes == pushesBefore)
+  shell.pointerMovedForTests(CGPoint(x: r7.minX + 1, y: r7.minY + 300))
+  let peeked = await waitJS(o7.webView, "return !!document.querySelector('[data-sidebar=\"peek\"]')")
+  check("at the left edge (over the guard): handed in, and peek brings the sidebar out", shell.pointerPushes == pushesBefore + 1 && peeked, "pushes \(shell.pointerPushes - pushesBefore)")
+  check("out: every position wanted (to put it away again)", await until(3, { o7.pointerWant.mode == .all }), "\(o7.pointerWant)")
+  try? await Task.sleep(nanoseconds: 60_000_000)
+  shell.pointerMovedForTests(CGPoint(x: r7.minX + 700, y: r7.minY + 400))
+  let away = await waitJS(o7.webView, "return document.querySelector('[data-sidebar]')?.getAttribute('data-sidebar') === 'hidden'")
+  check("the pointer back over the page: handed in, and the sidebar goes again", away && o7.pointerWant.mode == .edges, "\(o7.pointerWant)")
+  o7.hide("a test")
+  check("the guard goes with its overlay", o7.edgeFrame == nil && o7.edgePanel?.isVisible == false)
+  shell.track()
+  check("and comes back with it", await until(3, { o7.isShown && o7.edgeFrame != nil }))
+  keepOpen(true)
+  check("docked again: no positions wanted", await until(5, { o7.pointerWant.mode == .none }))
+
+  // ---- the active Space changing (Phase 2 step 8: the overlay was seen over the desktop) ----
+  let w7Server = windows.browser[0]
+  windows.browser[0] = ServerWindow(number: w7Server.number, pid: w7Server.pid, bounds: w7Server.bounds, onScreen: false, order: 0)
+  apps.onChange?("Space changed")
+  check("a Space change with its window gone from the screen: put away at once, in the same turn", !o7.isShown && shell.spaceChanged)
+  windows.browser[0] = w7Server
+  check("shown again once the window server says its window is on screen", await until(3, { o7.isShown }))
+
   // ---- keys ----
   shell.track()
   check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 6))
@@ -384,8 +422,25 @@ func scenario() async {
   check("its sidebar key: the overlay's sidebar toggled (Keep open off, asked of the copy)", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "updateSettings" } != nil }))
 
   // ---- the palette and typing ----
+  let keyAt = Date()
   keys.press("Meta+KeyT")
   check("⌘T: the palette opens in the front window's overlay", await until(5, { o7.hasKeyboard }))
+  let keyboardMs = Date().timeIntervalSince(keyAt) * 1000
+  check("its web view is the panel's first responder (what's typed reaches the field)", o7.panel.firstResponder === o7.webView, "\(String(describing: o7.panel.firstResponder))")
+  _ = await waitJS(o7.webView, "return marginApp.stats().palette.length > 0")
+  let opened = (await js(o7.webView, "return JSON.stringify(marginApp.stats().palette.at(-1))") as? String) ?? "{}"
+  let openWork = (try? JSONSerialization.jsonObject(with: Data(opened.utf8)) as? JSONObject)?["workMs"] as? Double ?? 999
+  check("the palette's opening is quick: \(openWork) ms of work in its page, the keyboard \(Int(keyboardMs)) ms after the key", openWork < 50 && keyboardMs < 500)
+  // Typing: each key re-ranks the rows and draws them (an input event, then the work it starts).
+  let typing = await js(o7.webView, """
+    const f = document.activeElement; const word = 'docs inbox'; let worst = 0; let sum = 0;
+    for (let i = 1; i <= word.length; i++) { const t = performance.now(); f.value = word.slice(0, i); f.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.palette-layer')?.getBoundingClientRect(); const ms = performance.now() - t; worst = Math.max(worst, ms); sum += ms; }
+    return JSON.stringify({ worst, mean: sum / word.length, rows: document.querySelectorAll('[m-action="palette.run"]').length });
+    """) as? String ?? "{}"
+  let typed = (try? JSONSerialization.jsonObject(with: Data(typing.utf8)) as? JSONObject) ?? [:]
+  check("typing in the palette: no key's work near a long task (\(typing))", (typed["worst"] as? Double ?? 999) < 50)
+  let pstats = await js(o7.webView, "return JSON.stringify(marginApp.stats())") as? String ?? "{}"
+  print(String(format: "  timings: ⌘T to the overlay's keyboard %.0f ms; the palette %@; typing %@; the page's counts %@", keyboardMs, opened, typing, pstats))
   let field = await js(o7.webView, "return document.activeElement?.localName ?? ''") as? String
   check("its field has the focus (the overlay would be the key panel; the browser stays in front)", field == "input", field ?? "")
   shell.pressed(CGPoint(x: r7.minX + 700, y: r7.minY + 400)) // on the page

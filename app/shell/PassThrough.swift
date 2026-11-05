@@ -53,6 +53,55 @@ enum PassThrough {
     }
 }
 
+// Which pointer positions an overlay's page wants handed in (app/overlay/overlay.js
+// reportWant; only peek uses them): none while its sidebar is docked, those within
+// `zone` points of its peek edges while the sidebar is hidden, every one while it's
+// out over the page. Before 2026-11-05 every move over an overlay went in, at 30 a second.
+struct PointerWant: Equatable {
+    enum Mode: String { case none, edges, all }
+    var mode: Mode
+    var edges: Set<String> = []
+    var zone: CGFloat = 24
+
+    static let all = PointerWant(mode: .all)
+
+    init(mode: Mode, edges: Set<String> = [], zone: CGFloat = 24) { (self.mode, self.edges, self.zone) = (mode, edges, zone) }
+
+    init(_ body: JSONObject) {
+        mode = Mode(rawValue: body["mode"] as? String ?? "") ?? .all
+        edges = Set((body["edges"] as? [Any] ?? []).compactMap { $0 as? String })
+        zone = CGFloat((body["zone"] as? NSNumber)?.doubleValue ?? 24)
+    }
+
+    // Whether a position (in the overlay, top left) is wanted.
+    func wants(_ p: CGPoint, in size: CGSize) -> Bool {
+        switch mode {
+        case .none: return false
+        case .all: return true
+        case .edges:
+            return (edges.contains("left") && p.x <= zone) || (edges.contains("right") && p.x >= size.width - zone)
+                || (edges.contains("top") && p.y <= zone) || (edges.contains("bottom") && p.y >= size.height - zone)
+        }
+    }
+}
+
+// What keeps the browser's own edge reveal from the pointer (Tirth, 2026-11-05: in full-screen
+// Safari the pointer at the left edge also opened Safari's sidebar behind Margin's). The overlay
+// is one window whose `ignoresMouseEvents` follows the pointer after the fact, so the first moves
+// at the edge, coming from over the page, still reached Safari. A thin panel at the window's left
+// edge that never ignores the mouse takes them first. Always while its overlay is shown, docked
+// sidebar or not: a quick move from over the page can reach the edge in one step, before the
+// overlay takes the mouse back. Not while the overlay takes the whole window anyway (`captureAll`).
+enum EdgeGuard {
+    static let width: CGFloat = 4
+
+    // Its frame (top left) for an overlay at `frame` with this slot, or nil when none is needed.
+    static func frame(for frame: CGRect, slot: Slot?, width: CGFloat = width) -> CGRect? {
+        guard width > 0, slot?.captureAll != true else { return nil }
+        return CGRect(x: frame.minX, y: frame.minY, width: width, height: frame.height)
+    }
+}
+
 // The pointer, wherever it is (no Accessibility): every move and drag, and
 // each press (a press in the browser re-orders the overlays above it).
 final class PointerWatch {

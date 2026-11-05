@@ -61,6 +61,27 @@ enum ScreenGeometry {
         CGRect(x: r.minX, y: mainHeight - r.maxY, width: r.width, height: r.height)
     }
 
+    // The displays' frames from the top left (the window server's coordinates).
+    static var displayFrames: [(frame: CGRect, topInset: CGFloat)] {
+        let main = mainHeight
+        return NSScreen.screens.map { (appKitRect($0.frame, mainHeight: main), $0.safeAreaInsets.top) }
+    }
+
+    // Whether a window's bounds (top left) fill one display's height, as a full-screen window's do
+    // once it's in its Space (alone, or one side of a Split View): inside the display, its bottom at
+    // the display's, its top at the display's or a little below (a notched display's camera housing,
+    // the menu bar kept in full screen: `topRoom`, or the display's own top inset if that's more).
+    // A window going into or out of full screen doesn't, mostly, while macOS animates it (Tirth,
+    // 2026-11-05: the overlay was seen on the desktop; a profile switch's new window is made there
+    // before it goes full screen).
+    static let topRoom: CGFloat = 60
+    static func fillsDisplay(_ bounds: CGRect, displays: [(frame: CGRect, topInset: CGFloat)] = displayFrames) -> Bool {
+        displays.contains { d in
+            bounds.minX >= d.frame.minX - 1 && bounds.maxX <= d.frame.maxX + 1 && abs(bounds.maxY - d.frame.maxY) <= 1
+                && bounds.minY >= d.frame.minY - 1 && bounds.minY <= d.frame.minY + max(d.topInset, topRoom) + 1
+        }
+    }
+
     // AppKit's point (NSEvent.mouseLocation) from the top left.
     static func topLeftPoint(_ p: CGPoint, mainHeight: CGFloat = mainHeight) -> CGPoint {
         CGPoint(x: p.x, y: mainHeight - p.y)

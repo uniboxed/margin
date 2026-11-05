@@ -137,7 +137,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private var burstUntil: TimeInterval = 0
     private var trackSoon = false
     private var lastPointerPush: [WindowKey: TimeInterval] = [:]
+    private var lastPointer: [WindowKey: CGPoint] = [:]
     private var pointerInside: Set<WindowKey> = []
+    private var pointerWanted: Set<WindowKey> = []
+    private var trailing: Set<WindowKey> = []
+    // Pointer positions handed to overlays' pages (the tests read it).
+    private(set) var pointerPushes = 0
     private var stopped = false
     // Links that dropped a moment ago: their overlays kept, dimmed, until this timer.
     private var reconnecting: [String: Timer] = [:]
@@ -166,7 +171,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         data.onChange = { [weak self] _, collections in
             if collections.contains("spaces") || collections.contains("tabs") { self?.acrossSoon() }
         }
-        apps.onChange = { [weak self] why in self?.burst(why) }
+        apps.onChange = { [weak self] why in
+            if why == "Space changed" { self?.spaceDidChange() } else { self?.burst(why) }
+        }
         shortcuts.onCommand = { [weak self] command in self?.run(command) }
         pointer.onMove = { [weak self] at in self?.pointerMoved(at) }
         pointer.onPress = { [weak self] at in self?.pressed(at) }
@@ -176,6 +183,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     static func forApp() -> Shell {
         var options = Options()
         options.safariData = SafariProfiles.safariFolder
+        // The overlays in their window's Space only (Overlay.swift ownSpaceBehavior): an experiment, off by default.
+        options.overlay.ownSpace = UserDefaults.standard.bool(forKey: "MarginOverlayOwnSpace")
+        if options.overlay.ownSpace { Diagnostics.note("overlays join only their window's Space (MarginOverlayOwnSpace)") }
         return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
     }
 
@@ -371,6 +381,38 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // ---- following the windows ----
 
+    // The active Space changed (NSWorkspace activeSpaceDidChangeNotification): read the window server
+    // now, not on the next turn, so an overlay whose window left the screen with the Space is put away
+    // at once (it's in every Space: Overlay.swift collectionBehavior), and one comes back only when
+    // the window server says its window is on screen.
+    private(set) var spaceChangedAt: TimeInterval = -.infinity
+    var spaceChanged: Bool { Diagnostics.now() - spaceChangedAt < options.burstFor }
+    func spaceDidChange() {
+        spaceChangedAt = Diagnostics.now()
+        let shown = overlays.values.filter(\.isShown).count
+        Diagnostics.note("the active Space changed (\(shown) overlay\(shown == 1 ? "" : "s") shown, the browser \(browserIsFront ? "in front" : "not in front"))")
+        burstUntil = Diagnostics.now() + options.burstFor
+        track()
+    }
+    private var browserIsFront: Bool {
+        guard let front = apps.frontPid else { return false }
+        return linkedPids().values.contains { $0.contains(front) }
+    }
+
+    // A slow read of the window server and all that follows it, in the log (at most every 10 s).
+    private var slowTrackSaidAt: TimeInterval = -.infinity
+    private var slowTracksUnsaid = 0
+    private(set) var slowestTrack: TimeInterval = 0
+    private func trackTook(_ s: TimeInterval) {
+        slowestTrack = max(slowestTrack, s)
+        guard s > 0.008 else { return }
+        let now = Diagnostics.now()
+        guard now - slowTrackSaidAt > 10 else { slowTracksUnsaid += 1; return }
+        Diagnostics.note(String(format: "slow: following the windows took %.1f ms (%d overlays)%@", s * 1000, overlays.count, slowTracksUnsaid > 0 ? "; \(slowTracksUnsaid) more since the last line" : ""))
+        slowTrackSaidAt = now
+        slowTracksUnsaid = 0
+    }
+
     // Read the window server often for a while (something is moving).
     func burst(_ why: String) {
         burstUntil = Diagnostics.now() + options.burstFor
@@ -403,6 +445,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pollTimer?.invalidate()
         pollTimer = nil
         guard !stopped else { return }
+        let began = Diagnostics.now()
+        defer { trackTook(Diagnostics.now() - began) }
         let byBrowser = linkedPids()
         let allPids = byBrowser.values.reduce(into: Set<pid_t>()) { $0.formUnion($1) }
         let front = apps.frontPid
@@ -445,18 +489,25 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // The window a profile switch is making: its overlay's page loads while it goes full screen.
             let early = !wanted && entry.theme != nil && switcher.busy && switcher.target?.profile == key.link && switcher.newWindow == key.windowId
             guard wanted || early else {
-                overlays[key]?.hide()
+                overlays[key]?.hide(entry.theme == nil ? "no theme yet" : "its window isn't in full screen")
                 continue
             }
             let overlay = overlays[key] ?? makeOverlay(key)
-            guard wanted, let number = next[key], let server = byNumber[number], server.onScreen else {
-                overlay.hide()
+            // Never shown over a window that isn't bound, isn't on screen, or doesn't fill its display yet.
+            guard wanted else { overlay.hide("its window is still being made"); continue }
+            guard let number = next[key] else { overlay.hide("its window isn't bound to one of the window server's"); continue }
+            guard let server = byNumber[number], server.onScreen else {
+                overlay.hide(spaceChanged ? "the active Space changed and its window isn't on screen" : "its window isn't on screen")
+                continue
+            }
+            guard options.harness || options.windowedToo || ScreenGeometry.fillsDisplay(server.bounds) else {
+                overlay.hide("its window doesn't fill its display (going into or out of full screen)")
                 continue
             }
             overlay.browserPid = server.pid
             let wasShown = overlay.isShown && overlay.aboveWindow == number
             overlay.size(to: server.bounds)
-            if overlay.show(over: number, frame: server.bounds), wasShown,
+            if overlay.show(over: number, frame: server.bounds, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen"), wasShown,
                !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number) {
                 overlay.reorder()
             }
@@ -528,16 +579,53 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // overlay's page doesn't hear it; elsewhere it may not either, since
             // Margin.app is never the active app and its web view may hear only
             // clicks (a hidden sidebar's reveal edge, keeping a peeked sidebar out).
+            // Only the positions its page wants (PointerWant: none while the sidebar is docked,
+            // the reveal zone while it's hidden, all while it's out), at most `pointerEvery`, a
+            // moved one only, the last of a run sent after it; the first one out of the zone once.
             let frame = overlay.frameTopLeft
             if frame.contains(at) {
                 pointerInside.insert(overlay.key)
-                guard !fromTrack, now - (lastPointerPush[overlay.key] ?? 0) >= options.pointerEvery else { continue }
-                lastPointerPush[overlay.key] = now
-                overlay.push(raw: #"{"type":"pointer","x":\#(Double(at.x - frame.minX)),"y":\#(Double(at.y - frame.minY))}"#)
+                guard !fromTrack else { continue }
+                let local = CGPoint(x: at.x - frame.minX, y: at.y - frame.minY)
+                guard overlay.pointerWant.wants(local, in: frame.size) else {
+                    if pointerWanted.remove(overlay.key) != nil { pushPointer(overlay, local, now) }
+                    continue
+                }
+                pointerWanted.insert(overlay.key)
+                guard lastPointer[overlay.key] != local else { continue }
+                if now - (lastPointerPush[overlay.key] ?? 0) >= options.pointerEvery { pushPointer(overlay, local, now) } else { trailPointer(overlay) }
             } else if pointerInside.remove(overlay.key) != nil {
+                pointerWanted.remove(overlay.key)
                 overlay.push(raw: #"{"type":"pointerLeft","x":\#(Double(at.x - frame.minX)),"y":\#(Double(at.y - frame.minY))}"#)
             }
         }
+    }
+
+    // The pointer at `at` (top left), as the mouse monitors would say (the tests: no real pointer moves).
+    func pointerMovedForTests(_ at: CGPoint) { pointerMoved(at) }
+
+    private func pushPointer(_ overlay: OverlayController, _ local: CGPoint, _ now: TimeInterval) {
+        lastPointerPush[overlay.key] = now
+        lastPointer[overlay.key] = local
+        pointerPushes += 1
+        overlay.push(raw: #"{"type":"pointer","x":\#(Double(local.x)),"y":\#(Double(local.y))}"#)
+    }
+
+    // A move skipped for the rate: the position the pointer rests at goes once the time's up.
+    private func trailPointer(_ overlay: OverlayController) {
+        guard !trailing.contains(overlay.key) else { return }
+        trailing.insert(overlay.key)
+        let wait = max(0, options.pointerEvery - (Diagnostics.now() - (lastPointerPush[overlay.key] ?? 0)))
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self, weak overlay] in MainActor.assumeIsolated {
+            guard let self, let overlay else { return }
+            self.trailing.remove(overlay.key)
+            guard overlay.isShown else { return }
+            let at = PointerWatch.location
+            let frame = overlay.frameTopLeft
+            let local = CGPoint(x: at.x - frame.minX, y: at.y - frame.minY)
+            guard frame.contains(at), overlay.pointerWant.wants(local, in: frame.size), self.lastPointer[overlay.key] != local else { return }
+            self.pushPointer(overlay, local, Diagnostics.now())
+        } }
     }
 
     // A press anywhere: the browser may have been raised above an overlay; a press on the page
@@ -556,6 +644,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard let overlay = frontOverlay(), let entry = links[overlay.key.link] else { return }
         switch command {
         case .palette:
+            overlay.paletteKeyAt = Diagnostics.now()
+            Diagnostics.note("the palette's key: sent to \(overlay.key)'s overlay\(overlay.hasKeyboard ? " (it has the keyboard: the palette closes)" : "")")
             overlay.push(raw: #"{"type":"command","name":"palette"}"#)
         case .toggleSidebar:
             overlay.push(raw: #"{"type":"command","name":"toggle-sidebar"}"#)
