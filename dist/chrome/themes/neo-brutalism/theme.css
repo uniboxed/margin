@@ -131,6 +131,12 @@
 .chips { flex: 1; display: flex; gap: 6px; min-width: 0; }
 .chip { --chip: var(--paper); flex: 1; min-width: 0; height: 44px; border: 2.5px solid var(--ink); border-radius: 10px; font-family: 'Archivo Black', sans-serif; font-size: 13px; background: var(--chip); box-shadow: 3px 3px 0 var(--ink); }
 .chip.on { transform: translate(3px, 3px); box-shadow: inset 0 0 0 2px var(--paper); }
+/* Another browser profile's space (Margin.app): its profile's tag on the corner, a gap between profiles. */
+.chip { position: relative; }
+.chip.foreign { border-style: dashed; }
+.chip .profile-tag { position: absolute; top: -7px; right: -7px; min-width: 16px; height: 16px; padding: 0 3px; border: 2px solid var(--ink); border-radius: 8px; background: var(--profile, var(--paper)); color: var(--ink); font: 11px/12px 'Archivo Black', sans-serif; }
+.chip.switching { opacity: 0.6; }
+.profile-gap { flex: none; width: 3px; margin: 6px 2px; background: var(--ink); border-radius: 2px; }
 
 /* The page: an 18 px-rounded card with a 3 px border and a 6 px shadow.
    The page itself goes inside the border. */

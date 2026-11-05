@@ -965,6 +965,30 @@ function createSpace(state, { id, name, emoji, color }) {
   return { ...state, spaces: [...state.spaces, space] };
 }
 
+// The spaces in the order given (Margin.app's order across profiles: app/shell/
+// BrowserProfiles.swift); ones it doesn't name keep their places after them.
+/** @param {State} state @param {string[]} ids */
+function orderSpaces(state, ids) {
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  const spaces = [...state.spaces].map((sp, i) => ({ sp, i }))
+    .sort((a, b) => (rank.get(a.sp.id) ?? ids.length + a.i) - (rank.get(b.sp.id) ?? ids.length + b.i)).map((x) => x.sp);
+  return spaces.every((sp, i) => sp === state.spaces[i]) ? state : { ...state, spaces };
+}
+
+// The tabs a space's window opens with, made by Margin.app's switch from
+// another profile (handlers.js openSpaceWindow): in front, the space's tab
+// used last that isn't open; behind it, the others that were open with it in
+// the window they were lost with, in their old order. A space with none: nothing.
+/** @param {State} state @param {string} spaceId */
+function spaceWindowTabs(state, spaceId) {
+  const kept = Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId && /^https?:/i.test(k.url));
+  const front = [...kept].sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0] ?? null;
+  const key = front?.why === 'window' ? front.from?.key : null;
+  const rest = key == null ? [] : kept.filter((k) => k !== front && k.why === 'window' && k.from?.key === key)
+    .sort((a, b) => (a.from?.index ?? 0) - (b.from?.index ?? 0));
+  return { front, rest };
+}
+
 // Rename, re-emoji or recolor.
 /** @param {State} state */
 function updateSpace(state, spaceId, patch) {
@@ -1256,6 +1280,8 @@ export {
   followTab,
   recentTabOfSpace,
   createSpace,
+  orderSpaces,
+  spaceWindowTabs,
   updateSpace,
   addPin,
   removePin,

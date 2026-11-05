@@ -107,7 +107,8 @@
         </button>
         <div class="chips" role="group" aria-label="Spaces">
           <m-for each="spaces" as="s">
-            <button class="btn chip" aria-label="Switch to {{s.name}} space" m-attr:aria-pressed="{{s.active}}" m-class:on="{{s.active}}" m-style:--chip="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.abbr}}</button>
+            <m-if test="s.profileStart"><span class="profile-gap" aria-hidden="true"></span></m-if>
+            <button class="btn chip" aria-label="Switch to {{s.label}} space" title="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-class:on="{{s.active}}" m-class:foreign="{{s.foreign}}" m-class:switching="{{s.switching}}" m-style:--chip="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.abbr}}<m-if test="s.profileMark"><span class="profile-tag" m-style:--profile="{{s.profile.color}}" aria-hidden="true">{{s.profile.initial}}</span></m-if></button>
           </m-for>
         </div>
         <button class="btn push sq big" aria-label="New folder or space" m-action="menu.open" m-arg="add">

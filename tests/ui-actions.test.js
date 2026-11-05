@@ -165,7 +165,7 @@ test('menu items, swatches and menus a button opens are checked too', () => {
 });
 
 test('only behaviors and menus run two-value actions and space.delete; a theme\'s click never does', () => {
-  assert.deepEqual([...BEHAVIOR_ONLY].sort(), ['folder.move', 'folder.setName', 'pin.move', 'space.delete', 'space.setName', 'space.update', 'tab.move', 'tab.moveToSpace', 'tab.pinAt']);
+  assert.deepEqual([...BEHAVIOR_ONLY].sort(), ['folder.move', 'folder.setName', 'pin.move', 'profile.forget', 'space.delete', 'space.move', 'space.setName', 'space.update', 'tab.move', 'tab.moveToSpace', 'tab.pinAt']);
   const ran = [];
   const log = [];
   const dispatch = createDispatcher({ context: () => ctx, run: (n, a) => ran.push([n, a]), log: (e) => log.push(e) });

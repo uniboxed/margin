@@ -5,6 +5,8 @@
 // ones included: the view model shows only the label (ui/view-model.js),
 // the runtime keeps the action. Pure: runs in Node.
 
+import { foreignSpace, isMultiProfile, profileOf } from '../../shared/across.js';
+
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);
 
@@ -76,13 +78,41 @@ export function menuItems(target, { state, space }) {
       break;
     }
     case 'space': {
+      const across = isMultiProfile(state.across) ? state.across : null;
+      // Another profile's space (Margin.app): switching to it, moving it, its profile.
+      const foreign = across ? foreignSpace(across, String(target.id)) : null;
+      if (foreign) {
+        const p = profileOf(across, foreign.profile);
+        item('Switch to Space', 'space.switch', target.id);
+        separator();
+        item('Move Left', 'space.move', { space: target.id, dir: -1 });
+        item('Move Right', 'space.move', { space: target.id, dir: 1 });
+        separator();
+        item(`Edit Profile “${p?.name ?? 'Profile'}”…`, 'profile.edit', foreign.profile);
+        item(`New Space in ${p?.name ?? 'Profile'}`, 'space.newIn', foreign.profile);
+        // One that isn't open in the browser (gone, or not used for long): out of the list until it opens again.
+        if (p && !p.linked) {
+          separator();
+          item(p.stale ? `Forget ${p.name} (not seen for a month)` : `Forget ${p.name}`, 'profile.forget', foreign.profile, { danger: true, confirm: true });
+        }
+        break;
+      }
       const sp = (state.spaces ?? []).find((x) => x.id === target.id);
       if (!sp) return [];
       item('Edit Space…', 'space.edit', sp.id);
       item('Rename Space', 'space.rename', sp.id);
+      if (across) {
+        separator();
+        item('Move Left', 'space.move', { space: sp.id, dir: -1 });
+        item('Move Right', 'space.move', { space: sp.id, dir: 1 });
+      }
       separator();
       item('New Space', 'space.new');
-      // The last space can't be deleted (the editor's rule); a second press confirms.
+      if (across) {
+        const here = profileOf(across, across.profile);
+        item(`Edit Profile “${here?.name ?? 'Profile'}”…`, 'profile.edit', across.profile);
+      }
+      // A profile's last space can't be deleted (the editor's rule); a second press confirms.
       if (state.spaces.length > 1) {
         separator();
         item('Delete Space', 'space.delete', sp.id, { danger: true, confirm: true });
@@ -92,6 +122,10 @@ export function menuItems(target, { state, space }) {
     case 'add':
       item('New Folder', 'folder.new');
       item('New Space', 'space.new');
+      // Several profiles: a new space in another one (made there; it shows in the list at once).
+      if (isMultiProfile(state.across)) {
+        for (const p of state.across.profiles) if (!p.here && p.spaces > 0) item(`New Space in ${p.name}`, 'space.newIn', p.id);
+      }
       break;
     default:
       return [];

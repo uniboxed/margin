@@ -88,6 +88,8 @@ export const APP_REQUESTS = new Set([
   'renameSpace', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
   'newWindow', 'search', 'toggleFullscreen', 'updateSettings', 'updateThemeSettings', 'navigate', 'sidebarScroll',
   'setSidebarScroll', 'wakeSleeping', 'windowState', 'openHere', 'cancelNewTab',
+  // Margin.app's switch to another profile's space (app/shell/ProfileSwitch.swift) and its order across profiles.
+  'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
 ]);
 
 const random = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${String(Math.random()).slice(2)}`;

@@ -1,6 +1,7 @@
 // Pure input/search helpers shared by the new-tab launcher and the palette.
 import * as P from './platform.js';
 import * as V from './view.js';
+import { foreignKey, isMultiProfile, profileOf } from './across.js';
 
 
 // ---- the browser's search engine ------------------------------------------
@@ -233,6 +234,15 @@ function paletteItems(state, ctx) {
   for (const s of state.spaces) {
     if (s.id === spaceId) continue;
     action(`space:${s.id}`, `Switch to space ${s.name}`, { type: 'setSpace', windowId: ctx.windowId, spaceId: s.id }, { emoji: s.emoji });
+  }
+  // Other profiles' spaces (Margin.app): the switch to that profile's window.
+  const across = /** @type {any} */ (state).across;
+  if (isMultiProfile(across)) {
+    for (const s of across.spaces) {
+      if (s.profile === across.profile) continue;
+      const key = foreignKey(s.profile, s.id);
+      action(`space:${key}`, `Switch to space ${s.name} (${profileOf(across, s.profile)?.name ?? 'another profile'})`, { type: 'setSpace', windowId: ctx.windowId, spaceId: key }, { emoji: s.emoji });
+    }
   }
   return items;
 }

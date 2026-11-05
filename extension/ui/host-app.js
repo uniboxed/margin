@@ -28,6 +28,7 @@
 /** @import { Geometry, Host } from './host.js' */
 import { fromStorage } from '../shared/stored.js';
 import { isNewTabPage } from '../shared/view.js';
+import { acrossOf, foreignSpace } from '../shared/across.js';
 
 /**
  * The stored values with a change applied, as storage.onChanged reports it
@@ -115,6 +116,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
   let state = null;
   let windows = Array.isArray(hello?.windows) ? hello.windows : [];
   let mode = hello?.mode === 'windowed' ? 'windowed' : 'fullscreen';
+  // Every profile's spaces in the one order, and the profiles (app/shell/ShellProfiles.swift): `state.across`.
+  let across = acrossOf(hello?.across);
   /** @type {Geometry | null} */
   let layout = null;
   let destroyed = false;
@@ -123,7 +126,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
 
   const rebuild = () => {
     const next = raw ? fromStorage(raw) : null;
-    state = next?.spaces?.length ? next : null;
+    state = next?.spaces?.length ? (across ? { ...next, across } : next) : null;
   };
   const emit = () => { if (state && !destroyed) for (const cb of [...listeners]) cb(state); };
   rebuild();
@@ -142,6 +145,16 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
    */
   async function send(type, payload = {}) {
     if (destroyed) return undefined;
+    // Another profile's space: the app's to do (its switch, or that profile's copy).
+    const foreign = typeof payload.spaceId === 'string' ? foreignSpace(state?.across, payload.spaceId) : null;
+    if (foreign) {
+      if (type === 'setSpace') return post('perform', { name: 'profile.switch', arg: { profile: foreign.profile, space: foreign.id } }).then(() => ({ shown: null }), () => undefined);
+      if (type === 'renameSpace' || type === 'deleteSpace') {
+        const { windowId: _w, ...rest } = payload;
+        return post('perform', { name: 'profile.space', arg: { profile: foreign.profile, type, payload: { ...rest, spaceId: foreign.id } } }).catch(() => undefined);
+      }
+      return undefined; // nothing else is done to another profile's space from here
+    }
     // An archived tab restored from the launcher takes the new-tab page's place (as there).
     const page = type === 'restoreArchive' ? frontPage() : null;
     if (page && payload.replaceTabId == null) payload = { ...payload, replaceTabId: page.id };
@@ -200,6 +213,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
         case 'window.fullscreen':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
+        // Across profiles (app/shell/ShellProfiles.swift performAcross).
+        case 'profile.switch':
+        case 'profile.rename':
+        case 'profile.forget':
+        case 'profile.space':
+        case 'space.move':
+          void post('perform', { name, arg: arg ?? null }).catch(() => {});
+          return true;
         case 'notice':
         case 'prompt':
           return true; // the runtime closes it; the app's own notices have no buttons yet
@@ -219,6 +240,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
         case 'changes':
           if (!raw) return;
           raw = applyChanges(raw, msg.changes, msg.favicons);
+          rebuild();
+          return emit();
+        case 'across':
+          across = acrossOf(msg.across);
           rebuild();
           return emit();
         case 'windows': {

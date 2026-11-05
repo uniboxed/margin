@@ -8,7 +8,9 @@
 // space just made (`space.new`), which is shown once the editor closes, as
 // Arc shows a new space. The name field is focused with its text selected;
 // Enter saves, Escape cancels. Delete asks first ("Really delete?"), and the
-// last space can't be deleted.
+// last space can't be deleted. With several profiles (Margin.app), the same
+// part edits a profile's name, emoji and color (`profile.edit`: the editor's
+// `isProfile`), saved by the app (host.perform 'profile.rename').
 import { SPACE_COLORS } from './menu-items.js';
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -31,12 +33,20 @@ export function installEditor(rt) {
     rt.setUi({ editor: { spaceId, name: space.name ?? '', emoji: space.emoji ?? '', color: space.color ?? '', confirmDelete: false, fresh } });
     return true;
   }
+  function openProfile(profileId) {
+    const p = rt.state?.across?.profiles?.find((x) => x.id === profileId);
+    if (!p) return false;
+    rt.behaviors.menus?.close();
+    focusName = true;
+    rt.setUi({ editor: { profileId, name: p.named ? p.name : '', emoji: p.emoji ?? '', color: p.color ?? '', confirmDelete: false, fresh: false } });
+    return true;
+  }
   // `deleted`: it's gone (no showing it).
   function close({ deleted = false } = {}) {
     const e = rt.ui.editor;
     if (!e) return true;
     rt.setUi({ editor: null });
-    if (e.fresh && !deleted) void rt.host.send('setSpace', { windowId: rt.windowId() ?? undefined, spaceId: e.spaceId });
+    if (e.fresh && !deleted && e.spaceId) void rt.host.send('setSpace', { windowId: rt.windowId() ?? undefined, spaceId: e.spaceId });
     return true;
   }
 
@@ -50,6 +60,7 @@ export function installEditor(rt) {
 
   const api = {
     open,
+    openProfile,
     /** Open it once the space is there (a new space can reach us after its reply). */
     openWhenThere(spaceId, { fresh = false } = {}) {
       if (spaceOf(spaceId)) return open(spaceId, { fresh });
@@ -62,12 +73,16 @@ export function installEditor(rt) {
       const name = view.input('space-name')?.value ?? e.name;
       const emoji = view.input('space-emoji')?.value ?? e.emoji;
       close();
+      if (e.profileId) {
+        rt.host.perform?.('profile.rename', { profile: e.profileId, name: String(name).slice(0, 40), emoji: [...String(emoji)].slice(0, 8).join(''), color: HEX.test(e.color) ? e.color : null });
+        return true;
+      }
       return rt.dispatch('space.update', { space: e.spaceId, name: String(name).slice(0, 40), emoji: [...String(emoji)].slice(0, 8).join(''), color: HEX.test(e.color) ? e.color : null }, 'behavior');
     },
     cancel: () => close(),
     remove() {
       const e = rt.ui.editor;
-      if (!e || (rt.state?.spaces?.length ?? 0) < 2) return false;
+      if (!e || e.profileId || (rt.state?.spaces?.length ?? 0) < 2) return false;
       if (!e.confirmDelete) { rt.setUi({ editor: { ...e, confirmDelete: true } }); return true; }
       close({ deleted: true });
       return rt.dispatch('space.delete', e.spaceId, 'behavior');
