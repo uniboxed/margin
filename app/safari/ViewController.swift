@@ -3,8 +3,10 @@
 // on in Safari (SFSafariExtensionManager); the rest only the extension can see
 // (background/onboarding.js → SafariWebExtensionHandler.swift → a distributed
 // notification here): whether Margin may run on every website, whether ⌘T
-// reaches Margin, whether new tabs and windows open Margin's page. Safari only
-// for now; Chrome and Edge come later.
+// reaches Margin, whether new tabs and windows open Margin's page. Itself
+// again, by trying to read Safari's data: whether Margin has Full Disk Access,
+// which only shows Safari's own profile names (app/shell/SafariProfiles.swift;
+// without it nothing else changes). Safari only for now; Chrome and Edge come later.
 // Copied into the generated Xcode project by scripts/make-xcode.sh (the
 // converter's storyboard window shows this view controller).
 
@@ -62,7 +64,7 @@ class ViewController: NSViewController {
 // MARK: - What's done
 
 enum Step: String, CaseIterable, Identifiable {
-    case turnOn, allSites, newTabs, commandT, restore, tidy, shortcuts
+    case turnOn, allSites, newTabs, commandT, profileNames, restore, tidy, shortcuts
     var id: String { rawValue }
 }
 
@@ -93,6 +95,7 @@ final class SetupModel: ObservableObject {
     @Published var events: [String: Date] = [:]
     @Published var manual: Set<String> = []
     @Published var test: SetupTest?
+    @Published var diskAccess: SafariProfiles.Access?
 
     private let defaults = UserDefaults.standard
     private var poll: Timer?
@@ -133,6 +136,9 @@ final class SetupModel: ObservableObject {
         if let launched = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").compactMap(\.launchDate).max() {
             note(Seen.safariLaunched, launched)
         }
+        // A read attempt on Safari's tab database: nothing is read.
+        let access = SafariProfiles.access()
+        if access != diskAccess { diskAccess = access }
     }
 
     // Something seen at `at` (kept if it's later than what was seen before).
@@ -177,6 +183,7 @@ final class SetupModel: ObservableObject {
         case .newTabs: return newWindowsOpenMargin && newTabsOpenMargin ? .done : .todo
         case .commandT: return commandTReachesMargin ? .done : .todo
         case .restore, .tidy: return manual.contains(step.rawValue) ? .done : .optional
+        case .profileNames: return diskAccess == .granted ? .done : .optional
         case .shortcuts: return .optional
         }
     }
@@ -252,6 +259,13 @@ final class SetupModel: ObservableObject {
     func openSafari() {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") {
             NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        }
+    }
+
+    // System Settings at Full Disk Access (its public URL).
+    func openFullDiskAccess() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -365,7 +379,7 @@ struct StepCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(title).font(.headline)
-                    if state == .optional || step == .restore || step == .tidy {
+                    if state == .optional || step == .restore || step == .tidy || step == .profileNames {
                         Text(step == .shortcuts ? "Reference" : "Recommended")
                             .font(.caption.weight(.medium))
                             .padding(.horizontal, 6).padding(.vertical, 2)
@@ -396,6 +410,7 @@ struct StepCard: View {
         case .allSites: return "Let Margin work on every website"
         case .newTabs: return "Open Margin for new windows and tabs"
         case .commandT: return "Make ⌘T open Margin's palette"
+        case .profileNames: return "Show Safari's profile names"
         case .restore: return "Keep your tabs when Safari restarts"
         case .tidy: return "Tidy up Safari's own interface"
         case .shortcuts: return "Margin's keyboard shortcuts"
@@ -414,6 +429,9 @@ struct StepCard: View {
         case (.newTabs, _): return "So a new window or tab starts in Margin, with its sidebar and palette. While Margin isn't signed, Safari can set these back when it restarts: check again then."
         case (.commandT, .done): return "⌘T opens Margin's palette, with no new tab flashing first."
         case (.commandT, _): return "Safari keeps ⌘T for its own New Tab, which makes a tab before Margin can step in (a flicker). Giving Safari's New Tab another shortcut frees ⌘T for Margin."
+        case (.profileNames, .done): return "Margin shows each Safari profile by the name Safari gives it, and follows when you rename one in Safari."
+        case (.profileNames, _) where model.diskAccess == .noSafari: return "Safari's data wasn't found on this Mac. Margin uses the names you give profiles in Edit Profile."
+        case (.profileNames, _): return "With several Safari profiles, Margin can show them by Safari's own names. That needs Full Disk Access: Safari keeps the names in its own data. Without it, Margin uses the names you give profiles in Edit Profile, and nothing else changes."
         case (.restore, _): return "Margin keeps tabs in their spaces across restarts when Safari reopens them."
         case (.tidy, _): return "Margin's sidebar replaces Safari's tab bar and sidebar."
         case (.shortcuts, _): return "Most of Margin works from the keyboard."
@@ -467,6 +485,20 @@ struct StepCard: View {
                 Button("Test: press ⌘T in Safari") { model.startTest(.commandT) }
             }
             TestLine(test: model.test, step: step, waiting: "Waiting for ⌘T on a web page in Safari…")
+        case .profileNames:
+            Instructions(lines: [
+                "Click Open Full Disk Access (System Settings › Device Control and Data Access › Full Disk Access).",
+                "Turn on Margin. If it isn't listed, click +, then choose Margin in your Applications folder.",
+                "Margin reads only the profiles' names and symbols, never your tabs or history, and never changes anything of Safari's.",
+            ])
+            HStack {
+                Button("Open Full Disk Access") { model.openFullDiskAccess() }
+                if model.diskAccess == .granted {
+                    Text("Margin has Full Disk Access.").font(.callout).foregroundStyle(.secondary)
+                } else {
+                    Text("Checked as you go. Names not showing a minute after you allow it: quit Margin and open it again.").font(.callout).foregroundStyle(.secondary)
+                }
+            }
         case .restore:
             Instructions(lines: [
                 "Open Safari Settings › General.",
