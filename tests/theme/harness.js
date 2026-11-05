@@ -312,10 +312,14 @@ Object.assign(T, {
     return { ok: theme.ok, id: theme.id, read, fontErrors: theme.fontErrors, fonts: ['Archivo Black', 'Space Grotesk'].map((f) => document.fonts.check(`16px "${f}"`)) };
   },
 
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true } } = {}) {
+  // `replies`: what the host answers a request of each type with (values);
+  // `settings`: the stored settings changed first.
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null } = {}) {
     T.unmountRuntime();
     const mock = new MockState();
-    const host = createMockHost({ state: mock.state, windowId: 1, platform, mode: 'fullscreen', replies: { createSpace: () => ({ spaceId: 'studio' }) } });
+    if (settings) mock.state = { ...mock.state, settings: { ...mock.state.settings, ...settings } };
+    const answers = { createSpace: () => ({ spaceId: 'studio' }), ...Object.fromEntries(Object.entries(replies).map(([k, v]) => [k, () => v])) };
+    const host = createMockHost({ state: mock.state, windowId: 1, platform, mode: 'fullscreen', replies: answers });
     let target;
     let el = null;
     if (container === 'document') {
@@ -360,11 +364,51 @@ Object.assign(T, {
   rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
   rtRefused() { return rt.runtime.refused.map((r) => [r.name, r.reason]); },
   rtPerformed() { return rt.host.performed.map((p) => p.name); },
-  rtUi() { const { palette, sidebar, editing } = rt.runtime.ui; return { palette, sidebar, editing }; },
+  rtUi() { const { palette, sidebar, editing, menu, editor, switchingTo } = rt.runtime.ui; return { palette, sidebar, editing, menu, editor, switchingTo }; },
+  // --- The behaviors (tests/theme/behaviors.test.js) ---
+  rtVmFull() { const vm = rt.runtime.vm; return { sidebar: vm.window.sidebar, space: vm.space.id, query: vm.palette.query, rows: vm.palette.rows.map((r) => r.title), rowIds: vm.palette.rows.map((r) => r.id), selected: vm.palette.selected, menu: vm.menu?.items.map((i) => i.label) ?? null, editing: vm.editing, editor: vm.editor && { name: vm.editor.name, color: vm.editor.color, deleteLabel: vm.editor.deleteLabel }, settings: vm.settings, folders: vm.space.folders.map((f) => [f.id, f.name, f.open]), spaceName: vm.space.name }; },
+  // What has the focus in the UI.
+  rtFocus() {
+    const el = rt.target.activeElement;
+    if (!el) return null;
+    return { tag: el.localName, cls: el.className && typeof el.className === 'string' ? el.className : '', input: el.getAttribute('m-input'), editable: el.isContentEditable, value: el.value ?? null, text: el.textContent.trim().slice(0, 60) };
+  },
+  rtRect(selector, nth = 0) {
+    const el = rt.target.querySelectorAll(selector)[nth];
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+  },
+  // The middle of the element of `selector` whose text is `text`.
+  rtBoxText(selector, text) {
+    const el = [...rt.target.querySelectorAll(selector)].find((e) => e.textContent.trim() === text);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  },
+  rtClasses(selector, nth = 0) { const el = rt.target.querySelectorAll(selector)[nth]; return el ? [...el.classList] : null; },
+  rtMarked() { return ['m-dragging', 'm-drop-before', 'm-drop-after', 'm-drop-into', 'm-drop-end', 'm-drag-ghost'].map((c) => [c, rt.target.querySelectorAll(`.${c}`).length]).filter(([, n]) => n); },
+  rtScrollTop(selector) { return rt.target.querySelector(selector)?.scrollTop ?? null; },
+  rtStyle(selector, prop) { const el = rt.target.querySelector(selector); return el ? el.style.getPropertyValue(prop) : null; },
+  rtSentClear() { rt.host.sent.length = 0; rt.host.layouts.length = 0; },
+  rtLayoutsAll() { return rt.host.layouts.map((l) => l.insets.left); },
+  rtState() { return rt.mock.state; },
+  // A trackpad's sideways scroll over an element: `count` wheel events of
+  // `dx` px, 16 ms apart (Playwright's own wheel is a mouse's).
+  async rtTrackpad(selector, dx, count) {
+    const el = rt.target.querySelector(selector);
+    for (let i = 0; i < count; i++) {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaX: dx, deltaY: 0, deltaMode: 0, bubbles: true, cancelable: true, composed: true }));
+      await new Promise((r) => setTimeout(r, 16));
+    }
+  },
+  // The background's answer to a request, as storage brings it back.
+  rtApply(op, ...args) { rt.mock[op](...args); rt.host.setState(rt.mock.state); },
+  rtFolderRename(folderId, name) { rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f) => (f.id === folderId ? { ...f, name } : f)) }; rt.host.setState(rt.mock.state); },
   rtVm() { const vm = rt.runtime.vm; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector) { return rt.target.querySelectorAll(selector).length; },
   rtText(selector) { return [...rt.target.querySelectorAll(selector)].map((e) => e.textContent.trim()); },
-  rtTodayIds() { return rt.runtime.vm.space.today.slice(0, 3).map((t) => t.id); },
+  rtTodayIds(n = 3) { return rt.runtime.vm.space.today.slice(0, n).map((t) => t.id); },
   rtDispatch(name, arg) { return rt.runtime.dispatch(name, arg); },
   // Where to click an element (the shadow root is closed: clicks go by
   // position), scrolled into view in its list first.

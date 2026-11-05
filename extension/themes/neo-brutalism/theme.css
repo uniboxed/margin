@@ -8,7 +8,7 @@
   --cream: #fffdf7;
   --yellow: #ffe14d;
   --gutter: 16px;
-  --sidebar: 256px;
+  --sidebar: var(--m-sidebar-width, 256px); /* the sidebarWidth setting (Margin's m-resize) */
   --space: #ffd23f;
   position: relative;
   width: 100%;
@@ -53,7 +53,7 @@
 @keyframes nb-spin { to { transform: rotate(360deg); } }
 
 /* The sidebar */
-.sidebar { flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; }
+.sidebar { position: relative; flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; }
 .column { width: var(--sidebar); height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 .toolbar { display: flex; gap: 6px; }
 .window-bar { display: none; }
@@ -90,6 +90,7 @@
 .clear { height: 26px; padding: 0 10px; border-width: 2px; border-radius: 999px; box-shadow: 2px 2px 0 var(--ink); font-size: 11.5px; font-weight: 700; }
 .new-tab { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 8px; height: 40px; padding: 0 12px; background: var(--yellow); font-weight: 700; font-size: 14px; }
 .kbd { font: inherit; font-size: 12px; }
+.today-zone { display: flex; flex-direction: column; gap: 12px; }
 .today { display: flex; flex-direction: column; gap: 2px; }
 /* Long lists: rows off screen skip style and layout until they scroll in. */
 .today .tab { content-visibility: auto; contain-intrinsic-size: auto 34px; }
@@ -106,7 +107,7 @@
 
 /* A hidden sidebar: the page takes the room; hovering the left edge (Margin's
    m-peek) shows the sidebar as a floating card over the page. */
-.peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: 14px; z-index: 6; }
+.peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 10px); z-index: 6; }
 [data-sidebar="hidden"] .peek-zone { display: block; }
 [data-sidebar="hidden"] .sidebar { width: 0; overflow: hidden; margin-left: calc(-1 * var(--gutter)); }
 [data-sidebar="peek"] .sidebar { position: absolute; left: var(--gutter); top: var(--gutter); bottom: var(--gutter); width: var(--sidebar); z-index: 8; padding: 12px; border: 3px solid var(--ink); border-radius: 18px; background: var(--space); box-shadow: 8px 8px 0 var(--ink); }
@@ -120,6 +121,59 @@
 /* In a page (Chrome and Edge outside the Mac) the browser's toolbar stays. */
 [data-mode="inpage"] .toolbar { display: none; }
 
+/* Resizing the sidebar (Margin's m-resize): a handle in the gutter. */
+.resizer { position: absolute; top: 0; bottom: 0; right: -12px; width: 8px; cursor: col-resize; z-index: 3; }
+.resizer.m-resizing, .resizer:hover { background: repeating-linear-gradient(to bottom, var(--ink) 0 6px, transparent 6px 12px) center / 2.5px 100% no-repeat; }
+.nb.m-resizing { cursor: col-resize; }
+.nb.m-resizing .sidebar, .nb.m-resizing .page { transition: none; }
+
+/* Swiping between spaces (Margin's m-swipe): the name and the list move with the fingers. */
+.column.m-swiping .swipes { transform: translateX(var(--m-swipe-offset, 0px)); }
+.column.m-settling .swipes { transition: transform .22s cubic-bezier(.2, .8, .2, 1); }
+
+/* Pressed, dragged, dropped (Margin's m-drag and m-drop). */
+.row.m-pressed { transform: scale(.985); }
+.row.m-dragging:not(.m-drag-ghost) { opacity: .35; }
+.m-drag-ghost { opacity: .95; background: var(--paper); color: var(--ink); border: 2.5px solid var(--ink); border-radius: 8px; box-shadow: 4px 4px 0 var(--ink); }
+.m-drop-before { box-shadow: inset 0 3px 0 var(--ink); }
+.m-drop-after { box-shadow: inset 0 -3px 0 var(--ink); }
+.tab.on.m-drop-before { box-shadow: inset 0 3px 0 var(--yellow); }
+.tab.on.m-drop-after { box-shadow: inset 0 -3px 0 var(--yellow); }
+.folder-head.m-drop-into, .folder.m-drop-into { background: var(--yellow); }
+.chip.m-drop-into { outline: 3px dashed var(--ink); outline-offset: 3px; }
+.today-zone.m-drop-into .today { outline: 3px dashed var(--ink); outline-offset: 2px; border-radius: 8px; }
+.folders.m-drop-end { box-shadow: 0 3px 0 var(--ink); }
+.m-landing { visibility: hidden; }
+.nb.m-drag-tab .folders:empty { min-height: 34px; border: 2.5px dashed var(--ink); border-radius: 10px; }
+
+/* A name edited in place (Margin's m-rename). */
+.m-renaming { outline: 2.5px solid currentColor; outline-offset: 2px; border-radius: 4px; background: var(--paper); color: var(--ink); min-width: 2ch; text-transform: none; }
+
+/* Context menus (Margin's <m-menu>, the "menu" part) */
+.menu { min-width: 200px; max-width: 300px; box-sizing: border-box; padding: 6px; display: flex; flex-direction: column; gap: 2px; border: 2.5px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 5px 5px 0 var(--ink); font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 13.5px; color: var(--ink); }
+.menu-item { display: block; height: 30px; line-height: 30px; padding: 0 10px; border-radius: 7px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.menu-item:hover, .menu-item:focus { background: var(--ink); color: var(--paper); outline: none; }
+.menu-item.danger { color: #c0262d; }
+.menu-item.danger:hover, .menu-item.danger:focus, .menu-item.confirming { background: #c0262d; color: var(--paper); }
+.menu-sep { border-top: 2px dashed var(--ink); margin: 4px 6px; }
+
+/* The space editor (Margin's <m-editor>, the "space-editor" part) */
+.editor-layer { position: absolute; inset: 0; z-index: 12; }
+.editor { position: absolute; left: calc(var(--gutter) + 8px); top: 96px; width: min(300px, calc(100% - 48px)); box-sizing: border-box; padding: 14px; display: flex; flex-direction: column; gap: 12px; border: 3px solid var(--ink); border-radius: 16px; background: var(--cream); box-shadow: 8px 8px 0 var(--ink); }
+.editor-title { font-family: 'Archivo Black', sans-serif; font-size: 13px; }
+.editor-row { display: flex; gap: 8px; align-items: center; }
+.editor-emoji, .editor-name { height: 40px; box-sizing: border-box; border: 2.5px solid var(--ink); border-radius: 10px; padding: 0 10px; font: inherit; font-size: 15px; font-weight: 600; background: var(--paper); color: var(--ink); outline: none; }
+.editor-emoji { width: 52px; text-align: center; }
+.editor-name { flex: 1; min-width: 0; }
+.swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.swatch { --swatch: var(--paper); width: 26px; height: 26px; border: 2.5px solid var(--ink); border-radius: 7px; background: var(--swatch); }
+.swatch.on { box-shadow: inset 0 0 0 2.5px var(--paper); transform: translate(2px, 2px); }
+.small { height: 32px; padding: 0 12px; font-size: 12px; font-weight: 700; box-shadow: 2px 2px 0 var(--ink); }
+.small.primary { background: var(--yellow); }
+.small.danger { color: #c0262d; }
+.small.danger.confirming { background: #c0262d; color: var(--paper); }
+.small[disabled] { opacity: .4; cursor: default; }
+
 /* The command palette */
 .palette-layer { position: absolute; inset: 0; z-index: 10; }
 .scrim { position: absolute; inset: 0; background: rgba(17, 17, 17, .35); cursor: default; }
@@ -132,6 +186,6 @@
 .enter { font-size: 12px; font-weight: 700; }
 
 @media (prefers-reduced-motion: reduce) {
-  .nb, .btn, .chev { transition: none; }
+  .nb, .btn, .chev, .column.m-settling .swipes { transition: none; }
   .loading .ico { animation: none; }
 }

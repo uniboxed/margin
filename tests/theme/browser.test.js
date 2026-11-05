@@ -120,19 +120,18 @@ for (const [name, engine] of ENGINES) {
           await page.mouse.click(box.x, box.y);
         };
         const today = await page.evaluate(() => T.rtTodayIds());
+        const sentNow = async () => (await page.evaluate(() => T.rtSent())).filter(([type]) => !/^(sidebarScroll|setSidebarScroll)$/.test(type));
         await click('.today .tab', 2);
         await click('.chip', 1);
         await click('.folder-head', 0);
         await click('[aria-label="Back"]');
         await click('.clear');
-        await click('[aria-label="Toggle sidebar"]');
         await click('[aria-label="Archive and library"]');
-        assert.deepEqual(await page.evaluate(() => T.rtSent()), [
+        assert.deepEqual(await sentNow(), [
           ['activateTab', { tabId: today[2] }],
           ['setSpace', { windowId: 1, spaceId: 'work' }],
           ['setFolderOpen', { folderId: 'personal-f0', open: false }],
           ['clearToday', { windowId: 1 }],
-          ['updateSettings', { patch: { sidebarPinnedOpen: false } }],
           ['openLauncher', { windowId: 1 }],
         ]);
         assert.deepEqual(await page.evaluate(() => T.rtPerformed()), ['nav.back'], 'the page\'s history is the host\'s');
@@ -145,15 +144,21 @@ for (const [name, engine] of ENGINES) {
         await click('.palette-row', 1);
         assert.equal((await page.evaluate(() => T.rtUi().palette)).open, false);
         assert.equal(await page.evaluate(() => T.rtCount('.palette-row')), 0);
-        const sent = await page.evaluate(() => T.rtSent());
-        assert.equal(sent.length, 7);
-        assert.equal(sent[6][0], 'activateTab', 'the second row of an empty query is a tab');
+        const sent = await sentNow();
+        assert.equal(sent.length, 6);
+        assert.equal(sent[5][0], 'activateTab', 'the second row of an empty query is a tab');
+
+        // Keep open off, from the theme's toggle: drawn at once, before the state says so.
+        await click('[aria-label="Toggle sidebar"]');
+        assert.deepEqual((await sentNow()).at(-1), ['updateSettings', { patch: { sidebarPinnedOpen: false } }]);
+        assert.equal((await page.evaluate(() => T.rtVm())).sidebar, 'hidden', 'at once');
 
         // Abuse through dispatch: refused, nothing sent.
         assert.equal(await page.evaluate(() => T.rtDispatch('tab.close', 999999)), false);
         assert.equal(await page.evaluate(() => T.rtDispatch('palette.run', 'tab:1000')), false, 'the palette is closed');
         assert.equal(await page.evaluate(() => T.rtDispatch('space.switch', '__proto__')), false);
-        assert.equal((await page.evaluate(() => T.rtSent())).length, 7);
+        assert.equal(await page.evaluate((t) => T.rtDispatch('tab.moveToSpace', { tab: t, space: 'work' }), today[0]), false, 'only behaviors and menus');
+        assert.equal((await sentNow()).length, 7);
 
         // The sidebar setting goes off in the state: the page's place follows, and is reported.
         await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: false }));
