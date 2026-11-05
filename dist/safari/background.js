@@ -27,6 +27,8 @@ import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
 import { platform } from './shared/platform.js';
 import { appLink } from './background/app-link.js';
+import * as pageLoads from './background/page-loads.js';
+import { linkedAgain } from './background/notices.js';
 import { APP_LINK_KEY, appDraws } from './shared/app-link.js';
 
 // ---- which copy is in charge ------------------------------------------------
@@ -187,6 +189,8 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (change.url != null || change.discarded === false) sleepChanged(tabId, change);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.js).
   tabUpdated(tabId, change, tab);
+  // Loading or done, for Margin.app's sidebar (background/page-loads.js: not stored).
+  if (change.status) pageLoads.statusChanged(tab, change.status);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
   // The URL when it changes, and again once loaded (in case Safari reported
   // the change without it, or it redirected). Not a tab woken back to its own
@@ -348,7 +352,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp']);
+const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp', 'pageLoading', 'gesture']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -444,6 +448,15 @@ api.windows?.onRemoved?.addListener((windowId) => appLink.windowClosed(windowId)
 api.windows?.onFocusChanged?.addListener((windowId) => appLink.windowFocused(windowId));
 api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
 api.tabs.onActivated.addListener(() => appLink.windowsChanged());
+// What's loading in each window, for its overlay (background/page-loads.js):
+// a tab gone or moved, and every window again when the link comes.
+api.tabs.onRemoved.addListener((tabId) => pageLoads.tabMoved(tabId));
+api.tabs.onAttached.addListener((tabId, info) => pageLoads.tabMoved(tabId, info?.newWindowId ?? null));
+appLink.onPageState((state) => {
+  // The notices decided while the link was down, said now (background/notices.js).
+  if (state === 'linked') void linkedAgain().catch(() => {});
+  if (state === 'linked') void Promise.resolve(api.windows?.getAll?.()).then((wins) => pageLoads.tellAll((wins ?? []).map((w) => w.id)), () => pageLoads.tellAll());
+});
 // A window's layout: its page in front gets its box at once (the rest read
 // it from storage, appLink, as they're shown or start).
 appLink.onLayout((windowId, layout) => {

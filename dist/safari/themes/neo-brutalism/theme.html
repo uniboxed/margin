@@ -49,7 +49,7 @@
                 <m-if test="g.hasShown">
                   <div class="folder-tabs">
                     <m-for each="g.shown" as="t">
-                      <button class="btn row tab pin" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-class:open="{{t.open}}" m-action="pin.open" m-arg="{{t.id}}" m-drag="pin">
+                      <button class="btn row tab pin" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:open="{{t.open}}" m-action="pin.open" m-arg="{{t.id}}" m-drag="pin">
                         <m-if test="t.icon">
                           <img class="fav" alt="" m-icon="{{t.icon}}">
                           <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
@@ -61,7 +61,7 @@
                 </m-if>
               </div>
               <m-else>
-                <button class="btn row tab pin loose" title="{{g.title}}" m-class:on="{{g.active}}" m-class:asleep="{{g.asleep}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
+                <button class="btn row tab pin loose" title="{{g.title}}" m-class:on="{{g.active}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
                   <m-if test="g.icon">
                     <img class="fav" alt="" m-icon="{{g.icon}}">
                     <m-else><span class="fav letter" m-style:--fav="{{g.color}}">{{g.letter}}</span></m-else>
@@ -89,7 +89,7 @@
 
           <div class="today">
             <m-for each="space.today" as="t">
-              <button class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-class:not-open="{{t.notOpen}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+              <button class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
                 <m-if test="t.icon">
                   <img class="fav" alt="" m-icon="{{t.icon}}">
                   <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
@@ -121,6 +121,27 @@
   </nav>
 
   <m-page class="page"></m-page>
+
+  <!-- The page loading (the tab in front: its load, the page being left, a
+       site's own navigation): a marching stripe in the gutter above the page,
+       seen with the sidebar hidden too. -->
+  <div class="load-bar" m-class:on="{{tab.loading}}" aria-hidden="true"></div>
+
+  <!-- Margin's trackpad gestures on the page (pull to refresh, swipe back
+       and forward): a badge over the page that comes in with the fingers and
+       fills once letting go would do it. Never takes the pointer. -->
+  <div class="page-over" aria-hidden="true">
+    <m-if test="gesture.pull">
+      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"></path></svg>
+      </div>
+    </m-if>
+    <m-if test="gesture.swipe">
+      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
+      </div>
+    </m-if>
+  </div>
 
   <m-if test="palette.open">
     <div class="palette-layer">

@@ -443,6 +443,22 @@ Object.assign(T, {
   },
   // The background's answer to a request, as storage brings it back.
   rtApply(op, ...args) { rt.mock[op](...args); rt.host.setState(rt.mock.state); },
+  // Every tab of the window loading, or none (Margin.app's host marks them from the copy's `loading` push).
+  rtLoading(on) {
+    const tabs = Object.fromEntries(Object.entries(rt.mock.state.tabs).map(([id, t]) => [id, { ...t, loading: !!on }]));
+    rt.mock.state = { ...rt.mock.state, tabs };
+    rt.host.setState(rt.mock.state);
+    return Object.values(tabs).filter((t) => t.loading).length;
+  },
+  rtComputed(selector, prop) { const el = rt.target.querySelector(selector); return el ? getComputedStyle(el).getPropertyValue(prop) : null; },
+  // Whether an element is drawn: in the layout, not hidden, not transparent.
+  rtVisible(selector) {
+    const el = rt.target.querySelector(selector);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility === 'visible' && Number(s.opacity) > 0 && s.display !== 'none';
+  },
   rtFolderRename(folderId, name) { rt.mock.state = { ...rt.mock.state, folders: rt.mock.state.folders.map((f) => (f.id === folderId ? { ...f, name } : f)) }; rt.host.setState(rt.mock.state); },
   rtVm() { const vm = rt.runtime.vm; return { space: vm.space.id, sidebar: vm.window.sidebar, palette: vm.palette.open, rows: vm.palette.rows.length, today: vm.space.today.length }; },
   rtCount(selector) { return rt.target.querySelectorAll(selector).length; },

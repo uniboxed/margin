@@ -119,6 +119,13 @@ host. Immutable: rows that didn't change are the same objects.
 - Each tab or pin row: `id`, `title`, `url`, `host`, `icon` (or `letter` on
   `color`), `active`, `behind`, `audible`, `asleep`, `loading`; pins also
   `open`, `tabId`, `folderId`, `nested`.
+- `loading` (a row's, and `tab.loading` for the tab in front): the tab's
+  page is loading, its page is being left (a link, ⌘R: before the next page
+  arrives), or the site is running a navigation of its own. Draw it where it
+  shows without a hover, the sidebar hidden too: Arcadia has a pill in the
+  frame's top strip and pulses a loading row's icon; Neo-brutalism spins the
+  reload button, marches a stripe along the gutter above the page and blinks
+  a loading row's icon box.
 - Tab rows also have `open` and `notOpen`. Margin's sidebar is the real list
   of tabs: a tab whose browser tab is gone (its window closed, the browser
   didn't bring it back after a relaunch, or Margin put it to sleep in Safari)
@@ -151,6 +158,20 @@ host. Immutable: rows that didn't change are the same objects.
   `prompt` (`text`, `title`, `actions[]`: `id`, `label`, `primary`,
   `danger`), `launcher` (`pins`, `archive`, `hasPins`, `hasArchive`, `more`,
   `moreLabel`, `settingsOpen`), `settings`, `platform`.
+- `notice`: Margin's notices come from Margin's code only, never a theme or
+  a message's words: a switch that didn't happen ("That tab is no longer
+  open."), a page Margin isn't responding on (Reload, Not now), Margin
+  updated while Safari was open (OK), Safari's "New tabs open with" setting
+  (OK, Don't show again). Draw `notice.text` and its `actions` in the
+  `notice` part; one is up at a time, and goes by itself.
+- `gesture` (null unless one is under way): Margin's trackpad gestures on
+  the page in front, pull to refresh (`pull`) and swipe back and forward
+  (`swipe`, with `back` or `forward`), `armed` once letting go would do it,
+  `done` for a moment once it did, `progress` how far along (0 to 1, in
+  steps of 0.05; `percent` the same out of 100, for `m-style`). Draw a badge
+  over the page (icons only: it's outside the guarded parts but has no words
+  of its own), `pointer-events: none`, and let it come in with `progress`
+  (Arcadia and Neo-brutalism: `m-style:--gesture="{{gesture.progress}}"`).
 
 ## Actions
 

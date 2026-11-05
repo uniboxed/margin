@@ -8,6 +8,7 @@ import { commandKeys } from '../shared/shortcuts.js';
 import { getScroll } from './scroll.js';
 import { appLink } from './app-link.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
+import { tellNotice } from './notices.js';
 import { isSleepPage, readSleepAddress, wokeKey } from '../shared/sleep.js';
 import { readyInPage } from '../shared/page-ready.js';
 import { noteCall, noteLag, ownSign, slowFacts, slowFoundAt, timed as timedCall, timersLate } from './slow.js';
@@ -3565,7 +3566,7 @@ export const switchBusy = () => switchUnderWay() || anyFocusing();
 // window too, while it draws the UI there (it highlights the tab: app/overlay).
 const APP_TOLD = new Set(['switching', 'switch-done', 'switch-failed']);
 export const tellPage = (/** @type {{ id: number, windowId?: number }} */ page, /** @type {any} */ message) => {
-  if (APP_TOLD.has(message?.type) && appLink.linked()) appLink.push(page.windowId ?? message.windowId ?? null, { type: message.type, tabId: message.tabId });
+  if (APP_TOLD.has(message?.type) && appLink.linked()) appLink.push(page.windowId ?? message.windowId ?? null, { type: message.type, tabId: message.tabId, ...(message.type === 'switch-failed' && message.reason ? { reason: String(message.reason) } : {}) });
   return api.tabs.sendMessage(page.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
 };
 
@@ -3792,6 +3793,11 @@ export async function repairCutOff(tab, { ms = 1000, forSwitch = false } = {}) {
       if (probe) boundHere.add(tab.id);
       cutOffSuspects.delete(tab.id);
     } else cutOffSuspects.add(tab.id);
+    // Bound to an older copy Safari keeps running beside this one: its Margin
+    // stood back, and loading it again would bind it to that copy again. In
+    // front, the window's overlay says only quitting Safari finishes the
+    // update (background/notices.js; the page itself said it before Margin 2).
+    if (probe?.otherCopy && (forSwitch || isFocusing(tab.id) || tab.active === true)) tellNotice(tab.windowId, 'updated-while-open', { tabId: tab.id, url: tab.url });
     return false;
   }
   if (probe?.proven === true) prove(tab.id, 'page');
@@ -3828,10 +3834,38 @@ export async function repairCutOff(tab, { ms = 1000, forSwitch = false } = {}) {
   }
   cutOffSuspects.add(tab.id);
   if (!forSwitch) await askCutOff(tab.id, tab.url, true, ms);
+  // In front (or about to be): the window's overlay says Margin isn't
+  // responding on this page and offers to reload it (background/notices.js:
+  // once a page; its Reload is handlers.js noticeAction → reloadCutOff). A
+  // page in use is reloaded only by the person; one that isn't, once it's
+  // behind, by Margin (reloadBehind).
+  const front = inFront || showing() || (await api.tabs.get(tab.id).then((t) => t?.active === true, () => false));
+  if (front) tellNotice(tab.windowId, 'not-responding', { tabId: tab.id, url: tab.url });
   if (quietened.has(tab.id)) return 'quiet';
   quietened.add(tab.id);
   console.info(inFront || reloadWhenLeft.has(tab.id) ? `[margin] tab ${tab.id} still has Margin from before it was reloaded, and is in front: its sidebar is put away, and it's loaded again once it's behind` : `[margin] tab ${tab.id} still has Margin from before it was reloaded, and is in use: its sidebar is put away until it's loaded again`);
   return 'quiet';
+}
+// The person chose Reload on the window's notice that Margin isn't responding
+// on a tab's page (handlers.js noticeAction): loaded again now, in front or
+// not, as repairCutOff loads one behind (a GET of its address; with a
+// #fragment the browser's reload). Whether it was.
+/** @param {number} tabId */
+export async function reloadCutOff(tabId) {
+  const tab = await api.tabs.get(tabId).catch(() => null);
+  if (!tab || !/^https?:/i.test(tab.url ?? '')) return false;
+  ownReloads.set(tab.id, Date.now());
+  cutOffLoadedAt.set(tab.id, Date.now());
+  reloadWhenLeft.delete(tab.id);
+  const ok = await (tab.url.includes('#') ? api.tabs.reload(tab.id) : api.tabs.update(tab.id, { url: tab.url })).then(() => true, () => false);
+  if (!ok) {
+    ownReloads.delete(tab.id);
+    return false;
+  }
+  cutOffSuspects.delete(tab.id);
+  quietened.delete(tab.id);
+  console.info(`[margin] tab ${tab.id} loaded again from the notice that Margin wasn't responding there`);
+  return true;
 }
 // Cut off and in front when found (repairCutOff): loaded again once left.
 /** @type {Set<number>} */

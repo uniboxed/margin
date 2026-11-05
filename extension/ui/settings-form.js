@@ -109,7 +109,7 @@ export function settingsFields(settings, features = {}, ui = {}) {
     list.push(field({ id: 'fullscreenOnly', kind: 'toggle', label: 'Use Margin only in full screen (in a window, it offers full screen instead)', checked: s.fullscreenOnly !== false }));
   }
   list.push(field({ id: 'frameWhenHidden', kind: 'toggle', label: 'With the sidebar hidden, keep the frame around pages', checked: s.frameWhenHidden !== false }));
-  if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when ⌘T seems to open Safari’s homepage instead of Margin (Safari Settings → General → “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
+  if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
   // Keyboard shortcuts: recorded by pressing them.
   list.push(field({ id: 'shortcuts', kind: 'group', label: 'Keyboard shortcuts' }));
   const keys = currentShortcuts(s);

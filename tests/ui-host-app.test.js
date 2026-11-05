@@ -42,7 +42,10 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   assert.equal(host.windowId, W);
   assert.equal(host.tabId, null);
   assert.equal(host.mode, 'fullscreen');
-  assert.deepEqual(host.platform, { browser: 'safari', os: 'mac', app: true });
+  const { features, ...platform } = host.platform;
+  assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
+  // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
+  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs']);
   assert.equal(state.tabs[13].title, 'Docs');
   assert.equal(state.activeSpaceByWindow[W], 'home');
   assert.deepEqual(state.openTabsBy, { origin: 'safari-web-extension://margin', since: 1, synced: true });

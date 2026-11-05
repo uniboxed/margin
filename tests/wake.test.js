@@ -19,7 +19,8 @@ const fake = {
   created: [],
   session: {},
   local: {},
-  reply: true, // what a page answers: true once it showed the note
+  reply: true, // what a page answers (a switch: true, it's covered)
+  hintReply: { fromNothing: true }, // what a page answers the New Tab note's question: opened from nothing
   // What a page's sidebar answers when asked to prepare (default: ready).
   prepare: (args) => ({ ready: true, token: args?.[0]?.token }),
   contentScripts: undefined, // the manifest's
@@ -102,7 +103,7 @@ globalThis.chrome = {
       if (active) for (const t of fake.tabs.values()) if (t.windowId === windowId) t.active = t.id === id;
       return { ...fake.tabs.get(id) };
     },
-    sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return fake.reply; },
+    sendMessage: async (tabId, message) => { fake.messages.push({ tabId, message }); return message?.type === 'newtab-hint' ? fake.hintReply : fake.reply; },
     reload: async (id) => { fake.updates.push({ id, change: { reload: true }, at: Date.now() }); },
   },
   scripting: {
@@ -145,6 +146,12 @@ const { tapLog } = await import('../extension/background/diagnostics.js');
 const { holdNow, keepReadyState, noteLeft, resetKeepReady, startedAgain, switchFacts } = await import('../extension/background/keep-ready.js');
 const M = await import('../extension/state/model.js');
 const hint = await import('../extension/background/newtab-hint.js');
+// Margin.app's overlay, linked: the notices pushed to it (background/notices.js).
+const notices = await import('../extension/background/notices.js');
+const pushed = [];
+let appLinked = true;
+notices.useLinkForTests({ linked: () => appLinked, push: (windowId, msg) => { if (!appLinked) return false; pushed.push({ windowId, msg }); return true; } });
+const noted = () => pushed.filter((p) => p.msg.kind === 'new-tab-setting').map((p) => p.msg.tabId);
 const { mutate, decided, load, markSynced } = await import('../extension/background/store.js');
 const V = await import('../extension/shared/view.js');
 const { navigate, showSpace } = await import('../extension/background/navigation.js');
@@ -166,6 +173,7 @@ function reset(tabs) {
   fake.suspended = new Map();
   fake.holdsRun = false;
   fake.reply = true;
+  fake.hintReply = { fromNothing: true };
   fake.contentScripts = undefined;
   fake.tabs = new Map(tabs.map((t) => [t.id, { windowId: 1, status: 'complete', active: false, ...t }]));
   fake.scripts = [];
@@ -771,16 +779,34 @@ async function homepageTab(id, url, extra = {}) {
   await sleep(5);
 }
 
-test('homepage note: the same page opening in a new tab from nothing, twice', async () => {
+test('homepage note: the same page opening in a new tab from nothing, twice: said in the window\'s overlay', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }]);
   fake.session = {};
   fake.local = {};
+  pushed.length = 0;
+  notices.resetNotices();
   await homepageTab(10, 'https://home.test/');
   assert.equal(fake.messages.length, 0, 'not after the first');
   await homepageTab(11, 'https://home.test/');
-  assert.deepEqual(fake.messages, [{ tabId: 11, message: { type: 'newtab-hint' } }]);
+  assert.deepEqual(fake.messages, [{ tabId: 11, message: { type: 'newtab-hint' } }], 'the page asked whether it was opened from nothing');
+  assert.deepEqual(pushed, [{ windowId: 1, msg: { type: 'notice', kind: 'new-tab-setting', tabId: 11 } }], 'the overlay of its window told, the kind only');
   await homepageTab(12, 'https://home.test/');
   assert.equal(fake.messages.length, 1, 'once a run');
+  assert.equal(noted().length, 1);
+});
+
+test('homepage note: not linked to Margin.app, nothing said, and the next one may', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }]);
+  fake.session = {};
+  pushed.length = 0;
+  notices.resetNotices();
+  appLinked = false;
+  await homepageTab(15, 'https://home.test/');
+  await homepageTab(16, 'https://home.test/');
+  assert.deepEqual(noted(), []);
+  appLinked = true;
+  await homepageTab(17, 'https://home.test/');
+  assert.deepEqual(noted(), [17], 'linked again: said');
 });
 
 test('homepage note: not for links (an opener), different pages, or with the setting off', async () => {
@@ -802,15 +828,22 @@ test('homepage note: not for links (an opener), different pages, or with the set
 test('homepage note: a page that couldn\'t show it (no Margin there, opened from a link) leaves it for the next', async () => {
   reset([{ id: 1, url: 'https://a.test/', active: true }]);
   fake.session = {};
-  fake.reply = false;
+  pushed.length = 0;
+  notices.resetNotices();
+  fake.hintReply = { fromNothing: false };
   await homepageTab(40, 'https://home.test/');
   await homepageTab(41, 'https://home.test/');
   assert.equal(fake.messages.length, 1);
-  fake.reply = true;
+  assert.deepEqual(noted(), [], 'opened from a link: not said');
+  fake.hintReply = undefined; // no Margin in the page
   await homepageTab(42, 'https://home.test/');
-  assert.deepEqual(fake.messages.map((m) => m.tabId), [41, 42]);
+  assert.deepEqual(noted(), []);
+  fake.hintReply = { fromNothing: true };
   await homepageTab(43, 'https://home.test/');
-  assert.equal(fake.messages.length, 2, 'shown now: once a run');
+  assert.deepEqual(fake.messages.map((m) => m.tabId), [41, 42, 43]);
+  assert.deepEqual(noted(), [43]);
+  await homepageTab(44, 'https://home.test/');
+  assert.equal(fake.messages.length, 3, 'shown now: once a run');
 });
 
 test('homepage note: a new window\'s first tab doesn\'t count; about:blank first doesn\'t lose the tab', async () => {

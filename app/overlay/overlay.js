@@ -10,10 +10,14 @@
 // then on tells the app where the page slot is (`layout`, through the host),
 // what the theme draws over it that takes the pointer (`hits`), and when a
 // text field of Margin's has the keyboard (`focus`: the overlay becomes a
-// key panel without making Margin the active app).
+// key panel without making Margin the active app). It says what the copy
+// tells it about the window's pages (ui/app-feedback.js): Margin's notices,
+// in the theme's guarded notice part, their buttons going back to the copy;
+// the trackpad gestures' feedback; which tabs are loading (through the host).
 import { createRuntime } from '../../extension/ui/runtime.js';
 import { loadTheme } from '../../extension/ui/theme-loader.js';
 import { createAppHost, hitRects } from '../../extension/ui/host-app.js';
+import { createAppNotices, createGestureFeedback } from '../../extension/ui/app-feedback.js';
 
 const bridge = /** @type {any} */ (globalThis).webkit?.messageHandlers?.margin;
 /** @param {string} op @param {Record<string, any>} [body] */
@@ -29,6 +33,14 @@ let runtime = null;
 let theme = null;
 let saidReady = false;
 let mounting = Promise.resolve();
+// Margin's notices and the gestures' feedback, kept here: a runtime made
+// again (another theme) shows them as they are.
+const notices = createAppNotices({
+  show: (notice) => runtime?.setUi({ notice }),
+  send: (type, payload) => host?.send(type, payload),
+  frontTab: () => host?.frontTabId ?? null,
+});
+const gestures = createGestureFeedback({ set: (gesture) => runtime?.setUi({ gesture }) });
 
 const decode = (/** @type {string} */ text) => { const bin = atob(text); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
 const nextFrame = () => new Promise((resolve) => { const t = setTimeout(resolve, 100); requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(t); resolve(undefined); })); });
@@ -79,12 +91,16 @@ async function mount(pkg) {
   const files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))]));
   const loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
   if (!loaded.ok) return log('error', `theme ${pkg.id} refused:`, /** @type {any} */ (loaded).report.errors);
-  const keep = runtime ? { palette: runtime.ui.palette } : {};
+  const keep = { ...(runtime ? { palette: runtime.ui.palette } : {}), notice: notices.view(), gesture: gestures.shown };
   watcher.disconnect();
   runtime?.destroy();
   theme?.unload?.();
   theme = loaded;
-  runtime = createRuntime({ host, theme, container: document, ui: keep, onWarn: (message) => log('warn', message) });
+  runtime = createRuntime({
+    host, theme, container: document, ui: keep, onWarn: (message) => log('warn', message),
+    // A switch asked for here that didn't happen: why, as a notice (its request's error).
+    onSwitchFailed: () => { notices.switchFailed(host?.takeFailure()?.error); },
+  });
   const root = runtime.view.rootElement();
   // The pointer over the page slot is the page's (the app lets it through); what the theme draws there keeps it.
   root?.setAttribute('m-passthrough', '');
@@ -136,7 +152,13 @@ function onMessage(msg) {
       switch (msg.msg?.type) {
         // A switch the copy makes in this window (a next/previous key), and its end.
         case 'switching': runtime?.setUi({ switchingTo: Number.isInteger(msg.msg.tabId) ? msg.msg.tabId : null }); return;
-        case 'switch-done': case 'switch-failed': runtime?.setUi({ switchingTo: null }); return;
+        case 'switch-done': runtime?.setUi({ switchingTo: null }); return;
+        // Didn't happen: the highlight goes, and why is said (when the copy says why).
+        case 'switch-failed': runtime?.setUi({ switchingTo: null }); notices.push(msg.msg); return;
+        // Margin's notice about this window's page (background/notices.js): its kind's words.
+        case 'notice': notices.push(msg.msg); return;
+        // A trackpad gesture in the page in front (content/trackpad.js), as it goes.
+        case 'gesture': gestures.push(msg.msg); return;
         // Safari's own New Tab made a tab the copy closed again (background/handlers.js
         // newTabHandOff), or Margin's new-tab page came up: the palette, here.
         case 'palette': runtime?.openPalette({ newTab: msg.msg.newTab === true }); return;
@@ -172,6 +194,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     if (!host) return;
     const before = !!host.getState();
     host.receive(msg);
+    // A notice about one tab's page goes once another tab is in front.
+    if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host.frontTabId);
     // The first state after a hello without one: the theme can draw now.
     if (!before && host.getState() && !runtime && pendingTheme) mounting = mounting.then(() => mount(pendingTheme));
   },
@@ -210,8 +234,11 @@ async function start() {
   const text = await post('hello');
   const hello = typeof text === 'string' ? JSON.parse(text) : text;
   if (!hello) return log('warn', 'no window for this overlay');
-  host = createAppHost({ hello, post, onMessage, warn: (...args) => log('warn', ...args) });
+  host = createAppHost({ hello, post, onMessage, onNotice: (arg) => notices.run(arg), warn: (...args) => log('warn', ...args) });
   host.onState(() => followPage());
+  // What the copy pushed for this window before this page was there (a
+  // notice, the tabs loading: app/shell/Shell.swift HeldPushes), as if it came now.
+  for (const msg of Array.isArray(hello.held) ? hello.held : []) host.receive({ type: 'push', msg });
   pendingTheme = hello.theme ?? null;
   if (hello.theme && host.getState()) mounting = mounting.then(() => mount(hello.theme));
 }

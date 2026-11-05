@@ -2,12 +2,36 @@
 // Safari's swipe, pinch for all tabs and bounce from leaving or distorting the
 // page, and Margin's own pull-to-refresh and swipe back/forward, and the
 // pinch on a page with a box (content/pinch.js). Called by content/core.js.
-// (Their badges were drawn by the in-page UI, before Margin 2's app; the app
-// doesn't draw them yet.)
+// Their feedback (how far a pull or a swipe has gone, armed, done) is drawn
+// by Margin.app's overlay: told as it goes (`page.tellGesture`, at most every
+// GESTURE_TELL_MS but for a change of state; content/core.js), never drawn here.
 import { mark } from '../shared/dom.js';
 import { installGestureGuard, atPageTop, canSwipe } from '../shared/gestures.js';
 import { createPullTracker, createSwipeTracker, DEFAULTS as PULL_DEFAULTS } from '../shared/pull.js';
 import { platform } from '../shared/platform.js';
+
+export const GESTURE_TELL_MS = 30;
+// What a gesture's tracker says (shared/pull.js: idle, pulling, armed,
+// trigger; how far, which way), told when it changes: its state at once, its
+// progress in steps of 0.05 at most every GESTURE_TELL_MS. Nothing while it
+// stays idle (most wheel events).
+/** @param {'pull' | 'swipe'} kind @param {(g: { kind: string, state: string, progress: number, direction: number }) => void} tell */
+export function gestureTeller(kind, tell, now = () => performance.now()) {
+  let state = 'idle';
+  let key = 'idle';
+  let at = -Infinity;
+  return (/** @type {{ state: string, progress?: number, direction?: number }} */ view) => {
+    const progress = view.state === 'idle' ? 0 : Math.round(Math.max(0, Math.min(1, view.progress ?? 0)) * 20) / 20;
+    const direction = kind === 'swipe' ? (view.direction ?? 0) : 0;
+    const next = view.state === 'idle' ? 'idle' : `${view.state}:${progress}:${direction}`;
+    if (next === key) return;
+    if (view.state === state && now() - at < GESTURE_TELL_MS) return;
+    key = next;
+    state = view.state;
+    at = now();
+    tell({ kind, state: view.state, progress, direction });
+  };
+}
 
 // `page`: see content/core.js. `replacing`: an earlier copy of Margin is still
 // in the page (content/takeover.js); its gestures act on the page, so this
@@ -49,8 +73,12 @@ export function startTrackpad(page, { replacing }) {
   // Also while an earlier copy is still in the page (its pull reloads too: the
   // same reload), unlike swipe below (two would go back twice).
   const pullEnabled = () => !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.pullToRefresh !== false;
+  const tellPull = gestureTeller('pull', (g) => page.tellGesture?.(g));
+  const tellSwipe = gestureTeller('swipe', (g) => page.tellGesture?.(g));
   /** @param {{ state: string, progress?: number }} pull */
-  function showPull({ state: phase }) {
+  function showPull(pull) {
+    const { state: phase } = pull;
+    tellPull(pull);
     if (pullRefreshing) return;
     if (phase === 'trigger') refreshFromPull();
   }
@@ -81,7 +109,9 @@ export function startTrackpad(page, { replacing }) {
   // right) or forward. The gesture logic is shared/pull.js (axis x).
   const swipeEnabled = () => !replacing() && !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
   /** @param {{ state: string, progress?: number, direction?: number }} swipe */
-  function showSwipe({ state: phase, direction }) {
+  function showSwipe(swipe) {
+    const { state: phase, direction } = swipe;
+    tellSwipe(swipe);
     if (phase === 'trigger') navigateBySwipe(direction);
   }
   function navigateBySwipe(direction) {

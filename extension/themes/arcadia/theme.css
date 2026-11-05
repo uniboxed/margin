@@ -95,7 +95,20 @@
 .loader-bar { width: 100%; height: 100%; border-radius: 2px; background: rgba(28, 28, 30, 0.88); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3); }
 .arcadia.loading .loader-bar { animation: arcadia-pulse 1.2s ease-in-out 250ms infinite; }
 @keyframes arcadia-pulse { 50% { opacity: 0.55; } }
+/* A tab loading, in its row (the tab in front also has the pill): its icon
+   pulses, no hover needed. */
+.margin-sidebar :is(.tab, .pin).busy .avatar { animation: arcadia-pulse 1.2s ease-in-out infinite; }
+/* Margin's trackpad gestures on the page: a round badge over the page card. */
+.gesture { --gesture: 0; position: absolute; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(28, 28, 30, 0.88); color: #fff; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25); pointer-events: none; opacity: calc(0.3 + var(--gesture) * 0.7); }
+.gesture .line-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--gesture) - 1) * 24px)) rotate(calc(var(--gesture) * 270deg)); }
+.gesture.swipe.back { left: 14px; top: 50%; transform: translate(calc((var(--gesture) - 1) * 24px), -50%); }
+.gesture.swipe.forward { right: 14px; top: 50%; transform: translate(calc((1 - var(--gesture)) * 24px), -50%); }
+.gesture.swipe.forward .line-icon { transform: scaleX(-1); }
+.gesture.armed { background: var(--space-color, rgba(28, 28, 30, 0.88)); }
+.gesture.done { opacity: 0; transition: opacity 250ms ease 100ms; }
 @media (prefers-reduced-motion: reduce) {
+  .margin-sidebar :is(.tab, .pin).busy .avatar { animation: none; opacity: 0.6; }
   .loader { transition: opacity 150ms linear, visibility 0s linear 150ms; }
   .arcadia.loading .loader { transition: opacity 150ms linear; }
   .arcadia.loading .loader-bar { animation: none; }
