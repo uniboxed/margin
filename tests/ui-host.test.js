@@ -264,3 +264,36 @@ test('mock host: state by hand, requests, layouts and host actions recorded', as
   assert.equal(host.perform('nav.back'), true);
   assert.deepEqual(host.performed, [{ name: 'nav.back', arg: undefined }]);
 });
+
+test('in-page host with a state kept elsewhere (content/core.js): no reads of its own, its send and actions first', async () => {
+  const api = fakeBrowser();
+  let state = smallState();
+  const subscribers = new Set();
+  const source = { getState: () => state, onState: (cb) => { subscribers.add(cb); return () => subscribers.delete(cb); } };
+  const sent = [];
+  const performed = [];
+  const win = fakeWindow();
+  const host = createInPageHost({
+    api, window: win, source, warn: () => {},
+    send: async (type, payload) => { sent.push([type, payload]); return 'ok'; },
+    perform: (name, arg) => (name === 'notice' ? (performed.push(arg), true) : undefined),
+  });
+  assert.equal(await host.ready, true);
+  assert.equal(host.getState(), state, 'the state as given');
+  assert.deepEqual(api.gets, [], 'nothing read');
+  assert.equal(api.listeners.size, 0, 'no storage listener');
+  const seen = [];
+  host.onState((s) => seen.push(s));
+  state = { ...state, settings: { ...state.settings, frameWhenHidden: false } };
+  for (const cb of subscribers) cb(state);
+  assert.equal(seen.at(-1), state);
+  assert.equal(await host.send('activateTab', { tabId: 12 }), 'ok');
+  assert.deepEqual(sent, [['activateTab', { tabId: 12 }]], 'its send, as given (it adds its own hints)');
+  assert.deepEqual(api.messages, []);
+  assert.equal(host.perform('notice', { id: 'n1', action: 'a0' }), true);
+  assert.deepEqual(performed, [{ id: 'n1', action: 'a0' }]);
+  assert.equal(host.perform('nav.back'), true, 'the rest as before: the page\'s history');
+  assert.deepEqual(win.calls, ['back']);
+  host.destroy();
+  assert.equal(subscribers.size, 0);
+});

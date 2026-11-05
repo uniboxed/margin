@@ -121,6 +121,24 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await page.evaluate(() => T.rtPerformedFull()), [['navigate', { url: 'https://example.org' }]], 'an address: this tab goes there');
       });
 
+      await t.test('the host brings the sidebar out: the show/hide key toggles it, Escape takes it back, a flash goes by itself; Keep open turns off', async () => {
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'inpage', settings: { sidebarPinnedOpen: false } }));
+        const side = () => page.evaluate(() => [__rt.runtime.vm.window.sidebar, __rt.runtime.sidebar.reason()]);
+        assert.deepEqual(await side(), ['hidden', null]);
+        await page.evaluate(() => __rt.runtime.sidebar.toggle());
+        assert.deepEqual(await side(), ['peek', 'toggle']);
+        await page.keyboard.press('Escape');
+        assert.deepEqual(await side(), ['hidden', null]);
+        await page.evaluate(() => __rt.runtime.sidebar.flash(150));
+        assert.deepEqual(await side(), ['peek', 'flash']);
+        await page.waitForFunction(() => __rt.runtime.vm.window.sidebar === 'hidden', null, { timeout: 2000 });
+        await page.evaluate(() => T.rtSettings({ sidebarPinnedOpen: true }));
+        assert.deepEqual(await side(), ['open', null]);
+        await page.evaluate(() => __rt.runtime.sidebar.toggle());
+        assert.deepEqual(await page.evaluate(() => T.rtSent().filter(([k]) => k === 'updateSettings').at(-1)), ['updateSettings', { patch: { sidebarPinnedOpen: false } }], 'with Keep open on, the key turns it off');
+        await page.evaluate(() => T.unmountRuntime());
+      });
+
       await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {
         const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'page', blockGestures: true, newTabHint: true, search: 'learn' } };
         await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);
