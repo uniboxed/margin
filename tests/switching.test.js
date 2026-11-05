@@ -218,3 +218,79 @@ test('switching: hidden for an instant, then shown again: a blink (when, said), 
   doc.late();
   assert.equal(blinks().length, 4, 'nor with no switch under way');
 });
+
+// Margin.app's overlay stays on screen through a switch (Phase 2 step 8): the
+// highlight is the switch's until the state has its tab in front, so the row
+// it moved to never goes back to the tab left while the state catches up.
+// `highlight()`: the row the sidebar draws (the switch's target, else the
+// state's tab in front).
+function onScreen() {
+  const doc = fakeDocument();
+  let front = 1;
+  let target = null;
+  const drawn = [];
+  const highlight = () => target ?? front;
+  const draw = () => { if (drawn.at(-1) !== highlight()) drawn.push(highlight()); };
+  draw();
+  const switching = createSwitching({
+    doc: /** @type {any} */ (doc),
+    onChange: (id) => { target = id; draw(); },
+    onSlow: () => {},
+    failed: (result) => result === undefined,
+    front: () => front,
+    landed: (id, from) => (front === id ? true : front === from ? null : false),
+  });
+  const state = (id) => { front = id; switching.settle(); draw(); };
+  return { switching, state, drawn };
+}
+
+test('switching, on screen: answered before the state has the tab, the highlight stays on it; it moves once (1 → 2), never back', async () => {
+  const { switching, state, drawn } = onScreen();
+  let answer;
+  switching.start(2, new Promise((resolve) => { answer = resolve; }));
+  answer({ shown: 2 });
+  await sleep(400); // past the old 300 ms grace: before, the highlight went back to tab 1 here
+  assert.deepEqual(drawn, [1, 2]);
+  state(2); // the state's delta, late
+  assert.deepEqual(drawn, [1, 2], 'one change, to the new tab');
+  assert.equal(switching.target(), null, 'the switch is over');
+});
+
+test('switching, on screen: the copy\'s own switch (a key) and its word that it\'s done before the state: no flicker either', async () => {
+  const { switching, state, drawn } = onScreen();
+  const copy = backgroundSwitches();
+  switching.start(3, copy.begin(3));
+  copy.settle({ type: 'switch-done', tabId: 3 }); // before 2026-11-05 the overlay dropped the highlight here, at once
+  await sleep(20);
+  assert.deepEqual(drawn, [1, 3]);
+  state(3);
+  assert.deepEqual(drawn, [1, 3]);
+});
+
+test('switching, on screen: the state with the tab in front before the answer ends it then; another tab coming to the front ends it too; a failure goes back', async () => {
+  let s = onScreen();
+  s.switching.start(2, new Promise(() => {}));
+  s.state(2);
+  assert.deepEqual(s.drawn, [1, 2]);
+  assert.equal(s.switching.target(), null);
+  s = onScreen();
+  s.switching.start(2, new Promise(() => {}));
+  s.state(4); // the user went elsewhere (Safari's tab bar)
+  assert.deepEqual(s.drawn, [1, 2, 4]);
+  s = onScreen();
+  let fail;
+  s.switching.start(2, new Promise((resolve) => { fail = resolve; }));
+  fail(undefined);
+  await sleep(0);
+  assert.deepEqual(s.drawn, [1, 2, 1], 'the switch really failed: back to the tab in front');
+});
+
+test('switching, on screen: answered but the state never says so: over after SETTLE_MS', async () => {
+  const { switching, drawn } = onScreen();
+  const { SETTLE_MS } = await import('../extension/shared/switching.js');
+  assert.equal(SETTLE_MS, 2000);
+  switching.start(2, Promise.resolve({ shown: 2 }));
+  await sleep(50);
+  assert.equal(switching.target(), 2);
+  assert.deepEqual(drawn, [1, 2]);
+});

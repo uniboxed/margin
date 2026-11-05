@@ -38,14 +38,28 @@ const UNASKED_MAX_MS = 2500;
 // during one of its flips in the window.
 const BLINK_MS = 100;
 
+// A UI that stays on screen through the switch (Margin.app's overlay) can't
+// end on being hidden: with `landed`, a switch that went through ends once
+// the state it draws from says the tab is in front (`settle()`, called as the
+// state changes), or the state says another tab came to the front since,
+// or SETTLE_MS after its answer at the latest. Ending on the answer alone
+// (GRACE_MS later, or at once for the background's word) let the highlight
+// go back to the tab left until the state caught up, then forward again: a
+// flicker (Tirth, 2026-11-05; Phase 2 step 8).
+export const SETTLE_MS = 2000;
+
 /**
- * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, onBlink?: (times: { hiddenAt: number, shownAt: number }) => void, doc?: Document }} options
+ * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, onBlink?: (times: { hiddenAt: number, shownAt: number }) => void, doc?: Document, landed?: ((tabId: number, from: number | null) => boolean | null) | null, front?: (() => number | null) | null }} options
  * `onChange`: redraw the sidebar with this target (null: none); `onSlow`: the pill on or off;
  * `failed`: whether a request's result means it didn't switch (default: never);
  * `onBlink`: the page was hidden for an instant as it switched, then shown
- * again (when, by the clock Date.now() reads).
+ * again (when, by the clock Date.now() reads); `front`: the tab in front as
+ * the state has it, and `landed(tabId, from)`: true once the state has the
+ * tab in front, null while it still has `from` (the tab in front at the
+ * start), false once another tab came to the front (the switch is over
+ * either way).
  */
-export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, onBlink = () => {}, doc = document }) {
+export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, onBlink = () => {}, doc = document, landed = null, front = null }) {
   /** @type {number | null} */
   let target = null;
   let current = null; // this start's token: an older start's request can't end a newer one
@@ -69,6 +83,12 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     stopPill();
     onChange(null);
   }
+  let from = null; // the tab in front as the switch started (`landed`)
+  // The state changed: a switch it says is over ends (`landed`).
+  function settle() {
+    if (target == null || !landed) return;
+    if (landed(target, from) != null) end();
+  }
   /** @param {number} tabId @param {Promise<unknown> | null} [request] the switch request, if this page made it */
   function start(tabId, request = null) {
     if (!Number.isInteger(tabId) || doc.hidden) return;
@@ -76,6 +96,7 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     const token = {};
     current = token;
     target = tabId;
+    from = front?.() ?? null;
     onChange(tabId);
     const mine = () => current === token;
     timers.push(setTimeout(() => {
@@ -95,6 +116,11 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
         if (failed(result)) return didFail();
         clearTimers();
         stopPill();
+        if (landed) {
+          if (landed(tabId, from) != null) return end();
+          timers.push(setTimeout(() => mine() && end(), SETTLE_MS));
+          return;
+        }
         timers.push(setTimeout(() => mine() && end(), GRACE_MS));
       },
       didFail,
@@ -119,7 +145,7 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     hiddenAt = 0;
   });
   doc.defaultView?.addEventListener('pagehide', end);
-  return { start, end, target: () => target };
+  return { start, end, settle, target: () => target };
 }
 
 // A switch the background makes from this page (next/previous key): it says

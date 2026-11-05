@@ -160,12 +160,18 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   const onVisibility = () => { if (!doc.hidden) lastShownAt = Date.now(); };
   doc.addEventListener('visibilitychange', onVisibility);
   offs.push(() => doc.removeEventListener('visibilitychange', onVisibility));
+  // A host whose UI stays on screen through a switch (Margin.app's overlay:
+  // `staysOnScreen`) keeps the highlight until the state has the tab in front
+  // (shared/switching.js `landed`); a page's ends as it's hidden.
+  const stays = !!(/** @type {any} */ (host).staysOnScreen);
   const switching = createSwitching({
     onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id }); },
     onSlow: (slow) => { if (!destroyed) onSwitchSlow?.(slow); },
     failed: (result) => result === undefined,
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
     doc,
+    front: stays ? frontTab : null,
+    landed: stays ? (id, from) => { const f = frontTab(); return f === id ? true : f === from ? null : false; } : null,
   });
 
   // The UI state with what the host knows (its window, tab and mode).
@@ -549,7 +555,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   const stopKeys = (e) => { if (view.owns(e.target)) e.stopPropagation(); };
   for (const type of ['keydown', 'keyup', 'keypress']) rt.listen(container, type, stopKeys);
 
-  const off = host.onState(() => render());
+  // (A switch the new state says is over ends first: its highlight goes with it, once.)
+  const off = host.onState(() => {
+    switching.settle();
+    render();
+  });
   render();
 
   return {
@@ -589,6 +599,18 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       reason: () => behaviors.peek.reason(),
       /** Out over the page (not docked). */
       out: () => vm?.window.sidebar === 'peek',
+    },
+    /**
+     * A switch the copy makes in this window (a next/previous key: its
+     * 'switching' push), highlighted as one asked for here is; `request`
+     * settles with its 'switch-done' or 'switch-failed' (shared/switching.js
+     * backgroundSwitches). A switch to the tab in front ends any under way.
+     * @param {number} tabId @param {Promise<any>} request
+     */
+    switchTo(tabId, request) {
+      if (!Number.isInteger(tabId)) return;
+      if (tabId === frontTab()) switching.end();
+      else switching.start(tabId, request);
     },
     /** The palette, opened by the host (its key, ⌘T's hand-off): `newTab`, to choose a new tab. */
     openPalette: ({ newTab = false } = {}) => local('palette.open', { newTab }, null),

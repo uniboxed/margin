@@ -115,7 +115,7 @@ export function hitRects(root, slot, { limit = 64, getStyle = (el) => /** @type 
  *   onNotice?: (arg: { id?: string, action?: string }) => void,
  *   warn?: (...args: any[]) => void,
  * }} options
- * @returns {Host & { receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], takeFailure(): { type: string, error: string } | null, destroy(): void }}
+ * @returns {Host & { staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], takeFailure(): { type: string, error: string } | null, destroy(): void }}
  */
 export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args) }) {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
@@ -208,6 +208,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   return {
     platform,
     windowId,
+    // The overlay stays on screen through a switch (ui/runtime.js: the highlight waits for the state).
+    staysOnScreen: true,
     get tabId() { return frontPage()?.id ?? null; },
     get mode() { return /** @type {'fullscreen' | 'windowed'} */ (mode); },
     // Margin's start page (#launcher, #settings) chooses a new tab; a new-tab page opens it there.
