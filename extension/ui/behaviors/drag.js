@@ -73,7 +73,7 @@ export function installDrag(rt) {
     if (dragging && e.pointerId === dragging.pointerId) { if (e.buttons & 1) move(e.clientX, e.clientY); else cancel(); return; }
     if (!pending || e.pointerId !== pending.pointerId) return;
     if (!(e.buttons & 1)) { pending = null; return; }
-    if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < DRAG_START_PX) return;
+    if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) * (rt.scale?.() || 1) < DRAG_START_PX) return;
     start(e);
   });
   rt.listen(container, 'pointerup', (/** @type {PointerEvent} */ e) => {
@@ -97,6 +97,9 @@ export function installDrag(rt) {
     if (!from) return;
     const el = from.el.isConnected ? from.el : rowEl(from.kind, from.id); // drawn again meanwhile
     if (!el?.parentNode) return;
+    // Boxes and the pointer are in the page's pixels, the copy's place in
+    // Margin's (the page's zoom: rt.scale).
+    const k = rt.scale?.() || 1;
     const box = el.getBoundingClientRect();
     const ghost = /** @type {HTMLElement} */ (el.cloneNode(true));
     ghost.classList.remove('m-pressed', 'm-dragging', 'm-landing', ...MARKS);
@@ -104,13 +107,13 @@ export function installDrag(rt) {
     ghost.setAttribute('aria-hidden', 'true');
     ghost.inert = true;
     for (const n of [ghost, ...ghost.querySelectorAll('[id]')]) n.removeAttribute('id');
-    Object.assign(ghost.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+    Object.assign(ghost.style, { left: `${box.left * k}px`, top: `${box.top * k}px`, width: `${box.width * k}px`, height: `${box.height * k}px` });
     el.parentNode.appendChild(ghost);
     el.classList.remove('m-pressed');
     el.classList.add('m-dragging');
     const root = view.rootElement();
     root?.classList.add('m-dragging', `m-drag-${from.kind}`);
-    dragging = { kind: from.kind, id: from.id, el, pointerId: from.pointerId, ghost, x0: from.x, y0: from.y, x: e.clientX, y: e.clientY, where: null, over: null };
+    dragging = { kind: from.kind, id: from.id, el, pointerId: from.pointerId, ghost, x0: from.x, y0: from.y, x: e.clientX, y: e.clientY, where: null, over: null, k };
     // Its moves and its release come here wherever the pointer goes (and
     // the click after it lands on the theme's root: no row's action).
     try { root?.setPointerCapture(from.pointerId); } catch {}
@@ -167,7 +170,7 @@ export function installDrag(rt) {
     if (!d) return;
     d.x = x;
     d.y = y;
-    d.ghost.style.transform = `translate(${x - d.x0}px, ${y - d.y0}px)`;
+    d.ghost.style.transform = `translate(${(x - d.x0) * d.k}px, ${(y - d.y0) * d.k}px)`;
     const over = overAt(x, y);
     const where = dropTarget({ kind: d.kind, id: d.id }, /** @type {any} */ (over), rt.vm?.space);
     d.over = over;
@@ -293,13 +296,14 @@ export function installDrag(rt) {
   function glideTo(ghost, el) {
     const g = ghost.getBoundingClientRect();
     const r = el.getBoundingClientRect();
+    const k = rt.scale?.() || 1;
     // Scrolled out of the list's view: it fades where it is.
     const list = rt.behaviors.scroll?.element();
     const lb = list?.getBoundingClientRect();
     if (list?.contains(el) && (r.bottom < lb.top || r.top > lb.bottom)) return fadeOut(ghost);
     if (reduced() || typeof ghost.animate !== 'function') { ghost.remove(); return; }
     const startTransform = ghost.style.transform || 'none';
-    const end = `${startTransform === 'none' ? '' : startTransform} translate(${r.left - g.left}px, ${r.top - g.top}px)`.trim();
+    const end = `${startTransform === 'none' ? '' : startTransform} translate(${(r.left - g.left) * k}px, ${(r.top - g.top) * k}px)`.trim();
     el.classList.add('m-landing');
     const done = () => { ghost.remove(); el.classList.remove('m-landing'); };
     const glide = ghost.animate([{ transform: startTransform, opacity: 0.9 }, { transform: end, opacity: 1 }], { duration: GLIDE_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' });

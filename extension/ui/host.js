@@ -9,8 +9,10 @@
 // storage.onChanged) and sends with runtime.sendMessage. Margin.app's host
 // (Phase 2) implements the same interface over its link.
 //
-// The in-page host is built and tested, but no page mounts it yet (Phase 1
-// step 4).
+// In pages, content/core.js keeps the state (its reads are tied to switching
+// and the page's own start) and hands it to the host (`source`), with its
+// own `send` (deadlines, hints, retries) and `perform` (notices, prompts).
+// Margin's new-tab page uses the host's own reads.
 /** @import { State } from '../../types/margin' */
 import * as V from '../shared/view.js';
 import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '../shared/stored.js';
@@ -127,12 +129,21 @@ const NO_ANSWER = 'no answer';
  * window is the stored record's of that tab, else a guess from the address
  * (shared/view.js guessWindow), as the sidebar guesses today.
  *
+ * `source`: a state kept elsewhere (content/core.js): `getState()` and
+ * `onState(cb)`; the host then reads nothing itself. `send`: requests go
+ * through it instead (same contract: the result, or undefined). `perform`:
+ * the host's own actions first (a notice's button, navigating the new-tab
+ * page), then the page's history.
+ *
  * @param {{
  *   api?: any, window?: any, platform?: any,
  *   tabId?: number | null, windowId?: number | null,
  *   mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
  *   timeoutMs?: number, onLayout?: (geometry: Geometry) => void,
  *   warn?: (...args: any[]) => void,
+ *   source?: { getState(): any, onState(cb: (state: any) => void): () => void },
+ *   send?: (type: string, payload?: Record<string, any>) => Promise<any> | undefined,
+ *   perform?: (name: string, arg?: any) => boolean | undefined,
  * }} [options]
  */
 export function createInPageHost({
@@ -146,6 +157,9 @@ export function createInPageHost({
   timeoutMs = 10000,
   onLayout = undefined,
   warn = (...args) => console.warn('[margin]', ...args),
+  source = undefined,
+  send: sendVia = undefined,
+  perform: performFirst = undefined,
 } = {}) {
   const doc = win?.document;
   /** @type {any} */
@@ -210,15 +224,25 @@ export function createInPageHost({
     void read();
   };
 
-  api.storage.onChanged.addListener(onChanged);
-  doc?.addEventListener('visibilitychange', onVisible);
-  const ready = read();
+  let offSource = null;
+  /** @type {Promise<boolean>} */
+  let ready;
+  if (source) {
+    offSource = source.onState((next) => { if (next?.spaces?.length && !destroyed) { state = next; emit(); } });
+    state = source.getState()?.spaces?.length ? source.getState() : null;
+    ready = Promise.resolve(!!state);
+  } else {
+    api.storage.onChanged.addListener(onChanged);
+    doc?.addEventListener('visibilitychange', onVisible);
+    ready = read();
+  }
 
   /**
    * @param {string} type @param {Record<string, any>} [payload]
    * @returns {Promise<any>}
    */
   async function send(type, payload = {}) {
+    if (sendVia) return destroyed ? undefined : sendVia(type, payload);
     if (!api.runtime?.id || dormant || destroyed) return undefined;
     // A request naming a tab carries its address and place (as content/core.js
     // send does): the background trusts the id only if it's its own copy's,
@@ -265,8 +289,10 @@ export function createInPageHost({
     reportLayout(geometry) { layout = geometry; onLayout?.(geometry); },
     /** The last layout reported. */
     get layout() { return layout; },
-    /** @param {string} name */
-    perform(name) {
+    /** @param {string} name @param {any} [arg] */
+    perform(name, arg) {
+      const mine = performFirst?.(name, arg);
+      if (mine != null) return mine;
       switch (name) {
         case 'nav.back': win.history.back(); return true;
         case 'nav.forward': win.history.forward(); return true;
@@ -280,11 +306,12 @@ export function createInPageHost({
       emit();
     },
     /** Reads the state again (a page shown, a resync). */
-    refresh: () => read(),
+    refresh: () => (source ? Promise.resolve(!!state) : read()),
     get dormant() { return dormant; },
     destroy() {
       destroyed = true;
       listeners.clear();
+      offSource?.();
       api.storage.onChanged.removeListener(onChanged);
       doc?.removeEventListener('visibilitychange', onVisible);
     },

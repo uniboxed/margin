@@ -1,10 +1,8 @@
-// The command palette's wiring: its shortcut, and on web pages its place in
-// Margin.content. The palette itself (what it looks like) is the theme's
-// createPalette({ send, getState, getContext, onLocal, colorScheme }) →
-// { open, close, toggle, isOpen, refresh }; see themes/arcadia/palette.js.
+// The command palette's keys and its place in Margin.content. The palette
+// itself is the UI runtime's (ui/runtime.js, the theme's palette part and
+// ui/behaviors/palette.js); this is what a page must do around it.
 import * as V from '../shared/view.js';
 import { NEW_TAB, opensNewTab } from '../shared/switching.js';
-import { platform } from '../shared/platform.js';
 
 // ⌘T, the palette's key (⌥K before it). The browser keeps it for its own
 // File › New Tab, which creates a tab
@@ -27,6 +25,8 @@ function installNewTabKey(run, target = globalThis, skip = () => false) {
 }
 
 export { installNewTabKey };
+
+// ---- the old theme's new-tab page's (themes/arcadia/newtab.js), until it goes
 
 // The palette opened to choose a new tab is closing: the sidebar's "+ New
 // Tab" highlight goes (`setPending(false)`). Right away, unless what was
@@ -71,21 +71,11 @@ export function reportingSwitches(send, getState, onSwitch) {
 }
 
 // ---- content-script wiring ----------------------------------------------
-// The new-tab page wires its own. `c` is Margin.content (content/core.js);
-// `createPalette` comes from the active theme.
+// `c` is Margin.content (content/core.js), with the UI as `c.runtime()`.
+// The new-tab page wires its own (newtab/newtab.js).
 
-export function wirePalette(c, createPalette) {
-  // A new tab being chosen ends with the palette, chosen or not (the
-  // sidebar highlights the page's own tab again, or the new one opens).
-  const closer = newTabCloser((on) => c.setNewTabPending?.(on));
-  const palette = createPalette({
-    send: reportingSwitches(c.send, () => c.getState().state, (id, request) => c.startSwitching?.(id, request)),
-    onClose: closer.onClose,
-    getState: () => c.getState().state,
-    getContext: () => ({ ...c.getState(), canToggleSidebar: true, canFullscreen: !!platform?.marginFullscreen }),
-    onLocal: (action) => action.local === 'toggleSidebar' && c.sidebar.toggle(),
-    colorScheme: c.colorScheme,
-  });
+export function wirePalette(c) {
+  const ui = () => c.runtime?.() ?? null;
   // While Margin is out of the way (content/core.js active()), reaching for
   // the palette offers full screen instead.
   const ready = () => !c.active || c.active() || void c.offerFullscreen();
@@ -95,18 +85,21 @@ export function wirePalette(c, createPalette) {
   // A switch still under way from this page is called off: choosing again
   // means staying here meanwhile (content/core.js cancelSwitch).
   const open = ({ newTab = false } = {}) => {
+    const r = ui();
+    if (!r) return false;
     c.cancelSwitch?.();
-    closer.cancel();
-    c.setNewTabPending?.(newTab);
-    palette.open();
+    r.openPalette({ newTab });
+    return true;
   };
   c.onCommand = (command) => {
-    if (!ready()) return;
-    if (command !== 'open-palette') return;
-    if (!palette.isOpen()) c.cancelSwitch?.();
-    palette.toggle();
+    if (!ready() || command !== 'open-palette') return;
+    const r = ui();
+    if (!r) return;
+    if (r.paletteOpen) return void r.closePalette();
+    c.cancelSwitch?.();
+    r.openPalette({ newTab: false });
   };
-  c.openPalette = (options) => ready() && open(options);
+  c.openPalette = (options) => !!ready() && open(options);
   // ⌘T (installNewTabKey): the palette for a new tab; while Margin is out of
   // the way (Chrome, not in full screen), a new tab as usual.
   const newTabKey = () => {
@@ -114,11 +107,6 @@ export function wirePalette(c, createPalette) {
     return !c.active || c.active() ? open({ newTab: true }) : c.send('newTab', { windowId: c.getState().windowId });
   };
   installNewTabKey(newTabKey);
-  c.paletteOpen = () => palette.isOpen();
-  c.closePalette = () => palette.isOpen() && palette.close();
-  const prev = c.onState;
-  c.onState = (...args) => {
-    prev?.(...args);
-    palette.refresh();
-  };
+  c.paletteOpen = () => !!ui()?.paletteOpen;
+  c.closePalette = () => { if (ui()?.paletteOpen) ui().closePalette(); };
 }

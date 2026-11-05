@@ -72,6 +72,14 @@ export function installScroll(rt) {
     },
     /** Saved now (before a switch). */
     flush,
+    /** The window's position asked for again (a page just shown: the page left may have saved it late). */
+    restore,
+    /** At this position (a page prepared for a show with the window's), not saved again. */
+    set(px) {
+      if (!Number.isFinite(px)) return;
+      gen++;
+      apply(Math.max(0, px));
+    },
     /** From the top (a space switched to), saved as the window's. */
     reset() {
       gen++;

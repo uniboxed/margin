@@ -51,16 +51,35 @@ const HOST_CSS = `:host {
 :host(:popover-open) { top: 0 !important; left: 0 !important; }
 :host([data-margin-off]) { display: none !important; pointer-events: none !important; }`;
 
-// Zero-size, top-most host with a closed shadow root that site CSS can't
-// touch; { host, shadow }. Hosts are named margin-*-host and live in the page's
-// one <margin-app> (mountHost). A later copy of Margin hides them (content/core.js).
-function createHost(doc, tag) {
+// The host of Margin's UI (ui/runtime.js, content/core.js): the window's
+// whole box, past the page's box as .window-probe was (its right and bottom
+// edges in the page's pixels too: shared/page-box.js), so a theme's root
+// can be 100% of it. It takes no pointer itself: what the theme draws does
+// (`:host > *`, its root; ui/render.js lets the page have the pointer over
+// the page's slot), and it's the box `position: fixed` in the theme is
+// placed against (contain), not the page's <html>.
+const FILL_CSS = `:host {
+  right: calc(var(--margin-out-r, 0px) * var(--page-zoom, 1)) !important;
+  bottom: calc(var(--margin-out-b, 0px) * var(--page-zoom, 1)) !important;
+  width: auto !important;
+  height: auto !important;
+  pointer-events: none !important;
+  contain: layout !important;
+}
+:host > * { pointer-events: auto; }`;
+
+// Top-most host with a closed shadow root that site CSS can't touch;
+// { host, shadow }: zero-size, or (`fill`) the window's box for a UI drawn in
+// it. Hosts are named margin-*-host and live in the page's one <margin-app>
+// (mountHost). A later copy of Margin hides them (content/core.js).
+/** @param {Document} doc @param {string} tag @param {{ fill?: boolean }} [options] */
+function createHost(doc, tag, { fill = false } = {}) {
   const host = doc.createElement(tag);
   // This copy's, seen only from its own script world (page scripts and other
   // copies can't see it).
   /** @type {any} */ (host).__marginCopy = true;
   const shadow = host.attachShadow({ mode: 'closed' });
-  adoptStyles(shadow, HOST_CSS);
+  adoptStyles(shadow, fill ? `${HOST_CSS}\n${FILL_CSS}` : HOST_CSS);
   // Its zoom (unzoom), a sheet of its own for the same reason: nothing on the
   // tag, and a page's own --page-zoom can't reach what's inside.
   if ('adoptedStyleSheets' in shadow) {

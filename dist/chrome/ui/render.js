@@ -38,10 +38,21 @@ m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
 m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty{display:none}
 template{display:none!important}
+[m-passthrough]{pointer-events:none!important}
+:where([m-passthrough])>:where(:not(m-page)){pointer-events:auto}
+[m-away]{visibility:hidden!important}
+[m-away] :is(m-notice,m-prompt){visibility:visible!important}
 .m-drag-ghost{position:fixed!important;margin:0!important;pointer-events:none!important;z-index:2147483601!important;box-sizing:border-box}
 [contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
 `;
 
+// `m-passthrough` and `m-away` are the host's, on the theme's root (a theme
+// can't write m- attributes of its own): the pointer over the page's slot
+// goes to the page under it, past the root's own background (the in-page
+// host sets it while the pointer is there; what the theme draws over the
+// page still takes it), and Margin out of the way (Chrome outside full
+// screen, a copy that stood back) shows only its notices and prompts.
+//
 // Margin's slots, and what each shows: a theme's part (`<template m-part>`),
 // else what the theme put inside the slot, while `test` holds.
 const SLOTS = {

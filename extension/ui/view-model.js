@@ -48,6 +48,7 @@ export const VM_VERSION = 1;
  *   switchingTo?: number | null,
  *   justShown?: boolean,
  *   inNewTab?: boolean,
+ *   pageLoading?: boolean,
  * }} UiState
  *
  * @typedef {{
@@ -326,7 +327,9 @@ function fresh(input) {
   const tab = current ? {
     id: current.id,
     ...face(state, current, current.title || current.url || 'New Tab'),
-    loading: isLoading(current),
+    // Loading: as the background records it, or this page's own load (the
+    // in-page host: content/loader.js, the pill's timing).
+    loading: isLoading(current) || (!!ui.pageLoading && current.id === currentTabId),
     audible: !!current.audible,
     asleep: !!current.sleeping,
     pinned: pinnedUrls.has(V.normalizeUrl(current.url)),

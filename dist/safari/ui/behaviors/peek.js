@@ -1,14 +1,19 @@
-// A hidden sidebar, brought out over the page by the pointer (content/
-// layout.js, "Hover"): `m-peek="left|right|top|bottom"` marks the theme's
-// hover zone at that edge of the window. The pointer in it brings the
-// sidebar out (`window.sidebar` 'peek'); the pointer over the page again
-// (or over the theme's bare background, its root) hides it HIDE_DELAY_MS
-// later, unless it comes back first, and not while something is under way
-// in the sidebar (renaming, a drag, a menu: rt.busy). Leaving the window
-// hides it too, unless it left through the reveal edge. The zone's size is
-// today's reveal zone (shared/view.js revealZone: 10 px, 24 px in a
-// full-screen window, where Safari's own sidebar opens at the very edge),
-// given to the theme as `--m-reveal-zone` on the zone.
+// A hidden sidebar, brought out over the page (content/layout.js before
+// Margin 2): `m-peek="left|right|top|bottom"` marks the theme's hover zone at
+// that edge of the window. The pointer in it brings the sidebar out
+// (`window.sidebar` 'peek'); the pointer over the page again (or over the
+// theme's bare background, its root) hides it HIDE_DELAY_MS later, unless it
+// comes back first, and not while something is under way in the sidebar
+// (renaming, a drag, a menu: rt.busy). Leaving the window hides it too,
+// unless it left through the reveal edge. The zone's size is today's reveal
+// zone (shared/view.js revealZone: 10 px, 24 px in a full-screen window,
+// where Safari's own sidebar opens at the very edge), given to the theme as
+// `--m-reveal-zone` on the zone.
+//
+// The host can bring it out too (runtime.sidebar): the show/hide key
+// ('toggle': it stays until the key again, Escape, or a click on the page,
+// which the host reports with hide()), and a moment after a space switch by
+// key ('flash').
 //
 // Where the page gets the pointer's events rather than the UI (a page under
 // the in-page host's shadow root; the browser's page area under the app's
@@ -16,15 +21,21 @@
 import * as V from '../../shared/view.js';
 
 export const HIDE_DELAY_MS = 300;
+export const FLASH_MS = 1200;
 
 /** @param {any} rt */
 export function installPeek(rt) {
   const { view, win, container } = rt;
-  /** @type {'hover' | null} */
+  // Why it's out: the pointer at the edge ('hover': it goes once the pointer
+  // is over the page again), the show/hide key ('toggle'), a moment after a
+  // space switch by key ('flash'). Null: not out.
+  /** @type {'hover' | 'toggle' | 'flash' | null} */
   let reason = null;
   let hideTimer = null;
+  let flashTimer = null;
   let drawnZone = '';
 
+  // The zone's size in Margin's pixels; positions come in the page's (rt.scale).
   const zonePx = () => V.revealZone({ outerWidth: win.outerWidth, outerHeight: win.outerHeight, screenWidth: win.screen?.width ?? 0, screenHeight: win.screen?.height ?? 0 });
   const hidden = () => rt.vm?.window.sidebar === 'hidden';
   const edges = () => view.marked('m-peek').map((el) => view.behaviorOf(el).attrs['m-peek']);
@@ -35,22 +46,28 @@ export function installPeek(rt) {
   };
   // Whether a point (the container's coordinates) is in the reveal zone of one of the theme's edges.
   const atEdge = (x, y) => {
-    const px = zonePx();
+    const px = zonePx() / (rt.scale?.() || 1);
     const { width, height } = size();
     return edges().some((edge) => (edge === 'left' ? x <= px : edge === 'right' ? x >= width - px : edge === 'top' ? y <= px : y >= height - px));
   };
+  const stopFlash = () => { clearTimeout(flashTimer); flashTimer = null; };
 
-  function show() {
-    if (!hidden() && reason == null) return;
+  /** @param {'hover' | 'toggle' | 'flash'} why @returns {boolean} whether it's out */
+  function showFor(why) {
+    if (!hidden() && reason == null) return false; // docked (Keep open): nothing to bring out
     clearTimeout(hideTimer);
     hideTimer = null;
-    if (rt.vm?.window.sidebar === 'peek') return;
-    reason = 'hover';
-    rt.setUi({ sidebar: 'peek' });
+    // Toggled out, it stays toggled; hovered or flashed, a toggle takes it over.
+    if (reason !== 'toggle' || why === 'toggle') reason = why;
+    if (why !== 'flash') stopFlash();
+    if (rt.vm?.window.sidebar !== 'peek') rt.setUi({ sidebar: 'peek' });
+    return true;
   }
+  const show = () => showFor('hover');
   function hide() {
     clearTimeout(hideTimer);
     hideTimer = null;
+    stopFlash();
     reason = null;
     if (rt.ui.sidebar === 'peek') rt.setUi({ sidebar: null });
   }
@@ -73,9 +90,11 @@ export function installPeek(rt) {
   rt.listen(container, 'pointermove', (/** @type {PointerEvent} */ e) => {
     if (e.pointerType && e.pointerType !== 'mouse') return;
     const target = /** @type {Element} */ (e.target);
-    if (view.behaviorAt(target, 'm-peek')) return show();
-    if (reason !== 'hover') return;
+    if (view.behaviorAt(target, 'm-peek')) return void show();
     const inside = view.owns(target) && target !== view.rootElement() && target !== view.pageEl;
+    // Flashed out, the pointer on it keeps it, as a hover.
+    if (reason === 'flash' && inside) { reason = 'hover'; stopFlash(); }
+    if (reason !== 'hover') return;
     if (inside) stay();
     else scheduleHide();
   }, { passive: true });
@@ -85,11 +104,15 @@ export function installPeek(rt) {
     const box = size();
     if (!atEdge(e.clientX - (box.left ?? 0), e.clientY - (box.top ?? 0))) scheduleHide();
   });
+  // Toggled out: Escape takes it back (not one a menu, the palette or an edit takes).
+  rt.listen(rt.doc, 'keydown', (/** @type {KeyboardEvent} */ e) => {
+    if (e.key === 'Escape' && reason === 'toggle' && !rt.ui.palette?.open && !rt.ui.menu && !rt.busy()) hide();
+  }, true);
 
   return {
     afterRender(vm) {
-      // Keep open turned on while it's out: it docks (content/layout.js settle).
-      if (vm.window.pinnedOpen && rt.ui.sidebar === 'peek') { reason = null; clearTimeout(hideTimer); hideTimer = null; rt.setUi({ sidebar: null }); return; }
+      // Keep open turned on while it's out: it docks.
+      if (vm.window.pinnedOpen && rt.ui.sidebar === 'peek') { reason = null; clearTimeout(hideTimer); hideTimer = null; stopFlash(); rt.setUi({ sidebar: null }); return; }
       const px = `${zonePx()}px`;
       const zones = view.marked('m-peek');
       const key = `${px}:${zones.length}`;
@@ -100,16 +123,35 @@ export function installPeek(rt) {
     },
     /** A position over the page (the host's). */
     pagePointer({ x, y }) {
-      if (atEdge(x, y)) return show();
+      if (atEdge(x, y)) return void show();
       if (reason === 'hover') scheduleHide();
     },
     pageLeft({ x, y }) {
       if (reason === 'hover' && !atEdge(x, y)) scheduleHide();
     },
+    showFor,
+    hide,
+    /**
+     * The show/hide key: with Keep open on, it turns it off (the sidebar
+     * goes); out over the page, it goes back; else it comes out until the
+     * key again, Escape or a click on the page.
+     */
+    toggle() {
+      if (rt.vm?.window.pinnedOpen) return rt.dispatch('sidebar.toggle', undefined, 'behavior');
+      if (reason) return void hide();
+      showFor('toggle');
+    },
+    /** Out for `ms` (after a space switch by key), unless hovered or toggled meanwhile. */
+    flash(ms = FLASH_MS) {
+      if (reason && reason !== 'flash') return;
+      if (!showFor('flash')) return;
+      stopFlash();
+      flashTimer = setTimeout(() => { flashTimer = null; if (reason === 'flash') hide(); }, ms);
+    },
     /** Out of peek without a delay (Keep open turned on or off). */
-    reset() { clearTimeout(hideTimer); hideTimer = null; reason = null; },
+    reset() { clearTimeout(hideTimer); hideTimer = null; stopFlash(); reason = null; },
     reason: () => reason,
     busy: () => false,
-    destroy() { clearTimeout(hideTimer); },
+    destroy() { clearTimeout(hideTimer); stopFlash(); },
   };
 }

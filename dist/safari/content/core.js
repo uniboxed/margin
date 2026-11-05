@@ -1,10 +1,16 @@
-// Margin on web pages: everything it does there, whatever the theme. Renders
-// from storage.local; when to show, dock, place the page, follow gestures and
-// shortcuts is decided here. What it looks like is the active theme's
-// (themes/<id>/content.js, a separate script that runs right after this
-// one; see themes/register.js for what a theme provides).
+// Margin on web pages: everything it does there, whatever the theme. Reads
+// the state from storage.local and draws it with Margin's UI runtime
+// (ui/runtime.js, through the in-page host: ui/host.js) in a closed shadow
+// root, with the active theme's package (HTML and CSS only), which the
+// background hands over (background/theme-package.js). Where the page goes
+// is the theme's page slot (content/layout.js); following gestures and
+// shortcuts, and getting ready, are decided here. On the Mac this is a
+// development host until Margin.app draws the UI (PLAN.md §1).
 import * as V from '../shared/view.js';
-import { createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHost } from '../shared/dom.js';
+import { createRuntime } from '../ui/runtime.js';
+import { createInPageHost } from '../ui/host.js';
+import { loadTheme } from '../ui/theme-loader.js';
+import { asBrowserUi, createHost, hideHost, mark, marginHosts, mountHost, setPageZoom, showHost } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { asksBackground, madeAfresh as madeAfreshNavigation, platform } from '../shared/platform.js';
 import { watchAway } from '../shared/away.js';
@@ -62,7 +68,7 @@ export function startCore({ onTheme } = {}) {
   const origin = api.runtime.getURL('');
   let dormant = false;
 
-  const { host, shadow } = createHost(document, 'margin-sidebar-host');
+  const { host, shadow } = createHost(document, 'margin-sidebar-host', { fill: true });
   const retired = () => dormant || host.style.getPropertyValue('display') === 'none';
 
   // Some pages replace <html>'s children; put the host back if it's removed.
@@ -229,29 +235,144 @@ export function startCore({ onTheme } = {}) {
     });
   }
 
-  // ---- the theme -------------------------------------------------------------
-  // What Margin looks like: the theme's view, mounted into the closed shadow
-  // root. Nothing is drawn before it's mounted (usually at once: its script
-  // runs right after this one).
-  let theme = null;
-  let view = null;
+  // ---- the UI ------------------------------------------------------------------
+  // What Margin looks like: the active theme's package, drawn by the UI
+  // runtime in the closed shadow root (the host fills the window: shared/
+  // dom.js createHost `fill`). The package comes from the background (a
+  // message: nothing here loads an extension URL), is checked as any
+  // package is (ui/theme-loader.js), and nothing is drawn before it's there.
+  // A change of theme (Settings) draws the new one in place.
+  /** @type {any} */
+  let runtime = null;
+  /** @type {any} */
+  let view = null; // what the rest of this file draws through (uiView, below)
   let firstRender = true; // until the first render, nothing has been drawn
-  // "+ New tab" opens the command palette here (content/palette.js sets openPalette).
-  const onNewTab = () => (Margin.content.openPalette ? Margin.content.openPalette({ newTab: true }) : send('newTab', { windowId }));
-  function mountTheme() {
-    if (view || !Margin.theme) return;
+  let themeId = null; // the theme drawn
+  // The state as the UI's host gets it: this page's (refresh, change events,
+  // a show's preparation), handed over as it's drawn (render).
+  const uiSource = {
+    listeners: new Set(),
+    getState: () => state,
+    onState(cb) { this.listeners.add(cb); return () => this.listeners.delete(cb); },
+    emit() { for (const cb of [...this.listeners]) cb(state); },
+  };
+  // A switch asked for from the sidebar while it's out over the page says
+  // how it was opened (the next page opens it the same way: carry-open).
+  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab', 'setSpace']);
+  const uiSend = (type, payload = {}) => {
+    const message = SWITCHES.has(type) && payload?.show ? { ...payload, show: layout.reason() === 'toggle' ? 'toggle' : 'hover' } : payload;
+    return Promise.resolve(send(/** @type {any} */ (type), message));
+  };
+  // Margin's notices (the runtime's `notice` part): what each button runs
+  // stays here, the theme shows its words.
+  /** @type {Map<string, Record<string, () => void>>} */
+  const noticeRuns = new Map();
+  let noticeSeq = 0;
+  let noticeTimer2 = null;
+  function showNotice(notice) {
+    clearTimeout(noticeTimer2);
+    noticeRuns.clear();
+    if (!runtime) return;
+    if (!notice) return void runtime.setUi({ notice: null });
+    const id = `n${++noticeSeq}`;
+    const actions = (notice.actions ?? []).map((a, i) => ({ id: `a${i}`, label: a.label, primary: i === 0 }));
+    noticeRuns.set(id, Object.fromEntries((notice.actions ?? []).map((a, i) => [`a${i}`, a.run])));
+    runtime.setUi({ notice: { id, text: notice.text, actions } });
+    if (notice.duration) noticeTimer2 = setTimeout(() => { if (runtime?.ui.notice?.id === id) runtime.setUi({ notice: null }); }, notice.duration);
+  }
+  // Made with the first UI (it reads the state, declared below).
+  /** @type {any} */
+  let uiHost = null;
+  const makeUiHost = () => createInPageHost({
+    api,
+    window,
+    platform: { browser: platform?.name ?? 'unknown', os: 'mac', marginFullscreen: !!platform?.marginFullscreen },
+    mode: 'inpage',
+    source: uiSource,
+    send: uiSend,
+    perform: (name, arg) => {
+      if (name === 'notice') {
+        const run = noticeRuns.get(arg?.id)?.[arg?.action];
+        noticeRuns.delete(arg?.id);
+        clearTimeout(noticeTimer2);
+        run?.();
+        return true;
+      }
+      if (name === 'prompt') return true; // no prompts on web pages yet
+      if (name === 'navigate') return false; // an address from the palette opens a new tab here
+      return undefined;
+    },
+    onLayout: (geometry) => layout.apply(geometry),
+  });
+  // What the rest of this file draws through.
+  const uiView = {
+    update(next, { windowId: w, tabId: t }) {
+      if (uiHost && (uiHost.windowId !== w || uiHost.tabId !== t)) uiHost.identify({ tabId: t, windowId: w });
+      uiSource.emit();
+    },
+    showNotice,
+    setColorScheme() {}, // the theme follows the system (prefers-color-scheme)
+    ready() {},
+    instantOnce() {},
+    isBusy: () => !!runtime?.busy(),
+    setLoading: (on) => runtime?.setUi({ pageLoading: !!on }),
+    setPull() {}, // no pull or swipe badges in Margin 2's themes yet
+    setSwipe() {},
+    // Out of the way (Chrome outside full screen, a copy that stood back):
+    // only notices and prompts show (ui/render.js m-away).
+    setAway(on) { runtime?.view.rootElement()?.toggleAttribute('m-away', !!on); },
+  };
+  // The switch the UI asked for is slow, or didn't happen: as for any
+  // switch from this page (the pill, the notice).
+  const onSwitchSlow = (slow) => loader.switching(slow);
+  const decode = (text) => { const bin = atob(text); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
+  /** @type {string | null} */
+  let loadingTheme = null; // a load under way (one at a time)
+  const wantedTheme = () => String(state?.settings?.theme ?? 'arcadia');
+  /** @param {string} want */
+  async function loadUi(want) {
+    loadingTheme = want;
     try {
-      view = Margin.theme.mount({ shadow, document, send: themeSend, onNewTab, onWidth: layout.onWidth, onScroll: saveScroll, onSwitch: (id, request) => Margin.content.startSwitching(id, request) });
-      theme = Margin.theme;
+      const pkg = /** @type {any} */ (await send('themePackage', { id: want }));
+      if (!pkg || typeof pkg !== 'object' || typeof pkg.id !== 'string') return;
+      const files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))]));
+      const theme = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: state?.settings?.themes?.[pkg.id] ?? null });
+      if (!theme.ok) return void console.error('[margin] theme', pkg.id, 'refused:', /** @type {any} */ (theme).report.errors);
+      if (retired()) return;
+      // An unknown id gets the default: the one the state names, as far as this page goes.
+      themeId = want;
+      mountUi(theme);
     } catch (err) {
-      return console.error('[margin] theme', Margin.theme.id, 'failed to start:', err);
+      console.error('[margin] theme', want, 'failed to load:', err);
+    } finally {
+      loadingTheme = null;
     }
-    applyColorScheme();
-    onTheme?.(theme);
+    // Settings chose another one meanwhile.
+    if (runtime && wantedTheme() !== themeId) requestTheme();
+  }
+  // Once per shadow root: no page context menu, selection or zoom there.
+  let browserUi = false;
+  function mountUi(theme) {
+    const before = runtime;
+    const keep = before ? { palette: before.ui.palette } : {};
+    before?.destroy();
+    before?.theme?.unload?.();
+    try {
+      uiHost ??= makeUiHost();
+      uiHost.identify({ tabId, windowId });
+      runtime = createRuntime({ host: uiHost, theme, container: shadow, ui: keep, onSwitchSlow, onSwitchFailed: () => switchFailed() });
+      runtime.theme = theme;
+    } catch (err) {
+      runtime = null;
+      view = null;
+      return console.error('[margin] theme', theme.id, 'failed to start:', err);
+    }
+    view = uiView;
+    if (!browserUi) asBrowserUi(shadow);
+    browserUi = true;
+    if (!before) onTheme?.(runtime);
     if (state) render();
     layout.reopen(); // hovered or toggled before it was there
-    if (readiness.shown()) view.setStartup?.(true); // getting ready before it was there
-    if (warmUpNote && !document.hidden) view.setWarmUp?.(warmUpNote); // the warm-up's note, told before it was there
     offerFittedReload();
   }
   // Taking over from a copy from before the page's box, on a page that copy
@@ -268,17 +389,13 @@ export function startCore({ onTheme } = {}) {
     // Not taken for "Margin isn't responding" told already (noAnswer).
     toldNoAnswer = false;
   }
-  Margin.content.themeArrived = mountTheme;
-  // The theme's registered script didn't run on this page (Safari loads
-  // stored registrations a moment after it starts, and pages open when Margin
-  // was installed only get this script): ask the background for it.
-  let themeRequested = false;
+  // The theme for the state: loaded once the state says which, and again
+  // when Settings changes it. If it didn't work, the next state change asks again.
   function requestTheme() {
-    if (view || themeRequested) return;
-    themeRequested = true;
-    // If it didn't work, the next state change asks again.
-    send('injectTheme').then((ok) => { if (!ok) themeRequested = false; });
+    if (!state || loadingTheme != null || (runtime && wantedTheme() === themeId)) return;
+    void loadUi(wantedTheme());
   }
+  Margin.content.runtime = () => runtime;
 
   // ---- Light/Dark: follows only the Mac's appearance, never the page ---------
 
@@ -327,6 +444,8 @@ export function startCore({ onTheme } = {}) {
   const pinch = startPinch({ host }, { box: () => box, link });
   const page = {
     api, host, send, link, pinch,
+    // Margin's UI (ui/runtime.js), once it's there.
+    runtime: () => runtime,
     // Where the box is now (content/layout.js).
     boxed: () => !!box,
     setBox: (next, options) => {
@@ -335,7 +454,7 @@ export function startCore({ onTheme } = {}) {
       pinch.follow();
     },
     view: () => view,
-    theme: () => theme,
+    theme: () => runtime?.theme ?? null,
     state: () => state,
     setState: (next) => { state = next; },
     firstRender: () => firstRender,
@@ -424,15 +543,6 @@ export function startCore({ onTheme } = {}) {
   let helloWindowId = null;
   let windowId = null;
 
-  // A new tab being chosen in the palette (content/palette.js): the sidebar
-  // highlights "+ New Tab", not this page's tab, until the palette closes.
-  let newTabPending = false;
-  Margin.content.setNewTabPending = (value) => {
-    if (newTabPending === !!value) return;
-    newTabPending = !!value;
-    render();
-  };
-
   // A switch to another tab from here (a click in the sidebar or the palette,
   // a next/previous key; shared/switching.js): the sidebar highlights it at
   // once, and the theme covers this page with an empty screen until the
@@ -447,6 +557,15 @@ export function startCore({ onTheme } = {}) {
   // didn't answer (that notice comes later, if it still doesn't: noAnswer).
   // Switch requests answer what they showed ({ shown }); `undefined` is a
   // failed request (send).
+  function switchFailed() {
+    const why = switchError;
+    void refresh();
+    if (!why || dormant || noticeUp) return;
+    const text = /no longer open|No tab with id/i.test(why) ? 'That tab is no longer open.'
+      : why === NO_ANSWER ? 'Margin didn’t answer, so the tab didn’t switch. Try again.'
+      : 'Margin couldn’t show that tab. Try again.';
+    view?.showNotice?.({ text, duration: 4000 });
+  }
   const switching = createSwitching({
     onChange: (id) => {
       switchingTo = id;
@@ -455,6 +574,9 @@ export function startCore({ onTheme } = {}) {
         setCovered(id != null && !!view?.setCover);
       }
       mark(host, 'switchingTo', id == null ? '' : String(id)); // test/debug hook
+      // The background's switch from this page (a next/previous key): the
+      // UI highlights its tab (its own clicks it highlights itself).
+      runtime?.setUi({ switchingTo: id });
       render();
     },
     onSlow: (slow) => {
@@ -466,15 +588,7 @@ export function startCore({ onTheme } = {}) {
     },
     failed: (result) => result === undefined,
     onBlink: (times) => void send('pageBlinked', times, false),
-    onFailed: () => {
-      const why = switchError;
-      void refresh();
-      if (!why || dormant || noticeUp) return;
-      const text = /no longer open|No tab with id/i.test(why) ? 'That tab is no longer open.'
-        : why === NO_ANSWER ? 'Margin didn’t answer, so the tab didn’t switch. Try again.'
-        : 'Margin couldn’t show that tab. Try again.';
-      view?.showNotice?.({ text, duration: 4000 });
-    },
+    onFailed: switchFailed,
   });
   const fromBackground = backgroundSwitches();
   // While the switch's cover is up, keys don't reach the page under it: it's
@@ -608,9 +722,8 @@ export function startCore({ onTheme } = {}) {
   // the state is read again whenever the page is shown (Safari suspends tabs
   // it isn't showing, and they miss storage events meanwhile; a page from
   // the back/forward cache missed them too), and the tab list's scroll
-  // position is the window's (background/scroll.js), not each page's.
-  let pendingScroll = null; // applied by the next render
-  let scrollGen = 0; // bumped by every scroll of the user's: theirs wins over a late reply
+  // position is the window's (background/scroll.js; the UI's m-scroll
+  // keeps it: ui/behaviors/scroll.js), not each page's.
   // A hidden destination prepared by the background before Safari activates
   // it. Its sidebar is already current, scrolled and open the same way as the
   // source; the first visibilitychange must not replace that prepared frame
@@ -622,31 +735,13 @@ export function startCore({ onTheme } = {}) {
   // there instead of finishing for a switch the background let go of. The
   // last few only; each token is used once.
   const calledOff = new Set();
-  // Once `drawn` (the state read started with it) has rendered, so the
-  // position isn't applied to the old, shorter list and clamped there.
-  function restoreScroll(drawn) {
-    const gen = scrollGen;
-    Promise.all([send('sidebarScroll', {}, false), drawn]).then(([top]) => {
-      if (!Number.isFinite(top) || gen !== scrollGen) return;
-      pendingScroll = top;
-      render();
-    });
-  }
-  let scrollTimer = null;
-  let scrollTop = 0;
-  function saveScroll(top) {
-    scrollGen++;
-    scrollTop = top;
-    scrollTimer ??= setTimeout(flushScroll, 150);
-  }
-  // Now: before a switch (the next page asks for it at once) and when the
-  // page is left (its timers may not run once hidden).
-  function flushScroll() {
-    if (scrollTimer == null) return;
-    clearTimeout(scrollTimer);
-    scrollTimer = null;
-    send('setSidebarScroll', { top: scrollTop }, false);
-  }
+  // The UI asks for the window's position as the page is shown, and once
+  // more a moment later (restoreScroll: the page left can save its own as
+  // it's hidden, just after this one asked); it saves the user's at once
+  // before a switch (flushScroll: the next page asks for it at once) and
+  // when the page is left.
+  const restoreScroll = () => runtime?.restoreScroll();
+  const flushScroll = () => runtime?.flushScroll();
   function shown() {
     lastShownAt = Date.now();
     offerFittedReload();
@@ -664,7 +759,7 @@ export function startCore({ onTheme } = {}) {
       // A key switch right after scrolling: the page left saves its position
       // as it's hidden, after this one was prepared with the one before.
       // Asked once more (not if the user scrolls here).
-      setTimeout(() => restoreScroll(Promise.resolve()), 400);
+      setTimeout(restoreScroll, 400);
     } else {
       if (prepared?.carry) layout.hide(); // a prepared switch that never landed
       // Drawn at once from what changed while hidden (below), before storage
@@ -672,11 +767,12 @@ export function startCore({ onTheme } = {}) {
       // closing the tab in front) shows the right rows from its first frame.
       if (changedWhileHidden && state) render();
       changedWhileHidden = false;
-      restoreScroll(refresh());
+      void refresh();
       // Switched by keyboard or Safari's tab bar right after scrolling: the
       // page left saves its position as it is hidden, which can land just
-      // after this one asked. Asked once more (not if the user scrolls here).
-      setTimeout(() => restoreScroll(Promise.resolve()), 400);
+      // after this one asked (the UI asks as it's shown). Asked once more
+      // (not if the user scrolls here).
+      setTimeout(restoreScroll, 400);
     }
     checkFullscreen();
     readZoom();
@@ -689,23 +785,6 @@ export function startCore({ onTheme } = {}) {
   addEventListener('pageshow', (event) => event.persisted && shown());
   addEventListener('pagehide', flushScroll);
 
-  // What the theme sends. A switch made from the sidebar while it's open
-  // over the page says how it was opened (the next page opens it the same
-  // way: carry-open below), after saving the tab list's position.
-  const SWITCHES = new Set(['activateTab', 'openPin', 'closeTab', 'setSpace']);
-  /** @type {import('../../types/margin').Send} */
-  const themeSend = (type, payload, ...rest) => {
-    if (!SWITCHES.has(type)) return send(type, payload, ...rest);
-    const sidebarTop = scrollTimer == null ? null : scrollTop;
-    flushScroll();
-    const how = layout.reason() === 'toggle' ? 'toggle' : 'hover';
-    const message = {
-      .../** @type {any} */ (payload),
-      ...((/** @type {any} */ (payload))?.show ? { show: how } : {}),
-      ...(Number.isFinite(sidebarTop) ? { sidebarTop } : {}),
-    };
-    return send(type, message, ...rest);
-  };
   // Opened here because the previous page's sidebar was open (background
   // carryOpen, or with hello): at once, without sliding in again. Before
   // Chrome's full-screen answer, kept until hello brings it.
@@ -716,43 +795,25 @@ export function startCore({ onTheme } = {}) {
     layout.show(why === 'toggle' ? 'toggle' : 'hover');
   }
 
+  // The UI draws the state for this page's tab and window. Just shown (or
+  // started), it shows its own tab's space while the state catches up
+  // (shared/view.js; the runtime's justShown).
   function drawRows() {
     if (!state || !view) return;
-    // Just shown (or started): its own tab's space while the state catches up
-    // (shared/view.js). Not once a switch was asked for from here (a swipe to
-    // another space: the window's space is then the one it went to).
-    const justShown = (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt;
-    view.update(state, { windowId, tabId, newTabPending, switchingTo, justShown, ...(pendingScroll != null ? { scroll: pendingScroll } : {}) });
-    pendingScroll = null;
-  }
-  let idleRows = 0;
-  function drawRowsIdle() {
-    if (idleRows) return;
-    const run = () => {
-      idleRows = 0;
-      if (!active() && !document.hidden) drawRows();
-    };
-    idleRows = typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 200);
+    view.update(state, { windowId, tabId });
   }
   function render() {
-    if (!state || !view) return;
+    if (!state) return;
+    requestTheme(); // the first, or Settings chose another
+    if (!view) return;
     if (fullscreenOnly() && fullscreen === null) return; // until the background says (above)
     // Known tab → its window. Until the background answers `hello`, guess, so
     // the sidebar draws straight from storage instead of waiting for it.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
-    // Chrome, a window that isn't full screen: the sidebar can't be seen, and
-    // its rows aren't drawn as part of this (a draw on every load and every
-    // change, in every tab). With Keep open, the tab in sight draws them once
-    // its page is idle, so the sidebar it shows as Margin comes in has its
-    // icons there (drawn in that very turn, they were empty for 3–4 frames in
-    // headless Chrome, icons 40 ms away); the others, and without Keep open
-    // (the sidebar comes in closed), as Margin comes in (setFullscreen, hello,
-    // the setting turned off all render), in the same turn, before the layout
-    // shows it.
-    if (!fullscreenOnly() || fullscreen === true) drawRows();
-    else if (!document.hidden && state.settings?.sidebarPinnedOpen) drawRowsIdle();
+    drawRows();
     Margin.content.onState?.(state, { tabId, windowId });
     wasActive = active();
+    view.setAway(!active());
     layout.settle();
     trackpad.update();
     if (firstRender) {
@@ -836,12 +897,13 @@ export function startCore({ onTheme } = {}) {
       adoptedNote = noted;
       tabId = noted.tabId;
       helloWindowId = noted.windowId;
-      if (firstRender && Number.isFinite(noted.scroll)) pendingScroll = noted.scroll;
       console.debug(`[margin] drawn as tab ${noted.tabId}, the one being shown (before hello)`);
     }
+    const firstScroll = firstRender;
     state = stateForShow(next, show ?? (noted ? { tabId: noted.tabId, windowId: noted.windowId } : null));
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1)); // drawn at its size from the start
     render();
+    if (noted && firstScroll && Number.isFinite(noted.scroll)) runtime?.setScroll(noted.scroll);
     if (noted?.carry && !carriedNoted) {
       carriedNoted = true;
       carryOpen(noted.carry);
@@ -1194,10 +1256,10 @@ export function startCore({ onTheme } = {}) {
     tabId = targetId;
     helloWindowId = targetWindow;
     switching.end();
-    newTabPending = false;
-    if (Number.isFinite(scroll)) pendingScroll = Math.max(0, scroll);
+    runtime?.setUi({ newTabPending: false });
     const known = !firstRender && !!state?.spaces?.length && knowsState(rev, { known: knownRev, reading, staleRead });
     const rendered = known ? drawKnown({ tabId: targetId, windowId: targetWindow }) : await refresh({ tabId: targetId, windowId: targetWindow });
+    if (Number.isFinite(scroll)) runtime?.setScroll(Math.max(0, scroll));
     if (preparedShow?.token !== token) return { ready: false, reason: 'superseded' };
     if (!rendered || !state || !view || windowId !== targetWindow) {
       preparedShow = null;
@@ -1324,7 +1386,7 @@ export function startCore({ onTheme } = {}) {
   }
   if (document.readyState === 'complete') setTimeout(logTiming);
   else addEventListener('load', () => setTimeout(logTiming), { once: true });
-  restoreScroll(refresh());
+  void refresh();
   send('hello', { ...(windowSeen ? {} : { unseen: true }), doc: docId, fresh: startedFresh, made: madeAfresh }).then((ctx) => {
     if (dormant) return;
     if (!ctx) return setFullscreen(false); // no background: as if in a window, until a resize asks again
@@ -1491,6 +1553,5 @@ export function startCore({ onTheme } = {}) {
     api.storage.onChanged.addListener(onStorageChanged);
     api.runtime.onMessage.addListener(onMessage);
   });
-  mountTheme(); // if the theme's script ran first
   return true;
 }

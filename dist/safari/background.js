@@ -337,7 +337,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme', 'injectPage', 'fetchStyle']);
+const BEFORE_SYNC = new Set(['hello', 'inView', 'owner', 'prewake', 'away', 'back', 'pageBlinked', 'warmUpInput', 'warmUpStop', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'newTabKeyUsed', 'windowState', 'injectTheme', 'injectPage', 'fetchStyle', 'themePackage']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it

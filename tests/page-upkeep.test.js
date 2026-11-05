@@ -256,10 +256,9 @@ test('sheets: @media rules a page took out are swept as they pile up, not only w
 test('layout: whether the first-paint placeholder is there is asked once, not on every render; a change of its settings switches it off unasked', async () => {
   const { startLayout } = await import('../extension/content/layout.js');
   let state = { settings: { sidebarPinnedOpen: true } };
-  const view = { width: () => 260, setLayout: () => true, setWidth() {}, isBusy: () => false };
   const page = {
-    host: { dataset: {} }, send() {}, link: { can: true }, theme: () => null, zoom: () => 1,
-    view: () => view, state: () => state, setState() {}, active: () => true, justShown: () => false, firstRender: () => false,
+    host: { dataset: {} }, send() {}, link: { can: true }, runtime: () => null, zoom: () => 1,
+    state: () => state, setState() {}, active: () => true, justShown: () => false, firstRender: () => false,
     dormant: () => false, setBox() {}, offerFullscreen() {},
   };
   let tookOver = 0;
@@ -292,10 +291,9 @@ test('layout: a placeholder registered after the page started is caught when it\
   const { startLayout } = await import('../extension/content/layout.js');
   timers.clear();
   const state = { settings: { sidebarPinnedOpen: true } };
-  const view = { width: () => 260, setLayout: () => true, setWidth() {}, isBusy: () => false };
   const page = {
-    host: { dataset: {} }, send() {}, link: { can: true }, theme: () => null, zoom: () => 1,
-    view: () => view, state: () => state, setState() {}, active: () => true, justShown: () => false, firstRender: () => false,
+    host: { dataset: {} }, send() {}, link: { can: true }, runtime: () => null, zoom: () => 1,
+    state: () => state, setState() {}, active: () => true, justShown: () => false, firstRender: () => false,
     dormant: () => false, setBox() {}, offerFullscreen() {},
   };
   const shownOrHidden = [];
@@ -351,4 +349,29 @@ test('layout: a placeholder registered after the page started is caught when it\
     document.hidden = false;
     timers.clear();
   }
+});
+
+test('layout: the page\'s box is the theme\'s page slot (the runtime\'s layout report); none with nothing at any edge, or with Margin out of the way', async () => {
+  const { startLayout } = await import('../extension/content/layout.js');
+  let active = true;
+  const boxes = [];
+  const page = {
+    host: { dataset: {} }, send() {}, link: { can: false }, runtime: () => null, zoom: () => 1,
+    state: () => null, setState() {}, active: () => active, justShown: () => false, firstRender: () => false,
+    dormant: () => false, setBox: (box, options) => boxes.push([box, options]), offerFullscreen() {},
+  };
+  const layout = startLayout(/** @type {any} */ (page), { loader: /** @type {any} */ ({ tookOverPlaceholder() {} }) });
+  const report = (left, top, right, bottom) => layout.apply({ insets: { left, top, right, bottom }, radius: 6, radii: [6, 6, 6, 6], outer: { left, top, right, bottom, radius: 6 }, container: { width: 1200, height: 800 } });
+  report(260, 8, 8, 8);
+  assert.deepEqual(boxes.at(-1), [{ left: 260, top: 8, right: 8, bottom: 8 }, { live: false }]);
+  assert.equal(page.host.dataset.box, undefined, 'marks only under a test harness');
+  report(0, 0, 0, 0);
+  assert.deepEqual(boxes.at(-1)[0], null, 'the whole window: no box');
+  report(8, 8, 8, 8);
+  active = false;
+  layout.settle(); // a render: the last report again
+  assert.deepEqual(boxes.at(-1)[0], null, 'out of the way: no box');
+  active = true;
+  layout.settle();
+  assert.deepEqual(boxes.at(-1)[0], { left: 8, top: 8, right: 8, bottom: 8 });
 });

@@ -18,7 +18,7 @@ const SETTING = 'sidebarWidth';
 /** @param {any} rt */
 export function installResize(rt) {
   const { view, theme } = rt;
-  /** @type {{ el: Element, pointerId: number, startX: number, start: number, width: number } | null} */
+  /** @type {{ el: Element, pointerId: number, startX: number, start: number, width: number, k: number } | null} */
   let drag = null;
   let warned = false;
 
@@ -58,13 +58,14 @@ export function installResize(rt) {
     e.stopPropagation();
     try { hit.el.setPointerCapture(e.pointerId); } catch {}
     const start = current();
-    drag = { el: hit.el, pointerId: e.pointerId, startX: e.clientX, start, width: start };
+    // The pointer moves in the page's pixels, the width is Margin's (rt.scale).
+    drag = { el: hit.el, pointerId: e.pointerId, startX: e.clientX, start, width: start, k: rt.scale?.() || 1 };
     hit.el.classList.add('m-resizing');
     view.rootElement()?.classList.add('m-resizing');
   }, true);
   rt.listen(rt.container, 'pointermove', (/** @type {PointerEvent} */ e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
-    const width = clamp(drag.start + (e.clientX - drag.startX) * sign());
+    const width = clamp(drag.start + (e.clientX - drag.startX) * drag.k * sign());
     if (width === drag.width) return;
     drag.width = width;
     rt.setThemeSettings({ [SETTING]: value(width) }, { live: true });

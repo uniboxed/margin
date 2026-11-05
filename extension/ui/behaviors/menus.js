@@ -121,16 +121,19 @@ export function installMenus(rt) {
       const s = slot();
       if (!vm.menu || !s || !s.firstElementChild) return;
       // At the pointer, kept inside the window (`above`: its bottom there).
+      // The pointer is in the page's pixels, the menu placed in Margin's
+      // (the page's zoom: rt.scale).
       const w = s.offsetWidth;
       const h = s.offsetHeight;
-      const key = `${vm.menu.kind}:${vm.menu.id}:${vm.menu.x}:${vm.menu.y}:${w}:${h}`;
+      const k = rt.scale?.() || 1;
+      const key = `${vm.menu.kind}:${vm.menu.id}:${vm.menu.x}:${vm.menu.y}:${w}:${h}:${k}`;
       if (key === placed) return;
       const first = !placed;
       placed = key;
       const win = rt.win;
-      const y0 = rt.ui.menu?.above ? vm.menu.y - h - 6 : vm.menu.y;
-      const x = Math.max(4, Math.min(vm.menu.x, win.innerWidth - w - 4));
-      const y = Math.max(4, Math.min(y0, win.innerHeight - h - 4));
+      const y0 = rt.ui.menu?.above ? vm.menu.y * k - h - 6 : vm.menu.y * k;
+      const x = Math.max(4, Math.min(vm.menu.x * k, win.innerWidth * k - w - 4));
+      const y = Math.max(4, Math.min(y0, win.innerHeight * k - h - 4));
       s.style.setProperty('--m-menu-x', `${Math.round(x)}px`);
       s.style.setProperty('--m-menu-y', `${Math.round(y)}px`);
       if (first) {

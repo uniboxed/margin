@@ -1,83 +1,51 @@
-// Where Margin sits on the page: shown on hover, toggled, peeking, or docked
-// with "Keep open", where the page's box goes (shared/page-box.js), the
-// first-paint placeholder's hand-over, and the show/hide shortcut. The theme
-// draws it (view.setLayout, setWidth). Called by content/core.js.
+// Where Margin sits on the page, with its UI drawn by the UI runtime
+// (ui/runtime.js, Margin 2): the theme decides the layout, and its page slot
+// (`<m-page>`, measured by the runtime) is where the page's box goes
+// (shared/page-box.js, content/page-link.js). This module links the two and
+// does what only the page can: the pointer over the page (it reaches the
+// page, not Margin's UI) handed to the runtime for the reveal edge; the
+// pointer over the page's slot let through to the page; the show/hide key;
+// a moment out after a space switch by key; a toggled sidebar closed by a
+// click on the page; the first-paint placeholder's hand-over. Called by
+// content/core.js.
 import { mark } from '../shared/dom.js';
 import * as V from '../shared/view.js';
 import * as shortcuts from '../shared/shortcuts.js';
 
-// Reveal zone: 10px, or 24px in a full-screen window, where Safari's own
-// sidebar opens if the cursor rests at the very edge (see view.revealZone).
-const edgePx = () =>
-  V.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height });
-const HIDE_DELAY_MS = 300;
 const PLACEHOLDER_RECHECK_MS = 5000;
+// After ⌘⌥←/→: out this long, so the new space is seen (ui/behaviors/peek.js flash).
+const PEEK_MS = 1200;
 
-// `page`: see content/core.js. `loader`: content/loader.js.
+// `page`: see content/core.js (`page.runtime()`: the UI, once it's there).
+// `loader`: content/loader.js.
 export function startLayout(page, { loader }) {
-  const { host, send } = page;
-  // The theme's frame around the page card (px): the box and the hover hit
-  // area end there.
-  const inset = () => page.theme()?.geometry?.inset ?? 0;
-  // Margin's sizes (the sidebar's width, the frame) stay the same on screen
-  // whatever the page's zoom (shared/dom.js setPageZoom); in the page's own
-  // (zoomed) pixels, which the box and the pointer use, they're this.
-  const pagePx = (px) => px / (page.zoom?.() ?? 1);
-  // The box for a left edge at `left` (Margin's pixels): inside the frame.
-  const boxAt = (left) => {
-    const frame = pagePx(inset());
-    return { left: pagePx(left), top: frame, right: frame, bottom: frame };
-  };
-  // While resizing: move the frame edge and, with "Keep open", the page's box
-  // along with it (at most once per animation frame). The page's own layout
-  // follows when it rests (content/page/box.js).
-  let liveWidth = null;
-  let widthFrame = null;
-  let widthDone = false;
-  const onWidth = (width, { done }) => {
-    liveWidth = width;
-    widthDone = done;
-    if (done) return applyLiveWidth();
-    widthFrame ??= requestAnimationFrame(applyLiveWidth);
-  };
-  function applyLiveWidth() {
-    widthFrame = null;
-    page.view()?.setWidth(liveWidth);
-    if (!wasDocked) return; // hidden, the page stays in the frame
-    page.setBox(boxAt(liveWidth), { live: !widthDone });
-  }
+  const { host } = page;
+  const rt = () => page.runtime();
+  // The reveal edge in the page's pixels (Margin's stay the same whatever
+  // the page's zoom), for reaching for Margin while it's out of the way.
+  const edgePx = () => V.revealZone({ outerWidth, outerHeight, screenWidth: screen.width, screenHeight: screen.height }) / (page.zoom?.() ?? 1);
 
-  let reason = null; // 'hover' | 'toggle' | null
-  let hideTimer = null;
-
-  const pinnedOpen = () => !!page.state()?.settings?.sidebarPinnedOpen;
-  // Hover: floating over the page. Keep open: docked, the page's box beside it.
-  let isOpen = false;
-  let wasDocked = false;
-  function setOpen(open) {
-    const view = page.view();
-    if (!view) return;
-    if (!page.active()) open = false; // out of the way (content/core.js): no sidebar, no box
-    const docked = open && pinnedOpen();
-    const width = view.width();
-    isOpen = open;
-    const framed = !docked && page.active() && page.state()?.settings?.frameWhenHidden !== false;
-    // Keep open turned off or on slides (the theme), only where it's seen
-    // happening: not on a page hidden, just shown, or being drawn first.
-    if (wasDocked !== docked && (document.hidden || page.justShown() || page.firstRender())) view.instantOnce?.();
-    wasDocked = docked;
-    // Hidden, the page sits inside the frame (the sidebar floats over it
-    // when it's out, and moves nothing). No frame, or out of the way, it's the
-    // page as it is, with no box. A copy that stood back leaves the box to the
-    // one in charge.
-    const place = () => {
-      if (page.dormant()) return;
-      const box = docked ? boxAt(width) : framed ? boxAt(inset()) : null;
-      page.setBox(box);
-      mark(host, 'box', box ? String(box.left) : 'off');
-    };
-    if (!view.setLayout({ open, docked, framed, width, place, why: open ? reason : null })) place();
-    mark(host, 'open', String(open)); // test/debug hook; reveals nothing private
+  // ---- the page's box: the theme's page slot ----------------------------------
+  /** @type {import('../ui/host.js').Geometry | null} */
+  let layout = null;
+  const resizing = () => !!rt()?.view.rootElement()?.classList.contains('m-resizing');
+  // The slot's insets are in the page's pixels already (the runtime measures
+  // boxes there). Nothing at any edge: the page as it is, no box.
+  const boxOf = (g) => {
+    const { left, top, right, bottom } = g.insets;
+    if ([left, top, right, bottom].every((v) => Math.abs(v) < 0.5)) return null;
+    return { left: Math.max(0, left), top: Math.max(0, top), right: Math.max(0, right), bottom: Math.max(0, bottom) };
+  };
+  // Out of the way (content/core.js active: Chrome outside full screen), no
+  // box. A copy that stood back leaves the box to the one in charge.
+  function place(geometry = layout) {
+    if (geometry) layout = geometry;
+    if (page.dormant()) return;
+    const box = page.active() && layout ? boxOf(layout) : null;
+    page.setBox(box, { live: resizing() });
+    mark(host, 'box', box ? String(Math.round(box.left)) : 'off'); // test/debug hook
+    const sidebar = rt()?.vm?.window.sidebar;
+    if (sidebar) mark(host, 'open', String(sidebar !== 'hidden' && page.active())); // test/debug hook; reveals nothing private
     if (page.state()) syncPlaceholder();
   }
 
@@ -98,6 +66,7 @@ export function startLayout(page, { loader }) {
   // off here without asking, before it arrives.
   let placeholderAsked = null; // { html, settings, at }
   let placeholderTimer = null;
+  const pinnedOpen = () => !!page.state()?.settings?.sidebarPinnedOpen;
   function syncPlaceholder() {
     const html = document.documentElement;
     if (!page.link.can || html.dataset.marginDocked === 'off') return;
@@ -120,136 +89,125 @@ export function startLayout(page, { loader }) {
       if (pinnedOpen()) loader.tookOverPlaceholder(); // hidden, its placeholder has no pill
     }
   }
-
   document.addEventListener('visibilitychange', () => {
     if (placeholderAsked) placeholderAsked.at = -Infinity;
     if (!document.hidden && page.state()) syncPlaceholder();
   });
 
-  function show(why) {
-    if (!page.active()) return; // out of the way (Chrome, not in full screen): nothing to open
-    clearTimeout(hideTimer);
-    hideTimer = null;
-    if (!reason || reason === 'peek' || why === 'toggle') reason = why;
-    setOpen(true);
+  // ---- the pointer ---------------------------------------------------------------
+  // Over the page's slot the pointer goes to the page under it, past the
+  // theme's root (its frame strips take it: they're Margin's); what the
+  // theme draws over the page (a sidebar out over it, a menu) still takes it
+  // (ui/render.js m-passthrough). Set as it crosses the slot's edge.
+  let through = null;
+  const inSlot = (x, y) => {
+    if (!layout) return false;
+    const { left, top, right, bottom } = layout.insets;
+    return x >= left && y >= top && x <= innerWidth - right && y <= innerHeight - bottom;
+  };
+  function passThrough(x, y) {
+    const root = rt()?.view.rootElement();
+    if (!root) return;
+    const on = inSlot(x, y);
+    if (on === through && root.hasAttribute('m-passthrough') === on) return;
+    through = on;
+    root.toggleAttribute('m-passthrough', on);
   }
-  function hide() {
-    clearTimeout(hideTimer);
-    hideTimer = null;
-    reason = null;
-    setOpen(pinnedOpen());
-  }
-  // While Margin is busy there (renaming, dragging, a menu), it waits, and
-  // hides once that's done if the pointer is still away (show() cancels).
-  function scheduleHide() {
-    if (reason !== 'hover' || hideTimer) return;
-    hideTimer = setTimeout(function tryHide() {
-      if (page.view()?.isBusy()) {
-        hideTimer = setTimeout(tryHide, HIDE_DELAY_MS);
-        return;
-      }
-      hideTimer = null;
-      hide();
-    }, HIDE_DELAY_MS);
-  }
-  // With "Keep open" on, the shortcut switches back to auto-hide (hide()
-  // alone would leave it pinned open).
-  // The shortcut's page listener and a `commands` key can both fire for one
-  // press; collapse them.
+  // Over the page (Margin's own UI hears its own, retargeted to the host):
+  // the runtime's reveal edge. Out of the way, reaching the edge offers full
+  // screen instead (content/core.js).
+  const onMove = (/** @type {MouseEvent} */ e) => {
+    passThrough(e.clientX, e.clientY);
+    if (e.target === host) return;
+    if (!page.active()) {
+      if (e.clientX <= edgePx()) page.offerFullscreen();
+      return;
+    }
+    rt()?.pointer({ x: e.clientX, y: e.clientY });
+  };
+  document.addEventListener('mousemove', onMove, { capture: true, passive: true });
+  document.addEventListener('mouseover', onMove, { capture: true, passive: true });
+  // Cursor left the window.
+  document.addEventListener('mouseout', (e) => {
+    if (e.relatedTarget) return;
+    rt()?.pointerLeft({ x: e.clientX, y: e.clientY });
+  });
+  // Clicking the page closes a toggled sidebar (clicks inside are retargeted
+  // to the host).
+  document.addEventListener('mousedown', (e) => {
+    passThrough(e.clientX, e.clientY);
+    if (rt()?.sidebar.reason() === 'toggle' && e.target !== host) rt()?.sidebar.hide();
+  }, true);
+
+  // ---- the show/hide key, and a peek after a space switch ---------------------
+  // With "Keep open" on, the key switches back to auto-hide (ui/behaviors/
+  // peek.js toggle). The shortcut's page listener and a `commands` key can
+  // both fire for one press; collapse them.
   let lastToggle = 0;
   function toggle() {
     if (!page.active()) return page.offerFullscreen();
     const now = Date.now();
     if (now - lastToggle < 200) return;
     lastToggle = now;
-    if (pinnedOpen()) {
-      const state = page.state();
-      page.setState({ ...state, settings: { ...state.settings, sidebarPinnedOpen: false } });
-      send('updateSettings', { patch: { sidebarPinnedOpen: false } });
-      return hide();
-    }
-    return reason ? hide() : show('toggle');
+    rt()?.sidebar.toggle();
   }
-
-  // Briefly show the sidebar (after ⌘⌥←/→) so the new space is visible even
-  // in auto-hide mode. Hovering or toggling during the peek keeps it open.
-  let peekTimer = null;
-  function peek() {
-    if (!page.active()) return;
-    if (pinnedOpen() || (reason && reason !== 'peek')) return;
-    show('peek');
-    clearTimeout(peekTimer);
-    peekTimer = setTimeout(() => reason === 'peek' && hide(), 1200);
-  }
-
-
   // Show/hide shortcut (Settings; default Option+S), in the page itself: the
   // manifest's `commands` can't suggest it (Chrome allows four, taken by the
   // tab and space keys).
-  const watchToggleKey = (win) => win.addEventListener('keydown', (e) => {
+  addEventListener('keydown', (e) => {
     // Not a page's synthetic key press: with Keep open on, this changes a setting.
     if (!e.isTrusted || !shortcuts.matches(e, page.state()?.settings?.sidebarShortcut ?? 'Alt+KeyS')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     toggle();
   }, true);
-  watchToggleKey(window);
+  // Briefly out (after ⌘⌥←/→) so the new space is seen even in auto-hide
+  // mode. Hovering or toggling during it keeps it out.
+  function peek() {
+    if (!page.active() || pinnedOpen()) return;
+    rt()?.sidebar.flash(PEEK_MS);
+  }
 
-  document.addEventListener(
-    'mousemove',
-    (e) => {
-      const x = e.clientX;
-      if (x <= pagePx(edgePx())) return page.active() ? show('hover') : page.offerFullscreen();
-      else if (!page.view()) return;
-      else if (x > pagePx(page.view().width() + inset())) scheduleHide();
-      else if (hideTimer && isOpen) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-      }
-    },
-    { capture: true, passive: true },
-  );
-  // Cursor left the window: keep open if it left through the left edge.
-  document.addEventListener('mouseout', (e) => {
-    if (e.relatedTarget) return;
-    if (e.clientX > pagePx(edgePx())) scheduleHide();
-  });
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (e.key === 'Escape' && reason === 'toggle') hide();
-    },
-    true,
-  );
-  // Clicking the page closes a toggled sidebar (clicks inside are retargeted
-  // to the host).
-  document.addEventListener('mousedown', (e) => {
-    if (reason === 'toggle' && e.target !== host) hide();
-  }, true);
+  // Before the UI is there, what it should open as when it comes.
+  /** @type {'hover' | 'toggle' | null} */
+  let wanted = null;
+  function show(why) {
+    if (!page.active()) return; // out of the way: nothing to open
+    const r = rt();
+    if (!r) return void (wanted = why === 'toggle' ? 'toggle' : 'hover');
+    r.sidebar.show(why === 'toggle' ? 'toggle' : why === 'peek' ? 'flash' : 'hover');
+  }
+  function hide() {
+    wanted = null;
+    rt()?.sidebar.hide();
+  }
+  const reason = () => {
+    const r = rt()?.sidebar.reason() ?? wanted;
+    return r === 'flash' ? 'peek' : r;
+  };
 
   return {
-    show, hide, toggle, peek, onWidth,
+    show, hide, toggle, peek, reason,
+    /** The runtime's report of the page's slot (ui/host.js reportLayout). */
+    apply: (geometry) => place(geometry),
     // Out over the page (hovered or toggled, not docked): the user is reaching for it.
-    out: () => isOpen && !wasDocked,
-    // The page's zoom changed: the box follows.
-    rezoom: () => setOpen(isOpen),
-    // After a render: back to the resting layout, unless hovered or toggled.
-    // Keep open just turned on from the sidebar out over the page: it docks.
-    settle: () => {
-      if (reason && pinnedOpen() && !wasDocked) {
-        clearTimeout(hideTimer);
-        hideTimer = null;
-        reason = null;
-      }
-      if (!reason) setOpen(pinnedOpen());
+    out: () => !!rt()?.sidebar.out(),
+    // The page's zoom changed: the slot is measured again (Margin's own
+    // size didn't change, the page's pixels did).
+    rezoom: () => { const g = rt()?.measure(); place(g ?? layout); },
+    // After a render: the slot as drawn now (measured at once, so the box
+    // moves with the same frame as the theme).
+    settle: () => { const g = rt()?.measure(); place(g ?? layout); },
+    // Once the UI is there: open if it was hovered or toggled before.
+    reopen: () => {
+      if (!wanted) return;
+      const why = wanted;
+      wanted = null;
+      show(why);
     },
-    // Once the theme is mounted: open if it was hovered or toggled before.
-    reopen: () => { if (reason) setOpen(true); },
-    // The page was left for another tab: an open-over-the-page sidebar
-    // closes here (the next page opens its own, content/core.js), so coming
-    // back doesn't find it still open.
-    leave: () => { if (reason) hide(); },
-    // How it's open right now ('hover' | 'toggle' | 'peek' | null).
-    reason: () => reason,
+    // The page was left for another tab: a sidebar out over the page closes
+    // here (the next page opens its own, content/core.js), so coming back
+    // doesn't find it still open.
+    leave: () => { if (reason()) hide(); },
   };
 }

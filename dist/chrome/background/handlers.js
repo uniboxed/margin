@@ -18,6 +18,7 @@ import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES, themeFor } from '../themes/index.js';
+import { activeThemeId, themePackage } from './theme-package.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
 import { moveIndex } from '../ui/behaviors/drop-rules.js';
@@ -888,6 +889,15 @@ export const handlers = {
       const own = theme.settingsOf({ themes: { [themeId]: { ...themes[themeId], ...patch } } });
       return { ...s, settings: { ...s.settings, themes: { ...themes, [themeId]: own } } };
     });
+  },
+  // The active theme's package (background/theme-package.js) for a page's
+  // UI: Margin's content script draws it (ui/runtime.js) once it has it.
+  // `id`: one of the built-in themes instead (Settings' preview).
+  /** @param {{ id?: string }} [message] */
+  async themePackage({ id } = {}) {
+    if (typeof id === 'string' && PACKAGE_THEMES.includes(id)) return themePackage(id);
+    const { settings } = await load();
+    return themePackage(activeThemeId(settings));
   },
   // A page the active theme's registered script missed (background/
   // registered.js; Safari loads stored registrations a moment after it

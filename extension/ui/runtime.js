@@ -58,9 +58,14 @@ const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
  *   ui?: Partial<UiState>,
  *   onWarn?: (message: string) => void,
  *   log?: (entry: { name: string, arg: any, reason: string }) => void,
- * }} options `ui`: the UI state to start from; `log`: every action refused
+ *   onSwitchSlow?: (slow: boolean) => void,
+ *   onSwitchFailed?: () => void,
+ * }} options `ui`: the UI state to start from; `log`: every action refused;
+ * `onSwitchSlow`, `onSwitchFailed`: a switch asked for from the UI takes a
+ * while, or didn't happen (shared/switching.js; the in-page host's loading
+ * pill and notice)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log }) {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed }) {
   /** @type {UiState & Record<string, any>} */
   let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, ...start };
   /** @type {ViewModel | null} */
@@ -150,8 +155,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   offs.push(() => doc.removeEventListener('visibilitychange', onVisibility));
   const switching = createSwitching({
     onChange: (id) => { if (!destroyed) setUi({ switchingTo: id }); },
-    onSlow: () => {},
+    onSlow: (slow) => { if (!destroyed) onSwitchSlow?.(slow); },
     failed: (result) => result === undefined,
+    onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
     doc,
   });
 
@@ -461,8 +467,19 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
 
   // ---- the behaviors ------------------------------------------------------------
 
+  // Margin's own pixels per pixel of the page: the page's zoom (⌘+ / ⌘−)
+  // scales the page, and the in-page host scales Margin back
+  // (shared/dom.js setPageZoom), so pointer positions and element boxes come
+  // in the page's (zoomed) pixels while lengths written in CSS are Margin's.
+  // 1 where nothing is zoomed (the app, tests).
+  const scale = () => {
+    const root = /** @type {HTMLElement | null} */ (view.rootElement());
+    const width = root?.getBoundingClientRect().width;
+    return width && root.offsetWidth ? root.offsetWidth / width : 1;
+  };
+
   const rt = {
-    host, theme, view, doc, win, container,
+    host, theme, view, doc, win, container, scale,
     get vm() { return vm; },
     get ui() { return ui; },
     get state() { return host.getState(); },
@@ -537,6 +554,34 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     pointer: (point) => behaviors.peek.pagePointer(point),
     /** The pointer left the window (`x`, `y`: where it was last). */
     pointerLeft: (point) => behaviors.peek.pageLeft(point),
+    /**
+     * The sidebar out over the page by the host's word: `hover` (as the
+     * pointer at the edge does), `toggle` (the show/hide key: it stays until
+     * toggled again, Escape or a click on the page), `flash` (a moment, after
+     * a space switch by key); `hide()` takes it back, `toggle()` is the key.
+     */
+    sidebar: {
+      show: (/** @type {'hover' | 'toggle' | 'flash'} */ why) => behaviors.peek.showFor(why),
+      hide: () => behaviors.peek.hide(),
+      toggle: () => behaviors.peek.toggle(),
+      flash: (ms) => behaviors.peek.flash(ms),
+      /** How it's out now: 'hover' | 'toggle' | 'flash' | null. */
+      reason: () => behaviors.peek.reason(),
+      /** Out over the page (not docked). */
+      out: () => vm?.window.sidebar === 'peek',
+    },
+    /** The palette, opened by the host (its key, ⌘T's hand-off): `newTab`, to choose a new tab. */
+    openPalette: ({ newTab = false } = {}) => local('palette.open', { newTab }, null),
+    closePalette: () => { if (ui.palette.open) local('palette.close', undefined, null); },
+    get paletteOpen() { return !!ui.palette.open; },
+    /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
+    flushScroll: () => behaviors.scroll?.flush(),
+    restoreScroll: () => behaviors.scroll?.restore(),
+    setScroll: (px) => behaviors.scroll?.set(px),
+    /** Something is under way in the UI (a drag, a menu, a name being edited). */
+    busy: () => rt.busy(),
+    /** Margin's pixels per page pixel (the page's zoom). */
+    scale,
     destroy() {
       if (destroyed) return;
       off();
