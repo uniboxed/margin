@@ -17,7 +17,7 @@ import * as warmUp from './warm-up.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
-import { THEMES, themeFor } from '../themes/index.js';
+import { THEMES } from '../themes/index.js';
 import { activeThemeId, themePackage } from './theme-package.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
@@ -840,7 +840,7 @@ export const handlers = {
     if (!sender.tab) return { openPalette: true };
     return (await newTabHandOff(sender.tab)) ? { handled: true } : { openPalette: true };
   },
-  // Escape in the palette of a fresh new tab (⌘T; themes/arcadia/newtab.js):
+  // Escape in the palette of a fresh new tab (⌘T; newtab/newtab.js):
   // back to the tab the user was on, and this one closes, as if no tab had
   // been opened. The window's only tab (⌘N) stays, with the start page.
   async cancelNewTab(_, sender) {
@@ -900,18 +900,7 @@ export const handlers = {
     const { settings } = await load();
     return themePackage(activeThemeId(settings));
   },
-  // A page the active theme's registered script missed (background/
-  // registered.js; Safari loads stored registrations a moment after it
-  // starts): inject the theme there (top frame, Margin's content-script
-  // world, like the registered script).
-  async injectTheme(_, sender) {
-    const tabId = sender.tab?.id;
-    if (tabId == null || !api.scripting?.executeScript) return false;
-    const { settings } = await load();
-    // At once, not when the page is idle: core already runs there and waits.
-    await api.scripting.executeScript({ target: { tabId }, files: [themeFor(settings).content], injectImmediately: true });
-    return true;
-  },
+
   // The page's script in the page's world, for a page that didn't get it from
   // its registration (content/page-link.js): `left`, then the script, as
   // content/page/at-<L>.js and the registration do it.

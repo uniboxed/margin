@@ -1,30 +1,13 @@
 // Content scripts registered at runtime, following the settings: the active
-// theme, its first-paint placeholder and the page's box. Safari keeps
+// theme's first-paint placeholder and the page's box. Safari keeps
 // registrations across launches and loads none of them if a file one lists
 // is missing, so a path registered once must stay in the build (see
-// scripts/build.js LEGACY_LAYOUT_FILES).
+// scripts/build.js LEGACY_LAYOUT_FILES). The theme itself isn't registered
+// any more: Margin's content script asks the background for its package
+// (Margin 2: background/theme-package.js).
 import { platform } from '../shared/platform.js';
 import { themeFor } from '../themes/index.js';
 import { api } from './store.js';
-
-// ---- the theme -------------------------------------------------------------
-
-// The active theme's part on web pages (themes/<id>/content.bundle.js): it
-// runs right after Margin's own content script, so only that theme's code
-// loads. Pages that miss it (Safari loads stored registrations a moment
-// after it starts) ask for it instead (handlers.js injectTheme).
-const THEME_ID = 'margin-theme';
-async function syncTheme() {
-  if (!api.scripting?.registerContentScripts) return;
-  const { settings } = await api.storage.local.get('settings');
-  const want = themeFor(settings).content;
-  const [current] = await api.scripting.getRegisteredContentScripts({ ids: [THEME_ID] });
-  if (current?.js?.length === 1 && current.js[0] === want) return;
-  if (current) await api.scripting.unregisterContentScripts({ ids: [THEME_ID] });
-  await api.scripting.registerContentScripts([
-    { id: THEME_ID, js: [want], matches: ['<all_urls>'], runAt: 'document_start', allFrames: false },
-  ]);
-}
 
 // ---- first-paint placeholder ------------------------------------------------
 
@@ -97,8 +80,6 @@ async function syncPage() {
 let registrations = Promise.resolve();
 export const queueRegistrations = () => {
   registrations = registrations
-    .then(syncTheme)
-    .catch((err) => console.warn('[margin] theme', err))
     .then(syncDockedCss)
     .catch((err) => console.warn('[margin] docked css', err))
     .then(syncPage)
@@ -110,11 +91,11 @@ export const queueRegistrations = () => {
 export const whenRegistered = () => registrations;
 
 // Left registered by earlier versions: the injection probe, the fitted layout,
-// the frameless test build and the narrow rail. Their files stay as empty
-// stubs (scripts/build.js). Tried on every sync, because Safari loads stored
-// registrations asynchronously after the background starts; it fails
-// harmlessly once they're gone.
-const OLD_IDS = ['margin-probe', 'margin-shell', 'margin-frameless', 'margin-docked-rail'];
+// the frameless test build, the narrow rail and the theme's script (before
+// Margin 2). Their files stay as empty stubs (scripts/build.js). Tried on
+// every sync, because Safari loads stored registrations asynchronously after
+// the background starts; it fails harmlessly once they're gone.
+const OLD_IDS = ['margin-probe', 'margin-shell', 'margin-frameless', 'margin-docked-rail', 'margin-theme'];
 async function dropOld() {
   for (const id of OLD_IDS) await api.scripting?.unregisterContentScripts?.({ ids: [id] }).catch(() => {});
 }

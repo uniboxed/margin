@@ -1,8 +1,10 @@
 // Arcadia, Margin's first theme: Arc's look (a gray frame around the page
 // card, a sidebar of space chips, pins and tabs, a dark command palette).
-// Its code is in this folder; this file only describes it. UI-free: the
-// background, the state model and the build import it, so it must not import
-// any UI code.
+// The theme itself is the package in this folder (theme.json, theme.html,
+// theme.css: Margin 2, drawn by ui/runtime.js); this file describes what
+// the background needs before any page draws it: its settings and its
+// first-paint placeholders (docked/, until Phase 3 replaces them). UI-free:
+// the background, the state model and the build import it.
 
 // Sidebar width: resizable by dragging its right edge. Range measured from
 // Arc (Tirth's screenshots): 160–500 CSS px. Stored widths snap to 10px so the
@@ -31,9 +33,6 @@ export default Object.freeze({
   description: 'Arc’s look: a frame around the page, space chips, pins and tabs.',
   defaults,
   settingsOf,
-  // Bundles scripts/build.js makes from content.js and newtab.js.
-  content: 'themes/arcadia/content.bundle.js',
-  newtab: 'themes/arcadia/newtab.bundle.js',
   // The first-paint placeholder while "Keep open" is on (registered CSS,
   // applied before the page's first paint).
   placeholder: (settings) => `themes/arcadia/docked/w-${sidebarWidth(settings)}.css`,

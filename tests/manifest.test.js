@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import * as shortcuts from '../extension/shared/shortcuts.js';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { buildAssets, buildClosed, buildDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
+import { buildClosed, buildDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
 import { THEMES } from '../extension/themes/index.js';
+import { PACKAGE_THEMES } from '../extension/themes/packages.js';
 import { WIDTH } from '../extension/themes/arcadia/theme.js';
 
 const root = new URL('../extension/', import.meta.url);
@@ -48,7 +49,8 @@ test('every file the manifest and new tab reference exists', () => {
     manifest.chrome_url_overrides.newtab,
     // Registered at runtime by background/registered.js (and by earlier versions).
     ...THEME_IDS.flatMap((id) => dockedWidths(id).map((w) => `themes/${id}/docked/w-${w}.css`)),
-    ...THEME_IDS.flatMap((id) => [`themes/${id}/content.js`, `themes/${id}/newtab.js`]), // bundled by scripts/build.js
+    // Each built-in theme's package (read by the background and the new-tab page).
+    ...PACKAGE_THEMES.flatMap((id) => ['theme.json', 'theme.html', 'theme.css'].map((f) => `themes/${id}/${f}`)),
   ];
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
   for (const [, ref] of html.matchAll(/(?:src|href)="([^"]+)"/g)) files.push(new URL(ref, new URL('newtab/', root)).pathname.split('/extension/')[1]);
@@ -68,15 +70,9 @@ test('no third-party URLs in extension code (search engine templates excepted)',
   }
 });
 
-test('each theme\'s assets.js is up to date with its CSS and markup (run `npm run styles`)', () => {
-  for (const id of THEME_IDS) assert.equal(readFileSync(new URL(`themes/${id}/assets.js`, root), 'utf8'), buildAssets(id), id);
-});
-
-test('themes carry their styles, and nothing on web pages fetches', () => {
-  for (const f of ['themes/arcadia/content.js', 'themes/arcadia/palette.js']) {
-    assert.match(readFileSync(new URL(f, root), 'utf8'), /^import \{ \w+Css \} from '\.\/assets\.js';$/m, `${f} bundles its CSS`);
-  }
+test('the theme reaches web pages from the background, and nothing on web pages fetches', () => {
   assert.equal(manifest.web_accessible_resources, undefined, 'nothing exposed to web pages');
+  assert.match(readFileSync(new URL('content/core.js', root), 'utf8'), /send\('themePackage'/, 'the content script asks the background for the theme');
   for (const f of sources(['.js']).filter((p) => p.startsWith('content/') || p.startsWith('themes/'))) {
     assert.ok(!readFileSync(new URL(f, root), 'utf8').includes('fetch('), `${f} must not fetch`);
   }
@@ -112,24 +108,17 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
     const block = css.slice(css.indexOf(selector));
     return block.match(new RegExp(`\\b${prop}: ([^;]+?)( !important)?;`))[1];
   };
-  const sidebar = read('themes/arcadia/styles/sidebar.css');
-  const radius = decl(sidebar, '.frame .hole, .card-edge {', 'border-radius');
-  const shadow = decl(sidebar, '.card-edge {\n  right: auto', 'box-shadow');
+  // The first-paint placeholder and Arcadia's package: the same card, radius and shadow.
+  const pkg = read('themes/arcadia/theme.css');
+  const radius = pkg.match(/\n  --card-radius: ([^;]+);/)[1];
+  const shadow = decl(pkg, '.card-edge { pointer-events: none;', 'box-shadow');
   assert.equal(radius, '6.25px');
   const docked = read('themes/arcadia/docked.template.css');
   assert.equal(decl(docked, 'html:not([data-margin-docked="off"])::after', 'border-radius'), radius);
   assert.ok(decl(docked, 'html:not([data-margin-docked="off"])::after', 'box-shadow').startsWith(`${shadow}, 0 0 0 100vmax`), 'placeholder: same shadow, then the frame');
-  const newtab = read('themes/arcadia/styles/newtab.css');
-  assert.equal(decl(newtab, '#launcher, #page-card {', 'border-radius'), radius);
-  assert.equal(decl(newtab, '#page-card {\n', 'box-shadow'), shadow);
-  // The theme's geometry (content.js) agrees with the CSS.
-  assert.match(read('themes/arcadia/content.js'), new RegExp(`geometry: \\{ inset: 8, radius: '${radius}' \\}`));
   // Arcadia's package (themes/arcadia): the same card, radius and shadow.
-  const pkg = read('themes/arcadia/theme.css');
-  assert.equal(pkg.match(/\n  --card-radius: ([^;]+);/)[1], radius);
-  assert.equal(decl(pkg, '.card-edge { pointer-events: none;', 'box-shadow'), shadow);
   // Plain CSS only: nothing for the browser to load (no images, no url()).
-  for (const css of [sidebar, docked, newtab, pkg]) assert.doesNotMatch(css, /border-image|url\(/);
+  for (const css of [docked, pkg]) assert.doesNotMatch(css, /border-image|url\(/);
 });
 
 test('no CSS corner-shape (yet): Safari\'s experimental version passes @supports but draws squares', () => {
@@ -140,9 +129,9 @@ test('no CSS corner-shape (yet): Safari\'s experimental version passes @supports
   for (const f of sources(['.css', '.js'])) assert.doesNotMatch(readFileSync(new URL(f, root), 'utf8'), /corner-shape/, f);
 });
 
-test('Settings toggles are switches where supported (checkboxes elsewhere)', () => {
-  const html = readFileSync(new URL('themes/arcadia/newtab.html', root), 'utf8');
-  for (const id of ['block-gestures', 'pull-to-refresh', 'swipe-navigation']) assert.match(html, new RegExp(`id="${id}" type="checkbox" switch`), id);
+test('Settings toggles are switches where supported (checkboxes elsewhere): Margin makes them so', () => {
+  const render = readFileSync(new URL('ui/render.js', root), 'utf8');
+  assert.match(render, /value === 'setting-toggle'\) \{ copy\.setAttribute\('type', 'checkbox'\); copy\.setAttribute\('switch', ''\);/);
 });
 
 test('Safari\'s commands: ⌘T takes ⌃⌘←\'s slot (four shortcuts at most); Chrome\'s stay the arrows', async () => {

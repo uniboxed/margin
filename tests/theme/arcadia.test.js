@@ -6,8 +6,8 @@
 // box as today's Arcadia does (docked, hidden with and without the frame),
 // and Margin's renderer keeps a guarded part's words to Margin's labels
 // even for a template that never went through the sanitizer.
-// `npm run test:theme`. The pixel comparison with today's Arcadia is
-// tests/theme/parity.js (a script: it saves pictures).
+// `npm run test:theme`. (The pixel comparison with the old theme JS went
+// with it in Phase 1 step 4.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';

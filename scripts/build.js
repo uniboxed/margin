@@ -9,7 +9,6 @@ import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
-import { THEMES } from '../extension/themes/index.js';
 import { DOCKED_WIDTHS } from './build-styles.js';
 
 const root = new URL('../', import.meta.url);
@@ -50,8 +49,8 @@ export function buildTo(outDir, { profile, manifest = profile }) {
 }
 
 // Each context's entry module bundled into one plain script, so a page
-// injects Margin's core and the active theme as one file each (and the
-// background and the new-tab page load one each, plus the theme's).
+// injects Margin's core (with the UI runtime) as one file, and the
+// background and the new-tab page load one each.
 // Minified, but with names kept so errors stay readable. extension/ holds
 // ES modules, which content scripts and Safari's service worker can't load:
 // dist/ is what browsers run.
@@ -77,11 +76,13 @@ export const LEGACY_LAYOUT_FILES = [
   ...DOCKED_WIDTHS.map((width) => `content/docked/w-${width}.css`),
   'themes/arcadia/docked/rail.css',
 ];
-// Where earlier versions registered Arcadia, under its earlier name: empty, so
-// Safari's stored registrations stay valid until the background replaces them.
-// A page that loads one then asks for the theme (handlers.js injectTheme).
+// Where earlier versions registered Arcadia's script (its JS theme before
+// Margin 2, and under its earlier name): empty, so Safari's stored
+// registrations stay valid until the background drops them
+// (background/registered.js OLD_IDS).
 const PAGE_LEFTS = [8, ...DOCKED_WIDTHS];
 export const LEGACY_THEME_FILES = [
+  'themes/arcadia/content.bundle.js',
   'themes/arcadium/content.bundle.js',
   'themes/arcadium/docked/closed.css',
   'themes/arcadium/docked/rail.css',
@@ -111,7 +112,7 @@ function bundle(out, manifest) {
     writeFileSync(`${out}/${file}`, '');
   }
 
-  // Margin's content script (its core on web pages; the theme is separate).
+  // Margin's content script (its core on web pages, with the UI runtime).
   const [sidebar] = manifest.content_scripts;
   write(BUNDLES.content, sidebar.js);
   sidebar.js = [BUNDLES.content];
@@ -128,13 +129,6 @@ function bundle(out, manifest) {
   if (!tag) throw new Error('newtab.html: module script not found');
   write(BUNDLES.newtab, [`newtab/${tag[1]}`], { format: 'esm' });
   writeFileSync(`${out}/newtab/newtab.html`, html.replace(tag[0], `<script src="${BUNDLES.newtab.split('/').pop()}" type="module"></script>`));
-
-  // Each theme: its part on web pages (registered by the background while
-  // it's the active theme) and its new-tab page (imported by newtab.js).
-  for (const theme of Object.values(THEMES)) {
-    write(theme.content, [`themes/${theme.id}/content.js`]);
-    write(theme.newtab, [`themes/${theme.id}/newtab.js`], { format: 'esm' });
-  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

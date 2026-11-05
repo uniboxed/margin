@@ -1,8 +1,6 @@
 // The command palette's keys and its place in Margin.content. The palette
 // itself is the UI runtime's (ui/runtime.js, the theme's palette part and
 // ui/behaviors/palette.js); this is what a page must do around it.
-import * as V from '../shared/view.js';
-import { NEW_TAB, opensNewTab } from '../shared/switching.js';
 
 // ⌘T, the palette's key (⌥K before it). The browser keeps it for its own
 // File › New Tab, which creates a tab
@@ -25,50 +23,6 @@ function installNewTabKey(run, target = globalThis, skip = () => false) {
 }
 
 export { installNewTabKey };
-
-// ---- the old theme's new-tab page's (themes/arcadia/newtab.js), until it goes
-
-// The palette opened to choose a new tab is closing: the sidebar's "+ New
-// Tab" highlight goes (`setPending(false)`). Right away, unless what was
-// chosen shows another tab: then once this page is hidden (or a moment
-// later, if it never is), so the highlight doesn't come back to this page's
-// tab first. Returns the onClose handler, and `cancel` for a new opening.
-const SHOWS_ANOTHER_TAB = new Set(['activateTab', 'newTab', 'openPin', 'restoreArchive', 'search', 'openLauncher']);
-export function newTabCloser(setPending, doc = document) {
-  let cancel = () => {};
-  const onClose = (/** @type {string | undefined} */ reason, /** @type {any} */ action) => {
-    cancel();
-    if (reason !== 'run' || !action || action.local || !SHOWS_ANOTHER_TAB.has(action.type)) return setPending(false);
-    const done = () => {
-      cancel();
-      setPending(false);
-    };
-    const onHidden = () => doc.hidden && done();
-    const timer = setTimeout(done, 1500);
-    doc.addEventListener('visibilitychange', onHidden);
-    cancel = () => {
-      clearTimeout(timer);
-      doc.removeEventListener('visibilitychange', onHidden);
-      cancel = () => {};
-    };
-  };
-  return { onClose, cancel: () => cancel() };
-}
-
-// A palette's send that also reports switches to another tab (choosing a tab,
-// or a pin that has one open; an address or a search, in a new tab:
-// `NEW_TAB`): `onSwitch(tabId, request)` highlights it at once
-// (shared/switching.js).
-export function reportingSwitches(send, getState, onSwitch) {
-  return (/** @type {any} */ type, /** @type {any} */ payload) => {
-    const request = send(type, payload);
-    const tabId = type === 'activateTab' ? payload?.tabId
-      : type === 'openPin' && getState() ? V.pinTabId(getState(), payload?.pinId, payload?.windowId)
-      : opensNewTab(type, payload) ? NEW_TAB : null;
-    if (Number.isInteger(tabId)) onSwitch(tabId, request);
-    return request;
-  };
-}
 
 // ---- content-script wiring ----------------------------------------------
 // `c` is Margin.content (content/core.js), with the UI as `c.runtime()`.

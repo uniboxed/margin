@@ -15,11 +15,10 @@ test('Margin ships Arcadia, the default theme; an unknown theme falls back to it
   assert.equal(themeFor(undefined), arcadia);
 });
 
-test('every theme has its folder: content.js, newtab.js, and bundle paths the build makes', () => {
+test('every theme has its folder: theme.js (settings, first paint) beside its package', () => {
   for (const theme of Object.values(THEMES)) {
-    for (const file of ['theme.js', 'content.js', 'newtab.js']) assert.ok(existsSync(new URL(`themes/${theme.id}/${file}`, root)), `${theme.id}/${file}`);
-    assert.equal(theme.content, `themes/${theme.id}/content.bundle.js`);
-    assert.equal(theme.newtab, `themes/${theme.id}/newtab.bundle.js`);
+    for (const file of ['theme.js', 'theme.json', 'theme.html', 'theme.css']) assert.ok(existsSync(new URL(`themes/${theme.id}/${file}`, root)), `${theme.id}/${file}`);
+    assert.equal(theme.content, undefined, 'no theme script any more');
     assert.equal(typeof theme.settingsOf, 'function');
     assert.ok(Object.isFrozen(theme.defaults));
   }

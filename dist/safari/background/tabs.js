@@ -6,7 +6,6 @@ import { hasNoPage, hiddenFor, isHeld, sessionKnown, switchFacts } from './keep-
 import { platform } from '../shared/platform.js';
 import { commandKeys } from '../shared/shortcuts.js';
 import { getScroll } from './scroll.js';
-import { themeFor } from '../themes/index.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
 import { isSleepPage, readSleepAddress, wokeKey } from '../shared/sleep.js';
 import { readyInPage } from '../shared/page-ready.js';
@@ -3895,13 +3894,12 @@ export async function wakeAsleep(tab) {
   return 'address';
 }
 
-// The current copy's core and its active theme, into a page that has neither
-// (focusTabNow, before a switch to it). Whether they went in.
+// The current copy's core (which then asks for its theme), into a page that
+// has none (focusTabNow, before a switch to it). Whether it went in.
 async function addCurrentCopy(tab) {
   const files = api.runtime.getManifest().content_scripts?.find((c) => c.world !== 'MAIN')?.js;
   if (!files?.length || !api.scripting?.executeScript || !(await mayAccessCached(tab.url))) return false;
-  const theme = themeFor(cached()?.settings).content;
-  const ok = await api.scripting.executeScript({ target: { tabId: tab.id }, files: [...files, theme], injectImmediately: true }).then(ranAtAll, () => false);
+  const ok = await api.scripting.executeScript({ target: { tabId: tab.id }, files: [...files], injectImmediately: true }).then(ranAtAll, () => false);
   if (ok) {
     checkedCurrent.add(tab.id);
     console.info(`[margin] tab ${tab.id} had an earlier copy of Margin: the current one went in before switching to it`);

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DOCKED_WIDTHS } from '../scripts/build-styles.js';
 import { LEGACY_LAYOUT_FILES, LEGACY_THEME_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
-import { THEMES } from '../extension/themes/index.js';
+import { PACKAGE_THEMES } from '../extension/themes/packages.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -51,14 +51,12 @@ test('each build loads one bundled script per context', () => {
     assert.equal(manifest.content_scripts.find((c) => c.world === 'MAIN'), undefined, target);
     assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), /left: 8 /);
     for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width} `));
-    // Each theme: a content bundle the background registers ('margin-theme',
-    // the path from theme.js) and a new-tab module exporting mount().
-    assert.match(background, /margin-theme/, `${target}: the background registers the theme`);
-    for (const theme of Object.values(THEMES)) {
-      assert.ok(background.includes(JSON.stringify(theme.content)), `${target}: ${theme.content} is the registered path`);
-      assert.ok(statSync(join(dir, theme.content)).size > 0, `${target}/${theme.content}`);
-      assert.match(readFileSync(join(dir, theme.newtab), 'utf8'), /export\s*\{[^}]*\bmount\b/, `${target}/${theme.newtab} exports mount`);
-    }
+    // Each built-in theme ships as its package (read by the background for
+    // pages, and by the new-tab page); no theme script is registered, and the
+    // one earlier versions registered is dropped (background/registered.js).
+    for (const id of PACKAGE_THEMES) for (const f of ['theme.json', 'theme.html', 'theme.css']) assert.ok(statSync(join(dir, `themes/${id}/${f}`)).size > 0, `${target}/themes/${id}/${f}`);
+    assert.match(background, /margin-theme/, `${target}: the old registration is dropped`);
+    assert.match(background, /themePackage/, `${target}: pages ask for the theme`);
     // Safari drops every registered script if a file one lists is missing, so
     // the sources an earlier version registered must still be there.
     // Safari loads none of its registrations if a path one names is missing.

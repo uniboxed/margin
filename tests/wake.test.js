@@ -488,7 +488,7 @@ test('sidebar preparation: a page still running an earlier copy gets the current
   };
   const focused = await focusTab(14);
   const files = fake.scripts.find((s) => s.files);
-  assert.deepEqual(files?.files, ['content/content.bundle.js', 'themes/arcadia/content.bundle.js']);
+  assert.deepEqual(files?.files, ['content/content.bundle.js'], 'the core (it asks for its theme)');
   assert.equal(focused.preparation.outcome, 'ready');
   assert.ok(files.at <= fake.updates[0].at, 'before the switch');
 });
