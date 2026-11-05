@@ -22,6 +22,7 @@
 // main thread (the link acks only then).
 
 import Foundation
+import Security
 
 struct DataProfile: Hashable, Comparable, CustomStringConvertible {
     let browser: String
@@ -36,6 +37,17 @@ final class DataStore {
         var set: DataSet
         // The newest updatedAt of the extension's changes the app has confirmed (data.ack) to this profile.
         var acked: Double
+        // The set's revision: new at every save that changes it (its number,
+        // then random letters, so a set restored from a backup or another
+        // Mac's never has a rev a copy knows for something else). save() sets it.
+        var rev = ""
+    }
+
+    static func nextRev(_ rev: String?) -> String {
+        let n = rev.flatMap { $0.split(separator: "-").first }.flatMap { Int($0) } ?? 0
+        var bytes = [UInt8](repeating: 0, count: 5)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return "\(n + 1)-" + bytes.map { String(format: "%02x", $0) }.joined()
     }
 
     let root: URL
@@ -50,6 +62,9 @@ final class DataStore {
     private(set) var recovered: [String] = []
     private(set) var removedTemps = 0
     private(set) var writes = 0
+    // While a save's callback runs: the rev that save wrote (a later save may
+    // already have moved the set in memory on).
+    private(set) var savedRev = ""
 
     private var cache: [DataProfile: Stored] = [:]
     private var unusable: Set<DataProfile> = [] // a later format's: read nothing, write nothing
@@ -132,7 +147,8 @@ final class DataStore {
             guard let collection = o["collection"] as? String, let list = o["items"] as? JSONObject else { continue }
             collections[collection] = list
         }
-        let stored = Stored(set: DataSet(json: ["items": collections]), acked: num(manifest["acked"]) ?? 0)
+        // A set.json with no rev (none before step 3b's revisions) gets one no copy knows.
+        let stored = Stored(set: DataSet(json: ["items": collections]), acked: num(manifest["acked"]) ?? 0, rev: manifest["rev"] as? String ?? Self.nextRev(nil))
         cache[p] = stored
         Diagnostics.note("\(p): data read (\(collections.count) collections)")
         return stored
@@ -180,19 +196,32 @@ final class DataStore {
 
     // The profile's set and acked as they are now: in memory at once, then the
     // files of `changed` collections (nil: all) and set.json. Tombstones past
-    // their time (60 days, 2,000 a collection) go first. `then(true)` once
-    // it's all on disk; false if a write failed (the memory is dropped: it's
-    // read again from the files).
+    // their time (60 days, 2,000 a collection) go first. A save that changes
+    // anything gives the set a new `rev` (stored.rev is ignored), written to
+    // set.json before the collections too (with the acked from before), so a
+    // crash between them never leaves new items under the rev a copy has.
+    // `then(true)` once it's all on disk; false if a write failed (the memory
+    // is dropped: it's read again from the files).
     func save(_ p: DataProfile, _ stored: Stored, changed: Set<String>?, then: @escaping (Bool) -> Void = { _ in }) {
         guard !crashed else { return } // a dead app says nothing
         guard !unusable.contains(p) else { return then(false) }
         var stored = stored
+        let before = cache[p] ?? load(p)
         let pruned = stored.set.pruneTombstones(before: now() - DataFormat.tombstoneMs)
+        let collections = changed.map { $0.union(pruned) } ?? Set(stored.set.collections)
+        let bumped = before == nil || !collections.isEmpty
+        stored.rev = bumped ? Self.nextRev(before?.rev) : before!.rev
         cache[p] = stored
+        let rev = stored.rev
         let dir = directory(p)
         let items = dir.appendingPathComponent("items", isDirectory: true)
         var files: [(URL, Data)] = []
-        let collections = changed.map { $0.union(pruned) } ?? Set(stored.set.collections)
+        let manifest = { (acked: Double) -> Data in
+            let body: JSONObject = ["format": DataFormat.version, "browser": p.browser, "profile": p.profile, "acked": acked, "rev": stored.rev, "savedAt": self.now()]
+            return (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data()
+        }
+        // The new rev first (not for a first set: without set.json, a profile has none).
+        if bumped, let before { files.append((dir.appendingPathComponent("set.json"), manifest(before.acked))) }
         for collection in collections.sorted() {
             let list = stored.set.items[collection] ?? [:]
             let body: JSONObject = ["format": DataFormat.version, "collection": collection, "items": list.mapValues(\.json)]
@@ -202,8 +231,7 @@ final class DataStore {
             }
             files.append((items.appendingPathComponent(Self.collectionFileName(collection) + ".json"), data))
         }
-        let manifest: JSONObject = ["format": DataFormat.version, "browser": p.browser, "profile": p.profile, "acked": stored.acked, "savedAt": now()]
-        files.append((dir.appendingPathComponent("set.json"), (try? JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])) ?? Data()))
+        files.append((dir.appendingPathComponent("set.json"), manifest(stored.acked)))
         let allowed = crashAfterWrites.map { max(0, $0 - scheduled) }
         scheduled += files.count
         let job = { [files] () -> DataStore.Written in DataStore.write(files, dirs: [items, dir], allowed: allowed) }
@@ -221,6 +249,7 @@ final class DataStore {
                 self.cache[p] = nil
                 return then(false)
             }
+            self.savedRev = rev
             then(true)
         }
         pending += 1

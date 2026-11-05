@@ -75,14 +75,35 @@ func dataScenario() async {
   let tabs = shell.data.marginTabs(of: p1).count
   check("its Margin tabs: the copy's open tabs", tabs == 7, "\(tabs)")
 
-  // ---- relinking with a queue ----
+  let rev1 = fake.first("dataAck") { $0["id"] as? String == "A" }?["rev"] as? String ?? ""
+  check("the first ack carries the set's rev", !rev1.isEmpty && shell.data.store.load(p1)?.rev == rev1, rev1)
+
+  // ---- relinking with nothing changed: no snapshot ----
   check("the link closed", await close("A", shell, "safari:P1"))
   check("a profile not linked: all its Margin tabs not open", shell.notOpenTabs(p1).count == tabs && shell.notOpenTabs(p1, space: "work").count == 1)
   mark = fake.events.count
+  connect("A1", "P1", ["acked": t0, "rev": rev1, "queue": []])
+  check("relink with the set's rev and nothing queued: no data.snapshot, only data.ack with the same rev", await until(5, { fake.first("dataAck", since: mark) != nil })
+        && fake.first("dataSnapshot", since: mark) == nil && fake.first("dataAck", since: mark)?["rev"] as? String == rev1)
+
+  // ---- relinking after an app-side change: the snapshot ----
+  mark = fake.events.count
+  check("an app-side change while linked", shell.data.change(p1, [DataChange(collection: "settings", id: "appSide", item: DataItem(updatedAt: t0 + 500, value: true))]))
+  check("goes to the copy as data.changes, with no rev", await until(3, { fake.first("dataChanges", since: mark) != nil }) && fake.first("dataAck", since: mark) == nil)
+  check("A1's link closed", await close("A1", shell, "safari:P1"))
+  mark = fake.events.count
+  connect("A1b", "P1", ["acked": t0, "rev": rev1, "queue": []])
+  check("relink after an app-side change (the copy's rev is older): the snapshot, then data.ack with its rev", await until(5, { fake.first("dataAck", since: mark) != nil })
+        && fake.first("dataSnapshot", since: mark) != nil && fake.first("dataSnapshot", since: mark)?["rev"] as? String == shell.data.store.load(p1)?.rev
+        && fake.first("dataAck", since: mark)?["rev"] as? String == shell.data.store.load(p1)?.rev && shell.data.store.load(p1)?.rev != rev1)
+  check("A1b's link closed", await close("A1b", shell, "safari:P1"))
+
+  // ---- relinking with a queue and a rev the app doesn't know ----
+  mark = fake.events.count
   let queue = [change("spaces", "work", t0 + 1000, space("Focus", 1)), change("pins", "pd", t0 + 1001),
                change("tabs", "t-queued0001", t0 + 1002, ["url": "https://queued.example/", "title": "Q", "icon": "", "spaceId": "work", "order": 9, "lastUsed": t0 + 1002])]
-  connect("A2", "P1", ["acked": t0, "queue": queue])
-  check("relink: the queue merged, the whole set sent back, then data.ack upTo the queue's newest", await until(5, { fake.first("dataAck", since: mark) != nil })
+  connect("A2", "P1", ["acked": t0, "rev": "7-0123456789", "queue": queue])
+  check("relink with a rev the app doesn't know: the queue merged, the whole set sent back, then data.ack upTo the queue's newest", await until(5, { fake.first("dataAck", since: mark) != nil })
         && num(fake.first("dataAck", since: mark)?["upTo"]) == t0 + 1002 && (ackIndex(mark, "dataSnapshot") ?? .max) < (ackIndex(mark, "dataAck") ?? .min))
   let back = fake.first("dataSnapshot", since: mark) ?? [:]
   check("the set back in parts (over 1 MB in all), none over 1 MB", (back["parts"] as? Int ?? 0) >= 2 && (back["bytes"] as? Int ?? 0) > 1_000_000 && fake.first("tooBig") == nil,
@@ -108,6 +129,19 @@ func dataScenario() async {
   check("P1's set and files untouched by P2's copy, even when it names P1", named(shell, p1, "home") == "Home" && (try? Data(contentsOf: dir1.appendingPathComponent("items/spaces.json"))) == p1Spaces
         && fake.all("dataAck", since: mark) { $0["id"] as? String == "B" }.count == 1)
 
+  // ---- relinking in step with a queue: no snapshot, the losing change answered ----
+  let lastB = fake.all("dataAck") { $0["id"] as? String == "B" }.last ?? [:]
+  check("P2's link closed", await close("B", shell, "safari:P2"))
+  mark = fake.events.count
+  connect("B2", "P2", ["acked": num(lastB["upTo"]) ?? 0, "rev": lastB["rev"] as? String ?? "",
+                       "queue": [change("spaces", "side", t0 + 2500, space("P2 side", 2)), change("spaces", "home", t0 + 100, space("Older", 0))]])
+  check("relink with the set's rev and a queue: merged, no data.snapshot", await until(5, { fake.first("dataAck", since: mark) != nil }) && fake.first("dataSnapshot", since: mark) == nil
+        && named(shell, p2, "side") == "P2 side" && named(shell, p2, "home") == "P2 home")
+  let answered = (fake.first("dataChanges", since: mark)?["changes"] as? [JSONObject])?.first ?? [:]
+  check("the queued change that lost answered with the app's item, before data.ack with the new rev", answered["id"] as? String == "home" && ((answered["value"] as? JSONObject)?["name"] as? String) == "P2 home"
+        && (ackIndex(mark, "dataChanges") ?? .max) < (ackIndex(mark, "dataAck") ?? .min)
+        && fake.first("dataAck", since: mark)?["rev"] as? String == shell.data.store.load(p2)?.rev && shell.data.store.load(p2)?.rev != lastB["rev"] as? String)
+
   // ---- a wiped cache ----
   check("P1's link closed", await close("A2", shell, "safari:P1"))
   mark = fake.events.count
@@ -127,8 +161,12 @@ func dataScenario() async {
         && ((fake.first("dataChanges", since: mark)?["changes"] as? [JSONObject])?.first?["id"] as? String) == "side" && fake.all("dataChanges", since: mark).count == 1)
 
   // ---- a crash mid-write, then a relaunch ----
-  let lastAcked = num(fake.all("dataAck") { $0["id"] as? String == "A3" }.last?["upTo"]) ?? 0
-  shell.data.store.crashAfterWrites = shell.data.store.scheduled + 1
+  mark = fake.events.count
+  fake.tell(["do": "dataHello", "id": "A3", "queue": []]) // the copy's rev is from before the app's change: brought up to it
+  check("a hello with the rev from before the app's change: the snapshot again", await until(5, { fake.first("dataAck", since: mark) != nil }) && fake.first("dataSnapshot", since: mark) != nil)
+  let lastAck = fake.all("dataAck") { $0["id"] as? String == "A3" }.last ?? [:]
+  let lastAcked = num(lastAck["upTo"]) ?? 0
+  shell.data.store.crashAfterWrites = shell.data.store.scheduled + 2 // set.json's new rev, settings
   mark = fake.events.count
   let crashed = [change("settings", "archiveAfterHours", t0 + 6000, 72), change("spaces", "home", t0 + 6001, space("Base", 0))]
   fake.tell(["do": "dataChanges", "id": "A3", "changes": crashed])
@@ -137,14 +175,17 @@ func dataScenario() async {
   check("nothing confirmed to the copy", fake.first("dataAck", since: mark) == nil)
   let leftover = ((try? fm.contentsOfDirectory(atPath: dir1.appendingPathComponent("items").path)) ?? []).filter { $0.hasSuffix(".tmp") }
   check("a temporary file left where it died", leftover.count == 1, "\(leftover)")
+  let diskRev = (try? Data(contentsOf: dir1.appendingPathComponent("set.json"))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? JSONObject }?["rev"] as? String
   var stopped = false
   shell.stop { stopped = true }
   _ = await until(3, { stopped })
   guard let relaunched = await launch() else { return check("data: relaunched", false) }
   shell = relaunched
   mark = fake.events.count
-  connect("A4", "P1", ["acked": lastAcked, "queue": crashed])
+  connect("A4", "P1", ["acked": lastAcked, "rev": lastAck["rev"] as? String ?? "", "queue": crashed])
   check("relaunched: the copy's unconfirmed queue merged again, then data.ack", await until(5, { fake.first("dataAck", since: mark) != nil }) && num(fake.first("dataAck", since: mark)?["upTo"]) == t0 + 6001)
+  check("the crashed save had already given set.json a new rev (written first): the copy's rev is older, so the snapshot",
+        diskRev != nil && diskRev != lastAck["rev"] as? String && fake.first("dataSnapshot", since: mark) != nil, "\(diskRev ?? "nil") vs \(lastAck["rev"] ?? "nil")")
   check("both changes in, nothing from before lost, the temporary file gone", named(shell, p1, "home") == "Base" && shell.data.values("settings", of: p1)["archiveAfterHours"] as? Int == 72
         && named(shell, p1, "side") == "Studio" && named(shell, p1, "work") == "Focus" && shell.data.store.removedTemps == 1 && shell.data.store.recovered.isEmpty)
   check("P2's set as it was", named(shell, p2, "home") == "P2 home")

@@ -6,7 +6,10 @@
 // `profile` naming another is refused).
 //
 //  - data.hello: the queue merged into the profile's set, stored, the set sent
-//    back (data.snapshot), then data.ack. With no set for the profile, or one
+//    back (data.snapshot), then data.ack. If the copy's `rev` is the set's
+//    rev from before the merge (it has every item the app had), no snapshot:
+//    the queue's changes that lost come back in data.changes, then data.ack
+//    with the new rev. With no set for the profile, or one
 //    older than what the app confirmed to it (`acked` above the set's: the
 //    files restored from a backup, or a write lost), data.need { all: true }
 //    instead, and the queue is held until the copy's data.snapshot comes.
@@ -18,6 +21,10 @@
 //  - the app's own changes (change()): merged, stored, sent to the copy if linked.
 //  - data.ack's upTo: the newest updatedAt among the copy's changes stored,
 //    never lower than the copy's acked. Sent only once they're on disk.
+//  - `rev` (the stored set's revision, DataStore.Stored.rev) goes on the
+//    snapshot's part 0, and on data.ack once the link is in step (the copy
+//    has had a snapshot, or matched the rev on hello): with everything the
+//    app sent before it applied, the copy then has the set at that rev.
 //
 // The read API for the rest of the app (the overlay's UI, step 4): profiles(),
 // set(of:), values(_:of:), marginTabs(of:), and onChange.
@@ -50,6 +57,9 @@ final class DataSync {
         var transfer: String?
         var parts: [Int: JSONObject] = [:]
         var partsCount = 0
+        // The copy has every item of the app's set, but for what the app sent
+        // it since (in order) and its own changes still queued: acks carry the rev.
+        var synced = false
         init(_ peer: DataPeer) { self.peer = peer }
     }
 
@@ -96,7 +106,7 @@ final class DataSync {
         let won = set.merge(changes)
         let applied = zip(changes, won).filter(\.1).map(\.0)
         guard !applied.isEmpty else { return true }
-        save(p, set, acked: stored.acked, changed: Set(applied.map(\.collection))) { [weak self] in
+        save(p, set, acked: stored.acked, changed: Set(applied.map(\.collection))) { [weak self] _ in
             guard let self, let l = self.linked[p], !l.awaiting else { return }
             self.sendChanges(l, applied)
         }
@@ -152,15 +162,36 @@ final class DataSync {
         }
         l.awaiting = false
         l.held = []
+        // The copy has every item the app has (it says the set's rev): only what its queue lost goes back.
+        let inStep = (body["rev"] as? String).map { !$0.isEmpty && $0 == stored.rev } ?? false
         var set = stored.set
         let won = set.merge(queue)
         let upTo = max(acked, queue.map(\.item.updatedAt).max() ?? 0)
-        Diagnostics.note("\(p): data.hello, \(queue.count) queued (\(won.filter { $0 }.count) taken)")
-        save(p, set, acked: max(stored.acked, upTo), changed: Set(zip(queue, won).filter(\.1).map(\.0.collection))) { [weak self] in
+        let lost = Self.keys(zip(queue, won).filter { !$0.1 }.map(\.0))
+        Diagnostics.note("\(p): data.hello, \(queue.count) queued (\(won.filter { $0 }.count) taken), \(inStep ? "the copy has the app's set: no snapshot" : "the set sent back")")
+        save(p, set, acked: max(stored.acked, upTo), changed: Set(zip(queue, won).filter(\.1).map(\.0.collection))) { [weak self] rev in
             guard let self else { return }
-            self.sendSet(l, p)
-            self.sendAck(l, upTo)
+            var sent: String?
+            if inStep { self.answer(l, p, lost) } else { sent = self.sendSet(l, p) }
+            l.synced = true
+            self.sendAck(l, upTo, rev: sent ?? rev) // a snapshot is of the set now: its rev
         }
+    }
+
+    // "collection\0id" for each change (the ones that lost, to answer).
+    private static func keys(_ changes: [DataChange]) -> Set<String> {
+        Set(changes.map { "\($0.collection)\u{0}\($0.id)" })
+    }
+
+    // The app's items for changes of the copy's that lost to them, in data.changes.
+    private func answer(_ l: Linked, _ p: DataProfile, _ lost: Set<String>) {
+        let now = store.load(p)?.set
+        let back = lost.sorted().compactMap { key -> DataChange? in
+            let parts = key.split(separator: "\u{0}", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let item = now?.item(parts[0], parts[1]) else { return nil }
+            return DataChange(collection: parts[0], id: parts[1], item: item)
+        }
+        if !back.isEmpty { sendChanges(l, back) }
     }
 
     private func snapshot(_ l: Linked, _ p: DataProfile, _ body: JSONObject) {
@@ -203,10 +234,11 @@ final class DataSync {
         l.awaiting = false
         l.held = []
         Diagnostics.note("\(p): data.snapshot from the copy (\(incoming.items.values.map(\.count).reduce(0, +)) items)\(stored == nil ? ": the profile's first data set" : "")")
-        save(p, merged, acked: max(stored?.acked ?? 0, upTo), changed: nil) { [weak self] in
+        save(p, merged, acked: max(stored?.acked ?? 0, upTo), changed: nil) { [weak self] rev in
             guard let self else { return }
-            if stored != nil { self.sendSet(l, p) } // the copy lacks what the app had
-            self.sendAck(l, upTo)
+            let sent = stored != nil ? self.sendSet(l, p) : nil // the copy lacks what the app had
+            l.synced = true
+            self.sendAck(l, upTo, rev: sent ?? rev)
         }
     }
 
@@ -223,29 +255,25 @@ final class DataSync {
         }
         var set = stored.set
         let won = set.merge(changes)
-        let lost = Set(zip(changes, won).filter { !$0.1 }.map { "\($0.0.collection)\u{0}\($0.0.id)" })
+        let lost = Self.keys(zip(changes, won).filter { !$0.1 }.map(\.0))
         let upTo = max(l.ackedSent, changes.map(\.item.updatedAt).max() ?? 0)
-        save(p, set, acked: max(stored.acked, upTo), changed: Set(zip(changes, won).filter(\.1).map(\.0.collection))) { [weak self] in
+        save(p, set, acked: max(stored.acked, upTo), changed: Set(zip(changes, won).filter(\.1).map(\.0.collection))) { [weak self] rev in
             guard let self else { return }
-            // The app's newer items, for the changes that lost to them.
-            let now = self.store.load(p)?.set
-            let back = lost.sorted().compactMap { key -> DataChange? in
-                let parts = key.split(separator: "\u{0}", maxSplits: 1).map(String.init)
-                guard parts.count == 2, let item = now?.item(parts[0], parts[1]) else { return nil }
-                return DataChange(collection: parts[0], id: parts[1], item: item)
-            }
-            if !back.isEmpty { self.sendChanges(l, back) }
-            self.sendAck(l, upTo)
+            self.answer(l, p, lost) // the app's newer items, for the changes that lost to them
+            self.sendAck(l, upTo, rev: rev)
         }
     }
 
     // ---- storing ----
 
-    private func save(_ p: DataProfile, _ set: DataSet, acked: Double, changed: Set<String>?, then: @escaping () -> Void) {
+    // `then` gets the rev this save wrote.
+    private func save(_ p: DataProfile, _ set: DataSet, acked: Double, changed: Set<String>?, then: @escaping (String) -> Void) {
         store.save(p, DataStore.Stored(set: set, acked: acked), changed: changed) { [weak self] ok in
+            guard let self else { return }
             guard ok else { return Diagnostics.warn("\(p): not stored: nothing confirmed to the copy") }
-            self?.onChange?(p, changed ?? Set(set.collections))
-            then()
+            let rev = self.store.savedRev
+            if !(changed?.isEmpty ?? false) { self.onChange?(p, changed ?? Set(set.collections)) }
+            then(rev)
         }
     }
 
@@ -262,22 +290,28 @@ final class DataSync {
         }
     }
 
-    private func sendAck(_ l: Linked, _ upTo: Double) {
+    // With the rev only while the link is in step: then the copy has the set at that rev.
+    private func sendAck(_ l: Linked, _ upTo: Double, rev: String) {
         l.ackedSent = max(l.ackedSent, upTo)
-        send(l, "data.ack", ["upTo": upTo])
+        send(l, "data.ack", l.synced ? ["upTo": upTo, "rev": rev] : ["upTo": upTo])
     }
 
-    // The profile's whole set as it is now, in parts.
-    private func sendSet(_ l: Linked, _ p: DataProfile) {
-        guard let set = store.load(p)?.set else { return }
+    // The profile's whole set as it is now, in parts. Its rev.
+    @discardableResult private func sendSet(_ l: Linked, _ p: DataProfile) -> String? {
+        guard let stored = store.load(p) else { return nil }
+        let set = stored.set
         let (parts, omitted) = Self.parts(of: set, budget: partBytes)
         let transfer = UUID().uuidString.lowercased()
         for (i, items) in parts.enumerated() {
             var body: JSONObject = ["format": DataFormat.version, "set": ["format": DataFormat.version, "items": items], "transfer": transfer, "part": i, "parts": parts.count]
-            if i == 0, !omitted.isEmpty { body["omitted"] = omitted.map { [$0.collection, $0.id] } }
+            if i == 0 {
+                body["rev"] = stored.rev
+                if !omitted.isEmpty { body["omitted"] = omitted.map { [$0.collection, $0.id] } }
+            }
             send(l, "data.snapshot", body)
         }
         if !omitted.isEmpty { Diagnostics.warn("\(p): \(omitted.count) items too big for a message left out of data.snapshot") }
+        return stored.rev
     }
 
     private func sendChanges(_ l: Linked, _ changes: [DataChange]) {

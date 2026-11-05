@@ -27,21 +27,22 @@
 //   { do: 'send', id, msg } → msg as is, its epoch filled in;
 //   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id }.
 // The lasting data (DATA.md "Messages"), with `data` on connect:
-//   data: { acked?, queue?, wiped?, icons?, parts?, now? } → after the state
-//     (and theme), data.hello with `acked` (default 0) and `queue` (default
-//     none). `wiped`: the copy's storage is empty (Safari wiped it: Margin's
+//   data: { acked?, rev?, queue?, wiped?, icons?, parts?, now? } → after the
+//     state (and theme), data.hello with `acked` (default 0), `rev` (the set's
+//     revision the copy has, left out if none) and `queue` (default none). `wiped`: the copy's storage is empty (Safari wiped it: Margin's
 //     defaults). `icons`: that many 60 KB site icons added to its storage.
 //     The app's data.need → { ev: 'dataNeed' } and data.snapshot of the
 //     converter's set (shared/data-set.js dataSetFromStorage, its times at
 //     `now`), in `parts` (default 1);
 //   the app's data.snapshot, all its parts → { ev: 'dataSnapshot', id, parts,
 //     bytes, counts (live items per collection), spaces (id → name),
-//     omitted, refilled } and taken as the cache: `refilled` is what
+//     omitted, rev, refilled } and taken as the cache (its rev kept): `refilled` is what
 //     stateFromDataSet makes of it (spaces' names, pins, kept tabs' ids);
-//   data.ack → { ev: 'dataAck', id, upTo } (kept as acked); data.changes →
+//   data.ack → { ev: 'dataAck', id, upTo, rev } (kept as acked, and its rev
+//     if it has one); data.changes →
 //     { ev: 'dataChanges', id, changes };
 //   { do: 'dataChanges', id, changes } → data.changes from the copy;
-//   { do: 'dataHello', id, acked?, queue? } → data.hello again.
+//   { do: 'dataHello', id, acked?, rev?, queue? } → data.hello again.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
 // payload } }); setLayout → { ev: 'setLayout', msg }; resync →
@@ -132,12 +133,14 @@ function takeData(s, m) {
       for (const part of s.incoming.parts.values()) for (const [c, list] of Object.entries(part.set.items)) Object.assign((items[c] ??= {}), list);
       const set = { format: 1, items };
       const omitted = s.incoming.parts.get(0)?.omitted ?? [];
+      const rev = s.incoming.parts.get(0)?.rev ?? null;
+      if (rev) s.rev = rev;
       const bytes = s.incoming.bytes;
       s.incoming = null;
       s.cache = set;
       const state = stateFromDataSet(normalizeState(fromStorage(s.raw)), set);
       return say({
-        ev: 'dataSnapshot', id: s.id, parts: m.parts, bytes, omitted,
+        ev: 'dataSnapshot', id: s.id, parts: m.parts, bytes, omitted, rev,
         counts: Object.fromEntries(Object.keys(items).map((c) => [c, Object.keys(liveValues(set, c)).length])),
         spaces: Object.fromEntries(Object.entries(liveValues(set, 'spaces')).map(([sid, v]) => [sid, v.name])),
         refilled: { spaces: state.spaces.map((x) => x.name), pins: state.pins.length, keptTabs: Object.keys(state.keptTabs ?? {}).sort() },
@@ -145,7 +148,8 @@ function takeData(s, m) {
     }
     case 'data.ack':
       s.acked = m.upTo;
-      return say({ ev: 'dataAck', id: s.id, upTo: m.upTo, profile: m.profile });
+      if (m.rev) s.rev = m.rev;
+      return say({ ev: 'dataAck', id: s.id, upTo: m.upTo, rev: m.rev ?? null, profile: m.profile });
     case 'data.changes':
       return say({ ev: 'dataChanges', id: s.id, changes: m.changes, profile: m.profile });
     default:
@@ -158,7 +162,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
   const ws = new WebSocket(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
-  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, cache: null, incoming: null };
+  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null };
   sockets.set(id, s);
   s.send = (m) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
   const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
@@ -180,7 +184,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       say({ ev: 'sent', id, what: 'snapshot' });
       if (theme) void sendTheme(s, theme, chunkBytes);
       if (data) {
-        s.send({ k: 'data.hello', profile, format: 1, acked: s.acked, queue: data.queue ?? [] });
+        s.send({ k: 'data.hello', profile, format: 1, acked: s.acked, ...(s.rev ? { rev: s.rev } : {}), queue: data.queue ?? [] });
         say({ ev: 'sent', id, what: 'data.hello' });
       }
       return;
@@ -254,7 +258,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       s.send({ k: 'data.changes', profile: c.profile ?? s.profile, changes: c.changes });
       return say({ ev: 'sent', id: c.id, what: 'data.changes' });
     case 'dataHello':
-      s.send({ k: 'data.hello', profile: s.profile, format: 1, acked: c.acked ?? s.acked, queue: c.queue ?? [] });
+      const rev = c.rev ?? s.rev;
+      s.send({ k: 'data.hello', profile: s.profile, format: 1, acked: c.acked ?? s.acked, ...(rev ? { rev } : {}), queue: c.queue ?? [] });
       return say({ ev: 'sent', id: c.id, what: 'data.hello' });
     case 'mute':
       s.muted = c.on;

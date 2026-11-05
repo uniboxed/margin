@@ -137,13 +137,26 @@ extension Tests {
     check("a temporary file left over: removed", fresh.removedTemps == 1 && !fm.fileExists(atPath: dir.appendingPathComponent("items/.spaces.json.1234.tmp").path))
     check("the rest read as saved", recovered?.set.item("pins", "gone")?.deleted == true && recovered?.acked == 20)
 
-    // A crash mid-write: after one file, the next left as a temporary file.
+    // Revisions: new at every save that changes the set, not otherwise; kept in set.json.
+    let revs = testStore(root)
+    guard let r0 = revs.load(p1)?.rev, var r = revs.load(p1) else { return check("a rev", false) }
+    revs.save(p1, r, changed: [])
+    check("a save that changes nothing: the same rev", revs.load(p1)?.rev == r0)
+    r.set.merge([change("folders", "f", 25, ["name": "F"])])
+    revs.save(p1, r, changed: ["folders"])
+    let r1 = revs.load(p1)?.rev ?? ""
+    check("a save that changes something: a new rev, numbered on", r1 != r0 && Int(r1.split(separator: "-")[0]) == (Int(r0.split(separator: "-")[0]) ?? -9) + 1 && r1.count > 4)
+    check("the rev read back from set.json", testStore(root).load(p1)?.rev == r1)
+    check("revs never repeat (random after the number)", DataStore.nextRev("4-aa") != DataStore.nextRev("4-aa") && DataStore.nextRev("4-aa").hasPrefix("5-") && DataStore.nextRev(nil).hasPrefix("1-"))
+
+    // A crash mid-write: set.json's new rev, one file, the next left as a temporary file.
     if let recovered { testStore(root).save(p1, recovered, changed: nil) } // the damaged file written whole again
     let crashy = testStore(root)
     guard var base = crashy.load(p1) else { return check("loaded for the crash", false) }
+    let revBefore = base.rev
     base.set.merge([change("pins", "p", 30, ["url": "https://p2.test/"]), change("spaces", "a", 30, space("A3"))])
     base.acked = 30
-    crashy.crashAfterWrites = 1
+    crashy.crashAfterWrites = 2
     var called = false
     crashy.save(p1, base, changed: ["pins", "spaces"]) { _ in called = true }
     check("a crash: nothing said after it", !called && crashy.crashed)
@@ -151,7 +164,7 @@ extension Tests {
     let read = afterCrash.load(p1)
     check("after a crash mid-write: the files whole, the one written new, the next as it was", (read?.set.liveValues("pins")["p"] as? JSONObject)?["url"] as? String == "https://p2.test/"
           && (read?.set.liveValues("spaces")["a"] as? JSONObject)?["name"] as? String == "A" && afterCrash.recovered.isEmpty)
-    check("and acked as it was (set.json is written last)", read?.acked == 20)
+    check("and acked as it was (set.json is written last), but the rev already new (written first)", read?.acked == 20 && read?.rev != revBefore && read?.rev.isEmpty == false)
     check("its temporary file removed", afterCrash.removedTemps == 1)
     let p3 = DataProfile(browser: "safari", profile: "P3")
     let firstCrash = testStore(root)
@@ -234,7 +247,8 @@ extension Tests {
     let first = store.load(p1)
     check("the converter's set stored as the profile's, the held queue under it", first?.set.liveValues("spaces").count == 2 && first?.set.items["pins"]?.isEmpty == true
           && first?.set.liveValues("settings")["x"] as? Int == 1)
-    check("then data.ack upTo its newest, and no snapshot back", a.kinds == ["data.ack"] && num(a.sent[0].body["upTo"]) == 50 && first?.acked == 50, "\(a.sent)")
+    check("then data.ack upTo its newest, with the set's rev, and no snapshot back", a.kinds == ["data.ack"] && num(a.sent[0].body["upTo"]) == 50 && first?.acked == 50
+          && a.sent[0].body["rev"] as? String == first?.rev && first?.rev.hasPrefix("1-") == true, "\(a.sent)")
     check("the app's UI told", changed == ["safari:P1 pins,settings,spaces"])
     a.sent = []
 
@@ -325,14 +339,52 @@ extension Tests {
     check("2.4 MB of site icons: in parts, none over 1 MB, nothing refused", (assembled(huge.sent)?.parts ?? 0) >= 3 && sync.unsent == 0
           && ((assembled(huge.sent)?.set["items"] as? JSONObject)?["siteIcons"] as? JSONObject)?.count == 40)
 
+    // ---- revisions: no snapshot for a copy that has the app's set ----
+    sync.linkDown(a2)
+    let a3 = FakePeer("P1", epoch: "e4")
+    sync.linkUp(a3)
+    sync.received(a3, "data.hello", ["profile": "P1", "format": 1, "acked": 600, "queue": []])
+    let revNow = store.load(p1)?.rev ?? "?"
+    check("a hello with no rev (never, or wiped): the snapshot, its part 0 and the ack carrying the set's rev", a3.kinds.first == "data.snapshot" && a3.sent[0].body["rev"] as? String == revNow
+          && a3.sent.last?.kind == "data.ack" && a3.sent.last?.body["rev"] as? String == revNow && a3.sent.dropFirst().allSatisfy { $0.body["rev"] == nil || $0.kind == "data.ack" })
+    a3.sent = []
+    sync.received(a3, "data.hello", ["profile": "P1", "format": 1, "acked": 600, "rev": revNow, "queue": []])
+    check("a hello with the set's rev and nothing queued: no snapshot, only data.ack with the same rev", a3.kinds == ["data.ack"] && a3.sent[0].body["rev"] as? String == revNow
+          && store.load(p1)?.rev == revNow)
+    a3.sent = []
+    sync.received(a3, "data.hello", ["profile": "P1", "format": 1, "acked": 600, "rev": revNow,
+                                     "queue": [change("pins", "p9", 700, ["url": "https://p9.test/"]).json, change("spaces", "personal", 2, space("Older")).json]])
+    let revQueued = store.load(p1)?.rev ?? "?"
+    check("the set's rev with a queue: merged, no snapshot, the change that lost answered, then data.ack with the new rev", a3.kinds == ["data.changes", "data.ack"]
+          && ((a3.sent[0].body["changes"] as? [JSONObject])?.first?["id"] as? String) == "personal" && num(a3.sent[1].body["upTo"]) == 700
+          && a3.sent[1].body["rev"] as? String == revQueued && revQueued != revNow && store.load(p1)?.set.liveValues("pins")["p9"] != nil)
+    a3.sent = []
+    sync.received(a3, "data.hello", ["profile": "P1", "format": 1, "acked": 700, "rev": "3-00000000ff", "queue": []])
+    check("a rev the app doesn't know (an older backup, another Mac): the snapshot", a3.kinds.first == "data.snapshot" && a3.kinds.last == "data.ack")
+    a3.sent = []
+    sync.received(a3, "data.changes", ["profile": "P1", "changes": [change("folders", "fb", 710, ["name": "B"]).json]])
+    let revChanged = store.load(p1)?.rev ?? "?"
+    check("linked, in step: data.ack for the copy's changes carries the new rev", a3.kinds == ["data.ack"] && a3.sent[0].body["rev"] as? String == revChanged && revChanged != revQueued)
+    a3.sent = []
+    sync.change(p1, [change("folders", "fa", 720, ["name": "A"])])
+    check("the app's own change: sent without a rev, the set's rev moved on", a3.kinds == ["data.changes"] && a3.sent[0].body["rev"] == nil && store.load(p1)?.rev != revChanged)
+    a3.sent = []
+    sync.received(a3, "data.hello", ["profile": "P1", "format": 1, "acked": 710, "rev": revChanged, "queue": []])
+    check("a hello after an app-side change: the copy's rev is older, the snapshot", a3.kinds.first == "data.snapshot" && assembled(a3.sent).map { same($0.set, store.load(p1)?.set.json) } == true)
+    let unsynced = FakePeer("P1", epoch: "e5")
+    sync.linkDown(a3)
+    sync.linkUp(unsynced)
+    sync.received(unsynced, "data.changes", ["profile": "P1", "changes": [change("folders", "fc", 730, ["name": "C"]).json]])
+    check("changes on a link that hasn't said data.hello: acked without a rev (the app can't say what the copy has)", unsynced.kinds == ["data.ack"] && unsynced.sent[0].body["rev"] == nil)
+
     // ---- a write that fails: nothing confirmed ----
     let d = FakePeer("P1", epoch: "e9")
-    sync.linkDown(a2)
+    sync.linkDown(unsynced)
     sync.linkUp(d)
     store.crashAfterWrites = 0
     sync.received(d, "data.changes", ["profile": "P1", "changes": [change("spaces", "personal", 9999, space("Lost")).json]])
     check("a crash mid-write: no data.ack (the copy keeps its queue)", d.sent.isEmpty)
     let afterCrash = testStore(root)
-    check("and the files as before it", (afterCrash.load(p1)?.set.liveValues("spaces")["personal"] as? JSONObject)?["name"] as? String == "Home" && afterCrash.load(p1)?.acked == 600)
+    check("and the files as before it", (afterCrash.load(p1)?.set.liveValues("spaces")["personal"] as? JSONObject)?["name"] as? String == "Home" && afterCrash.load(p1)?.acked == 730)
   }
 }
