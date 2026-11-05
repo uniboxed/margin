@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createInPageHost, createMockHost } from '../extension/ui/host.js';
-import { toStorage, faviconsMark } from '../extension/shared/stored.js';
+import { toStorage, faviconsMark, firstReadKeys } from '../extension/shared/stored.js';
 import { buildViewModel } from '../extension/ui/view-model.js';
 import { smallState, W, OTHER_WINDOW } from './ui/fixtures.js';
 
@@ -65,14 +65,14 @@ function fakeWindow({ href = 'https://docs.example/x', hidden = false } = {}) {
   return win;
 }
 
-test('in-page host: the first read is all of storage, as pages read it; then state for the view model', async () => {
+test('in-page host: the first read is what pages read first (shared/stored.js firstReadKeys), as pages read it; then state for the view model', async () => {
   const api = fakeBrowser();
   const host = createInPageHost({ api, window: fakeWindow(), warn: () => {} });
   const seen = [];
   host.onState((s) => seen.push(s));
   assert.equal(host.getState(), null);
   assert.equal(await host.ready, true);
-  assert.deepEqual(api.gets, [null], 'all of it the first time');
+  assert.deepEqual(api.gets, [firstReadKeys()], 'the page\'s keys and the icons the first time');
   const state = host.getState();
   assert.equal(seen.length, 1);
   assert.equal(seen[0], state);
