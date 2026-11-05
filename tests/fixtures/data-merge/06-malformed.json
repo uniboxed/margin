@@ -1,0 +1,34 @@
+{
+  "description": "Malformed changes are skipped: no collection or id, an empty id, a time that isn't a number, neither a value nor deleted: true, both at once, deleted not true. Malformed items in the base are dropped. The good change among them applies.",
+  "base": {
+    "format": 1,
+    "items": {
+      "archive": {
+        "a1": { "updatedAt": 10, "value": { "url": "https://a.test/", "title": "A", "spaceId": "work", "icon": "", "closedAt": 10 } },
+        "bad1": { "updatedAt": "10", "value": {} },
+        "bad2": { "updatedAt": 10 },
+        "bad3": { "updatedAt": 10, "deleted": true, "value": {} }
+      }
+    }
+  },
+  "changes": [
+    { "id": "a1", "updatedAt": 20, "value": { "url": "https://x.test/" } },
+    { "collection": "archive", "updatedAt": 20, "value": {} },
+    { "collection": "archive", "id": "", "updatedAt": 20, "value": {} },
+    { "collection": "archive", "id": "a1", "updatedAt": "20", "value": {} },
+    { "collection": "archive", "id": "a1", "updatedAt": 20 },
+    { "collection": "archive", "id": "a1", "updatedAt": 20, "deleted": true, "value": {} },
+    { "collection": "archive", "id": "a1", "updatedAt": 20, "deleted": false, "value": {} },
+    { "collection": "archive", "id": "a1", "updatedAt": null, "deleted": true },
+    { "collection": "archive", "id": "a2", "updatedAt": 21, "value": { "url": "https://b.test/", "title": "B", "spaceId": "work", "icon": "", "closedAt": 21 } }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "archive": {
+        "a1": { "updatedAt": 10, "value": { "url": "https://a.test/", "title": "A", "spaceId": "work", "icon": "", "closedAt": 10 } },
+        "a2": { "updatedAt": 21, "value": { "url": "https://b.test/", "title": "B", "spaceId": "work", "icon": "", "closedAt": 21 } }
+      }
+    }
+  }
+}

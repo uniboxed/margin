@@ -127,7 +127,8 @@ const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archiv
 // page's first read, then kept from change events (content/core.js).
 const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup', 'uiTheme']);
 /** @param {Iterable<string>} seen storage keys a page has seen @returns {string[]} */
-export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key));
+// Nor the lasting data set's queue (`dataMeta:<collection>`: shared/data-set.js).
+export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key) && !key.startsWith('dataMeta:'));
 
 /**
  * What a page reads of storage.local (content/core.js refresh), as storage

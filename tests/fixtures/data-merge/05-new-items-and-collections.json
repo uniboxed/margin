@@ -1,0 +1,43 @@
+{
+  "description": "A change to an item or a collection the app doesn't have adds it. Collections the merge doesn't know (a later format's) are kept as they are, in the base and from changes. A value may be any JSON, null and false included.",
+  "base": {
+    "format": 1,
+    "items": {
+      "folders": {
+        "f1": { "updatedAt": 1, "value": { "spaceId": "work", "name": "Reading", "open": true, "pos": 0 } }
+      },
+      "laterThing": {
+        "x": { "updatedAt": 1, "value": { "anything": [1, 2, 3] } }
+      }
+    }
+  },
+  "changes": [
+    { "collection": "folders", "id": "f2", "updatedAt": 2, "value": { "spaceId": "work", "name": "Later", "open": false, "pos": 1 } },
+    { "collection": "siteIcons", "id": "https://a.test", "updatedAt": 3, "value": { "data": "data:image/png;base64,AAAA", "href": "https://a.test/favicon.ico", "at": 3 } },
+    { "collection": "settings", "id": "safariSearch", "updatedAt": 4, "value": null },
+    { "collection": "settings", "id": "pullToRefresh", "updatedAt": 4, "value": false },
+    { "collection": "anotherLaterThing", "id": "y", "updatedAt": 5, "value": "kept" }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "folders": {
+        "f1": { "updatedAt": 1, "value": { "spaceId": "work", "name": "Reading", "open": true, "pos": 0 } },
+        "f2": { "updatedAt": 2, "value": { "spaceId": "work", "name": "Later", "open": false, "pos": 1 } }
+      },
+      "laterThing": {
+        "x": { "updatedAt": 1, "value": { "anything": [1, 2, 3] } }
+      },
+      "siteIcons": {
+        "https://a.test": { "updatedAt": 3, "value": { "data": "data:image/png;base64,AAAA", "href": "https://a.test/favicon.ico", "at": 3 } }
+      },
+      "settings": {
+        "safariSearch": { "updatedAt": 4, "value": null },
+        "pullToRefresh": { "updatedAt": 4, "value": false }
+      },
+      "anotherLaterThing": {
+        "y": { "updatedAt": 5, "value": "kept" }
+      }
+    }
+  }
+}

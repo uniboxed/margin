@@ -1,0 +1,27 @@
+{
+  "description": "Changes apply in the order given, each against what the merge has by then: several changes to one item end on the latest, whatever order they come in.",
+  "base": {
+    "format": 1,
+    "items": {
+      "settings": {
+        "archiveAfterHours": { "updatedAt": 10, "value": 12 }
+      }
+    }
+  },
+  "changes": [
+    { "collection": "settings", "id": "archiveAfterHours", "updatedAt": 30, "value": 24 },
+    { "collection": "settings", "id": "archiveAfterHours", "updatedAt": 20, "value": 6 },
+    { "collection": "settings", "id": "archiveAfterHours", "updatedAt": 40, "value": 0 },
+    { "collection": "settings", "id": "sidebarPinnedOpen", "updatedAt": 5, "value": true },
+    { "collection": "settings", "id": "sidebarPinnedOpen", "updatedAt": 6, "value": false }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "settings": {
+        "archiveAfterHours": { "updatedAt": 40, "value": 0 },
+        "sidebarPinnedOpen": { "updatedAt": 6, "value": false }
+      }
+    }
+  }
+}

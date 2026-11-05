@@ -2,7 +2,7 @@
 // a fake of Safari's API: what a browser tab's close does to its Margin tab
 // (to the archive when closed on its own, kept when its window closes or
 // Margin puts it to sleep), opening a tab that isn't open where it's clicked,
-// closing, pinning and archiving one.
+// closing, pinning and archiving one, and the queue of changes for Margin.app.
 // The rules themselves (state/model.js) are in tests/margin-tabs.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -274,4 +274,26 @@ test('sleep (Safari): a tab unused for sleepAfterHours is closed by Margin and k
   assert.equal(s.archive.some((a) => a.url === 'https://s1.test/'), false, 'not archived');
   for (const id of [21, 22, 23]) assert.ok(s.tabs[id], `tab ${id} still open`);
   for (const id of fronts) assert.ok(s.tabs[id] && !fake.removed.includes(id), 'never the tab in front of a window');
+});
+
+test('the queue for Margin.app: each change made since the data set\'s times began, with its time; nothing from before', async () => {
+  const before = Date.now();
+  const queued = await store.pendingQueue(before - 1);
+  assert.deepEqual(queued, [], 'nothing since');
+  await ask('createSpace', { name: 'Reading' });
+  const s = await state();
+  const reading = s.spaces.find((sp) => sp.name === 'Reading');
+  const after = await store.pendingQueue(before - 1);
+  const change = after.find((c) => c.collection === 'spaces' && c.id === reading.id);
+  assert.ok(change, JSON.stringify(after));
+  assert.ok(change.updatedAt >= before);
+  assert.deepEqual(change.value, { name: 'Reading', emoji: '✨', color: '#00b894', order: s.spaces.length - 1 });
+  await ask('deleteSpace', { spaceId: reading.id });
+  const gone = (await store.pendingQueue(before - 1)).find((c) => c.collection === 'spaces' && c.id === reading.id);
+  assert.equal(gone.deleted, true, 'a tombstone');
+  // Stored with the state (the queue lasts across the background's restarts).
+  assert.ok(fake.local['dataMeta:spaces'].gone[reading.id] >= before);
+  // The base (what the cache had when its times began) isn't queued: it's at 0.
+  const all = await store.pendingQueue(0);
+  assert.equal(all.some((c) => c.collection === 'spaces' && c.id === 'personal'), false);
 });

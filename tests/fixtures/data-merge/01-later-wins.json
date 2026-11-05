@@ -1,0 +1,27 @@
+{
+  "description": "The later updatedAt wins, per item: a newer change replaces the app's item, an older one is ignored. Other items are untouched.",
+  "base": {
+    "format": 1,
+    "items": {
+      "spaces": {
+        "personal": { "updatedAt": 100, "value": { "name": "Personal", "emoji": "🏠", "color": "#6c5ce7", "order": 0 } },
+        "work": { "updatedAt": 300, "value": { "name": "Work", "emoji": "💼", "color": "#0984e3", "order": 1 } },
+        "home": { "updatedAt": 50, "value": { "name": "Home", "emoji": "🏡", "color": "#00b894", "order": 2 } }
+      }
+    }
+  },
+  "changes": [
+    { "collection": "spaces", "id": "personal", "updatedAt": 200, "value": { "name": "Me", "emoji": "🙂", "color": "#6c5ce7", "order": 0 } },
+    { "collection": "spaces", "id": "work", "updatedAt": 250, "value": { "name": "Job", "emoji": "💼", "color": "#0984e3", "order": 1 } }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "spaces": {
+        "personal": { "updatedAt": 200, "value": { "name": "Me", "emoji": "🙂", "color": "#6c5ce7", "order": 0 } },
+        "work": { "updatedAt": 300, "value": { "name": "Work", "emoji": "💼", "color": "#0984e3", "order": 1 } },
+        "home": { "updatedAt": 50, "value": { "name": "Home", "emoji": "🏡", "color": "#00b894", "order": 2 } }
+      }
+    }
+  }
+}

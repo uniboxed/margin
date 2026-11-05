@@ -153,7 +153,7 @@ test('store: a change with nothing new isn\'t written; a real one is, with the t
   written.length = 0;
   await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 301 } }));
   await copy.mutate((s) => ({ ...s, settings: { ...s.settings } })); // nothing new: the failed write still goes
-  assert.deepEqual(written, [['settings', 'stateRev']]);
+  assert.deepEqual(written, [['settings', 'dataMeta:settings', 'stateRev']], 'with its change\'s time for Margin.app\'s queue, in the same set() (shared/data-set.js)');
   assert.equal(local.get('settings').sidebarWidth, 301);
   chrome.storage.local.set = set;
 });
@@ -170,7 +170,7 @@ test('store: each write of the state carries its stamp in the same set(), follow
   chrome.storage.local.set = async (values) => { sets.push(structuredClone(values)); return set(values); };
   await copy.mutate((s) => ({ ...s, settings: { ...s.settings, sidebarWidth: 280 } }));
   const first = local.get('stateRev');
-  assert.deepEqual(Object.keys(sets.at(-1)).sort(), ['settings', 'stateRev'], 'in the same set() as the state');
+  assert.deepEqual(Object.keys(sets.at(-1)).sort(), ['dataMeta:settings', 'settings', 'stateRev'], 'in the same set() as the state (and the change\'s time for the app: shared/data-set.js)');
   assert.equal(typeof first.id, 'string');
   assert.equal(copy.stateRev(), first.id);
   await copy.mutate((s) => ({ ...s, tabs: { 5: { id: 5, windowId: 1, url: 'https://e.test/', index: 0 } }, tabSpace: { 5: 'personal' } }));
