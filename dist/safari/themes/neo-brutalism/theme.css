@@ -79,6 +79,25 @@
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .loading .ico { animation: nb-spin .8s linear infinite; }
 @keyframes nb-spin { to { transform: rotate(360deg); } }
+/* A tab loading (its row; the tab in front also spins the reload button):
+   its icon box blinks, no hover needed. */
+.tab.busy .fav { animation: nb-blink .9s steps(2, jump-none) infinite; }
+@keyframes nb-blink { 50% { border-style: dashed; transform: rotate(-8deg); } }
+/* The page in front loading: a stripe marching along the gutter above the page. */
+.load-bar { position: absolute; top: calc(var(--gutter) / 2 - 3px); left: calc(var(--page-left) + 18px); right: calc(var(--gutter) + 18px); height: 6px; z-index: 2; pointer-events: none; border: 2px solid var(--ink); border-radius: 3px; background: repeating-linear-gradient(-45deg, var(--ink) 0 6px, var(--yellow) 6px 12px) 0 0 / 17px 100%; opacity: 0; visibility: hidden; transition: opacity .2s, visibility 0s linear .2s; }
+.load-bar.on { opacity: 1; visibility: visible; transition: opacity .2s; animation: nb-march .6s linear infinite; }
+@keyframes nb-march { to { background-position: 17px 0; } }
+/* Over the page, inside its border, under a peeking sidebar: the gestures' badges. */
+.page-over { position: absolute; top: calc(var(--gutter) + 3px); right: calc(var(--gutter) + 3px); bottom: calc(var(--gutter) + 3px); left: calc(var(--page-left) + 3px); z-index: 4; pointer-events: none; overflow: hidden; border-radius: 15px; }
+.page-over * { pointer-events: none; }
+.gesture { --gesture: 0; position: absolute; display: grid; place-items: center; width: 44px; height: 44px; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 12px; background: var(--paper); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); opacity: calc(.35 + var(--gesture) * .65); }
+.gesture .ico { width: 22px; height: 22px; }
+.gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--gesture) - 1) * 30px)) rotate(calc(var(--gesture) * 300deg)); }
+.gesture.swipe.back { left: 14px; top: 50%; transform: translate(calc((var(--gesture) - 1) * 30px), -50%); }
+.gesture.swipe.forward { right: 14px; top: 50%; transform: translate(calc((1 - var(--gesture)) * 30px), -50%); }
+.gesture.swipe.forward .ico { transform: scaleX(-1); }
+.gesture.armed { background: var(--yellow); }
+.gesture.done { opacity: 0; transition: opacity .25s .1s; }
 
 /* The sidebar */
 .sidebar { position: relative; z-index: 2; flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; }
@@ -261,4 +280,6 @@
 @media (prefers-reduced-motion: reduce) {
   .nb, .page, .btn, .chev, .column.m-settling .swipes { transition: none; }
   .loading .ico { animation: none; }
+  .tab.busy .fav, .load-bar.on { animation: none; }
+  .gesture { transition: none; }
 }

@@ -22,13 +22,20 @@
 //   opens in that tab (`openHere`);
 // - what only the app can do (`perform`): the window's own buttons. History
 //   (nav.*) isn't the app's: the runtime falls back to the copy's goBack,
-//   goForward and reload.
+//   goForward and reload. A notice's button goes to the overlay's notices
+//   (`onNotice`: ui/app-feedback.js), which tell the copy (`noticeAction`);
+// - which of the window's tabs are loading (the copy's `push` `loading`:
+//   background/page-loads.js): the tab's status, a page being left, a site's
+//   own same-page navigation; drawn as each tab's `loading` (the view model);
+// - why the last request failed (`takeFailure`), for the notice of a switch
+//   that didn't happen.
 //
 // No browser API here: only the DOM and `post`.
 /** @import { Geometry, Host } from './host.js' */
 import { fromStorage } from '../shared/stored.js';
 import { isNewTabPage } from '../shared/view.js';
 import { acrossOf, foreignSpace } from '../shared/across.js';
+import { platform as profile } from '../shared/platform.js';
 
 /**
  * The stored values with a change applied, as storage.onChanged reports it
@@ -99,16 +106,18 @@ export function hitRects(root, slot, { limit = 64, getStyle = (el) => /** @type 
  * a message to the app, resolving with its reply (webkit.messageHandlers
  * .margin.postMessage). `onMessage(msg)`: what the app sends that isn't the
  * state (theme, command, pointer, pressOutside, push), for the page.
+ * `onNotice({ id, action })`: a button of a notice the overlay put up.
  *
  * @param {{
  *   hello: any,
  *   post: (op: string, body?: Record<string, any>) => Promise<any>,
  *   onMessage?: (msg: any) => void,
+ *   onNotice?: (arg: { id?: string, action?: string }) => void,
  *   warn?: (...args: any[]) => void,
  * }} options
- * @returns {Host & { receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, destroy(): void }}
+ * @returns {Host & { receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], takeFailure(): { type: string, error: string } | null, destroy(): void }}
  */
-export function createAppHost({ hello, post, onMessage = () => {}, warn = (...args) => console.warn('[margin]', ...args) }) {
+export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args) }) {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   /** @type {Record<string, any> | null} */
   let raw = hello?.state && typeof hello.state === 'object' ? hello.state : null;
@@ -122,11 +131,28 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
   let layout = null;
   let destroyed = false;
   const listeners = new Set();
-  const platform = { browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'), os: 'mac', app: true };
+  // What Settings offers for this browser (ui/settings-form.js): the build's
+  // profile (scripts/build.js stamps Safari's into the overlay), as the new-tab
+  // page gave them when Settings were drawn there.
+  const platform = {
+    browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'), os: 'mac', app: true,
+    features: { sleepTabs: !!profile?.sleepTabs, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search },
+  };
+  // The window's tabs loading, as the copy last said (`push` `loading`).
+  /** @type {Set<number>} */
+  let loading = new Set();
+  /** @type {{ type: string, error: string, at: number } | null} */
+  let failure = null;
 
   const rebuild = () => {
     const next = raw ? fromStorage(raw) : null;
-    state = next?.spaces?.length ? (across ? { ...next, across } : next) : null;
+    let built = next?.spaces?.length ? (across ? { ...next, across } : next) : null;
+    if (built && loading.size && built.tabs) {
+      const tabs = { ...built.tabs };
+      for (const id of loading) if (tabs[id]) tabs[id] = { ...tabs[id], loading: true };
+      built = { ...built, tabs };
+    }
+    state = built;
   };
   const emit = () => { if (state && !destroyed) for (const cb of [...listeners]) cb(state); };
   rebuild();
@@ -169,9 +195,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
       const res = typeof text === 'string' ? JSON.parse(text) : text;
       if (res?.ok) return res.result;
       if (res && !res.stale) warn(type, res.error);
+      failure = res && !res.stale ? { type, error: String(res.error ?? ''), at: Date.now() } : null;
       return undefined;
     } catch (err) {
-      warn(type, /** @type {any} */ (err)?.message ?? err);
+      const error = String(/** @type {any} */ (err)?.message ?? err);
+      warn(type, error);
+      failure = { type, error, at: Date.now() };
       return undefined;
     }
   }
@@ -187,6 +216,19 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
     // Its Settings asked for (the new-tab page's #settings: a Settings button elsewhere).
     get settingsAsked() { return !!frontPage()?.url.includes('#settings'); },
     get pageTabId() { return frontPage()?.id ?? null; },
+    // The window's tab in front, Margin's new-tab page or not.
+    get frontTabId() {
+      const own = windows.find((w) => (w?.windowId ?? w?.id) === windowId);
+      const id = own?.activeTabId ?? Object.values(state?.tabs ?? {}).find((t) => t?.windowId === windowId && t?.active)?.id;
+      return Number.isInteger(id) ? id : null;
+    },
+    get loading() { return [...loading]; },
+    // Why the last request failed, if it failed in the last 2 s (taken once).
+    takeFailure() {
+      const f = failure;
+      failure = null;
+      return f && Date.now() - f.at < 2000 ? { type: f.type, error: f.error } : null;
+    },
     getState: () => state,
     /** @param {(state: any) => void} cb */
     onState(cb) { listeners.add(cb); return () => listeners.delete(cb); },
@@ -222,8 +264,11 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
         case 'notice':
+          // The runtime closed it; the overlay's notices tell the copy what was chosen.
+          onNotice(arg ?? {});
+          return true;
         case 'prompt':
-          return true; // the runtime closes it; the app's own notices have no buttons yet
+          return true; // the runtime closes it; the app puts up no prompts yet
         default:
           return false; // history goes to the copy (goBack, goForward, reload); the window's other buttons are Phase 4's
       }
@@ -256,6 +301,16 @@ export function createAppHost({ hello, post, onMessage = () => {}, warn = (...ar
           if (mode !== before || pageKey() !== page) emit();
           return;
         }
+        case 'push':
+          // The window's tabs loading (background/page-loads.js): each one's row and the tab in front.
+          if (msg.msg?.type === 'loading') {
+            const next = new Set((Array.isArray(msg.msg.tabIds) ? msg.msg.tabIds : []).filter((id) => Number.isInteger(id)));
+            if (next.size === loading.size && [...next].every((id) => loading.has(id))) return;
+            loading = next;
+            rebuild();
+            return emit();
+          }
+          return onMessage(msg);
         default:
           return onMessage(msg);
       }

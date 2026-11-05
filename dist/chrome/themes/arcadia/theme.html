@@ -54,7 +54,7 @@
                   </span>
                 </a>
                 <m-for each="g.shown" as="p">
-                  <a class="pin nested" data-pin-id="{{p.id}}" m-class:active="{{p.active}}" m-class:behind="{{p.behind}}" m-class:open="{{p.open}}" m-class:asleep="{{p.asleep}}" aria-label="{{p.title}}" m-action="pin.open" m-arg="{{p.id}}" m-drag="pin">
+                  <a class="pin nested" data-pin-id="{{p.id}}" m-class:active="{{p.active}}" m-class:behind="{{p.behind}}" m-class:open="{{p.open}}" m-class:asleep="{{p.asleep}}" m-class:busy="{{p.loading}}" aria-label="{{p.title}}" m-action="pin.open" m-arg="{{p.id}}" m-drag="pin">
                       <m-if test="p.icon">
                         <img class="avatar" alt="" m-icon="{{p.icon}}">
                         <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{p.color}}">{{p.letter}}</span></m-else>
@@ -71,7 +71,7 @@
                   </a>
                 </m-for>
                 <m-else>
-                  <a class="pin" data-pin-id="{{g.id}}" m-class:active="{{g.active}}" m-class:behind="{{g.behind}}" m-class:open="{{g.open}}" m-class:asleep="{{g.asleep}}" aria-label="{{g.title}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
+                  <a class="pin" data-pin-id="{{g.id}}" m-class:active="{{g.active}}" m-class:behind="{{g.behind}}" m-class:open="{{g.open}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" aria-label="{{g.title}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
                       <m-if test="g.icon">
                         <img class="avatar" alt="" m-icon="{{g.icon}}">
                         <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{g.color}}">{{g.letter}}</span></m-else>
@@ -102,7 +102,7 @@
             <span class="title">New Tab</span>
           </a>
           <m-for each="space.today" as="t">
-            <a class="tab" data-tab-id="{{t.id}}" m-class:active="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:not-open="{{t.notOpen}}" aria-label="{{t.title}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+            <a class="tab" data-tab-id="{{t.id}}" m-class:active="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" aria-label="{{t.title}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
                 <m-if test="t.icon">
                   <img class="avatar" alt="" m-icon="{{t.icon}}">
                   <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{t.color}}">{{t.letter}}</span></m-else>
@@ -145,6 +145,20 @@
        and the page-load pill in the frame's top strip. -->
   <div class="card-edge" aria-hidden="true">
     <div class="loader"><div class="loader-bar"></div></div>
+    <!-- Margin's trackpad gestures on the page (pull to refresh at the top,
+         swipe back and forward at the sides): a dark round badge that comes
+         in with the fingers and takes the space's color once letting go
+         would do it. Never takes the pointer. -->
+    <m-if test="gesture.pull">
+      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="line-icon" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"></path></svg>
+      </div>
+    </m-if>
+    <m-if test="gesture.swipe">
+      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="line-icon" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
+      </div>
+    </m-if>
   </div>
 
   <!-- The new-tab page's launcher, in the page card (while the UI is drawn in Margin's new-tab page). -->

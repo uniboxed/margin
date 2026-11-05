@@ -10,7 +10,8 @@
 // MARGIN_LINK_LAYOUT="left,top,right,bottom"), and once the theme's pieces add up, a request
 // (`updateSettings`, the sidebar's shortcut to ⌥J) whose effect a page can see. Stdin:
 // { wantLink: nonce } | { bye: true } | { layout: [left, top, right, bottom] } (a new
-// setLayout for the linked copy's first window: the host's `appLayout` step).
+// setLayout for the linked copy's first window: the host's `appLayout` step) | { req: { type, payload } }
+// (a request from the app's UI for that window, its reply said: the host's `appReq` step).
 // Built by run.sh with the app's flags; never shows anything.
 import AppKit
 import Foundation
@@ -126,6 +127,18 @@ FileHandle.standardInput.readabilityHandler = { handle in
       MainActor.assumeIsolated {
         if let nonce = object["wantLink"] as? String { harness.link.wantLink(nonce: nonce) }
         if object["bye"] as? Bool == true { harness.link.stop(why: "Margin.app quit") { say(["ev": "stopped"]); exit(0) } }
+        if let req = object["req"] as? JSONObject, let type = req["type"] as? String, let c = harness.current {
+          let payload = req["payload"] as? JSONObject ?? [:]
+          let windowId = harness.firstWindow[c.epoch]
+          Task { @MainActor in
+            do {
+              let reply = try await c.request(type: type, payload: payload, windowId: windowId)
+              say(["ev": "reply", "type": type, "ok": reply["ok"] ?? NSNull(), "result": reply["result"] ?? NSNull(), "error": reply["error"] ?? NSNull()])
+            } catch {
+              say(["ev": "reply failed", "type": type, "error": "\(error)"])
+            }
+          }
+        }
         if let given = object["layout"] as? [Double], given.count == 4 {
           insets = given
           if let c = harness.current { harness.layout(c, c.epoch) } else { say(["ev": "layout kept: no copy linked"]) }

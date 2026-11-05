@@ -1,9 +1,11 @@
 // What a page reads of storage.local (shared/stored.js readForPage, from
-// content/core.js refresh): all of it once, then all but the site icons
-// unless their mark changed, and never a state other than a full read's.
+// content/core.js refresh): what a page draws from and the site icons once
+// (never the theme's package, Margin.app's: Margin 2 Phase 2 step 7), then
+// all but the icons unless their mark changed, and never a state other than
+// a full read's.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STATE_REV, faviconsMark, fromStorage, knowsState, pageKeys, readForPage, revAfter, revOf, sameStored, toStorage, withChanges } from '../extension/shared/stored.js';
+import { STATE_REV, faviconsMark, firstReadKeys, fromStorage, knowsState, pageKeys, readForPage, revAfter, revOf, sameStored, toStorage, withChanges } from '../extension/shared/stored.js';
 
 const by = { origin: 'safari-web-extension://A/', since: 5, synced: true };
 const icon = (i, at) => ({ data: `data:image/png;base64,${'iVBORw0KGgo'.repeat(220)}${i}`, href: `https://site${i}.test/f.png`, at });
@@ -47,7 +49,7 @@ test('page reads: the icons get a mark, and a new one whenever one is learned or
   assert.equal(faviconsMark(undefined), faviconsMark({}));
 });
 
-test('page reads: all of storage once, then all but the icons and what only the background reads, a small part of it', async () => {
+test('page reads: what pages use and the icons once, then all but the icons and what only the background reads, a small part of it', async () => {
   const storage = fakeStorage(stored());
   let state = null;
   const seen = new Set();
@@ -57,7 +59,8 @@ test('page reads: all of storage once, then all but the icons and what only the 
     state = fromStorage(raw);
   };
   await refresh();
-  assert.equal(storage.gets[0].keys, null, 'the first read is all of it');
+  assert.deepEqual(storage.gets[0].keys, firstReadKeys(), 'the first read: the page\'s keys, the icons, the link');
+  for (const key of ['favicons', 'appLink', 'openTabs', 'settings']) assert.ok(storage.gets[0].keys.includes(key), key);
   const full = storage.gets[0].bytes;
   await refresh();
   const second = storage.gets[1];
@@ -70,7 +73,7 @@ test('page reads: all of storage once, then all but the icons and what only the 
   assert.deepEqual(page, drawn, 'what a full read gives a page, the icons too');
 });
 
-test('page reads: a key the page saw in a read or an event is read again; the icons are read again once their mark changed', async () => {
+test('page reads: a key the page saw in an event is read again, one it never saw isn\'t; the icons are read again once their mark changed', async () => {
   const storage = fakeStorage({ ...stored(), later: { a: 1 } });
   let state = null;
   const seen = new Set();
@@ -80,10 +83,10 @@ test('page reads: a key the page saw in a read or an event is read again; the ic
     state = fromStorage(raw);
   };
   await refresh();
+  assert.equal(state.later, undefined, 'not a page\'s key: not read');
   seen.add('fromAnEvent');
   storage.set({ fromAnEvent: 7 });
   await refresh();
-  assert.equal(state.later?.a, 1);
   assert.equal(state.fromAnEvent, 7);
   // An icon learned while the page missed the event (suspended).
   const learned = { ...STATE, favicons: { ...STATE.favicons, 'https://new.test': icon(999, 9000) } };
@@ -97,12 +100,31 @@ test('page reads: a key the page saw in a read or an event is read again; the ic
   assert.equal(storage.gets.length, before + 3, 'and then not again');
 });
 
-test('page reads: the open tabs still under their old names (just updated): all of storage', async () => {
+test('page reads: the theme\'s package (Margin.app\'s) is never read, however big; the first read costs what the state does', async () => {
+  // Neo-brutalism's package is about 330 KB stored; a user theme can be 3 MB (themes/README.md).
+  const uiTheme = { id: 'big', version: '1', pkg: { id: 'big', manifest: '{}', html: '<div></div>', css: '', files: { 'fonts/a.woff2': 'A'.repeat(3_000_000) } } };
+  const storage = fakeStorage({ ...stored(), uiTheme, 'dataMeta:link': { profile: 'p-x', acked: 3 } });
+  let state = null;
+  const seen = new Set();
+  for (let i = 0; i < 3; i++) {
+    const raw = await readForPage(storage.get, () => state, seen);
+    for (const key of Object.keys(raw)) seen.add(key);
+    state = fromStorage(raw);
+    assert.equal('uiTheme' in raw, false, `read ${i + 1}: no theme package`);
+    assert.equal('dataMeta:link' in raw, false, `read ${i + 1}: nor the link's data meta`);
+  }
+  const everything = JSON.stringify(Object.fromEntries(storage.map)).length;
+  assert.ok(storage.gets[0].bytes < everything - 3_000_000, `${storage.gets[0].bytes} bytes against ${everything} for all of storage`);
+  assert.equal(state.spaces[0].name, 'Personal');
+});
+
+test('page reads: the open tabs still under their old names (just updated): read with them', async () => {
   const { openTabs, ...rest } = stored();
   const storage = fakeStorage({ ...rest, tabs: openTabs.tabs, tabSpace: openTabs.tabSpace, activeSpaceByWindow: openTabs.activeSpaceByWindow });
   let state = null;
   for (let i = 0; i < 2; i++) state = fromStorage(await readForPage(storage.get, () => state));
-  assert.deepEqual(storage.gets.map((g) => g.keys === null), [true, false, true]);
+  assert.equal(storage.gets.length, 4, 'each read, then the old names with the icons');
+  for (const i of [1, 3]) assert.ok(storage.gets[i].keys.includes('tabs') && storage.gets[i].keys.includes('favicons'), `read ${i}: the old names`);
   assert.equal(state.tabs[1].title, 'One');
 });
 

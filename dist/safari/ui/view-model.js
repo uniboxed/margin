@@ -55,6 +55,7 @@ export const VM_VERSION = 1;
  *   inNewTab?: boolean,
  *   launcherPage?: boolean,
  *   pageLoading?: boolean,
+ *   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done', progress?: number, direction?: number } | null,
  * }} UiState
  *
  * @typedef {{
@@ -138,6 +139,13 @@ export const VM_VERSION = 1;
  * @typedef {{ id: string, text: string, actions: NoticeAction[], hasActions: boolean }} NoticeView
  * @typedef {NoticeView & { title: string }} PromptView
  *
+ * A trackpad gesture Margin runs in the page in front (Margin.app: the page
+ * tells the overlay through its copy): pull to refresh (`pull`) or swipe back
+ * and forward (`swipe`, `back` or `forward`), `armed` once letting go would
+ * do it, `done` once it did, `progress` how far along (0 to 1, in steps of
+ * 0.05; `percent` the same out of 100). Icons only: no words.
+ * @typedef {{ pull: boolean, swipe: boolean, back: boolean, forward: boolean, armed: boolean, done: boolean, progress: number, percent: number }} GestureView
+ *
  * The new-tab page's launcher (the `launcher` part, in <m-launcher>), while
  * the UI is drawn in Margin's new-tab page: the space's pins as tiles, the
  * archive's latest (all of it after "Show all").
@@ -171,6 +179,7 @@ export const VM_VERSION = 1;
  *   editor: EditorView | null,
  *   notice: NoticeView | null,
  *   prompt: PromptView | null,
+ *   gesture: GestureView | null,
  *   launcher: LauncherView | null,
  *   settingsForm: SettingsFormView | null,
  *   settings: Record<string, string | number | boolean>,
@@ -293,13 +302,14 @@ function fresh(input) {
   const editing = ui.editing ? { kind: ui.editing.kind, id: ui.editing.id } : null;
   const notice = ui.notice ? noticeView(ui.notice) : null;
   const prompt = ui.prompt ? { ...noticeView(ui.prompt), title: String(ui.prompt.title ?? '') } : null;
+  const gesture = ui.gesture ? gestureView(ui.gesture) : null;
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, profile: null, foreign: false, profileMark: false, profileStart: false, switching: false, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], profiles: [], profile: null, multiProfile: false, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, launcher: null, settingsForm: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, settingsForm: null, settings, platform,
     };
   }
 
@@ -536,6 +546,7 @@ function fresh(input) {
     editor,
     notice: notice ?? acrossNotice,
     prompt,
+    gesture,
     launcher,
     settingsForm,
     settings,
@@ -557,6 +568,19 @@ function noticeView(n) {
     id: String(a?.id ?? `a${i}`), label: String(a?.label ?? ''), primary: !!a?.primary, danger: !!a?.danger,
   }));
   return { id: String(n.id), text: String(n.text ?? ''), actions, hasActions: actions.length > 0 };
+}
+
+/** A gesture's view (GestureView). @param {any} g @returns {GestureView | null} */
+function gestureView(g) {
+  const kind = g?.kind === 'pull' || g?.kind === 'swipe' ? g.kind : null;
+  if (!kind) return null;
+  const done = g.state === 'done';
+  const progress = done ? 1 : Math.round(Math.max(0, Math.min(1, Number(g.progress) || 0)) * 20) / 20;
+  return {
+    pull: kind === 'pull', swipe: kind === 'swipe',
+    back: kind === 'swipe' && Number(g.direction) <= 0, forward: kind === 'swipe' && Number(g.direction) > 0,
+    armed: done || g.state === 'armed', done, progress, percent: Math.round(progress * 100),
+  };
 }
 
 // How long ago, as the launcher's archive says it (Arcadia's newtab.js ago).

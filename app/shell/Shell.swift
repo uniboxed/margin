@@ -51,6 +51,31 @@ struct LayoutOutbox {
     mutating func reset() { sent = [:]; seq = [:] }
 }
 
+// What a copy pushed for a window that an overlay made later still needs
+// (app/PROTOCOL.md "Notices, loading and gestures"): its last notice, for
+// NOTICE_FOR, and its last set of tabs loading, given to each overlay's page
+// with its hello (`held`). A push reaches only the overlays already there,
+// and a copy says a notice as it decides it: often as it links, before the
+// app has bound the window or drawn its overlay.
+struct HeldPushes {
+    static let types: Set<String> = ["notice", "loading"]
+    static let noticeFor: TimeInterval = 60
+    private var held: [Int: [String: (msg: JSONObject, at: Date)]] = [:] // window (-1: every window) → type → the last push
+
+    mutating func offer(windowId: Int?, _ msg: JSONObject, at: Date = Date()) {
+        guard let type = msg["type"] as? String, Self.types.contains(type) else { return }
+        held[windowId ?? -1, default: [:]][type] = (msg, at)
+    }
+
+    // A window's, oldest first: every window's and its own; a notice only while it's recent.
+    func messages(for windowId: Int, at now: Date = Date()) -> [JSONObject] {
+        let entries = [-1, windowId].flatMap { (held[$0] ?? [:]).map { (type: $0.key, msg: $0.value.msg, at: $0.value.at) } }
+        return entries.filter { $0.type != "notice" || now.timeIntervalSince($0.at) <= Self.noticeFor }.sorted { $0.at < $1.at }.map(\.msg)
+    }
+
+    mutating func forget(windowId: Int) { held[windowId] = nil }
+}
+
 final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     struct Options {
         var harness = false
@@ -83,6 +108,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var outbox = LayoutOutbox()
         var resyncTimer: Timer?
         var keys: [String: [String]]? // the copy's shortcuts, once it said
+        var held = HeldPushes() // what an overlay made later is given with its hello
         init(_ connection: LinkConnection) { self.connection = connection }
     }
 
@@ -222,6 +248,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         case .data(let kind, let body):
             data.received(connection, kind, body)
         case .push(_, let windowId, let msg):
+            entry.held.offer(windowId: windowId, msg)
             let json = jsonString(["type": "push", "msg": msg]) ?? ""
             for overlay in overlays(of: entry) where windowId == nil || overlay.key.windowId == windowId { overlay.push(raw: json) }
         case .keys(let epoch, let bindings):
@@ -547,6 +574,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         json += #","state":"# + (entry.mirror.stateJSON().map { String(decoding: $0, as: UTF8.self) } ?? "null")
         json += #","windows":"# + (jsonString(entry.mirror.windows) ?? "[]")
         json += #","across":"# + (acrossJSON(for: overlay) ?? "null")
+        json += #","held":"# + (jsonString(entry.held.messages(for: overlay.key.windowId)) ?? "[]")
         json += #","theme":"# + (entry.theme ?? "null") + "}"
         return json
     }

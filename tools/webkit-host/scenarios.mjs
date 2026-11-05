@@ -2,7 +2,8 @@
 // `node scenarios.mjs <name>` prints one as JSON (run.sh does this).
 //
 // Steps (host.swift):
-//   { op: 'open', name, url: '/p/A' | 'ext:<path>', active?, asleep? }  a tab
+//   { op: 'open', name, url: '/p/A' | 'ext:<path>', active?, asleep?, selectedFirst? }  a tab (selectedFirst:
+//                              in front before the extension hears it was made, as Safari's New Tab)
 //   { op: 'install', sameId? } / { op: 'uninstall', keepWorld? }  Margin (sameId: as an update would;
 //                              keepWorld: open pages keep Margin's content-script world, and the old
 //                              copy's globals and `browser` in it, as Safari keeps them when it reloads Margin)
@@ -39,6 +40,11 @@
 //   { op: 'appStart' } / { op: 'appQuit' } / { op: 'appKill' } / { op: 'appPings' }  Margin.app's
 //                              real end of the link (link-server/), started (native messaging
 //                              goes to it), saying goodbye, killed; the copy's pings logged
+//   { op: 'appMark' }          what the app's end says from now on is what appHeard looks at
+//   { op: 'appHeard', label, has: [text], timeout?, none? }  a line the app's end said (link-server/:
+//                              its `ev` lines, a push with its msg) has every text; none: no such line
+//   { op: 'appReq', type, payload? | in, js }  a request from the app's UI for the copy's first window;
+//                              `js` (Margin's world of tab `in`) returns its payload as JSON text
 //   { op: 'deferLoads' }       from now on, a tab asleep loads only if it's still the one shown
 //                              once the run loop turn is over (Safari putting its load off); its
 //                              view is made as it's selected all the same (no page: a script there
@@ -164,6 +170,7 @@ const openKept = (tab, name) => ({ op: 'eval', in: tab, js: `${KEPT(name)} retur
 // The open tab's Margin id at /p/<name>, kept in `tab`'s content world as __mid<name>.
 const keepMid = (tab, name) => ({ op: 'eval', in: tab, js: `const { tabs } = await ${STATE}('tabs'); globalThis.__mid${name} = Object.values(tabs).find((t) => t.url.endsWith('/p/${name}'))?.mid; return globalThis.__mid${name} ?? 'none'` });
 // The page server's address (run.sh's MARGIN_HOST_PORT), for addresses Margin's own pages carry.
+import { firstReadKeys } from '../../extension/shared/stored.js';
 const SERVER = `http://127.0.0.1:${process.env.MARGIN_HOST_PORT ?? 47811}`;
 // Margin's sleep page as an earlier build left a tab on it (Safari closes sleeping tabs now).
 const OLD_SLEEP = (name) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${SERVER}/p/${name}`, t: name, k: `old-${name}` })}`;
@@ -1307,6 +1314,95 @@ Object.assign(SCENARIOS, {
     { op: 'page', in: 'N', js: `document.getElementById('start').click(); return document.getElementById('status').textContent` },
     checkPage('N', 'N: linked: loaded again, the app draws it (the page shows nothing of its own)', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 12000),
     check('A', 'A (behind): linked, its box from the app\'s layout', `Margin.content.appDraws() === true`, 3000),
+    boxed('A'),
+  ],
+
+  // ---- Margin 2 Phase 2 step 7: what pages said in their own UI, said by Margin.app's overlay ----
+  // Through the app's real end of the link (link-server/): what it heard
+  // (appHeard), and a request from its UI (appReq). The overlay drawing it is
+  // tools/app-tests' (no overlays here).
+  //
+  // A page in front cut off from Margin by a reload of Margin (a draft typed
+  // in it, so Margin leaves its reload to the person): the copy tells the
+  // window's overlay "not-responding" (the kind only, once it has linked
+  // again); the overlay's Reload, as noticeAction, loads the page again.
+  'notice-cutoff': [
+    appWith(260),
+    { op: 'open', name: 'A', url: '/p/FA', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install', sameId: true }, linked('A'), wait(800),
+    reload('A'), reload('B'), wait(1500), boxed('A'),
+    { op: 'page', in: 'A', js: `window.__before = true; document.getElementById('t').value = 'draft'; return 'typed'` },
+    { op: 'page', in: 'B', js: 'window.__before = true; return "marked"' },
+    { op: 'appMark' },
+    { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
+    checkPage('B', 'B (behind): loaded again by Margin', '!window.__before', 8000),
+    linked('B'),
+    { op: 'appHeard', label: 'A (in front, cut off, a draft typed): its window told "not-responding", the kind and the tab only', has: ['"ev":"push"', '"type":"notice"', '"kind":"not-responding"', '"tabId":'], timeout: 8000 },
+    { op: 'appHeard', label: 'and no words on the link', has: ['"type":"notice"', 'isn’t responding'], none: true, timeout: 300 },
+    checkPage('A', 'A: not loaded again by Margin (its draft)', `window.__before === true && document.getElementById('t').value === 'draft'`),
+    { op: 'appMark' },
+    { op: 'appReq', type: 'noticeAction', in: 'B', js: `const { tabs } = await ${STATE}('tabs'); const a = Object.values(tabs).find((t) => t.url.endsWith('/p/FA')); return JSON.stringify({ notice: 'not-responding', action: 'reload', tabId: a?.id ?? null })` },
+    { op: 'appHeard', label: 'its Reload, from the app\'s UI: answered', has: ['"ev":"reply"', '"type":"noticeAction"', '"ok":true', '"result":true'] },
+    checkPage('A', 'A: loaded again, as the person chose', '!window.__before', 6000),
+    linked('A'), boxed('A'),
+  ],
+  // A new tab from nothing opening the same web page twice (Safari's "New
+  // tabs open with" isn't Margin): the window told "new-tab-setting" once its
+  // page says it was opened from nothing; "Don't show again" from the app
+  // turns the note off.
+  'notice-newtab': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'),
+    { op: 'appMark' },
+    { op: 'open', name: 'H1', url: '/p/home', active: true, selectedFirst: true }, ready('H1'), wait(500),
+    { op: 'open', name: 'H2', url: '/p/home', active: true, selectedFirst: true }, ready('H2'),
+    { op: 'appHeard', label: 'the same page twice in a new tab from nothing: its window told "new-tab-setting"', has: ['"type":"notice"', '"kind":"new-tab-setting"'], timeout: 6000 },
+    { op: 'appMark' },
+    { op: 'appReq', type: 'noticeAction', in: 'H2', js: `return JSON.stringify({ notice: 'new-tab-setting', action: 'never', tabId: Margin.content.getState().tabId })` },
+    { op: 'appHeard', label: 'its "Don\'t show again", from the app\'s UI: answered', has: ['"ev":"reply"', '"type":"noticeAction"', '"result":true'] },
+    check('H2', 'the note turned off in the settings', `(await browser.storage.local.get('settings')).settings?.newTabHint === false`, 3000),
+  ],
+  // Loading, for the app's sidebar: the page in front about to be left (told
+  // at once, from its beforeunload; taken back when it stays), left by a link
+  // to a page that takes a while to load (an image 3 s late), then done once
+  // it has loaded; a site's own same-page navigation (the Navigation API)
+  // that takes a while.
+  'loading': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(600),
+    { op: 'appMark' },
+    { op: 'page', in: 'A', js: `dispatchEvent(new Event('beforeunload')); return 'about to leave'` },
+    { op: 'appHeard', label: 'A about to be left (its beforeunload): loading, told by the page itself', has: ['"type":"loading"'], re: '"tabIds":.[0-9]', timeout: 2000 },
+    { op: 'page', in: 'A', js: `document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return 'stayed'` },
+    { op: 'appHeard', label: 'it stayed (the person did something there): not loading', has: ['"type":"loading"', '"tabIds":[]'], timeout: 2000 },
+    wait(200), { op: 'appMark' },
+    { op: 'page', in: 'A', js: `location.href = '/p/Z2'; return 'leaving'` },
+    { op: 'appHeard', label: 'A left by a link: its window told a tab is loading', has: ['"type":"loading"'], re: '"tabIds":.[0-9]', timeout: 3000 },
+    ready('A'),
+    { op: 'appHeard', label: 'and done once the next page loaded', has: ['"type":"loading"', '"tabIds":[]'], timeout: 8000 },
+    wait(300), { op: 'appMark' },
+    { op: 'page', in: 'A', js: `if (!window.navigation) return 'no Navigation API'; navigation.addEventListener('navigate', (e) => { if (e.canIntercept && e.destination.url.endsWith('#later')) e.intercept({ handler: () => new Promise((r) => setTimeout(r, 700)) }); }); navigation.navigate(location.pathname + '#later'); return 'navigating'` },
+    { op: 'appHeard', label: 'a same-page navigation taking a while: loading', has: ['"type":"loading"'], re: '"tabIds":.[0-9]', timeout: 2000 },
+    { op: 'appHeard', label: 'and done when it finished', has: ['"type":"loading"', '"tabIds":[]'], timeout: 3000 },
+  ],
+  // Margin's pull to refresh in a page (synthetic wheel events at the top):
+  // its feedback told to the window's overlay as it goes, then the reload.
+  'gesture-pull': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(300),
+    { op: 'appMark' },
+    { op: 'page', in: 'A', js: `window.__before = true; for (let i = 0; i < 24; i++) { document.dispatchEvent(new WheelEvent('wheel', { deltaY: -12, deltaMode: 0, bubbles: true, cancelable: true })); await new Promise((r) => setTimeout(r, 16)); } return 'pulled'` },
+    { op: 'appHeard', label: 'a pull at the top of A: its window told how far it went', has: ['"type":"gesture"', '"kind":"pull"', '"state":"pulling"'] },
+    { op: 'appHeard', label: 'armed', has: ['"type":"gesture"', '"kind":"pull"', '"state":"armed"'] },
+    { op: 'appHeard', label: 'let go: done', has: ['"type":"gesture"', '"kind":"pull"', '"state":"trigger"'] },
+    checkPage('A', 'A: reloaded by the pull', '!window.__before', 4000),
+  ],
+  // A page's first read of storage with a big theme package stored (a user
+  // theme can be 3 MB): pages no longer read it (Margin.app's link does).
+  // Logs the read's time and size as a page did it before (all of storage)
+  // and now (its keys), the median of 7 each.
+  'first-read': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), wait(500),
+    { op: 'eval', in: 'A', js: `const keys = ${JSON.stringify(firstReadKeys())}; const time = async (k) => { const t = performance.now(); const r = await browser.storage.local.get(k); return [performance.now() - t, JSON.stringify(r).length]; }; const measure = async () => { const runs = { all: [], first: [] }; for (let i = 0; i < 7; i++) { runs.all.push(await time(null)); runs.first.push(await time(keys)); } const med = (l) => l.map((x) => x[0]).sort((a, b) => a - b)[3].toFixed(1); return 'get(null) ' + med(runs.all) + ' ms, ' + runs.all[0][1] + ' bytes; the first read now ' + med(runs.first) + ' ms, ' + runs.first[0][1] + ' bytes'; }; const stored = JSON.stringify((await browser.storage.local.get('uiTheme')).uiTheme ?? null).length; const builtIn = await measure(); await browser.storage.local.set({ uiTheme: { id: 'big', version: '1', pkg: { id: 'big', manifest: '{}', html: '', css: '', files: { 'fonts/a.woff2': 'A'.repeat(3000000) } } } }); const big = await measure(); return 'the built-in theme stored (' + stored + ' bytes): ' + builtIn + ' | a 3 MB theme stored: ' + big` },
+    reload('A'), ready('A'),
+    check('A', 'A: its first read took no theme package (a 3 MB one stored)', `!('uiTheme' in Margin.content.getState().state)`),
     boxed('A'),
   ],
 });

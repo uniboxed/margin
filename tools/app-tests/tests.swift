@@ -105,6 +105,24 @@ final class FakeRegistrar: HotKeyRegistrar {
     if case .push(_, let windowId, let msg)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":4,"msg":{"type":"switching","tabId":5}}"#) {
       check("push for a window", windowId == 4 && msg["type"] as? String == "switching")
     } else { check("push decodes", false) }
+    // Pushes an overlay made later still needs (Shell.swift HeldPushes): the last notice for a minute, the last loading set.
+    do {
+      var held = HeldPushes()
+      let t0 = Date(timeIntervalSince1970: 1000)
+      held.offer(windowId: 4, ["type": "switching", "tabId": 1], at: t0)
+      held.offer(windowId: 4, ["type": "notice", "kind": "not-responding", "tabId": 7], at: t0)
+      held.offer(windowId: 4, ["type": "loading", "tabIds": [7]], at: t0.addingTimeInterval(1))
+      held.offer(windowId: 4, ["type": "loading", "tabIds": [7, 8]], at: t0.addingTimeInterval(2))
+      held.offer(windowId: 5, ["type": "notice", "kind": "updated-while-open", "tabId": 9], at: t0)
+      let now = held.messages(for: 4, at: t0.addingTimeInterval(5))
+      check("held pushes: a window's last notice and loading set, oldest first; not a switch", now.count == 2 && now[0]["kind"] as? String == "not-responding" && same(now[1]["tabIds"], [7, 8]), "\(now)")
+      check("held pushes: a notice goes after a minute, loading stays", held.messages(for: 4, at: t0.addingTimeInterval(90)).map { $0["type"] as? String } == ["loading"])
+      check("held pushes: another window's are its own", held.messages(for: 5, at: t0).count == 1 && held.messages(for: 6, at: t0).isEmpty)
+      held.offer(windowId: nil, ["type": "notice", "kind": "tab-gone"], at: t0.addingTimeInterval(3))
+      check("held pushes: one for every window, given to each", held.messages(for: 6, at: t0.addingTimeInterval(4)).first?["kind"] as? String == "tab-gone")
+      held.forget(windowId: 4)
+      check("held pushes: a closed window's forgotten", held.messages(for: 4, at: t0.addingTimeInterval(4)).count == 1)
+    }
     let sha = String(repeating: "a", count: 64)
     if case .theme(let epoch, let c)? = LinkMessage.decode(#"{"k":"theme","epoch":"e","id":"arcadia","transfer":"\#(sha)","part":1,"parts":3,"size":10,"data":"YWJj"}"#) {
       check("a theme chunk", epoch == "e" && c.id == "arcadia" && c.part == 1 && c.parts == 3 && c.size == 10 && c.data == "YWJj")

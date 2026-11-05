@@ -88,6 +88,8 @@ export const APP_REQUESTS = new Set([
   'renameSpace', 'deleteSpace', 'clearToday', 'goBack', 'goForward', 'reload', 'restoreArchive', 'openLauncher',
   'newWindow', 'search', 'toggleFullscreen', 'updateSettings', 'updateThemeSettings', 'navigate', 'sidebarScroll',
   'setSidebarScroll', 'wakeSleeping', 'windowState', 'openHere', 'cancelNewTab',
+  // A button of one of Margin's notices the overlay put up (background/notices.js).
+  'noticeAction',
   // Margin.app's switch to another profile's space (app/shell/ProfileSwitch.swift) and its order across profiles.
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
 ]);

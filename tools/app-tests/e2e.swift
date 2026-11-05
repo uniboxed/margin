@@ -283,6 +283,35 @@ func scenario() async {
     check("a real press on a tab's row: activateTab for it, for window 7 (\(Int(Date().timeIntervalSince(t1) * 1000)) ms)", asked && (req["payload"] as? JSONObject)?["tabId"] as? Int == 12 && req["windowId"] as? Int == 7, "\(req)")
   } else { check("tab 12's row", false) }
 
+  // ---- what the copy says about the window's pages (Margin 2 Phase 2 step 7) ----
+  // A notice: the copy pushes only its kind; the overlay draws Margin's words in Arcadia's notice part.
+  func pushTo7(_ msg: JSONObject) { fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 7, "msg": msg]]) }
+  pushTo7(["type": "notice", "kind": "not-responding", "tabId": 13])
+  check("a notice pushed for window 7: Margin's words in the theme's notice part, with its buttons",
+        await waitJS(o7.webView, "const n = document.querySelector('.notice'); return !!n && n.querySelector('.text')?.textContent.includes('isn’t responding on this page') && [...n.querySelectorAll('button')].map((b) => b.textContent.trim()).join('|') === 'Reload|Not now'"))
+  mark = fake.events.count
+  if let button = rect(await js(o7.webView, "const b = [...document.querySelectorAll('.notice button')].find((x) => x.textContent.trim() === 'Reload')?.getBoundingClientRect(); return b ? [b.x, b.y, b.width, b.height] : null")) {
+    press(o7, at: CGPoint(x: button.midX, y: button.midY))
+    let asked = await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "noticeAction" } != nil })
+    let req = fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "noticeAction" }?["msg"] as? JSONObject ?? [:]
+    let payload = req["payload"] as? JSONObject ?? [:]
+    check("its Reload pressed: noticeAction for tab 13, for window 7", asked && payload["notice"] as? String == "not-responding" && payload["action"] as? String == "reload" && payload["tabId"] as? Int == 13 && req["windowId"] as? Int == 7, "\(req)")
+    check("and the notice goes", await waitJS(o7.webView, "return !document.querySelector('.notice')"))
+  } else { check("the notice's Reload button", false) }
+  pushTo7(["type": "notice", "kind": "say what I tell you", "tabId": 13])
+  pushTo7(["type": "switch-failed", "tabId": 12, "reason": "That tab is no longer open"])
+  check("a switch the copy made that didn't happen: why, in Margin's words (an unknown kind: nothing)", await waitJS(o7.webView, "return document.querySelector('.notice .text')?.textContent === 'That tab is no longer open.'"))
+  // Loading: the tab in front (13) and a row (12).
+  pushTo7(["type": "loading", "tabIds": [12, 13]])
+  check("tabs loading: tab 12's row and Arcadia's pill for the tab in front, no hover", await waitJS(o7.webView, "return document.querySelector('[data-tab-id=\"12\"]')?.classList.contains('busy') && document.querySelector('.arcadia')?.classList.contains('loading') && getComputedStyle(document.querySelector('.loader')).visibility === 'visible'"))
+  pushTo7(["type": "loading", "tabIds": []])
+  check("and done", await waitJS(o7.webView, "return !document.querySelector('.busy') && !document.querySelector('.arcadia.loading')"))
+  // A gesture in the page in front: the badge over the page, never taking the pointer.
+  pushTo7(["type": "gesture", "tabId": 13, "kind": "pull", "state": "armed", "progress": 1, "direction": 0])
+  check("a pull in the page: Arcadia's badge over the page, armed", await waitJS(o7.webView, "const g = document.querySelector('.gesture.pull'); return !!g && g.classList.contains('armed') && getComputedStyle(g).pointerEvents === 'none'"))
+  pushTo7(["type": "gesture", "tabId": 13, "kind": "pull", "state": "idle", "progress": 0, "direction": 0])
+  check("let go without reloading: gone", await waitJS(o7.webView, "return !document.querySelector('.gesture')"))
+
   // ---- deltas, a gap, a resync ----
   mark = fake.events.count
   fake.tell(["do": "retitle", "id": "A", "tabId": 12, "title": "Inbox (3)"])

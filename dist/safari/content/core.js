@@ -21,6 +21,7 @@ import { startPageLink } from './page-link.js';
 import { startPinch } from './pinch.js';
 import { SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
+import { startLoads } from './loads.js';
 import { createIdleWatch } from './idle.js';
 import { STATE_REV, fromStorage, knowsState, onlyMark, openTabsCurrent, readForPage, revAfter, revOf, takesChanges, withChanges } from '../shared/stored.js';
 import { APP_LINK_KEY, appDraws, boxFromLayout, layoutFor } from '../shared/app-link.js';
@@ -183,6 +184,9 @@ export function startCore() {
     dormant: retired,
     // The page's zoom (1 = 100%).
     zoom: () => pageZoom,
+    // A trackpad gesture's feedback as it goes (content/trackpad.js), for
+    // Margin.app's overlay to draw while it draws Margin around this window.
+    tellGesture: (/** @type {any} */ g) => { if (appUi() && active()) void send('gesture', g, false); },
   };
   Margin.content.boxed = () => !!box;
 
@@ -286,6 +290,10 @@ export function startCore() {
     if (appUi()) void send('appKeyHeard', { command: 'palette' }, false);
     else void send('newTabKey', {}, false);
   }, true);
+
+  // The page being left, or a site's own same-page navigation under way:
+  // told for Margin.app's sidebar to show it loading (content/loads.js).
+  startLoads({ on: () => appUi() && active(), send: (type, payload) => send(type, payload, false) });
 
   // ---- data ---------------------------------------------------------------
 
@@ -763,6 +771,10 @@ export function startCore() {
     // The background switching from this tab to another (next/previous
     // tab): answered that this page isn't covered (nothing is drawn here).
     if (message?.type === 'switching') return sendResponse(false);
+    // Whether this page was opened from nothing (no referrer, its first
+    // history entry), for the note on Safari's "New tabs open with"
+    // (background/newtab-hint.js: Margin.app's overlay says it).
+    if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     // Margin.app's layout for this window, as it changes (background/link.js).
     if (message?.type === 'appLayout' && Number.isInteger(message.windowId)) {

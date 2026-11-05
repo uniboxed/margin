@@ -128,17 +128,26 @@ export const knowsState = (rev, { known, reading, staleRead }) => typeof rev ===
 // open tabs (read in full when `openTabs` isn't there), lostTabs (only the
 // background's), or the envelope an old development build kept.
 const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archive', 'settings', 'owner', 'showing', 'pageZoom', FAVICONS_MARK, STATE_REV]);
-// The active theme's package (`uiTheme`, background/theme-package.js): in a
-// page's first read, then kept from change events (content/core.js).
+// The active theme's package (`uiTheme`, background/theme-package.js) is
+// Margin.app's (the link reads it): never read by a page (Margin 2 Phase 2
+// step 7; before, its first read of everything took it, some 100 KB to 3 MB).
 const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup', 'uiTheme']);
 /** @param {Iterable<string>} seen storage keys a page has seen @returns {string[]} */
 // Nor the lasting data set's queue (`dataMeta:<collection>`: shared/data-set.js).
 export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key) && !key.startsWith('dataMeta:'));
+// A page's first read: what it reads every time, with the site icons and
+// Margin.app's link (`appLink`: shared/app-link.js). Not all of storage
+// (until Margin 2 Phase 2 step 7 it was: get(null), the theme's package with it).
+/** @param {Iterable<string>} [seen] @returns {string[]} */
+export const firstReadKeys = (seen = []) => [...new Set([...pageKeys(seen), FAVICONS, 'appLink'])];
+// The open tabs under the names of a build before `openTabs` (just updated
+// from one): read when `openTabs` isn't there, with the rest (fromStorage).
+const OLD_NAMES = Object.freeze([...OPEN_TABS_KEYS, ...Object.values(RENAMED)]);
 
 /**
  * What a page reads of storage.local (content/core.js refresh), as storage
- * would return it for fromStorage: all of it the first time (`page()`, the
- * state the page has, is null), then pageKeys, and the icons only when their
+ * would return it for fromStorage: firstReadKeys the first time (`page()`,
+ * the state the page has, is null), then pageKeys, and the icons only when their
  * mark isn't the one the page had as the read started. Not read, they're the
  * page's own, as it has them once the read is back: it keeps them current
  * from the change events, with their mark, and a page that missed one (Safari
@@ -150,11 +159,12 @@ export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].fil
  */
 export async function readForPage(get, page, seen = []) {
   const before = page();
-  if (!before) return get(null);
-  const raw = await get(pageKeys(seen));
+  const first = !before;
+  const raw = await get(first ? firstReadKeys(seen) : pageKeys(seen));
   // The open tabs only under their old names (just updated from a build
-  // before them): a full read knows them (fromStorage).
-  if (!(OPEN_TABS in raw)) return get(null);
+  // before them): read with them, and the icons (fromStorage).
+  if (!(OPEN_TABS in raw)) return { ...raw, ...(await get([...OLD_NAMES, FAVICONS])) };
+  if (first) return raw;
   // Against the icons the page has, not the mark it was last told: a page can
   // take the mark's event after a read that came before the icons were
   // stored (between the background's two writes), and would keep old icons

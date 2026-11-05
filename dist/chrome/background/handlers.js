@@ -7,7 +7,7 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, provenWith, resolveTab, tellProven, shownAt, wakeTab } from './tabs.js';
+import { focusTab, reloadCutOff, forgetShowing, handingOff, inPage, instanceId, isFocusing, isNeverShown, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, pageBlinked, pageInView, pageStarted, provenWith, resolveTab, tellProven, shownAt, wakeTab } from './tabs.js';
 import { clearLog, readLog } from './diagnostics.js';
 import { sleepIdle, wakeAll } from './sleep.js';
 import { newTabPageSeen } from './newtab-hint.js';
@@ -22,6 +22,9 @@ import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
 import { closeTabs, noteClosing } from './closing.js';
 import { appLink } from './app-link.js';
+import { noticeAnswered } from './notices.js';
+import { isNoticeAction } from '../shared/notices.js';
+import * as pageLoads from './page-loads.js';
 import { moveIndex } from '../ui/behaviors/drop-rules.js';
 import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, plainSetting } from '../themes/packages.js';
 
@@ -972,6 +975,33 @@ export const handlers = {
   async appKeyHeard({ command }, sender) {
     console.info(`[margin] ${command} heard in a page while Margin.app draws the UI: left to the app`);
     appLink.push(sender?.tab?.windowId ?? null, { type: 'keyHeard', command: String(command), from: 'page' });
+  },
+  // A button of one of Margin's notices, chosen in Margin.app's overlay
+  // (background/notices.js, shared/notices.js): done here, and the notice
+  // isn't said again for that page. Whether it was a notice's button.
+  /** @param {{ notice: string, action: string, tabId?: number }} message */
+  async noticeAction({ notice, action, tabId }) {
+    if (!isNoticeAction(notice, action)) return false;
+    const tab = Number.isInteger(tabId) ? await api.tabs.get(/** @type {number} */ (tabId)).catch(() => null) : null;
+    noticeAnswered(notice, tab?.id ?? null, notice === 'new-tab-setting' ? null : tab?.url ?? null);
+    console.info(`[margin] notice ${notice}: ${action}${tab ? ` (tab ${tab.id})` : ''}`);
+    if (notice === 'not-responding' && action === 'reload' && tab) return reloadCutOff(tab.id);
+    if (notice === 'new-tab-setting' && action === 'never') await mutate((s) => ({ ...s, settings: { ...s.settings, newTabHint: false } }));
+    return true;
+  },
+  // The page in front being left, or a site's own same-page navigation under
+  // way (content/loads.js), for Margin.app's sidebar (background/page-loads.js).
+  /** @param {{ on: boolean, why: 'leaving' | 'navigating' }} message */
+  async pageLoading({ on, why }, sender) {
+    if (sender?.tab?.id == null) return;
+    pageLoads.pageSaid(sender.tab.id, sender.tab.windowId ?? null, !!on, why);
+  },
+  // A trackpad gesture Margin runs in the page (content/trackpad.js), as it
+  // goes: its feedback, drawn by Margin.app's overlay of the window.
+  /** @param {{ kind: 'pull' | 'swipe', state: string, progress?: number, direction?: number }} message */
+  async gesture({ kind, state, progress = 0, direction = 0 }, sender) {
+    if (sender?.tab?.id == null || (kind !== 'pull' && kind !== 'swipe')) return;
+    appLink.push(sender.tab.windowId ?? null, { type: 'gesture', tabId: sender.tab.id, kind, state: String(state), progress: Number(progress) || 0, direction: Number(direction) || 0 });
   },
   async openHere({ tabId, url }) {
     if (!Number.isInteger(tabId) || typeof url !== 'string' || !/^(https?|file):/i.test(url)) throw new Error('not an address');

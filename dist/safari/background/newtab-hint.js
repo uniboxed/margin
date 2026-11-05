@@ -6,9 +6,12 @@
 // the sign of it: tabs that open in front, from nothing (no opener, not
 // opened by Margin, not a new window's first tab), on the same web page
 // twice within a run of Safari, while Margin's new-tab page doesn't show.
-// That page then gets a note on how to set it (content/core.js, which also
-// checks the page was opened from nothing: no referrer, its first history
-// entry), at most once a run, unless turned off (settings.newTabHint).
+// That page's window then gets a note on how to set it, drawn by Margin.app's
+// overlay (background/notices.js 'new-tab-setting'; pages draw none of
+// Margin's UI), once the page says it was opened from nothing (no referrer,
+// its first history entry: content/core.js), at most once a run, unless
+// turned off (settings.newTabHint: the note's "Don't show again", or
+// Settings). Not linked to the app, nothing is said.
 // Bookmarks opened twice in new tabs look the same, hence "twice" and the
 // way to turn it off.
 import { platform } from '../shared/platform.js';
@@ -17,6 +20,7 @@ import * as V from '../shared/view.js';
 import { api, load } from './store.js';
 import { openedByMargin } from './tabs.js';
 import { reportEvent } from './onboarding.js';
+import { tellNotice } from './notices.js';
 
 const KEY = 'newTabHint'; // storage.session: { seen: { [url]: count }, shown: boolean }
 const CANDIDATE_MS = 3000; // its first web address must come this soon
@@ -61,13 +65,17 @@ export async function tabAddress(tabId, url) {
   if ((await api.tabs.get(tabId).catch(() => null))?.status === 'complete') tabLoaded(tabId);
 }
 
-/** tabs.onUpdated with status complete: the page can show the note now. */
+/** tabs.onUpdated with status complete: the note can be shown now. */
 export function tabLoaded(tabId) {
   if (!pendingNote.delete(tabId)) return;
-  // Shown once a run, counted only once the page showed it (no Margin
-  // there, or not a page opened from nothing: the next one may).
-  api.tabs.sendMessage(tabId, { type: 'newtab-hint' }).then(async (shown) => {
-    if (shown === true) await write({ ...(await read()), shown: true });
+  // Shown once a run, counted only once the overlay was told (no Margin in
+  // the page, not a page opened from nothing, the tab no longer in front, or
+  // the app not linked: the next one may).
+  api.tabs.sendMessage(tabId, { type: 'newtab-hint' }).then(async (answer) => {
+    if (answer?.fromNothing !== true) return;
+    const tab = await api.tabs.get(tabId).catch(() => null);
+    if (!tab?.active) return;
+    if (tellNotice(tab.windowId, 'new-tab-setting', { tabId })) await write({ ...(await read()), shown: true });
   }, () => {});
 }
 

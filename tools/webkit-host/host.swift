@@ -431,6 +431,9 @@ var retiredViews: [WKWebView] = []
   var input: FileHandle?
   var port: WKWebExtension.MessagePort?
   var pings = 0
+  // What the app's end said (link-server's `ev` lines), for `appHeard` checks; `mark`: where `appMark` left off.
+  var heard: [String] = []
+  var mark = 0
   var onDemand = false
   var onDemandLayout: [Double]?
   var running: Bool { process?.isRunning == true }
@@ -462,7 +465,9 @@ var retiredViews: [WKWebView] = []
               log("app: dispatch \(name)")
               self.port?.sendMessage(["name": name, "userInfo": ["e": text]]) { error in if let error { log("app: dispatch failed \(error)") } }
             } else {
-              log("app: \(String(decoding: line, as: UTF8.self).prefix(400))")
+              let text = String(decoding: line, as: UTF8.self)
+              self.heard.append(text)
+              log("app: \(text.prefix(400))")
             }
           }
         }
@@ -498,8 +503,11 @@ Task { @MainActor in
       t.window = host.window
       host.window.tabs.append(t)
       if (step["asleep"] as? Bool) != true { t.makeWebView() }
+      // selectedFirst: in front before the extension hears of it (Safari's New Tab: a tab made selected).
+      let selectedFirst = (step["selectedFirst"] as? Bool) == true && (step["active"] as? Bool) == true
+      if selectedFirst { host.window.show(t) }
       if host.context != nil { host.controllers.forEach { $0.didOpenTab(t) } }
-      if (step["active"] as? Bool) == true { host.window.show(t) }
+      if (step["active"] as? Bool) == true && !selectedFirst { host.window.show(t) }
       log("opened \(t.name)\((step["asleep"] as? Bool) == true ? " (asleep)" : "")")
     case "sleep":
       // Safari unloading a hidden tab: its web view goes away.
@@ -731,6 +739,27 @@ Task { @MainActor in
     case "appQuit": appLink.tell(["bye": true]); log("appQuit")
     case "appKill": appLink.kill()
     case "appPings": log("app: \(appLink.pings) pings on the port so far")
+    case "appMark": appLink.mark = appLink.heard.count; log("appMark at \(appLink.mark)")
+    case "appReq": // { op: 'appReq', type, payload? | in, js }: a request from the app's UI for the copy's first window (link-server/); `js` (Margin's world of tab `in`) returns its payload as JSON text
+      var payload: Any = step["payload"] ?? [String: Any]()
+      if let js = step["js"] as? String, let name = step["in"] as? String, let wv = host.tab(name)?.webView, let world = host.world(),
+         let text = try? await wv.callAsyncJavaScript(js, arguments: [:], in: nil, contentWorld: world) as? String,
+         let made = try? JSONSerialization.jsonObject(with: Data(text.utf8)) { payload = made }
+      appLink.tell(["req": ["type": step["type"] as? String ?? "", "payload": payload]]); log("appReq \(step["type"] ?? "") \(payload)")
+    case "appHeard": // { op: 'appHeard', label, has: [text], re?, timeout?, none? }: a line the app's end said since the last appMark has every text (and matches re; none: no such line within the timeout)
+      let has = step["has"] as? [String] ?? []
+      let re = (step["re"] as? String).flatMap { try? NSRegularExpression(pattern: $0) }
+      let label = step["label"] as? String ?? "the app heard \(has)"
+      let none = (step["none"] as? Bool) == true
+      let deadline = Date().addingTimeInterval((step["timeout"] as? Double ?? (none ? 1500 : 5000)) / 1000)
+      var found: String?
+      while true {
+        found = appLink.heard.dropFirst(appLink.mark).first { line in has.allSatisfy { line.contains($0) } && (re.map { $0.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil } ?? true) }
+        if found != nil || Date() > deadline { break }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+      }
+      if none { if let found { fail(label, "heard \(found.prefix(300))") } else { log("PASS \(label)") } }
+      else if let found { log("PASS \(label)"); _ = found } else { fail(label, "not heard since the mark (\(appLink.heard.count - appLink.mark) lines)") }
     case "zoom": // { op: 'zoom', factor }: the shown tab's page zoom, as ⌘+ / ⌘− do
       host.window.active?.webView?.pageZoom = CGFloat(step["factor"] as! Double); log("zoom \(step["factor"]!)")
     case "state":
