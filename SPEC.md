@@ -96,6 +96,8 @@ Margin 2: `settings.themes[id]` holds each theme's declared settings, imported t
 
 On browser restart, tab ids change: rebuild `tabSpace` by matching open tabs to pins by URL; unmatched tabs go to the active space.
 
+Margin 2 (Phase 2): Margin's sidebar is the real list of tabs. Each open tab's record carries its Margin tab's own lasting id (`mid`) and place in the list (`order`); Margin tabs with no browser tab are `keptTabs: { [id]: { id, url, title, favIconUrl, spaceId, order, lastActive, keptAt, why } }`, stored with the open tabs. After a restart, open tabs are matched to their Margin tabs by address and order; unmatched ones stay as kept tabs. The lasting data set Margin.app owns, its merge and its messages are in `DATA.md`.
+
 ## Milestones
 
 The first prototype's milestones, kept as history. Margin 2's phases are in `PLAN.md`.
