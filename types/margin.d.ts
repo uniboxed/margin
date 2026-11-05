@@ -27,8 +27,14 @@ export interface Folder { id: string; spaceId: string; name: string; open: boole
 export interface TabRecord {
   id: number; windowId: number; index: number; title: string; url: string;
   favIconUrl: string; active: boolean; lastActive: number;
+  /** its Margin tab's own id, lasting (state/model.js "Margin's tabs") */
+  mid?: string;
+  /** its place in the list (higher: newer, shown higher), as its Margin tab's */
+  order?: number;
   /** view.sidebar only: its page is on screen under the palette while a new tab is chosen */
   behind?: boolean;
+  /** view.sidebar only: never on an open tab's record (a kept tab's row has it) */
+  kept?: boolean;
   /** its space and record came from before its id changed (state/model.js syncTabs, reclaimWindows) */
   restored?: boolean;
   /** the old window it came back from (restored), as of that renumbering */
@@ -40,8 +46,21 @@ export interface TabRecord {
   /** when it last woke from that sleep */
   wokeAt?: number;
 }
-/** A tab from before ids changed that no open tab matched yet (state/model.js lostTabs). */
+/** A tab from before ids changed that no open tab matched yet (an earlier build's lostTabs: moved into keptTabs as read). */
 export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }
+/** A Margin tab with no browser tab: not open, in its space (state/model.js keepTab). */
+export interface KeptTab {
+  id: string; url: string; title: string; favIconUrl: string; spaceId: string;
+  order: number; lastActive: number; wokeAt?: number;
+  /** when it stopped being open, and why ('window', 'sleep', 'not restored', 'gone', 'app') */
+  keptAt: number; why: string;
+  /** the window it was lost with: a window that comes back within a day takes it back (reclaimTabs) */
+  from?: { key: string; at: number; size: number; index: number; windowId?: number | string };
+  /** the browser's id it had, this session (a sync found it gone before its close was heard) */
+  wasTab?: number;
+  /** view.sidebar only: not open */
+  kept?: true;
+}
 export interface ArchiveEntry {
   id: string; url: string; title: string; spaceId: string; favIconUrl: string; closedAt: number;
 }
@@ -80,6 +99,7 @@ export interface State {
   archive: ArchiveEntry[];
   settings: Settings;
   tabs: Record<number, TabRecord>;
+  keptTabs: Record<string, KeptTab>;
   favicons: Record<string, Favicon>;
   lostTabs: { windows: { key: string; at: number; size: number; tabs: LostTab[] }[] } | null;
 }

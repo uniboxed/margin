@@ -1,15 +1,17 @@
-// Tabs that may be coming back from before the tab ids changed (Margin
-// updated, the browser restarted), whose old tabs wait in lostTabs: a
-// session reopened later (History › Reopen All Windows from Last Session,
-// ⌘⇧T: a window new to Margin), and the tabs of a window that was still
-// being restored, or had no address yet, when the ids changed. Only those
-// tabs (never ones the user had before; never one placed in a space on
-// purpose, M.moveTab) are offered, for RESTORE_MS after their window was
-// first watched; tabs created in it count for ARRIVE_MS (a window is restored
-// in one burst), new-tab pages never (a tab coming back has its address).
-// Once they stop arriving or changing (QUIET_MS), they take back their old
-// tabs' spaces (state/model.js reclaimTabs). Kept in the worker's memory: a
-// worker unloaded within that minute loses what's left to take back.
+// Tabs that may be coming back from before (the browser restarted, Margin
+// updated, a window closed), whose Margin tabs wait, not open, in keptTabs
+// with the window they were lost with (state/model.js reclaimTabs): a session
+// reopened later (History › Reopen All Windows from Last Session, a closed
+// window reopened, ⌘⇧T: a window new to Margin), and the tabs of a window
+// that was still being restored, or had no address yet, when the ids changed.
+// Only those tabs (never ones the user had before; never one placed in a
+// space on purpose, M.moveTab) are offered, for RESTORE_MS after their window
+// was first watched; tabs created in it count for ARRIVE_MS (a window is
+// restored in one burst), new-tab pages never (a tab coming back has its
+// address). Once they stop arriving or changing (QUIET_MS), they take back
+// their Margin tabs (state/model.js reclaimTabs: id, place, space). Kept in
+// the worker's memory: a worker unloaded within that minute loses what's left
+// to take back (those Margin tabs stay, not open).
 import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { mutate, now } from './store.js';
@@ -20,6 +22,10 @@ const QUIET_MS = 1500;
 /** @type {Map<number, { since: number, tabs: Set<number> }>} window id → its candidate tabs */
 const watched = new Map();
 let timer = null;
+
+// Margin tabs lost with a window lately, that a window coming back takes back.
+/** @param {import('../../types/margin').State} state */
+const waiting = (state, t = now()) => Object.values(state.keptTabs ?? {}).some((k) => k.from && t - (k.from.at ?? 0) <= M.LOST_MS);
 
 function schedule() {
   clearTimeout(timer);
@@ -32,7 +38,7 @@ async function run() {
   const t = now();
   expire(t);
   const tabIds = [...watched.values()].flatMap((w) => [...w.tabs]);
-  if (tabIds.length) await mutate((s) => (s.lostTabs ? M.reclaimTabs(s, tabIds, t) : s));
+  if (tabIds.length) await mutate((s) => (waiting(s, t) ? M.reclaimTabs(s, tabIds, t) : s));
 }
 const watch = (windowId, tabIds) => {
   const w = watched.get(windowId) ?? { since: now(), tabs: new Set() };
@@ -40,11 +46,11 @@ const watch = (windowId, tabIds) => {
   watched.set(windowId, w);
 };
 
-// After a sync that renumbered the tabs, with old tabs left waiting: every
+// After a sync that renumbered the tabs, with Margin tabs left waiting: every
 // window's tabs not matched yet, and its tabs to come (see tabCreated).
 /** @param {{ state: import('../../types/margin').State, renumbered: boolean }} sync */
 export function synced({ state, renumbered }) {
-  if (!renumbered || !state.lostTabs) return;
+  if (!renumbered || !waiting(state)) return;
   const byWindow = new Map();
   for (const t of Object.values(state.tabs)) byWindow.set(t.windowId, [...(byWindow.get(t.windowId) ?? []), ...(t.restored ? [] : [t.id])]);
   for (const [windowId, tabIds] of byWindow) watch(windowId, tabIds);
@@ -55,7 +61,7 @@ export function synced({ state, renumbered }) {
 // watched window, or in a window Margin has no tab in yet.
 /** @param {import('../../types/margin').State} state */
 export function tabCreated(state, tab) {
-  if (!state.lostTabs || V.isNewTabPage(tab.pendingUrl || tab.url)) return;
+  if (!waiting(state) || V.isNewTabPage(tab.pendingUrl || tab.url)) return;
   const t = now();
   expire(t);
   const w = watched.get(tab.windowId);

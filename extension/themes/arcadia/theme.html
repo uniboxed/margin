@@ -102,7 +102,7 @@
             <span class="title">New Tab</span>
           </a>
           <m-for each="space.today" as="t">
-            <a class="tab" data-tab-id="{{t.id}}" m-class:active="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" aria-label="{{t.title}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+            <a class="tab" data-tab-id="{{t.id}}" m-class:active="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:not-open="{{t.notOpen}}" aria-label="{{t.title}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
                 <m-if test="t.icon">
                   <img class="avatar" alt="" m-icon="{{t.icon}}">
                   <m-else><span class="avatar letter" aria-hidden="true" m-style:--letter="{{t.color}}">{{t.letter}}</span></m-else>

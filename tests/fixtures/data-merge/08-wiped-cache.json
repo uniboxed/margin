@@ -1,0 +1,36 @@
+{
+  "description": "Safari wiped the extension's storage and Margin started afresh: its defaults are at 0 (not a change of its own), so the app's data stays; what the user did since (a tab opened, a setting changed) is queued with its time and merged in.",
+  "base": {
+    "format": 1,
+    "items": {
+      "spaces": {
+        "personal": { "updatedAt": 1700000000000, "value": { "name": "Me", "emoji": "🙂", "color": "#e84393", "order": 0 } },
+        "work": { "updatedAt": 1700000000000, "value": { "name": "Work", "emoji": "💼", "color": "#0984e3", "order": 1 } }
+      },
+      "settings": {
+        "archiveAfterHours": { "updatedAt": 1700000000000, "value": 48 },
+        "sidebarPinnedOpen": { "updatedAt": 1700000000000, "value": true }
+      }
+    }
+  },
+  "changes": [
+    { "collection": "tabs", "id": "t-new0000001", "updatedAt": 1730000005000, "value": { "url": "https://new.test/", "title": "New", "icon": "", "spaceId": "personal", "order": 0, "lastUsed": 1730000005000 } },
+    { "collection": "settings", "id": "sidebarPinnedOpen", "updatedAt": 1730000006000, "value": false }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "spaces": {
+        "personal": { "updatedAt": 1700000000000, "value": { "name": "Me", "emoji": "🙂", "color": "#e84393", "order": 0 } },
+        "work": { "updatedAt": 1700000000000, "value": { "name": "Work", "emoji": "💼", "color": "#0984e3", "order": 1 } }
+      },
+      "settings": {
+        "archiveAfterHours": { "updatedAt": 1700000000000, "value": 48 },
+        "sidebarPinnedOpen": { "updatedAt": 1730000006000, "value": false }
+      },
+      "tabs": {
+        "t-new0000001": { "updatedAt": 1730000005000, "value": { "url": "https://new.test/", "title": "New", "icon": "", "spaceId": "personal", "order": 0, "lastUsed": 1730000005000 } }
+      }
+    }
+  }
+}

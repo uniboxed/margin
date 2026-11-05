@@ -49,10 +49,10 @@ test('owner: two copies started together never both claim', () => {
 });
 
 test('stored: the open tabs, their spaces and the windows\' spaces go in one value that says whose they are', () => {
-  const state = { tabs: { 5: { id: 5 } }, tabSpace: { 5: 'work' }, activeSpaceByWindow: { 1: 'work' }, spaces: [{ id: 'work' }], lostTabs: null };
+  const state = { tabs: { 5: { id: 5 } }, tabSpace: { 5: 'work' }, activeSpaceByWindow: { 1: 'work' }, keptTabs: { 't-k1': { id: 't-k1', url: 'https://k.test/', spaceId: 'work' } }, spaces: [{ id: 'work' }], lostTabs: null };
   const written = toStorage(state, ['tabSpace', 'spaces'], { origin: fresh.origin, since: fresh.since, synced: true });
   assert.deepEqual(Object.keys(written).sort(), ['openTabs', 'spaces']);
-  assert.deepEqual(written.openTabs, { origin: fresh.origin, since: fresh.since, synced: true, tabs: state.tabs, tabSpace: state.tabSpace, activeSpaceByWindow: state.activeSpaceByWindow });
+  assert.deepEqual(written.openTabs, { origin: fresh.origin, since: fresh.since, synced: true, tabs: state.tabs, tabSpace: state.tabSpace, activeSpaceByWindow: state.activeSpaceByWindow, keptTabs: state.keptTabs });
   const read = fromStorage({ ...written, tabs: { 9: { id: 9 } } });
   assert.deepEqual(read.tabs, state.tabs, 'not the old name another copy writes');
   assert.deepEqual(read.openTabsBy, { origin: fresh.origin, since: fresh.since, synced: true });

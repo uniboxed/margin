@@ -18,6 +18,10 @@
 //   { op: 'pinch', deltas, x?, y? }  real magnify events for the shown tab's web view (x, y: in the
 //                              window); the first delta is the Began's; logs its native magnification
 //   { op: 'show', name }       Safari itself bringing a tab to the front (its tab bar)
+//   { op: 'close', name, windowClosing? }  Safari closing a tab itself (its tab bar, ⌘W), or with
+//                              its window (tabs.onRemoved's isWindowClosing; the window stays here)
+//   { op: 'restart', late?, lateMs?, drop? }  a Safari relaunch (host.swift); `drop`: names of tabs
+//                              Safari doesn't bring back
 //   { op: 'flip', to, back }   one tab to the front and another back, in the same run loop turn
 //   { op: 'probeShow', name, nth? }  count the web view's layers in each turn committed after
 //                              the nth show of the tab from now on (empty: WebKit's empty view)
@@ -39,7 +43,7 @@
 
 // Margin's state from storage, by state key (shared/stored.js: the keys
 // holding tab ids have names of their own there): an expression for steps.
-const STATE = '(async (keys) => { const raw = await browser.storage.local.get(null); const open = raw.openTabs ?? {}; const of = (k) => (["tabs", "tabSpace", "activeSpaceByWindow"].includes(k) ? open[k] : k === "lostTabs" ? raw.lostTabs2 : k === "openTabsBy" ? (raw.openTabs ? { origin: open.origin, synced: open.synced } : null) : raw[k]); return Object.fromEntries([].concat(keys).map((k) => [k, of(k)])); })';
+const STATE = '(async (keys) => { const raw = await browser.storage.local.get(null); const open = raw.openTabs ?? {}; const of = (k) => (["tabs", "tabSpace", "activeSpaceByWindow", "keptTabs"].includes(k) ? open[k] ?? (k === "keptTabs" ? {} : undefined) : k === "lostTabs" ? raw.lostTabs2 : k === "openTabsBy" ? (raw.openTabs ? { origin: open.origin, synced: open.synced } : null) : raw[k]); return Object.fromEntries([].concat(keys).map((k) => [k, of(k)])); })';
 // The id of the tab showing /p/<name>, from Margin's own tab snapshot.
 const ID = 'const { tabs } = await ' + STATE + '("tabs"); const id = (n) => Object.values(tabs).find((t) => t.url.endsWith("/p/" + n))?.id;';
 const switchTo = (from, to, options = {}) => ({ op: 'eval', in: from, js: `${ID} return JSON.stringify(await Margin.content.send("activateTab", { tabId: id("${to}"), ...${JSON.stringify(options)} }) ?? null)` });
@@ -200,6 +204,22 @@ const asleepAt = (tab, name) => [
 ];
 // Back at its page, one history entry (no sleep page in its Back list), its content there.
 const awakeAt = (tab, name, label) => checkPage(tab, `${tab}: ${label}`, `location.pathname === '/p/${name}' && history.length === 1 && document.title === '${name}' && !!document.body?.textContent.includes('${name}')`, 4000);
+
+// Margin's tabs (Margin 2: state/model.js keptTabs). The kept (not open)
+// Margin tab at /p/<name>, as statements in a check (`k` then).
+const KEPT = (name) => `const k = Object.values((await ${STATE}('keptTabs')).keptTabs ?? {}).find((x) => x.url.endsWith('/p/${name}'));`;
+// Its row in a page's sidebar (`row` then).
+const KEPT_ROW = (name) => `${KEPT(name)} const row = k && __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + k.id + '"]');`;
+// The kept tab's row drawn as not open (dimmed), in that page's sidebar.
+const keptRow = (tab, name, label = `${tab}: ${name}'s row is there, drawn as not open (dimmed)`) => check(tab, label, `${KEPT_ROW(name)} return !!row && row.classList.contains('not-open') && Number(getComputedStyle(row.querySelector('.title')).opacity) < 1`, 3000);
+// The middle of that row, for a `mouse` step.
+const keptRowAt = (name) => `${KEPT_ROW(name)} const r = row.getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]`;
+// The open tab's Margin id at /p/<name>, kept in `tab`'s content world as __mid<name>.
+const keepMid = (tab, name) => ({ op: 'eval', in: tab, js: `const { tabs } = await ${STATE}('tabs'); globalThis.__mid${name} = Object.values(tabs).find((t) => t.url.endsWith('/p/${name}'))?.mid; return globalThis.__mid${name} ?? 'none'` });
+// The page server's address (run.sh's MARGIN_HOST_PORT), for addresses Margin's own pages carry.
+const SERVER = `http://127.0.0.1:${process.env.MARGIN_HOST_PORT ?? 47811}`;
+// Margin's sleep page as an earlier build left a tab on it (Safari closes sleeping tabs now).
+const OLD_SLEEP = (name) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${SERVER}/p/${name}`, t: name, k: `old-${name}` })}`;
 
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core, the background
@@ -1602,23 +1622,23 @@ Object.assign(SCENARIOS, {
   // The same reload with Margin's new-tab page open: that page is the old copy's, at its address,
   // and nothing in it answers. It's loaded again at this copy's address (marked as not a new tab:
   // ⌘T's hand-off would close it), then shown with every tab.
-  // A tab put to sleep (background/sleep.js): its page goes to Margin's sleep
-  // page with location.replace from Margin's content script, and its page's
-  // process exits; Safari's own show (its tab bar) wakes it: back at its page,
-  // with no history entry for the sleep page, its content there. The tab in
-  // front isn't put to sleep.
+  // A tab put to sleep (background/sleep.js; Margin 2): Margin closes its
+  // browser tab and keeps the Margin tab, not open, in its space; a click on
+  // its row opens it again, in front, as the same Margin tab, its content
+  // there and one history entry. The tab in front isn't put to sleep.
   'sleep-show': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
-    wait(800), { op: 'install' }, drawn('A'), drawn('B'),
-    checkPage('B', 'B: one history entry to begin with', 'history.length === 1'),
-    { op: 'pid', name: 'B' }, { op: 'pid', name: 'A' },
+    wait(800), { op: 'install' }, drawn('A'), drawn('B'), wait(300),
+    keepMid('A', 'B'),
     sleepNow('A'),
-    ...asleepAt('B', 'B'),
-    { op: 'pidGone', name: 'B', label: "B: its page's process has exited", timeout: 4000 },
+    check('A', 'B: closed and kept, not open (put to sleep)', `${KEPT('B')} return k?.why === 'sleep' && k.id === __midB`, 3000),
     checkPage('A', 'A (in front): not put to sleep', "location.pathname === '/p/A' && !document.hidden"),
-    { op: 'state' },
-    { op: 'show', name: 'B' },
-    awakeAt('B', 'B', "Safari's show woke it: back at its page, no history entry for the sleep page"),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(250),
+    keptRow('A', 'B'),
+    { op: 'mouse', in: 'A', type: 'down', at: keptRowAt('B') }, { op: 'mouse', in: 'A', type: 'up' },
+    awakeAt('new1', 'B', 'its row opened it again: its page, one history entry'),
+    checkPage('new1', 'new1: in front', '!document.hidden', 3000),
+    check('A', 'B open again as the same Margin tab, nothing kept', `const s = await ${STATE}(['tabs', 'keptTabs']); return Object.values(s.tabs).some((t) => t.url.endsWith('/p/B') && t.mid === __midB) && !Object.values(s.keptTabs).some((x) => x.url.endsWith('/p/B'))`, 3000),
     { op: 'state' },
   ],
   // The same put to sleep, woken by Margin's switch: loaded behind the page in
@@ -1659,7 +1679,7 @@ Object.assign(SCENARIOS, {
     { op: 'eval', in: 'A', js: `return JSON.stringify(await Margin.content.send('updateSettings', { patch: { neverSleepSites: [] } }))` }, wait(100),
     check('A', 'without the list: the tab with the draft kept (edited), the other put to sleep', `const r = await Margin.content.send('sleepNow', { afterMs: 1 }); return JSON.stringify(r) === JSON.stringify({ due: 2, slept: 1, skipped: { edited: 1 }, stopped: null })`, 3000),
     checkPage('F', 'F: still its page, the draft there', `location.pathname === '/p/F1' && document.querySelector('textarea').value === 'ab'`),
-    checkPage('N', "N: on Margin's sleep page", `location.pathname === '/sleep/sleep.html'`, 3000),
+    check('A', 'N: closed and kept, not open (put to sleep)', `${KEPT('N')} return k?.why === 'sleep'`, 3000),
   ],
   // Text in another site's frame (a comment box, a form) keeps its tab awake:
   // the page is asked in every frame (allFrames). One whose other site's frame
@@ -1674,21 +1694,84 @@ Object.assign(SCENARIOS, {
     check('A', 'a pass: the tab with text in its frame kept (edited), the one with a data: frame kept, the other put to sleep', `const r = await Margin.content.send('sleepNow', { afterMs: 1 }); console.log('[margin] sleep-frames pass ' + JSON.stringify(r)); return JSON.stringify(r) === JSON.stringify({ due: 3, slept: 1, skipped: { edited: 1, 'frame unknown': 1 }, stopped: null })`, 3000),
     checkPage('I', 'I: still its page', `location.pathname === '/p/I1'`),
     checkPage('K', 'K: still its page', `location.pathname === '/p/K1'`),
-    checkPage('J', "J: on Margin's sleep page", `location.pathname === '/sleep/sleep.html'`, 3000),
+    check('A', 'J: closed and kept, not open (put to sleep)', `${KEPT('J1')} return k?.why === 'sleep'`, 3000),
   ],
-  // Margin updated while a tab is asleep: its sleep page is the old copy's,
-  // whose address no longer opens. It's moved to this copy's sleep page,
-  // still asleep (hidden), and Safari's show wakes it there.
+  // Margin updated while a tab is on Margin's sleep page (one an earlier
+  // build sent there: Safari closes sleeping tabs now): its sleep page is the
+  // old copy's, whose address no longer opens. It's moved to this copy's
+  // sleep page, still asleep (hidden), and Safari's show wakes it there.
   'sleep-copy': [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
-    wait(800), { op: 'install', sameId: true }, drawn('A'), drawn('B'),
-    sleepNow('A'),
+    { op: 'open', name: 'A', url: '/p/A', active: true },
+    wait(800), { op: 'install', sameId: true }, drawn('A'),
+    { op: 'open', name: 'B', url: OLD_SLEEP('B') },
     checkPage('B', "B: on Margin's sleep page", `location.pathname === '/sleep/sleep.html' && document.hidden`, 3000),
     { op: 'page', in: 'B', js: 'window.__old = location.origin; return location.origin' },
     { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
     checkPage('B', "B: on this copy's sleep page now, still asleep", `!window.__old && location.pathname === '/sleep/sleep.html' && document.hidden && new URLSearchParams(location.search).get('u').endsWith('/p/B')`, 6000),
     { op: 'show', name: 'B' },
     checkPage('B', "B: Safari's show woke it, back at its page", `location.pathname === '/p/B' && document.title === 'B'`, 4000),
+  ],
+  // Margin's tabs (Margin 2, PLAN.md §6). A tab lost with its window
+  // (tabs.onRemoved's isWindowClosing) stays in its space, not open, the same
+  // Margin tab, drawn dimmed in the sidebar; nothing is archived.
+  'keep-window': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
+    wait(800), { op: 'install' }, drawn('A'), themed('A'), wait(300),
+    keepMid('A', 'C'),
+    { op: 'close', name: 'C', windowClosing: true },
+    check('A', 'C: kept, not open, in its space, the same Margin tab', `${KEPT('C')} const { tabs } = await ${STATE}('tabs'); return k?.why === 'window' && k.id === __midC && !Object.values(tabs).some((t) => t.url.endsWith('/p/C'))`, 3000),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(250),
+    keptRow('A', 'C'),
+    check('A', 'nothing archived', `return (await ${STATE}('archive')).archive.length === 0`),
+  ],
+  // A tab closed on its own (Safari's tab bar, ⌘W: not with its window, not
+  // Margin's doing) goes to the archive, and isn't kept.
+  'archive-own': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), wait(300),
+    { op: 'close', name: 'B' },
+    check('A', 'B: archived, not kept', `${KEPT('B')} const { archive, tabs } = await ${STATE}(['archive', 'tabs']); return !k && archive.some((a) => a.url.endsWith('/p/B')) && !Object.values(tabs).some((t) => t.url.endsWith('/p/B'))`, 3000),
+    check('A', "A's sidebar has no row for B", `return ![...__shadowOf(document.querySelector('margin-sidebar-host')).querySelectorAll('.tab')].some((row) => row.getAttribute('aria-label') === 'B')`, 2000),
+  ],
+  // A tab that isn't open, clicked in the sidebar: it opens in this window, in
+  // front, at its address, and that browser tab is the same Margin tab.
+  'reopen-kept': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), wait(300),
+    keepMid('A', 'B'),
+    { op: 'close', name: 'B', windowClosing: true },
+    check('A', 'B: kept, not open', `${KEPT('B')} return k?.id === __midB`, 3000),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(250),
+    keptRow('A', 'B'),
+    { op: 'mouse', in: 'A', type: 'down', at: keptRowAt('B') }, { op: 'mouse', in: 'A', type: 'up' },
+    checkPage('new1', 'new1: B open again, in front, its content', `location.pathname === '/p/B' && !document.hidden && document.title === 'B'`, 4000),
+    check('A', 'the new tab is the same Margin tab, in its space; nothing kept', `const s = await ${STATE}(['tabs', 'keptTabs', 'tabSpace']); const t = Object.values(s.tabs).find((x) => x.url.endsWith('/p/B')); const a = Object.values(s.tabs).find((x) => x.url.endsWith('/p/A')); return !!t && t.mid === __midB && s.tabSpace[t.id] === s.tabSpace[a.id] && !Object.values(s.keptTabs).length`, 3000),
+  ],
+  // A Safari relaunch: the tabs it restores are matched to their Margin tabs
+  // by address and order (new ids, the same Margin tabs); one it didn't
+  // restore stays in its space, not open, drawn dimmed.
+  'relaunch-match': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
+    wait(800), { op: 'install', sameId: true }, drawn('A'), wait(1200),
+    { op: 'eval', in: 'A', js: `const { tabs } = await ${STATE}('tabs'); const m = Object.fromEntries(Object.values(tabs).map((t) => [t.url.split('/p/')[1], { mid: t.mid, id: t.id }])); sessionStorage.setItem('__mids', JSON.stringify(m)); return JSON.stringify(m)` },
+    { op: 'restart', drop: ['C'] }, drawn('A'),
+    check('A', 'A and B: the same Margin tabs, matched by address under new ids', `const m = JSON.parse(sessionStorage.getItem('__mids')); const s = await ${STATE}(['tabs', 'openTabsBy']); const of = (n) => Object.values(s.tabs).find((t) => t.url.endsWith('/p/' + n)); return s.openTabsBy?.synced === true && of('A')?.mid === m.A.mid && of('B')?.mid === m.B.mid`, 5000),
+    check('A', "C (Safari didn't restore it): kept, not open, in its space, the same Margin tab", `const m = JSON.parse(sessionStorage.getItem('__mids')); ${KEPT('C')} return k?.id === m.C.mid && k.why === 'not restored'`, 3000),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(250),
+    keptRow('A', 'C'),
+  ],
+  // Put to sleep: closed by Margin, its page's process gone (all its memory
+  // given back), its Margin tab kept, not open, drawn dimmed.
+  'sleep-close': [
+    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
+    wait(800), { op: 'install' }, drawn('A'), drawn('B'), wait(300),
+    keepMid('A', 'B'),
+    { op: 'pid', name: 'B' },
+    sleepNow('A'),
+    check('A', 'B: closed by Margin, kept as its Margin tab (put to sleep), not archived', `${KEPT('B')} const { tabs, archive } = await ${STATE}(['tabs', 'archive']); return k?.why === 'sleep' && k.id === __midB && !Object.values(tabs).some((t) => t.url.endsWith('/p/B')) && !archive.some((a) => a.url.endsWith('/p/B'))`, 3000),
+    { op: 'pidGone', name: 'B', label: "B: its page's process has exited", timeout: 4000 },
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(250),
+    keptRow('A', 'B'),
   ],
   'reloaded-newtab': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },

@@ -155,6 +155,13 @@ test('store: a change with nothing new isn\'t written; a real one is, with the t
   await copy.mutate((s) => ({ ...s, settings: { ...s.settings } })); // nothing new: the failed write still goes
   assert.deepEqual(written, [['settings', 'stateRev']]);
   assert.equal(local.get('settings').sidebarWidth, 301);
+  // The change's time for Margin.app's queue (shared/data-set.js): in a set()
+  // of its own a moment later, off the state's (and a switch's) way.
+  written.length = 0;
+  await sleep(1700);
+  assert.equal(written.length, 1);
+  assert.ok(written[0].includes('dataMeta:settings') && written[0].every((key) => key.startsWith('dataMeta:')), 'only the times');
+  assert.ok(local.get('dataMeta:settings').items.sidebarWidth[0] > 0);
   chrome.storage.local.set = set;
 });
 

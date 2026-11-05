@@ -7,6 +7,7 @@ import * as M from '../state/model.js';
 import * as O from '../shared/owner.js';
 import { FAVICONS, FAVICONS_MARK, OPEN_TABS, OPEN_TABS_KEYS, STATE_REV, fromStorage, openTabsCurrent, revOf, sameStored, storedName, toStorage } from '../shared/stored.js';
 import { platform } from '../shared/platform.js';
+import { DATA_META_KEYS, SOURCES, collectionFrom, itemsFrom, metaKey, pendingChanges, track } from '../shared/data-set.js';
 import { recordEmptyStart } from './diagnostics.js';
 import { timed } from './slow.js';
 /** @import { State } from '../../types/margin' */
@@ -193,10 +194,26 @@ async function read() {
   await decided();
   const names = M.STATE_KEYS.map(storedName);
   // The old names too, for a first start after an update (shared/stored.js).
-  const raw = await api.storage.local.get([...new Set([...names, ...M.STATE_KEYS, FAVICONS_MARK])]);
-  const next = M.normalizeState(fromStorage(raw));
+  const raw = await api.storage.local.get([...new Set([...names, ...M.STATE_KEYS, FAVICONS_MARK, ...DATA_META_KEYS])]);
+  const stored = fromStorage(raw);
+  const next = M.normalizeState(stored);
   // First run: persist defaults so readers (content scripts) see a full state.
   const missing = M.STATE_KEYS.filter((key) => !(storedName(key) in raw));
+  // Tabs from before Margin's own tab ids (state/model.js), or an earlier
+  // build's lost tabs, given ids now: written, so they keep them.
+  if (role === 'owner' && M.tabIdsAdded(stored, next)) missing.push(...OPEN_TABS_KEYS, 'lostTabs');
+  // What the lasting data set's items were when this copy last wrote them
+  // (shared/data-set.js): the queue for the app is kept from here (flush). A
+  // collection with none yet (storage from before it, or wiped) starts from
+  // the state as read, every item at 0: nothing in it is queued.
+  dataMeta = readMeta(raw);
+  if (role === 'owner') {
+    for (const collection of Object.keys(SOURCES)) {
+      if (dataMeta[collection]) continue;
+      dataMeta[collection] = track(null, collectionFrom(next, collection), Date.now());
+      metaUnsaved.add(collection);
+    }
+  }
   // Icons kept by a build before their mark: written again with it, once, so
   // pages read them only when they change (shared/stored.js readForPage).
   if (FAVICONS in raw && !(FAVICONS_MARK in raw)) missing.push(FAVICONS);
@@ -212,8 +229,75 @@ async function read() {
   else if (raw.settings && ('searchEngine' in raw.settings || 'sidebarWidth' in raw.settings || !raw.settings.themes || raw.settings.theme !== next.settings.theme)) missing.push('settings');
   cache ??= next;
   if (missing.length) write(missing);
+  writeMetaSoon();
   return cache;
 }
+
+// ---- the queue for Margin.app (shared/data-set.js) ------------------------------
+// Each tracked collection's meta: what its items were when last written, since
+// when, and what's been deleted (tombstones). Looked at again for the
+// collections whose state keys a write takes (with their times then), and
+// written in a set() of its own META_WRITE_MS later, off a switch's way: in
+// the same set() as the state, its larger writes and change events made a
+// carried sidebar miss a switched-to page's first frame in the WebKit host
+// (`switching`, 2 of 4 runs). A meta write lost with the background is made
+// good at the collection's next write (it's looked at against the stored
+// meta again), with that later time. The queue of changes made while the app
+// isn't linked is every item and tombstone with a time (pendingQueue).
+// Margin.app takes it on link (step 3: DATA.md).
+/** @type {Record<string, any>} */
+let dataMeta = {};
+const metaUnsaved = new Set();
+const META_WRITE_MS = 1500;
+let metaTimer = null;
+function writeMetaSoon() {
+  if (metaTimer || !metaUnsaved.size) return;
+  metaTimer = setTimeout(() => {
+    metaTimer = null;
+    queue = queue.then(writeMeta);
+  }, META_WRITE_MS);
+}
+async function writeMeta() {
+  if (role !== 'owner' || !metaUnsaved.size) return;
+  const metas = [...metaUnsaved];
+  metaUnsaved.clear();
+  try {
+    await api.storage.local.set(Object.fromEntries(metas.map((collection) => [metaKey(collection), dataMeta[collection]])));
+  } catch (err) {
+    console.warn('[margin] saving the data set\'s times failed; trying again with the next write:', err?.message ?? err);
+    for (const collection of metas) metaUnsaved.add(collection);
+    writeMetaSoon();
+  }
+}
+/** @param {Record<string, any>} raw */
+function readMeta(raw) {
+  const metas = {};
+  for (const collection of Object.keys(SOURCES)) {
+    const meta = raw?.[metaKey(collection)];
+    if (meta && typeof meta === 'object' && meta.items && typeof meta.items === 'object') metas[collection] = meta;
+  }
+  return metas;
+}
+// The collections `keys` feed, looked at again now: those that changed are
+// written with them.
+function trackKeys(keys) {
+  if (!cache) return;
+  const at = Date.now();
+  for (const [collection, sources] of Object.entries(SOURCES)) {
+    if (!sources.some((key) => keys.includes(key))) continue;
+    const meta = track(dataMeta[collection] ?? null, collectionFrom(cache, collection), at);
+    if (meta === dataMeta[collection]) continue;
+    dataMeta[collection] = meta;
+    metaUnsaved.add(collection);
+  }
+}
+/** The changes queued for the app after `since` (0: all), oldest first, with the state's values now. @param {number} [since] */
+export async function pendingQueue(since = 0) {
+  const state = await load();
+  return pendingChanges(dataMeta, itemsFrom(state), since);
+}
+/** The meta as kept now (tests, and the data set's converter: shared/data-set.js dataSetFrom). */
+export const dataMetas = () => ({ ...dataMeta });
 
 // Keys whose write failed (Safari's storage can be busy: SQLite error 5 in
 // Tirth's log while two copies wrote at once): written again shortly, and
@@ -255,11 +339,17 @@ function dropLater() {
 // False if this copy doesn't own the state (any more): nothing was written.
 async function flush() {
   if (role !== 'owner') return false;
-  if (!unsaved.size || !cache) return true;
+  if (!unsaved.size || !cache) {
+    writeMetaSoon();
+    return true;
+  }
   if ((await recheck()) !== 'owner') return false; // a newer copy took over meanwhile
   const keys = [...unsaved];
   unsaved.clear();
   dropLater();
+  // The changes' times for Margin.app's queue, now; written a moment later.
+  trackKeys(keys);
+  writeMetaSoon();
   try {
     // The icons' mark in a set() of its own, once the icons are stored: Safari
     // writes one set()'s keys in no set order and stops at the first that

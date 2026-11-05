@@ -1,0 +1,28 @@
+{
+  "description": "Tombstones keep deletions: an older change to a deleted item doesn't bring it back; a newer one does (the item made again). A deletion newer than the app's item deletes it.",
+  "base": {
+    "format": 1,
+    "items": {
+      "tabs": {
+        "t-gone": { "updatedAt": 1000, "deleted": true },
+        "t-back": { "updatedAt": 1000, "deleted": true },
+        "t-live": { "updatedAt": 900, "value": { "url": "https://live.test/", "title": "Live", "icon": "", "spaceId": "work", "order": 3, "lastUsed": 900 } }
+      }
+    }
+  },
+  "changes": [
+    { "collection": "tabs", "id": "t-gone", "updatedAt": 999, "value": { "url": "https://gone.test/", "title": "Gone", "icon": "", "spaceId": "work", "order": 1, "lastUsed": 999 } },
+    { "collection": "tabs", "id": "t-back", "updatedAt": 1200, "value": { "url": "https://back.test/", "title": "Back", "icon": "", "spaceId": "work", "order": 2, "lastUsed": 1200 } },
+    { "collection": "tabs", "id": "t-live", "updatedAt": 950, "deleted": true }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "tabs": {
+        "t-gone": { "updatedAt": 1000, "deleted": true },
+        "t-back": { "updatedAt": 1200, "value": { "url": "https://back.test/", "title": "Back", "icon": "", "spaceId": "work", "order": 2, "lastUsed": 1200 } },
+        "t-live": { "updatedAt": 950, "deleted": true }
+      }
+    }
+  }
+}

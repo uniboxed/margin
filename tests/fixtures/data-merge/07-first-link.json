@@ -1,0 +1,29 @@
+{
+  "description": "The first link: the app has nothing for this profile, and takes the converted data set whole (its items as changes). Items at 0 (what the extension's cache had before it kept times) keep 0.",
+  "base": null,
+  "changes": [
+    { "collection": "spaces", "id": "personal", "updatedAt": 0, "value": { "name": "Personal", "emoji": "🏠", "color": "#6c5ce7", "order": 0 } },
+    { "collection": "tabs", "id": "t-a1b2c3d4e5", "updatedAt": 0, "value": { "url": "https://a.test/", "title": "A", "icon": "", "spaceId": "personal", "order": 0, "lastUsed": 100 } },
+    { "collection": "tabs", "id": "t-f6a7b8c9d0", "updatedAt": 1730000000000, "value": { "url": "https://b.test/", "title": "B", "icon": "", "spaceId": "personal", "order": 1, "lastUsed": 1730000000000 } },
+    { "collection": "themeSettings", "id": "arcadia", "updatedAt": 0, "value": { "sidebarWidth": 260 } },
+    { "collection": "pins", "id": "p-old", "updatedAt": 1730000000001, "deleted": true }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "spaces": {
+        "personal": { "updatedAt": 0, "value": { "name": "Personal", "emoji": "🏠", "color": "#6c5ce7", "order": 0 } }
+      },
+      "tabs": {
+        "t-a1b2c3d4e5": { "updatedAt": 0, "value": { "url": "https://a.test/", "title": "A", "icon": "", "spaceId": "personal", "order": 0, "lastUsed": 100 } },
+        "t-f6a7b8c9d0": { "updatedAt": 1730000000000, "value": { "url": "https://b.test/", "title": "B", "icon": "", "spaceId": "personal", "order": 1, "lastUsed": 1730000000000 } }
+      },
+      "themeSettings": {
+        "arcadia": { "updatedAt": 0, "value": { "sidebarWidth": 260 } }
+      },
+      "pins": {
+        "p-old": { "updatedAt": 1730000000001, "deleted": true }
+      }
+    }
+  }
+}

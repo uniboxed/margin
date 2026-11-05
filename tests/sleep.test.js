@@ -76,6 +76,12 @@ globalThis.chrome = {
   },
 };
 
+// Safari closes sleeping tabs now and keeps them as not-open Margin tabs
+// (Margin 2: tests/sleep-close.test.js). The sleep page these tests drive is
+// still in the code until Phase 3 removes it (a tab an earlier build sent
+// there still wakes): tested here as it was, as a build that used it.
+const { platform } = await import('../extension/shared/platform.js');
+platform.sleepTabs = 'page';
 const S = await import('../extension/shared/sleep.js');
 const M = await import('../extension/state/model.js');
 const { oldOwnPageAddress } = await import('../extension/background/cut-off.js');

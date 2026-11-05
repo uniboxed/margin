@@ -1,0 +1,28 @@
+{
+  "description": "The same updatedAt: between two live items the change wins (the queue's word over the app's); a deletion at the same time as a live item wins whichever side has it.",
+  "base": {
+    "format": 1,
+    "items": {
+      "pins": {
+        "p1": { "updatedAt": 500, "value": { "spaceId": "work", "url": "https://a.test/", "title": "A", "folderId": null, "pos": 0 } },
+        "p2": { "updatedAt": 500, "value": { "spaceId": "work", "url": "https://b.test/", "title": "B", "folderId": null, "pos": 1 } },
+        "p3": { "updatedAt": 500, "deleted": true }
+      }
+    }
+  },
+  "changes": [
+    { "collection": "pins", "id": "p1", "updatedAt": 500, "value": { "spaceId": "work", "url": "https://a.test/", "title": "A renamed", "folderId": null, "pos": 0 } },
+    { "collection": "pins", "id": "p2", "updatedAt": 500, "deleted": true },
+    { "collection": "pins", "id": "p3", "updatedAt": 500, "value": { "spaceId": "work", "url": "https://c.test/", "title": "C", "folderId": null, "pos": 2 } }
+  ],
+  "expected": {
+    "format": 1,
+    "items": {
+      "pins": {
+        "p1": { "updatedAt": 500, "value": { "spaceId": "work", "url": "https://a.test/", "title": "A renamed", "folderId": null, "pos": 0 } },
+        "p2": { "updatedAt": 500, "deleted": true },
+        "p3": { "updatedAt": 500, "deleted": true }
+      }
+    }
+  }
+}

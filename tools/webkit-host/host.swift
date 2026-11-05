@@ -438,6 +438,17 @@ Task { @MainActor in
     case "show":
       // Safari itself bringing a tab to the front (its tab bar, its own shortcuts).
       host.window.show(host.tab(step["name"] as! String)!); log("showed \(step["name"] as! String)")
+    case "close":
+      // { op: 'close', name, windowClosing? }: Safari closing a tab itself (its tab bar, ⌘W), or
+      // with its window (windowClosing: tabs.onRemoved says isWindowClosing; the window stays here).
+      guard let t = host.tab(step["name"] as! String) else { log("close: no tab \(step["name"] as! String)"); break }
+      let closing = (step["windowClosing"] as? Bool) == true
+      let window = host.window
+      window.tabs.removeAll { $0 === t }
+      if window.active === t { window.active = nil; if let next = window.tabs.last { window.show(next) } }
+      t.webView?.removeFromSuperview(); t.webView = nil; t.loadingObs = []
+      host.controllers.forEach { $0.didCloseTab(t, windowIsClosing: closing) }
+      log("closed \(t.name)\(closing ? " with its window" : "")")
     case "showProbe":
       // Show a tab and report its layers at once (before the screen can update), then a moment later.
       let t = host.tab(step["name"] as! String)!
@@ -481,9 +492,11 @@ Task { @MainActor in
       host.uninstallOld()
       host.unloadTwin()
       // New tab objects, as a relaunched Safari has (WebKit maps a page to its tab through them).
+      // `drop`: tabs Safari doesn't bring back.
+      let dropped = Set(step["drop"] as? [String] ?? [])
       let frontName = host.window.active?.name
       for t in host.window.tabs { t.keepState(); t.webView?.removeFromSuperview(); t.webView = nil; t.unloaded = false; t.loadingObs = [] }
-      host.window.tabs = host.window.tabs.map { old in
+      host.window.tabs = host.window.tabs.filter { !dropped.contains($0.name) }.map { old in
         let t = Tab(name: old.name, url: old.url); t.window = host.window; t.restoredSession = old.restoredSession; t.savedState = old.savedState; return t
       }
       host.window.active = nil

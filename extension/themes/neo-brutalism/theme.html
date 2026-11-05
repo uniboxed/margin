@@ -89,7 +89,7 @@
 
           <div class="today">
             <m-for each="space.today" as="t">
-              <button class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+              <button class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-class:not-open="{{t.notOpen}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
                 <m-if test="t.icon">
                   <img class="fav" alt="" m-icon="{{t.icon}}">
                   <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>

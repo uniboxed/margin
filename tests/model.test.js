@@ -177,22 +177,36 @@ test('sync on wake (ids not renumbered): a new tab is new, even with the address
   const next = M.syncTabs(s, [tab(2, 1, 'https://b.com/'), tab(3, 1, 'https://a.com/'), tab(50, 1, 'https://a.com/')], { now: 1 });
   assert.equal(next.tabSpace[3], 'personal', 'known: kept as it was');
   assert.equal(next.tabSpace[50], 'personal', 'its window\'s space, not closed tab 1\'s Work');
-  assert.equal(next.lostTabs, null, 'nothing kept for later');
+  assert.equal(next.lostTabs, null);
+  // Tabs 1 (a.com) and 4 (c.com) went unheard: kept, not open, in their spaces, with the ids they had.
+  const kept = Object.values(next.keptTabs).sort((a, b) => a.wasTab - b.wasTab);
+  assert.deepEqual(kept.map((k) => [k.url, k.spaceId, k.wasTab, k.why]), [['https://a.com/', 'work', 1, 'gone'], ['https://c.com/', 'work', 4, 'gone']]);
+  assert.equal(kept[0].id, s.tabs[1].mid, 'the same Margin tab');
 });
+
+// Kept tabs by the window they were lost with (from.key), in their old order.
+const keptByWindow = (s) => {
+  const groups = new Map();
+  for (const k of Object.values(s.keptTabs).sort((a, b) => a.from.index - b.from.index)) groups.set(k.from.key, [...(groups.get(k.from.key) ?? []), k]);
+  return [...groups.values()];
+};
 
 test('a session reopened after the restart sync (Safari opened with a new window): the window takes its tabs\' spaces back', () => {
   const s = lastSession();
   let next = M.syncTabs(s, [tab(60, 9, 'favorites://', { index: 0, active: true })], { fresh: true, now: 10_000 });
-  assert.deepEqual(next.lostTabs.windows.map((w) => w.tabs.map((t) => t.url)), [['https://a.com/', 'https://b.com/', 'https://a.com/'], ['https://c.com/']], 'kept by old window');
+  assert.deepEqual(keptByWindow(next).map((w) => w.map((k) => k.url)), [['https://a.com/', 'https://b.com/', 'https://a.com/'], ['https://c.com/']], 'kept (not open) by old window');
+  assert.deepEqual(keptByWindow(next)[0].map((k) => k.spaceId), ['work', 'work', 'personal'], 'in their spaces');
+  assert.deepEqual(keptByWindow(next)[0].map((k) => k.id), [1, 2, 3].map((id) => s.tabs[id].mid), 'the same Margin tabs');
   // History › Reopen All Windows from Last Session, 3h later: a new window's tabs arrive.
   const later = 10_000 + 3 * 3600_000;
   for (const [id, url, index, active] of [[70, 'favorites://', 0, false], [71, 'https://a.com/', 1, false], [72, 'https://b.com/', 2, true], [73, 'https://a.com/', 3, false]]) next = M.upsertTab(next, tab(id, 10, url, { index, active }), later);
   next = M.reclaimTabs(next, inWindow(next, 10), later);
   assert.deepEqual([71, 72, 73].map((id) => next.tabSpace[id]), ['work', 'work', 'personal'], 'duplicates in their old order; a start page first doesn\'t block');
+  assert.deepEqual([71, 72, 73].map((id) => next.tabs[id].mid), [1, 2, 3].map((id) => s.tabs[id].mid), 'open again as the same Margin tabs');
   assert.equal(next.activeSpaceByWindow[10], 'work', 'the window shows its front tab\'s space');
   assert.equal(next.tabs[72].lastActive, later, 'the one in front keeps its own');
   assert.equal(next.tabs[71].lastActive, 9800 + 3 * 3600_000, 'others: moved forward by the time since');
-  assert.deepEqual(next.lostTabs.windows.map((w) => w.tabs.map((t) => t.url)), [['https://c.com/']]);
+  assert.deepEqual(Object.values(next.keptTabs).map((k) => k.url), ['https://c.com/'], 'only c.com still not open');
 });
 
 test('reclaiming: a page opened anew doesn\'t take an old tab\'s place (two pages of a multi-tab window needed)', () => {
@@ -208,7 +222,7 @@ test('reclaiming: a page opened anew doesn\'t take an old tab\'s place (two page
 test('reclaiming: what\'s left of a partly matched window still needs two of its pages', () => {
   // Window 1 had a.com, b.com and a.com; only b.com and the first a.com came back at the restart.
   let next = M.syncTabs(lastSession(), [tab(20, 7, 'https://a.com/', { index: 0, active: true }), tab(21, 7, 'https://b.com/', { index: 1 })], { fresh: true, now: 10_000 });
-  assert.equal(next.lostTabs.windows.find((w) => w.tabs.some((t) => t.url === 'https://a.com/')).size, 3);
+  assert.equal(Object.values(next.keptTabs).find((k) => k.url === 'https://a.com/').from.size, 3);
   next = M.upsertTab(next, tab(90, 15, 'https://a.com/', { active: true }), 10_001); // a page opened anew in a new window
   next = M.reclaimTabs(next, [90], 10_002);
   assert.notEqual(next.tabSpace[90], 'personal', 'not the leftover Personal a.com') ;
@@ -220,7 +234,7 @@ test('a tab dragged into a window of its own isn\'t taken for one coming back', 
   next = M.upsertTab(next, tab(61, 9, 'https://c.com/'), 10_001); // the user's own c.com, in Personal
   next = M.syncTabs(next, [tab(60, 9, 'favorites://', { active: true }), tab(61, 16, 'https://c.com/', { active: true })], { now: 10_002 }); // dragged out
   assert.equal(next.tabSpace[61], 'personal');
-  assert.equal(next.lostTabs.windows.flatMap((w) => w.tabs).filter((t) => t.url === 'https://c.com/').length, 1, 'still waiting');
+  assert.equal(Object.values(next.keptTabs).filter((k) => k.url === 'https://c.com/').length, 1, 'still waiting');
 });
 
 test('reclaiming: a tab put in its space on purpose (the user, or Margin opening it there) is never taken', () => {
@@ -267,19 +281,20 @@ test('new-tab pages and blank pages never match across windows: an empty new win
   s = M.moveTab(M.setActiveSpace(s, 1, 'work'), 1, 'work');
   const next = M.syncTabs(s, [tab(10, 5, 'chrome://newtab/', { index: 0, active: true })], { fresh: true, now: 1 });
   assert.equal(next.tabSpace[10], 'personal');
-  assert.equal(next.lostTabs, null, 'not a web page: not kept either');
+  assert.deepEqual(next.keptTabs, {}, 'not a web page: not kept either');
 });
 
-test('lost tabs: expire after a day; a deleted space\'s go to the space its tabs go to', () => {
+test('kept tabs: taken back by a window for a day, then they stay (not open) in their spaces; a deleted space\'s go to the space its tabs go to', () => {
   let next = M.syncTabs(lastSession(), [tab(60, 9, 'favorites://', { active: true })], { fresh: true, now: 10_000 });
   const deleted = M.deleteSpace(next, 'work');
-  assert.ok(deleted.lostTabs.windows.flatMap((w) => w.tabs).every((t) => t.spaceId === 'personal'));
+  assert.ok(Object.values(deleted.keptTabs).every((k) => k.spaceId === 'personal'));
   const day = 10_000 + 25 * 3600_000;
   next = M.upsertTab(next, tab(70, 10, 'https://c.com/', { active: true }), day);
   next = M.reclaimTabs(next, inWindow(next, 10), day);
   assert.equal(next.tabSpace[70], 'personal', 'too late: its window\'s space');
   next = M.syncTabs(next, [tab(60, 9, 'favorites://', { active: true }), tab(70, 10, 'https://c.com/')], { now: day });
-  assert.equal(next.lostTabs, null, 'dropped');
+  assert.equal(Object.values(next.keptTabs).length, 4, 'still kept: only the archive takes them (archiveAfterHours)');
+  assert.equal(Object.values(next.keptTabs).find((k) => k.url === 'https://c.com/').spaceId, 'work');
 });
 
 test('sync on wake (not fresh): keeps assignments, drops closed tabs and windows, adds new tabs', () => {

@@ -441,10 +441,12 @@ test('a window reopened after the ids changed takes its old tabs\' spaces once i
   const restore = await import('../extension/background/restore.js');
   await setup();
   // Old tabs waiting: a Work window with a.com and b.com.
-  await mutate((s) => ({ ...s, lostTabs: { windows: [{ at: Date.now(), size: 2, tabs: [
-    { url: 'https://a.com/', spaceId: 'work', lastActive: 1, windowId: 77, index: 0 },
-    { url: 'https://b.com/', spaceId: 'work', lastActive: 2, windowId: 77, index: 1 },
-  ] }] } }));
+  // (Margin tabs kept, not open, lost with that window.)
+  const from = { key: 'k', at: Date.now(), size: 2, windowId: 77 };
+  await mutate((s) => ({ ...s, keptTabs: {
+    't-a': { id: 't-a', url: 'https://a.com/', title: 'A', favIconUrl: '', spaceId: 'work', order: 0, lastActive: 1, keptAt: from.at, why: 'window', from: { ...from, index: 0 } },
+    't-b': { id: 't-b', url: 'https://b.com/', title: 'B', favIconUrl: '', spaceId: 'work', order: 1, lastActive: 2, keptAt: from.at, why: 'window', from: { ...from, index: 1 } },
+  } }));
   for (const [id, url, index] of [[300, 'https://a.com/', 0], [301, 'https://b.com/', 1]]) {
     const t = { id, windowId: 30, url, index, active: index === 1, title: '' };
     await mutate((s) => {
@@ -457,13 +459,14 @@ test('a window reopened after the ids changed takes its old tabs\' spaces once i
   const s = await load();
   assert.deepEqual([s.tabSpace[300], s.tabSpace[301]], ['work', 'work']);
   assert.equal(V.activeSpaceId(s, 30), 'work');
-  assert.equal(s.lostTabs, null, 'taken back');
+  assert.deepEqual(s.keptTabs, {}, 'taken back');
+  assert.deepEqual([s.tabs[300].mid, s.tabs[301].mid], ['t-a', 't-b'], 'open again as the same Margin tabs');
 });
 
 test('restore: a new-tab page opened in a window never counts as a tab coming back', async () => {
   const restore = await import('../extension/background/restore.js');
   await setup();
-  await mutate((s) => ({ ...s, lostTabs: { windows: [{ key: 'k', at: Date.now(), size: 1, tabs: [{ url: 'https://a.com/', spaceId: 'work', lastActive: 1, windowId: 77, index: 0 }] }] } }));
+  await mutate((s) => ({ ...s, keptTabs: { 't-a': { id: 't-a', url: 'https://a.com/', title: 'A', favIconUrl: '', spaceId: 'work', order: 0, lastActive: 1, keptAt: Date.now(), why: 'window', from: { key: 'k', at: Date.now(), size: 1, index: 0, windowId: 77 } } } }));
   const t = { id: 400, windowId: 40, url: 'safari-web-extension://test/newtab/newtab.html', index: 0, active: true, title: '' };
   await mutate((s) => {
     restore.tabCreated(s, t);

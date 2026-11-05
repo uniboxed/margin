@@ -9,7 +9,9 @@
 
 // What each action's argument must be:
 //   none   — no argument (anything given is refused);
-//   tab    — the id of an open tab;     space — the id of an existing space;
+//   tab    — the id of an open tab, or of a Margin tab that isn't open (a
+//            string: state/model.js keptTabs; activating it opens it);
+//   space — the id of an existing space;
 //   folder — an existing folder's id;   pin — an existing pin's id;
 //   archive — an archived entry's id;   row — a row of the open palette;
 //   item   — an item of the open menu;  color — a swatch of the space editor;
@@ -208,6 +210,7 @@ export function createDispatcher({ context, run, log = () => {} }) {
  */
 export function contextFromState(state, paletteIds = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [], settingIds = [] } = {}) {
   const tabs = state?.tabs && typeof state.tabs === 'object' ? state.tabs : {};
+  const kept = state?.keptTabs && typeof state.keptTabs === 'object' ? state.keptTabs : {};
   const ids = (list) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
   const spaces = ids(state?.spaces);
   const folders = ids(state?.folders);
@@ -220,7 +223,10 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
   const prompts = new Set(promptIds);
   const settingButtons = new Set(settingIds);
   return {
-    hasTab: (id) => Number.isInteger(id) && Object.prototype.hasOwnProperty.call(tabs, id) && tabs[id]?.id === id,
+    // An open tab by its browser tab's id, or a Margin tab that isn't open
+    // by its own (state/model.js keptTabs).
+    hasTab: (id) => (Number.isInteger(id) && Object.prototype.hasOwnProperty.call(tabs, id) && tabs[id]?.id === id)
+      || (typeof id === 'string' && Object.prototype.hasOwnProperty.call(kept, id) && kept[id]?.id === id),
     hasSpace: (id) => spaces.has(id),
     hasFolder: (id) => folders.has(id),
     hasPin: (id) => pins.has(id),
@@ -245,7 +251,8 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
 //
 // | Action             | Argument          | Goes to                       | Payload                                 |
 // |--------------------|-------------------|-------------------------------|-----------------------------------------|
-// | tab.activate       | tab id            | activateTab                   | { tabId, show? }                        |
+// | tab.activate       | tab id            | activateTab (one not open:    | { tabId, show? }                        |
+// |                    |                   | opened in this window)        |                                         |
 // | tab.close          | tab id            | closeTab (archives it)        | { tabId, show? }                        |
 // | tab.new            | none              | local: the palette, new tab   | (Arcadia's "+ New Tab")                 |
 // | tab.new            | space id          | newTab                        | { windowId, spaceId }                   |
@@ -381,7 +388,8 @@ export function requestFor(name, arg, { state, ui, platform, row }) {
   const send = (type, payload) => ({ kind: 'send', type, payload });
   if (LOCAL.has(name)) return { kind: 'local', name, ...(arg === undefined ? {} : { arg }) };
   switch (name) {
-    case 'tab.activate': return send('activateTab', { tabId: arg, ...show });
+    // A tab that isn't open opens in this window (the app has no page to say which).
+    case 'tab.activate': return send('activateTab', { tabId: arg, ...(typeof arg === 'string' && windowId != null ? { windowId } : {}), ...show });
     case 'tab.close': return send('closeTab', { tabId: arg, ...show });
     case 'tab.new':
       return arg == null || arg === '' ? { kind: 'local', name: 'palette.open', arg: { newTab: true } } : send('newTab', { windowId, spaceId: arg });

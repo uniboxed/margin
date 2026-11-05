@@ -8,19 +8,21 @@
 // the archive and settings hold no ids and stay where they were.
 //
 // The open tabs, their spaces and each window's space go in one value,
-// `openTabs`: { origin, since, synced, tabs, tabSpace, activeSpaceByWindow }. One
-// key is one write (Safari writes a set() key by key and stops at the first
-// failure), so pages never see the tabs without their spaces; and it says
-// whose ids they are (`origin` and `since`, the copy that wrote it: Chrome
-// keeps its address across browser restarts) and whether that copy
-// has matched them to the open tabs (`synced`), in the same write.
-// `lostTabs` (only the background reads it) has a name of its own.
+// `openTabs`: { origin, since, synced, tabs, tabSpace, activeSpaceByWindow,
+// keptTabs }. One key is one write (Safari writes a set() key by key and stops
+// at the first failure), so pages never see the tabs without their spaces,
+// nor a tab that closed or opened in both lists or in neither (keptTabs:
+// Margin's tabs with no browser tab, state/model.js); and it says whose ids
+// they are (`origin` and `since`, the copy that wrote it: Chrome keeps its
+// address across browser restarts) and whether that copy has matched them to
+// the open tabs (`synced`), in the same write. `lostTabs` (an earlier build's,
+// moved into keptTabs as it's read, then null) has a name of its own.
 //
 // The background (background/store.js) and pages (content/core.js, the
 // new-tab page) read through here. Pure.
 
 /** The state keys kept in `openTabs`. */
-export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow']);
+export const OPEN_TABS_KEYS = Object.freeze(['tabs', 'tabSpace', 'activeSpaceByWindow', 'keptTabs']);
 export const OPEN_TABS = 'openTabs';
 /** Other state keys stored under another name. */
 const RENAMED = Object.freeze({ lostTabs: 'lostTabs2' });
@@ -79,8 +81,13 @@ export function toStorage(state, keys, { origin, since, synced }) {
   if (keys.includes(FAVICONS)) out[FAVICONS_MARK] = faviconsMark(state[FAVICONS]);
   return out;
 }
-/** Only the icons' mark changed: nothing to draw (the icons came before it). @param {Record<string, unknown>} changes */
-export const onlyMark = (changes) => Object.keys(changes).every((key) => key === FAVICONS_MARK);
+/**
+ * Only the icons' mark changed (the icons came before it), or the data set's
+ * times for Margin.app (`dataMeta:<collection>`, written on their own:
+ * background/store.js): nothing to draw.
+ * @param {Record<string, unknown>} changes
+ */
+export const onlyMark = (changes) => Object.keys(changes).every((key) => key === FAVICONS_MARK || key.startsWith('dataMeta:'));
 
 // Which write of the state storage has (`stateRev`: { id, after }), in the
 // same set() as the state's keys (background/store.js flush), so one change
@@ -125,7 +132,8 @@ const PAGE_KEYS = Object.freeze([OPEN_TABS, 'spaces', 'pins', 'folders', 'archiv
 // page's first read, then kept from change events (content/core.js).
 const NOT_FOR_PAGES = new Set([FAVICONS, ...OPEN_TABS_KEYS, 'lostTabs', ...Object.values(RENAMED), 'workspace', 'workspaceBackup', 'uiTheme']);
 /** @param {Iterable<string>} seen storage keys a page has seen @returns {string[]} */
-export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key));
+// Nor the lasting data set's queue (`dataMeta:<collection>`: shared/data-set.js).
+export const pageKeys = (seen = []) => [...new Set([...PAGE_KEYS, ...seen])].filter((key) => !NOT_FOR_PAGES.has(key) && !key.startsWith('dataMeta:'));
 
 /**
  * What a page reads of storage.local (content/core.js refresh), as storage

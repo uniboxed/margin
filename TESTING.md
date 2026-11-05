@@ -562,6 +562,47 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 2 step 1: Margin's tabs (in-page development host) (2026-11-05)
+
+Margin's sidebar is now the real list of tabs. A tab whose browser tab is gone stays in its space as a dimmed row ("not open"), and opens again when you click it. Run `npm run safari`. Have a space with a few tabs and a second space. To watch what happens, open the background's console (Develop → Web Extension Background Content → Margin). Write what you see in DECISIONS.md.
+
+Closing:
+
+- [ ] Close a tab with its × in the sidebar, with ⌘W, and with Safari's tab bar. Each time the row goes, and the tab is in the archive (Margin's start page, "Archive"). It's not left dimmed in the sidebar.
+- [ ] Open a second window (⌘N) with a few tabs in a space, then close the window (the red button or ⌘⇧W). In the first window, show that space: its tabs are there, dimmed. Nothing new in the archive.
+- [ ] A space's dimmed tabs show in every window that shows the space. In Neo-brutalism, the space's tab count includes them.
+
+Opening:
+
+- [ ] Click a dimmed tab. It opens in this window, in front, at its address, and its row isn't dimmed any more. In Safari's tab bar it sits among the space's tabs where its row is (not at the far end). It starts fresh: no Back history, the page scrolled to the top.
+- [ ] In a second window, click a dimmed tab of the same space: it opens there, not in the first window.
+- [ ] Search for a dimmed tab in the palette (⌘T, type part of its title): it's listed; Enter opens it.
+- [ ] Right-click a dimmed tab: Pin Tab, Pin to a folder, New Folder with Tab, Move to another space, Close Tab all work. Close Tab sends it to the archive. Pinned, it becomes the pin (the pin opens it).
+- [ ] Drag a dimmed tab up or down: it takes its new place. Drag it onto another space's icon: it moves there.
+- [ ] In Neo-brutalism, Clear: the space's dimmed tabs go to the archive with the others.
+
+Quitting and relaunching:
+
+- [ ] Quit Safari (⌘Q) with windows set to come back, and open it again. Every tab is in its space, in its order, and no tab went to the archive. **Tell me** if any tab shows twice (once open, once dimmed) or went to the archive: that would mean Safari reports a quit as tabs closing one by one.
+- [ ] Close a window, quit Safari, open it again: that window's tabs are still there, dimmed, in their spaces.
+- [ ] If Safari doesn't bring a tab back (close it in the tab bar's overview while quitting, or quit with "Close windows when quitting" on): its row is dimmed in its space after the relaunch, not gone.
+- [ ] History › Reopen Last Closed Window after closing a window: the reopened tabs are the dimmed rows coming back (no doubles), in their spaces.
+
+Sleeping:
+
+- [ ] Set Settings → "Put tabs to sleep after not using them for" to `0.02`, or run `margin.sleepNow(60000)` in the background's console. A tab you haven't used is closed: it's gone from Safari's tab bar, its row is dimmed, and in Activity Monitor its Web Content process is gone. It's not in the archive.
+- [ ] Click it: it opens again and loads, as a closed tab reopened does.
+- [ ] The tab in front, a tab playing sound, a tab with a typed draft and a site on "Never put these sites to sleep" are never closed.
+- [ ] Set the hours back to 4.
+
+Auto-archive:
+
+- [ ] Set "Archive tabs not used for" to a small number of hours and wait (or leave a dimmed tab a day): dimmed tabs go to the archive by the same rule as open ones.
+
+Before this build:
+
+- [ ] Run `npm run safari` over the previous build: your spaces, tabs and pins are all still there. Tabs the previous build had lost after a relaunch (not shown before) can now appear dimmed in their spaces.
+
 ## Margin 2 Phase 1 (in-page development host) (2026-11-05)
 
 From `feat/ui-runtime`, run `npm run safari`. Margin now draws its sidebar, palette, menus and Settings with its new UI runtime and the Arcadia theme package. It should look like before. Switching tabs may blink: Margin 2 accepts Safari's own blink, and the switch cover is gone. Write what you see in DECISIONS.md.
