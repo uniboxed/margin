@@ -67,12 +67,39 @@ Margin's slots:
 | `<m-notice>` | the `notice` part | `notice` |
 | `<m-prompt>` | the `prompt` part | `prompt` |
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
+| `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
 | `<m-window-controls>`, `<m-drag-region>` | the window's buttons and where a drag moves it (windowed mode) | always |
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`launcher`, `window-controls`. What a theme puts inside a slot is used when
-it has no part for it.
+`launcher`, `settings`, `window-controls`. What a theme puts inside a slot
+is used when it has no part for it.
+
+**Never paint under `<m-page>`.** The browser's page shows through it: in a
+page, Margin's UI lies over the page, and in Margin.app the page slot is a
+hole in Margin's window. Draw a ground around the page as the page card's
+spread `box-shadow` (Arcadia's frame), or mask it out (Neo-brutalism's dots).
+Margin lets the pointer through to the page over the slot, past your root's
+own background; what you draw over the page (a sidebar out over it, a
+dialog) still takes it.
+
+**Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
+words only: it's guarded like a menu). Each field has one of `isNumber`,
+`isToggle`, `isChoice`, `isList`, `isShortcut`, `isButton`, `isInfo`,
+`isGroup`, and `label`, `status`, `error`, `disabled`, `recording`. Draw
+Margin's inputs for them, inside the field's `<m-for>`; Margin sets their
+value, type, options and bounds, and saves them by its own rules:
+
+```html
+<m-for each="settingsForm.fields" as="f">
+  <m-if test="f.isToggle"><label>{{f.label}}<input m-input="setting-toggle"></label></m-if>
+  <m-if test="f.isNumber"><label>{{f.label}}<input m-input="setting-number"></label></m-if>
+  <m-if test="f.isChoice"><label>{{f.label}}<select m-input="setting-choice"></select></label></m-if>
+  <m-if test="f.isList"><label>{{f.label}}<textarea m-input="setting-list"></textarea></label></m-if>
+  <m-if test="f.isShortcut"><label>{{f.label}}<input m-input="setting-shortcut"></label></m-if>
+  <m-if test="f.isButton"><button m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button></m-if>
+</m-for>
+```
 
 Modes: style `[data-mode="fullscreen|windowed|inpage"]` by binding
 `m-attr:data-mode="{{window.mode}}"` on your root.
@@ -96,12 +123,12 @@ host. Immutable: rows that didn't change are the same objects.
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
   `badge`, `emoji`, `icon`, `letter`, `color`, `selected`, `goes`; `hasRows`),
   `menu` (`label`, `items[]`: `id`, `label`, `separator`, `danger`,
-  `confirming`), `editor` (`name`, `emoji`, `color`, `colors[]`,
+  `confirming`), `settingsForm` (`fields[]`, above), `editor` (`name`, `emoji`, `color`, `colors[]`,
   `deleteLabel`, `deleteTitle`, `cannotDelete`, `confirmDelete`, `labels`:
   `title`, `name`, `emoji`, `colors`, `save`, `cancel`), `notice` and
   `prompt` (`text`, `title`, `actions[]`: `id`, `label`, `primary`,
   `danger`), `launcher` (`pins`, `archive`, `hasPins`, `hasArchive`, `more`,
-  `moreLabel`), `settings`, `platform`.
+  `moreLabel`, `settingsOpen`), `settings`, `platform`.
 
 ## Actions
 
@@ -123,7 +150,9 @@ else is ignored and logged.
 - Notices and prompts: `notice.run`, `prompt.run` (one of their buttons),
   `notice.close`, `prompt.close`.
 - The rest: `sidebar.toggle`, `nav.back`, `nav.forward`, `nav.reload`,
-  `archive.open`, `archive.restore` (an archived entry), `settings.open`,
+  `archive.open`, `archive.restore` (an archived entry), `settings.open`
+  (opens or closes the launcher's Settings; on a web page, Margin's start
+  page with them open), `settings.run` (a button of Settings),
   `launcher.more`, `window.close`, `window.minimise`, `window.fullscreen`.
 - Only Margin's behaviors and menus run `tab.move`, `tab.pinAt`,
   `tab.moveToSpace`, `pin.move`, `folder.move`, `folder.setName`,
@@ -135,7 +164,7 @@ Opt in with attributes; they stay on the element, so CSS can select them.
 
 | Attribute | Values | What Margin does |
 |---|---|---|
-| `m-input` | `palette`, `space-name`, `space-emoji`, `launcher` | Margin's own fields (the only inputs allowed): typing, keys, focus |
+| `m-input` | `palette`, `space-name`, `space-emoji`, `launcher`, `setting-number`, `setting-toggle`, `setting-choice` (a `<select>`), `setting-list` (a `<textarea>`), `setting-shortcut` | Margin's own fields (the only inputs allowed): typing, keys, focus |
 | `m-peek` | `left`, `right`, `top`, `bottom` | the hover zone that brings a hidden sidebar out (`--m-reveal-zone` is its size) |
 | `m-resize` | `sidebar` | drags the `sidebarWidth` setting; double-click resets it |
 | `m-drag` | `tab`, `pin`, `folder`, `space` | the row can be dragged |
@@ -180,8 +209,9 @@ same rules again.
   `text-overflow`, `hyphenate-character` or `text-emphasis`. Its rules can
   reach Margin's own parts, so this is how they keep only Margin's words.
 - **Margin's own words**: inside the `menu`, `menu-item`, `notice`,
-  `prompt` and `space-editor` parts, and the `<m-menu>`, `<m-notice>`,
-  `<m-editor>` and `<m-prompt>` slots, every visible text must come from
+  `prompt`, `space-editor` and `settings` parts, and the `<m-menu>`,
+  `<m-notice>`, `<m-editor>`, `<m-prompt>` and `<m-settings>` slots, every
+  visible text must come from
   Margin's bound labels (`{{i.label}}`, `{{notice.text}}`,
   `{{editor.labels.save}}`…). Text the theme writes there is removed and
   reported, and so are static `title`, `alt`, `placeholder`, `aria-label`
