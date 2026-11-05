@@ -4,7 +4,9 @@
 // Also regenerates the themes' generated files first (scripts/build-styles.js).
 // dist/ is committed (no Node needed on the Mac to use it); a unit test fails
 // if it's out of date. Usage: node scripts/build.js
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -131,10 +133,47 @@ function bundle(out, manifest) {
   writeFileSync(`${out}/newtab/newtab.html`, html.replace(tag[0], `<script src="${BUNDLES.newtab.split('/').pop()}" type="module"></script>`));
 }
 
+// Margin.app's overlay page (app/overlay/: the UI runtime with the app's
+// host, extension/ui/host-app.js) as one script and its page, for the app's
+// Resources/app/ (scripts/xcode-add-sources.py). Safari's profile for now
+// (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
+export const APP_FILES = ['overlay.html', 'overlay.js'];
+export function buildApp(outDir, { profile = 'safari' } = {}) {
+  const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(out, { recursive: true });
+  // The extension's modules with shared/platform.js stamped for the profile,
+  // and the page's entry pointed at them.
+  const tmp = mkdtempSync(join(tmpdir(), 'margin-app-'));
+  try {
+    cpSync(fileURLToPath(SOURCE), tmp, { recursive: true, filter: (src) => !src.endsWith('/.DS_Store') });
+    writeFileSync(`${tmp}/shared/platform.js`, platformFileFor(profile));
+    const entry = readFileSync(new URL('app/overlay/overlay.js', root), 'utf8').replaceAll("'../../extension/", "'./");
+    buildSync({
+      stdin: { contents: entry, resolveDir: tmp, sourcefile: 'app/overlay/overlay.js' },
+      bundle: true,
+      format: 'iife',
+      target: 'esnext',
+      minifyWhitespace: true,
+      minifySyntax: true,
+      legalComments: 'none',
+      charset: 'utf8',
+      outfile: `${out}/overlay.js`,
+      logLevel: 'warning',
+    });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  cpSync(fileURLToPath(new URL('app/overlay/overlay.html', root)), `${out}/overlay.html`);
+  return out;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   execFileSync(process.execPath, [fileURLToPath(new URL('scripts/build-styles.js', root))], { stdio: 'inherit' });
   for (const target of TARGETS) {
     buildTo(new URL(`dist/${target}/`, root), { profile: target });
     console.log(`dist/${target}/`);
   }
+  buildApp(new URL('dist/app/', root));
+  console.log('dist/app/');
 }
