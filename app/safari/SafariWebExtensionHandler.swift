@@ -29,6 +29,7 @@ let launchNote = "margin-launch"
 class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
     private var profile = "s-default"
+    static let extensionLog = Logger(subsystem: "io.tirth.margin", category: "extension")
 
     func beginRequest(with context: NSExtensionContext) {
         let request = context.inputItems.first as? NSExtensionItem
@@ -49,6 +50,12 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         let body = message as? [String: Any]
         var passOn: [String: Any]?
         var launching = false
+        if let body, body["type"] as? String == "log", let line = body["line"] as? String {
+            // The copy's link events (background/link.js note): in the system log
+            // next to the app's own (subsystem io.tirth.margin, category extension).
+            Self.extensionLog.notice("\(profile, privacy: .public): \(String(line.prefix(300)), privacy: .public)")
+            return reply(context, appOpen: appOpen)
+        }
         if let body, body["type"] as? String == "ping" {
             // The copy's lasting port, used to keep Safari's background alive (background/link.js): nothing to do.
             return reply(context, appOpen: appOpen)

@@ -14,7 +14,8 @@
     "build": "node scripts/build.js",
     "typecheck": "tsc -p .",
     "test:webkit": "tools/webkit-host/run.sh all",
-    "safari": "sh scripts/safari.sh"
+    "safari": "sh scripts/safari.sh",
+    "log:app": "scripts/margin-log.sh"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

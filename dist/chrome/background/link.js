@@ -161,6 +161,26 @@ export function createLink({
     ping: PING_MS, dead: DEAD_MS, check: CHECK_MS, linkWait: LINK_WAIT_MS, openWait: OPEN_WAIT_MS, keptWait: KEPT_WAIT_MS,
     reconnect: RECONNECT_MS, ask: ASK_MS, gone: GONE_MS, windows: WINDOWS_MS, layoutWrite: LAYOUT_WRITE_MS, launchAsk: LAUNCH_ASK_MS, launchAsks: LAUNCH_ASKS, ...timing,
   };
+  // What the link does, in the background's console and, through the lasting
+  // native port, in Margin.app's own log (the extension handler writes it to
+  // the system log: subsystem io.tirth.margin, category extension), so a link
+  // that fails can be read in one place. The same line again within a minute
+  // isn't sent again.
+  /** @type {Map<string, number>} */
+  const sentLines = new Map();
+  const note = (/** @type {any[]} */ ...args) => {
+    log(...args);
+    const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ').slice(0, 300);
+    const now = Date.now();
+    if ((sentLines.get(line) ?? -Infinity) > now - 60_000) return;
+    sentLines.set(line, now);
+    if (sentLines.size > 50) sentLines.delete(sentLines.keys().next().value);
+    try {
+      port?.postMessage({ type: 'log', line });
+    } catch {
+      // no port (yet): the console has it
+    }
+  };
   /** @type {(message: any, sender: any) => Promise<any>} */
   let route = async () => ({ ok: false, error: 'not started' });
   let on = false;
@@ -198,7 +218,7 @@ export function createLink({
   /** @type {string | null} */
   let rev = null;
   let dataQueue = Promise.resolve();
-  const inOrder = (fn) => { dataQueue = dataQueue.then(fn).catch((err) => log('the app\'s data not taken:', err?.message ?? err)); };
+  const inOrder = (fn) => { dataQueue = dataQueue.then(fn).catch((err) => note('the app\'s data not taken:', err?.message ?? err)); };
   const local = () => api.storage.local;
   const session = () => api.storage?.session;
   const listeners = new Set();
@@ -228,7 +248,7 @@ export function createLink({
     layoutTimer = setTimeout(() => {
       layoutTimer = null;
       const value = { ...pageState };
-      stateWrite = stateWrite.then(() => local().set({ [APP_LINK_KEY]: value })).catch((err) => log('writing appLink failed', err?.message ?? err));
+      stateWrite = stateWrite.then(() => local().set({ [APP_LINK_KEY]: value })).catch((err) => note('writing appLink failed', err?.message ?? err));
     }, ms);
   }
   // A drop: 'reconnecting', then 'off' unless it's mended within GONE_MS.
@@ -319,8 +339,9 @@ export function createLink({
     let reply = null;
     try {
       reply = await api.runtime.sendNativeMessage(APP, { type: 'wantLink', nonce });
-    } catch {
+    } catch (err) {
       reply = null;
+      note('wantLink: the extension handler didn\'t answer:', String(err?.message ?? err));
     }
     await takeProfile(reply?.profile);
     if (reply?.appOpen !== true || !on) {
@@ -329,13 +350,22 @@ export function createLink({
       // The handler started the app (it wasn't running): asked again soon,
       // and again when it says it's up. Not running and not started: it's
       // gone, no waiting for it.
-      if (reply?.launching === true) return failed({ launching: true });
+      if (reply?.launching === true) {
+        note('wantLink: Margin.app wasn\'t running; the handler is starting it');
+        return failed({ launching: true });
+      }
+      if (reply) note('wantLink: Margin.app isn\'t running and wasn\'t started');
       return failed({ appGone: reply?.appOpen === false });
     }
     const got = await answer;
     linkWaiter = null;
-    if (!got || !on) return failed();
-    return (await open(got, T.openWait)) || failed();
+    if (!got || !on) {
+      if (on) note(`wantLink: Margin.app is running but sent no link within ${T.linkWait} ms`);
+      return failed();
+    }
+    if (await open(got, T.openWait)) return true;
+    note(`the link on port ${got.port} didn't open within ${T.openWait} ms`);
+    return failed();
   }
   // No app to link to: asked again later (and when a page starts, or the app
   // says it's up). Pages draw their own UI once it's clear.
@@ -352,7 +382,7 @@ export function createLink({
   }
   function noSocketHere() {
     if (canSocket()) return false;
-    if (!toldWorker) log('the background is a worker here; a WebSocket would hang it, so no link');
+    if (!toldWorker) note('the background is a worker here; a WebSocket would hang it, so no link');
     toldWorker = true;
     return true;
   }
@@ -368,13 +398,13 @@ export function createLink({
     ]);
     const off = kept?.[OFF_KEY];
     if (off && off.v === version()) {
-      log(`off since ${new Date(off.at).toISOString()}: a socket being opened never finished (${off.why})`);
+      note(`off since ${new Date(off.at).toISOString()}: a socket being opened never finished (${off.why})`);
       return (socketsOff = true);
     }
     if (got?.[SESSION_OFF_KEY]) return (socketsOff = true);
     if (kept?.[OPENING_KEY]) {
       const why = 'a socket being opened was never finished: the constructor hung, or Safari quit just then';
-      log(`${why}; no link until another version of Margin`);
+      note(`${why}; no link until another version of Margin`);
       await Promise.resolve(local().set({ [OFF_KEY]: { at: Date.now(), why, v: version() } })).catch(() => {});
       await Promise.resolve(local().remove(OPENING_KEY)).catch(() => {});
       await Promise.resolve(session()?.set({ [SESSION_OFF_KEY]: true })).catch(() => {});
@@ -420,7 +450,7 @@ export function createLink({
         let m = null;
         try { m = JSON.parse(String(event.data)); } catch {}
         if (m?.k !== 'welcome' || m.v !== VERSION || m.key !== kept.key) {
-          log('what answered on', kept.port, 'isn\'t Margin.app; that link is forgotten');
+          note('what answered on', kept.port, 'isn\'t Margin.app; that link is forgotten');
           void forget(kept);
           return giveUp();
         }
@@ -468,7 +498,7 @@ export function createLink({
       }, T.check),
       setInterval(() => void windowsNow(), T.windows),
     ];
-    log('linked on', at);
+    note('linked on', at);
   }
   function drop(why) {
     const socket = ws;
@@ -488,7 +518,7 @@ export function createLink({
     pending = null;
     pendingTimer = null;
     sentIcons = null;
-    log('dropped:', why);
+    note('dropped:', why);
     if (bye || !on) {
       gone();
       void Promise.resolve(session()?.remove(SESSION_KEY)).catch(() => {});
@@ -538,7 +568,7 @@ export function createLink({
         return;
       case 'bye': {
         const socket = ws;
-        log('the app said goodbye:', message.why);
+        note('the app said goodbye:', message.why);
         dropped(`bye (${message.why})`, { bye: true });
         try { socket?.close(); } catch {}
         return;
@@ -768,7 +798,7 @@ export function createLink({
     const { omitted, rev: setRev } = parts;
     parts = null;
     // A set not taken leaves no `rev`: the next hello gets it again.
-    const took = await Promise.resolve(data.adopt({ format: DATA_FORMAT, items }, { changes: sinceHello, omitted })).then(() => true, (err) => (log('the app\'s data set not taken:', err?.message ?? err), false));
+    const took = await Promise.resolve(data.adopt({ format: DATA_FORMAT, items }, { changes: sinceHello, omitted })).then(() => true, (err) => (note('the app\'s data set not taken:', err?.message ?? err), false));
     const next = took ? setRev : null;
     if (next !== rev) {
       rev = next;

@@ -276,6 +276,10 @@ test('link: an app started on demand (the handler says `launching`) is asked aga
     setTimeout(() => { up = true; }, 60);
     assert.ok(await until(() => link.linked(), 1000), 'linked once it runs');
     assert.ok(api.native.length >= 2 && api.native.length <= 6, `asked every 30 ms meanwhile (${api.native.length})`);
+    // What happened, passed on to the app's log through the lasting port, each line once a minute.
+    const logged = api.ports.flatMap((p) => p.posted).filter((m) => m.type === 'log').map((m) => m.line);
+    assert.equal(logged.filter((l) => /starting it/.test(l)).length, 1, `the start, once: ${JSON.stringify(logged)}`);
+    assert.ok(logged.some((l) => /^linked on/.test(l)), 'and the link');
   } finally {
     link.stop();
     await app.close();
