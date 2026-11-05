@@ -20,10 +20,13 @@
 //                           the view knows with its scope (behaviorOf, subjectOf)
 //   <template m-part>       a named part, shown in its slot (<m-menu>: `menu`,
 //                           <m-editor>: `space-editor`, <m-palette>: `palette`,
-//                           <m-notice>: `notice`) while the view model says so
+//                           <m-notice>: `notice`, <m-launcher>: `launcher`,
+//                           <m-prompt>: `prompt`) while the view model says so;
+//                           in Margin's menus, notices and prompts only bound
+//                           text shows (ui/sanitize.js GUARDED_PARTS)
 // Theme packages are loaded (sanitized, fonts made, sheets built) by
 // ui/theme-loader.js, and driven by ui/runtime.js.
-import { checkCssValue, checkIconUrl, parseInterpolation } from './sanitize.js';
+import { GUARDED_PARTS, GUARDED_SLOTS, TEXT_ATTRS, checkCssValue, checkIconUrl, guardText, parseInterpolation } from './sanitize.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -31,9 +34,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt{display:block}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty{display:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty{display:none}
 template{display:none!important}
 .m-drag-ghost{position:fixed!important;margin:0!important;pointer-events:none!important;z-index:2147483601!important;box-sizing:border-box}
 [contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
@@ -46,7 +49,15 @@ const SLOTS = {
   'm-editor': { part: 'space-editor', test: ['editor'] },
   'm-palette': { part: 'palette', test: ['palette', 'open'] },
   'm-notice': { part: 'notice', test: ['notice'] },
+  'm-launcher': { part: 'launcher', test: ['launcher'] },
+  'm-prompt': { part: 'prompt', test: ['prompt'] },
 };
+// Margin's own words (ui/sanitize.js GUARDED_PARTS): inside these parts and
+// slots, text the theme wrote is dropped again here, whatever tree the
+// template came from, and only bound labels show.
+const GUARDED = new Set(GUARDED_PARTS);
+const GUARDED_SLOT = new Set(GUARDED_SLOTS);
+const TEXT_ATTR = new Set(TEXT_ATTRS);
 
 // ---------------------------------------------------------------------------
 // From the sanitizer's tree to DOM.
@@ -130,12 +141,17 @@ function compileBlock(nodes, ctx, locals) {
     for (const node of kept) {
       const path = [...at, parent.childNodes.length];
       if (node.nodeType === 3) {
-        const parts = interpolation(node.data);
+        let data = node.data;
+        if (ctx.guard) {
+          const g = guardText(data);
+          if (g.removed) { ctx.warn?.(`static text in a guarded part, not shown: ${JSON.stringify(g.removed.slice(0, 60))}`); data = g.text; if (!data) continue; }
+        }
+        const parts = interpolation(data);
         if (parts) {
           parent.appendChild(ctx.doc.createTextNode(''));
           for (const p of parts) if (typeof p !== 'string') usePath(p);
           bindings.push({ kind: 'text', path, parts });
-        } else parent.appendChild(ctx.doc.createTextNode(node.data));
+        } else parent.appendChild(ctx.doc.createTextNode(data));
         continue;
       }
       if (node.nodeType !== 1) continue;
@@ -173,9 +189,14 @@ function compileBlock(nodes, ctx, locals) {
       if (name === 'template') continue; // a part: compiled once (View), shown in its slot
       const copy = el.namespaceURI === SVG_NS ? ctx.doc.createElementNS(SVG_NS, el.localName) : ctx.doc.createElement(name);
       const own = [];
+      const guarded = ctx.guard || (el.namespaceURI !== SVG_NS && GUARDED_SLOT.has(name));
       for (const attr of [...el.attributes]) {
         const a = attr.name;
-        const value = attr.value;
+        let value = attr.value;
+        if (guarded && TEXT_ATTR.has(a)) {
+          const g = guardText(value);
+          if (g.removed) { ctx.warn?.(`static ${a} in a guarded part, not shown: ${JSON.stringify(g.removed.slice(0, 60))}`); value = g.text; if (!value) continue; }
+        }
         if (a.startsWith('m-attr:')) { const p = splitPath(value.replace(HOLE, '$1')); usePath(p); own.push({ kind: 'attr', name: a.slice(7), p }); continue; }
         if (a.startsWith('m-class:')) { const p = splitPath(value.replace(HOLE, '$1')); usePath(p); own.push({ kind: 'class', name: a.slice(8), p }); continue; }
         if (a.startsWith('m-style:')) { const p = splitPath(value.replace(HOLE, '$1')); usePath(p); own.push({ kind: 'style', name: a.slice(8), p }); continue; }
@@ -209,7 +230,7 @@ function compileBlock(nodes, ctx, locals) {
         // Its part (or what's inside it) goes in while the test holds.
         usePath(slot.test);
         const inside = [...el.childNodes].filter((c) => c.nodeType === 1 || /\S/.test(c.nodeValue ?? ''));
-        const fallback = inside.length ? compileBlock(inside, ctx, locals) : null;
+        const fallback = inside.length ? compileBlock(inside, GUARDED_SLOT.has(name) ? { ...ctx, guard: true } : ctx, locals) : null;
         if (fallback) for (const h of fallback.heads) heads.add(h);
         bindings.push({ kind: 'slot', path, slot: name, part: slot.part, test: slot.test, fallback });
       } else if (name !== 'm-page') visit(copy, [...el.childNodes], path);
@@ -544,7 +565,7 @@ export class View {
     this.pageEl = null;
     this.behaviors = [];
     this.warn = options.onWarn ?? null;
-    const ctx = { doc: this.doc, behaviors: this.behaviors };
+    const ctx = { doc: this.doc, behaviors: this.behaviors, guard: false, warn: (m) => this.warn?.(m) };
     // The theme's parts, compiled once, before the template that shows them.
     /** @type {Map<string, Plan>} */
     this.parts = new Map();
@@ -554,7 +575,7 @@ export class View {
         const el = /** @type {Element} */ (n);
         if (el.localName === 'template' && el.namespaceURI !== SVG_NS) {
           const name = el.getAttribute('m-part');
-          if (name && !this.parts.has(name)) this.parts.set(name, compileBlock([...el.childNodes], ctx, new Set()));
+          if (name && !this.parts.has(name)) this.parts.set(name, compileBlock([...el.childNodes], GUARDED.has(name) ? { ...ctx, guard: true } : ctx, new Set()));
           continue;
         }
         findParts(el.childNodes);

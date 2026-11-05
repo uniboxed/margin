@@ -287,6 +287,7 @@ const HTML_ELEMENTS = new Set([
 // Margin's own elements: control flow and slots.
 const MARGIN_ELEMENTS = new Set([
   'm-for', 'm-if', 'm-else', 'm-page', 'm-window-controls', 'm-drag-region', 'm-palette', 'm-notice', 'm-menu', 'm-editor',
+  'm-launcher', 'm-prompt',
 ]);
 // Dropped with everything inside them. (Raw-text elements never get this far.)
 const DROP = new Set([
@@ -354,12 +355,50 @@ const BEHAVIORS = {
   'm-rename': ['space', 'folder', 'tab'],
   'm-scroll': ['tabs', 'palette', 'archive'],
   'm-swipe': ['spaces'],
-  'm-input': ['palette', 'space-name', 'space-emoji'],
+  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher'],
 };
 // Named parts a theme supplies (`<template m-part>`), which the runtime puts
 // in its slots: `menu` in <m-menu>, `space-editor` in <m-editor>, `palette`
-// in <m-palette>, `notice` in <m-notice>.
-const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette']);
+// in <m-palette>, `notice` in <m-notice>, `launcher` in <m-launcher>,
+// `prompt` in <m-prompt>.
+const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 'menu', 'space-editor', 'palette', 'launcher', 'prompt']);
+
+// Margin's own words (PLAN.md §4: "a theme can still draw misleading text"):
+// the parts that show Margin's menus, notices, prompts and confirmations
+// (a delete that asks again, "install Margin.app"), and the slots they go
+// in, whose content is the part when the theme has none. Inside them every
+// visible text is one of Margin's labels, bound from the view model: a text
+// the theme wrote there is removed and reported, and so is a static value of
+// an attribute that shows or speaks text. Icons (svg shapes), images and
+// decoration stay. ui/render.js applies the same rule again as it compiles.
+export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt']);
+export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt']);
+// Attributes whose value is shown (a tooltip, a placeholder, an image's
+// stand-in) or spoken (a screen reader's label).
+export const TEXT_ATTRS = Object.freeze(['title', 'alt', 'placeholder', 'aria-label', 'aria-description', 'aria-roledescription',
+  'aria-valuetext', 'aria-placeholder', 'aria-braillelabel', 'aria-brailleroledescription']);
+const GUARDED_PART_SET = new Set(GUARDED_PARTS);
+const GUARDED_SLOT_SET = new Set(GUARDED_SLOTS);
+const TEXT_ATTR_SET = new Set(TEXT_ATTRS);
+
+/**
+ * A text (a text node's, or a text attribute's value) as a guarded part may
+ * have it: its `{{bindings}}` and the whitespace between them, nothing the
+ * theme wrote. `removed`: the words taken out ('' when there were none);
+ * `text`: what's left ('' when nothing is).
+ * @param {string} value @returns {{ text: string, removed: string }}
+ */
+export function guardText(value) {
+  const { parts } = parseInterpolation(String(value));
+  let text = '';
+  let removed = '';
+  for (const p of parts) {
+    if (typeof p !== 'string') { text += `{{${p.path.join('.')}}}`; continue; }
+    if (/\S/.test(p)) { removed += p; if (/\s/.test(p) && text && !/\s$/.test(text)) text += ' '; } else text += p;
+  }
+  return { text: /\{\{/.test(text) ? text : '', removed: removed.trim() };
+}
+const guardedWhy = (guard) => `static text in Margin's ${guard} (only Margin's bound labels show there)`;
 
 const ID_VALUE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const FRAGMENT_URL = /^url\(\s*#[A-Za-z][A-Za-z0-9_-]*\s*\)$/;
@@ -404,7 +443,7 @@ export function sanitizeTemplate(html, { files = [], assetUrl = (p) => p } = {})
   const errors = parsed.errors;
   const stats = { pages: 0, nodes: 0 };
   const ctx = { files, assetUrl, removed, errors, stats };
-  const children = cleanChildren(parsed.root.children, { ...ctx, ns: HTML, forDepth: 0, inTemplate: false, inIf: false });
+  const children = cleanChildren(parsed.root.children, { ...ctx, ns: HTML, forDepth: 0, inTemplate: false, inIf: false, guard: null });
   const tree = { type: 'root', children };
   if (!errors.length) {
     const roots = children.filter((c) => c.type === 'el');
@@ -426,6 +465,11 @@ function cleanChildren(list, ctx) {
 function cleanNode(node, ctx) {
   if (node.type === 'text') {
     const { bad } = parseInterpolation(node.value);
+    if (ctx.guard) {
+      const g = guardText(node.value);
+      if (g.removed) report(ctx.removed, 'text', JSON.stringify(g.removed.slice(0, 60)), guardedWhy(ctx.guard));
+      if (g.removed) return g.text ? { type: 'text', value: g.text } : null;
+    }
     if (bad) report(ctx.removed, 'binding', `{{${bad}}}`, 'not a dotted path: left as plain text');
     return { type: 'text', value: node.value };
   }
@@ -441,7 +485,10 @@ function cleanNode(node, ctx) {
   const sub = { ...ctx };
   if (lname === 'template') {
     sub.inTemplate = true;
+    const part = node.attrs.find(([n]) => n.toLowerCase() === 'm-part')?.[1];
+    if (GUARDED_PART_SET.has(part)) sub.guard = `"${part}" part`;
   }
+  if (GUARDED_SLOT_SET.has(lname)) sub.guard ??= `<${lname}>`;
   if (lname === 'm-for') {
     sub.forDepth = ctx.forDepth + 1;
     if (sub.forDepth > LIMITS.forDepth) { ctx.errors.push(`template: <m-for> nested deeper than ${LIMITS.forDepth}`); return null; }
@@ -457,7 +504,8 @@ function cleanNode(node, ctx) {
     report(ctx.removed, 'element', 'input', 'only Margin\'s inputs (m-input) are allowed', at);
     return null;
   }
-  const attrs = cleanAttrs(node, lname, HTML, ctx);
+  // A guarded slot's own attributes are guarded too (its title shows over the menu).
+  const attrs = cleanAttrs(node, lname, HTML, GUARDED_SLOT_SET.has(lname) ? sub : ctx);
   if (attrs === null) return null;
   if (lname === 'button' && !attrs.some(([n]) => n === 'type')) attrs.push(['type', 'button']);
   ctx.stats.nodes++;
@@ -518,6 +566,14 @@ function cleanAttrs(node, element, ns, ctx) {
         || (ELEMENT_ATTRS[element] ?? []).includes(lower);
       if (!allowed) { drop(rawName, 'not allowed'); continue; }
       name = lower;
+    }
+    if (ctx.guard && TEXT_ATTR_SET.has(name)) {
+      const g = guardText(value);
+      if (g.removed) {
+        drop(rawName, `${guardedWhy(ctx.guard)}: ${JSON.stringify(g.removed.slice(0, 60))}`);
+        if (g.text) out.push([name, g.text]);
+        continue;
+      }
     }
     const interp = parseInterpolation(value);
     if (interp.bound) {
@@ -855,6 +911,37 @@ const FUNCTIONS = new Set([
   'is', 'not', 'has', 'where', 'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'host', 'host-context',
   'slotted', 'part', 'lang', 'dir', 'state', 'selector', 'style', 'font-format', 'font-tech', 'supports', 'layer',
 ]);
+// Properties that write text on the page: a theme's stylesheet writes none
+// (only `""`, an empty box to decorate), so the words in Margin's menus,
+// notices and prompts can only be Margin's labels (GUARDED_PARTS): CSS
+// can't know which elements its rules reach. No strings but empty ones, no
+// var() or env() (a variable could hold a string), and counters and list
+// markers only as numbers or symbols, never letters (upper-alpha spells
+// words from a counter's values).
+const TEXT_PROPERTIES = new Set(['content', 'quotes', 'list-style', 'list-style-type', 'hyphenate-character', '-webkit-hyphenate-character',
+  'text-emphasis', 'text-emphasis-style', '-webkit-text-emphasis', '-webkit-text-emphasis-style', 'text-overflow']);
+const NUMBER_STYLES = new Set(['none', 'disc', 'circle', 'square', 'decimal', 'decimal-leading-zero', 'disclosure-open', 'disclosure-closed']);
+const LIST_WORDS = new Set([...NUMBER_STYLES, 'inside', 'outside', 'inherit', 'initial', 'unset', 'revert', 'revert-layer']);
+function writesText(prop, items) {
+  for (const cv of items) {
+    if (cv.fn !== undefined) {
+      if (cv.fn === 'var' || cv.fn === 'env' || cv.fn === 'attr') return `${cv.fn}() in a property that writes text`;
+      if (cv.fn === 'counter' || cv.fn === 'counters') {
+        const args = cv.args.filter((a) => !isWsCv(a) && !isTok(a, ','));
+        const style = args.slice(cv.fn === 'counter' ? 1 : 2).find((a) => a.t === 'ident');
+        if (style && !NUMBER_STYLES.has(String(style.v).toLowerCase())) return `counter style ${style.v} writes letters`;
+      }
+      const r = writesText(prop, cv.args);
+      if (r) return r;
+      continue;
+    }
+    if (cv.open !== undefined) { const r = writesText(prop, cv.items); if (r) return r; continue; }
+    if (cv.t === 'str' && cv.v !== '') return `writes text (${JSON.stringify(cv.v.slice(0, 40))}): only "" here`;
+    if (cv.t === 'ident' && (prop === 'list-style' || prop === 'list-style-type') && !LIST_WORDS.has(String(cv.v).toLowerCase())) return `list style ${cv.v} writes letters`;
+  }
+  return null;
+}
+
 // A string that looks like an address, anywhere in a style sheet: refused, so
 // nothing can hand one to a function that loads it.
 const URLISH = /:\/\/|^\s*\/\/|^\s*(javascript|vbscript|data):/i;
@@ -989,7 +1076,7 @@ class CssBuilder {
     const prop = name.v.startsWith('--') ? name.v : name.v.toLowerCase();
     if (BLOCKED_PROPERTIES.has(prop)) { this.drop('css-declaration', prop, 'not allowed', name); return ''; }
     const value = items.slice(b + 1);
-    const reason = this.value(value);
+    const reason = this.value(value) ?? (TEXT_PROPERTIES.has(prop) ? writesText(prop, value) : null);
     if (reason) { this.drop('css-declaration', `${prop}: ${this.text(value).trim().slice(0, 80)}`, reason, name); return ''; }
     if (++this.declarations > LIMITS.cssDeclarations) { this.errors.push(`css: more than ${LIMITS.cssDeclarations} declarations`); return ''; }
     const text = this.text(value).trim();

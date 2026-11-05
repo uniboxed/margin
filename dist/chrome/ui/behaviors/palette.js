@@ -8,6 +8,7 @@
 // the focus in the field. The new-tab palette (`palette.newTab`) is the same.
 // Closed, the focus goes back where it was, unless what was chosen opens a
 // new tab (what's typed meanwhile would go into the page left).
+// Also the new-tab launcher's field (`m-input="launcher"`): Enter runs it.
 
 /** @param {any} rt */
 export function installPalette(rt) {
@@ -18,6 +19,7 @@ export function installPalette(rt) {
   /** @type {any} */
   let restoreFocus = null;
   let reveal = false; // the selection moved by a key: keep it in view
+  let launcherShown = false;
 
   const isField = (el) => !!el && view.inputs.get(el) === 'palette';
   const active = () => {
@@ -33,6 +35,15 @@ export function installPalette(rt) {
     reveal = true;
     rt.setUi({ palette: { ...rt.ui.palette, selected: next } });
   }
+
+  // The new-tab launcher's field (`m-input="launcher"`, Arcadia's #query):
+  // Enter goes to what's typed (an address) or searches for it, as the
+  // palette's first row would, in this tab.
+  rt.listen(container, 'keydown', (/** @type {KeyboardEvent} */ e) => {
+    if (e.key !== 'Enter' || e.isComposing || view.inputs.get(e.target) !== 'launcher') return;
+    e.preventDefault();
+    rt.runQuery(/** @type {HTMLInputElement} */ (e.target).value);
+  });
 
   rt.listen(container, 'keydown', (/** @type {KeyboardEvent} */ e) => {
     if (!isField(e.target) || e.isComposing || !rt.ui.palette.open) return;
@@ -62,6 +73,10 @@ export function installPalette(rt) {
       if (name === 'palette' && rt.ui.palette.open) rt.setUi({ palette: { ...rt.ui.palette, query: value, selected: 0 } });
     },
     afterRender(vm) {
+      // The launcher's field has the focus as the new-tab page shows it
+      // (Arcadia's newtab.js; Safari focuses its address bar instead).
+      if (vm.launcher && !launcherShown && !vm.palette.open) view.input('launcher')?.focus({ preventScroll: true });
+      launcherShown = !!vm.launcher;
       const open = !!vm.palette.open;
       if (open) {
         const input = view.input('palette');

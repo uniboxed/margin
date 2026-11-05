@@ -79,7 +79,7 @@ test('spaces, the active tab, the window, the archive', () => {
   assert.deepEqual(vm.spaces.map((s) => [s.id, s.abbr, s.active, s.tabCount, s.index]), [['home', 'HO', true, 5, 0], ['work', 'DW', false, 1, 1], ['side', 'SI', false, 0, 2]]);
   assert.deepEqual([vm.space.name, vm.space.emoji, vm.space.color, vm.space.abbr, vm.space.tabCount], ['Home', '🏠', '#6c5ce7', 'HO', 5]);
   assert.deepEqual([vm.tab.id, vm.tab.host, vm.tab.pinned, vm.tab.asleep, vm.tab.newTab], [13, 'docs.example', true, false, false], 'the window\'s active tab');
-  assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false });
+  assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false, frameWhenHidden: true });
   assert.deepEqual(ids(vm.archive), ['ar1', 'ar2'], 'newest first, as stored');
   assert.equal(vm.archive[1].title, 'https://news.example/b');
   assert.equal(vm.archive[0].icon, smallState().favicons['https://gone.example'].data);
@@ -94,7 +94,7 @@ test('spaces, the active tab, the window, the archive', () => {
   assert.equal(inPage.space.folders[1].hasShown, false, 'the closed folder\'s tab isn\'t in front now: it shows nothing');
   // The sidebar: the setting, unless the UI says (peek).
   assert.equal(build({ ...smallState(), settings: { sidebarPinnedOpen: true } }).window.sidebar, 'open');
-  assert.deepEqual(build(smallState(), { sidebar: 'peek', mode: 'fullscreen' }).window, { id: W, mode: 'fullscreen', focused: true, sidebar: 'peek', sidebarOpen: false, peek: true, pinnedOpen: false });
+  assert.deepEqual(build(smallState(), { sidebar: 'peek', mode: 'fullscreen' }).window, { id: W, mode: 'fullscreen', focused: true, sidebar: 'peek', sidebarOpen: false, peek: true, pinnedOpen: false, frameWhenHidden: true });
 });
 
 test('the palette: shared/search.js ranks its rows; ids, the selection, no actions in the model', () => {
@@ -234,4 +234,34 @@ test('sharing at 200 tabs: one title changes one row of 200', () => {
   assert.deepEqual(changed.map((r) => r.id), [id]);
   assert.equal(b.space.pinned, a.space.pinned);
   assert.equal(b.spaces, a.spaces);
+});
+
+test('Margin\'s own words: the menu\'s and the editor\'s labels, a notice\'s and a prompt\'s text and buttons (themes bind them)', () => {
+  const state = smallState();
+  const vm = build(state, { menu: { kind: 'tab', id: 12, x: 4, y: 5 }, editor: { spaceId: 'home', name: 'Home', emoji: '🏠', color: '#6c5ce7' },
+    notice: { id: 'fs', text: 'Margin works in full screen.', actions: [{ id: 'go', label: 'Full screen', primary: true }, { id: 'no', label: 'Not now' }] },
+    prompt: { id: 'app', title: 'Install Margin.app', text: 'Margin needs its app on the Mac.', actions: [{ id: 'ok', label: 'Install', primary: true }] } });
+  assert.equal(vm.menu.label, 'Tab');
+  assert.deepEqual(vm.editor.labels, { title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel' });
+  assert.deepEqual(vm.notice, { id: 'fs', text: 'Margin works in full screen.', hasActions: true, actions: [{ id: 'go', label: 'Full screen', primary: true, danger: false }, { id: 'no', label: 'Not now', primary: false, danger: false }] });
+  assert.deepEqual([vm.prompt.title, vm.prompt.text, vm.prompt.actions.map((a) => a.label)], ['Install Margin.app', 'Margin needs its app on the Mac.', ['Install']]);
+  const plain = build(state, { notice: { id: 'n', text: 'Hi' } });
+  assert.deepEqual(plain.notice, { id: 'n', text: 'Hi', actions: [], hasActions: false });
+  assert.equal(plain.prompt, null);
+});
+
+test('the window\'s frame when hidden, and the new-tab launcher: the space\'s pins as tiles, the latest archived tabs', () => {
+  const state = smallState();
+  assert.equal(build(state).window.frameWhenHidden, true);
+  assert.equal(build({ ...state, settings: { frameWhenHidden: false } }).window.frameWhenHidden, false);
+  assert.equal(build(state).launcher, null, 'only in Margin\'s new-tab page');
+  const now = Date.now();
+  const many = { ...state, archive: Array.from({ length: 14 }, (_, i) => ({ id: `a${i}`, spaceId: 'home', url: `https://old.example/${i}`, title: `Old ${i}`, closedAt: now - (i + 1) * 3600_000 })) };
+  const vm = buildViewModel({ state: many, ui: { windowId: W, inNewTab: true }, platform: PLATFORM, now });
+  assert.deepEqual(ids(vm.launcher.pins), vm.space.pinned.flatMap((p) => (p.isFolder ? p.pins : [p])).map((p) => p.id), 'every pin, folders\' too, in the order shown');
+  assert.equal(vm.launcher.archive.length, 12);
+  assert.deepEqual([vm.launcher.more, vm.launcher.moreLabel, vm.launcher.archive[0].ago], [true, 'Show all 14', '1h ago']);
+  const all = buildViewModel({ state: many, ui: { windowId: W, inNewTab: true, launcher: { allArchived: true } }, platform: PLATFORM, now });
+  assert.deepEqual([all.launcher.archive.length, all.launcher.moreLabel], [14, 'Show fewer']);
+  assert.equal(all.archive.at(-1).ago, '14h ago');
 });

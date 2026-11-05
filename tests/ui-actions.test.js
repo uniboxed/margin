@@ -193,3 +193,21 @@ test('the mapping: the behaviors\' and menus\' actions become the requests today
   for (const name of ['folder.rename', 'space.rename', 'menu.run', 'editor.color']) assert.equal(req(name, 'x').kind, 'local', name);
   for (const name of ['menu.close', 'editor.save', 'editor.cancel', 'editor.delete']) assert.deepEqual(req(name), { kind: 'local', name });
 });
+
+test('notices and prompts: a button of the one shown, checked by its id; closing; the launcher\'s "Show all" (all the UI\'s own)', () => {
+  const c = contextFromState(state, [], { noticeIds: ['go', 'no'], promptIds: ['ok'] });
+  assert.deepEqual(checkAction('notice.run', 'go', c), { ok: true });
+  assert.equal(checkAction('notice.run', 'ok', c).ok, false, 'a prompt\'s button isn\'t the notice\'s');
+  assert.equal(checkAction('notice.run', 'gone', contextFromState(state)).ok, false, 'no notice shown: nothing to run');
+  assert.deepEqual(checkAction('prompt.run', 'ok', c), { ok: true });
+  assert.equal(checkAction('prompt.run', '__proto__', c).ok, false);
+  for (const name of ['notice.close', 'prompt.close', 'launcher.more']) {
+    assert.deepEqual(checkAction(name, undefined, c), { ok: true });
+    assert.equal(checkAction(name, 'x', c).ok, false);
+  }
+  for (const [name, arg] of [['notice.run', 'go'], ['notice.close', undefined], ['prompt.run', 'ok'], ['prompt.close', undefined], ['launcher.more', undefined]]) {
+    assert.deepEqual(requestFor(name, arg, { state, ui: { windowId: W } }), arg === undefined ? { kind: 'local', name } : { kind: 'local', name, arg });
+    assert.equal(ACTION_MAP[name], 'local');
+    assert.equal(BEHAVIOR_ONLY.has(name), false, 'a theme\'s button runs them');
+  }
+});

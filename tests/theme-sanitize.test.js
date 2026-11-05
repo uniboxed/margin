@@ -191,7 +191,7 @@ test('css: kept rules come out equivalent, with bundled and data: URLs, and comm
   const assetUrl = (p) => `margin-theme://t/${p}`;
   const r = sanitizeCss(`
     .a { color: red !important; background: url(images/dot.png) no-repeat }
-    .b/**/.c { content: "\\2192" }
+    .b/**/.c { font-family: "\\2192" }
     @font-face { font-family: A; src: url("fonts/a.woff2") format("woff2") }
     @media (max-width: 600px) { .a:hover > .b { --x: calc(1px + 2px) } }
     .d { background-image: url(data:image/png;base64,iVBORw0KGgo=) }
@@ -202,7 +202,7 @@ test('css: kept rules come out equivalent, with bundled and data: URLs, and comm
   assert.deepEqual(r.removed, []);
   assert.deepEqual(r.errors, []);
   assert.match(r.css, /\.a\{color:red !important;background:url\("margin-theme:\/\/t\/images\/dot\.png"\) no-repeat;\}/);
-  assert.match(r.css, /\.b\/\*\*\/\.c\{content:"→";\}/);
+  assert.match(r.css, /\.b\/\*\*\/\.c\{font-family:"→";\}/);
   assert.match(r.css, /@font-face\{font-family:A;src:url\("margin-theme:\/\/t\/fonts\/a\.woff2"\) format\("woff2"\);\}/);
   assert.match(r.css, /@media \(max-width: 600px\)\{\.a:hover > \.b\{--x:calc\(1px \+ 2px\);\}\}/);
   assert.match(r.css, /\.e\{& \.f\{color:blue;\}\}/);
@@ -264,7 +264,8 @@ test('theme.json: fields checked, unknown ones removed, fonts must be bundled wo
 test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' and menus\' own', () => {
   const plan = ['tab.activate', 'tab.close', 'tab.new', 'tab.pin', 'tab.unpin', 'tab.moveToSpace', 'pin.open', 'folder.toggle', 'folder.new', 'space.switch', 'space.new', 'space.edit', 'today.clear', 'nav.back', 'nav.forward', 'nav.reload', 'palette.open', 'palette.close', 'sidebar.toggle', 'archive.open', 'archive.restore', 'window.close', 'window.minimise', 'window.fullscreen', 'settings.open'];
   const step2 = ['tab.move', 'tab.pinAt', 'pin.move', 'folder.newWithTab', 'folder.newWithPin', 'folder.rename', 'folder.setName', 'folder.move', 'folder.delete', 'space.rename', 'space.setName', 'space.update', 'space.delete', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color'];
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2].sort());
+  const step3 = ['notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more'];
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

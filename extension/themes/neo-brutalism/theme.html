@@ -142,7 +142,7 @@
   <m-editor class="editor-slot"></m-editor>
 
   <template m-part="menu">
-    <div class="menu" role="menu" aria-label="Menu">
+    <div class="menu" role="menu" m-attr:aria-label="{{menu.label}}">
       <m-for each="menu.items" as="i">
         <m-if test="i.separator">
           <div class="menu-sep" role="separator"></div>
@@ -156,14 +156,14 @@
 
   <template m-part="space-editor">
     <div class="editor-layer">
-      <button class="btn scrim" aria-label="Cancel" m-action="editor.cancel"></button>
-      <div class="editor" role="dialog" aria-label="Edit space">
-        <div class="editor-title">EDIT SPACE</div>
+      <button class="btn scrim" m-attr:aria-label="{{editor.labels.cancel}}" m-action="editor.cancel"></button>
+      <div class="editor" role="dialog" m-attr:aria-label="{{editor.labels.title}}">
+        <div class="editor-title">{{editor.labels.title}}</div>
         <div class="editor-row">
-          <input class="editor-emoji" m-input="space-emoji" maxlength="8" aria-label="Space emoji" autocomplete="off" spellcheck="false">
-          <input class="editor-name" m-input="space-name" maxlength="40" placeholder="Space name" aria-label="Space name" autocomplete="off" spellcheck="false">
+          <input class="editor-emoji" m-input="space-emoji" maxlength="8" m-attr:aria-label="{{editor.labels.emoji}}" autocomplete="off" spellcheck="false">
+          <input class="editor-name" m-input="space-name" maxlength="40" m-attr:placeholder="{{editor.labels.name}}" m-attr:aria-label="{{editor.labels.name}}" autocomplete="off" spellcheck="false">
         </div>
-        <div class="swatches" role="radiogroup" aria-label="Space color">
+        <div class="swatches" role="radiogroup" m-attr:aria-label="{{editor.labels.colors}}">
           <m-for each="editor.colors" as="c">
             <button class="btn swatch" role="radio" m-attr:aria-checked="{{c.selected}}" m-class:on="{{c.selected}}" m-style:--swatch="{{c.color}}" m-action="editor.color" m-arg="{{c.id}}"></button>
           </m-for>
@@ -171,8 +171,8 @@
         <div class="editor-row actions">
           <button class="btn push small danger" title="{{editor.deleteTitle}}" m-attr:disabled="{{editor.cannotDelete}}" m-class:confirming="{{editor.confirmDelete}}" m-action="editor.delete">{{editor.deleteLabel}}</button>
           <div class="grow"></div>
-          <button class="btn push small" m-action="editor.cancel">CANCEL</button>
-          <button class="btn push small primary" m-action="editor.save">SAVE</button>
+          <button class="btn push small" m-action="editor.cancel">{{editor.labels.cancel}}</button>
+          <button class="btn push small primary" m-action="editor.save">{{editor.labels.save}}</button>
         </div>
       </div>
     </div>

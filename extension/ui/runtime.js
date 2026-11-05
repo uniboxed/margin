@@ -297,7 +297,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const items = ui.palette.open ? paletteItems(state, now, host.platform) : [];
     const menu = ui.menu && vm ? menuItems(/** @type {any} */ (ui.menu), { state: viewState(state), space: vm.space }) : [];
     const colors = vm?.editor ? vm.editor.colors.map((c) => c.id) : [];
-    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors }));
+    const noticeIds = vm?.notice?.actions.map((a) => a.id) ?? [];
+    const promptIds = vm?.prompt?.actions.map((a) => a.id) ?? [];
+    const verdict = checkAction(name, arg, contextFromState(state, items.map((i) => i.id), { menuIds: menu.filter((i) => !i.separator).map((i) => i.id), colorIds: colors, noticeIds, promptIds }));
     if (!verdict.ok) return refuse(name, arg, /** @type {any} */ (verdict).reason);
     const request = requestFor(name, arg, { state, ui: { windowId: now.windowId, sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row: name === 'palette.run' ? items.find((i) => i.id === arg) : null });
     // Choosing a row closes the palette first (Arcadia's palette); one opened
@@ -398,6 +400,18 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'editor.cancel': return behaviors.editor.cancel();
       case 'editor.delete': return behaviors.editor.remove();
       case 'editor.color': return behaviors.editor.color(arg);
+      // Margin's notices and prompts: a button is the host's to run (what
+      // it does stays in Margin, as a menu item's), then it goes.
+      case 'notice.run': case 'prompt.run': {
+        const which = name === 'notice.run' ? 'notice' : 'prompt';
+        const id = ui[which]?.id;
+        setUi({ [which]: null });
+        host.perform?.(which, { id, action: arg });
+        return true;
+      }
+      case 'notice.close': setUi({ notice: null }); return true;
+      case 'prompt.close': setUi({ prompt: null }); return true;
+      case 'launcher.more': setUi({ launcher: { ...ui.launcher, allArchived: !ui.launcher?.allArchived } }); return true;
       // The palette's own rows (shared/search.js `local` actions). "Toggle
       // sidebar" is the theme's sidebar.toggle: Keep open on or off.
       case 'palette.toggleSidebar': return dispatch('sidebar.toggle', undefined, 'behavior');
@@ -411,6 +425,25 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       default:
         return refuse(name, arg, `${name}: not something the UI does`);
     }
+  }
+
+  /**
+   * What's typed in the new-tab launcher's field, run as the palette would
+   * run its first row for it (an address goes there, words are searched),
+   * without showing the palette.
+   * @param {string} query
+   */
+  function runQuery(query) {
+    const text = String(query ?? '').trim();
+    if (!text) return false;
+    const state = host.getState();
+    const items = paletteItems(state, { ...fullUi(), palette: { open: true, query: text, selected: 0 } }, host.platform);
+    const row = items.find((i) => i.kind === 'go');
+    if (!row) return false;
+    const request = requestFor('palette.run', row.id, { state, ui: { windowId: windowId(), sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row });
+    if (request.kind === 'send') { void send(request.type, request.payload); return true; }
+    if (request.kind === 'local') return local(request.name, request.arg, null);
+    return false;
   }
 
   // A click on the theme: some are Margin's to swallow (a name being edited,
@@ -434,7 +467,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     get ui() { return ui; },
     get state() { return host.getState(); },
     viewState: () => viewState(host.getState()),
-    setUi, render, dispatch, send, refuse, warn,
+    setUi, render, dispatch, send, refuse, warn, runQuery,
     windowId, ownTab, frontTab, recentTabOf, switchSpace,
     switching,
     get lastToggle() { return lastToggle; },

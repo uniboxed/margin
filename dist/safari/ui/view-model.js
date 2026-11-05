@@ -42,7 +42,9 @@ export const VM_VERSION = 1;
  *   editing?: { kind: 'space' | 'folder', id: string } | null,
  *   editor?: { spaceId: string, name: string, emoji: string, color: string, confirmDelete?: boolean } | null,
  *   newTabPending?: boolean,
- *   notice?: { id: string, text: string } | null,
+ *   notice?: { id: string, text: string, actions?: { id: string, label: string, primary?: boolean }[] } | null,
+ *   prompt?: { id: string, title?: string, text: string, actions?: { id: string, label: string, primary?: boolean, danger?: boolean }[] } | null,
+ *   launcher?: { allArchived?: boolean } | null,
  *   switchingTo?: number | null,
  *   justShown?: boolean,
  *   inNewTab?: boolean,
@@ -50,6 +52,7 @@ export const VM_VERSION = 1;
  *
  * @typedef {{
  *   state: Partial<State> & Record<string, any> | null,
+ *   now?: number,
  *   ui?: UiState,
  *   platform?: { browser?: string, os?: string, marginFullscreen?: boolean },
  *   settings?: Record<string, string | number | boolean>,
@@ -84,7 +87,7 @@ export const VM_VERSION = 1;
  * @typedef {Face & {
  *   id: number, loading: boolean, audible: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
  * }} ActiveTab
- * @typedef {Face & { id: string, spaceId: string, closedAt: number }} ArchiveRow
+ * @typedef {Face & { id: string, spaceId: string, closedAt: number, ago: string }} ArchiveRow
  * @typedef {{
  *   id: string, kind: string, title: string, subtitle: string, badge: string,
  *   emoji: string, icon: string | null, letter: string, color: string,
@@ -100,14 +103,30 @@ export const VM_VERSION = 1;
  *   id: string, name: string, emoji: string, color: string,
  *   colors: { id: string, color: string, selected: boolean }[],
  *   canDelete: boolean, cannotDelete: boolean, confirmDelete: boolean, deleteLabel: string, deleteTitle: string,
+ *   labels: { title: string, name: string, emoji: string, colors: string, save: string, cancel: string },
  * }} EditorView
+ *
+ * A notice or a prompt: Margin's words, and its buttons' (each runs
+ * notice.run / prompt.run with its id). The theme's `notice` and `prompt`
+ * parts show nothing else (ui/sanitize.js GUARDED_PARTS).
+ * @typedef {{ id: string, label: string, primary: boolean, danger: boolean }} NoticeAction
+ * @typedef {{ id: string, text: string, actions: NoticeAction[], hasActions: boolean }} NoticeView
+ * @typedef {NoticeView & { title: string }} PromptView
+ *
+ * The new-tab page's launcher (the `launcher` part, in <m-launcher>), while
+ * the UI is drawn in Margin's new-tab page: the space's pins as tiles, the
+ * archive's latest (all of it after "Show all").
+ * @typedef {{
+ *   pins: PinRow[], hasPins: boolean, archive: ArchiveRow[], hasArchive: boolean, emptyArchive: boolean,
+ *   more: boolean, moreLabel: string,
+ * }} LauncherView
  *
  * @typedef {{
  *   version: number,
  *   ready: boolean,
  *   window: {
  *     id: number | null, mode: WindowMode, focused: boolean, sidebar: SidebarState,
- *     sidebarOpen: boolean, peek: boolean, pinnedOpen: boolean,
+ *     sidebarOpen: boolean, peek: boolean, pinnedOpen: boolean, frameWhenHidden: boolean,
  *   },
  *   space: SpaceView,
  *   spaces: SpaceChip[],
@@ -115,10 +134,12 @@ export const VM_VERSION = 1;
  *   archive: ArchiveRow[],
  *   hasArchive: boolean,
  *   palette: { open: boolean, query: string, newTab: boolean, rows: PaletteRow[], hasRows: boolean, selected: string | null },
- *   menu: { kind: string, id: string | number | null, x: number, y: number, items: MenuRow[], hasItems: boolean } | null,
+ *   menu: { kind: string, id: string | number | null, x: number, y: number, label: string, items: MenuRow[], hasItems: boolean } | null,
  *   editing: { kind: 'space' | 'folder', id: string } | null,
  *   editor: EditorView | null,
- *   notice: { id: string, text: string } | null,
+ *   notice: NoticeView | null,
+ *   prompt: PromptView | null,
+ *   launcher: LauncherView | null,
  *   settings: Record<string, string | number | boolean>,
  *   platform: { browser: string, os: string },
  * }} ViewModel
@@ -222,17 +243,20 @@ function fresh(input) {
     sidebarOpen: sidebar === 'open',
     peek: sidebar === 'peek',
     pinnedOpen,
+    // The sidebar hidden: Margin's frame stays around the page (a setting).
+    frameWhenHidden: state?.settings?.frameWhenHidden !== false,
   };
   const paletteUi = ui.palette ?? {};
   const editing = ui.editing ? { kind: ui.editing.kind, id: ui.editing.id } : null;
-  const notice = ui.notice ? { id: String(ui.notice.id), text: String(ui.notice.text) } : null;
+  const notice = ui.notice ? noticeView(ui.notice) : null;
+  const prompt = ui.prompt ? { ...noticeView(ui.prompt), title: String(ui.prompt.title ?? '') } : null;
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, launcher: null, settings, platform,
     };
   }
 
@@ -309,11 +333,13 @@ function fresh(input) {
     newTab: V.isNewTabPage(current.url),
   } : null;
 
+  const now = Number.isFinite(input.now) ? /** @type {number} */ (input.now) : Date.now();
   const archive = state.archive.map((a) => ({
     id: a.id,
     ...face(state, a, a.title || a.url || ''),
     spaceId: a.spaceId ?? '',
     closedAt: Number(a.closedAt) || 0,
+    ago: ago(Number(a.closedAt) || 0, now),
   }));
 
   // The palette's rows: shared/search.js ranks them, as Arcadia's palette.
@@ -349,6 +375,7 @@ function fresh(input) {
     if (items.length) {
       menu = {
         kind: String(ui.menu.kind), id: ui.menu.id ?? null, x: Number(ui.menu.x) || 0, y: Number(ui.menu.y) || 0,
+        label: MENU_LABELS[ui.menu.kind] ?? 'Menu',
         items: items.map((i) => {
           const confirming = !!i.confirm && ui.menu?.confirming === i.id;
           return { id: i.id, label: confirming ? CONFIRM_LABEL : i.label, separator: i.separator, danger: i.danger, confirming };
@@ -374,6 +401,25 @@ function fresh(input) {
       confirmDelete: !!ui.editor.confirmDelete,
       deleteLabel: ui.editor.confirmDelete ? CONFIRM_LABEL : 'Delete',
       deleteTitle: only ? 'The last space can’t be deleted' : 'Tabs and pins move to the first space',
+      labels: EDITOR_LABELS,
+    };
+  }
+
+  // The new-tab page's launcher (Arcadia's newtab.js renderLauncher): the
+  // space's pins, folders' too, and the latest archived tabs.
+  let launcher = null;
+  if (ui.inNewTab) {
+    const tiles = pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
+    const all = ui.launcher?.allArchived;
+    const shown = all ? archive : archive.slice(0, LAUNCHER_ARCHIVE);
+    launcher = {
+      pins: tiles,
+      hasPins: tiles.length > 0,
+      archive: shown,
+      hasArchive: archive.length > 0,
+      emptyArchive: archive.length === 0,
+      more: archive.length > LAUNCHER_ARCHIVE,
+      moreLabel: all ? 'Show fewer' : `Show all ${archive.length}`,
     };
   }
 
@@ -391,10 +437,35 @@ function fresh(input) {
     editing,
     editor,
     notice,
+    prompt,
+    launcher,
     settings,
     platform,
   };
 }
+
+/** A notice or prompt's view: its words and buttons, as text. @param {any} n @returns {NoticeView} */
+function noticeView(n) {
+  const actions = (Array.isArray(n.actions) ? n.actions : []).slice(0, 4).map((a, i) => ({
+    id: String(a?.id ?? `a${i}`), label: String(a?.label ?? ''), primary: !!a?.primary, danger: !!a?.danger,
+  }));
+  return { id: String(n.id), text: String(n.text ?? ''), actions, hasActions: actions.length > 0 };
+}
+
+// How long ago, as the launcher's archive says it (Arcadia's newtab.js ago).
+function ago(ts, now) {
+  const minutes = Math.round((now - ts) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
+
+const LAUNCHER_ARCHIVE = 12;
+// The words of Margin's own parts (the menu's and the editor's), which a
+// theme binds rather than writes (ui/sanitize.js GUARDED_PARTS).
+const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New' });
+const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel' });
 
 // Rows that go somewhere (Arcadia's arrow button).
 const GOES = new Set(['tab', 'pin', 'archive', 'go']);

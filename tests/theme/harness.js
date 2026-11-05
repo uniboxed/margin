@@ -303,23 +303,23 @@ const rt = { runtime: null, host: null, mock: null, el: null, target: null, them
 Object.assign(T, {
   // Neo-brutalism as a built-in theme: its files read through readFile (here
   // from the package handed over, in the extension from its own URL).
-  async loadBuiltin(pkg) {
+  async loadBuiltin(pkg, id = 'neo-brutalism') {
     const p = unpack(pkg);
     const text = { 'theme.json': p.manifest, 'theme.html': p.html, 'theme.css': p.css };
     const read = [];
-    const theme = await loadBuiltinTheme('neo-brutalism', { readFile: async (path) => { read.push(path); return text[path] ?? p.files[path]; } });
+    const theme = await loadBuiltinTheme(id, { readFile: async (path) => { read.push(path); return text[path] ?? p.files[path]; } });
     rt.theme = theme;
     return { ok: theme.ok, id: theme.id, read, fontErrors: theme.fontErrors, fonts: ['Archivo Black', 'Space Grotesk'].map((f) => document.fonts.check(`16px "${f}"`)) };
   },
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null } = {}) {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, warnings = null } = {}) {
     T.unmountRuntime();
     const mock = new MockState();
     if (settings) mock.state = { ...mock.state, settings: { ...mock.state.settings, ...settings } };
     const answers = { createSpace: () => ({ spaceId: 'studio' }), ...Object.fromEntries(Object.entries(replies).map(([k, v]) => [k, () => v])) };
-    const host = createMockHost({ state: mock.state, windowId: 1, platform, mode: 'fullscreen', replies: answers });
+    const host = createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, replies: answers });
     let target;
     let el = null;
     if (container === 'document') {
@@ -331,7 +331,8 @@ Object.assign(T, {
       el = hostElement(width, height);
       target = el.attachShadow({ mode: closed ? 'closed' : 'open' });
     }
-    const runtime = createRuntime({ host, theme: rt.theme, container: target, onWarn: () => {} });
+    rt.warnings = [];
+    const runtime = createRuntime({ host, theme: rt.theme, container: target, onWarn: (m) => rt.warnings.push(m) });
     Object.assign(rt, { runtime, host, mock, el, target });
     w.__rt = rt;
     return true;
@@ -361,6 +362,42 @@ Object.assign(T, {
     rt.host.setState(rt.mock.state);
   },
   rtSent() { return rt.host.sent.map((s) => [s.type, s.payload]); },
+  rtSetUi(patch) { rt.runtime.setUi(patch); return true; },
+  rtWarnings() { return rt.warnings.slice(); },
+  rtPerformedFull() { return rt.host.performed.map((p) => [p.name, p.arg ?? null]); },
+  rtAttr(selector, name, nth = 0) { return rt.target.querySelectorAll(selector)[nth]?.getAttribute(name) ?? null; },
+  rtActive() { const el = rt.target.activeElement; return el ? el.getAttribute('m-input') ?? el.localName : null; },
+  // Margin's renderer on its own, given a template that never went through
+  // the sanitizer: a menu, a notice and a slot's own content holding the
+  // theme's words. Only the bound labels may show.
+  guardedRaw() {
+    const el = (name, attrs, ...children) => ({ type: 'el', ns: 'html', name, attrs, children });
+    const text = (value) => ({ type: 'text', value });
+    const tree = { type: 'root', children: [el('div', [['class', 'g']],
+      el('m-page', []),
+      el('m-menu', [['title', 'Delete']]),
+      el('m-notice', []),
+      el('m-prompt', [['aria-label', 'Install now']], el('b', [], text('Install Margin.app now'))),
+      el('template', [['m-part', 'menu']], el('div', [['class', 'menu'], ['aria-label', 'Delete everything']],
+        el('button', [['class', 'fake'], ['title', 'Deletes all your tabs']], text('Delete')),
+        el('m-for', [['each', 'menu.items'], ['as', 'i']], el('button', [['class', 'item'], ['m-action', 'menu.run'], ['m-arg', '{{i.id}}']], text('Remove: {{i.label}}'))),
+        el('svg', [['viewBox', '0 0 10 10']], { type: 'el', ns: 'svg', name: 'path', attrs: [['d', 'M1 1h8']], children: [] }))),
+      el('template', [['m-part', 'notice']], el('div', [['class', 'notice'], ['title', 'Margin needs your password']], text('Update required. {{notice.text}}'))),
+    )] };
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:0;top:0;width:400px;height:300px';
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: 'open' });
+    const warnings = [];
+    const view = new View(shadow, buildTemplate(tree), { onWarn: (m) => warnings.push(m) });
+    view.update({ menu: { label: 'Tab', items: [{ id: 'i0', label: 'Close Tab' }] }, notice: { text: 'Margin works in full screen.' }, prompt: { text: 'x' } });
+    const shown = (sel) => { const n = shadow.querySelector(sel); return n ? n.textContent.replace(/\s+/g, ' ').trim() : null; };
+    const attrs = [...shadow.querySelectorAll('*')].flatMap((n) => ['title', 'aria-label', 'alt', 'placeholder'].filter((a) => n.hasAttribute(a)).map((a) => `${n.localName}@${a}=${n.getAttribute(a)}`));
+    const result = { menu: shown('m-menu'), notice: shown('m-notice'), prompt: shown('m-prompt'), attrs, paths: shadow.querySelectorAll('m-menu path').length, warnings };
+    view.destroy();
+    host.remove();
+    return result;
+  },
   rtLayouts() { return rt.host.layouts.map((l) => ({ ...l.insets, radius: l.radius, width: l.container.width, height: l.container.height, windowId: l.windowId, mode: l.mode })); },
   rtRefused() { return rt.runtime.refused.map((r) => [r.name, r.reason]); },
   rtPerformed() { return rt.host.performed.map((p) => p.name); },

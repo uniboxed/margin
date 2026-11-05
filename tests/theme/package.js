@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 
 export const NEO = fileURLToPath(new URL('../../extension/themes/neo-brutalism/', import.meta.url));
+export const ARCADIA = fileURLToPath(new URL('../../extension/themes/arcadia-2/', import.meta.url));
 
 const PACKAGE_FILES = new Set(['theme.json', 'theme.html', 'theme.css']);
 

@@ -13,6 +13,7 @@
 //   folder — an existing folder's id;   pin — an existing pin's id;
 //   archive — an archived entry's id;   row — a row of the open palette;
 //   item   — an item of the open menu;  color — a swatch of the space editor;
+//   notice-item, prompt-item — a button of the notice or prompt shown;
 //   optional-space — nothing, or an existing space;
 //   menu   — a menu a button opens (MENUS);
 //   { field: kind, … } — an object with exactly those fields. Only behaviors
@@ -71,6 +72,13 @@ export const ACTIONS = Object.freeze({
   'window.minimise': 'none',
   'window.fullscreen': 'none',
   'settings.open': 'none',
+  // Margin's notices and prompts (the `notice` and `prompt` parts): one of
+  // the shown one's buttons, or closing it. The new-tab launcher's "Show all".
+  'notice.run': 'notice-item',
+  'notice.close': 'none',
+  'prompt.run': 'prompt-item',
+  'prompt.close': 'none',
+  'launcher.more': 'none',
 });
 
 export const ACTION_NAMES = Object.freeze(Object.keys(ACTIONS));
@@ -103,6 +111,7 @@ const isId = (value) => (typeof value === 'number' && Number.isSafeInteger(value
  *   hasTab(id: any): boolean, hasSpace(id: any): boolean, hasFolder(id: any): boolean,
  *   hasPin(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
  *   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
+ *   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
  * }} ActionContext
  */
 
@@ -151,6 +160,7 @@ export function checkAction(name, arg, ctx) {
   const has = {
     tab: ctx.hasTab, space: ctx.hasSpace, folder: ctx.hasFolder, pin: ctx.hasPin, archive: ctx.hasArchived, row: ctx.hasPaletteRow,
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
+    'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
   };
   switch (kind) {
     case 'none':
@@ -190,10 +200,10 @@ export function createDispatcher({ context, run, log = () => {} }) {
  * rows of the palette while it's open (`paletteIds`, from ui/view-model.js
  * paletteItems), and the open menu's items and the editor's swatches.
  * @param {any} state @param {Iterable<string>} [paletteIds]
- * @param {{ menuIds?: Iterable<string>, colorIds?: Iterable<string> }} [more]
+ * @param {{ menuIds?: Iterable<string>, colorIds?: Iterable<string>, noticeIds?: Iterable<string>, promptIds?: Iterable<string> }} [more]
  * @returns {ActionContext}
  */
-export function contextFromState(state, paletteIds = [], { menuIds = [], colorIds = [] } = {}) {
+export function contextFromState(state, paletteIds = [], { menuIds = [], colorIds = [], noticeIds = [], promptIds = [] } = {}) {
   const tabs = state?.tabs && typeof state.tabs === 'object' ? state.tabs : {};
   const ids = (list) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
   const spaces = ids(state?.spaces);
@@ -203,6 +213,8 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
   const rows = new Set(paletteIds);
   const items = new Set(menuIds);
   const colors = new Set(colorIds);
+  const notices = new Set(noticeIds);
+  const prompts = new Set(promptIds);
   return {
     hasTab: (id) => Number.isInteger(id) && Object.prototype.hasOwnProperty.call(tabs, id) && tabs[id]?.id === id,
     hasSpace: (id) => spaces.has(id),
@@ -212,6 +224,8 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
     hasPaletteRow: (id) => rows.has(id),
     hasMenuItem: (id) => items.has(id),
     hasColor: (id) => colors.has(id),
+    hasNoticeItem: (id) => notices.has(id),
+    hasPromptItem: (id) => prompts.has(id),
   };
 }
 
@@ -273,6 +287,11 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
 // | window.fullscreen  | none              | toggleFullscreen where the    | { windowId }; else host                 |
 // |                    |                   | browser has Margin full screen|                                         |
 // | settings.open      | none              | openLauncher                  | { windowId }                            |
+// | notice.run         | notice item id    | local: the host's (the notice's button), then it closes |              |
+// | notice.close       | none              | local                         |                                         |
+// | prompt.run         | prompt item id    | local: the host's (the prompt's button), then it closes |              |
+// | prompt.close       | none              | local                         |                                         |
+// | launcher.more      | none              | local: all archived tabs, or the first 12 |                             |
 //
 // `show`: while the sidebar is open over the page (peek), a switch keeps it
 // open on the page that comes to the front (Arcadia's openOverPage, the
@@ -328,9 +347,15 @@ export const ACTION_MAP = Object.freeze({
   'window.minimise': 'host',
   'window.fullscreen': 'toggleFullscreen | host',
   'settings.open': 'openLauncher',
+  'notice.run': 'local',
+  'notice.close': 'local',
+  'prompt.run': 'local',
+  'prompt.close': 'local',
+  'launcher.more': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color']);
+const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color',
+  'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
 /**
