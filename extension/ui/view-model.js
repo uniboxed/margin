@@ -48,6 +48,7 @@ export const VM_VERSION = 1;
  *   switchingTo?: number | null,
  *   justShown?: boolean,
  *   inNewTab?: boolean,
+ *   launcherPage?: boolean,
  *   pageLoading?: boolean,
  * }} UiState
  *
@@ -411,7 +412,7 @@ function fresh(input) {
   // The new-tab page's launcher (Arcadia's newtab.js renderLauncher): the
   // space's pins, folders' too, and the latest archived tabs.
   let launcher = null;
-  if (ui.inNewTab) {
+  if (ui.inNewTab || ui.launcherPage) {
     const tiles = pinned.flatMap((p) => (p.isFolder ? p.pins : [p]));
     const all = ui.launcher?.allArchived;
     const shown = all ? archive : archive.slice(0, LAUNCHER_ARCHIVE);

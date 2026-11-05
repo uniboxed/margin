@@ -60,12 +60,16 @@ const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
  *   log?: (entry: { name: string, arg: any, reason: string }) => void,
  *   onSwitchSlow?: (slow: boolean) => void,
  *   onSwitchFailed?: () => void,
+ *   onPalette?: (what: 'run' | 'close', request?: any) => void,
  * }} options `ui`: the UI state to start from; `log`: every action refused;
+ * `onPalette`: the palette closed, a row chosen (`run`, with what it sends
+ * or does: ui/actions.js requestFor) or not (`close`), for the new-tab
+ * page's hand-off (newtab/newtab.js);
  * `onSwitchSlow`, `onSwitchFailed`: a switch asked for from the UI takes a
  * while, or didn't happen (shared/switching.js; the in-page host's loading
  * pill and notice)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed }) {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette }) {
   /** @type {UiState & Record<string, any>} */
   let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, ...start };
   /** @type {ViewModel | null} */
@@ -168,6 +172,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     tabId: ownTab(),
     mode: host.mode ?? 'inpage',
     inNewTab: !!host.inNewTab,
+    launcherPage: !!host.launcher,
     justShown: (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt,
   });
 
@@ -316,6 +321,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       setUi({ palette: CLOSED_PALETTE, newTabPending: wasNewTab && shows });
       if (wasNewTab && shows) holdNewTab();
       behaviors.palette?.closed(request.kind === 'send' && opensNewTab(request.type, request.payload));
+      onPalette?.('run', request);
     }
     switch (request.kind) {
       case 'send': return sent(name, arg, request.type, request.payload);
@@ -390,8 +396,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         setUi({ palette: { open: true, query: '', selected: 0, newTab: !!arg?.newTab }, menu: null, newTabPending: false });
         return true;
       case 'palette.close':
+        if (!ui.palette.open) return true;
         setUi({ palette: CLOSED_PALETTE });
         behaviors.palette?.closed(false);
+        onPalette?.('close');
         return true;
       case 'space.edit': return behaviors.editor.open(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);

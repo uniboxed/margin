@@ -48,6 +48,8 @@ import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '.
  *   it's drawn in (in pages; null in the app);
  * - `mode`: 'fullscreen' | 'windowed' | 'inpage';
  * - `inNewTab`: drawn in Margin's new-tab page (the palette navigates it);
+ * - `launcher`: drawn in Margin's new-tab page or its start page
+ *   (#launcher): the launcher shows;
  * - `perform(name, arg)`: what only the host can do (the page's history in
  *   pages, the window's buttons in the app); false when it can't.
  *
@@ -61,6 +63,7 @@ import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '.
  *   readonly tabId?: number | null,
  *   readonly mode?: 'fullscreen' | 'windowed' | 'inpage',
  *   readonly inNewTab?: boolean,
+ *   readonly launcher?: boolean,
  *   perform?(name: string, arg?: any): boolean,
  * }} Host
  */
@@ -138,7 +141,7 @@ const NO_ANSWER = 'no answer';
  * @param {{
  *   api?: any, window?: any, platform?: any,
  *   tabId?: number | null, windowId?: number | null,
- *   mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
+ *   mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean, launcher?: boolean,
  *   timeoutMs?: number, onLayout?: (geometry: Geometry) => void,
  *   warn?: (...args: any[]) => void,
  *   source?: { getState(): any, onState(cb: (state: any) => void): () => void },
@@ -154,6 +157,7 @@ export function createInPageHost({
   windowId = null,
   mode = 'inpage',
   inNewTab = false,
+  launcher = inNewTab,
   timeoutMs = 10000,
   onLayout = undefined,
   warn = (...args) => console.warn('[margin]', ...args),
@@ -274,6 +278,7 @@ export function createInPageHost({
     platform,
     mode,
     inNewTab,
+    launcher,
     get tabId() { return ids.tabId; },
     get windowId() {
       if (ids.windowId != null) return ids.windowId;
