@@ -101,56 +101,6 @@ const ARROW_UP = [126, 0xF700];
 const PAGE_DOWN = [121, 0xF72D];
 const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return ${JSON.stringify(at)}` }, { op: 'mouse', in: tab, type: 'up' }];
 
-// keep-ready-cap: ten tabs, and in each page's own world a count of the
-// keepAwake holds waiting there (tabs.js keepAwake listens for pageswap; the
-// test pages have no listener of their own): keep-ready's holds are messages
-// to Margin's page now (content/hold.js, counted there: HELD), never a
-// script left running in the page's own world (that kept the process at
-// foreground priority).
-const HOLD_TABS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-const HELD = '(Margin.content.holding?.() ?? -1)';
-const COUNT_HOLDS = `const live = new Set(); const add = addEventListener, remove = removeEventListener; window.addEventListener = function (type, fn, options) { if (type === 'pageswap') live.add(fn); return add.call(this ?? window, type, fn, options); }; window.removeEventListener = function (type, fn, options) { if (type === 'pageswap') live.delete(fn); return remove.call(this ?? window, type, fn, options); }; window.__holds = () => live.size; return 'counting holds'`;
-
-// wake-wait, wake-cap: a switch to a tab whose wake answers late (as Safari's
-// resume of a suspended process makes it wait) keeps the page before on
-// screen until it does (tabs.js focusTabNow, mayWait). 60 ms in with no
-// answer, the tab is kicked (to the front and the page in front straight
-// back, in one turn), its hold sent again, then it's prepared and drawn
-// before it's shown once its wake answers
-// ('resumed'); one with no answer by 1.6 s is shown then, as it is
-// ('capped'). The page before is hidden once (the switch), never by the
-// kick; the tab's visibility changes twice for the kick, before its real
-// show. The host never suspends a process, so here the page's main thread is
-// busy for `ms` from the moment the wake's hold reaches it (keepAwake listens
-// for pageswap): the kick can't speed it up, as a foreground resume does in
-// Safari. B is shown once first, in the host's tab bar (so Margin knows it
-// had a page). The paint barrier after a kick is 150 ms at most (here B's
-// first rendering update after its busy spell can come later: ran out, not
-// drawn). `ms` null: B isn't busy, and answers in time: not kicked before
-// 60 ms (a host too loaded to answer by then may kick it).
-const BUSY_AT_HOLD = (ms) => `let armed = true; const add = addEventListener; window.addEventListener = function (type, fn, options) { if (armed && type === 'pageswap') { armed = false; const until = performance.now() + ${ms}; while (performance.now() < until); } return add.call(this ?? window, type, fn, options); }; return 'busy at the next hold'`;
-const waitedFor = (ms, outcome, label, entry, kicked = null) => [
-  { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
-  wait(800), { op: 'install' }, ready('A'), ready('B'),
-  // (Keep-ready off: a tab it holds isn't waited for.)
-  { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepLeftTabReadyMinutes: 0 } }))' },
-  { op: 'show', name: 'B' }, wait(200), { op: 'show', name: 'A' }, wait(250),
-  { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
-  { op: 'page', in: 'B', js: ms == null ? `window.__from = __vis.length; return 'not busy'` : `window.__from = __vis.length; ${BUSY_AT_HOLD(ms)}` },
-  switchTo('A', 'B'), shown('B'),
-  // (The switch log first: the host's background stops about 5 s after it starts.)
-  { op: 'eval', in: 'A', js: `${ID} return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1))` },
-  check('A', `B: ${outcome}: ${label}`, `${ID} const e = (await Margin.content.send('switchLog'))?.filter((x) => x.kind === 'switch' && x.tabId === id('B')).at(-1); return !!e && !e.error && ${outcome ? `e.wakeOutcome === '${outcome}' && ` : ''}${kicked ? `e.kicked?.outcome === '${kicked}' && e.kicked.at < e.shownAfter` : `(!e.kicked || e.kicked.at >= 55)`} && (${entry})`),
-  checkPage('A', 'A: hidden once (the switch), not by the kick', `JSON.stringify(__visibility) === '["hidden"]'`),
-  ...(kicked
-    // (The kick's two changes, then its real show: a page busy as they come
-    // reads its state once it gets to them.)
-    ? [checkPage('B', 'B: its visibility changed twice for the kick, before its real show', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.length === 3 && v[2] === 'shown'`)]
-    : [checkPage('B', 'B: shown last', `const v = __vis.slice(__from).filter((e) => e[0] !== 'frame').map((e) => e[0]); return v.at(-1) === 'shown'`)]),
-  noPageErrors('B'),
-];
-
-
 // Sleeping tabs (background/sleep.js): a pass asked for now, for tabs unused
 // for a millisecond (the setting is hours), and what it did.
 const sleepNow = (tab, label = 'a pass of sleeping tabs') => ({ op: 'eval', in: tab, js: `return JSON.stringify(await Margin.content.send('sleepNow', { afterMs: 1 }))`, label });
@@ -178,13 +128,12 @@ const OLD_SLEEP = (name) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core); switching
   // through Margin, including to a tab Safari unloaded. Nothing is drawn in
-  // a page: a hidden page's preparation says so.
+  // a page.
   switching: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' }, { op: 'open', name: 'D', url: '/p/D', asleep: true },
     wait(1000), { op: 'install' },
     ready('A'), ready('B'),
     switchTo('A', 'B'), shown('B'),
-    check('B', 'B: its preparation answered that nothing is drawn in pages; the switch log says whether keep-ready held the tab', `(await Margin.content.send('switchLog')).some((entry) => entry.source === 'activateTab' && entry.preparation?.outcome === 'not ready' && entry.preparation.reason === 'nothing drawn in pages' && typeof entry.heldAtAsk === 'boolean')`),
     switchTo('B', 'D'), shown('D'), ready('D'),
     switchTo('D', 'C'), shown('C'), nothingDrawn('C'), { op: 'state' },
   ],
@@ -199,8 +148,34 @@ export const SCENARIOS = {
     { op: 'stall', name: 'B', ms: 4000 },
     { op: 'eval', in: 'A', js: `${ID} const asked = Date.now(); globalThis.__answer = null; Margin.content.send('activateTab', { tabId: id('B'), deadline: asked + 3000 }).then((r) => { __answer = { r: r ?? null, ms: Date.now() - asked }; }); return 'asked'` },
     check('A', 'A: answered before its 3 s deadline, that B is shown', `${ID} return !!__answer && __answer.ms < 3000 && __answer.r?.shown === id('B')`, 3500),
-    { op: 'eval', in: 'A', js: `${ID} return JSON.stringify({ ...__answer, log: (await Margin.content.send('switchLog'))?.filter((e) => e.kind === 'switch' && e.tabId === id('B')).at(-1) ?? null })` },
+    { op: 'eval', in: 'A', js: 'return JSON.stringify(__answer)' },
     checkPage('B', 'B: shown once Safari got to it', '!document.hidden', 3000),
+  ],
+  // The plain switch (Margin 2 Phase 2 step 8), through Margin.app's real end
+  // of the link: a click in the app's sidebar (activateTab) and the app's key
+  // (navigate next-tab). The tab switched to comes into view once (no flip of
+  // it forward and back first), the page left goes hidden once; each switch
+  // is one line in Margin.app's log, its steps in order up to the delta out;
+  // a key's switch tells the overlay it's switching, then that it's done.
+  'plain-switch': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
+    wait(800), { op: 'install' }, linked('A'), ready('B'), ready('C'),
+    { op: 'page', in: 'B', js: "window.__seen = []; document.addEventListener('visibilitychange', () => __seen.push(document.visibilityState)); return 'counting'" },
+    { op: 'page', in: 'A', js: "window.__seen = []; document.addEventListener('visibilitychange', () => __seen.push(document.visibilityState)); return 'counting'" },
+    { op: 'appMark' },
+    { op: 'appReq', type: 'activateTab', in: 'A', js: `${ID} return JSON.stringify({ tabId: id('B') })` },
+    shown('B'),
+    { op: 'appHeard', label: 'its answer: shown', has: ['"type":"activateTab"', '"ok":true'], timeout: 4000 },
+    { op: 'appHeard', label: 'one line in the log: asked, the update and its answer, Safari\'s onActivated, the state stored, the delta out', has: ['extension log', '(activateTab', 'asked +0', 'tabs.update +', 'onActivated +', 'stored +', 'delta out +'], timeout: 5000 },
+    { op: 'appHeard', label: 'one activation heard (no other tab brought forward and back)', has: ['activations heard'], none: true, timeout: 500 },
+    checkPage('B', 'B came into view once, nothing before (no flip of it forward and back)', `JSON.stringify(__seen) === '["visible"]'`),
+    checkPage('A', 'A went hidden once', `JSON.stringify(__seen) === '["hidden"]'`),
+    { op: 'appMark' },
+    { op: 'appReq', type: 'navigate', payload: { action: 'next-tab' } },
+    { op: 'appHeard', label: 'a key\'s switch: the overlay told it\'s switching', has: ['"ev":"push"', '"type":"switching"'], timeout: 4000 },
+    { op: 'appHeard', label: 'then that it\'s done', has: ['"ev":"push"', '"type":"switch-done"'], timeout: 4000 },
+    { op: 'appHeard', label: 'and its line in the log', has: ['extension log', '(next-tab', 'delta out +'], timeout: 5000 },
+    noPageErrors('B'),
   ],
   // Margin updated while a page with a typed draft is open: the new copy
   // takes over, the draft stays, nothing of either copy's in the page.
@@ -765,23 +740,6 @@ export const SCENARIOS = {
     switchTo('A', 'C'), shown('C'), ready('C'),
     switchTo('C', 'B'), shown('B'), ready('B'),
   ],
-  // A page that navigated in front (a link, the address bar), in a tab WebKit
-  // had already seen in the window: its first return isn't introduced, as
-  // WebKit holds the page before for its paint (its mark is the tab's web
-  // view's, kept through its navigations). Margin first proves the tab has it:
-  // A, in front at install, is introduced on its first return (Margin has no
-  // proof of it: background/tabs.js WebKit's mark), then navigates in front;
-  // its return to the new page isn't.
-  navigated: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install', sameId: true }, ready('A'), ready('B'), wait(300),
-    switchTo('A', 'B'), shown('B'), switchTo('B', 'A'), shown('A'),
-    check('A', 'A: its first return introduced (no proof of it yet)', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch' && e.tabId === id('A')); return log.at(-1)?.introduced === true && !log.at(-1)?.error`),
-    { op: 'page', in: 'A', js: `location.href = '/p/A2'; return 'navigating'` }, checkPage('A', 'A: at its new address', `location.pathname === '/p/A2'`, 2000), ready('A'),
-    switchTo('A', 'B'), shown('B'),
-    switchTo('B', 'A2'), shown('A'),
-    { op: 'eval', in: 'A', js: `return JSON.stringify((await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2).map((e) => ({ introduced: e.introduced, markReason: e.markReason, layersBack: e.layersBack, shownAfter: e.shownAfter })))` },
-    check('A', 'A: its return to the new page not introduced (proven, kept through the link), nor B\'s', `${ID} const log = (await Margin.content.send('switchLog')).filter((e) => e.kind === 'switch').slice(-2); return log.length === 2 && log.every((e) => e.introduced === false && String(e.markReason).startsWith('proven:') && !e.error)`),
-  ],
   // A page back from the back/forward cache has its listeners on browser.*
   // events again (they come off as a page is left): a change in storage (the
   // app's layout, as the link client writes it) reaches it.
@@ -830,16 +788,6 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: 'const { settings } = await browser.storage.local.get("settings"); await browser.storage.local.set({ settings: { ...settings, blockGestures: false } }); return "off"' },
     checkPage('A', 'gestures turned off: back to its size', `${AT} return at.scale === 1`, 1500),
   ],
-  // Safari putting off the load of a tab it restores until its selection
-  // update is over (it then loads the tab selected by then): nothing loads
-  // behind, and the switch goes ahead as before a moment later, its page told
-  // which tab it is before it draws (background/tabs.js noteShowing).
-  deferred: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'D', url: '/p/D', asleep: true }, { op: 'deferLoads' }, wait(800), { op: 'install', sameId: true }, ready('A'), wait(800),
-    switchTo('A', 'D'), shown('D'), ready('D'),
-    checkPage('D', 'D: loaded as it was shown (nothing loaded it behind)', `window.__vis[0][0] === 'shown'`),
-    check('D', 'D: taken as the tab shown from its first read', `(globalThis.__marginLog ?? []).some((l) => /taken as tab \\d+, the one being shown/.test(l))`, 3000),
-  ],
   // Two copies of Margin loaded at once in one controller (as Safari would
   // load a new one while the old one still runs): they share one script world
   // in pages, so a page runs one copy, here the first's. Once the newer copy
@@ -859,39 +807,6 @@ export const SCENARIOS = {
     { op: 'show', name: 'A' }, wait(2000),
     checkPage('A', 'A (the other copy\'s world, still running): not loaded again', 'window.__before === true', 1000),
   ],
-  // A new tab from the palette, the sidebar kept open: to the front once the
-  // page's own content is there.
-  shellbehind: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'), keepOpen, wait(100),
-    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/Y3' }); return 1` },
-    check('A', 'the new tab opened (its row in the sidebar)', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs ?? {}).some((t) => t.url.endsWith('/p/Y3'))`, 3000),
-    checkPage('new1', 'the new tab is the one shown', '!document.hidden', 3000),
-    checkPage('new1', 'shown once its own content was there, soon after it, not at the limit', `const shownAt = window.__vis.find((e) => e[0] === 'shown')?.[1]; return !!shownAt && __textAt > 0 && shownAt >= __textAt && shownAt - __textAt < 600`),
-  ],
-  // Shown for the first time, a tab is introduced first (background/tabs.js
-  // introduceTab): brought to the front and the page in front straight back,
-  // in one run loop turn, so WebKit then keeps the page before on screen until
-  // it has painted. A heavy page, from the turn it's shown: none of WebKit's
-  // empty view worth a screen refresh (without the introduction, 16–21 ms in
-  // this host). The page in front sees nothing of it, and Margin's state only
-  // the real switch.
-  // S1 and S2 (2026-11-04): a tab Margin has no proof of (introduced first)
-  // whose page stalls 2 s as it handles being hidden again (Instagram's
-  // stalls in Safari: 1.35 s and 2.4 s): the show waits for its page to answer
-  // one more look (after its flip's hide is over, by its own word or its
-  // paint), and goes out once it's free, so WebKit holds it: its content there
-  // as it's shown. At 9f1611f it was shown once its barriers ran out, about
-  // 1 s after the flip, into the stall: WebKit's hold ran out, and Safari's
-  // empty view stayed until the page drew.
-  heavyflip: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'V', url: '/x/heavy-visible?stall=2000&after=0' }, wait(800), { op: 'install' }, ready('A'), ready('V'), wait(300),
-    { op: 'probeShow', name: 'V', nth: 2 }, // the first is its introduction
-    { op: 'eval', in: 'A', js: `const { tabs } = await ${STATE}("tabs"); const id = Object.values(tabs).find((t) => t.url.includes("/x/heavy-visible"))?.id; return JSON.stringify(await Margin.content.send("activateTab", { tabId: id }) ?? null)` },
-    checkPage('V', 'V is the tab shown', `!document.hidden`, 5000),
-    { op: 'checkProbe', name: 'V', maxMs: 10, label: 'V: its content there as it\'s shown, after its stall' },
-    check('V', 'the switch introduced it, and its show waited for its page', `const e = (await Margin.content.send('switchLog')).filter((x) => x.kind === 'switch' && !x.error).at(-1); globalThis.__entry = JSON.stringify(e); return e?.introduced === true && e.gate?.pings?.length >= 2`),
-    { op: 'eval', in: 'V', js: 'return globalThis.__entry' },
-  ],
   // S4 (2026-11-04): ⌃⌘↓ on a page that takes ArrowDown at every level goes to
   // the next tab, through Margin's listener (the host has no Safari menu: no
   // command), and the page never sees it. In Safari the command came only
@@ -910,20 +825,6 @@ export const SCENARIOS = {
     key('E', ...ARROW_DOWN, []),
     checkPage('E', 'a bare arrow is still the page\'s (E stays, and took it)', `!document.hidden && __eaten.window === 1`, 300),
   ],
-  introduce: [
-    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'), wait(600),
-    { op: 'page', in: 'A', js: `window.__visibility = []; document.addEventListener('visibilitychange', () => __visibility.push(document.visibilityState)); return 'recording'` },
-    // The tab in front in each state Margin writes (its isolated world).
-    { op: 'eval', in: 'A', js: `globalThis.__fronts = []; browser.storage.onChanged.addListener((changes) => { const tabs = changes.openTabs?.newValue?.tabs; if (tabs) __fronts.push(Object.values(tabs).filter((t) => t.active).map((t) => t.url.split('/p/')[1]).join()); }); return 'recording'` },
-    { op: 'probeShow', name: 'new1', nth: 2 }, // the first time is the introduction
-    { op: 'eval', in: 'A', js: `const request = Margin.content.send('newTab', { url: location.origin + '/p/H3' }); return 1` },
-    checkPage('new1', 'the new tab comes to the front', `!document.hidden`, 3000),
-    { op: 'checkProbe', name: 'new1', maxMs: 10, label: 'its content there as it\'s shown (WebKit\'s empty view under a screen refresh at most)' },
-    checkPage('A', 'the page before was hidden once (the switch), not by the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
-    check('new1', 'the switch says it introduced the tab', `(await Margin.content.send('switchLog')).some((e) => e.kind === 'switch' && e.source === 'new tab' && e.introduced === true && !e.error)`),
-    check('new1', 'in Margin\'s state, the new tab is the one in front', `const s = await ${STATE}(['tabs']); const active = Object.values(s.tabs).filter((t) => t.active); return active.length === 1 && active[0].url.includes('/p/H3')`),
-    check('A', 'and it never had the new tab in front before that, then A again (the introduction left out)', `const i = __fronts.indexOf('H3'); return i >= 0 && !__fronts.slice(i).includes('A')`),
-  ],
   behindleft: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'), wait(600),
     { op: 'eval', in: 'A', js: `void Margin.content.send('newTab', { url: location.origin + '/p/S3' }); return 'asked'` },
@@ -933,50 +834,6 @@ export const SCENARIOS = {
     checkPage('A', 'picking its own tab meanwhile: A stays', `!document.hidden`),
     checkPage('new1', 'and the new tab stays behind, loaded', `document.hidden && document.readyState === 'complete'`),
     check('A', 'in the state, not the tab in front', `const s = await ${STATE}(['tabs']); const t = Object.values(s.tabs).find((x) => x.url.includes('/p/S3')); return !!t && !t.active`),
-  ],
-  // Keep-ready's holds (background/keep-ready.js) through a run of switches
-  // in Safari's own tab bar: each tab left is held at once, but never more
-  // than two (MAX_HELD): past them, the tab used longest ago lets go at once.
-  // A hold is a message waiting for its answer in Margin's page (HELD), none
-  // a keepAwake in the page's own world (its pageswap listener, counted there).
-  'wake-wait': waitedFor(500, 'resumed', 'kicked, waited for with the page before on screen, then prepared (nothing drawn in pages) before it was shown', `e.waitedOnOldPage >= 450 && e.wakeStartedBy === 'switch' && e.preparation?.reason === 'nothing drawn in pages' && e.barrier?.length === 1 && e.barrier[0].ms < 350`, 'resumed'),
-  // (A click waits on past 1.6 s while its page's deadline leaves room: T2,
-  // background/tabs.js focusTabNow. Shown as it was only near the deadline.)
-  'wake-cap': waitedFor(2200, 'resumed', 'kicked, no answer by 1.6 s: waited on with the page before on screen (a click), answered at 2.2 s, drawn, then shown', `e.waitedOnOldPage >= 2150 && e.barrier?.at(-1)?.how === 'drawn' && e.layersBack === 'barrier'`, 'resumed'),
-  'wake-awake': waitedFor(null, null, 'answered in time: shown, not kicked before 60 ms', 'true'),
-  'keep-ready-cap': [
-    ...HOLD_TABS.map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
-    ...HOLD_TABS.map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),
-    { op: 'install' }, ready('A'),
-    ...HOLD_TABS.slice(1).flatMap((name) => [{ op: 'show', name }, wait(120)]),
-    wait(300),
-    { op: 'page', in: 'J', js: 'return "holds counted in each tab next"' },
-    ...HOLD_TABS.map((name) => ({ op: 'eval', in: name, js: `return '${name}: ' + (${HELD})` })),
-    ...['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((name) => check(name, `${name}: left earlier, let go once two later tabs were held`, `${HELD} === 0`, 3000)),
-    ...['H', 'I'].map((name) => check(name, `${name}: among the two left last, held`, `${HELD} >= 1`, 1500)),
-    check('J', 'J: the tab in front holds nothing', `${HELD} === 0`, 1500),
-    ...HOLD_TABS.map((name) => checkPage(name, `${name}: no hold left running in the page's own world (foreground priority)`, '__holds() === 0', 200)),
-  ],
-  // Safari left for another app (the page in front lost focus while in sight:
-  // shared/away.js sends 'away'; the host never has focus, so it's sent from
-  // the page's Margin world here): the two tabs held are let go 15 s later
-  // (keep-ready.js PAGE_AWAY_MS: Safari's own find bar brings the same word),
-  // past the host's ~5 s of background life: here, that they're still held
-  // 3.5 s after it (they were let go at 3 s until 2026-11-03), and that the
-  // same word from a tab behind (B, a page that lost focus while still drawn,
-  // its word late) doesn't count either. The let-go itself: unit tests.
-  'keep-ready-away': [
-    ...['A', 'B', 'C'].map((name, i) => ({ op: 'open', name, url: `/p/${name}`, active: i === 0 })), wait(800),
-    ...['A', 'B', 'C'].map((name) => ({ op: 'page', in: name, js: COUNT_HOLDS })),
-    { op: 'install' }, ready('A'),
-    { op: 'show', name: 'B' }, wait(120), { op: 'show', name: 'C' },
-    ...['A', 'B'].map((name) => check(name, `${name}: left, held`, `${HELD} >= 1`, 1000)),
-    { op: 'eval', in: 'B', js: 'return JSON.stringify(await Margin.content.send("away", { at: Date.now() }))' },
-    wait(500),
-    { op: 'eval', in: 'C', js: 'return JSON.stringify(await Margin.content.send("away", { at: Date.now() }))' },
-    wait(3500),
-    ...['A', 'B'].map((name) => check(name, `${name}: still held 3.5 s after Safari was left (or its find bar used)`, `${HELD} >= 1`, 200)),
-    ...['A', 'B', 'C'].map((name) => checkPage(name, `${name}: no hold left running in the page's own world (foreground priority)`, '__holds() === 0', 200)),
   ],
   // A hidden tab's title ticking (a chat, a timer: background/tab-updates.js):
   // its changes are gathered into a write every 2 s at most, not one each,

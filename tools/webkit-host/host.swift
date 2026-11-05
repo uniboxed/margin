@@ -280,6 +280,11 @@ let pageRecorder = """
     port.messageHandler = { message, _ in
       // The copy's pings keep its background alive (Safari): answered, as the handler does.
       if (message as? [String: Any])?["type"] as? String == "ping" { appLink.pings += 1 }
+      // The copy's lines for Margin.app's log (background/link.js note: each switch's timeline, say),
+      // as the handler writes them to the system log: heard as the app's, for `appHeard`.
+      if (message as? [String: Any])?["type"] as? String == "log", let line = (message as? [String: Any])?["line"] as? String {
+        appLink.heard.append(#"{"ev":"extension log","line":"# + (String(data: (try? JSONSerialization.data(withJSONObject: [line])) ?? Data(), encoding: .utf8)?.dropFirst().dropLast() ?? "\"\"") + "}")
+      }
     }
     port.disconnectHandler = { _ in log("native: the port closed") }
     completionHandler(nil)
