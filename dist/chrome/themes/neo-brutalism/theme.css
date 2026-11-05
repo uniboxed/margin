@@ -1,0 +1,137 @@
+/* Neo-brutalism: Tirth's "Neo-brutalism" board, ported from the Design canvas
+   (Main.dc.html). Dotted ground in the space's color, 2.5 px-bordered cards
+   with hard offset shadows, the page as an 18 px-rounded card. */
+
+.nb {
+  --ink: #111;
+  --paper: #fff;
+  --cream: #fffdf7;
+  --yellow: #ffe14d;
+  --gutter: 16px;
+  --sidebar: 256px;
+  --space: #ffd23f;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--gutter);
+  display: flex;
+  gap: var(--gutter);
+  overflow: hidden;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  background-color: var(--space);
+  background-image: radial-gradient(rgba(17, 17, 17, .18) 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
+  transition: background-color .3s;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Buttons and icons */
+.btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .08s, box-shadow .08s;
+}
+.btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.push { border: 2.5px solid var(--ink); border-radius: 10px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); }
+.push:hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--ink); }
+.push:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.row:hover { background: rgba(17, 17, 17, .08); }
+.ico { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: square; stroke-linejoin: miter; }
+.sq { width: 40px; height: 40px; }
+.sq.big { width: 44px; height: 44px; }
+.grow { flex: 1; min-width: 0; }
+.left { text-align: left; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loading .ico { animation: nb-spin .8s linear infinite; }
+@keyframes nb-spin { to { transform: rotate(360deg); } }
+
+/* The sidebar */
+.sidebar { flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; }
+.column { width: var(--sidebar); height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.toolbar { display: flex; gap: 6px; }
+.window-bar { display: none; }
+.address { flex-shrink: 0; height: 44px; justify-content: flex-start; gap: 8px; padding: 0 12px; font-size: 14px; font-weight: 500; }
+.address .lock { width: 15px; height: 15px; }
+.space-head { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.space-name { margin: 0; flex: 1; min-width: 0; font-family: 'Archivo Black', sans-serif; font-weight: 400; font-size: 26px; line-height: 1; text-transform: uppercase; letter-spacing: -.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { flex-shrink: 0; font-size: 12px; font-weight: 700; border: 2px solid var(--ink); border-radius: 999px; padding: 2px 8px; background: var(--paper); }
+
+/* The tabs: folders, the divider, new tab, today. Scrolls; the padding
+   leaves room for the cards' shadows. */
+.tabs { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 12px; margin: 0 -6px 0 0; padding: 0 6px 6px 0; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.folders { display: flex; flex-direction: column; gap: 6px; }
+.folder { flex-shrink: 0; border: 2.5px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 3px 3px 0 var(--ink); overflow: hidden; }
+.folder-head { width: 100%; justify-content: flex-start; gap: 8px; height: 36px; padding: 0 10px; font-weight: 700; font-size: 13.5px; }
+.folder.open .folder-head { border-bottom: 2.5px solid var(--ink); }
+.chev { width: 15px; height: 15px; transition: transform .15s; }
+.folder.open .chev { transform: rotate(90deg); }
+.folder-name { flex: 1; text-align: left; text-transform: uppercase; letter-spacing: .4px; }
+.folder-count { font-size: 11.5px; font-weight: 700; }
+.folder-tabs { display: flex; flex-direction: column; padding: 4px; }
+
+.tab { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 9px; height: 34px; padding: 0 8px; border-radius: 8px; font-size: 13.5px; font-weight: 500; color: var(--ink); }
+.tab.on { font-weight: 700; background: var(--ink); color: var(--paper); }
+.tab.asleep .title { opacity: .55; }
+.tab .title { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fav { width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 5px; background: var(--paper); object-fit: cover; }
+.tab.on .fav { border-color: var(--paper); }
+.letter { display: flex; align-items: center; justify-content: center; --fav: #333; background: var(--fav); color: var(--paper); font-size: 9.5px; font-weight: 700; }
+
+.divider { flex-shrink: 0; display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.dash { flex: 1; border-top: 2.5px dashed var(--ink); }
+.clear { height: 26px; padding: 0 10px; border-width: 2px; border-radius: 999px; box-shadow: 2px 2px 0 var(--ink); font-size: 11.5px; font-weight: 700; }
+.new-tab { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 8px; height: 40px; padding: 0 12px; background: var(--yellow); font-weight: 700; font-size: 14px; }
+.kbd { font: inherit; font-size: 12px; }
+.today { display: flex; flex-direction: column; gap: 2px; }
+/* Long lists: rows off screen skip style and layout until they scroll in. */
+.today .tab { content-visibility: auto; contain-intrinsic-size: auto 34px; }
+
+/* Spaces */
+.spaces { flex-shrink: 0; display: flex; gap: 6px; }
+.chips { flex: 1; display: flex; gap: 6px; min-width: 0; }
+.chip { --chip: var(--paper); flex: 1; min-width: 0; height: 44px; border: 2.5px solid var(--ink); border-radius: 10px; font-family: 'Archivo Black', sans-serif; font-size: 13px; background: var(--chip); box-shadow: 3px 3px 0 var(--ink); }
+.chip.on { transform: translate(3px, 3px); box-shadow: inset 0 0 0 2px var(--paper); }
+
+/* The page: an 18 px-rounded card with a 3 px border and a 6 px shadow.
+   The page itself goes inside the border. */
+.page { flex: 1; min-width: 0; position: relative; border: 3px solid var(--ink); border-radius: 18px; box-shadow: 6px 6px 0 var(--ink); }
+
+/* A hidden sidebar: the page takes the room; hovering the left edge (Margin's
+   m-peek) shows the sidebar as a floating card over the page. */
+.peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: 14px; z-index: 6; }
+[data-sidebar="hidden"] .peek-zone { display: block; }
+[data-sidebar="hidden"] .sidebar { width: 0; overflow: hidden; margin-left: calc(-1 * var(--gutter)); }
+[data-sidebar="peek"] .sidebar { position: absolute; left: var(--gutter); top: var(--gutter); bottom: var(--gutter); width: var(--sidebar); z-index: 8; padding: 12px; border: 3px solid var(--ink); border-radius: 18px; background: var(--space); box-shadow: 8px 8px 0 var(--ink); }
+[data-sidebar="peek"] .page { margin-left: 0; }
+
+/* Windowed: Margin covers the toolbar, so the theme shows the window's
+   controls and a place to drag the window by. */
+[data-mode="windowed"] .window-bar { display: flex; align-items: center; gap: 8px; height: 22px; }
+[data-mode="windowed"] .window-controls { width: 60px; height: 14px; }
+[data-mode="windowed"] .drag-region { flex: 1; height: 100%; }
+/* In a page (Chrome and Edge outside the Mac) the browser's toolbar stays. */
+[data-mode="inpage"] .toolbar { display: none; }
+
+/* The command palette */
+.palette-layer { position: absolute; inset: 0; z-index: 10; }
+.scrim { position: absolute; inset: 0; background: rgba(17, 17, 17, .35); cursor: default; }
+.palette { position: absolute; left: 50%; top: 150px; transform: translateX(-50%); width: min(660px, calc(100% - 64px)); border: 3px solid var(--ink); border-radius: 18px; background: var(--cream); box-shadow: 10px 10px 0 var(--ink); padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
+.palette-label { font-family: 'Archivo Black', sans-serif; font-size: 13px; }
+.palette-input { height: 56px; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 12px; padding: 0 16px; font: inherit; font-size: 20px; font-weight: 500; background: var(--paper); color: var(--ink); outline: none; }
+.palette-row { width: 100%; justify-content: flex-start; gap: 12px; height: 46px; padding: 0 12px; border-radius: 10px; font-size: 15px; font-weight: 500; }
+.palette-row.on { background: rgba(17, 17, 17, .08); }
+.tag { --tag: var(--space); flex-shrink: 0; font-size: 11px; font-weight: 700; border: 2px solid var(--ink); border-radius: 6px; padding: 2px 6px; background: var(--tag); }
+.enter { font-size: 12px; font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nb, .btn, .chev { transition: none; }
+  .loading .ico { animation: none; }
+}

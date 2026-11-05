@@ -1,0 +1,126 @@
+<div class="nb" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-style:--space="{{space.color}}">
+
+  <div class="peek-zone" m-peek="left" aria-hidden="true"></div>
+
+  <nav class="sidebar" aria-label="Sidebar">
+    <div class="column">
+
+      <div class="window-bar">
+        <m-window-controls class="window-controls"></m-window-controls>
+        <m-drag-region class="drag-region"></m-drag-region>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn push sq" aria-label="Toggle sidebar" m-attr:aria-pressed="{{window.sidebarOpen}}" m-action="sidebar.toggle">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15"></rect><path d="M9.5 4.5v15"></path></svg>
+        </button>
+        <div class="grow"></div>
+        <button class="btn push sq" aria-label="Back" m-action="nav.back">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+        </button>
+        <button class="btn push sq" aria-label="Forward" m-action="nav.forward">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
+        </button>
+        <button class="btn push sq" aria-label="Reload" m-class:loading="{{tab.loading}}" m-action="nav.reload">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"></path></svg>
+        </button>
+      </div>
+
+      <button class="btn push address" aria-label="Address: {{tab.url}}. Open command bar" m-action="palette.open">
+        <svg class="ico lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="10.5" width="13" height="9"></rect><path d="M8.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5"></path></svg>
+        <span class="ellipsis">{{tab.host}}</span>
+      </button>
+
+      <div class="space-head">
+        <h2 class="space-name">{{space.name}}</h2>
+        <span class="pill">{{space.tabCount}} TABS</span>
+      </div>
+
+      <div class="tabs" m-scroll="tabs">
+        <div class="folders">
+          <m-for each="space.folders" as="g">
+            <div class="folder" m-class:open="{{g.open}}">
+              <button class="btn row folder-head" m-attr:aria-expanded="{{g.open}}" m-action="folder.toggle" m-arg="{{g.id}}">
+                <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+                <span class="folder-name">{{g.name}}</span>
+                <span class="folder-count">{{g.tabs.length}}</span>
+              </button>
+              <m-if test="g.open">
+                <div class="folder-tabs">
+                  <m-for each="g.tabs" as="t">
+                    <button class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-action="tab.activate" m-arg="{{t.id}}">
+                      <m-if test="t.icon">
+                        <img class="fav" alt="" m-icon="{{t.icon}}">
+                        <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                      </m-if>
+                      <span class="title">{{t.title}}</span>
+                    </button>
+                  </m-for>
+                </div>
+              </m-if>
+            </div>
+          </m-for>
+        </div>
+
+        <div class="divider">
+          <span class="dash"></span>
+          <m-if test="space.hasToday">
+            <button class="btn push clear" m-action="today.clear">CLEAR ↓</button>
+          </m-if>
+        </div>
+
+        <button class="btn push new-tab" m-action="palette.open">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          <span class="grow left">NEW TAB</span>
+          <kbd class="kbd">⌘T</kbd>
+        </button>
+
+        <div class="today">
+          <m-for each="space.today" as="t">
+            <button class="btn row tab" title="{{t.title}}" m-class:on="{{t.active}}" m-class:asleep="{{t.asleep}}" m-action="tab.activate" m-arg="{{t.id}}">
+              <m-if test="t.icon">
+                <img class="fav" alt="" m-icon="{{t.icon}}">
+                <m-else><span class="fav letter" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+              </m-if>
+              <span class="title">{{t.title}}</span>
+            </button>
+          </m-for>
+        </div>
+      </div>
+
+      <div class="spaces">
+        <button class="btn push sq big" aria-label="Archive and library" m-action="archive.open">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5"></rect><path d="M5 9v11h14V9M10 13h4"></path></svg>
+        </button>
+        <div class="chips" role="group" aria-label="Spaces">
+          <m-for each="spaces" as="s">
+            <button class="btn chip" aria-label="Switch to {{s.name}} space" m-attr:aria-pressed="{{s.active}}" m-class:on="{{s.active}}" m-style:--chip="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}">{{s.abbr}}</button>
+          </m-for>
+        </div>
+        <button class="btn push sq big" aria-label="New space" m-action="space.new">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+      </div>
+
+    </div>
+  </nav>
+
+  <m-page class="page"></m-page>
+
+  <m-if test="palette.open">
+    <div class="palette-layer">
+      <button class="btn scrim" aria-label="Close command bar" m-action="palette.close"></button>
+      <div class="palette" role="dialog" aria-label="New tab">
+        <label class="palette-label" for="palette-input">SEARCH OR TYPE A URL</label>
+        <input id="palette-input" class="palette-input" m-input="palette" placeholder="Go anywhere…" autocomplete="off" spellcheck="false">
+        <m-for each="palette.rows" as="r">
+          <button class="btn row palette-row" m-class:on="{{r.selected}}" m-action="palette.run" m-arg="{{r.id}}">
+            <span class="tag" m-style:--tag="{{r.color}}">{{r.tag}}</span>
+            <span class="grow left ellipsis">{{r.text}}</span>
+            <span class="enter">↵</span>
+          </button>
+        </m-for>
+      </div>
+    </div>
+  </m-if>
+</div>
