@@ -45,6 +45,11 @@ APP_ID="$APP_ID" perl -0pi -e '
     my $b = $1;
     if ($b =~ /PRODUCT_BUNDLE_IDENTIFIER"?(?: = |: ")\Q$ENV{APP_ID}\E[;"]/) {
       $b =~ s/(ENABLE_APP_SANDBOX"?(?: = |: "))YES/${1}NO/;
+      # No Dock icon at launch (an agent app): started by the extension handler
+      # for a link, it never flashes one; AppDelegate.swift gives it one while
+      # the set-up window is open.
+      $b =~ s/(\n([\t ]*)("?)INFOPLIST_KEY_NSPrincipalClass\3( = |: ")NSApplication("?)([;,]))/$1\n$2$3INFOPLIST_KEY_LSUIElement$3$4YES$5$6/
+        unless $b =~ /LSUIElement/;
       $b =~ s/\n[\t ]*"?ENABLE_(?:USER_SELECTED_FILES|OUTGOING_NETWORK_CONNECTIONS)"?(?: = |: )[^\n]*//g;
       $b =~ s/(\n([\t ]*)("?)WebKit\3,\n)/$1$2"-framework",\n$2$3ApplicationServices$3,\n$2"-framework",\n$2$3Network$3,\n$2"-framework",\n$2$3ServiceManagement$3,\n/
         unless $b =~ /ServiceManagement/;
@@ -56,7 +61,7 @@ APP_ID="$APP_ID" perl -0pi -e '
 count() { grep -Ec "$1" "$PROJECT" || true; }
 [ "$(count 'ENABLE_APP_SANDBOX"?( = |: ")NO')" = $EACH ] && [ "$(count 'ENABLE_APP_SANDBOX"?( = |: ")YES')" = $EACH ] \
   && [ "$(count 'ENABLE_USER_SELECTED_FILES')" = $EACH ] && [ "$(count 'ENABLE_OUTGOING_NETWORK_CONNECTIONS')" = 0 ] \
-  && [ "$(count 'ServiceManagement"?,')" = $EACH ] \
+  && [ "$(count 'ServiceManagement"?,')" = $EACH ] && [ "$(count 'INFOPLIST_KEY_LSUIElement"?( = |: ")YES')" = $EACH ] \
   || { echo "make-xcode.sh: the app's sandbox settings didn't come out as expected (has the converter's project changed?)" >&2; exit 1; }
 
 # Margin's own app code over the converter's template (app/safari/): the app

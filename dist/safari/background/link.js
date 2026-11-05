@@ -322,6 +322,7 @@ export function createLink({
     } catch {
       reply = null;
     }
+    await takeProfile(reply?.profile);
     if (reply?.appOpen !== true || !on) {
       linkWaiter?.(null);
       linkWaiter = null;
@@ -702,6 +703,18 @@ export function createLink({
     }
     // Made once per profile's storage, and kept (a profile Safari wiped gets a new one).
     profile = `p-${random().replace(/[^A-Za-z0-9]/g, '').slice(0, 20)}`;
+    acked = 0;
+    rev = null;
+    await writeMeta();
+  }
+  // Safari's own id for this copy's profile (the handler's reply), when it
+  // gives one: kept over the copy's own, so a profile whose storage Safari
+  // wiped finds its data in the app again. A different id than before is a
+  // profile the app knows apart: no acked, no rev (the app's data.need or
+  // snapshot follows).
+  async function takeProfile(id) {
+    if (typeof id !== 'string' || !PROFILE.test(id) || id === profile) return;
+    profile = id;
     acked = 0;
     rev = null;
     await writeMeta();

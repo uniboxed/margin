@@ -28,9 +28,19 @@ let launchNote = "margin-launch"
 
 class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
+    private var profile = "s-default"
+
     func beginRequest(with context: NSExtensionContext) {
         let request = context.inputItems.first as? NSExtensionItem
         let message = request?.userInfo?[SFExtensionMessageKey]
+        // Safari's own id for the profile this copy runs in (none for the
+        // default profile): it survives Safari wiping the extension's storage,
+        // so the app's data for the profile is found again (background/link.js).
+        var profile = "s-default"
+        if #available(macOS 14.0, *), let id = request?.userInfo?[SFExtensionProfileKey] as? UUID {
+            profile = "s-\(id.uuidString.lowercased())"
+        }
+        self.profile = profile
 
         let appOpen = !NSRunningApplication.runningApplications(withBundleIdentifier: marginAppIdentifier).isEmpty
 
@@ -68,7 +78,7 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
     private func reply(_ context: NSExtensionContext, appOpen: Bool, launching: Bool = false) {
         let response = NSExtensionItem()
-        response.userInfo = [SFExtensionMessageKey: ["ok": true, "appOpen": appOpen, "launching": launching]]
+        response.userInfo = [SFExtensionMessageKey: ["ok": true, "appOpen": appOpen, "launching": launching, "profile": profile]]
         context.completeRequest(returningItems: [response], completionHandler: nil)
     }
 

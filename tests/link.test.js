@@ -40,7 +40,7 @@ function area(initial = {}) {
 }
 
 /** A fake browser API and the app's dispatches into it. `app`: the fake app (or null: none running). */
-function browser({ app = null, appOpen = null, launching = false, local = {} } = {}) {
+function browser({ app = null, appOpen = null, launching = false, local = {}, profile = undefined } = {}) {
   const ports = [];
   const native = [];
   const api = {
@@ -58,7 +58,7 @@ function browser({ app = null, appOpen = null, launching = false, local = {} } =
         const open = appOpen ? appOpen() : !!api.app;
         // The app answers on the port once it hears the nonce (the handler's notification).
         if (open && message.type === 'wantLink' && api.app) setTimeout(() => ports.at(-1)?.deliver(api.app.linkInfo(message.nonce)), 5);
-        return { ok: true, appOpen: open, launching: !open && launching };
+        return { ok: true, appOpen: open, launching: !open && launching, ...(profile ? { profile } : {}) };
       },
     },
     storage: { local: area(local), session: area() },
@@ -193,6 +193,36 @@ test('link: the profile id is made once and kept', async () => {
     const dh = await app2.next('data.hello');
     assert.ok(dh && !('rev' in dh), 'no rev');
     assert.equal(api2.storage.local.data[LINK_META].rev, undefined);
+  } finally {
+    l2.stop();
+    await app2.close();
+  }
+});
+
+test('link: Safari\'s own profile id (the handler\'s reply) is kept over the copy\'s, and a wiped storage finds it again', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, profile: 's-3f2a', local: { ...STATE, [LINK_META]: { profile: 'p-kept', acked: 42, rev: '9-x' } } });
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    const hello = await app.next('hello');
+    assert.equal(hello.profile, 's-3f2a', 'Safari\'s id');
+    const dh = await app.next('data.hello');
+    assert.equal(dh.profile, 's-3f2a');
+    assert.equal(dh.acked, 0, 'another profile for the app: nothing acked');
+    assert.ok(!('rev' in dh), 'and no rev');
+    assert.equal(api.storage.local.data[LINK_META].profile, 's-3f2a', 'kept');
+  } finally {
+    link.stop();
+    await app.close();
+  }
+  // Safari wiped the storage: the same id again from the handler.
+  const app2 = await startFakeApp();
+  const api2 = browser({ app: app2, profile: 's-3f2a' });
+  const { link: l2 } = makeLink(api2);
+  try {
+    await l2.start({ route: async () => ({ ok: true }) });
+    assert.equal((await app2.next('hello')).profile, 's-3f2a');
   } finally {
     l2.stop();
     await app2.close();

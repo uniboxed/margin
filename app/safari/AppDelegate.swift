@@ -9,6 +9,7 @@
 // by the extension handler for a link (Tirth, 2026-11-05: no login item
 // needed), there's no set-up window either: the handler's arguments never
 // reach a sandboxed caller's app, so it leaves a note instead (startedForLink).
+// With no copy linked for 10 minutes (and no set-up window), it quits by itself.
 // Copied over the converter's by scripts/make-xcode.sh.
 
 import Cocoa
@@ -28,6 +29,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if CommandLine.arguments.contains("--background") || Self.startedForLink() {
                 window.orderOut(nil)
                 NSApp.setActivationPolicy(.accessory)
+            } else {
+                // An agent app (LSUIElement, scripts/make-xcode.sh): opened by
+                // the person, it gets its Dock icon and comes forward.
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate()
             }
         } else {
             NSApp.setActivationPolicy(.accessory)
@@ -38,6 +44,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         terminating?.setEventHandler { RunLoop.main.perform { NSApp.terminate(nil) } }
         terminating?.resume()
         shell.start()
+        idleCheck = Timer.scheduledTimer(withTimeInterval: Self.idleCheckEvery, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkIdle() }
+        }
+    }
+
+    // Started on demand, Margin.app quits by itself once no copy has been
+    // linked for a while and its set-up window isn't open (Tirth, 2026-11-05):
+    // a browser starting again starts it again.
+    static let idleQuitAfter: TimeInterval = 10 * 60
+    static let idleCheckEvery: TimeInterval = 30
+    private var idleCheck: Timer?
+    private var idleSince: Date?
+    private func checkIdle() {
+        let setupOpen = setup?.window?.isVisible == true
+        guard shell.links.isEmpty, !setupOpen else { idleSince = nil; return }
+        let since = idleSince ?? Date()
+        idleSince = since
+        if Date().timeIntervalSince(since) >= Self.idleQuitAfter { NSApp.terminate(nil) }
     }
 
     // Started by the extension handler for a copy's link (SafariWebExtensionHandler.swift

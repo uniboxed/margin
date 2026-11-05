@@ -2252,3 +2252,9 @@ From `feat/margin-app` 1bf7a38, beside step 3b (the app's data store). The exten
 **Open, for Tirth:**
 - Safari wiping Margin's storage gives the profile a new id, so the app keeps the old profile's data set as another profile's; it isn't lost, but nothing joins the two. A way to tell it's the same profile (the app could match by the set's content, or ask) is a choice.
 - For real Safari (TESTING.md has the list): the app started from the extension handler inside Safari (the sandboxed appex, not a stand-in), with no window and no focus change; ⌘T going to the app's hot key and never to Safari's New Tab or the extension's command; pages fitting the slot with Safari's toolbar shown and its sidebar open (the viewport offsets are inferred); the background page staying alive for hours with the port's pings; the new-tab page's launcher and Settings drawn by the overlay.
+
+## Margin 2, Phase 2 step 3, after the merge (2026-11-05)
+
+- **Safari's own profile id.** The extension handler now sends, in every reply, the id Safari gives the profile its copy runs in (`SFExtensionProfileKey`, `s-<uuid>`, `s-default` for the default profile). The link uses it instead of the id the copy made for itself, so when Safari wipes the extension's storage the copy finds its profile's data in the app again rather than starting a new profile there. A copy that had its own id before takes Safari's with nothing acked and no `rev`, so the app asks for or sends the whole set. Nothing has shipped with the old ids.
+- **No Dock icon at launch.** `make-xcode.sh` gives the app `LSUIElement`, so Margin.app started by the extension handler never flashes a Dock icon. Opened by the person, `AppDelegate` gives it its Dock icon and brings the set-up window forward.
+- **Quitting when idle.** With no copy linked and no set-up window for 10 minutes, Margin.app quits by itself; a browser starting again starts it again (`AppDelegate.checkIdle`).
