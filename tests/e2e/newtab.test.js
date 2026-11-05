@@ -25,8 +25,8 @@ async function newTab() {
 
 test('launcher: a host:port entry navigates this tab', async () => {
   const page = await newTab();
-  await page.fill('#query', `${new URL(server.base).host}/typed`);
-  await page.press('#query', 'Enter');
+  await page.fill('.launcher-query', `${new URL(server.base).host}/typed`);
+  await page.press('.launcher-query', 'Enter');
   await page.waitForURL(`${server.base}/typed`);
   assert.equal(await page.title(), 'typed');
   await page.close();
@@ -39,9 +39,9 @@ test('launcher: other text searches with Chrome\'s own search engine (chrome.sea
   const page = await newTab();
   assert.equal(await page.locator('#engine').count(), 0, 'no engine picker');
   await page.click('#settings summary');
-  assert.match(await page.textContent('#engine-info'), /Chrome’s search engine/);
-  await page.fill('#query', 'hello world');
-  await page.press('#query', 'Enter');
+  assert.match(await page.textContent('.settings-form p.help'), /Chrome’s search engine/);
+  await page.fill('.launcher-query', 'hello world');
+  await page.press('.launcher-query', 'Enter');
   await page.waitForURL((url) => url.protocol === 'https:' && searchesFor(url.href, 'hello world'));
   await page.close();
 });
@@ -53,7 +53,7 @@ test('launcher: pins of the active space show as tiles; a tile focuses or opens 
   await waitFor(async () => (await readState(ctx.worker, 'tabs'))?.[tabId]?.title === 'tile');
 
   const nt = await newTab();
-  assert.equal(await nt.isHidden('#pins-section'), true);
+  assert.equal(await nt.isHidden('.pins-tiles'), true);
   await nt.evaluate((id) => chrome.runtime.sendMessage({ type: 'pinTab', tabId: id }), tabId);
   await nt.waitForSelector('#pin-tiles .tile');
   assert.equal(await nt.textContent('#pin-tiles .tile .title'), 'tile');

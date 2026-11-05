@@ -129,9 +129,9 @@ export const tabsInBrowser = (worker) =>
   worker.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => ({ id: t.id, title: t.title, url: t.url, active: t.active }))));
 
 export function paletteSnapshot(page) {
-  return evalInShadow(page, 'margin-palette-host', function () {
-    const open = !!this.querySelector('.palette.shown');
-    const rows = [...this.querySelectorAll('.results li[data-id]')];
+  return evalInShadow(page, 'margin-sidebar-host', function () {
+    const open = !!this.querySelector('.palette');
+    const rows = [...this.querySelectorAll('.results .result')];
     return {
       open,
       focused: this.activeElement?.classList.contains('query') ?? false,
@@ -149,7 +149,7 @@ export const launcherUrl = (ctx) => `chrome-extension://${ctx.extensionId}/newta
 // new-tab page loads the theme's module, then mounts it).
 export async function gotoLauncher(page, ctx) {
   await page.goto(launcherUrl(ctx));
-  await page.waitForSelector('#launcher');
+  await page.waitForSelector('.launcher');
 }
 
 // One key of Margin's state, from the worker. The open tabs, their spaces and

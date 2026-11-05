@@ -77,12 +77,12 @@ test('the palette opens in the top layer, above a site\'s own popover; not while
   await page.keyboard.press('Meta+KeyT');
   await waitFor(async () => (await paletteSnapshot(page))?.open);
   const state = await page.evaluate(() => {
-    const host = document.querySelector('margin-palette-host');
+    const host = document.querySelector('margin-sidebar-host');
     return { open: host.matches(':popover-open'), onTop: document.elementFromPoint(innerWidth / 2, innerHeight * 0.4) === host };
   });
   assert.deepEqual(state, { open: true, onTop: true });
   await page.keyboard.press('Escape');
-  await waitFor(() => page.evaluate(() => !document.querySelector('margin-palette-host').matches(':popover-open')));
+  await waitFor(() => page.evaluate(() => !document.querySelector('margin-sidebar-host').matches(':popover-open')));
 
   await page.evaluate(() => {
     document.getElementById('site-popover').hidePopover();
@@ -91,7 +91,7 @@ test('the palette opens in the top layer, above a site\'s own popover; not while
   });
   await page.keyboard.press('Meta+KeyT');
   await page.waitForTimeout(300);
-  assert.equal(await page.evaluate(() => document.querySelector('margin-palette-host')?.matches(':popover-open') ?? false), false, 'falls back to the z-index');
+  assert.equal(await page.evaluate(() => document.querySelector('margin-sidebar-host')?.matches(':popover-open') ?? false), false, 'falls back to the z-index');
   await page.close();
 });
 

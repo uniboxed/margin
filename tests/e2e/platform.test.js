@@ -176,10 +176,10 @@ test('Safari: sideways swipes are blocked, scrolling is not; the setting turns i
     // The setting turns it off.
     const nt = await ctx.context.newPage();
     await gotoLauncher(nt, ctx);
-    assert.equal(await nt.isVisible('#gestures-setting'), false, 'collapsed under Settings');
+    assert.equal(await nt.isVisible('label:has-text("trackpad gestures")'), false, 'collapsed under Settings');
     await nt.click('#settings summary');
-    assert.equal(await nt.isChecked('#block-gestures'), true);
-    await nt.uncheck('#block-gestures');
+    assert.equal(await nt.isChecked('label:has-text("trackpad gestures") input'), true);
+    await nt.uncheck('label:has-text("trackpad gestures") input');
     await waitFor(async () => (await storage(ctx, 'settings')).blockGestures === false);
     await page.bringToFront();
     await waitFor(async () => (await wheel(600, 120, -80, 0)) === false);

@@ -69,7 +69,7 @@ test('Keep open: dragging the edge resizes live, pushes the page with it, snaps,
   assert.equal(await panelWidth(page), 330, 'snapped to 10px');
   assert.equal(await htmlLeft(page), 330);
   const hole = await evalInShadow(page, 'margin-sidebar-host', function () {
-    return this.querySelector('.frame .hole').getBoundingClientRect().left;
+    return this.querySelector('.page').getBoundingClientRect().left;
   });
   assert.equal(hole, 330, 'frame edge follows');
   const edge = await evalInShadow(page, 'margin-sidebar-host', function () {
@@ -152,10 +152,10 @@ test('the new-tab sidebar resizes too', async () => {
   const nt = await ctx.context.newPage();
   await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .resizer');
-  const box = await nt.locator('#sidebar .margin-sidebar').boundingBox();
+  const box = await nt.locator('.margin-sidebar').boundingBox();
   await drag(nt, box.x + box.width - 1, box.x + box.width + 99);
   await waitFor(async () => (await settings()).themes.arcadia.sidebarWidth === 360);
-  assert.equal(Math.round((await nt.locator('#sidebar .margin-sidebar').boundingBox()).width), 360);
+  assert.equal(Math.round((await nt.locator('.margin-sidebar').boundingBox()).width), 360);
   await setSettings({ sidebarWidth: 260 });
   await nt.close();
 });

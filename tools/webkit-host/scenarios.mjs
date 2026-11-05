@@ -48,12 +48,14 @@ const body = (js) => (/\breturn\b/.test(js) ? js : `return ${js}`);
 const check = (tab, label, js, timeout) => ({ op: 'check', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
 const checkPage = (tab, label, js, timeout) => ({ op: 'checkPage', in: tab, label, js: body(js), ...(timeout ? { timeout } : {}) });
 const wait = (ms) => ({ op: 'wait', ms });
+// A shortcut field of Settings on Margin's start page, by its label (ui/settings-form.js).
+const SHORTCUT = (label) => `[...document.querySelectorAll('.settings-form label')].find((l) => l.textContent.includes(${JSON.stringify(label)}) && l.querySelector('input.shortcut'))?.querySelector('input.shortcut')`;
 // In a page step: wheel events with these deltaX, 10ms apart, over the
 // new-tab page's sidebar list (as a trackpad sends them); waits for the last.
-const SWIPE = (deltas) => `await new Promise((resolve) => { const target = document.querySelector('#sidebar .tabs-section'); const d = ${JSON.stringify(deltas)}; let i = 0; const tick = () => { if (i >= d.length) return resolve(); target.dispatchEvent(new WheelEvent('wheel', { deltaX: d[i++], bubbles: true, cancelable: true, composed: true })); setTimeout(tick, 10); }; tick(); });`;
-// Margin drew its sidebar here (the core sets data-open once the theme is mounted).
+const SWIPE = (deltas) => `await new Promise((resolve) => { const target = document.querySelector('.margin-sidebar .tabs-section'); const d = ${JSON.stringify(deltas)}; let i = 0; const tick = () => { if (i >= d.length) return resolve(); target.dispatchEvent(new WheelEvent('wheel', { deltaX: d[i++], bubbles: true, cancelable: true, composed: true })); setTimeout(tick, 10); }; tick(); });`;
+// Margin drew its sidebar here (content/layout.js sets data-open once the UI has drawn).
 const drawn = (tab) => checkPage(tab, `${tab}: Margin's sidebar is there`, `document.querySelector('margin-sidebar-host')?.dataset.open !== undefined`, 5000);
-const themed = (tab) => check(tab, `${tab}: the Arcadia theme is mounted`, `globalThis.Margin?.theme?.id === 'arcadia'`, 5000);
+const themed = (tab) => check(tab, `${tab}: the Arcadia theme is mounted`, `globalThis.Margin?.content?.runtime?.()?.theme?.id === 'arcadia'`, 5000);
 const shown = (tab) => checkPage(tab, `${tab} is the tab shown`, `!document.hidden`);
 // The middle of a tab's row in the sidebar (over its title, clear of its close
 // button), for a `mouse` step; through the test hook's __shadowOf (hook.js).
@@ -77,7 +79,7 @@ const bare = (tab) => checkPage(tab, `${tab}: no box, the page as it is`, `getCo
 // Margin's frame fills the window at page zoom `z` (1200x800 at 100%), its
 // sidebar at the corner: a check in Margin's world, whose measures are in the
 // page's zoomed pixels.
-const ZOOMED = (z) => `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const f = r.querySelector('.frame').getBoundingClientRect(); const s = r.querySelector('.window-probe').getBoundingClientRect(); const near = (a, b) => Math.abs(a - b) < 1.5; return near(f.left, 0) && near(f.top, 0) && near(f.width, ${1200 / z}) && near(f.height, ${800 / z}) && near(s.left, 0) && near(s.width, ${1200 / z})`;
+const ZOOMED = (z) => `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const f = r.querySelector('.arcadia').getBoundingClientRect(); const s = r.querySelector('.margin-sidebar').getBoundingClientRect(); const near = (a, b) => Math.abs(a - b) < 1.5; return near(f.left, 0) && near(f.top, 0) && near(f.width, ${1200 / z}) && near(f.height, ${800 / z}) && near(s.left, 0) && near(s.width, ${260 / z})`;
 const rect = (id) => `(() => { const r = document.getElementById('${id}').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; })()`;
 const near = (a, b, by = 2) => `Math.abs((${a}) - (${b})) <= ${by}`;
 const openBox = (name, url) => [{ op: 'open', name, url, active: true }, boxed(name)];
@@ -260,7 +262,7 @@ export const SCENARIOS = {
     checkPage('A', 'A: fixed things stay in the box', `const f = document.createElement('div'); f.style.cssText = 'position: fixed; left: 0; top: 0; width: 10px; height: 10px'; document.body.append(f); const r = f.getBoundingClientRect(); f.remove(); return r.left === 0 && r.top === 0`),
     { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { frameWhenHidden: false } }))' },
     bare('A'),
-    check('A', 'A: the setting off: no frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'none'`, 2000),
+    check('A', 'A: the setting off: no frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return !r.querySelector('.arcadia').classList.contains('framed') && getComputedStyle(r.querySelector('.page')).boxShadow === 'none'`, 2000),
     wait(300), reload('A'), drawn('A'), wait(300), bare('A'),
     checkPage('A', 'A: reloaded with no box: the page\'s world has none of Margin in it', `!window[Symbol.for('margin.page')]`),
   ],
@@ -723,10 +725,10 @@ export const SCENARIOS = {
   // The new-tab page loads the active theme's module.
   newtab: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, wait(2000),
-    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
-    checkPage('N', 'N: Arcadia\'s launcher is drawn', `!!document.querySelector('#launcher')`, 5000),
-    checkPage('N', 'N: its sidebar lists the tabs', `document.querySelectorAll('#sidebar .tab').length >= 2`),
-    checkPage('N', 'N: Settings shows the theme', `document.querySelector('#theme')?.value === 'arcadia'`),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#settings', active: true },
+    checkPage('N', 'N: Arcadia\'s launcher is drawn', `!!document.querySelector('.launcher')`, 5000),
+    checkPage('N', 'N: its sidebar lists the tabs', `document.querySelectorAll('.margin-sidebar .tab').length >= 2`),
+    checkPage('N', 'N: Settings shows the theme', `document.querySelector('.settings-form select')?.value === 'arcadia'`, 2000),
   ],
   // Swiping between spaces in the sidebar (the new-tab page's: the same code
   // as on pages, whose sidebar is in a closed shadow root): a trackpad-like
@@ -736,14 +738,14 @@ export const SCENARIOS = {
   spaces: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800), { op: 'install' }, wait(2000),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
-    checkPage('N', 'N: its sidebar is drawn', `!!document.querySelector('#sidebar .space-pane')`, 5000),
+    checkPage('N', 'N: its sidebar is drawn', `!!document.querySelector('.margin-sidebar .space-pane')`, 5000),
     { op: 'page', in: 'N', js: `${ID} const work = (await browser.runtime.sendMessage({ type: 'createSpace', name: 'Work', emoji: '💼' })).result.spaceId; await browser.runtime.sendMessage({ type: 'moveTabToSpace', tabId: id('B'), spaceId: work }); return work` },
     wait(800),
     { op: 'page', in: 'N', js: `${SWIPE([3, 2, 3, 2])} return 'short'` }, wait(800),
-    checkPage('N', 'a short slow swipe stays in the space', `document.querySelector('#sidebar .space-title .title')?.textContent === 'Personal' && !document.querySelector('.ghost')`),
+    checkPage('N', 'a short slow swipe stays in the space', `document.querySelector('.margin-sidebar .space-title .title')?.textContent === 'Personal' && !document.querySelector('.ghost')`),
     // The titles shown as it happens (the page is hidden a moment later, as B
     // comes to the front, and its timers slow down: read then, it says little).
-    { op: 'page', in: 'N', js: `const title = () => document.querySelector('#sidebar .space-title .title')?.textContent; window.__titles = [{ t: performance.now(), title: title() }]; new MutationObserver(() => __titles.push({ t: performance.now(), title: title() })).observe(document.getElementById('sidebar'), { subtree: true, childList: true, characterData: true }); window.__flickAt = performance.now(); ${SWIPE([6, 14, 22, 19, 17, 15, 13, 11.5, 10, 9, 8, 7, 6, 5.2, 4.5, 3.9, 3.4])} return 'flick'` },
+    { op: 'page', in: 'N', js: `const title = () => document.querySelector('.margin-sidebar .space-title .title')?.textContent; window.__titles = [{ t: performance.now(), title: title() }]; new MutationObserver(() => __titles.push({ t: performance.now(), title: title() })).observe(document.querySelector('.margin-sidebar'), { subtree: true, childList: true, characterData: true }); window.__flickAt = performance.now(); ${SWIPE([6, 14, 22, 19, 17, 15, 13, 11.5, 10, 9, 8, 7, 6, 5.2, 4.5, 3.9, 3.4])} return 'flick'` },
     checkPage('N', 'a flick shows the next space at once', `__titles.some((x) => x.title === 'Work' && x.t - __flickAt < 1000)`, 2000),
     shown('B'),
     check('B', 'B: the window is on Work', `const s = await ${STATE}(['spaces', 'activeSpaceByWindow']); return Object.values(s.activeSpaceByWindow ?? {}).some((id) => s.spaces.find((x) => x.id === id)?.name === 'Work')`),
@@ -768,9 +770,9 @@ export const SCENARIOS = {
     reload('A'), drawn('A'),
     checkPage('A', 'reloaded at 150%: scaled back as soon as drawn', `Math.abs(parseFloat(getComputedStyle(document.querySelector('margin-sidebar-host')).zoom) - 1 / 1.5) < 0.001`, 100),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
-    checkPage('N', 'N: drawn', `!!document.querySelector('#sidebar .space-pane')`, 5000),
+    checkPage('N', 'N: drawn', `!!document.querySelector('.margin-sidebar .space-pane')`, 5000),
     { op: 'zoom', factor: 1.5 },
-    checkPage('N', 'N: its sidebar scaled back', `Math.abs(parseFloat(document.getElementById('sidebar').style.zoom) - 1 / 1.5) < 0.001`, 3000),
+    checkPage('N', 'N: Margin scaled back', `Math.abs(parseFloat(document.querySelector('.arcadia').style.zoom) - 1 / 1.5) < 0.001`, 3000),
     { op: 'snapshot', file: new URL('build/zoom-150-newtab.png', import.meta.url).pathname },
   ],
   // Tab ids: the same while a tab sleeps and wakes or reloads; all new when
@@ -1045,30 +1047,28 @@ export const SCENARIOS = {
     checkPage('A', 'A: hidden once (the switch), not by the restore or the introduction', `JSON.stringify(__visibility) === '["hidden"]'`),
     check('H', 'H: its page back once shown (the arrival cover lifted)', `const h = document.querySelector('margin-sidebar-host'); return !document.hidden && h.dataset.arrivalCover === 'false' && getComputedStyle(document.body).opacity === '1'`, 3000),
   ],
-  // The sidebar hidden: the frame around the page, in thin strips, the page
-  // inside it and the pointer through it. Keep open turned off: the sidebar
-  // slides away with the frame's edge, then the strips take over.
+  // The sidebar hidden: the frame around the page (the page card's spread
+  // shadow, Arcadia's package), the page in it. Keep open on and off: the
+  // card at the sidebar's edge and back. (The old theme's slide and its thin
+  // strips are gone with it.)
   'closed-frame': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, drawn('A'), themed('A'),
-    check('A', 'A: the strips show at rest, the full frame doesn\'t', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'block' && getComputedStyle(r.querySelector('.frame')).visibility === 'hidden'`, 3000),
+    check('A', 'A: framed at rest: the card 8 px in', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const c = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.page').getBoundingClientRect(); return r.querySelector('.arcadia').classList.contains('framed') && c.left === 8 && c.top === 8`, 3000),
     boxed('A', 8),
     keepOpen, wait(800),
-    check('A', 'A: Keep open: the frame at the sidebar, no strips', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'none' && r.querySelector('.frame .hole').getBoundingClientRect().left === 260`, 3000),
-    { op: 'eval', in: 'A', js: `Margin.content.sidebar.toggle(); return 'off'` }, wait(90), // as the shortcut does: the setting's write comes back on the way
-    check('A', 'A: on its way: the edge between the sidebar and the frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const left = r.querySelector('.frame .hole').getBoundingClientRect().left; return left > 8 && left < 260 && r.querySelector('.margin-sidebar').getBoundingClientRect().right > 0`, 150),
-    check('A', 'A: at rest again: the strips, the sidebar away, the frame at 8px', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'block' && r.querySelector('.margin-sidebar').getBoundingClientRect().right <= 0 && !r.querySelector('.margin-sidebar').classList.contains('leaving')`, 1500),
+    check('A', 'A: Keep open: the card at the sidebar', `__shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.page').getBoundingClientRect().left === 260`, 3000),
+    { op: 'eval', in: 'A', js: `Margin.content.sidebar.toggle(); return 'off'` },
+    check('A', 'A: hidden again: the card at 8 px, the sidebar away', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.page').getBoundingClientRect().left === 8 && r.querySelector('.margin-sidebar').getBoundingClientRect().right <= 0`, 1500),
     { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('hover'); return 'hovered'` }, wait(300),
     boxed('A', 8),
     check('A', 'A: the floating sidebar has the card\'s corners', `getComputedStyle(__shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.margin-sidebar')).borderTopLeftRadius === '6.25px'`),
-    // Keep open from the floating sidebar's button: off to the left, then in from the left with the edge.
-    { op: 'eval', in: 'A', js: `__shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.keep-open').click(); return 'pressed'` },
-    check('A', 'A: Keep open: the floating sidebar goes left first', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const s = r.querySelector('.margin-sidebar'); return !s.classList.contains('open') && !s.classList.contains('docked') && s.getBoundingClientRect().left < 8`, 500),
-    check('A', 'A: then the docked sidebar comes in with the edge, the page moved', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const s = r.querySelector('.margin-sidebar'); const b = s.getBoundingClientRect(); const left = r.querySelector('.frame .hole').getBoundingClientRect().left; return s.classList.contains('arriving') && b.left < 0 && left > 8 && left < 260`, 600),
-    check('A', 'A: docked: flush, the edge at the sidebar, no animation left', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); const s = r.querySelector('.margin-sidebar'); return s.getBoundingClientRect().left === 0 && r.querySelector('.frame .hole').getBoundingClientRect().left === 260 && !s.classList.contains('arriving') && document.querySelector('margin-sidebar-host').dataset.box === '260'`, 1500),
+    // Keep open from the floating sidebar's button: docked, the page moved.
+    { op: 'eval', in: 'A', js: `return String(Margin.content.runtime().dispatch('sidebar.toggle', undefined, 'behavior'))` }, // its button (a scripted click isn't run)
+    check('A', 'A: docked: flush, the card at the sidebar, the page\'s box with it', `const s = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.margin-sidebar'); return s.getBoundingClientRect().left === 0 && __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.page').getBoundingClientRect().left === 260 && document.querySelector('margin-sidebar-host').dataset.box === '260'`, 1500),
     { op: 'eval', in: 'A', js: `Margin.content.sidebar.toggle(); return 'off'` }, wait(500),
     { op: 'eval', in: 'A', js: `Margin.content.sidebar.hide(); return JSON.stringify(await Margin.content.send("updateSettings", { patch: { frameWhenHidden: false } }))` },
     bare('A'),
-    check('A', 'A: the setting off: no frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return getComputedStyle(r.querySelector('.rims')).display === 'none' && getComputedStyle(r.querySelector('.frame')).visibility === 'hidden'`, 2000),
+    check('A', 'A: the setting off: no frame', `const r = __shadowOf(document.querySelector('margin-sidebar-host')); return !r.querySelector('.arcadia').classList.contains('framed') && getComputedStyle(r.querySelector('.page')).boxShadow === 'none'`, 2000),
   ],
   // A pinch. On a page with no box: Safari's own, smooth, Margin out of it,
   // except what would open the overview. With one: Margin's (pinch-box).
@@ -1095,7 +1095,7 @@ export const SCENARIOS = {
     { op: 'pinch', deltas: Array(14).fill(0.03), x: 700, y: 400 }, wait(100),
     checkPage('A', 'zoomed by Margin, not by Safari', `${AT} return at.scale > 1.2 && visualViewport.scale === 1`, 800),
     check('A', 'the sidebar stays where it is, at its size', `const b = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.margin-sidebar').getBoundingClientRect(); return Math.abs(b.left) < 0.5 && Math.abs(b.width - 260) < 0.5 && Math.abs(b.top) < 0.5`),
-    check('A', 'the frame too', `const r = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.frame .hole').getBoundingClientRect(); return Math.abs(r.left - 260) < 0.5 && Math.abs(r.top - 8) < 0.5 && Math.abs(r.right - (1200 - 8)) < 0.5`),
+    check('A', 'the frame too', `const r = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.page').getBoundingClientRect(); return Math.abs(r.left - 260) < 0.5 && Math.abs(r.top - 8) < 0.5 && Math.abs(r.right - (1200 - 8)) < 0.5`),
     checkPage('A', 'the page\'s own measures stay at its size', `const r = document.getElementById('full').getBoundingClientRect(); return Math.abs(r.width - innerWidth) < 1`),
     checkPage('A', 'a point in the window finds what\'s drawn there', `const x = innerWidth / 2, y = innerHeight / 2; const r = document.elementFromPoint(x, y).getBoundingClientRect(); return r.left <= x && x <= r.right && r.top <= y && y <= r.bottom`),
     { op: 'pinch', deltas: Array(40).fill(-0.03), x: 700, y: 400 }, wait(350),
@@ -1160,12 +1160,12 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: `Margin.content.sidebar.show('toggle'); return 'open'` }, wait(300),
     check('A', 'A: the tabs listed C, B, A', `${ID} return JSON.stringify([...__shadowOf(document.querySelector('margin-sidebar-host')).querySelectorAll('.tabs > .tab')].map((r) => Number(r.dataset.tabId))) === JSON.stringify([id('C'), id('B'), id('A')])`),
     { op: 'mouse', in: 'A', type: 'down', at: rowAt('A') },
-    check('A', 'A: its row shrinks as it\'s pressed', `${ID} return __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + id('A') + '"]').classList.contains('pressed')`, 500),
+    check('A', 'A: its row shrinks as it\'s pressed', `${ID} return __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + id('A') + '"]').classList.contains('m-pressed')`, 500),
     { op: 'mouse', in: 'A', type: 'drag', at: `${ID} const r = __shadowOf(document.querySelector('margin-sidebar-host')).querySelector('.tab[data-tab-id="' + id('C') + '"]').getBoundingClientRect(); return [r.left + 40, r.top + r.height * 0.2]` },
-    check('A', 'A: a copy follows the pointer, the row stays, a line above C', `${ID} const root = __shadowOf(document.querySelector('margin-sidebar-host')); return !!root.querySelector('.drag-ghost') && root.querySelectorAll('.tabs > .tab:not(.drag-ghost)').length === 3 && root.querySelector('.tab[data-tab-id="' + id('C') + '"]').classList.contains('drop-before')`, 1000),
+    check('A', 'A: a copy follows the pointer, the row stays, a line above C', `${ID} const root = __shadowOf(document.querySelector('margin-sidebar-host')); return !!root.querySelector('.m-drag-ghost') && root.querySelectorAll('.tabs > .tab:not(.m-drag-ghost)').length === 3 && root.querySelector('.tab[data-tab-id="' + id('C') + '"]:not(.m-drag-ghost)').classList.contains('m-drop-before')`, 1000),
     { op: 'mouse', in: 'A', type: 'up' },
     check('A', 'A: Safari\'s order follows (A last), the list shows A at the top', `${ID} const s = await ${STATE}(['tabs']); const root = __shadowOf(document.querySelector('margin-sidebar-host')); return s.tabs[id('A')].index > s.tabs[id('C')].index && Number(root.querySelector('.tabs > .tab').dataset.tabId) === id('A')`, 2000),
-    check('A', 'A: the copy glided into place and is gone, the row shown', `${ID} const root = __shadowOf(document.querySelector('margin-sidebar-host')); return !root.querySelector('.drag-ghost') && !root.querySelector('.landing')`, 1500),
+    check('A', 'A: the copy glided into place and is gone, the row shown', `${ID} const root = __shadowOf(document.querySelector('margin-sidebar-host')); return !root.querySelector('.m-drag-ghost') && !root.querySelector('.m-landing')`, 1500),
     check('A', 'A: still in front (a drag isn\'t a switch)', `!document.hidden`),
   ],
   // Another unloaded tab asked for while the first still loads behind: that
@@ -1444,14 +1444,14 @@ export const SCENARIOS = {
   // Settings' shortcut recorder on the start page takes real key presses.
   recorder: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, wait(1500),
-    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true },
-    checkPage('N', 'N: drawn', `!!document.querySelector('[data-shortcut="nextTab"]')`, 5000),
-    { op: 'page', in: 'N', js: `document.getElementById('settings').open = true; const i = document.querySelector('[data-shortcut="nextTab"]'); i.focus(); return 'focused ' + (document.activeElement === i) + ' ' + i.className` },
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#settings', active: true },
+    checkPage('N', 'N: drawn', `!!${SHORTCUT('Next tab')}`, 5000),
+    { op: 'page', in: 'N', js: `const i = ${SHORTCUT('Next tab')}; i.focus(); return 'focused ' + (document.activeElement === i) + ' ' + i.className` },
     { op: 'key', in: 'N', chars: 'p', keyCode: 35, mods: ['control', 'shift'] }, wait(500),
-    checkPage('N', 'a combination is recorded (⌃⇧P)', `document.querySelector('[data-shortcut="nextTab"]').value === '⌃⇧P'`, 2000),
-    { op: 'page', in: 'N', js: `const i = document.querySelector('[data-shortcut="nextSpace"]'); i.focus(); return 'focused ' + (document.activeElement === i)` },
+    checkPage('N', 'a combination is recorded (⌃⇧P)', `${SHORTCUT('Next tab')}.value === '⌃⇧P'`, 2000),
+    { op: 'page', in: 'N', js: `const i = ${SHORTCUT('Next space')}; i.focus(); return 'focused ' + (document.activeElement === i)` },
     { op: 'key', in: 'N', chars: String.fromCharCode(0xF703), keyCode: 124, mods: ['command', 'option'] }, wait(500),
-    { op: 'page', in: 'N', js: `return 'nextSpace field: ' + JSON.stringify(document.querySelector('[data-shortcut="nextSpace"]').value)` },
+    { op: 'page', in: 'N', js: `return 'nextSpace field: ' + JSON.stringify(${SHORTCUT('Next space')}.value)` },
   ],
   // Keep-ready's holds (background/keep-ready.js) through a run of switches
   // in Safari's own tab bar: each tab left is held at once, but never more
@@ -1694,7 +1694,7 @@ Object.assign(SCENARIOS, {
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' },
     wait(800), { op: 'install', sameId: true }, drawn('A'), wait(800),
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html' }, wait(1500),
-    checkPage('N', "N: Margin's new-tab page drew the tabs", "document.querySelectorAll('[data-tab-id]').length >= 3", 4000),
+    checkPage('N', "N: Margin's new-tab page drew the tabs (its own as the lit + New Tab)", "document.querySelectorAll('[data-tab-id]').length >= 2 && !!document.querySelector('.new-tab-row.active')", 4000),
     { op: 'page', in: 'N', js: 'window.__before = true; return location.href' },
     { op: 'page', in: 'A', js: 'window.__before = true; return "marked"' },
     { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
@@ -1703,7 +1703,7 @@ Object.assign(SCENARIOS, {
     wait(1500),
     checkPage('A', 'A (in front): not loaded again in front', 'window.__before === true'),
     { op: 'show', name: 'N' },
-    checkPage('N', 'N shown: still open, its sidebar has every tab', "!document.hidden && document.querySelectorAll('[data-tab-id]').length >= 3", 4000),
+    checkPage('N', 'N shown: still open, its sidebar has every tab', "!document.hidden && document.querySelectorAll('[data-tab-id]').length >= 2 && !!document.querySelector('.new-tab-row.active')", 4000),
     checkPage('A', 'A, left: loaded again, behind', '!window.__before && document.hidden', 4000),
     check('A', 'no hand-off closed N', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).some((t) => /newtab\\.html\\?again/.test(t.url))`, 3000),
   ],

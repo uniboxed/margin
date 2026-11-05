@@ -107,9 +107,9 @@ test('archive-after setting is editable on the new tab', async () => {
   await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .margin-sidebar');
   await nt.click('#settings summary');
-  assert.equal(await nt.inputValue('#archive-hours'), '12');
-  await nt.fill('#archive-hours', '3');
-  await nt.press('#archive-hours', 'Tab');
+  assert.equal(await nt.inputValue('label:has-text("Archive tabs") input'), '12');
+  await nt.fill('label:has-text("Archive tabs") input', '3');
+  await nt.press('label:has-text("Archive tabs") input', 'Tab');
   await waitFor(async () => (await storage('settings')).archiveAfterHours === 3);
   await nt.close();
 });

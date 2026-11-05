@@ -101,7 +101,7 @@ test('⌘T opens the palette on the start page too; the old ⌥K setting is gone
   await nt.waitForSelector('#sidebar .margin-sidebar');
   await nt.click('#settings summary');
   assert.equal(await nt.locator('[data-shortcut="paletteShortcut"]').count(), 0);
-  await nt.locator('#query').click();
+  await nt.locator('.launcher-query').click();
   await nt.keyboard.press('Meta+KeyT');
   await waitFor(async () => (await paletteSnapshot(nt))?.open);
   await nt.close();

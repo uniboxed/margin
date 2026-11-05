@@ -116,7 +116,7 @@ test('shortcuts are settings: record a new one, duplicates are refused, reset re
   // A combination already in use is refused.
   await field('prevSpace').click();
   await nt.keyboard.press('Control+Meta+ArrowDown');
-  assert.match(await nt.textContent('#shortcut-help'), /already used for “Next tab”/);
+  assert.match(await nt.textContent('.settings-form .actions .help'), /already used for “Next tab”/);
   assert.equal((await storage('settings')).shortcuts.prevSpace, 'Control+Meta+ArrowLeft'.replace('Control', 'Ctrl'));
   await nt.keyboard.press('Escape');
 
@@ -129,7 +129,7 @@ test('shortcuts are settings: record a new one, duplicates are refused, reset re
   await waitFor(async () => ((await storage('activeSpaceByWindow'))[windowId] ?? 'personal') !== before);
 
   await nt.bringToFront();
-  await nt.click('#shortcuts-reset');
+  await nt.click('button:has-text("Reset shortcuts")');
   await waitFor(async () => (await storage('settings')).shortcuts.nextSpace === 'Ctrl+Meta+ArrowRight');
   await page.close();
   await nt.close();

@@ -171,7 +171,7 @@ test('new-tab page renders the sidebar itself and gets no injected overlay', asy
   assert.equal(await nt.locator('margin-sidebar-host').count(), 0);
   // "+ New Tab" (the first row of the tab list) opens the command palette (Arc-style), here and on web pages.
   const tabsBefore = (await tabsInBrowser(ctx.worker)).length;
-  await nt.locator('#sidebar .new-tab-row').click();
+  await nt.locator('.margin-sidebar .new-tab-row').click();
   await waitFor(async () => (await paletteSnapshot(nt))?.open);
   const web = await openPage('nt-plus');
   await web.mouse.move(400, 200);
@@ -211,8 +211,8 @@ test('toggle shortcut: opens and closes; with "Keep open" on it switches back to
 
 const frameState = (page) =>
   evalInShadow(page, 'margin-sidebar-host', function () {
-    const frame = this.querySelector('.frame');
-    const r = this.querySelector('.frame .hole').getBoundingClientRect();
+    const frame = this.querySelector('.page');
+    const r = this.querySelector('.page').getBoundingClientRect();
     return { open: frame.classList.contains('open'), hole: [r.left, r.top, innerWidth - r.right, innerHeight - r.bottom] };
   });
 const htmlMargins = (page) =>

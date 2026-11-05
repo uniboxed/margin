@@ -21,7 +21,7 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 
 | Scenario | What it covers |
 | --- | --- |
-| `switching` | Pages open at install get Margin (WebKit adds the core, the background the theme); switching through Margin, including to a tab Safari unloaded |
+| `switching` | Pages open at install get Margin (WebKit adds the core, which asks the background for the theme's package); switching through Margin, including to a tab Safari unloaded |
 | `update` | Margin updated while a page with a typed draft is open: the new copy takes over, the draft stays, one sidebar shows |
 | `box`, `hidden-box`, `toggle` | The page's box with Keep open and hidden, live toggling, the scroll handed over, media queries and viewport units, no box and nothing loaded |
 | `csp`, `lock` | A strict CSP; a page's scroll locks (a body pinned with `position: fixed` too), modals, stray absolute elements |
@@ -35,7 +35,7 @@ In `scenarios.mjs`, each a list of steps (documented at the top of the file). A 
 | `keys`, `history`, `top-layer`, `linked-sheet` | ⌘↓ and ⌥↓ with nothing pressed, a pressed pane, Shift and an arrow; same-document Back and Forward; dialogs and popovers against the box; a fetched sheet following its link |
 | `update-old-layout` | Pages an old copy laid out stay out of the page's script's and the placeholder's reach |
 | `pinch`, `pinch-box` | Safari's pinch on a page with no box; Margin's on one with a box, the sidebar staying put |
-| `newtab` | The new-tab page loads the active theme's module and draws the launcher |
+| `newtab` | The new-tab page draws the active theme's launcher with Margin's UI runtime, and its Settings show the theme |
 | `unloadedlate`, `loadcover`, `behindlate` | A page all there at once whose load comes late (`/p/Z…`: an image that takes 3 s): a tab Safari unloaded is shown once it has painted, introduced, its content there as it's shown; one shown without loading it behind lifts its cover at its first paint; a new tab from the palette comes to the front at its first paint |
 | `shelllate`, `shellcover`, `shellbehind` | An app's page (`/p/Y…`: an empty body its script fills 0.25 s later, its load at 3 s), where Margin's own sidebar or cover is the page's first contentful paint: restored, uncovered, or brought from behind once its own content is there, not at Margin's paint |
 | `restartrepair` | A relaunch with tabs Safari unloaded: the repair of the open tabs asks each once, in its first pass, and none again after; a switch to one, asked as Margin starts, isn't held up and is restored behind the page |

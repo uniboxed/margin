@@ -24,8 +24,8 @@ const settings = () => ctx.worker.evaluate(() => chrome.storage.local.get('setti
 async function launcherSearch(text) {
   const page = await ctx.context.newPage();
   await gotoLauncher(page, ctx);
-  await page.fill('#query', text);
-  await page.press('#query', 'Enter');
+  await page.fill('.launcher-query', text);
+  await page.press('.launcher-query', 'Enter');
   return page;
 }
 
@@ -74,7 +74,7 @@ test('a search on an engine\'s own site doesn\'t change it; Safari\'s own search
   const nt = await ctx.context.newPage();
   await gotoLauncher(nt, ctx);
   await nt.click('#settings summary');
-  assert.match(await nt.textContent('#engine-info'), /Safari’s search engine: DuckDuckGo/);
+  assert.match(await nt.textContent('.settings-form p.help'), /Safari’s search engine: DuckDuckGo/);
   assert.equal(await nt.locator('#engine').count(), 0);
   await nt.close();
 });

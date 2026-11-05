@@ -92,7 +92,7 @@ test('the launcher page opened on purpose (#launcher) stays', async () => {
   const page = await openPage('launcher-stays');
   const launcher = await ctx.context.newPage();
   await gotoLauncher(launcher, ctx);
-  await launcher.waitForSelector('#query');
+  await launcher.waitForSelector('.launcher-query');
   await launcher.waitForTimeout(800);
   assert.equal(launcher.isClosed(), false);
   assert.equal((await paletteSnapshot(page))?.open ?? false, false);
@@ -109,7 +109,7 @@ test('the palette can open the start page (with Settings) on purpose', async () 
   const opened = ctx.context.waitForEvent('page');
   await page.keyboard.press('Enter');
   const launcher = await opened;
-  await launcher.waitForSelector('#settings');
+  await launcher.waitForSelector('.settings');
   await launcher.waitForTimeout(800);
   assert.equal(launcher.isClosed(), false, 'not handed off to the palette');
   await launcher.close();
