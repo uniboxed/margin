@@ -147,6 +147,15 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
   - The extension keeps the live state (tab ids, `tabSpace`, open tabs per window), which only exists in the running browser, and a cached copy of the app's data, so it works from Safari's first page before the app has connected (first-paint layout, restoring which tab belongs to which space).
   - The app is the truth; the extension's copy is a cache. A wiped cache is refilled from the app as soon as they link. Changes made while unlinked are queued with their time and sent on link; the app merges them (last write wins per item, with deletions kept as tombstones so they don't come back).
   - Windows and Linux (no app): the extension's storage stays the main store, as today.
+- **Margin's tabs (Tirth, 2026-11-04):** Margin's sidebar is the real list of tabs, kept in the app's data with the rest; a browser tab is just the open form of a Margin tab (Arc's model). Each Margin tab has its own lasting id, address, title, icon, space, place in the list, last use, and, while it's open, the browser window and tab it's open in.
+  - **Safari has a tab Margin doesn't know:** it's added to the window's active space, as today.
+  - **Margin has a tab Safari doesn't (not open):** it stays in its space in the sidebar, drawn as not open, and opens in the window where it's clicked (`tabs.create` with its address), then is linked to that tab. A space's not-open tabs show in every window showing that space.
+  - **What keeps a tab, and what removes it:** a tab closed on its own (its × in Margin, ⌘W, Safari's tab bar: `tabs.onRemoved` with `isWindowClosing` false, not started by Margin) goes to the archive, as today. Tabs lost because a whole window closed, Safari quit or crashed, or Safari didn't restore them stay as not-open tabs in their spaces.
+  - **After a relaunch:** restored browser tabs are matched to Margin's tabs by address and order (today's `restore.js` logic); unmatched Margin tabs stay not open.
+  - **Auto-archive** still moves tabs unused for `archiveAfterHours` into the archive, open or not.
+  - Reopening a not-open tab starts fresh: its Back history and scroll position are gone, as when reopening any closed tab.
+  - **Sleeping tabs become closed-but-kept (Tirth, 2026-11-04):** after `sleepAfterHours` unused, Margin closes the browser tab itself and keeps it as a not-open Margin tab, with the same skips as now (the tab in front, playing sound, drafts, the never-sleep list). This frees all of its memory (no sleep page left running) and leaves nothing broken if Margin is removed. Chrome and Edge keep `tabs.discard`, which keeps the tab and its history at no memory cost. The sleep page (`extension/sleep/`, the sleep-page parts of `shared/sleep.js`, the copy moves and Back guards) goes in Phase 3; the choice of which tabs sleep and the draft check stay.
+  - Windows and Linux: the same Margin tabs, in the extension's storage.
 - Reuse from `feat/native-panel`: ExtensionLink, LinkSocket, LinkMessage, StateMirror, PanelWebView (own scheme), PanelController (minus the private calls), AppDelegate, the Xcode scripts. Not reused: SkyLight (private), AXSafari (Accessibility), Safari-sidebar Eligibility.
 
 ## 7. The extension, changed
@@ -212,6 +221,7 @@ Each phase ends with the unit tests passing, the in-page fallback working in Chr
 
 ### Phase 2: Margin.app, full screen, Safari
 
+- Margin's tabs (section 6): lasting tab records in the app, not-open tabs in the sidebar, opening on click, the keep and archive rules, matching after a relaunch.
 - The app's data store (section 6, "Where data lives"): per-profile files, the extension's cache and its refill, queued changes and the merge, and moving today's extension data into the app the first time they link.
 - The app grows out of `app/safari/`: link, mirror, window tracking, per-window windows, the theme drawn around the page, app shortcuts, palette focus.
 - The extension's background becomes a page in Safari; the link replaces in-page UI when the app is there.
@@ -247,6 +257,7 @@ Decided (Tirth, 2026-11-04):
 - Mac users without Margin.app are asked to install it; no in-page UI on the Mac.
 - Ask, mini player and favorites: future features (section 13).
 - Bundling the canvas fonts (Archivo Black, Space Grotesk, Press Start 2P, Pixelify Sans; all SIL Open Font License) in the themes: OK.
+- Margin's sidebar is the real list of tabs: tabs lost when a window closes or Safari quits, crashes or doesn't restore them stay in their spaces as not-open tabs and reopen on click; a tab closed on its own goes to the archive. Sleeping tabs are closed and kept the same way (Chrome and Edge keep `tabs.discard`), replacing the sleep page.
 - On the Mac, Margin.app owns the lasting data; the extension keeps the live tab state and a cache (section 6).
 - User themes: imported from a file for now; a theme gallery comes later (section 13). Importing shows no extra note about what a theme can see.
 
