@@ -438,9 +438,9 @@ firstSync.then(async () => {
   await appLink.start({ route, settings: s?.settings ?? null });
 }).catch((err) => console.warn('[margin] link', err?.message ?? err));
 api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && isOwner()) appLink.onStorage(changes); });
-api.windows?.onCreated?.addListener(() => appLink.windowsChanged());
+api.windows?.onCreated?.addListener((win) => appLink.windowCreated(win?.id));
 api.windows?.onRemoved?.addListener((windowId) => appLink.windowClosed(windowId));
-api.windows?.onFocusChanged?.addListener(() => appLink.windowsChanged());
+api.windows?.onFocusChanged?.addListener((windowId) => appLink.windowFocused(windowId));
 api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
 api.tabs.onActivated.addListener(() => appLink.windowsChanged());
 // A window's layout: its page in front gets its box at once (the rest read

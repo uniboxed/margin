@@ -325,6 +325,20 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
     assert.equal(win.list[0].width, 1440);
     await wait(120);
     assert.equal(app.received.filter((m) => m.k === 'windows').length, 1, 'only on a change');
+    // A window focused, one created: when the copy heard each, for the app to tell same-bounds windows apart.
+    api.windowList = [...api.windowList, { id: 8, left: 0, top: 0, width: 1440, height: 800, state: 'fullscreen', focused: false }];
+    link.windowCreated(8, 1_800_000_000_000);
+    const created = await app.next('windows', { from, test: (m) => m.list.length === 2 });
+    assert.equal(created.list[1].createdAt, 1_800_000_000_000);
+    assert.ok(!('focusedAt' in created.list[1]) && !('createdAt' in created.list[0]), 'only what was heard');
+    link.windowFocused(-1, 1_800_000_000_100); // WINDOW_ID_NONE: the browser left the front
+    link.windowFocused(7, 1_800_000_000_200);
+    const focused = await app.next('windows', { from, test: (m) => m.list[0].focusedAt != null });
+    assert.equal(focused.list[0].focusedAt, 1_800_000_000_200);
+    api.windowList = api.windowList.slice(0, 1);
+    const from2 = app.received.length;
+    link.windowClosed(8);
+    assert.equal((await app.next('windows', { from: from2, test: (m) => m.list.length === 1 })).list[0].focusedAt, 1_800_000_000_200);
     // The app's layout for window 7: kept for pages, the page in front told.
     const told = [];
     link.onLayout((w, l) => told.push([w, l.insets.left]));

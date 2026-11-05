@@ -675,8 +675,16 @@ export function createLink({
     return (wins ?? []).filter((w) => w?.id != null).map((w) => ({
       windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
       state: w.state ?? 'normal', focused: !!w.focused, activeTabId: (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null,
+      ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
+      ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
     }));
   }
+  // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
+  // app tells same-bounds windows apart by them (app/shell/WindowMatcher.swift). Not kept past the background.
+  /** @type {Map<number, number>} */
+  const focusedAt = new Map();
+  /** @type {Map<number, number>} */
+  const createdAt = new Map();
   // Sent when any of it changed; a closed window's layout goes too.
   async function windowsNow() {
     if (!ws || snapshotting) return;
@@ -883,7 +891,18 @@ export function createLink({
     },
     // Windows opened, closed, focused, moved, a tab shown: looked at now.
     windowsChanged: () => void windowsNow(),
+    // windows.onFocusChanged (WINDOW_ID_NONE: the browser left the front, nothing noted) and onCreated, with their time.
+    windowFocused(windowId, at = Date.now()) {
+      if (Number.isInteger(windowId) && windowId >= 0) focusedAt.set(windowId, at);
+      void windowsNow();
+    },
+    windowCreated(windowId, at = Date.now()) {
+      if (Number.isInteger(windowId) && windowId >= 0) createdAt.set(windowId, at);
+      void windowsNow();
+    },
     windowClosed(windowId) {
+      focusedAt.delete(windowId);
+      createdAt.delete(windowId);
       if (pageState.layouts[windowId]) {
         const layouts = { ...pageState.layouts };
         delete layouts[windowId];
