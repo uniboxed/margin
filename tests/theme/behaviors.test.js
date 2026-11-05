@@ -132,6 +132,27 @@ for (const [name, engine] of ENGINES) {
         assert.deepEqual(await sent(), [], 'peek sends nothing');
       });
 
+      await t.test('peek from positions only (Margin.app: its web view may not hear the pointer move): out at the edge, kept over the sidebar, hidden over the page', async () => {
+        await mount({ settings: { sidebarPinnedOpen: false }, container: 'document' });
+        assert.equal((await vm()).sidebar, 'hidden');
+        await ev(() => T.rtPointer(700, 450));
+        await ev(() => T.rtPointer(3, 450));
+        await wait(() => T.rtVmFull().sidebar === 'peek');
+        // Over the sidebar: kept out, with nothing but positions.
+        for (let i = 0; i < 6; i++) { await ev(() => T.rtPointer(120, 450)); await page.waitForTimeout(80); }
+        assert.equal((await vm()).sidebar, 'peek', 'still out while the pointer is over it');
+        await ev(() => T.rtPointer(900, 450));
+        await wait(() => T.rtVmFull().sidebar === 'hidden');
+        // Back at the edge, then over the sidebar before the delay: it stays out.
+        await ev(() => T.rtPointer(3, 450));
+        await wait(() => T.rtVmFull().sidebar === 'peek');
+        await ev(() => T.rtPointer(900, 450));
+        await ev(() => T.rtPointer(120, 450));
+        await page.waitForTimeout(450);
+        assert.equal((await vm()).sidebar, 'peek');
+        assert.deepEqual(await sent(), [], 'peek sends nothing');
+      });
+
       await t.test('resize: the handle drags the width within the theme\'s bounds, live layouts, saved as the theme\'s setting', async () => {
         await mount();
         await wait(() => T.rtLayoutsAll().length > 0);

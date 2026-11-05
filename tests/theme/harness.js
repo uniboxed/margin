@@ -403,6 +403,8 @@ Object.assign(T, {
   rtPerformed() { return rt.host.performed.map((p) => p.name); },
   rtUi() { const { palette, sidebar, editing, menu, editor, switchingTo } = rt.runtime.ui; return { palette, sidebar, editing, menu, editor, switchingTo }; },
   // --- The behaviors (tests/theme/behaviors.test.js) ---
+  rtPointer(x, y) { rt.runtime.pointer({ x, y }); },
+  rtPointerLeft(x, y) { rt.runtime.pointerLeft({ x, y }); },
   rtVmFull() { const vm = rt.runtime.vm; return { sidebar: vm.window.sidebar, space: vm.space.id, query: vm.palette.query, rows: vm.palette.rows.map((r) => r.title), rowIds: vm.palette.rows.map((r) => r.id), selected: vm.palette.selected, menu: vm.menu?.items.map((i) => i.label) ?? null, editing: vm.editing, editor: vm.editor && { name: vm.editor.name, color: vm.editor.color, deleteLabel: vm.editor.deleteLabel }, settings: vm.settings, folders: vm.space.folders.map((f) => [f.id, f.name, f.open]), spaceName: vm.space.name }; },
   // What has the focus in the UI.
   rtFocus() {

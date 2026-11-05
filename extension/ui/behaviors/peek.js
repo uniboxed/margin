@@ -121,10 +121,22 @@ export function installPeek(rt) {
         for (const z of zones) z.style.setProperty('--m-reveal-zone', px);
       }
     },
-    /** A position over the page (the host's). */
+    /**
+     * A position the host hands in: over the page (whose events the UI doesn't
+     * get), or, from Margin.app, anywhere over its overlay: the app is never
+     * the active app, so its web view may not hear the pointer moving at all
+     * (only clicks), and the positions it hands in are all peek has. Over the
+     * theme's own UI then, the same rules as its pointermove.
+     */
     pagePointer({ x, y }) {
       if (atEdge(x, y)) return void show();
-      if (reason === 'hover') scheduleHide();
+      const target = container.nodeType === 9 ? /** @type {Document} */ (container).elementFromPoint(x, y) : null;
+      if (target && view.behaviorAt(target, 'm-peek')) return void show();
+      const inside = !!target && view.owns(target) && target !== view.rootElement() && target !== view.pageEl;
+      if (reason === 'flash' && inside) { reason = 'hover'; stopFlash(); }
+      if (reason !== 'hover') return;
+      if (inside) stay();
+      else scheduleHide();
     },
     pageLeft({ x, y }) {
       if (reason === 'hover' && !atEdge(x, y)) scheduleHide();

@@ -445,11 +445,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         for overlay in overlays.values where overlay.isShown {
             let ignore = PassThrough.decide(at, overlay.slot, buttonsDown: down, ignoring: overlay.ignoring)
             overlay.setIgnoring(ignore)
-            // The page doesn't hear the pointer while it passes through: handed in (a hidden sidebar's reveal edge, peek's hiding).
+            // Handed in wherever it is over the overlay: while it passes through, the
+            // overlay's page doesn't hear it; elsewhere it may not either, since
+            // Margin.app is never the active app and its web view may hear only
+            // clicks (a hidden sidebar's reveal edge, keeping a peeked sidebar out).
             let frame = overlay.frameTopLeft
             if frame.contains(at) {
                 pointerInside.insert(overlay.key)
-                guard overlay.ignoring, !fromTrack, now - (lastPointerPush[overlay.key] ?? 0) >= options.pointerEvery else { continue }
+                guard !fromTrack, now - (lastPointerPush[overlay.key] ?? 0) >= options.pointerEvery else { continue }
                 lastPointerPush[overlay.key] = now
                 overlay.push(raw: #"{"type":"pointer","x":\#(Double(at.x - frame.minX)),"y":\#(Double(at.y - frame.minY))}"#)
             } else if pointerInside.remove(overlay.key) != nil {
