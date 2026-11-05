@@ -323,4 +323,11 @@ An instant Space switch needs private macOS calls, so native full screen can't b
 
 **Decided (Tirth, 2026-11-04):** Margin builds on **macOS's own full screen** now (Phase 2). Switching to another profile's space focuses that profile's full-screen window, with macOS's slide. **Margin's own screen-filling mode** (one window per profile, stacked; instant, clean profile switches; Margin covering the toolbar and the menu bar, handling the Dock and the green button) comes later, together with windowed mode (Phase 4), since it needs the same toolbar-covering work.
 
+**Instant switches with one private call, and a fallback (Tirth, 2026-11-05).** A demo (scratchpad `instant-space/`) switched between two full-screen Spaces with SkyLight's `SLSManagedDisplaySetCurrentSpace`, called from outside both apps: under 1 ms per call, a clean cut with no slide in the screen capture, no permission, system protection left on. Margin uses it for switching to a space whose window is in another full-screen Space (another profile), as the one exception to the no-private-calls rule:
+- The calls are looked up at run time (`dlsym`); if a symbol is missing, the instant switch is off for that launch.
+- After each call Margin checks, within about 100 ms, that the target window is on screen (the window server's list) and that the active Space changed. If not, it falls back to the normal switch (the profile's copy calls `windows.update({focused: true})`, with macOS's slide) and turns the instant switch off until the next launch, noting why in the diagnostics.
+- Keyboard focus always goes through the target profile's copy (`windows.update({focused: true})`) right after the instant switch, so typing lands in the new window.
+- A setting can turn the instant switch off.
+- To check when it's built (Phase 2): real browser-profile windows in full screen with Margin's overlay on top; the overlay stays drawn; typing lands in the new page; Mission Control, the three-finger swipe and the Dock still agree with what's on screen afterwards; behavior across a macOS update.
+
 Still to decide when it's built: how spaces map to profiles in the data (each Margin tab already belongs to a profile through its copy), and which profile's window a new space opens in.
