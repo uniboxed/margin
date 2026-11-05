@@ -373,6 +373,24 @@
 }
 .margin-sidebar .chip:hover { opacity: 0.85; background: var(--hover); }
 .margin-sidebar .chip.active { filter: none; opacity: 1; }
+/* Another browser profile's space: its profile's mark at the corner; a divider between profiles. */
+.margin-sidebar .chip .profile-mark {
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+  min-width: 11px;
+  height: 11px;
+  padding: 0 2px;
+  border-radius: 6px;
+  background: var(--profile-color, #636e72);
+  color: #fff;
+  font: 700 7.5px/11px -apple-system, system-ui, sans-serif;
+  text-align: center;
+  filter: none;
+}
+.margin-sidebar .chip.switching { opacity: 0.85; animation: margin-chip-switching 0.9s ease-in-out infinite alternate; }
+@keyframes margin-chip-switching { to { opacity: 0.4; } }
+.margin-sidebar .profile-divider { flex: none; width: 1px; height: 16px; margin: 0 2px; background: currentColor; opacity: 0.2; }
 
 /* The space editor (Margin's <m-editor>, the "space-editor" part), under the space's name. */
 .margin-sidebar .editor {

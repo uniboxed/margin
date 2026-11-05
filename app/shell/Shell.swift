@@ -67,6 +67,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var dataRoot: URL?
         var reconnectGrace: TimeInterval = 6 // a dropped link's overlays, kept dimmed (background/link.js GONE_MS)
         var bundleIds = ["safari": safariIdentifier, "chrome": "com.google.Chrome", "edge": "com.microsoft.edgemac"]
+        var profileSwitch = ProfileSwitch.Options() // switching to another profile's space (ProfileSwitch.swift)
+        var switchClock: SwitchClock = RunLoopClock()
     }
 
     final class Link {
@@ -84,11 +86,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     let link: SocketLink
     // The lasting data, one set per browser profile (DataSync.swift: the read API is there).
     let data: DataSync
-    private let windowSource: WindowSource
-    private let apps: AppWatch
+    let windowSource: WindowSource
+    let apps: AppWatch
     let shortcuts: AppShortcuts
     private let pointer = PointerWatch()
-    private let options: Options
+    let options: Options
     private lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot)
 
     private(set) var links: [String: Link] = [:]
@@ -108,6 +110,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // Their theme and keys meanwhile: the overlays stay drawn as the link comes back, not hidden until the theme is sent again.
     private var keptForReconnect: [String: (theme: String?, themeId: String?, keys: [String: [String]]?)] = [:]
 
+    // ---- spaces across profiles (ShellProfiles.swift) ----
+    var browserProfiles: [String: BrowserProfiles] = [:]
+    lazy var switcher = ProfileSwitch(world: self, clock: options.switchClock, options: options.profileSwitch)
+    var acrossSent: [WindowKey: String] = [:]
+    var acrossQueued = false
+    var spaceAim: [WindowKey: (key: SpaceKey, at: Double)] = [:] // the next/previous keys, chained
+    var switchNotice: JSONObject?
+
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
         self.windowSource = windows
@@ -118,6 +128,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataStore.appRoot)
         data = DataSync(store: DataStore(root: dataRoot))
         link.delegate = self
+        data.onChange = { [weak self] _, collections in
+            if collections.contains("spaces") || collections.contains("tabs") { self?.acrossSoon() }
+        }
         apps.onChange = { [weak self] why in self?.burst(why) }
         shortcuts.onCommand = { [weak self] command in self?.run(command) }
         pointer.onMove = { [weak self] at in self?.pointerMoved(at) }
@@ -162,6 +175,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
         apps.start()
         burst("linked: \(connection.key)")
+        acrossSoon()
+        switcher.tick()
     }
 
     func linkReceived(_ connection: LinkConnection, _ message: LinkMessage) {
@@ -172,6 +187,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             case .applied:
                 entry.resyncTimer?.invalidate()
                 forward(message, of: entry)
+                if case .windows = message { switcher.tick() }
+                if case .snapshot = message { acrossSoon() }
+                if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { acrossSoon() }
             case .gap(let expected, let got):
                 Diagnostics.warn("\(connection.key): number \(got) came, \(expected) was next: the state asked for again")
                 resync(entry)
@@ -234,6 +252,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
         if links.isEmpty { started = false }
         burst("link down: \(connection.key)")
+        acrossSoon()
+        switcher.tick()
     }
 
     // A profile's Margin tabs that aren't open: all of them for a profile not
@@ -402,6 +422,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         if overlays.values.contains(where: \.isShown) { pointer.start() } else { pointer.stop() }
         updateKeys(list: list, allPids: allPids)
         pointerMoved(PointerWatch.location, fromTrack: true)
+        if switcher.busy { switcher.tick() }
 
         // The next read.
         let now = Diagnostics.now()
@@ -480,6 +501,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlay.push(raw: #"{"type":"command","name":"palette"}"#)
         case .toggleSidebar:
             overlay.push(raw: #"{"type":"command","name":"toggle-sidebar"}"#)
+        case .nextSpace where spaceKey(overlay, 1), .prevSpace where spaceKey(overlay, -1):
+            return // across profiles (ShellProfiles.swift)
         case .nextTab, .prevTab, .nextSpace, .prevSpace:
             let windowId = overlay.key.windowId
             Task { _ = try? await entry.connection.request(type: "navigate", payload: ["action": command.rawValue, "windowId": windowId], windowId: windowId) }
@@ -500,6 +523,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var json = String((jsonString(head) ?? "{}").dropLast())
         json += #","state":"# + (entry.mirror.stateJSON().map { String(decoding: $0, as: UTF8.self) } ?? "null")
         json += #","windows":"# + (jsonString(entry.mirror.windows) ?? "[]")
+        json += #","across":"# + (acrossJSON(for: overlay) ?? "null")
         json += #","theme":"# + (entry.theme ?? "null") + "}"
         return json
     }
@@ -528,6 +552,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         switch name {
         case "window.fullscreen":
             Task { _ = try? await entry.connection.request(type: "toggleFullscreen", payload: ["windowId": overlay.key.windowId], windowId: overlay.key.windowId) }
+        case _ where name.hasPrefix("profile.") || name == "space.move":
+            performAcross(from: overlay, name, arg as? JSONObject ?? [:])
         default:
             Diagnostics.note("\(overlay.key): \(name) isn't the app's yet")
         }

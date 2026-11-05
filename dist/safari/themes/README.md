@@ -131,7 +131,17 @@ host. Immutable: rows that didn't change are the same objects.
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.
 - `space.tabCount` counts the space's tabs open in this window and its tabs
   that aren't open.
-- `spaces[]` (chips: `active` too), `tab` (the one in front), `archive[]`
+- `spaces[]` (chips: `active` too; `label`, the name, or "Name · Profile"
+  with several profiles), `profiles[]`, `profile` and `multiProfile`: with
+  Margin.app and spaces in several browser profiles, `spaces[]` is every
+  profile's spaces in one order; a chip's `profile` (`id`, `name`, `emoji`,
+  `color`, `initial`, `here`), `foreign` (another profile's: a click switches
+  to that profile's window, never `active`), `profileMark` (show its
+  profile's mark), `profileStart` (the first of a run of one profile after
+  another's: a divider) and `switching` (Margin.app is switching to it). With
+  one profile `profile` is null and the rest false, `profiles` empty. The
+  `editor` part also edits a profile (`editor.isProfile`: no delete).
+- `tab` (the one in front), `archive[]`
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
   `badge`, `emoji`, `icon`, `letter`, `color`, `selected`, `goes`; `hasRows`),
   `menu` (`label`, `items[]`: `id`, `label`, `separator`, `danger`,

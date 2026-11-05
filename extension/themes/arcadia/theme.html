@@ -127,7 +127,9 @@
       </button>
       <nav class="spaces" aria-label="Spaces">
         <m-for each="spaces" as="s">
-          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" title="{{s.name}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.emoji}}</button>
+          <!-- Several browser profiles (Margin.app): a thin divider where one profile's spaces give way to another's, and another profile's spaces carry its mark. -->
+          <m-if test="s.profileStart"><span class="profile-divider" aria-hidden="true"></span></m-if>
+          <button class="chip" data-space-id="{{s.id}}" m-class:active="{{s.active}}" m-class:foreign="{{s.foreign}}" m-class:switching="{{s.switching}}" title="{{s.label}}" m-attr:aria-label="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-style:--chip-color="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.emoji}}<m-if test="s.profileMark"><span class="profile-mark" m-style:--profile-color="{{s.profile.color}}" aria-hidden="true">{{s.profile.initial}}</span></m-if></button>
         </m-for>
       </nav>
       <button class="bar-button add" title="New folder or space" aria-label="New folder or space" m-action="menu.open" m-arg="add">

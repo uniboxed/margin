@@ -274,6 +274,30 @@ async function openKept(keptId, { windowId = null, deadline, sidebarTop } = {}) 
   return { shown: tab.id };
 }
 
+// A space's window made by Margin.app's switch: the tabs that were open with
+// its front tab open behind it, one at a time, in their old order, each as
+// its Margin tab (fresh: no Back history). One gone meanwhile is left.
+const SPACE_WINDOW_REST_MS = 1200;
+const SPACE_WINDOW_STEP_MS = 150;
+async function openKeptBehind(windowId, spaceId, keptIds) {
+  for (const keptId of keptIds) {
+    const s = await load();
+    const kept = s.keptTabs?.[keptId];
+    if (!kept || kept.spaceId !== spaceId) continue;
+    const win = await api.windows.get(windowId).catch(() => null);
+    if (!win) return; // the window closed meanwhile
+    markMarginOpening();
+    const tab = await api.tabs.create({ windowId, url: kept.url, active: false }).catch(() => null);
+    if (!tab) continue;
+    await mutate((st) => {
+      let next = M.upsertTab(st, tab, now());
+      if (next.keptTabs?.[keptId]) next = M.linkKept(next, tab.id, keptId, now());
+      return M.moveTab(next, tab.id, spaceId);
+    });
+    await new Promise((resolve) => setTimeout(resolve, SPACE_WINDOW_STEP_MS));
+  }
+}
+
 // Only within the window the switch was made from (another window's page
 // stays visible, so its own sidebar stays open there).
 async function carryIfSameWindow(tabId, why, windowId) {
@@ -896,6 +920,60 @@ export const handlers = {
   async newWindow() {
     markMarginOpening();
     await api.windows?.create({ focused: true });
+  },
+  // Margin.app switching to a space of this profile from another profile's
+  // window (app/shell/ProfileSwitch.swift, PLAN.md §15): this copy makes a
+  // window showing the space, in full screen. In front: the space's tab used
+  // last (it isn't open: the window the switch closed kept it); the others
+  // that were open with it in that window open behind once it's up. Answers
+  // the window's id and state (a browser that comes back with a normal
+  // window is asked again by the app).
+  /** @param {{ spaceId: string, fullscreen?: boolean }} message */
+  async openSpaceWindow({ spaceId, fullscreen = true }) {
+    const s = await load();
+    if (!s.spaces.some((sp) => sp.id === spaceId)) throw new Error('no such space');
+    const { front, rest } = M.spaceWindowTabs(s, spaceId);
+    markMarginOpening();
+    const props = { focused: true, ...(front ? { url: front.url } : {}) };
+    let win;
+    try {
+      win = await api.windows.create({ ...props, ...(fullscreen ? { state: 'fullscreen' } : {}) });
+    } catch {
+      win = await api.windows.create(props); // a browser that won't make it full screen at once
+    }
+    const tab = win.tabs?.[0] ?? (await api.tabs.query({ windowId: win.id }).catch(() => []))[0] ?? null;
+    await mutate((st) => {
+      let next = M.setActiveSpace(st, win.id, spaceId);
+      if (tab) {
+        next = M.upsertTab(next, tab, now());
+        if (front && next.keptTabs?.[front.id]) next = M.linkKept(next, tab.id, front.id, now());
+        next = M.moveTab(next, tab.id, spaceId);
+      }
+      return next;
+    });
+    if (rest.length) setTimeout(() => void openKeptBehind(win.id, spaceId, rest.map((k) => k.id)), SPACE_WINDOW_REST_MS);
+    return { windowId: win.id, state: win.state ?? 'normal', tabId: tab?.id ?? null };
+  },
+  // The app's switch closing this profile's window (its tabs are kept, not open: a window closing).
+  /** @param {{ windowId: number }} message */
+  async closeWindow({ windowId }) {
+    if (!Number.isInteger(windowId)) throw new Error('no window');
+    await api.windows.remove(windowId);
+  },
+  // The app's switch bringing a window of this profile to the front (macOS
+  // slides to its Space), in full screen if asked.
+  /** @param {{ windowId: number, fullscreen?: boolean }} message */
+  async focusWindow({ windowId, fullscreen = false }) {
+    if (!Number.isInteger(windowId)) throw new Error('no window');
+    const w = await api.windows.update(windowId, { focused: true, ...(fullscreen ? { state: 'fullscreen' } : {}) })
+      .catch(() => api.windows.update(windowId, { focused: true }));
+    return { windowId, state: w?.state ?? null };
+  },
+  // The order of this profile's spaces as the app's order across profiles has them.
+  /** @param {{ spaceIds: string[] }} message */
+  async orderSpaces({ spaceIds }) {
+    if (!Array.isArray(spaceIds)) return;
+    await mutate((s) => M.orderSpaces(s, spaceIds));
   },
   // ⌘T: Margin's new-tab page asks (newTabHandOff below), unless the
   // background already handed the tab off as it was created.

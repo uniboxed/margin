@@ -298,6 +298,14 @@ final class DataStore {
         return out
     }
 
+    // One small file written the same way (temporary file, fsync, .bak, rename), at once: browser.json.
+    nonisolated static func writeAtomically(_ data: Data, to url: URL) throws {
+        let dir = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try writeFile(data, to: url, replace: true)
+        syncDirectory(dir)
+    }
+
     nonisolated struct WriteError: Error, CustomStringConvertible {
         let description: String
     }

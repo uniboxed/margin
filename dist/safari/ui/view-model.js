@@ -23,6 +23,7 @@ import { rankPalette } from '../shared/search.js';
 import { checkIconUrl } from './sanitize.js';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.js';
 import { settingsFields } from './settings-form.js';
+import { isMultiProfile, orderedSpaces, profileOf } from '../shared/across.js';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -41,7 +42,7 @@ export const VM_VERSION = 1;
  *   palette?: { open?: boolean, query?: string, selected?: number, newTab?: boolean },
  *   menu?: { kind: string, id?: string | number | null, x?: number, y?: number, confirming?: string | null } | null,
  *   editing?: { kind: 'space' | 'folder', id: string } | null,
- *   editor?: { spaceId: string, name: string, emoji: string, color: string, confirmDelete?: boolean } | null,
+ *   editor?: { spaceId?: string, profileId?: string, name: string, emoji: string, color: string, confirmDelete?: boolean } | null,
  *   newTabPending?: boolean,
  *   notice?: { id: string, text: string, actions?: { id: string, label: string, primary?: boolean }[] } | null,
  *   prompt?: { id: string, title?: string, text: string, actions?: { id: string, label: string, primary?: boolean, danger?: boolean }[] } | null,
@@ -84,9 +85,23 @@ export const VM_VERSION = 1;
  *   kind: 'folder', isFolder: true, id: string, name: string, open: boolean,
  *   count: number, pins: PinRow[], shown: PinRow[], hasShown: boolean,
  * }} FolderRow
+ * A browser profile (several, with Margin.app: shared/across.js). `initial`:
+ * the letter its mark shows when it has no emoji; `here`: this window's.
+ * @typedef {{
+ *   id: string, name: string, emoji: string, color: string, initial: string,
+ *   here: boolean, linked: boolean, stale: boolean, spaces: number,
+ * }} ProfileChip
+ * A space's chip. With spaces in several profiles (`multiProfile`):
+ * `profile` is its profile, `foreign` true for another profile's (a click
+ * switches to that profile's window), `profileMark` where a theme shows the
+ * profile's mark on it (another profile's), `profileStart` on the first chip
+ * of a run of one profile after another's (a divider), `switching` while
+ * Margin.app is switching to it. One profile: `profile` null, the rest false.
  * @typedef {{
  *   id: string, name: string, emoji: string, color: string, abbr: string,
  *   index: number, active: boolean, tabCount: number,
+ *   profile: ProfileChip | null, foreign: boolean, profileMark: boolean, profileStart: boolean, switching: boolean,
+ *   label: string,
  * }} SpaceChip
  * @typedef {SpaceChip & {
  *   pinned: (FolderRow | PinRow)[], folders: FolderRow[], pins: PinRow[],
@@ -113,6 +128,7 @@ export const VM_VERSION = 1;
  *   colors: { id: string, color: string, selected: boolean }[],
  *   canDelete: boolean, cannotDelete: boolean, confirmDelete: boolean, deleteLabel: string, deleteTitle: string,
  *   labels: { title: string, name: string, emoji: string, colors: string, save: string, cancel: string },
+ *   isProfile: boolean,
  * }} EditorView
  *
  * A notice or a prompt: Margin's words, and its buttons' (each runs
@@ -143,6 +159,9 @@ export const VM_VERSION = 1;
  *   },
  *   space: SpaceView,
  *   spaces: SpaceChip[],
+ *   profiles: ProfileChip[],
+ *   profile: ProfileChip | null,
+ *   multiProfile: boolean,
  *   tab: ActiveTab | null,
  *   archive: ArchiveRow[],
  *   hasArchive: boolean,
@@ -177,6 +196,7 @@ function usable(raw) {
     activeSpaceByWindow: raw.activeSpaceByWindow && typeof raw.activeSpaceByWindow === 'object' ? raw.activeSpaceByWindow : {},
     favicons: raw.favicons && typeof raw.favicons === 'object' ? raw.favicons : {},
     settings: raw.settings && typeof raw.settings === 'object' ? raw.settings : {},
+    across: raw.across && typeof raw.across === 'object' ? raw.across : null,
   });
 }
 
@@ -276,8 +296,8 @@ function fresh(input) {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
-      spaces: [], tab: null, archive: [], hasArchive: false,
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, profile: null, foreign: false, profileMark: false, profileStart: false, switching: false, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
+      spaces: [], profiles: [], profile: null, multiProfile: false, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, editing, editor: null, notice, prompt, launcher: null, settingsForm: null, settings, platform,
     };
@@ -320,17 +340,37 @@ function fresh(input) {
     counts.set(s, (counts.get(s) ?? 0) + 1);
   }
   for (const k of Object.values(state.keptTabs ?? {})) counts.set(k.spaceId, (counts.get(k.spaceId) ?? 0) + 1);
-  const spaces = state.spaces.map((s, index) => ({
-    id: s.id,
-    name: s.name ?? '',
-    emoji: s.emoji ?? '',
-    color: s.color ?? '',
-    abbr: abbreviate(s.name),
-    index,
-    active: s.id === view.spaceId,
-    tabCount: counts.get(s.id) ?? 0,
-  }));
-  const chip = spaces.find((s) => s.active) ?? spaces[0];
+  // Every profile's spaces in the one order, with Margin.app and several
+  // profiles (shared/across.js); else this profile's, as always.
+  const across = /** @type {import('../shared/across.js').Across | null} */ (/** @type {any} */ (state).across ?? null);
+  const multiProfile = isMultiProfile(across);
+  const profiles = multiProfile && across ? across.profiles.filter((p) => p.spaces > 0 || p.here).map(profileChip) : [];
+  const chipOf = (id) => profiles.find((p) => p.id === id) ?? null;
+  const going = across?.switching?.space ? `${across.switching.profile}\u0000${across.switching.space}` : null;
+  const spaces = orderedSpaces(state.spaces, across).map((o, index, all) => {
+    const s = o.own ? o.space : o.entry;
+    const profileId = o.own ? across?.profile ?? '' : o.entry.profile;
+    const before = index > 0 ? all[index - 1] : null;
+    const beforeProfile = before ? (before.own ? across?.profile : before.entry.profile) : null;
+    return {
+      id: o.own ? s.id : o.key,
+      name: s.name ?? '',
+      emoji: s.emoji ?? '',
+      color: s.color ?? '',
+      abbr: abbreviate(s.name),
+      index,
+      active: o.own && s.id === view.spaceId,
+      tabCount: o.own ? counts.get(s.id) ?? 0 : Number(s.tabCount) || 0,
+      profile: multiProfile ? chipOf(profileId) : null,
+      foreign: multiProfile && !o.own,
+      profileMark: multiProfile && !o.own,
+      profileStart: multiProfile && before != null && beforeProfile !== profileId,
+      switching: !o.own && going === `${profileId}\u0000${s.id}`,
+      // Its name, and with several profiles its profile's: "Work · Profile 2".
+      label: multiProfile ? `${s.name ?? ''} · ${chipOf(profileId)?.name ?? ''}` : s.name ?? '',
+    };
+  });
+  const chip = spaces.find((s) => s.active) ?? spaces.find((s) => !s.foreign) ?? spaces[0];
   /** @type {SpaceView} */
   const space = {
     ...chip,
@@ -412,10 +452,27 @@ function fresh(input) {
     }
   }
 
-  // The space editor (ui/behaviors/editor.js), while a space is edited.
+  // The space editor (ui/behaviors/editor.js), while a space is edited; or a
+  // profile's name, emoji and color (the same part, `isProfile`).
   let editor = null;
-  const edited = ui.editor ? state.spaces.find((s) => s.id === ui.editor?.spaceId) : null;
-  if (ui.editor && edited) {
+  const edited = ui.editor?.spaceId != null ? state.spaces.find((s) => s.id === ui.editor?.spaceId) : null;
+  const editedProfile = ui.editor?.profileId != null ? profiles.find((p) => p.id === ui.editor?.profileId) : null;
+  if (ui.editor && editedProfile) {
+    editor = {
+      id: editedProfile.id,
+      name: String(ui.editor.name ?? ''),
+      emoji: String(ui.editor.emoji ?? ''),
+      color: String(ui.editor.color ?? ''),
+      colors: SPACE_COLORS.map((color, i) => ({ id: `c${i}`, color, selected: color === ui.editor?.color })),
+      canDelete: false,
+      cannotDelete: false,
+      confirmDelete: false,
+      deleteLabel: 'Delete',
+      deleteTitle: '',
+      labels: PROFILE_EDITOR_LABELS,
+      isProfile: true,
+    };
+  } else if (ui.editor && edited) {
     const only = state.spaces.length < 2;
     editor = {
       id: edited.id,
@@ -427,8 +484,9 @@ function fresh(input) {
       cannotDelete: only,
       confirmDelete: !!ui.editor.confirmDelete,
       deleteLabel: ui.editor.confirmDelete ? CONFIRM_LABEL : 'Delete',
-      deleteTitle: only ? 'The last space can’t be deleted' : 'Tabs and pins move to the first space',
+      deleteTitle: only ? (multiProfile ? 'A profile’s last space can’t be deleted' : 'The last space can’t be deleted') : 'Tabs and pins move to the first space',
       labels: EDITOR_LABELS,
+      isProfile: false,
     };
   }
 
@@ -457,12 +515,18 @@ function fresh(input) {
     settingsForm = { fields, hasFields: fields.length > 0 };
   }
 
+  // A switch to another profile that needs the person, or didn't work: said as a notice.
+  const acrossNotice = !notice && across?.switching?.notice ? { id: 'profile-switch', text: across.switching.notice, actions: [], hasActions: false } : null;
+
   return {
     version: VM_VERSION,
     ready: true,
     window: win,
     space,
     spaces,
+    profiles,
+    profile: profiles.find((p) => p.here) ?? null,
+    multiProfile,
     tab,
     archive,
     hasArchive: archive.length > 0,
@@ -470,12 +534,20 @@ function fresh(input) {
     menu,
     editing,
     editor,
-    notice,
+    notice: notice ?? acrossNotice,
     prompt,
     launcher,
     settingsForm,
     settings,
     platform,
+  };
+}
+
+/** A profile's chip. @param {import('../shared/across.js').AcrossProfile} p @returns {ProfileChip} */
+function profileChip(p) {
+  return {
+    id: p.id, name: p.name, emoji: p.emoji, color: p.color, initial: [...String(p.name ?? '').trim()][0]?.toUpperCase() ?? '',
+    here: p.here, linked: p.linked, stale: p.stale, spaces: p.spaces,
   };
 }
 
@@ -501,6 +573,7 @@ const LAUNCHER_ARCHIVE = 12;
 // theme binds rather than writes (ui/sanitize.js GUARDED_PARTS).
 const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New' });
 const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel' });
+const PROFILE_EDITOR_LABELS = Object.freeze({ title: 'Edit profile', name: 'Profile name', emoji: 'Profile emoji', colors: 'Profile color', save: 'Save', cancel: 'Cancel' });
 
 // Rows that go somewhere (Arcadia's arrow button).
 const GOES = new Set(['tab', 'pin', 'archive', 'go']);

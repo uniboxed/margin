@@ -6,6 +6,8 @@
 // too, some of which only they may run (BEHAVIOR_ONLY). Nothing here runs an
 // action: the runtime does, once it's checked against the state. An unknown
 // action or a bad argument is ignored and logged.
+import { foreignKey, foreignSpace, isMultiProfile } from '../shared/across.js';
+
 
 // What each action's argument must be:
 //   none   — no argument (anything given is refused);
@@ -17,6 +19,9 @@
 //   item   — an item of the open menu;  color — a swatch of the space editor;
 //   notice-item, prompt-item — a button of the notice or prompt shown;
 //   optional-space — nothing, or an existing space;
+//   profile — a browser profile Margin.app knows (state.across: several
+//            profiles; a space of another profile is a `space` too, by its
+//            chip's id: shared/across.js);
 //   menu   — a menu a button opens (MENUS);
 //   { field: kind, … } — an object with exactly those fields. Only behaviors
 //     and menus make one, never `m-arg`, which carries one value. A field's
@@ -53,6 +58,13 @@ export const ACTIONS = Object.freeze({
   'space.setName': Object.freeze({ space: 'space', name: 'name' }),
   'space.update': Object.freeze({ space: 'space', name: 'name', emoji: 'emoji', color: 'hex?' }),
   'space.delete': 'space',
+  // Across profiles (Margin.app, shared/across.js): a space one place along
+  // the whole order, a new space in a profile, a profile's name, emoji and
+  // color (the editor), and forgetting a profile that isn't open.
+  'space.move': Object.freeze({ space: 'space', dir: Object.freeze([-1, 1]) }),
+  'space.newIn': 'profile',
+  'profile.edit': 'profile',
+  'profile.forget': 'profile',
   'today.clear': 'none',
   'nav.back': 'none',
   'nav.forward': 'none',
@@ -95,6 +107,7 @@ export const isAction = (name) => typeof name === 'string' && Object.hasOwn(ACTI
 export const BEHAVIOR_ONLY = Object.freeze(new Set([
   ...Object.entries(ACTIONS).filter(([, kind]) => typeof kind === 'object').map(([name]) => name),
   'space.delete',
+  'profile.forget',
 ]));
 
 // The menus a button can open (`menu.open`): "add" is New Folder and New Space.
@@ -113,6 +126,7 @@ const isId = (value) => (typeof value === 'number' && Number.isSafeInteger(value
  * @typedef {{
  *   hasTab(id: any): boolean, hasSpace(id: any): boolean, hasFolder(id: any): boolean,
  *   hasPin(id: any): boolean, hasArchived(id: any): boolean, hasPaletteRow(id: any): boolean,
+ *   hasProfile?(id: any): boolean,
  *   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
  *   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
  *   hasSettingItem?(id: any): boolean,
@@ -137,6 +151,7 @@ function valueOk(kind, v, ctx) {
     case 'folder': return isId(v) && ctx.hasFolder(v);
     case 'pin': return isId(v) && ctx.hasPin(v);
     case 'pin-or-folder': return isId(v) && (ctx.hasPin(v) || ctx.hasFolder(v));
+    case 'profile': return typeof v === 'string' && !!ctx.hasProfile?.(v);
     case 'name': return plainText(v, NAME_MAX);
     case 'emoji': return plainText(v, EMOJI_MAX);
     case 'hex': return typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
@@ -166,6 +181,7 @@ export function checkAction(name, arg, ctx) {
     item: ctx.hasMenuItem ?? (() => false), color: ctx.hasColor ?? (() => false),
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
     'setting-item': ctx.hasSettingItem ?? (() => false),
+    profile: ctx.hasProfile ?? (() => false),
   };
   switch (kind) {
     case 'none':
@@ -175,6 +191,8 @@ export function checkAction(name, arg, ctx) {
       return isId(arg) && ctx.hasSpace(arg) ? { ok: true } : { ok: false, reason: `${name}: not a space` };
     case 'menu':
       return MENUS.includes(arg) ? { ok: true } : { ok: false, reason: `${name}: no such menu` };
+    case 'profile':
+      return typeof arg === 'string' && has.profile(arg) ? { ok: true } : { ok: false, reason: `${name}: no profile ${JSON.stringify(arg).slice(0, 80)}` };
     default:
       if (!isId(arg)) return { ok: false, reason: `${name}: bad ${kind} id` };
       return has[kind](arg) ? { ok: true } : { ok: false, reason: `${name}: no ${kind} ${JSON.stringify(arg)}` };
@@ -213,6 +231,10 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
   const kept = state?.keptTabs && typeof state.keptTabs === 'object' ? state.keptTabs : {};
   const ids = (list) => new Set((Array.isArray(list) ? list : []).map((x) => x?.id));
   const spaces = ids(state?.spaces);
+  // Another profile's spaces, by their chips' ids, and the profiles (Margin.app: shared/across.js).
+  const across = state?.across;
+  if (isMultiProfile(across)) for (const s of across.spaces) if (s.profile !== across.profile) spaces.add(foreignKey(s.profile, s.id));
+  const profiles = new Set(isMultiProfile(across) ? across.profiles.map((p) => p.id) : []);
   const folders = ids(state?.folders);
   const pins = ids(state?.pins);
   const archived = ids(state?.archive);
@@ -228,6 +250,7 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
     hasTab: (id) => (Number.isInteger(id) && Object.prototype.hasOwnProperty.call(tabs, id) && tabs[id]?.id === id)
       || (typeof id === 'string' && Object.prototype.hasOwnProperty.call(kept, id) && kept[id]?.id === id),
     hasSpace: (id) => spaces.has(id),
+    hasProfile: (id) => profiles.has(id),
     hasFolder: (id) => folders.has(id),
     hasPin: (id) => pins.has(id),
     hasArchived: (id) => archived.has(id),
@@ -309,7 +332,7 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
 // open on the page that comes to the front (Arcadia's openOverPage, the
 // background's carryOpen).
 
-/** @typedef {{ kind: 'send', type: string, payload: Record<string, any> } | { kind: 'local', name: string, arg?: any } | { kind: 'host', name: string, fallback?: { type: string, payload: Record<string, any> } } | { kind: 'none', reason: string }} ActionRequest */
+/** @typedef {{ kind: 'send', type: string, payload: Record<string, any> } | { kind: 'local', name: string, arg?: any } | { kind: 'host', name: string, arg?: any, fallback?: { type: string, payload: Record<string, any> } } | { kind: 'none', reason: string }} ActionRequest */
 
 /** Each action's way out, as the table above says. */
 export const ACTION_MAP = Object.freeze({
@@ -338,6 +361,10 @@ export const ACTION_MAP = Object.freeze({
   'space.setName': 'renameSpace',
   'space.update': 'renameSpace',
   'space.delete': 'deleteSpace',
+  'space.move': 'host | orderSpaces',
+  'space.newIn': 'createSpace | host',
+  'profile.edit': 'local',
+  'profile.forget': 'host',
   'today.clear': 'clearToday',
   'nav.back': 'host | goBack',
   'nav.forward': 'host | goForward',
@@ -367,7 +394,7 @@ export const ACTION_MAP = Object.freeze({
   'settings.run': 'local',
 });
 
-const LOCAL = new Set(['space.edit', 'space.rename', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color',
+const LOCAL = new Set(['space.edit', 'space.rename', 'profile.edit', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color',
   'notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more', 'settings.run']);
 const NAV = { 'nav.back': 'goBack', 'nav.forward': 'goForward', 'nav.reload': 'reload' };
 
@@ -420,6 +447,23 @@ export function requestFor(name, arg, { state, ui, platform, row }) {
     case 'space.setName': return send('renameSpace', { spaceId: arg.space, name: arg.name });
     case 'space.update': return send('renameSpace', { spaceId: arg.space, name: arg.name, emoji: arg.emoji, color: arg.color });
     case 'space.delete': return send('deleteSpace', { spaceId: arg });
+    case 'space.move': {
+      // Several profiles: the app's whole order. One: this profile's own spaces, one place along.
+      const across = state?.across;
+      if (isMultiProfile(across)) {
+        const foreign = foreignSpace(across, arg.space);
+        return { kind: 'host', name: 'space.move', arg: { profile: foreign?.profile ?? across.profile, space: foreign?.id ?? arg.space, dir: arg.dir } };
+      }
+      const ids = (state?.spaces ?? []).map((s) => s.id);
+      const at = ids.indexOf(arg.space);
+      const to = at + arg.dir;
+      if (at < 0 || to < 0 || to >= ids.length) return { kind: 'none', reason: 'space.move: at the end' };
+      [ids[at], ids[to]] = [ids[to], ids[at]];
+      return send('orderSpaces', { spaceIds: ids });
+    }
+    case 'space.newIn':
+      return arg === state?.across?.profile ? send('createSpace', { windowId }) : { kind: 'host', name: 'profile.space', arg: { profile: arg, type: 'createSpace', payload: {} } };
+    case 'profile.forget': return { kind: 'host', name: 'profile.forget', arg: { profile: arg } };
     case 'today.clear': return send('clearToday', { windowId });
     case 'nav.back': case 'nav.forward': case 'nav.reload':
       return { kind: 'host', name, fallback: { type: NAV[name], payload: { windowId } } };

@@ -276,6 +276,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   function switchSpace(spaceId, payload) {
     const state = host.getState();
     if (!state) return null;
+    // Another profile's space: Margin.app's switch (its window opens, this one closes): nothing shown here meanwhile.
+    if (String(spaceId).startsWith('x:')) return host.send('setSpace', payload);
     const own = ownTab() ?? frontTab();
     const shownSpace = vm?.space?.id;
     if (state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return host.send('setSpace', payload);
@@ -333,7 +335,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'send': return sent(name, arg, request.type, request.payload);
       case 'local': return local(request.name, request.arg, info);
       case 'host': {
-        if (host.perform?.(request.name)) return true;
+        if (host.perform?.(request.name, request.arg)) return true;
         if (request.fallback) { void host.send(request.fallback.type, request.fallback.payload); return true; }
         return refuse(name, arg, `${request.name}: this host can't`);
       }
@@ -408,6 +410,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         onPalette?.('close');
         return true;
       case 'space.edit': return behaviors.editor.open(arg);
+      case 'profile.edit': return behaviors.editor.openProfile(arg);
       case 'space.rename': return behaviors.rename.start('space', arg);
       case 'folder.rename': return behaviors.rename.start('folder', arg);
       case 'menu.open': {
