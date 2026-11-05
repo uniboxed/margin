@@ -1,0 +1,40 @@
+// Reads a theme package from disk (Node), for the unit tests and for handing
+// to a browser page as base64.
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildSync } from 'esbuild';
+
+export const NEO = fileURLToPath(new URL('../../extension/themes/neo-brutalism/', import.meta.url));
+
+const PACKAGE_FILES = new Set(['theme.json', 'theme.html', 'theme.css']);
+
+/** @returns {{ manifest: string, html: string, css: string, files: Record<string, Buffer> }} */
+export function readTheme(dir = NEO) {
+  const files = {};
+  const walk = (sub) => {
+    for (const name of readdirSync(join(dir, sub))) {
+      const rel = sub ? `${sub}/${name}` : name;
+      if (statSync(join(dir, rel)).isDirectory()) walk(rel);
+      else if (!PACKAGE_FILES.has(rel) && name !== '.DS_Store') files[rel] = readFileSync(join(dir, rel));
+    }
+  };
+  walk('');
+  const text = (f) => readFileSync(join(dir, f), 'utf8');
+  return { manifest: text('theme.json'), html: text('theme.html'), css: text('theme.css'), files };
+}
+
+// The same, with the files as base64 strings (for page.evaluate).
+export function themeForPage(dir = NEO) {
+  const t = readTheme(dir);
+  return { ...t, files: Object.fromEntries(Object.entries(t.files).map(([k, v]) => [k, v.toString('base64')])) };
+}
+
+// The browser harness (tests/theme/harness.js) as one plain script.
+export function harnessScript() {
+  const out = buildSync({
+    entryPoints: [fileURLToPath(new URL('./harness.js', import.meta.url))],
+    bundle: true, format: 'iife', write: false, target: 'es2022', logLevel: 'silent',
+  });
+  return out.outputFiles[0].text;
+}
