@@ -262,9 +262,11 @@ function onMessage(msg) {
       switch (msg.msg?.type) {
         // A switch the copy makes in this window (a next/previous key), and its end: the
         // highlight moves at once and stays until the state has that tab in front (ui/runtime.js
-        // switchTo), so it never goes back to the tab left while the state catches up.
+        // switchTo), so it never goes back to the tab left while the state catches up. A key's
+        // switch has its `switchId`: only that one's word settles it (a press it replaced, or
+        // one before it in the chain, says it's done too).
         case 'switching':
-          if (Number.isInteger(msg.msg.tabId)) runtime?.switchTo(msg.msg.tabId, copySwitches.begin(msg.msg.tabId));
+          if (Number.isInteger(msg.msg.tabId)) runtime?.switchTo(msg.msg.tabId, copySwitches.begin(msg.msg.tabId, msg.msg.switchId ?? null));
           return;
         case 'switch-done': copySwitches.settle(msg.msg); return;
         // Didn't happen: the highlight goes, and why is said (when the copy says why).

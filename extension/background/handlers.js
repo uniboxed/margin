@@ -835,7 +835,8 @@ export const handlers = {
   async navigate({ action }, sender) {
     if (!NAV_ACTIONS.has(action)) return false;
     const windowId = sender.tab?.windowId ?? (await api.windows?.getLastFocused())?.id;
-    void navigate(action, 'page', windowId);
+    // The app's key and a page's keydown are two sources (one press heard by both counts once).
+    void navigate(action, sender.app ? 'app' : 'page', windowId);
     return true;
   },
   /** @param {{ patch: Record<string, any> }} message */

@@ -196,6 +196,33 @@ export const SCENARIOS = {
     { op: 'appHeard', label: 'and its line in the log', has: ['extension log', '(next-tab', 'delta out +'], timeout: 5000 },
     noPageErrors('B'),
   ],
+  // Fast presses of the app's next-tab key (Margin 2: Safari reliability).
+  // The sidebar lists the newest tab first, so from A the key goes to E, D,
+  // C, B. The first press goes to Safari at once (E, whose update Safari is
+  // slow to carry out); the next three come while it's with Safari, and only
+  // the newest of them (B) is sent after it: D and C never come into view.
+  // The overlay hears each press's 'switching' at once and a word for each.
+  'fast-keys': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, { op: 'open', name: 'C', url: '/p/C' },
+    { op: 'open', name: 'D', url: '/p/D' }, { op: 'open', name: 'E', url: '/p/E' },
+    wait(800), { op: 'install' }, linked('A'), ready('B'), ready('C'), ready('D'), ready('E'),
+    ...['B', 'C', 'D', 'E'].map((tab) => ({ op: 'page', in: tab, js: "window.__seen = []; document.addEventListener('visibilitychange', () => __seen.push(document.visibilityState)); return 'counting'" })),
+    { op: 'stall', name: 'E', ms: 600 },
+    { op: 'appMark' },
+    { op: 'appReq', type: 'navigate', payload: { action: 'next-tab' } },
+    { op: 'appReq', type: 'navigate', payload: { action: 'next-tab' } },
+    { op: 'appReq', type: 'navigate', payload: { action: 'next-tab' } },
+    { op: 'appReq', type: 'navigate', payload: { action: 'next-tab' } },
+    { op: 'appHeard', label: 'the overlay told at the press, with the press\'s switch', has: ['"ev":"push"', '"type":"switching"', '"switchId":"nav-'], timeout: 400 },
+    checkPage('B', 'B, the last press\'s tab, is shown', '!document.hidden', 5000),
+    { op: 'appHeard', label: 'its word: done', has: ['"ev":"push"', '"type":"switch-done"', '"switchId":"nav-'], timeout: 4000 },
+    wait(500),
+    checkPage('E', 'E, the first press\'s, came into view once and went', `JSON.stringify(__seen) === '["visible","hidden"]'`),
+    checkPage('D', 'D, passed, never came into view', '__seen.length === 0 && document.hidden'),
+    checkPage('C', 'C, passed, never came into view', '__seen.length === 0 && document.hidden'),
+    checkPage('B', 'B came into view once', `JSON.stringify(__seen) === '["visible"]'`),
+    noPageErrors('B'),
+  ],
   // Margin updated while a page with a typed draft is open: the new copy
   // takes over, the draft stays, nothing of either copy's in the page.
   update: [

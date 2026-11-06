@@ -31,32 +31,47 @@ const MAX_MS = 7000 + SWITCH_GRACE_MS + 500; // a switch request's 7 s, and its 
 const UNASKED_MAX_MS = 2500;
 
 // A UI that stays on screen through the switch (Margin.app's overlay) can't
-// end on being hidden: with `landed`, a switch that went through ends once
-// the state it draws from says the tab is in front (`settle()`, called as the
-// state changes), or the state says another tab came to the front since,
-// or SETTLE_MS after its answer at the latest. Ending on the answer alone
-// (GRACE_MS later, or at once for the background's word) let the highlight
-// go back to the tab left until the state caught up, then forward again: a
-// flicker (Tirth, 2026-11-05; Phase 2 step 8).
+// end on being hidden: given `front` (the tab in front as the state it draws
+// from has it), a switch that went through ends once that state says the tab
+// is in front (`settle()`, called as the state changes), or the state says
+// another tab came to the front since, or SETTLE_MS after its answer at the
+// latest. Ending on the answer alone (GRACE_MS later, or at once for the
+// background's word) let the highlight go back to the tab left until the
+// state caught up, then forward again: a flicker (Tirth, 2026-11-05; Phase 2
+// step 8).
 export const SETTLE_MS = 2000;
+// A chain of switches (keys pressed fast, a click during them): one switch
+// starts while the state still has an earlier one's tab in front, or hasn't
+// even had it yet (the copy's 'switching' goes out at the press, the state's
+// change only after Safari's storage event, 100 ms and more later). The chain
+// keeps the tab in front as it started (`from`) and the tabs it went past
+// (`passed`); the state with one of those in front is the chain's own echo,
+// not the user going elsewhere, so the highlight stays on the newest target
+// and never goes back. A passed tab is taken as an echo for PASSED_MS after
+// the state first has it in front: past that, it's a real switch the chain
+// didn't make (Safari showing a neighbour after the target closed), and the
+// highlight follows it. A target the state had in front as it was asked for
+// (back to the chain's start, or to a passed tab already shown) has landed
+// only once the state has had another tab in front since: until then the
+// state's front is stale, and an earlier target's late change would show it.
+export const PASSED_MS = 300;
 
 /**
- * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document, landed?: ((tabId: number, from: number | null) => boolean | null) | null, front?: (() => number | null) | null }} options
+ * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document, front?: (() => number | null) | null }} options
  * `onChange`: redraw the sidebar with this target (null: none); `onSlow`: the pill on or off;
  * `failed`: whether a request's result means it didn't switch (default: never);
- * `front`: the tab in front as
- * the state has it, and `landed(tabId, from)`: true once the state has the
- * tab in front, null while it still has `from` (the tab in front at the
- * start), false once another tab came to the front (the switch is over
- * either way).
+ * `front`: the tab in front as the state has it, for a UI that stays on
+ * screen (above): with it, a switch ends as the state says it landed.
  */
-export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, landed = null, front = null }) {
+export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, front = null }) {
   /** @type {number | null} */
   let target = null;
   let current = null; // this start's token: an older start's request can't end a newer one
   let slow = false;
   /** @type {ReturnType<typeof setTimeout>[]} */
   let timers = [];
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let passedTimer = null;
   const clearTimers = () => {
     timers.forEach(clearTimeout);
     timers = [];
@@ -66,7 +81,19 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     slow = false;
     onSlow(false);
   };
+  /**
+   * The chain under way (`front` only): `from`, the tab in front as it
+   * started; `passed`, its earlier targets, each with when the state first
+   * had it in front since it was passed (null: not yet); `stale`, the state
+   * had this target in front as it was asked for; `other`, it has had
+   * another tab in front since.
+   * @type {{ from: number | null, passed: Map<number, number | null>, stale: boolean, other: boolean } | null}
+   */
+  let chain = null;
   function end() {
+    if (passedTimer) clearTimeout(passedTimer);
+    passedTimer = null;
+    chain = null;
     if (target == null) return;
     target = null;
     current = null;
@@ -74,21 +101,50 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     stopPill();
     onChange(null);
   }
-  let from = null; // the tab in front as the switch started (`landed`)
-  // The state changed: a switch it says is over ends (`landed`).
+  // What the state says of the switch under way: true, landed; null, not yet
+  // (the tab it started from, or the chain's own echo); false, another tab
+  // came to the front (over either way).
+  function landed() {
+    if (!front || !chain || target == null) return null;
+    const f = front();
+    if (f !== target) chain.other = true;
+    if (f === target) return !chain.stale || chain.other ? true : null;
+    if (f === chain.from) return null;
+    if (f != null && chain.passed.has(f)) {
+      const at = chain.passed.get(f) ?? Date.now();
+      if (chain.passed.get(f) == null) chain.passed.set(f, at);
+      const left = at + PASSED_MS - Date.now();
+      if (left <= 0) return false;
+      if (passedTimer) clearTimeout(passedTimer);
+      passedTimer = setTimeout(() => { passedTimer = null; settle(); }, left + 1);
+      return null;
+    }
+    return false;
+  }
+  // The state changed: a switch it says is over ends.
   function settle() {
-    if (target == null || !landed) return;
-    if (landed(target, from) != null) end();
+    if (target == null || !front) return;
+    if (landed() != null) end();
   }
   /** @param {number} tabId @param {Promise<unknown> | null} [request] the switch request, if this page made it */
   function start(tabId, request = null) {
     if (!Number.isInteger(tabId) || doc.hidden) return;
     clearTimers();
+    if (front) {
+      const f = front();
+      // A new chain only with no switch under way; else this one goes on, past its last target.
+      if (target == null || !chain) chain = { from: f, passed: new Map(), stale: false, other: false };
+      else if (target !== tabId && target !== chain.from && !chain.passed.has(target)) chain.passed.set(target, null);
+      chain.passed.delete(tabId);
+      chain.stale = f === tabId;
+      chain.other = false;
+    }
     const token = {};
     current = token;
+    const was = target;
     target = tabId;
-    from = front?.() ?? null;
-    onChange(tabId);
+    if (front) landed(); // (a passed tab in front now: its time starts)
+    if (was !== tabId) onChange(tabId);
     const mine = () => current === token;
     timers.push(setTimeout(() => {
       if (!mine() || slow) return;
@@ -107,8 +163,8 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
         if (failed(result)) return didFail();
         clearTimers();
         stopPill();
-        if (landed) {
-          if (landed(tabId, from) != null) return end();
+        if (front) {
+          if (landed() != null) return end();
           timers.push(setTimeout(() => mine() && end(), SETTLE_MS));
           return;
         }
@@ -117,10 +173,19 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
       didFail,
     );
   }
+  // A switch to the tab the state has in front (a click on its row, its
+  // space, the copy's key landing back on it): with a chain under way (and
+  // `front`), the chain goes on to it, so an earlier target's late change
+  // can't show that one; else a switch under way ends.
+  /** @param {number} tabId @param {Promise<unknown> | null} [request] */
+  function toFront(tabId, request = null) {
+    if (front && target != null && Number.isInteger(tabId)) start(tabId, request);
+    else end();
+  }
   // Hidden (another tab came to the front): over.
   doc.addEventListener('visibilitychange', () => { if (doc.hidden) end(); });
   doc.defaultView?.addEventListener('pagehide', end);
-  return { start, end, settle, target: () => target };
+  return { start, toFront, end, settle, target: () => target };
 }
 
 // A switch the background makes from this page (next/previous key): it says

@@ -424,9 +424,25 @@ export async function openTab({ windowId, url, spaceId, deadline, index, keptId 
 // that says which page it's for (`from`).
 // A switch under way, done or failed is told to Margin.app's overlay of the
 // window too, while it draws the UI there (it highlights the tab: app/overlay).
+// `app: false`: the page only (the overlay was told already: navigation.js
+// tells it at the key press, with no page to name).
+// A switch's `switchId`, `chain` and `seq` (a key's: navigation.js) go to the
+// overlay with it, so only that switch's word settles its highlight.
 const APP_TOLD = new Set(['switching', 'switch-done', 'switch-failed']);
-export const tellPage = (/** @type {{ id: number, windowId?: number }} */ page, /** @type {any} */ message) => {
-  if (APP_TOLD.has(message?.type) && appLink.linked()) appLink.push(page.windowId ?? message.windowId ?? null, { type: message.type, tabId: message.tabId, ...(message.type === 'switch-failed' && message.reason ? { reason: String(message.reason) } : {}) });
+/** @param {number | null} windowId @param {any} message */
+export function tellApp(windowId, message) {
+  if (!APP_TOLD.has(message?.type) || !appLink.linked()) return false;
+  const { type, tabId, switchId, chain, seq, reason } = message;
+  return appLink.push(windowId, {
+    type, tabId,
+    ...(switchId != null ? { switchId: String(switchId) } : {}),
+    ...(Number.isInteger(chain) ? { chain } : {}),
+    ...(Number.isInteger(seq) ? { seq } : {}),
+    ...(type === 'switch-failed' && reason ? { reason: String(reason) } : {}),
+  });
+}
+export const tellPage = (/** @type {{ id: number, windowId?: number }} */ page, /** @type {any} */ message, { app = true } = {}) => {
+  if (app) tellApp(page.windowId ?? message.windowId ?? null, message);
   return api.tabs.sendMessage(page.id, message).catch(() => api.runtime.sendMessage(message).catch(() => {}));
 };
 

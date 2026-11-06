@@ -393,7 +393,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     let fake = FakeRegistrar()
     let keys = AppShortcuts(registrar: fake)
     var ran: [AppCommand] = []
-    keys.onCommand = { ran.append($0) }
+    keys.onCommand = { command, _ in ran.append(command) }
     check("not held at first", fake.held.isEmpty && !keys.isActive)
     keys.set(active: true)
     check("held while active", fake.held.count == 6 && keys.isActive)
@@ -437,7 +437,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     let fake2 = FakeRegistrar()
     let held = AppShortcuts(registrar: fake2, keyRepeat: rep)
     var ran2: [AppCommand] = []
-    held.onCommand = { ran2.append($0) }
+    var repeats2: [Bool] = []
+    held.onCommand = { command, isRepeat in ran2.append(command); repeats2.append(isRepeat) }
     held.set(active: true)
     let down = fake2.held.first { $0.value == Combo.parse("Ctrl+Meta+ArrowDown") }!.key
     func runNext() { if !waits.isEmpty { waits.removeFirst().1() } }
@@ -445,6 +446,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("held: once at the press", ran2 == [.nextTab] && waits.first?.0 == 0.4)
     runNext(); runNext(); runNext()
     check("held: again after the delay, then at the rate", ran2.count == 4 && waits.first?.0 == 0.05)
+    check("held: the press is a press, the rest repeats", repeats2 == [false, true, true, true])
     fake2.onRelease?(down)
     runNext()
     check("let go: no more", ran2.count == 4)
@@ -463,6 +465,46 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("keys let go (another app in front): the repeat stops", ran2 == [.palette, .nextTab])
     keys.rebind(ShortcutSet.bindings)
     check("new keys while let go: none held", fake.held.isEmpty && !keys.isActive)
+
+    // A held ⌃⌘→ with several profiles: it repeats, but goes through the window's own
+    // profile's spaces only, so a press starts one switch of profile at most (Margin 2:
+    // Safari reliability). The shell's spaceKey with its chained aim, against the real key repeat.
+    let order = BrowserProfiles(browser: "safari", root: nil)
+    order.refresh(spaces: ["s-a": ["a1", "a2"], "s-b": ["b1"], "s-c": ["c1"]], linked: ["s-a", "s-b", "s-c"])
+    func holdNextSpace(from start: SpaceKey, ticks: Int) -> (repeats: Int, across: [SpaceKey], aim: SpaceKey) {
+      waits = []
+      mods = true
+      var aim = start
+      var across: [SpaceKey] = []
+      var repeated = 0
+      let reg = FakeRegistrar()
+      let shortcuts = AppShortcuts(registrar: reg, keyRepeat: rep)
+      shortcuts.onCommand = { command, isRepeat in
+        guard command == .nextSpace else { return }
+        if isRepeat { repeated += 1 }
+        switch order.spaceStep(from: aim, profile: "s-a", dir: 1, isRepeat: isRepeat) {
+        case .own(let next)?: aim = next
+        case .across(let next)?: aim = next; across.append(next)
+        case .held?, nil: break
+        }
+      }
+      shortcuts.set(active: true)
+      let right = reg.held.first { $0.value == Combo.parse("Ctrl+Meta+ArrowRight") }!.key
+      reg.onHit?(right)
+      for _ in 0..<ticks { runNext() }
+      reg.onRelease?(right)
+      shortcuts.set(active: false)
+      return (repeated, across, aim)
+    }
+    let a1 = SpaceKey(profile: "s-a", space: "a1"), a2 = SpaceKey(profile: "s-a", space: "a2"), b1 = SpaceKey(profile: "s-b", space: "b1")
+    let fromA1 = holdNextSpace(from: a1, ticks: 8)
+    check("held next space, several profiles: it repeats", fromA1.repeats == 8)
+    check("held next space from the profile's first: on to its own second, never into another profile", fromA1.across.isEmpty && fromA1.aim == a2, "\(fromA1)")
+    let fromA2 = holdNextSpace(from: a2, ticks: 8)
+    check("held next space from the profile's last: one switch of profile, at the press, none from the repeats", fromA2.across == [b1], "\(fromA2)")
+    check("space step: a press goes across; a repeat doesn't", order.spaceStep(from: a2, profile: "s-a", dir: 1, isRepeat: false) == .across(b1) && order.spaceStep(from: a2, profile: "s-a", dir: 1, isRepeat: true) == .held)
+    check("space step: on from another profile's aim (a switch under way): across, to that profile's next", order.spaceStep(from: b1, profile: "s-a", dir: 1, isRepeat: false) == .across(SpaceKey(profile: "s-c", space: "c1")))
+    check("space step: one profile with spaces: the copy's own navigate", BrowserProfiles(browser: "safari", root: nil).spaceStep(from: a1, profile: "s-a", dir: 1, isRepeat: false) == nil)
     // Carbon itself, with a key no one uses (held for a moment, never pressed).
     let carbon = CarbonHotKeys()
     let odd = Combo.parse("Ctrl+Alt+Shift+Meta+F19")!

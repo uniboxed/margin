@@ -8,7 +8,11 @@
 // copy as `navigate`), ⌘T, the palette (opened in the front window's overlay,
 // which then takes the typing: the app's own, with no round trip through the
 // browser), and the sidebar's show/hide key. A held tab or space key repeats
-// at the Mac's key repeat (a hot key fires only once per press). Which combinations is the
+// at the Mac's key repeat (a hot key fires only once per press; Tirth,
+// 2026-11-05), each repeat marked as one: the copy takes repeats like presses,
+// only one switch at a time with Safari, the newest waiting (navigation.js),
+// and a repeat never starts a switch to another profile's space (at most one
+// per press: ShellProfiles.swift spaceKey). Which combinations is the
 // copy's to say (its Settings shortcuts, and Safari's command keys: the
 // `keys` message, app/PROTOCOL.md); until it does, the defaults below.
 // Combinations are written as the extension's settings write them
@@ -173,7 +177,8 @@ final class CarbonHotKeys: HotKeyRegistrar {
 
 // Margin's keys, held while they should be (ShortcutSet.active) and let go otherwise.
 final class AppShortcuts {
-    var onCommand: ((AppCommand) -> Void)?
+    // A command, and whether it's a held key's repeat (not a press).
+    var onCommand: ((AppCommand, Bool) -> Void)?
     private let registrar: HotKeyRegistrar
     private(set) var bindings: [(Combo, AppCommand)]
     private(set) var isActive = false
@@ -194,7 +199,7 @@ final class AppShortcuts {
             guard let self, self.isActive, Int(id) < self.bindings.count else { return }
             let (combo, command) = self.bindings[Int(id)]
             self.stopRepeat()
-            self.onCommand?(command)
+            self.onCommand?(command, false)
             if command.repeats { self.startRepeat(id, combo, command) }
         }
         registrar.onRelease = { [weak self] id in
@@ -212,7 +217,7 @@ final class AppShortcuts {
                     self?.stopRepeat()
                     return
                 }
-                self.onCommand?(command)
+                self.onCommand?(command, true)
                 tick(max(0.02, self.keyRepeat.interval()))
             }
         }

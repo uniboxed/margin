@@ -232,7 +232,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         apps.onChange = { [weak self] why in
             if why == "Space changed" { self?.spaceDidChange() } else { self?.burst(why) }
         }
-        shortcuts.onCommand = { [weak self] command in self?.run(command) }
+        shortcuts.onCommand = { [weak self] command, isRepeat in self?.run(command, isRepeat: isRepeat) }
         pointer.onMove = { [weak self] at in self?.pointerMoved(at) }
         pointer.onPress = { [weak self] at in self?.pressed(at) }
     }
@@ -883,7 +883,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // ---- the keys ----
 
-    func run(_ command: AppCommand) {
+    // `isRepeat`: a held key's repeat (AppShortcuts), not a press.
+    func run(_ command: AppCommand, isRepeat: Bool = false) {
         guard let overlay = frontOverlay(), let entry = links[overlay.key.link] else { return }
         switch command {
         case .palette:
@@ -892,7 +893,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlay.push(raw: #"{"type":"command","name":"palette"}"#)
         case .toggleSidebar:
             overlay.push(raw: #"{"type":"command","name":"toggle-sidebar"}"#)
-        case .nextSpace where spaceKey(overlay, 1), .prevSpace where spaceKey(overlay, -1):
+        case .nextSpace where spaceKey(overlay, 1, isRepeat: isRepeat), .prevSpace where spaceKey(overlay, -1, isRepeat: isRepeat):
             return // across profiles (ShellProfiles.swift)
         case .nextTab, .prevTab, .nextSpace, .prevSpace:
             let windowId = overlay.key.windowId

@@ -161,8 +161,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   doc.addEventListener('visibilitychange', onVisibility);
   offs.push(() => doc.removeEventListener('visibilitychange', onVisibility));
   // A host whose UI stays on screen through a switch (Margin.app's overlay:
-  // `staysOnScreen`) keeps the highlight until the state has the tab in front
-  // (shared/switching.js `landed`); a page's ends as it's hidden.
+  // `staysOnScreen`) keeps the highlight until the state has the tab in front,
+  // through a chain of switches (shared/switching.js `front`); a page's ends
+  // as it's hidden.
   const stays = !!(/** @type {any} */ (host).staysOnScreen);
   const switching = createSwitching({
     onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id }); },
@@ -171,7 +172,6 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
     doc,
     front: stays ? frontTab : null,
-    landed: stays ? (id, from) => { const f = frontTab(); return f === id ? true : f === from ? null : false; } : null,
   });
 
   // The UI state with what the host knows (its window, tab and mode).
@@ -260,8 +260,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       : type === 'openPin' && state ? V.pinTabId(state, payload.pinId, payload.windowId ?? windowId())
       : opensNewTab(type, payload) ? NEW_TAB : null;
     if (Number.isInteger(target)) {
-      // Back to the tab in front: a switch away still under way ends.
-      if (target === frontTab()) switching.end();
+      // Back to the tab in front: a switch away still under way ends, or, in
+      // a chain on screen, goes on to it (shared/switching.js toFront).
+      if (target === frontTab()) switching.toFront(target, request);
       else if (target !== ui.switchingTo) switching.start(target, request);
     }
     return request;
@@ -291,9 +292,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     switchAskedAt = Date.now();
     const request = host.send('setSpace', payload);
     if (state.tabSpace?.[own] === spaceId) {
-      // Back to this page's own space: a switch away still pending stops.
-      if (ui.switchingTo != null && own != null) void host.send('activateTab', { tabId: own });
-      switching.end();
+      // Back to this page's own space: a switch away still pending stops (on
+      // screen, the chain goes on to the tab in front: shared/switching.js toFront).
+      const back = ui.switchingTo != null && own != null ? host.send('activateTab', { tabId: own }) : null;
+      if (back && stays) switching.toFront(own, back);
+      else switching.end();
     } else {
       const tab = recentTabOf(spaceId);
       if (tab && tab.id !== frontTab()) switching.start(tab.id, request);
@@ -604,12 +607,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
      * A switch the copy makes in this window (a next/previous key: its
      * 'switching' push), highlighted as one asked for here is; `request`
      * settles with its 'switch-done' or 'switch-failed' (shared/switching.js
-     * backgroundSwitches). A switch to the tab in front ends any under way.
+     * backgroundSwitches). A switch to the tab in front ends any under way,
+     * or goes on with a chain on screen (shared/switching.js toFront).
      * @param {number} tabId @param {Promise<any>} request
      */
     switchTo(tabId, request) {
       if (!Number.isInteger(tabId)) return;
-      if (tabId === frontTab()) switching.end();
+      if (tabId === frontTab()) switching.toFront(tabId, request);
       else switching.start(tabId, request);
     },
     /** The palette, opened by the host (its key, ⌘T's hand-off): `newTab`, to choose a new tab. */

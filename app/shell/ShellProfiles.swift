@@ -200,14 +200,23 @@ extension Shell: SwitchWorld {
 
     // ⌃⌘→/←: the next space in the whole order. True if it was handled here
     // (more than one profile has spaces); false: the copy's own `navigate`, as before.
-    func spaceKey(_ overlay: OverlayController, _ dir: Int) -> Bool {
+    // `isRepeat`: a held key's repeat, which goes through the window's own
+    // profile's spaces but stops before another profile's (BrowserProfiles.spaceStep).
+    func spaceKey(_ overlay: OverlayController, _ dir: Int, isRepeat: Bool = false) -> Bool {
         guard let entry = links[overlay.key.link] else { return false }
         let browser = entry.connection.hello.browser
         let profiles = profilesOf(browser)
-        guard Set(profiles.order.map(\.profile)).count > 1, let here = currentSpace(overlay),
-              let next = profiles.neighbour(of: here, dir) else { return false }
-        spaceAim[overlay.key] = (next, options.switchClock.now())
-        if next.profile == here.profile {
+        guard let here = currentSpace(overlay),
+              let step = profiles.spaceStep(from: here, profile: entry.connection.hello.profile, dir: dir, isRepeat: isRepeat) else { return false }
+        switch step {
+        case .held:
+            return true
+        case .across(let next):
+            spaceAim[overlay.key] = (next, options.switchClock.now())
+            startSwitch(from: overlay, to: next)
+            return true
+        case .own(let next):
+            spaceAim[overlay.key] = (next, options.switchClock.now())
             // The copy's own next space is this one: today's navigate (held keys and all); else straight to it.
             let own = profiles.order.filter { $0.profile == here.profile }
             let at = own.firstIndex(of: here) ?? 0
@@ -220,8 +229,6 @@ extension Shell: SwitchWorld {
             }
             return true
         }
-        startSwitch(from: overlay, to: next)
-        return true
     }
 
     func startSwitch(from overlay: OverlayController, to next: SpaceKey) {

@@ -10,11 +10,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// A key chain lasts NAV_CHAIN_MS (background/navigation.js): a test's presses start a chain of their own after it.
+const NAV_SETTLE_MS = 1600;
 const listeners = {};
 const event = (name) => ({ addListener: (fn) => (listeners[name] ??= []).push(fn), removeListener() {}, hasListener: () => false });
 const fire = (name, ...args) => Promise.all((listeners[name] ?? []).map((fn) => fn(...args)));
 const STORE_MS = 60;
-const fake = { tabs: new Map(), local: {}, session: {}, updates: [], windowUpdates: [], focused: true, hang: new Set(), changes: [] };
+// `updateMs`: how long Safari takes to carry out and answer a tabs.update (null: at once).
+const fake = { tabs: new Map(), local: {}, session: {}, updates: [], windowUpdates: [], focused: true, hang: new Set(), changes: [], updateMs: /** @type {null | (() => number)} */ (null) };
 const pick = (store, keys) => {
   if (keys == null) return structuredClone(store);
   const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
@@ -36,6 +39,7 @@ globalThis.chrome = {
       const tab = fake.tabs.get(id);
       if (!tab) throw new Error(`No tab with id: ${id}`);
       fake.updates.push({ id, ...props, at: Date.now() });
+      if (props.active && fake.updateMs) await sleep(fake.updateMs());
       if (props.active) {
         for (const t of fake.tabs.values()) if (t.windowId === tab.windowId) t.active = t.id === id;
         setTimeout(() => void fire('onActivated', { tabId: id, windowId: tab.windowId }), 3);
@@ -68,7 +72,8 @@ globalThis.chrome = {
     onChanged: event('sChanged'),
   },
 };
-for (const [id, i] of [[1, 0], [2, 1], [3, 2]]) fake.tabs.set(id, { id, windowId: 1, url: `https://t${id}.test/`, title: `T${id}`, index: i, active: id === 1, status: 'complete' });
+// Fourteen tabs, so a run of presses goes through them without coming round again.
+for (const [id, i] of Array.from({ length: 14 }, (_, n) => [n + 1, n])) fake.tabs.set(id, { id, windowId: 1, url: `https://t${id}.test/`, title: `T${id}`, index: i, active: id === 1, status: 'complete' });
 fake.session.alive = true;
 fake.session.since = 1;
 fake.session.startWorkAt = Date.now();
@@ -81,7 +86,14 @@ const { appLink } = await import('../extension/background/app-link.js');
 /** @type {any[]} */
 const pushed = [];
 appLink.linked = () => true;
-appLink.push = (windowId, msg) => { pushed.push({ windowId, msg, at: Date.now() }); return true; };
+/** @type {((entry: any) => void)[]} */
+const takers = []; // the overlays listening (overlay() below): each push reaches them as it's sent
+appLink.push = (windowId, msg) => {
+  const entry = { windowId, msg, at: Date.now() };
+  pushed.push(entry);
+  for (const take of [...takers]) take(entry);
+  return true;
+};
 const { switchLog } = await import('../extension/background/switch-log.js');
 const { fromStorage } = await import('../extension/shared/stored.js');
 const { createSwitching, backgroundSwitches } = await import('../extension/shared/switching.js');
@@ -114,26 +126,25 @@ function overlay() {
     onSlow: () => {},
     failed: (r) => r === undefined,
     front: storedFront,
-    landed: (id, from) => { const f = storedFront(); return f === id ? true : f === from ? null : false; },
   });
   const copy = backgroundSwitches();
-  const seen = pushed.length;
   const onState = (changes, area) => { if (area === 'local' && 'openTabs' in changes) { switching.settle(); draw(); } };
   listeners.sChanged.push(onState);
-  const timer = setInterval(() => {
-    while (pushedSeen < pushed.length) {
-      const { msg } = pushed[pushedSeen++];
-      if (msg.type === 'switching') switching.start(msg.tabId, copy.begin(msg.tabId));
-      else if (msg.type === 'switch-done' || msg.type === 'switch-failed') copy.settle(msg);
-      draw();
-    }
-  }, 1);
-  let pushedSeen = seen;
+  // Each push as the overlay takes it (app/overlay/overlay.js, ui/runtime.js switchTo), as it comes.
+  const take = ({ msg }) => {
+    if (msg.type === 'switching') {
+      const request = copy.begin(msg.tabId, msg.switchId ?? null);
+      if (msg.tabId === storedFront()) switching.toFront(msg.tabId, request);
+      else switching.start(msg.tabId, request);
+    } else if (msg.type === 'switch-done' || msg.type === 'switch-failed') copy.settle(msg);
+    draw();
+  };
+  takers.push(take);
   return {
     drawn,
     // A switch asked for in the overlay itself (a click on a row): highlighted at once, its request's answer.
     click: (id, request) => switching.start(id, request),
-    stop() { clearInterval(timer); listeners.sChanged.splice(listeners.sChanged.indexOf(onState), 1); },
+    stop() { listeners.sChanged.splice(listeners.sChanged.indexOf(onState), 1); takers.splice(takers.indexOf(take), 1); },
   };
 }
 
@@ -226,4 +237,156 @@ test('a click\'s switch, the whole way to the overlay, with Safari\'s storage sl
     o.stop();
   }
   assert.deepEqual(o.drawn, [1, 3], `highlight changes: ${JSON.stringify(o.drawn)}`);
+});
+
+// Fast presses (a held key, quick taps: Margin 2: Safari reliability). Each press's
+// target is worked out at the press and the overlay told at once; Safari gets one
+// switch at a time per window, the newest press waiting in place of older ones.
+const press = (sender) => handlers.navigate({ action: 'next-tab' }, sender);
+const V = await import('../extension/shared/view.js');
+// The tabs the next-tab key goes through from `id`, in the sidebar's order.
+const nextTabs = (id, n) => {
+  const s = fromStorage(fake.local);
+  const out = [];
+  for (let at = id; out.length < n;) out.push(at = V.cycleTab(s, 1, at, 1));
+  return out;
+};
+const APP = { app: true, tab: { windowId: 1 } };
+const PAGE = { tab: { id: 1, windowId: 1 } };
+
+test('fast presses: the overlay told at each press, Safari only the newest waiting, the highlight never going back, nothing after the last', async () => {
+  await inFront(1);
+  await sleep(NAV_SETTLE_MS);
+  const o = overlay();
+  pushed.length = 0;
+  fake.updates = [];
+  fake.updateMs = () => 120 + Math.random() * 60;
+  const presses = [];
+  const targets = nextTabs(1, 12);
+  const last = targets.at(-1);
+  try {
+    for (let i = 0; i < 12; i++) {
+      presses.push(Date.now());
+      await press(APP);
+      await sleep(83);
+    }
+    for (let i = 0; i < 300 && storedFront() !== last; i++) await sleep(10);
+    await sleep(400);
+  } finally {
+    fake.updateMs = null;
+    o.stop();
+  }
+  const switching = pushed.filter((p) => p.msg.type === 'switching');
+  assert.equal(new Set(targets).size, 12);
+  assert.deepEqual(switching.map((p) => p.msg.tabId), targets, 'one target per press, each the next');
+  switching.forEach((p, i) => assert.ok(p.at - presses[i] <= 5, `press ${i + 1}: told ${p.at - presses[i]} ms after it`));
+  assert.ok(new Set(switching.map((p) => p.msg.switchId)).size === 12, 'each press its own switch');
+  const span = presses.at(-1) - presses[0];
+  const updates = fake.updates.filter((u) => u.active).map((u) => u.id);
+  assert.ok(updates.length < 12 && updates.length <= 1 + Math.ceil(span / 120), `Safari asked ${updates.length} times: ${updates}`);
+  assert.equal(updates.at(-1), last, 'the last switch is the last press\'s');
+  const asked = updates.map((id) => targets.indexOf(id));
+  assert.ok(asked.every((n, i) => n >= 0 && (i === 0 || n > asked[i - 1])), `Safari sent forward only: ${updates}`);
+  assert.equal(front(), last);
+  assert.equal(storedFront(), last);
+  // The highlight: each change to a later press's target, ending on the last.
+  const order = [1, ...switching.map((p) => p.msg.tabId)];
+  const at = o.drawn.map((id) => order.indexOf(id));
+  assert.ok(at.every((n, i) => n >= 0 && (i === 0 || n > at[i - 1])), `the highlight went back: ${JSON.stringify(o.drawn)}`);
+  assert.equal(o.drawn.at(-1), last);
+  // Every 'switching' has its word, and nothing is pushed or asked once it's over.
+  const words = pushed.filter((p) => p.msg.type === 'switch-done' || p.msg.type === 'switch-failed').map((p) => p.msg.switchId);
+  assert.deepEqual(new Set(words), new Set(switching.map((p) => p.msg.switchId)));
+  const after = fake.updates.length;
+  await sleep(300);
+  assert.equal(fake.updates.length, after, 'nothing switching after the last press is handled');
+  assert.equal(front(), last);
+});
+
+test('fast presses: a press after the switches are done is never skipped, and goes at once', async () => {
+  await inFront(1);
+  await sleep(NAV_SETTLE_MS);
+  fake.updates = [];
+  const [a, b] = nextTabs(1, 2);
+  await press(APP);
+  for (let i = 0; i < 100 && storedFront() !== a; i++) await sleep(10);
+  await sleep(50);
+  const t = Date.now();
+  await press(APP);
+  await sleep(5);
+  assert.deepEqual(fake.updates.map((u) => u.id), [a, b]);
+  assert.ok(fake.updates[1].at - t <= 5, `asked ${fake.updates[1].at - t} ms after the press`);
+});
+
+test('one press heard twice (the app\'s key and the page\'s keydown) counts once', async () => {
+  await inFront(1);
+  await sleep(NAV_SETTLE_MS);
+  pushed.length = 0;
+  fake.updates = [];
+  const [a] = nextTabs(1, 1);
+  await press(APP);
+  await press(PAGE);
+  for (let i = 0; i < 100 && storedFront() !== a; i++) await sleep(10);
+  await sleep(100);
+  assert.deepEqual(pushed.filter((p) => p.msg.type === 'switching').map((p) => p.msg.tabId), [a]);
+  assert.deepEqual(fake.updates.map((u) => u.id), [a]);
+});
+
+test('the activations of a chain\'s own switches don\'t restart it: presses during a slow switch go on from the last target', async () => {
+  await inFront(1);
+  await sleep(NAV_SETTLE_MS);
+  fake.updates = [];
+  pushed.length = 0;
+  fake.updateMs = () => 150;
+  const three = nextTabs(1, 3);
+  try {
+    await press(APP);
+    await sleep(140);
+    await press(APP); // the first's activation (Margin's own) comes while this one waits
+    await sleep(40);
+    await press(APP);
+    for (let i = 0; i < 200 && storedFront() !== three[2]; i++) await sleep(10);
+    await sleep(100);
+  } finally {
+    fake.updateMs = null;
+  }
+  assert.deepEqual(pushed.filter((p) => p.msg.type === 'switching').map((p) => p.msg.tabId), three);
+  assert.equal(front(), three[2]);
+});
+
+// Held space keys repeat (Tirth, 2026-11-05: DECISIONS.md "after the merge"): the
+// same one at a time, the newest press waiting in place of older ones.
+test('fast space presses: one space switch with Safari at a time, the newest waiting, landing on the last press\'s space', async () => {
+  const M = await import('../extension/state/model.js');
+  await store.mutate((s) => {
+    let next = s;
+    for (const [n, id] of ['s-a', 's-b', 's-c'].entries()) {
+      next = M.createSpace(next, { id, name: id, emoji: '', color: '#888888' });
+      for (const tab of [2 + n * 2, 3 + n * 2]) next = M.moveTab(next, tab, id);
+    }
+    return next;
+  });
+  await inFront(1);
+  await sleep(NAV_SETTLE_MS);
+  const spaces = () => fromStorage(fake.local).spaces.map((x) => x.id);
+  const at = () => V.activeSpaceId(fromStorage(fake.local), 1);
+  const order = spaces();
+  assert.equal(order.length, 4);
+  const want = order[(order.indexOf(at()) + 6) % order.length];
+  fake.updates = [];
+  fake.updateMs = () => 150;
+  try {
+    for (let i = 0; i < 6; i++) {
+      await handlers.navigate({ action: 'next-space' }, APP);
+      await sleep(83);
+    }
+    for (let i = 0; i < 300 && at() !== want; i++) await sleep(10);
+    await sleep(400);
+  } finally {
+    fake.updateMs = null;
+  }
+  assert.equal(at(), want, 'the sixth press\'s space');
+  const shown = fromStorage(fake.local);
+  assert.equal(shown.tabSpace[front()], want, 'its tab in front');
+  assert.ok(fake.updates.length < 6, `Safari asked ${fake.updates.length} times`);
 });

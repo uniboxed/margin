@@ -179,11 +179,14 @@ function cycleTab(state, windowId, currentTabId, dir) {
   return next === currentTabId ? null : next;
 }
 
-// ⌘⌥→ / ⌘⌥←: the next/previous space for this window, wrapping around.
-/** @param {State} state */
-function cycleSpace(state, windowId, dir) {
+// ⌘⌥→ / ⌘⌥←: the next/previous space for this window, wrapping around;
+// `from`: the space to count from (a chain of presses: background/navigation.js),
+// else the window's.
+/** @param {State} state @param {string | null} [from] */
+function cycleSpace(state, windowId, dir, from = null) {
   if (state.spaces.length < 2) return null;
-  const at = state.spaces.findIndex((s) => s.id === activeSpaceId(state, windowId));
+  const base = from != null && state.spaces.some((s) => s.id === from) ? from : activeSpaceId(state, windowId);
+  const at = state.spaces.findIndex((s) => s.id === base);
   return state.spaces[(at + dir + state.spaces.length) % state.spaces.length].id;
 }
 

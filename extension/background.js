@@ -20,7 +20,7 @@ import * as newTabHint from './background/newtab-hint.js';
 import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { sleepIdle, sleepIdleThrottled } from './background/sleep.js';
-import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
+import { navActivated, navigate, NAV_ACTIONS } from './background/navigation.js';
 import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
 import { platform } from './shared/platform.js';
@@ -230,8 +230,9 @@ const activated = owned(async ({ tabId, windowId }, left) => {
   userSwitched(tabId, windowId);
   tabShown(tabId);
   shownAt.set(tabId, Date.now());
-  // The user switched tabs themselves: shortcut chaining restarts from here.
-  if (navTarget.get(windowId)?.tabId !== tabId) navTarget.delete(windowId);
+  // The user switched tabs themselves: shortcut chaining restarts from here
+  // (not for the activations of a chain's own switches: navigation.js).
+  navActivated(windowId, tabId);
   const closed = closedShown.get(windowId);
   closedShown.delete(windowId);
   mutate((s) => {

@@ -166,7 +166,7 @@ M1–M7 complete. Unit tests (`npm test`) and Chromium E2E tests (`npm run test:
 ## Tab and space shortcuts (2026-10-25)
 
 - **⌘⌥↓ / ⌘⌥↑:** next/previous tab in the order the sidebar shows them: open pinned tabs, then the space's tabs (`view.cycleTab`). Wraps at both ends. From a tab that isn't listed (e.g. one from another space), ↓ goes to the first and ↑ to the last. Holding the keys repeats.
-- **⌘⌥→ / ⌘⌥←:** next/previous space for this window (`view.cycleSpace`), wrapping. As SPEC defines spaces, this changes only what the sidebar shows; the current page stays. In auto-hide mode the sidebar peeks open for 1.2s so the new space is visible. Hovering or toggling during the peek keeps it open. Held keys don't repeat, so you don't fly through spaces.
+- **⌘⌥→ / ⌘⌥←:** next/previous space for this window (`view.cycleSpace`), wrapping. As SPEC defines spaces, this changes only what the sidebar shows; the current page stays. In auto-hide mode the sidebar peeks open for 1.2s so the new space is visible. Hovering or toggling during the peek keeps it open. Held keys don't repeat, so you don't fly through spaces. (The page's keys only since Margin 2: the app's held space keys repeat, Tirth 2026-11-05.)
 - **Handled** by one capture-phase `keydown` listener (`shortcuts.installNavigation`) in the content script and on the new-tab page. It calls `preventDefault` and `stopImmediatePropagation`, so sites don't get the arrow key. Like Arc, Margin takes these keys on every site, including in text fields. That shadows site shortcuts that use the same keys, e.g. multi-cursor ⌘⌥↑/↓ in web code editors. They're fixed (not a setting) for now. There's no `commands` fallback: Chrome only allows four suggested command keys, and two are already used.
 - **Needs a Safari check:** whether Safari or macOS reserves any of these combos before the page sees them (same as the Option+K check).
 
@@ -2258,7 +2258,7 @@ From `feat/margin-app` 1bf7a38, beside step 3b (the app's data store). The exten
 - **Safari's own profile id.** The extension handler now sends, in every reply, the id Safari gives the profile its copy runs in (`SFExtensionProfileKey`, `s-<uuid>`, `s-default` for the default profile). The link uses it instead of the id the copy made for itself, so when Safari wipes the extension's storage the copy finds its profile's data in the app again rather than starting a new profile there. A copy that had its own id before takes Safari's with nothing acked and no `rev`, so the app asks for or sends the whole set. Nothing has shipped with the old ids.
 - **No Dock icon at launch.** `make-xcode.sh` gives the app `LSUIElement`, so Margin.app started by the extension handler never flashes a Dock icon. Opened by the person, `AppDelegate` gives it its Dock icon and brings the set-up window forward.
 - **Quitting when idle.** With no copy linked and no set-up window for 10 minutes, Margin.app quits by itself; a browser starting again starts it again (`AppDelegate.checkIdle`).
-- **Keys held down repeat (Tirth, 2026-11-05).** A hot key fires once per press, so a held ⌥⌘↓ moved one tab and stopped. The app now repeats the tab and space keys while held, at the Mac's own key repeat delay and rate (`NSEvent.keyRepeatDelay`, `keyRepeatInterval`), until the hot key's release; it also stops if the combination's modifiers are no longer down (a missed release) or Margin's keys are let go (another app in front). The palette and sidebar keys don't repeat.
+- **Keys held down repeat (Tirth, 2026-11-05).** A hot key fires once per press, so a held ⌥⌘↓ moved one tab and stopped. The app now repeats the tab and space keys while held, at the Mac's own key repeat delay and rate (`NSEvent.keyRepeatDelay`, `keyRepeatInterval`), until the hot key's release; it also stops if the combination's modifiers are no longer down (a missed release) or Margin's keys are let go (another app in front). The palette and sidebar keys don't repeat. (Kept in "Margin 2: Safari reliability", 2026-11-06: repeats go through the copy one switch at a time, the newest waiting, and a held space key never starts a switch to another profile's space.)
 - **Peek from handed-in positions.** The app hands the pointer's position to the overlay's page wherever it is over the overlay, not only over the page slot, and peek's `pagePointer` applies its pointermove rules there too (the edge brings the sidebar out, over the sidebar keeps it, over the page hides it). So a hidden sidebar comes out at the edge whether or not the overlay's web view hears the pointer itself.
 - **One log for the link (2026-11-05).** The extension's link events (asking for the link, the app starting, no answer, a link that didn't open, linked, dropped, goodbye, a socket given up on) go, besides the background's console, through the lasting native port to the extension handler, which writes them to the system log next to Margin.app's own (subsystem `io.tirth.margin`; the app's are category `shell`, the extension's `extension`, each line with its profile). The same line isn't sent again within a minute. `npm run log:app` (`scripts/margin-log.sh [minutes] [--stream]`) shows both; nothing needs Safari's Web Inspector to see why a link failed.
 
@@ -2620,4 +2620,56 @@ On `fix/safari-reliability` (from `feat/margin-app` e3725be). Tirth's report fro
     - The old set is put away, with one Personal and the log line.
     - The switch back: the plist read first, then the old copy's hello gets the set at once.
   - `tests/signing-check.test.js`: the same team says nothing; unsigned over signed, and signed over unsigned, warn and ask, and no answer stops; another team: y goes on, n stops, `--yes` goes on without asking; nothing installed, or nothing from codesign, goes on.
+
+### Fast tab switching: one target per chain, a highlight that never goes back
+
+- **What Tirth saw.** "Tab switch still flickers when I'm moving through tabs fast through shortcuts." Part of that is the sidebar's highlight. The code let it go back to a tab already passed, and lag behind the keys. The page itself blinking as Safari swaps tabs is Safari's own, and this doesn't change it.
+- **Why the highlight went back.** The copy's `switching` push for the next press reached the overlay before the state change of the press before it. That change waits for Safari's storage event, 100 to 120 ms after the write, plus the link's 16 ms flush. Each `start()` took the state's tab in front as the switch's start, so when the late change for tab X came in during the switch to Y, X counted as "another tab came to the front", the switch ended, and the sidebar drew X until Y's change came: 1, 2, 3, 2, 3. A switch to the tab the state still had in front (next then back) called `end()` outright, and the passed tab's late change then drew it: 1, 2, 1, 2, 1. The same `end()` was in a click on that row and in a click on its space. real.txt has 7 of 66 chained key switches where the next press was asked 11 to 123 ms before the previous one's change went out. The log can't show whether each one bounced, since its lines close on the first delta after the activation.
+- **Why it lagged.** Every press waited its turn in one queue: the previous press's `tabs.update` and its answer, the window check, its state write, then a `tabs.query`, and only then its `switching` push. Each press was a whole switch, so a held key took Safari through every tab, one round trip each, and the highlight moved one tab per round trip.
+- **The chain (shared/switching.js).** With `front` (Margin.app's overlay), a switch keeps a chain record: `from`, the tab in front when no switch was under way, and `passed`, the earlier targets. `end()` clears it.
+  - The state with `from` or a passed tab in front is the chain's echo: the highlight stays on the newest target.
+  - A passed tab counts as an echo for 300 ms (`PASSED_MS`) after the state first has it in front. After that it's a real switch the chain didn't make, such as Safari showing a neighbour after the target closed, and the highlight follows it.
+  - A target the state already had in front when it was asked for (back to the chain's start, or to a passed tab already shown) lands only once the state has had another tab in front since then, or `SETTLE_MS` after its answer.
+  - Any other tab in front ends the switch at once, as before.
+  - New `toFront(tabId, request)`: with a chain under way it goes on to that tab; otherwise it ends. `ui/runtime.js` uses it in `switchTo` (the copy's push), for a click on the tab in front, and for a click on its own space. The `landed` option is gone; the logic lives in the module.
+- **The keys (background/navigation.js).**
+  - **The target at the press.** It's the chain's last target within `NAV_CHAIN_MS`, else the tab the cached state has in front. Only when neither is known (the state not synced yet, or a space switch ahead in the queue) is it worked out at its turn with `tabs.query`, as before.
+  - **The overlay is told at once.** `switching { tabId, switchId: 'nav-<seq>', chain, seq }` goes to the window's overlay through `appLink.push(windowId, …)` (`tabs.js tellApp`). It's within 5 ms of the press in the tests. The page in front is still told as the switch starts (`tellPage` with `app: false`).
+  - **One switch with Safari per window.** Presses that come meanwhile wait, and a newer one of the same kind replaces the one waiting (latest wins). The first press goes at once, and a press after the switches are done is never skipped.
+  - **Every `switching` gets a word with its `switchId`.** That's done or failed, and a press that was replaced gets a done. The overlay passes `switchId` to `backgroundSwitches().begin`, so only its own word settles it.
+  - **No waiting on the state write.** The activation's write is still made (a tab handed off is left out of Safari's own), but it isn't waited for.
+  - **A press back to the tab the last switch showed** sends nothing to Safari when Safari's last activation there was that tab.
+  - **Spaces work the same way.** One `showSpace` at a time per window, the newest waiting. Each target is worked out at the press, from the chain's last space (`cycleSpace` now takes `from`). The peek comes once the presses are done.
+  - **A chain's own activations don't restart it.** `background.js` calls `navActivated`, which leaves the chain alone for a tab one of its presses asked for (within 1.5 s) or a tab of a space it went to. Before, the activation of a tab still with Safari reset the chain while a newer press waited, so the next press counted from the wrong tab.
+  - **One press heard twice counts once.** The app's `navigate` used to come in as `page`, the same source as a page's keydown, so a press both heard counted twice. It's now `app`, and the 150 ms check drops the second.
+- **Held space keys.** Tirth's 2026-11-05 decision stands: they repeat. `AppShortcuts.onCommand` now says whether a call is a repeat, and `Shell.run` passes it to `spaceKey`. The new `BrowserProfiles.spaceStep` decides:
+  - a space of the window's own profile: `.own`;
+  - another profile's space, or on from an aim that's already another profile's: `.across` for a press, `.held` (nothing) for a repeat.
+
+  So a held ⌃⌘→ goes through the profile's own spaces and stops at the next profile, and a press starts at most one switch of profile and its full-screen windows. A press on from an aim that's already another profile's goes across to that profile's next space. Before, it sent the copy of the window still in front a `setSpace` for another profile's space. The page path still drops held space keys (`shared/shortcuts.js`, whose comment now says it's that path only).
+- **What it doesn't do.**
+  - Safari's own blink as it swaps the page isn't changed.
+  - A press still shows each tab Safari gets to while a key is held: with 120 to 180 ms updates, 12 presses 83 ms apart made 7 or 8 updates in the tests, not 12.
+  - The 300 ms for a passed tab is a guess. A Safari slower than that between two activations' changes would draw the passed tab for a moment.
+- **Tests.**
+  - `tests/switching.test.js`:
+    - a chain where the previous change comes after the next `switching` draws 1, 2, 3;
+    - next then back, with the word for 1 and a change that isn't the front's before 2's change, draws 1, 2, 1;
+    - a click on the start row during a key chain;
+    - the target closing with Safari showing a passed tab, followed within 300 ms;
+    - a tab outside the chain ends it at once;
+    - a new chain after one is over.
+  - `tests/switch-plain.test.js` (the real background, a fake Safari with 14 tabs):
+    - 12 presses 83 ms apart, with 120 to 180 ms updates, each told to the overlay within 5 ms. Safari got fewer than 12 updates, all forward and the last on the 12th target. The highlight never went back, every `switching` had its word, and nothing came after;
+    - a press after the switches are done goes at once;
+    - the app's key and a page's keydown for one press count once (this failed before: two switches);
+    - a chain's own activation doesn't restart it (this failed before, with the old reset: 14, 13, 13);
+    - six space presses land on the sixth press's space with fewer than six switches.
+  - Swift `tests.swift`:
+    - a held key marks its repeats;
+    - a held next-space with three profiles repeats eight times, from a profile's first space stays in that profile, and from its last makes one switch of profile;
+    - `spaceStep`'s cases.
+
+    With `.held` taken out, this gives six and seven switches.
+  - WebKit host `fast-keys`: four app key presses while Safari is slow with the first. The first and last tabs come into view once each, the two between never do, and each push has its `switchId`. Against the code before: the two between came into view, and no push had a `switchId`.
 

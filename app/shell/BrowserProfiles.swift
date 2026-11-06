@@ -391,6 +391,21 @@ final class BrowserProfiles {
         return order[(at + (dir < 0 ? -1 : 1) + order.count) % order.count]
     }
 
+    // What a space key does in a window of `profile` showing `here` (the chained
+    // aim, a moment after a key: ShellProfiles.swift spaceKey). nil: nothing
+    // across profiles (only one has spaces): the copy's own `navigate`. `.own`:
+    // a space of the window's own profile, from one of its own. `.across`: the
+    // cross-profile switch (another profile's space, or on from an aim that's
+    // already another profile's). `.held`: a held key's repeat that would go to
+    // another profile, or on from one: nothing, so a held ⌃⌘→ starts at most one
+    // switch of profile (and its full-screen windows) per press.
+    enum SpaceStep: Equatable { case own(SpaceKey), across(SpaceKey), held }
+    func spaceStep(from here: SpaceKey, profile: String, dir: Int, isRepeat: Bool) -> SpaceStep? {
+        guard Set(order.map(\.profile)).count > 1, let next = neighbour(of: here, dir) else { return nil }
+        if here.profile == profile, next.profile == profile { return .own(next) }
+        return isRepeat ? .held : .across(next)
+    }
+
     var profilesShown: [String] { profiles.filter { p in order.contains { $0.profile == p } } }
 
     // What an overlay of `profile`'s window draws besides its own state

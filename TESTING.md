@@ -675,6 +675,16 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] `npm run safari` as usual: no question about signing.
 - [ ] `npm run safari -- --unsigned`: it warns that the installed copy is signed with team VSNN5UW99X and this build would be unsigned, and asks `Build and install it anyway? [y/N]`. Press Return: it stops, and nothing is installed. Only if you want to try the carry-over: answer y, then turn on Safari › Settings › Developer › **Allow unsigned extensions** and Margin in Safari › Settings › Extensions, and open a Personal and a Test window. Their sidebars show the same spaces and tabs as before, not a fresh "Space 1". The log says `safari: s-8d454f81-… → s-… (Safari profile A8C3B0E9-…): data carried over (…)`, and the profile menus show one “Personal” and one “Test”. Then `npm run safari` (signed again, answer y): the log says `s-… → s-8d454f81-… (…): data carried over`, and the spaces are still yours. Send me the lines if a profile showed fresh spaces at any point.
 
+**Fast tab switching** (the highlight flicker while moving through tabs fast with the keys). A window with Margin's sidebar and 8 or more tabs in its space.
+- [ ] Hold ⌃⌘↓ (or your next-tab key) for about two seconds, then let go. The sidebar's highlight moves down steadily and never jumps back to a tab it already passed. It stops on the tab where you let go, and that tab is the one shown. Safari may show some of the tabs on the way, but not every one. Then hold ⌃⌘↑ the same way.
+- [ ] Tap ⌃⌘↓ quickly 5 or 6 times: the highlight keeps up with the taps and ends on the 5th or 6th tab down, with no step back at any point.
+- [ ] Tap ⌃⌘↓ then ⌃⌘↑ at once: the highlight goes down one and back, and stays on the tab you started from. It doesn't go down a second time.
+- [ ] Tap ⌃⌘↓ twice, then click the row of the tab you started from at once: the highlight ends there and stays there.
+- [ ] Single presses with pauses work as before: each one moves one tab, and none is skipped.
+- [ ] With three profiles that have spaces: hold ⌃⌘→. The highlight goes through the current profile's spaces and stops before the next profile's. At most one switch to another profile's window happens per press. Press ⌃⌘→ again (not held) and it goes on to the next profile's space as before.
+- [ ] One profile with several spaces: hold ⌃⌘→. The spaces go by one at a time and it stops where you let go.
+- [ ] The page itself may still blink as Safari swaps tabs: that's Safari's own drawing, and this doesn't change it. Tell me if the page shows a tab that the highlight isn't on, after you let go.
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.
