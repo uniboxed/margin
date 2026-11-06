@@ -758,6 +758,29 @@
 .palette [aria-selected="true"] .go-button { background: #f2f0e8; }
 .palette [aria-selected="true"] .arrow-icon { stroke: #1c1c1e; }
 
+/* ---- Switching to another profile (Margin's <m-switch-cover>) -------------- */
+
+/* Over the page card while Margin.app gets the other profile's window ready:
+   the frame's gray, lighter, and where it goes, centred. Under the sidebar
+   (earlier in the template), so one out over the page stays in front; the
+   launcher steps aside. No fade: it comes and goes with the switch. */
+.switch-cover-slot {
+  position: absolute;
+  top: var(--card-inset);
+  right: var(--card-inset);
+  bottom: var(--card-inset);
+  left: var(--card-left);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+}
+.arcadia.switching .launcher-slot { visibility: hidden; }
+.switch-cover { position: absolute; inset: 0; display: grid; place-items: center; background: #c9cacd; pointer-events: auto; }
+.switch-cover-card { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 80%; color: var(--fg); text-align: center; -webkit-font-smoothing: antialiased; }
+.switch-cover-mark { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--profile, var(--space-color)); color: #fff; font-size: 18px; font-weight: 700; }
+.switch-cover-mark.emoji { background: rgba(255, 255, 255, 0.6); font-size: 24px; }
+.switch-cover-text { font-size: 15px; font-weight: 600; }
+.switch-cover-space { font-size: 13px; color: var(--muted); }
+
 /* ---- The new-tab launcher (Margin's <m-launcher>, the "launcher" part) ------- */
 
 /* In the page card, beside the sidebar: the search field, the space's pins

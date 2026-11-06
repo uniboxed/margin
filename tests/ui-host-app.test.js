@@ -45,8 +45,9 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'cloudTabs', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs']);
+  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'cloudTabs', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'switchSettings']);
   assert.equal(features.cloudTabs, true, 'Safari: Settings offer "Show iCloud Tabs"');
+  assert.equal(features.switchSettings, null, 'one profile: no "Close windows to save memory" (tests/handoff-ui.test.js)');
   assert.equal(state.tabs[13].title, 'Docs');
   assert.equal(state.activeSpaceByWindow[W], 'home');
   assert.deepEqual(state.openTabsBy, { origin: 'safari-web-extension://margin', since: 1, synced: true });

@@ -15,7 +15,19 @@
 /**
  * @typedef {{ id: string, name: string, emoji: string, color: string, named: boolean, nameFrom: string, symbol: string, here: boolean, linked: boolean, stale: boolean, lastSeen: number, spaces: number }} AcrossProfile
  * @typedef {{ profile: string, id: string, name: string, emoji: string, color: string, tabCount: number }} AcrossSpace
- * @typedef {{ profile: string, profiles: AcrossProfile[], spaces: AcrossSpace[], switching: { profile?: string, space?: string, phase?: string, notice?: string } | null }} Across
+ * A window of a profile: its profile's id (no browser) and the copy's window id.
+ * @typedef {{ profile: string, windowId: number }} AcrossWindow
+ * The cross-profile switch under way (or its notice, after it): the target
+ * profile and space, the phase, the window it started from (`from`: its
+ * overlay draws the "switching" cover, ui/view-model.js switchCover), and a
+ * notice, either Margin's words as text (`notice`) or one of the switch's
+ * notice kinds (`noticeKind`, SWITCH_NOTICES, about profile `noticeProfile`),
+ * shown only in the overlay of `noticeIn` when it names one.
+ * @typedef {{ profile: string, space: string, phase: string, notice: string, noticeKind: string, noticeProfile: string, from: AcrossWindow | null, noticeIn: AcrossWindow | null }} AcrossSwitching
+ * The switch's settings, one for the whole browser (data/<browser>/browser.json
+ * `switching`): `closeWindows`, "Close windows to save memory" (app/HANDOFF.md §5).
+ * @typedef {{ closeWindows: boolean }} SwitchSettings
+ * @typedef {{ profile: string, profiles: AcrossProfile[], spaces: AcrossSpace[], switching: AcrossSwitching | null, switchSettings: SwitchSettings | null }} Across
  */
 
 const text = (v, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
@@ -36,9 +48,42 @@ export function acrossOf(raw) {
     profile: s.profile, id: s.id, name: text(s.name, 40), emoji: text(s.emoji, 8), color: COLOR.test(s.color) ? s.color : '', tabCount: Math.max(0, Number(s.tabCount) || 0),
   }));
   const sw = raw.switching && typeof raw.switching === 'object' ? raw.switching : null;
-  const switching = sw ? { profile: text(sw.profile, 64), space: text(sw.space, 64), phase: text(sw.phase, 32), notice: text(sw.notice, 400) } : null;
-  return { profile: raw.profile, profiles, spaces, switching };
+  const switching = sw ? {
+    profile: text(sw.profile, 64), space: text(sw.space, 64), phase: text(sw.phase, 32), notice: text(sw.notice, 400),
+    noticeKind: Object.hasOwn(SWITCH_NOTICES, sw.noticeKind) ? sw.noticeKind : '', noticeProfile: text(sw.noticeProfile, 64),
+    from: windowOf(sw.from), noticeIn: windowOf(sw.noticeIn),
+  } : null;
+  const ss = raw.switchSettings && typeof raw.switchSettings === 'object' ? raw.switchSettings : null;
+  const switchSettings = ss ? { closeWindows: ss.closeWindows === true } : null;
+  return { profile: raw.profile, profiles, spaces, switching, switchSettings };
 }
+
+/** A window as the app names it, or null. @returns {AcrossWindow | null} */
+function windowOf(w) {
+  if (!w || typeof w !== 'object' || typeof w.profile !== 'string' || !w.profile || !Number.isInteger(w.windowId)) return null;
+  return { profile: w.profile.slice(0, 64), windowId: w.windowId };
+}
+
+/** Whether `w` is this overlay's window: `profile` the overlay's own (`across.profile`), `windowId` its window. @param {AcrossWindow | null | undefined} w @param {string} profile @param {number | null | undefined} windowId */
+export const isWindow = (w, profile, windowId) => !!w && w.profile === profile && w.windowId === windowId;
+
+// The cross-profile switch's notices (app/HANDOFF.md §1.5, §1.9, §1.10, §4.5):
+// the app sends only a kind and the profile it's about (`noticeKind`,
+// `noticeProfile`), and these are the words, with that profile's name. A
+// button goes back to the app (ui/host-app.js perform 'notice': `switch.notice`).
+/** @type {Readonly<Record<string, { text: (profile: string) => string, actions: { id: string, label: string }[] }>>} */
+export const SWITCH_NOTICES = Object.freeze({
+  // Close mode kept the window it left: a page in it has unsent text (or didn't say). The person may close it.
+  'window-kept-draft': { text: (p) => `Kept ${p}’s window open: a page in it has text you haven’t sent.`, actions: [{ id: 'close', label: 'Close window' }] },
+  // A sheet or dialog is up on the window being left: no switch.
+  'dialog-open': { text: () => 'Finish the dialog in this window first.', actions: [] },
+  // The window being left has a windows call stuck in Safari: no switch.
+  'window-busy': { text: () => 'Safari is busy in this window.', actions: [] },
+  // A switch that gave up landed after all, with nothing done meanwhile.
+  'late-landing': { text: (p) => `Switched to ${p} (Safari was slow).`, actions: [] },
+  // The profile's copy didn't come back in time: its parked window was put back on the Desktop.
+  'window-on-desktop': { text: (p) => `${p}’s window is on the Desktop. Margin can’t reach its extension right now.`, actions: [] },
+});
 
 /** More than one profile has spaces shown: the UI says which profile each space is in. @param {Across | null | undefined} a */
 export const isMultiProfile = (a) => !!a && new Set(a.spaces.map((s) => s.profile)).size > 1;

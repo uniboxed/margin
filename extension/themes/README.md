@@ -69,11 +69,12 @@ Margin's slots:
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
 | `<m-cloud-tabs>` | the `cloud-tabs` part: iCloud Tabs, a live folder (put it above your new-tab row, outside any `m-drop`) | `cloudTabs` (Margin.app with Safari, "Show iCloud Tabs" on) |
+| `<m-switch-cover>` | the `switch-cover` part, over the page's place (Margin's own centred card if you have none) | `switchCover` (Margin.app, switching to another profile) |
 | `<m-window-controls>`, `<m-drag-region>` | the window's buttons and where a drag moves it (windowed mode) | always |
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`launcher`, `settings`, `cloud-tabs`, `window-controls`. What a theme puts inside a slot
+`launcher`, `settings`, `cloud-tabs`, `switch-cover`, `window-controls`. What a theme puts inside a slot
 is used when it has no part for it.
 
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
@@ -82,7 +83,32 @@ hole in Margin's window. Draw a ground around the page as the page card's
 spread `box-shadow` (Arcadia's frame), or mask it out (Neo-brutalism's dots).
 Margin lets the pointer through to the page over the slot, past your root's
 own background; what you draw over the page (a sidebar out over it, a
-dialog) still takes it.
+dialog) still takes it. Two of Margin's slots are the exceptions, and paint
+over the page's place on purpose: `<m-launcher>` (Margin's new-tab page)
+and `<m-switch-cover>`.
+
+**The switching cover.** While Margin.app switches to another profile, the
+window being left shows `<m-switch-cover>` over its page for a moment, then
+Margin hands the screen to the other profile's window. Put the slot where
+the page's place is, above the launcher and under a sidebar out over the
+page (so a swipe in the sidebar keeps going). Draw it solid: it hides the
+page while the screen may be still. No fade (it comes and goes with the
+switch). It's guarded: its words are Margin's (`{{switchCover.text}}`,
+"Switching to Work…", and the space, `{{switchCover.space.name}}`). With
+no part and nothing in the slot, Margin draws its own centred card, in
+`--m-cover-ground`, `--m-cover-text` and `--m-cover-card` if your root sets
+them.
+
+```html
+<m-switch-cover class="cover-slot"></m-switch-cover>
+<template m-part="switch-cover">
+  <div class="cover" role="status" m-attr:aria-label="{{switchCover.label}}">
+    <span class="mark" m-style:--profile="{{switchCover.profile.color}}">{{switchCover.profile.emoji}}</span>
+    <span>{{switchCover.text}}</span>
+    <m-if test="switchCover.hasSpace"><span>{{switchCover.space.emoji}} {{switchCover.space.name}}</span></m-if>
+  </div>
+</template>
+```
 
 **Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
 words only: it's guarded like a menu). Each field has one of `isNumber`,
@@ -225,6 +251,12 @@ host. Immutable: rows that didn't change are the same objects.
   `host`, `icon` (Margin's stored icon for the site, else `letter` on
   `color`), `pinned` (pinned on that device), `label` (for screen
   readers).
+- `switchCover` (null unless Margin.app is switching this window's view to
+  another profile, and only before the switch hands over): `text`
+  ("Switching to Work…"), `label` (with the space, for screen readers),
+  `profile` (`name`, `emoji`, `color`, `initial`, `symbol`: a `data:`
+  picture or null), `space` (`name`, `emoji`), `hasSpace`, and `id` (the
+  target, Margin's own).
 
 ## Actions
 
@@ -310,9 +342,9 @@ same rules again.
   `text-overflow`, `hyphenate-character` or `text-emphasis`. Its rules can
   reach Margin's own parts, so this is how they keep only Margin's words.
 - **Margin's own words**: inside the `menu`, `menu-item`, `notice`,
-  `prompt`, `space-editor`, `settings` and `cloud-tabs` parts, and the
-  `<m-menu>`, `<m-notice>`, `<m-editor>`, `<m-prompt>`, `<m-settings>`
-  and `<m-cloud-tabs>` slots, every
+  `prompt`, `space-editor`, `settings`, `cloud-tabs` and `switch-cover`
+  parts, and the `<m-menu>`, `<m-notice>`, `<m-editor>`, `<m-prompt>`,
+  `<m-settings>`, `<m-cloud-tabs>` and `<m-switch-cover>` slots, every
   visible text must come from
   Margin's bound labels (`{{i.label}}`, `{{notice.text}}`,
   `{{editor.labels.save}}`…). Text the theme writes there is removed and

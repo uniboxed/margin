@@ -1,10 +1,15 @@
-<div class="arcadia" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:loading="{{tab.loading}}" m-class:newtab="{{launcher}}" m-style:--space-color="{{space.color}}">
+<div class="arcadia" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:loading="{{tab.loading}}" m-class:newtab="{{launcher}}" m-class:switching="{{switchCover}}" m-style:--space-color="{{space.color}}">
 
   <!-- Rows carry their ids as data-* (for the tests that drive the sidebar).
        The page card: the browser's page goes in its box (Margin's <m-page>).
        Its huge spread shadow is the gray frame around it (Arc's), so the
        card itself stays clear. -->
   <m-page class="page"></m-page>
+
+  <!-- A switch to another profile getting ready (Margin.app): the page card
+       covered, saying where it goes. Under the sidebar, so a sidebar out over
+       the page stays usable; the launcher steps aside for it. -->
+  <m-switch-cover class="switch-cover-slot"></m-switch-cover>
 
   <!-- The hover zone at the left edge that brings a hidden sidebar out (m-peek). -->
   <div class="peek-zone" m-peek="left" aria-hidden="true"></div>
@@ -320,6 +325,21 @@
             <button m-class:primary="{{a.primary}}" m-class:danger="{{a.danger}}" m-action="prompt.run" m-arg="{{a.id}}">{{a.label}}</button>
           </m-for>
         </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- The switching cover: the frame's gray, lighter, with the profile's mark,
+       "Switching to Work…" and the space under it. No fade. -->
+  <template m-part="switch-cover">
+    <div class="switch-cover" role="status" m-attr:aria-label="{{switchCover.label}}">
+      <div class="switch-cover-card">
+        <m-if test="switchCover.profile.emoji">
+          <span class="switch-cover-mark emoji" aria-hidden="true">{{switchCover.profile.emoji}}</span>
+          <m-else><span class="switch-cover-mark" aria-hidden="true" m-style:--profile="{{switchCover.profile.color}}">{{switchCover.profile.initial}}</span></m-else>
+        </m-if>
+        <span class="switch-cover-text">{{switchCover.text}}</span>
+        <m-if test="switchCover.hasSpace"><span class="switch-cover-space">{{switchCover.space.emoji}} {{switchCover.space.name}}</span></m-if>
       </div>
     </div>
   </template>

@@ -1226,7 +1226,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         switch name {
         case "window.fullscreen":
             Task { _ = try? await entry.connection.request(type: "toggleFullscreen", payload: ["windowId": overlay.key.windowId], windowId: overlay.key.windowId) }
-        case _ where name.hasPrefix("profile.") || name == "space.move":
+        case _ where name.hasPrefix("profile.") || name.hasPrefix("switch.") || name == "space.move":
             performAcross(from: overlay, name, arg as? JSONObject ?? [:])
         case "cloud.access", "copyText":
             performCloud(name, arg)

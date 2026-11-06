@@ -21,7 +21,9 @@
 //   <template m-part>       a named part, shown in its slot (<m-menu>: `menu`,
 //                           <m-editor>: `space-editor`, <m-palette>: `palette`,
 //                           <m-notice>: `notice`, <m-launcher>: `launcher`,
-//                           <m-prompt>: `prompt`, <m-cloud-tabs>: `cloud-tabs`)
+//                           <m-prompt>: `prompt`, <m-cloud-tabs>: `cloud-tabs`,
+//                           <m-switch-cover>: `switch-cover`, which has
+//                           Margin's own default when a theme has none)
 //                           while the view model says so;
 //                           in Margin's menus, notices and prompts only bound
 //                           text shows (ui/sanitize.js GUARDED_PARTS)
@@ -35,9 +37,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-cloud-tabs{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-cloud-tabs,m-switch-cover{display:block}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-cloud-tabs:empty{display:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-cloud-tabs:empty,m-switch-cover:empty{display:none}
 template{display:none!important}
 [m-passthrough]{pointer-events:none!important}
 :where([m-passthrough])>:where(:not(m-page)){pointer-events:auto}
@@ -45,6 +47,10 @@ template{display:none!important}
 [m-away] :is(m-notice,m-prompt){visibility:visible!important}
 .m-drag-ghost{position:fixed!important;margin:0!important;pointer-events:none!important;z-index:2147483601!important;box-sizing:border-box}
 [contenteditable].m-renaming{cursor:text;user-select:text;-webkit-user-select:text}
+.m-cover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:inherit;background:var(--m-cover-ground,Canvas);color:var(--m-cover-text,CanvasText);pointer-events:auto}
+.m-cover-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 28px;border-radius:12px;background:var(--m-cover-card,transparent);font:500 15px/1.35 -apple-system,system-ui,sans-serif;text-align:center;max-width:80%}
+.m-cover-mark{font-size:28px;line-height:1}
+.m-cover-space{font-weight:400;font-size:13px;opacity:.7}
 `;
 
 // `m-passthrough` and `m-away` are the host's, on the theme's root (a theme
@@ -67,6 +73,24 @@ const SLOTS = {
   // iCloud Tabs' live folder: drawn whole by its part, so a theme can put it
   // anywhere (the sidebar now; later, perhaps, by the sidebar's toggle).
   'm-cloud-tabs': { part: 'cloud-tabs', test: ['cloudTabs'] },
+  // The "switching" cover, over the page (app/HANDOFF.md §7): with Margin's
+  // own default (DEFAULT_PARTS) when the theme has no part and nothing in it.
+  'm-switch-cover': { part: 'switch-cover', test: ['switchCover'] },
+};
+// Margin's own parts, for a theme that has none: the switching cover, a
+// centred card in the theme's colours (`--m-cover-ground`, `--m-cover-text`
+// and `--m-cover-card` if it sets them; else the system's). As the
+// sanitizer's tree (buildTemplate), every word bound.
+const tag = (name, attrs, ...children) => ({ type: 'el', ns: 'html', name, attrs, children });
+const hole = (path) => ({ type: 'text', value: `{{${path}}}` });
+const DEFAULT_PARTS = {
+  'switch-cover': { children: [
+    tag('div', [['class', 'm-cover'], ['role', 'status'], ['aria-label', '{{switchCover.label}}']],
+      tag('div', [['class', 'm-cover-card']],
+        tag('m-if', [['test', 'switchCover.profile.emoji']], tag('div', [['class', 'm-cover-mark'], ['aria-hidden', 'true']], hole('switchCover.profile.emoji'))),
+        tag('div', [['class', 'm-cover-text']], hole('switchCover.text')),
+        tag('m-if', [['test', 'switchCover.hasSpace']], tag('div', [['class', 'm-cover-space']], hole('switchCover.space.emoji'), { type: 'text', value: ' ' }, hole('switchCover.space.name'))))),
+  ] },
 };
 // Margin's own words (ui/sanitize.js GUARDED_PARTS): inside these parts and
 // slots, text the theme wrote is dropped again here, whatever tree the
@@ -449,7 +473,7 @@ class SlotBinding {
       if (this.shown) { this.block.remove(); this.shown = false; }
       return;
     }
-    const plan = this.view.parts.get(this.b.part) ?? this.b.fallback;
+    const plan = this.view.parts.get(this.b.part) ?? this.b.fallback ?? this.view.defaultPart(this.b.part);
     if (!plan) return;
     if (!this.block) this.block = new Block(plan, this.view, scope);
     else this.block.scope = scope;
@@ -606,6 +630,9 @@ export class View {
       }
     };
     findParts(template.childNodes);
+    this.ctx = ctx;
+    /** @type {Map<string, Plan | null>} Margin's own parts, compiled when first wanted */
+    this.defaults = new Map();
     this.plan = compileBlock([...template.childNodes], ctx, new Set());
     this.rootScope = { name: null, value: {}, parent: null };
     this.block = null;
@@ -616,6 +643,16 @@ export class View {
     const target = /** @type {any} */ (container);
     target.adoptedStyleSheets = [...target.adoptedStyleSheets.filter((s) => !sheets.includes(s)), ...sheets];
     this.sheets = sheets;
+  }
+
+  /** Margin's own part `name` (DEFAULT_PARTS), compiled once, guarded; null if it has none. @param {string} name */
+  defaultPart(name) {
+    if (!this.defaults.has(name)) {
+      const tree = DEFAULT_PARTS[name];
+      const frag = tree ? buildTemplate(tree, this.doc.implementation.createHTMLDocument('')) : null;
+      this.defaults.set(name, frag ? compileBlock([...frag.childNodes], { ...this.ctx, guard: true }, new Set()) : null);
+    }
+    return this.defaults.get(name) ?? null;
   }
 
   /** Renders the view model: the first call builds, later ones update. */

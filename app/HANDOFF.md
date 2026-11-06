@@ -557,6 +557,7 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
   - "Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept."
 - **How it reaches Margin.app:** `saveField` for this field returns `{ perform: 'switch.closeWindows', arg: { on } }`. `ShellProfiles.performAcross` writes `browser.json` and pushes `across` again.
 - **Turned on with windows parked:** each parked window is set normal (it already is), returned out of sight, and closed by its copy, drafts permitting (those stay parked, and the notice says so). Turned off: nothing changes until the next switch.
+- Built (WP10): `BrowserProfiles.closeWindows` and `setCloseWindows` (`browser.json` `switching.closeWindows`; a file without it reads as off), `across.switchSettings`, the `closeWindows` field (`CLOSE_WINDOWS_LABEL`), shown when `ui/host-app.js` gives the feature `switchSettings` (Safari, more than one profile in `across`, and the app said the value), and `performAcross`'s `switch.closeWindows`. Closing the parked windows when it's turned on is WP11's.
 
 ---
 
@@ -663,6 +664,17 @@ New, kept small:
   - close mode: §4.5;
   - more than one display: today's slide (0.4-0.65 s);
   - today's slide, for comparison: 0.4-0.65 s, with Margin's overlay gone for about 180 ms (`PLAN.md` §15).
+
+Built (WP10, the overlay's side): `switchCover` in `ui/view-model.js`, the guarded `<m-switch-cover>` slot and `switch-cover` part (`ui/sanitize.js`, `ui/render.js`, Margin's default in `DEFAULT_PARTS`), parts in Arcadia and Neo-brutalism, `extension/ui/switch-cover.js` (`createCoverWatch`, `answerFramed`) wired in `app/overlay/overlay.js`, and the switch's notices by kind; tests in `tests/handoff-ui.test.js`, `tests/theme/switch-cover.test.js` and `tools/app-tests/handoff-ui-tests.swift`. Settled on the way:
+
+- **Which overlay is A's:** `across.switching.from { profile, windowId }` (the switcher's `from`). The view model draws the cover only when that's its own profile and window. Today's machine has none of the three phases, so it never shows one.
+- **The cover's shape:** `{ id, text, label, hasSpace, profile: { name, emoji, color, initial, symbol }, space: { name, emoji } }`. `text` is "Switching to Work…", with Margin's words in the view model.
+- **Where the themes put it:** over the page card, above the launcher and under a sidebar out over the page (so a swipe there keeps going). Arcadia's slot comes before its sidebar, and its launcher hides while the cover is up (`.arcadia.switching`). Neo-brutalism's sits at `z-index: 3`, between its launcher (2) and its floating sidebar (8).
+- **Margin's default part** fills the slot of a theme with no part and nothing in it: a centred card in `--m-cover-ground`, `--m-cover-text` and `--m-cover-card`, else the system's colours. A theme with no `<m-switch-cover>` at all shows no cover, and the freeze starts at the 250 ms limit.
+- **`coverShown`** waits for two frames in a row with the cover in the DOM and no `m-swiping` or `m-settling` element. A swipe frame starts the count again, and a new target counts again. No frames (the overlay off screen): nothing is said.
+- **`framed`** is read at the frame after `shown`, so a `windows` list that came meanwhile counts. Only `fullscreen` or `windowed`.
+- **The notices** are kinds, not text: `across.switching.noticeKind` (`window-kept-draft`, `dialog-open`, `window-busy`, `late-landing`, `window-on-desktop`) and `noticeProfile`, with the words in `shared/across.js` `SWITCH_NOTICES`, and `noticeIn` for the one overlay they're for. The app's side is `SwitchNotice` and `Shell.showSwitchNotice` (`ShellProfiles.swift`): the kept window rides in the app's copy of the notice and never goes to an overlay. `window-kept-draft` stays 20 s, the others 8 s. Its **Close window** comes back as `switch.notice { kind, action: 'close' }`, and the app sends that window's copy `closeWindow` (no drafts check).
+- **Left for WP8/WP9:** raising these notices from the machine's events, and acting on `switch.coverShown` (`Shell.switchCoverShown` only checks it's A's overlay and logs it), and `framed` (`Overlay.swift` ignores the op until then).
 
 ---
 

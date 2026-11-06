@@ -50,6 +50,10 @@ export function currentShortcuts(settings) {
   };
 }
 
+// "Close windows to save memory" (app/HANDOFF.md §5): Margin.app's, for the
+// whole browser, so every profile's Settings show the same value.
+export const CLOSE_WINDOWS_LABEL = 'Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept.';
+
 /** Which engine searches use (always the browser's: shared/search.js). @param {any} settings @param {any} features */
 function engineText(settings, features) {
   const learned = settings?.safariSearch;
@@ -75,7 +79,8 @@ function field(f) {
 /**
  * The form's fields for the stored settings, the browser's features
  * (`features`: shared/platform.js's sleepTabs ('close', 'discard' or false), blockGestures,
- * marginFullscreen, newTabHint, search; cloudTabs, Margin.app's Safari windows) and the form's own state (`ui`: the
+ * marginFullscreen, newTabHint, search; cloudTabs, Margin.app's Safari windows; switchSettings, Margin.app's
+ * Safari windows with more than one profile: the switch's settings, `{ closeWindows }`) and the form's own state (`ui`: the
  * shortcut being recorded, the statuses).
  * @param {any} settings
  * @param {any} features
@@ -113,6 +118,8 @@ export function settingsFields(settings, features = {}, ui = {}) {
   list.push(field({ id: 'frameWhenHidden', kind: 'toggle', label: 'With the sidebar hidden, keep the frame around pages', checked: s.frameWhenHidden !== false }));
   // iCloud Tabs (Margin.app with Safari): the sidebar's live folder and the palette's section.
   if (f.cloudTabs) list.push(field({ id: 'showCloudTabs', kind: 'toggle', label: 'Show iCloud Tabs: the tabs open on your other devices, in the sidebar and the command palette', checked: s.showCloudTabs !== false }));
+  // Switching between profiles (Margin.app): the app's setting, not this copy's (saveField).
+  if (f.switchSettings) list.push(field({ id: 'closeWindows', kind: 'toggle', label: CLOSE_WINDOWS_LABEL, checked: f.switchSettings.closeWindows === true }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
   // Keyboard shortcuts: recorded by pressing them.
   list.push(field({ id: 'shortcuts', kind: 'group', label: 'Keyboard shortcuts' }));
@@ -130,9 +137,11 @@ export function settingsFields(settings, features = {}, ui = {}) {
 /**
  * What a change of a field asks the background for: `updateSettings`'s
  * patch, or null (not a field, a bad value, nothing to save). `value`: what
- * the input holds (text; a toggle's checked state as a boolean).
+ * the input holds (text; a toggle's checked state as a boolean). A setting
+ * that's Margin.app's (`closeWindows`) asks the host instead: `{ perform,
+ * arg }`, its `perform` (ui/host-app.js), which the app saves.
  * @param {SettingsField} f @param {any} value @param {any} settings
- * @returns {{ type: 'updateSettings', payload: { patch: Record<string, any> } } | null}
+ * @returns {{ type: 'updateSettings', payload: { patch: Record<string, any> } } | { perform: 'switch.closeWindows', arg: { on: boolean } } | null}
  */
 export function saveField(f, value, settings) {
   if (!f || f.disabled) return null;
@@ -144,7 +153,10 @@ export function saveField(f, value, settings) {
       const clamped = Math.min(n, f.max ?? Infinity);
       return patch({ [f.id]: f.step === 'any' ? clamped : Math.round(clamped) });
     }
-    case 'toggle': return typeof value === 'boolean' ? patch({ [f.id]: value }) : null;
+    case 'toggle':
+      if (typeof value !== 'boolean') return null;
+      if (f.id === 'closeWindows') return { perform: 'switch.closeWindows', arg: { on: value } };
+      return patch({ [f.id]: value });
     case 'choice': return f.options.some((o) => o.id === value) && value !== f.value ? patch({ [f.id]: value }) : null;
     case 'list': return f.id === 'neverSleepSites' ? patch({ neverSleepSites: siteList(String(value ?? '')) }) : null;
     case 'shortcut': {

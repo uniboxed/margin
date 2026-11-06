@@ -166,6 +166,8 @@
   </m-if>
 
   <m-launcher class="launcher-slot"></m-launcher>
+  <!-- A switch to another profile getting ready (Margin.app): the page card covered. -->
+  <m-switch-cover class="switch-cover-slot"></m-switch-cover>
   <m-menu class="menu-slot"></m-menu>
   <m-editor class="editor-slot"></m-editor>
   <m-notice class="notice-slot"></m-notice>
@@ -243,6 +245,20 @@
             <button class="btn push small" m-class:primary="{{a.primary}}" m-class:danger="{{a.danger}}" m-action="prompt.run" m-arg="{{a.id}}">{{a.label}}</button>
           </m-for>
         </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- The switching cover: a yellow card on the space's dots, a black tag
+       with the profile's mark, "Switching to Work…", the space under it. -->
+  <template m-part="switch-cover">
+    <div class="switch-cover" role="status" m-attr:aria-label="{{switchCover.label}}">
+      <div class="switch-cover-card">
+        <span class="switch-cover-mark" aria-hidden="true" m-style:--profile="{{switchCover.profile.color}}">
+          <m-if test="switchCover.profile.emoji">{{switchCover.profile.emoji}}<m-else>{{switchCover.profile.initial}}</m-else></m-if>
+        </span>
+        <span class="switch-cover-text">{{switchCover.text}}</span>
+        <m-if test="switchCover.hasSpace"><span class="switch-cover-space">{{switchCover.space.emoji}} {{switchCover.space.name}}</span></m-if>
       </div>
     </div>
   </template>

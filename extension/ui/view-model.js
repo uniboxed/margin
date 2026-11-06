@@ -23,7 +23,7 @@ import { rankPalette } from '../shared/search.js';
 import { checkIconUrl } from './sanitize.js';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.js';
 import { settingsFields } from './settings-form.js';
-import { isMultiProfile, orderedSpaces } from '../shared/across.js';
+import { SWITCH_NOTICES, isMultiProfile, isWindow, orderedSpaces, profileOf } from '../shared/across.js';
 import { STALE_MS, cloudShown, deviceNames, lastUsed, onDevice, updatedText } from '../shared/cloud-tabs.js';
 
 /** The view model's version: a theme reads what this version documents. */
@@ -172,6 +172,18 @@ export const VM_VERSION = 1;
  * @typedef {{ id: string, text: string, actions: NoticeAction[], hasActions: boolean }} NoticeView
  * @typedef {NoticeView & { title: string }} PromptView
  *
+ * The "switching" cover (`<m-switch-cover>`, the theme's `switch-cover`
+ * part): drawn over the page slot of the window a switch to another
+ * profile leaves, while the switch gets ready (app/HANDOFF.md §7; Margin.app
+ * only). `text`: "Switching to Work…"; `space`: the space it goes to, under
+ * it (`hasSpace`); `label`: both, for a screen reader; `id`: the target, for
+ * the overlay's coverShown. Margin's words only (a guarded part).
+ * @typedef {{
+ *   id: string, text: string, label: string, hasSpace: boolean,
+ *   profile: { name: string, emoji: string, color: string, initial: string, symbol: string | null },
+ *   space: { name: string, emoji: string },
+ * }} SwitchCoverView
+ *
  * A trackpad gesture Margin runs in the page in front (Margin.app: the page
  * tells the overlay through its copy): pull to refresh (`pull`) or swipe back
  * and forward (`swipe`, `back` or `forward`), `armed` once letting go would
@@ -216,6 +228,7 @@ export const VM_VERSION = 1;
  *   launcher: LauncherView | null,
  *   settingsForm: SettingsFormView | null,
  *   cloudTabs: CloudTabsView | null,
+ *   switchCover: SwitchCoverView | null,
  *   settings: Record<string, string | number | boolean>,
  *   platform: { browser: string, os: string },
  * }} ViewModel
@@ -343,7 +356,7 @@ function fresh(input) {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, profile: null, foreign: false, profileMark: false, profileStart: false, switching: false, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], profiles: [], profile: null, multiProfile: false, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, settingsForm: null, cloudTabs: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, settingsForm: null, cloudTabs: null, switchCover: null, settings, platform,
     };
   }
 
@@ -564,7 +577,7 @@ function fresh(input) {
   }
 
   // A switch to another profile that needs the person, or didn't work: said as a notice.
-  const acrossNotice = !notice && across?.switching?.notice ? { id: 'profile-switch', text: across.switching.notice, actions: [], hasActions: false } : null;
+  const acrossNotice = notice ? null : switchNotice(across, windowId);
 
   return {
     version: VM_VERSION,
@@ -588,9 +601,59 @@ function fresh(input) {
     launcher,
     settingsForm,
     cloudTabs: cloudView(state, now),
+    switchCover: switchCoverView(across, windowId),
     settings,
     platform,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The cross-profile switch (Margin.app: shared/across.js `switching`).
+
+// The phases before and under the freeze (app/HANDOFF.md §1.2): the cover is
+// up only then. Today's close-based switch has none of them, so it never shows one.
+const COVER_PHASES = new Set(['preparing', 'waitingForLink', 'frozen']);
+
+/**
+ * The cover, in the overlay of the window the switch leaves only.
+ * @param {import('../shared/across.js').Across | null} across @param {number | null} windowId
+ * @returns {SwitchCoverView | null}
+ */
+function switchCoverView(across, windowId) {
+  const sw = across?.switching;
+  if (!across || !sw || !COVER_PHASES.has(sw.phase) || !isWindow(sw.from, across.profile, windowId)) return null;
+  const p = profileOf(across, sw.profile);
+  const s = across.spaces.find((x) => x.profile === sw.profile && x.id === sw.space);
+  const name = p?.name ?? 'Profile';
+  const text = `Switching to ${name}…`;
+  return {
+    id: `${sw.profile}\u0000${sw.space}`,
+    text,
+    label: s?.name ? `${text} ${s.name}` : text,
+    hasSpace: !!s?.name,
+    profile: { name, emoji: p?.emoji ?? '', color: p?.color ?? '', initial: [...name.trim()][0]?.toUpperCase() ?? '', symbol: p?.symbol && checkIconUrl(p.symbol) ? p.symbol : null },
+    space: { name: s?.name ?? '', emoji: s?.emoji ?? '' },
+  };
+}
+
+/**
+ * The switch's notice: one of its kinds (Margin's words, with its profile's
+ * name; in the one overlay it's for, when it names one), else the app's text.
+ * A kind's id is `switch:<kind>`: its buttons go back to the app (ui/host-app.js).
+ * @param {import('../shared/across.js').Across | null} across @param {number | null} windowId
+ * @returns {NoticeView | null}
+ */
+function switchNotice(across, windowId) {
+  const sw = across?.switching;
+  if (!across || !sw) return null;
+  if (sw.noticeIn && !isWindow(sw.noticeIn, across.profile, windowId)) return null;
+  const words = sw.noticeKind ? SWITCH_NOTICES[sw.noticeKind] : null;
+  if (words) {
+    const name = profileOf(across, sw.noticeProfile || sw.profile)?.name ?? 'Profile';
+    const actions = words.actions.map((a) => ({ id: a.id, label: a.label, primary: false, danger: false }));
+    return { id: `switch:${sw.noticeKind}`, text: words.text(name), actions, hasActions: actions.length > 0 };
+  }
+  return sw.notice ? { id: 'profile-switch', text: sw.notice, actions: [], hasActions: false } : null;
 }
 
 // ---------------------------------------------------------------------------

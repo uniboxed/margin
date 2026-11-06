@@ -33,8 +33,8 @@ const find = (tree, pred) => {
 };
 const reasons = (r) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
-test('guarded parts: menus, notices, prompts, the space editor, Settings and iCloud Tabs', () => {
-  assert.deepEqual([...GUARDED_PARTS].sort(), ['cloud-tabs', 'menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor']);
+test('guarded parts: menus, notices, prompts, the space editor, Settings, iCloud Tabs and the switching cover', () => {
+  assert.deepEqual([...GUARDED_PARTS].sort(), ['cloud-tabs', 'menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor', 'switch-cover']);
   assert.ok(TEXT_ATTRS.includes('title') && TEXT_ATTRS.includes('aria-label') && TEXT_ATTRS.includes('alt') && TEXT_ATTRS.includes('placeholder'));
 });
 

@@ -33,7 +33,13 @@
 //   copy's, in the hello (`cloudTabs`) and as `{ type: 'cloudTabs' }` when it
 //   changes (app/shell/ShellCloudTabs.swift), checked (shared/cloud-tabs.js
 //   cloudOf) and kept as the state's `cloudTabs`; the folder's Full Disk
-//   Access button and its Copy Link are the app's (`cloud.access`, `copyText`).
+//   Access button and its Copy Link are the app's (`cloud.access`, `copyText`);
+// - the switch between profiles (app/HANDOFF.md §5, §7): "Close windows to
+//   save memory" in Settings, for Safari with more than one profile, from
+//   `across.switchSettings` (`switchSettings`, a feature), saved by the app
+//   (`switch.closeWindows`); the "switching" cover drawn (`switch.coverShown`,
+//   app/overlay/overlay.js); a button of the switch's notice
+//   (`switch.notice`: its id is `switch:<kind>`).
 //
 // No browser API here: only the DOM and `post`.
 /** @import { Geometry, Host } from './host.js' */
@@ -144,10 +150,17 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // page gave them when Settings were drawn there.
   const platform = {
     browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'), os: 'mac', app: true,
-    features: { sleepTabs: profile?.sleepTabs ?? false, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search, cloudTabs: false },
+    features: { sleepTabs: profile?.sleepTabs ?? false, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search, cloudTabs: false, switchSettings: /** @type {{ closeWindows: boolean } | null} */ (null) },
   };
   // "Show iCloud Tabs" in Settings: Safari's windows (Chrome and Edge: Phase 5, sessions.getDevices()).
   platform.features.cloudTabs = platform.browser === 'safari';
+  // "Close windows to save memory": Safari's windows, with more than one profile, once the app says the value.
+  const followSwitchSettings = () => {
+    const ss = platform.browser === 'safari' && across && across.profiles.length > 1 ? across.switchSettings : null;
+    const next = ss ? { closeWindows: ss.closeWindows } : null;
+    if (JSON.stringify(next) !== JSON.stringify(platform.features.switchSettings ?? null)) platform.features = { ...platform.features, switchSettings: next };
+  };
+  followSwitchSettings();
   // The window's tabs loading, as the copy last said (`push` `loading`).
   /** @type {Set<number>} */
   let loading = new Set();
@@ -287,8 +300,21 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           void post('perform', { name, arg: { text: arg.text } }).catch(() => {});
           return true;
         case 'notice':
+          // The switch's notice (the view model's `switch:<kind>`): the app's to do.
+          if (typeof arg?.id === 'string' && arg.id.startsWith('switch:')) {
+            void post('perform', { name: 'switch.notice', arg: { kind: arg.id.slice(7), action: String(arg.action ?? '') } }).catch(() => {});
+            return true;
+          }
           // The runtime closed it; the overlay's notices tell the copy what was chosen.
           onNotice(arg ?? {});
+          return true;
+        // The switch between profiles (app/shell/ShellProfiles.swift performAcross).
+        case 'switch.closeWindows':
+          if (typeof arg?.on !== 'boolean') return false;
+          void post('perform', { name, arg: { on: arg.on } }).catch(() => {});
+          return true;
+        case 'switch.coverShown':
+          void post('perform', { name, arg: null }).catch(() => {});
           return true;
         case 'prompt':
           return true; // the runtime closes it; the app puts up no prompts yet
@@ -312,6 +338,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return emit();
         case 'across':
           across = acrossOf(msg.across);
+          followSwitchSettings();
           rebuild();
           return emit();
         case 'cloudTabs':

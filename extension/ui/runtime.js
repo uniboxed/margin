@@ -450,7 +450,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       // it does stays in Margin, as a menu item's), then it goes.
       case 'notice.run': case 'prompt.run': {
         const which = name === 'notice.run' ? 'notice' : 'prompt';
-        const id = ui[which]?.id;
+        // (A notice the view model made, the app's switch's, isn't the UI's own: its id is the model's.)
+        const id = ui[which]?.id ?? vm?.[which]?.id;
         setUi({ [which]: null });
         host.perform?.(which, { id, action: arg });
         return true;

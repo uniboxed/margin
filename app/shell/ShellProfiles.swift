@@ -7,8 +7,67 @@
 // order, a space made, renamed or deleted in another profile, forget one).
 // The app is SwitchWorld for the switch: requests go over the links, windows
 // are the copies' lists, "in front" is the window server's.
+// The switch's own settings and words (app/HANDOFF.md §5, §7): `across`
+// carries "Close windows to save memory" (`switchSettings`, BrowserProfiles),
+// the window the switch leaves (`switching.from`: its overlay draws the
+// cover) and the switch's notices by kind (SwitchNotice; the words are the
+// overlay's, extension/shared/across.js SWITCH_NOTICES). The overlay's page
+// asks for `switch.closeWindows`, says `switch.coverShown`, and passes a
+// notice's button back (`switch.notice`).
 
 import AppKit
+
+// One of the switch's notices: its kind, the profile it's about (a link key,
+// "safari:s-a"), the one window whose overlay shows it (none: every overlay),
+// and, for a window kept open with a draft, that window (its Close window
+// button closes it: no drafts check then, Tirth 2026-11-06). Only the kind,
+// the profile's id and the window go to overlays; the words are theirs.
+struct SwitchNotice: Equatable {
+    enum Kind: String {
+        case windowKeptDraft = "window-kept-draft" // close mode kept the window it left: a draft in it (§4.5)
+        case dialogOpen = "dialog-open" // a sheet or dialog on the window being left (§1.10)
+        case windowBusy = "window-busy" // a windows call stuck in the window being left (§1.10)
+        case lateLanding = "late-landing" // a switch that gave up landed after all (§1.9)
+        case windowOnDesktop = "window-on-desktop" // the copy didn't come back: its window returned to the Desktop (§1.5)
+    }
+    let kind: Kind
+    let profile: String
+    var shownIn: WindowKey?
+    var kept: WindowKey?
+    // How long it stays up unless a button closes it first.
+    var seconds: TimeInterval { kind == .windowKeptDraft ? 20 : 8 }
+
+    // As Shell.switchNotice keeps it: what overlays get, and the kept window (never sent).
+    var stored: JSONObject {
+        var o: JSONObject = ["noticeKind": kind.rawValue, "noticeProfile": Self.profileId(profile)]
+        if let w = shownIn { o["noticeIn"] = ["profile": Self.profileId(w.link), "windowId": w.windowId] }
+        if let k = kept { o["kept"] = ["link": k.link, "windowId": k.windowId] }
+        return o
+    }
+
+    init(_ kind: Kind, profile: String, shownIn: WindowKey? = nil, kept: WindowKey? = nil) {
+        self.kind = kind
+        self.profile = profile
+        self.shownIn = shownIn
+        self.kept = kept
+    }
+
+    // The window a stored notice kept open, if it's that kind's.
+    static func kept(_ stored: JSONObject?) -> WindowKey? {
+        guard stored?["noticeKind"] as? String == Kind.windowKeptDraft.rawValue, let k = stored?["kept"] as? JSONObject,
+              let link = k["link"] as? String, let id = int(k["windowId"]) else { return nil }
+        return WindowKey(link: link, windowId: id)
+    }
+
+    // What of a stored notice an overlay gets (`across.switching`): never the kept window.
+    static func sent(_ stored: JSONObject) -> JSONObject { stored.filter { ["notice", "noticeKind", "noticeProfile", "noticeIn"].contains($0.key) } }
+
+    // A link key's profile id ("safari:s-a" → "s-a"), as overlays name profiles.
+    static func profileId(_ link: String) -> String {
+        guard let colon = link.firstIndex(of: ":") else { return link }
+        return String(link[link.index(after: colon)...])
+    }
+}
 
 extension Shell: SwitchWorld {
     // ---- the profiles of a browser ----
@@ -180,10 +239,47 @@ extension Shell: SwitchWorld {
     }
 
     private func switchingJSON() -> JSONObject? {
-        guard switcher.busy, let t = switcher.target, let colon = t.profile.firstIndex(of: ":") else { return switchNotice }
-        var out: JSONObject = ["profile": String(t.profile[t.profile.index(after: colon)...]), "space": t.space, "phase": switcher.phase.rawValue]
-        if let n = switchNotice { out["notice"] = n["notice"] }
+        guard switcher.busy, let t = switcher.target, t.profile.contains(":") else { return switchNotice.map { SwitchNotice.sent($0) } }
+        var out: JSONObject = ["profile": SwitchNotice.profileId(t.profile), "space": t.space, "phase": switcher.phase.rawValue]
+        // The window it leaves: its overlay draws the cover (ui/view-model.js switchCover).
+        if let from = switcher.from, let w = from.windowId { out["from"] = ["profile": SwitchNotice.profileId(from.profile), "windowId": w] }
+        if let n = switchNotice { out.merge(SwitchNotice.sent(n)) { _, new in new } }
         return out
+    }
+
+    // One of the switch's notices, up for its time (or until a button, or another notice, takes its place).
+    func showSwitchNotice(_ notice: SwitchNotice) {
+        let at = options.clock()
+        var stored = notice.stored
+        stored["at"] = at
+        switchNotice = stored
+        Diagnostics.note("profile switch: notice \(notice.kind.rawValue) about \(notice.profile)\(notice.shownIn.map { " in \($0)" } ?? "")")
+        pushAcross()
+        Timer.scheduledTimer(withTimeInterval: notice.seconds, repeats: false) { [weak self] _ in MainActor.assumeIsolated {
+            guard let self, let n = self.switchNotice, num(n["at"]) == at else { return }
+            self.switchNotice = nil
+            self.pushAcross()
+        } }
+    }
+
+    // A button of the switch's notice (ui/host-app.js `switch.notice`): the notice goes; a kept
+    // window's Close window closes it by its copy, with no drafts check (the person chose it).
+    func switchNoticeAction(kind: String, action: String) {
+        guard let n = switchNotice, n["noticeKind"] as? String == kind else { return }
+        let kept = SwitchNotice.kept(n)
+        switchNotice = nil
+        pushAcross()
+        guard action == "close", let kept, let entry = links[kept.link] else { return }
+        Diagnostics.note("profile switch: \(kept) kept open, closed by the person")
+        Task { _ = try? await entry.connection.request(type: "closeWindow", payload: ["windowId": kept.windowId], windowId: kept.windowId) }
+    }
+
+    // The switching cover drawn in `overlay` (its page's word: app/overlay/overlay.js): the freeze may start
+    // on it (app/HANDOFF.md §1.5, else 250 ms after the start). Only the window the switch leaves counts.
+    // Today's close-based switch has no cover, so this is heard only once the handoff runs.
+    func switchCoverShown(_ overlay: OverlayController) {
+        guard switcher.busy, let from = switcher.from, from.profile == overlay.key.link, from.windowId == overlay.key.windowId else { return }
+        Diagnostics.note("profile switch: the cover is drawn in \(overlay.key)")
     }
 
     // The window's space now: its copy's activeSpaceByWindow (or the chained one, a moment after a key).
@@ -271,6 +367,18 @@ extension Shell: SwitchWorld {
             guard let type = arg["type"] as? String, ["createSpace", "renameSpace", "deleteSpace"].contains(type) else { return }
             let payload = arg["payload"] as? JSONObject ?? [:]
             spaceInProfile(browser, profile, type, payload)
+        case "switch.closeWindows":
+            // "Close windows to save memory", for the whole browser: every overlay hears it with its next across.
+            guard let on = arg["on"] as? Bool else { return }
+            if profiles.setCloseWindows(on) {
+                Diagnostics.note("\(browser): close windows to save memory \(on ? "on" : "off")")
+                acrossSoon()
+            }
+        case "switch.coverShown":
+            switchCoverShown(overlay)
+        case "switch.notice":
+            guard let kind = arg["kind"] as? String, let action = arg["action"] as? String else { return }
+            switchNoticeAction(kind: kind, action: action)
         default:
             Diagnostics.note("\(overlay.key): \(name) isn't known")
         }

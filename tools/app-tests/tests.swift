@@ -82,6 +82,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     privateCallsTests() // private-calls-tests.swift
     handoffTests() // handoff-tests.swift
     parkingTests() // parking-tests.swift
+    handoffUiTests() // handoff-ui-tests.swift
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }

@@ -15,11 +15,15 @@
 // tells it about the window's pages (ui/app-feedback.js): Margin's notices,
 // in the theme's guarded notice part, their buttons going back to the copy;
 // the trackpad gestures' feedback; which tabs are loading (through the host).
+// While a switch to another profile runs (app/HANDOFF.md §7): that the
+// "switching" cover is drawn (`switch.coverShown`, ui/switch-cover.js), and,
+// after each `shown`, that the page has drawn and in which mode (`framed`).
 import { createRuntime } from '../../extension/ui/runtime.js';
 import { loadTheme } from '../../extension/ui/theme-loader.js';
 import { createAppHost, hitRects } from '../../extension/ui/host-app.js';
 import { createAppNotices, createGestureFeedback } from '../../extension/ui/app-feedback.js';
 import { backgroundSwitches, describeSwitchRun } from '../../extension/shared/switching.js';
+import { answerFramed, createCoverWatch } from '../../extension/ui/switch-cover.js';
 
 const bridge = /** @type {any} */ (globalThis).webkit?.messageHandlers?.margin;
 /** @param {string} op @param {Record<string, any>} [body] */
@@ -160,7 +164,17 @@ function reportWant() {
 }
 // The widest reveal zone (shared/view.js revealZone: 24 px in full screen); peek checks the exact one.
 const REVEAL_ZONE_MAX = 24;
-const watcher = new MutationObserver(() => { hitsSoon(); queueMicrotask(measureNow); queueMicrotask(reportWant); });
+// The "switching" cover drawn, with no swipe sliding: the app may freeze the screen on it.
+const coverWatch = createCoverWatch({
+  requestFrame: (fn) => requestAnimationFrame(fn),
+  cover: () => {
+    const c = runtime?.vm?.switchCover;
+    return c && (document.querySelector('m-switch-cover')?.childElementCount ?? 0) > 0 ? c.id : null;
+  },
+  settling: () => !!runtime?.view.rootElement()?.querySelector('.m-swiping, .m-settling'),
+  say: () => { host?.perform('switch.coverShown'); },
+});
+const watcher = new MutationObserver(() => { hitsSoon(); queueMicrotask(measureNow); queueMicrotask(reportWant); coverWatch.check(); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // ---- the theme --------------------------------------------------------------------------
@@ -275,6 +289,8 @@ function onMessage(msg) {
       // The app showed this overlay (it wasn't): `focus`, over a new window in front (⌘N, New
       // Window): the new-tab launcher's field takes the focus (never as the page first draws).
       if (msg.focus === true) runtime?.focusLauncher();
+      // Drawn, and in which mode, on the next frame (R4).
+      answerFramed({ requestFrame: (fn) => requestAnimationFrame(fn), mode: () => host?.mode ?? 'fullscreen', post: (op, body) => post(op, body).catch(() => {}) });
       return;
     case 'push':
       switch (msg.msg?.type) {

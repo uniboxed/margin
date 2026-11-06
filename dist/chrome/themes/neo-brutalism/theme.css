@@ -290,6 +290,15 @@
 
 /* The new-tab page's launcher, in the page card, and Settings. */
 .launcher-slot { position: absolute; top: calc(var(--gutter) + 3px); right: calc(var(--gutter) + 3px); bottom: calc(var(--gutter) + 3px); left: calc(var(--page-left) + 3px); border-radius: 15px; overflow: hidden; z-index: 2; }
+/* Switching to another profile (Margin's <m-switch-cover>): the page card
+   covered while Margin.app gets the other window ready, above the launcher,
+   under a sidebar out over the page. No fade. */
+.switch-cover-slot { position: absolute; top: calc(var(--gutter) + 3px); right: calc(var(--gutter) + 3px); bottom: calc(var(--gutter) + 3px); left: calc(var(--page-left) + 3px); border-radius: 15px; overflow: hidden; z-index: 3; }
+.switch-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--space); background-image: radial-gradient(rgba(17, 17, 17, .18) 1.2px, transparent 1.2px); background-size: 14px 14px; pointer-events: auto; }
+.switch-cover-card { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 80%; padding: 22px 28px; border: 3px solid var(--ink); border-radius: 18px; background: var(--yellow); box-shadow: 6px 6px 0 var(--ink); text-align: center; }
+.switch-cover-mark { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 3px solid var(--ink); border-radius: 12px; background: var(--profile, var(--paper)); font-family: 'Archivo Black', system-ui, sans-serif; font-size: 20px; }
+.switch-cover-text { font-family: 'Archivo Black', system-ui, sans-serif; font-size: 18px; }
+.switch-cover-space { font-weight: 600; }
 .launcher { height: 100%; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 14vh 32px 48px; background: var(--cream); }
 .launcher > * { width: min(640px, 100%); flex: none; }
 .launcher-query { width: 100%; height: 56px; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 12px; padding: 0 16px; font: inherit; font-size: 20px; font-weight: 500; background: var(--paper); color: var(--ink); outline: none; box-shadow: 4px 4px 0 var(--ink); }

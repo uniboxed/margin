@@ -11,6 +11,7 @@ import { MockState } from './view-model.js';
 import { auditDom } from './audit.js';
 import { HTML_PAYLOADS, CSS_PAYLOADS, CSS_TARGET, EVIL_VM, wrap } from './payloads.js';
 import { cloudOf } from '../../extension/shared/cloud-tabs.js';
+import { acrossOf } from '../../extension/shared/across.js';
 import { cloudFixture } from '../fixtures/cloud-tabs.js';
 
 const w = /** @type {any} */ (window);
@@ -378,6 +379,19 @@ Object.assign(T, {
     const records = mo.takeRecords();
     mo.disconnect();
     return { records: records.length, added: records.reduce((n, r) => n + r.addedNodes.length, 0), text: records.filter((r) => r.type === 'characterData').length };
+  },
+  // Spaces across profiles as Margin.app's host keeps them (shared/across.js acrossOf), or none.
+  rtAcross(raw) {
+    rt.mock.state = { ...rt.mock.state, across: raw ? acrossOf(raw) : null };
+    rt.host.setState(rt.mock.state);
+    return !!rt.mock.state.across;
+  },
+  // What's drawn at a point of the window: the element's classes, and its ancestors'.
+  rtHitClasses(x, y) {
+    let el = rt.target.elementFromPoint(x, y);
+    const out = [];
+    for (; el && out.length < 12; el = el.parentElement ?? el.getRootNode()?.host ?? null) out.push(el.localName + (el.className && typeof el.className === 'string' ? `.${el.className.split(/\s+/).join('.')}` : ''));
+    return out;
   },
   rtOrder(a, b) { const x = rt.target.querySelector(a); const y = rt.target.querySelector(b); return x && y ? x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING ? 'before' : 'after' : null; },
   rtClosest(selector, ancestor) { return [...rt.target.querySelectorAll(selector)].some((el) => el.closest(ancestor)); },

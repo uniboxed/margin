@@ -4,7 +4,12 @@
 // color. One file per browser, beside its profiles' data sets:
 //
 //   data/<browser>/browser.json
-//     { format, browser, order: [[profile, space]], profiles: { id: info }, savedAt }
+//     { format, browser, order: [[profile, space]], profiles: { id: info }, switching: { closeWindows }, savedAt }
+//
+// `switching`: how a switch between profiles treats the window it leaves
+// (app/HANDOFF.md §5): "Close windows to save memory" (`closeWindows`, off
+// by default: the window stays open, parked out of sight). One value for the
+// whole browser, so every profile's Settings show the same.
 //
 // A space is in the profile whose data set has it: nothing in a set names
 // its profile. `order` is kept as the person left it and read against the
@@ -79,6 +84,8 @@ final class BrowserProfiles {
     private(set) var order: [SpaceKey] = [] // resolved against the sets (refresh)
     private(set) var info: [String: ProfileInfo] = [:]
     private(set) var saves = 0
+    // "Close windows to save memory" (app/HANDOFF.md §5): the window a switch leaves is closed, not parked.
+    private(set) var closeWindows = false
     // The browser's own names now (with the permission; not saved as such): profile → name and SF Symbol.
     private(set) var browserNames: [String: BrowserName] = [:]
     struct BrowserName: Equatable { var name: String; var symbol: String }
@@ -101,6 +108,7 @@ final class BrowserProfiles {
         for (id, value) in o["profiles"] as? JSONObject ?? [:] {
             if let value = value as? JSONObject { info[id] = ProfileInfo(json: value) }
         }
+        closeWindows = (o["switching"] as? JSONObject)?["closeWindows"] as? Bool ?? false
         order = stored
     }
 
@@ -111,9 +119,20 @@ final class BrowserProfiles {
             "format": Self.format, "browser": browser, "savedAt": now(),
             "order": stored.map { [$0.profile, $0.space] },
             "profiles": info.mapValues(\.json),
+            "switching": ["closeWindows": closeWindows],
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
         do { try DataStore.writeAtomically(data, to: url) } catch { Diagnostics.warn("\(browser): browser.json not saved: \(error)") }
+    }
+
+    // ---- switching ----
+
+    // "Close windows to save memory" turned on or off. True if it changed (saved then).
+    @discardableResult func setCloseWindows(_ on: Bool) -> Bool {
+        guard on != closeWindows else { return false }
+        closeWindows = on
+        save()
+        return true
     }
 
     // ---- profiles ----
@@ -437,7 +456,7 @@ final class BrowserProfiles {
             return ["profile": k.profile, "id": k.space, "name": v["name"] as? String ?? "", "emoji": v["emoji"] as? String ?? "",
                     "color": v["color"] as? String ?? "", "tabCount": counts[k.profile]?[k.space] ?? 0]
         }
-        var out: JSONObject = ["v": 1, "profile": profile, "profiles": list, "spaces": entries]
+        var out: JSONObject = ["v": 1, "profile": profile, "profiles": list, "spaces": entries, "switchSettings": ["closeWindows": closeWindows]]
         if let switching { out["switching"] = switching }
         return out
     }
