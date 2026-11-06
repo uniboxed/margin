@@ -57,7 +57,7 @@ const TIMING = {
 // still `expected` (no other address since it was looked at), hidden,
 // nothing playing, nothing typed and not sent (Margin's own watch,
 // content/edits.js; a page without it, an earlier copy's or none, judged
-// generously as content/takeover.js does: any text in a field or an editor).
+// generously: any text in a field or an editor).
 // Any other frame (another site's: a comment box, a form, a payment's, where
 // the top frame can't look): nothing playing and nothing typed, judged that
 // generous way (Margin's content script runs in top frames only), and

@@ -7,32 +7,29 @@
 // a new one). Safari then keeps Margin's content-script world in the pages
 // that were open, `browser` and all, still bound to the copy that's gone:
 // every message and storage call from it neither arrives nor fails, so the
-// old copy's switches, covers and sidebar wait for ever (a stuck spinner,
-// rows that never update) until the page is reloaded. The new copy can't run
+// old copy's switches, keys and box wait for ever until the page is
+// reloaded. The new copy can't run
 // there either: its content script finds the old copy's `Margin.content` in
 // the same world and stops (content/core.js), and it would get the same dead
 // `browser` anyway. A script the background runs there
 // (scripting.executeScript) still works, and sees the world's `browser` with
 // the old copy's address: that's how such a page is told (cutOffInPage), and
-// it's reloaded when that loses nothing, else its dead Margin is put out of
-// sight (background/tabs.js repairCutOff). (When the world isn't kept, as in
-// WebKit by itself, the new copy starts beside the old one and takes over:
-// content/takeover.js.)
+// it's reloaded when that loses nothing, else its dead Margin's box is taken
+// off (background/tabs.js repairCutOff). (When the world isn't kept, as in
+// WebKit by itself, the new copy starts beside the old one in a world of its
+// own.)
 
 // Executed in the tab's page, in Margin's content-script world (self-contained:
 // it's sent as source). `own`: this copy's address (runtime.getURL('')).
-// `quiet`: put a cut-off page's dead Margin out of sight (its sidebar, palette
-// and covers, and the page hidden under an arrival cover). Answers
+// `quiet`: take a cut-off page's dead Margin out of the way (its box: the page
+// has the window). Answers
 // { cutOff: false } for a page whose world is this copy's, and
 // { cutOff: false, otherCopy: true } for one bound to another copy that still
 // answers: one Safari keeps running beside this one until it quits
 // (shared/owner.js; its pages stay out of the way themselves, and loading one
-// again would bind it to that copy again). Else { cutOff: true, busy, hidden,
-// proven }; `busy`: something typed, chosen or playing (judged as
-// content/takeover.js does), so it isn't reloaded; `proven`: the world holds
-// the old copy's word that this document's tab was proven to have WebKit's
-// mark (content/core.js `inWindowAt`), kept by this copy before the page is
-// loaded again (background/tabs.js repairCutOff).
+// again would bind it to that copy again). Else { cutOff: true, busy, hidden };
+// `busy`: something typed, chosen or playing (judged generously: any text in
+// a field or an editor), so it isn't reloaded.
 // A page found cut off is also told so in its world (`Margin.cutOff`): the old
 // copy's listener for the navigation keys, whose messages go nowhere, then
 // lets them pass to the page and to Safari's own commands (shared/shortcuts.js).
@@ -92,32 +89,17 @@ export async function cutOffInPage(own, quiet = false, keys = []) {
       }, true);
     }
   } catch {}
-  let proven = false;
-  try {
-    proven = Number.isFinite(/** @type {any} */ (globalThis).Margin?.inWindowAt);
-  } catch {}
   let busy = true;
   try {
     busy = /** @type {any} */ (navigator).mediaSession?.playbackState === 'playing' || inUse(document);
   } catch {}
   if (quiet) {
     try {
-      for (const node of /** @type {HTMLElement[]} */ ([...(document.documentElement?.children ?? []), ...(document.querySelector?.(':root > margin-app')?.children ?? [])])) {
-        if (!/^margin-.*-host$/.test(node.localName)) continue;
-        node.style.setProperty('display', 'none', 'important');
-        node.style.setProperty('pointer-events', 'none', 'important');
-        node.setAttribute('aria-hidden', 'true');
-        node.setAttribute('data-margin-off', ''); // what a host's own styles respect (shared/dom.js)
-      }
-      // The page out of sight under the old copy's arrival cover (content/core.js
-      // arriveCovered): back.
-      const page = document.body;
-      if (page?.style.getPropertyValue('opacity') === '0' && page.style.getPropertyPriority('opacity') === 'important') page.style.removeProperty('opacity');
-      // No sidebar, so no box beside it: the page has the window (content/page/box.js).
+      // Its box goes: the page has the window (content/page/box.js).
       document.dispatchEvent(new CustomEvent('margin:box', { detail: 'off' }));
     } catch {}
   }
-  return { cutOff: true, busy, hidden: document.hidden, proven };
+  return { cutOff: true, busy, hidden: document.hidden };
 }
 
 // What to do with a page cutOffInPage answered for: nothing (it's this copy's,

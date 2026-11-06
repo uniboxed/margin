@@ -188,17 +188,6 @@ export const SCENARIOS = {
     checkPage('A', 'A: the selected tab stays selected beyond the stale copy timeout', `!document.hidden`),
     checkPage('A', 'A: selecting it cancels the hidden cleanup reload', `window.__marginBeforeSwitchOrigin === performance.timeOrigin`),
   ],
-  // A page an old copy laid out stays out of the page's script's reach, with
-  // Margin.app linked and Keep open.
-  'update-old-layout': [
-    appWith(260),
-    { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'B', url: '/p/B' }, wait(800),
-    { op: 'page', in: 'A', js: `document.documentElement.setAttribute('data-margin-shell', ''); return 'fitted'` },
-    { op: 'page', in: 'B', js: `document.documentElement.setAttribute('data-margin-frameless', ''); return 'test build'` },
-    { op: 'install' }, linked('A'), wait(500),
-    checkPage('A', 'A: a fitted page is left alone', `getComputedStyle(document.documentElement).transform === 'none' && !window[Symbol.for('margin.page')]`, 2000),
-    checkPage('B', 'B: a page of the frameless test build too', `getComputedStyle(document.documentElement).transform === 'none' && !window[Symbol.for('margin.page')]`, 2000),
-  ],
   // The app's layout with the frame alone (8 px all round): a box at the
   // frame's edge, with no iframe anywhere. Nothing at any edge (the frame
   // off): no box, and with nothing registered for that (no frame, no Keep

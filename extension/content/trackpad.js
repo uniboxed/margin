@@ -33,11 +33,9 @@ export function gestureTeller(kind, tell, now = () => performance.now()) {
   };
 }
 
-// `page`: see content/core.js. `replacing`: an earlier copy of Margin is still
-// in the page (content/takeover.js); its gestures act on the page, so this
-// copy's swipe stays off (its pull-to-refresh doesn't: two reloads are one).
-/** @param {any} page @param {{ replacing: () => boolean }} options */
-export function startTrackpad(page, { replacing }) {
+// `page`: see content/core.js.
+/** @param {any} page */
+export function startTrackpad(page) {
   const { marks, pinch } = page;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
@@ -107,7 +105,7 @@ export function startTrackpad(page, { replacing }) {
   // Margin's: swipe sideways where nothing scrolls
   // sideways, past the threshold, and let go to go back (fingers moving
   // right) or forward. The gesture logic is shared/pull.js (axis x).
-  const swipeEnabled = () => !replacing() && !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
+  const swipeEnabled = () => !page.dormant?.() && page.state()?.settings?.blockGestures !== false && page.state()?.settings?.swipeNavigation !== false;
   /** @param {{ state: string, progress?: number, direction?: number }} swipe */
   function showSwipe(swipe) {
     const { state: phase, direction } = swipe;
@@ -139,8 +137,8 @@ export function startTrackpad(page, { replacing }) {
     // the event's path, which can cost a layout, only while it matters.
     const onWheel = (/** @type {WheelEvent} */ event) => {
       if (event.ctrlKey) return; // a pinch
-      // Not over an earlier copy's sidebar; pixel deltas only (a trackpad).
-      const usable = () => event.deltaMode === 0 && !event.composedPath().some((node) => /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
+      // Pixel deltas only (a trackpad).
+      const usable = () => event.deltaMode === 0;
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
       const zoomed = pinch.zoomed(); // the wheel pans it: no gestures
       const pulling = pullEnabled() && !pullRefreshing && !zoomed;

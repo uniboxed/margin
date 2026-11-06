@@ -9,11 +9,10 @@
 // It reads the state from storage.local, for its tab and window, its
 // settings and its copy of Margin.
 import * as V from '../shared/view.js';
-import { hideHost, mark, marginHosts } from '../shared/dom.js';
+import { mark } from '../shared/dom.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { platform } from '../shared/platform.js';
 import { watchEdits } from './edits.js';
-import { takeOver } from './takeover.js';
 import { startTrackpad } from './trackpad.js';
 import { startPageLink } from './page-link.js';
 import { startPinch } from './pinch.js';
@@ -39,14 +38,6 @@ export function startCore() {
   // What the user typed here and hasn't sent: a tab with a draft isn't put to
   // sleep (background/sleep.js asks: content/edits.js).
   if (platform?.sleepTabs) Margin.content.edits = watchEdits();
-  // An earlier copy of Margin's sidebar in the page (a build from before
-  // Margin 2's app, which drew one): it's taken out of sight, and the page
-  // is cleaned up by a reload when that's safe (content/takeover.js).
-  const takeover = takeOver(api);
-  // An earlier copy's sidebar is (or, once this copy owns the state, turns
-  // out to be) in the page: its gestures stay its own.
-  const replacing = takeover.replacing;
-  let takenOver = false;
   // This copy's address: the stored tabs say whether they're this copy's
   // (shared/stored.js). A copy a newer one replaced stays out of the way
   // (`dormant`, below).
@@ -213,7 +204,7 @@ export function startCore() {
     zoomTimer = setTimeout(readZoom, 60);
   });
   readZoom();
-  const trackpad = startTrackpad(page, { replacing: () => replacing });
+  const trackpad = startTrackpad(page);
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space (none while Margin is
   // out of the way). The background does the work; nothing here draws.
   const navSettings = () => (active() ? state?.settings : null);
@@ -383,19 +374,6 @@ export function startCore() {
     // Another copy claimed the state since this page started: is this copy
     // the older one (then it stands back), or will it claim it again?
     if (helloAnswered && storedOwner && storedOwner.origin !== origin && before?.origin !== storedOwner.origin) void send('owner');
-    // In charge here: a sidebar an earlier copy left in the page (a build that
-    // drew one) is put out of sight, and the page loaded again once that's safe.
-    if (isCurrent && !dormant) {
-      let others = false;
-      for (const node of marginHosts(document)) {
-        hideHost(node);
-        others = true;
-      }
-      if (others && !takenOver) {
-        takenOver = true;
-        takeover.arm();
-      }
-    }
   }
   // Out of the way: no box, keys or gestures from this copy (Safari runs both
   // copies until it quits; this page can only reach the older one). The box

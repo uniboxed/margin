@@ -54,8 +54,8 @@ test('cut off: a page whose world is this copy\'s isn\'t (and nothing in it is t
 });
 
 test('cut off: the world bound to the copy that\'s gone, or to none, is', async () => {
-  assert.deepEqual({ ...(await run(page())) }, { cutOff: true, busy: false, hidden: true, proven: false });
-  assert.deepEqual({ ...(await run(page({ hidden: false }))) }, { cutOff: true, busy: false, hidden: false, proven: false }, 'in front');
+  assert.deepEqual({ ...(await run(page())) }, { cutOff: true, busy: false, hidden: true });
+  assert.deepEqual({ ...(await run(page({ hidden: false }))) }, { cutOff: true, busy: false, hidden: false }, 'in front');
   assert.equal((await run(page({ id: undefined }))).cutOff, true, 'no id: Chrome\'s copy that was reloaded');
   assert.equal((await run(page({ throws: true }))).cutOff, true, 'its address can\'t be had');
   assert.equal((await run(page({ storage: 'fails' }))).cutOff, true, 'its calls fail');
@@ -78,23 +78,17 @@ test('cut off: something typed makes it busy (not loaded again)', async () => {
   assert.equal((await run(playing)).busy, true, 'media playing');
 });
 
-test('cut off: quiet puts the dead Margin out of sight, and the page back from under its cover', async () => {
+test('cut off: quiet takes the dead Margin\'s box off (the page has the window), and touches nothing else', async () => {
   const p = page({ body: { opacity: '0' } });
+  const said = [];
+  p.doc.dispatchEvent = (event) => { said.push([event.type, event.detail]); return true; };
+  p.globals.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
   await run(p);
-  assert.equal(p.hosts[0].style.getPropertyValue('display'), '', 'only asked: nothing changed');
+  assert.deepEqual(said, [], 'only asked: nothing said');
   await run(p, true);
-  for (const host of p.hosts) {
-    assert.equal(host.style.getPropertyValue('display'), 'none');
-    assert.equal(host.style.getPropertyPriority('display'), 'important');
-    assert.equal(host.style.getPropertyValue('pointer-events'), 'none');
-    assert.equal(host.getAttribute('data-margin-off'), '', 'what the host\'s own styles respect');
-  }
+  assert.deepEqual(said, [['margin:box', 'off']]);
   assert.equal(p.other.style.getPropertyValue('display'), '', 'the page\'s own elements left alone');
-  assert.equal(p.doc.body.style.getPropertyValue('opacity'), '', 'the old copy\'s arrival cover undone');
-  const own = page();
-  own.doc.body.style.setProperty('opacity', '0'); // the page's own (not !important)
-  await run(own, true);
-  assert.equal(own.doc.body.style.getPropertyValue('opacity'), '0', 'a page\'s own opacity kept');
+  assert.equal(p.doc.body.style.getPropertyValue('opacity'), '0', 'and its body');
 });
 
 test('cut off: what\'s done with a page', () => {
@@ -159,13 +153,6 @@ test('cut off: a world found so gets a listener (once) that keeps the commands\'
   const liveListeners = [];
   await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false, ${JSON.stringify(keys)})`, vm.createContext({ ...live.globals, addEventListener: (...a) => liveListeners.push(a) }));
   assert.equal(liveListeners.length, 0, 'none in a page that isn\'t cut off');
-});
-
-test('cut off: the old copy\'s word that this document\'s tab was proven to have WebKit\'s mark comes with the answer (kept before the page is loaded again)', async () => {
-  const p = page();
-  const world = vm.createContext({ ...p.globals, Margin: { inWindowAt: 123 } });
-  const answer = await vm.runInContext(`(${cutOffInPage.toString()})(${JSON.stringify(OWN)}, false)`, world);
-  assert.equal(answer.proven, true);
 });
 
 // The background's side (background/tabs.js repairCutOff), against a fake

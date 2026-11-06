@@ -745,33 +745,12 @@ async function leftOnSleepPage(tab) {
   return ok;
 }
 
-// Executed in this install's isolated world before its content bundle is put
-// into an already-open page. A previous temporary install can leave a fully
-// drawn, clickable sidebar in the DOM even though its background is gone.
-// Disable that UI before the new bundle starts: otherwise its optimistic tab
-// highlight waits for a message that WebKit never resolves, then snaps back
-// when the old copy's 2.5s switch timer expires.
-export function disableStaleSidebarInPage() {
-  if (globalThis.Margin?.content) return false;
-  let disabled = false;
-  for (const node of /** @type {HTMLElement[]} */ ([...(document.documentElement?.children ?? []), ...(document.querySelector?.(':root > margin-app')?.children ?? [])])) {
-    if (!/^margin-.*-host$/.test(node.localName)) continue;
-    node.style.setProperty('display', 'none', 'important');
-    node.style.setProperty('pointer-events', 'none', 'important');
-    node.setAttribute('aria-hidden', 'true');
-    node.setAttribute('data-margin-off', ''); // what a host's own styles respect (shared/dom.js)
-    disabled = true;
-  }
-  return disabled;
-}
-
 // Pages already open when Margin is installed, updated, or Safari starts a
 // fresh session. WebKit normally adds the content scripts itself, but may do
 // so seconds late on a cold launch. Repair immediately from the background,
 // then retry pages that were busy or whose permission was not ready yet.
 // Sleeping tabs are deliberately skipped; ensureCurrent repairs one when it
-// is first shown. A page with a previous copy reloads later, when safe
-// (content/core.js), to remove that copy's remaining page-world hooks.
+// is first shown.
 // A tab found with no page (noPageFound: Safari unloaded it, and every tab
 // after a relaunch) isn't asked again, by this pass or the next, until it's
 // shown or its page changes: once it loads it runs this copy anyway. (Each
@@ -836,7 +815,6 @@ async function runOpenTabRepair(retry) {
         return;
       }
       if (typeof current === 'string') return; // asleep, no access or busy: a retry or activation gets it
-      await api.scripting.executeScript({ target: { tabId: tab.id }, func: disableStaleSidebarInPage }).catch(() => {});
       const injected = await api.scripting.executeScript({ target: { tabId: tab.id }, files }).then(() => true, () => false);
       if (injected) checkedCurrent.add(tab.id);
     };

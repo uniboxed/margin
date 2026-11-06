@@ -176,9 +176,7 @@ function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'b
   win.addEventListener('gesturestart', (event) => {
     ours = false;
     if (!enabled() || zoomedIn()) return; // magnified: Safari's, both ways
-    // Over Margin's own UI (one of its hosts), nothing zooms.
-    const overMargin = event.composedPath().some((node) => /^margin-.*-host$/.test(/** @type {Element} */ (node).localName ?? ''));
-    const mode = overMargin ? 'block' : pinch();
+    const mode = pinch();
     if (mode === 'native' && event.scale >= 1) return;
     event.preventDefault();
     if (mode !== 'own') return;

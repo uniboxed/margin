@@ -100,5 +100,5 @@ export const queueRegistrations = () => {
     .catch((err) => console.warn('[margin] theme', err));
   return registrations;
 };
-// Settles once the registrations match the settings (reloadForUpdate).
+// Settles once the registrations match the settings (tests).
 export const whenRegistered = () => registrations;

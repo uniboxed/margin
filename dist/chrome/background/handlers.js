@@ -7,12 +7,12 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, reloadCutOff, handingOff, inPage, instanceId, isFocusing, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab, shownAt } from './tabs.js';
+import { focusTab, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.js';
 import { sleepIdle, wakeAll } from './sleep.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
-import { queueRegistrations, whenRegistered } from './registered.js';
+import { queueRegistrations } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES } from '../themes/index.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
@@ -145,9 +145,6 @@ function rememberZoom(tab, url, zoom) {
     await api.storage.local.set({ pageZoom: next });
   }).catch(() => {});
 }
-// When each tab was last loaded again after an update (reloadForUpdate).
-const RELOAD_COOLDOWN_MS = 30000;
-const reloadedAt = new Map();
 // The tab the user was on: the window's active one (Chrome reports the new
 // tab before activating it), else the one most recently left. Not by
 // lastActive alone: a switch gives both its tabs the same one.
@@ -338,53 +335,6 @@ export const handlers = {
   async setSidebarScroll({ top, windowId }, sender) {
     const id = windowId ?? sender.tab?.windowId;
     if (id != null && Number.isFinite(top)) await setScroll(id, top);
-  },
-  // A page that still had the previous copy of Margin (content/core.js
-  // reloadWhenSafe): its URL loaded again once the content scripts a page
-  // load needs are registered. A GET (a reload would send a form again), from
-  // the browser's side (an old copy's fitted layout would cancel a page's own
-  // navigation to its URL); a URL with a #fragment, where loading it
-  // again would only scroll: the browser's reload. Answers { reloaded }, and
-  // when it didn't, whether the page may ask again later (`retry`: it was
-  // being shown or switched to, or its address changed) or never will.
-  /** @returns {Promise<{ reloaded: boolean, retry?: boolean }>} */
-  async reloadForUpdate(_, sender) {
-    const { id, url } = sender.tab ?? {};
-    if (id == null || !/^https?:/i.test(url ?? '')) return { reloaded: false, retry: false };
-    // At most once in RELOAD_COOLDOWN_MS per tab, whatever the page asks
-    // (counted from now: a second request meanwhile waits too).
-    if (Date.now() - (reloadedAt.get(id) ?? 0) < RELOAD_COOLDOWN_MS) return { reloaded: false, retry: true };
-    reloadedAt.set(id, Date.now());
-    const notNow = () => {
-      reloadedAt.delete(id);
-      return { reloaded: false, retry: true };
-    };
-    await whenRegistered();
-    // Let an activation message already in WebKit's queue claim the tab
-    // before cleanup commits its navigation.
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // The page asked while it was hidden, but registrations (and a cold
-    // background) can take long enough that the user selects it meanwhile.
-    // Never turn that first switch after an update into a visible reload. The
-    // tab in front of a window that isn't (minimized, or Safari hidden) can't
-    // be seen: that one may.
-    const current = await api.tabs.get(id).catch(() => null);
-    if (!current) return { reloaded: false, retry: false };
-    if (current.url !== url || isFocusing(id)) return notNow();
-    if (current.active) {
-      // In front: only of a window that isn't focused, and only if the page
-      // says it's hidden right now (the window could be on screen).
-      if ((await api.windows?.get(current.windowId).catch(() => null))?.focused !== false) return notNow();
-      const visibility = await inPage(id, url, () => document.visibilityState, [], 300);
-      if (typeof visibility === 'string' || visibility.result !== 'hidden') return notNow();
-    }
-    try {
-      if (url.includes('#')) await api.tabs.reload(id);
-      else await api.tabs.update(id, { url });
-    } catch {
-      return notNow();
-    }
-    return { reloaded: true };
   },
   // Closing from Margin archives the tab, like Arc. One that isn't open (a
   // string id: state/model.js keptTabs) goes to the archive as it is.

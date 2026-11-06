@@ -8,8 +8,8 @@
 // still holding text (a chat's box sent and emptied counts no more). Not the
 // field's `defaultValue`: React keeps a controlled field's value attribute in
 // step with its value, so a typed draft would equal it. Frames of the same
-// site, where no event reaches here, are judged generously, as
-// content/takeover.js judges a page: any text in a field or an editor (other
+// site, where no event reaches here, are judged generously: any text in a
+// field or an editor (other
 // sites' frames are asked on their own: background/sleep.js sleepInPage).
 // A watch started once the page had loaded (Margin installed or updated, its
 // scripts added to pages already open) missed what was typed before: it also

@@ -7,14 +7,8 @@
 // `send`: to the background (content/core.js).
 export function startPageLink(send) {
   const html = document.documentElement;
-  // Pages that aren't HTML have no box. A page an earlier version laid out
-  // (its iframe, or the frameless test build) keeps that until it's reloaded:
-  // content/takeover.js does that once it's hidden and nothing in it would be
-  // lost. (Its "Reload this page to fit it beside the sidebar again" notice
-  // went with the in-page UI and isn't needed: no build since 2026-11-01 lays
-  // a page out that way, and none of those shipped; DECISIONS.md, Margin 2
-  // Phase 2 step 7.)
-  const can = html instanceof HTMLHtmlElement && !html.hasAttribute('data-margin-shell') && !html.hasAttribute('data-margin-frameless');
+  // Pages that aren't HTML have no box.
+  const can = html instanceof HTMLHtmlElement;
 
   // Cancelled by the page's world: it heard. Nothing there means no script yet.
   const say = (detail) => !document.dispatchEvent(new CustomEvent('margin:box', { detail, cancelable: true }));

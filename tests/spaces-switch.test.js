@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], disabled: [], probes: 0, probeHangs: false, removed: [], history: [] };
+const fake = { zoom: {}, tabs: new Map(), nextId: 100, calls: { get: 0, contains: 0, create: [] }, messages: [], access: true, local: {}, current: new Set(), injected: [], probes: 0, probeHangs: false, removed: [], history: [] };
 const asTab = (t) => ({ ...t });
 globalThis.chrome = {
   runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => ({ content_scripts: [{ js: ['content/other.bundle.js'], world: 'MAIN' }, { js: ['content/content.bundle.js'] }] }) },
@@ -50,10 +50,6 @@ globalThis.chrome = {
         fake.injected.push({ tabId: target.tabId, files });
         fake.current.add(target.tabId);
         return Promise.resolve([]);
-      }
-      if (func?.name === 'disableStaleSidebarInPage') {
-        fake.disabled.push(target.tabId);
-        return Promise.resolve([{ result: true }]);
       }
       // ensureCurrent's question: is Margin's current copy there? (Not the
       // wake's, which asks the copy there something else.)
@@ -279,18 +275,14 @@ test('ensureCurrent: a page that doesn\'t answer (busy, asleep) isn\'t injected,
   assert.equal(fake.injected.length, 1, 'next time it answered: injected');
 });
 
-test('install repair: replaces stale sidebars immediately and never reinjects a current page', async () => {
+test('install repair: gives open pages this copy at once and never reinjects a current page', async () => {
   await setup();
   fake.tabs.set(6, { id: 6, windowId: 1, url: 'safari://startpage/', active: false, index: 6 });
   for (const id of fake.tabs.keys()) forgetCurrent(id);
   fake.current = new Set([1]);
   fake.injected = [];
-  fake.disabled = [];
   await injectIntoOpenTabs({ retry: false });
-  assert.deepEqual([...fake.disabled].sort(), [2, 3, 4, 5], 'stale UI is disabled before those pages are repaired');
-  assert.deepEqual(fake.injected.map((x) => x.tabId).sort(), [2, 3, 4, 5]);
-  assert.equal(fake.disabled.includes(1), false, 'the current copy is left visible');
-  assert.equal(fake.disabled.includes(6), false, 'browser-internal pages are not retried');
+  assert.deepEqual(fake.injected.map((x) => x.tabId).sort(), [2, 3, 4, 5], 'not the current copy\'s page, not a browser page');
 });
 
 test('next/previous: each press a plain switch, chained from the one before; the page is told it\'s switching, then done or failed', async () => {

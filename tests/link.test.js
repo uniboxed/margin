@@ -337,7 +337,7 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
     assert.equal((await app.next('reply', { from, test: (m) => m.id === 2 })).error, 'That tab is no longer open');
     app.send({ k: 'req', id: 3, epoch: 'old', windowId: 7, type: 'activateTab', payload: {} });
     assert.equal((await app.next('reply', { from, test: (m) => m.id === 3 })).ok, false, 'another epoch\'s: refused');
-    app.send({ k: 'req', id: 4, epoch: hello.epoch, windowId: 7, type: 'reloadForUpdate', payload: {} });
+    app.send({ k: 'req', id: 4, epoch: hello.epoch, windowId: 7, type: 'injectPage', payload: {} });
     assert.match((await app.next('reply', { from, test: (m) => m.id === 4 })).error, /not a request/, 'only what the UI asks');
     assert.equal(routed.length, 2);
     // A change to stored values, and to the icons: a delta, icons as a diff.

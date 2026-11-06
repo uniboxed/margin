@@ -26,10 +26,6 @@ import { startSheets } from './sheets.js';
   if (window !== top || /** @type {any} */ (window)[RAN]) return;
   const root = document.documentElement;
   if (!(root instanceof HTMLHtmlElement)) return; // an XML or SVG document: no box
-  // WebKit runs a newly registered script in open pages. One an old copy laid
-  // out (the fitted iframe, the frameless test build) stays as it is until it
-  // reloads: nothing here would ever take a box off it (content/page-link.js).
-  if (root.hasAttribute('data-margin-shell') || root.hasAttribute('data-margin-frameless')) return;
   // Chrome, where Margin works only in full screen: not in a window that shows
   // the toolbar (Margin full screen has none). innerHeight is in the page's zoomed pixels.
   if (start?.fullscreenOnly && outerHeight - innerHeight * (outerWidth / innerWidth || 1) > 40) return;

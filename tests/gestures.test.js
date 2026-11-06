@@ -35,8 +35,6 @@ test('pinch, on a page: only what would open Safari\'s overview is cancelled (th
   assert.equal(start(win, 0.98), true, 'inward at normal scale');
   assert.equal(start(win, 1.02), false, 'outward: Safari\'s');
   assert.equal(start(win, 1), false, 'no movement yet: Safari tests < 0 too');
-  assert.equal(start(win, 0.98, [{ localName: 'div' }, { localName: 'margin-sidebar-host' }]), true, 'inward over Margin');
-  assert.equal(start(win, 1.02, [{ localName: 'margin-palette-host' }]), true, 'outward over Margin: nothing zooms');
   visualViewport.scale = 1.4;
   assert.equal(start(win, 0.98), false, 'magnified: Safari\'s, both ways');
   visualViewport.scale = 1.004;
