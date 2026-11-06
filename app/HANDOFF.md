@@ -757,6 +757,28 @@ The build order is WP13 (lab tool) and WP1 first, so that G1 can run before anyt
 
 ---
 
+## 13. Tirth's answers (2026-11-06)
+
+These override the sections they name. Where §12 asked, this is the decision.
+
+1. **Margin.app quits with windows parked (overrides §6.4 "a clean quit"):** every parked window is **closed** by its own copy (`closeWindow`, its tabs kept as not-open tabs, as any closed window's). Only the window on screen stays. This includes the quit from `npm run safari` (`scripts/app-swap.sh`) and `BundleWatch`. A parked window whose drafts check finds unsent text (or doesn't answer): still open, pending Tirth's answer (asked 2026-11-06); until then it's returned to the Desktop behind the shown window, never closed with a draft. A copy that isn't linked at quit: its parked windows are returned to the Desktop (they'd come back by themselves anyway).
+2. **Margin.app crashes (overrides §6.4 "the new instance at launch"):** nothing can run at the crash, and the parked windows come back by themselves. The crash marker (`parked.json`) records what's needed to find them again: each parked window's number, link, copy window id, bounds and pid, plus the window that was shown (never a title or address). At the next launch, if Safari's pid is the same, each window from the marker that's still alive is **parked again** (no freeze, no handoff; logged), and the shown one stays. Windows whose pid changed (Safari restarted too) are left as normal windows (answer 3).
+3. **Safari restarts:** as designed: restored windows stay normal windows, each parked the first time a switch leaves it.
+4. **A draft in a window that close mode would close:** as designed (kept open), and the notice offers a **Close window** action so the person can close it themselves (`closeWindow` on their click, no drafts check then).
+5. **"Close windows to save memory":** one setting for the whole browser, as designed.
+6. **No cap** on parked windows. Only close mode closes them, as each switch leaves them.
+7. **The cover:** no snapshot, for now.
+8. (Asked again in plain words; designed default stands until answered.)
+9. **Late landing:** as designed, for now.
+10. **A dialog in A blocks the switch** with a notice: as designed.
+11. (Asked again in plain words; designed default stands until answered.)
+12. **No pre-made windows** for now. (A pre-made window costs a whole Safari window, ~100-300 MB, and saves about 0.3 s on the first switch into a profile only.)
+13. **Two or more displays must work like one display**, built right after the single-display handoff works properly. Until then, the multi-display rule of §6.7 stands.
+14. **The gates may run** (Tirth on another computer, 2026-11-06). The lab tool may use Screen Recording (through the terminal's existing grant); Margin.app never does.
+15. **The launch self-test** (a hidden child copy for about 50 ms): OK.
+
+---
+
 ## Appendix A. Critiques: what was accepted, and what wasn't
 
 Two critics reviewed draft 1. Each problem was checked against the code at df6877e and the lab files. Their numbering follows the order they were given.
