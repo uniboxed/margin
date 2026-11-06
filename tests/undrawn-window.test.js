@@ -265,6 +265,12 @@ test('a page committing in a tab Margin\'s state doesn\'t have yet: its window f
   fake.inserted.length = 0;
   void commit(70);
   assert.deepEqual(fake.inserted, [{ tabId: 70, css: OFF_CSS }], 'the window it\'s in now');
+  // Its window seen in its own update (a move heard no other way): that window's sheet.
+  fake.tabs.set(70, { ...fake.tabs.get(70), windowId: 2 });
+  void fire('onUpdated', 70, { status: 'loading' }, { ...fake.tabs.get(70) });
+  fake.inserted.length = 0;
+  void commit(70);
+  assert.match(fake.inserted[0]?.css ?? '', /--margin-at-left: 300px/, 'the window its own update named');
   await sleep(50);
 });
 

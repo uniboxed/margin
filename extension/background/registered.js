@@ -259,6 +259,9 @@ export function watchCommits() {
   api.tabs.onAttached.addListener((tabId, info) => { if (Number.isInteger(info?.newWindowId)) windowOfTab.set(tabId, info.newWindowId); });
   api.tabs.onActivated.addListener((info) => { if (Number.isInteger(info?.tabId) && Number.isInteger(info.windowId)) windowOfTab.set(info.tabId, info.windowId); });
   api.tabs.onRemoved.addListener((tabId) => windowOfTab.delete(tabId));
+  // A move seen another way (a tab's own update carries its window), and a tab out of its window: no stale window kept.
+  api.tabs.onUpdated?.addListener((tabId, _change, tab) => { if (Number.isInteger(tab?.windowId) && tab.windowId >= 0) windowOfTab.set(tabId, tab.windowId); });
+  api.tabs.onDetached?.addListener((tabId) => windowOfTab.delete(tabId));
   api.tabs.onReplaced?.addListener((_added, removed) => windowOfTab.delete(removed));
   // The tabs open now; what an event said since stands (it's newer).
   void Promise.resolve(api.tabs.query({})).then((tabs) => {
