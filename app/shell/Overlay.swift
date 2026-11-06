@@ -51,8 +51,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         // Joining only its window's Space instead of every Space, so it's already drawn when that
         // Space comes back (Tirth, 2026-11-05: the layout at once on every window switch). On by
         // default in the app (`defaults write io.tirth.margin MarginOverlayOwnSpace -bool NO` turns it
-        // off); the shell falls back to every Space for the launch if macOS doesn't place it with its
-        // window (Shell.checkOwnSpace).
+        // off); the shell falls back to every Space, until no link and no overlay is left, if macOS
+        // doesn't place it with its window (Shell.checkOwnSpace, judgeOwnSpace).
         var ownSpace = false
     }
 

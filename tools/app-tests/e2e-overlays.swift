@@ -1,0 +1,220 @@
+// Overlays through a window closing and a link dropping
+// (part of e2e.swift's run; DECISIONS.md "Margin 2: Safari reliability", the
+// own-Space fallback, overlays kept through a drop):
+// the real link, shell and overlays against fake-extension.mjs, one profile's
+// full-screen windows as stand-ins. Spaces are played by on-screen flags: an
+// overlay reads as on screen when its window does, or always while `stuck`
+// (macOS keeping an overlay in the Space showing, the case the own-Space
+// fallback is for), and the own-Space check runs in the harness
+// (`harnessOwnSpaceCheck`).
+import AppKit
+import WebKit
+
+@MainActor
+func overlaysScenario() async {
+  func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("overlays: \(label)", ok, detail()) }
+  let started = Date()
+  let fake = Fake()
+  do { try fake.start() } catch { return check("the fake extension starts", false, "\(error)") }
+  defer { fake.stop() }
+  guard await until(5, { fake.first("ready") != nil }) else { return check("the fake extension starts", false) }
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-overlays-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.overlays.\(ProcessInfo.processInfo.processIdentifier)"),
+                        timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
+  let windows = ScriptedWindows()
+  let apps = ScriptedApps()
+  var options = Shell.Options()
+  options.harness = true
+  options.overlay.harness = true
+  options.overlay.ownSpace = true
+  options.harnessOwnSpaceCheck = true
+  options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
+  options.bundleIds = ["safari": fakeBundle]
+  options.dataRoot = root
+  options.reconnectGrace = 3
+  var said: [String] = []
+  let echo = Diagnostics.echo
+  Diagnostics.echo = { said.append($0); echo?($0) }
+  defer { Diagnostics.echo = echo }
+  let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: FakeKeys(), options: options)
+  windows.shell = shell
+  var stuck = false
+  windows.overlayOnScreen = { w in w.onScreen || stuck }
+  shell.start()
+  guard await until(3, { link.port != nil }) else { return check("listening", false) }
+  fake.tell(["do": "wantLink"])
+  guard await until(3, { fake.first("wantLink") != nil }), let nonce = fake.first("wantLink")?["nonce"] as? String else { return check("wantLink", false) }
+  link.wantLink(nonce: nonce)
+  guard await until(3, { fake.first("link") != nil }) else { return check("linked", false) }
+
+  let r1 = CGRect(x: -20000, y: -20000, width: 1280, height: 800)
+  let r2 = CGRect(x: -18000, y: -20000, width: 1200, height: 760)
+  // Each run of "Safari" its own windows (a window number is never used again for another window; the
+  // binder never binds a closed window's number again).
+  var made: [NSWindow] = []
+  defer { for w in made { w.close() } }
+  func newWindows() -> (NSWindow, NSWindow) {
+    let pair = (standIn(r1), standIn(r2))
+    made += [pair.0, pair.1]
+    return pair
+  }
+  var (w1, w2) = newWindows()
+  func place(_ list: [(NSWindow, CGRect, Bool)]) {
+    windows.browser = list.enumerated().map { i, e in ServerWindow(number: e.0.windowNumber, pid: browserPid, bounds: e.1, onScreen: e.2, order: i) }
+  }
+  func win(_ id: Int, _ r: CGRect, focused: Bool = false, state: String = "fullscreen", viewport: JSONObject? = nil) -> JSONObject {
+    var o: JSONObject = ["windowId": id, "left": r.minX, "top": r.minY, "width": r.width, "height": r.height, "state": state, "focused": focused, "activeTabId": 13]
+    if let viewport { o["viewport"] = viewport }
+    return o
+  }
+  let k1 = WindowKey(link: "safari:P1", windowId: 1), k2 = WindowKey(link: "safari:P1", windowId: 2)
+  func saidSince(_ from: Int) -> [String] { Array(said.dropFirst(from)) }
+  // Linked as copy `copy` (the same copy linking again keeps its windows' bindings), both windows shown.
+  func connect(_ id: String, copy: String, _ list: [JSONObject]) async -> Bool {
+    fake.tell(["do": "connect", "id": id, "profile": "P1", "instanceId": copy, "windows": list])
+    return await until(15, { shell.links["safari:P1"]?.connection.hello.instanceId == copy && shell.links["safari:P1"]?.mirror.hasState == true })
+  }
+  func drop(_ id: String) async -> Bool {
+    fake.tell(["do": "close", "id": id])
+    return await until(5, { shell.links["safari:P1"] == nil })
+  }
+
+  // ---- linked, two full-screen windows, each overlay in its window's own Space ----
+  place([(w1, r1, true), (w2, r2, true)])
+  check("linked", await connect("A", copy: "copy-1", [win(1, r1, focused: true), win(2, r2)]))
+  apps.bringToFront(browserPid)
+  check("both overlays shown", await until(15, { shell.overlays[k1]?.isShown == true && shell.overlays[k2]?.isShown == true }))
+  guard let o1 = shell.overlays[k1], let o2 = shell.overlays[k2] else { return }
+  check("in their window's own Space", o1.panel.collectionBehavior == OverlayController.ownSpaceBehavior && o2.panel.collectionBehavior == OverlayController.ownSpaceBehavior)
+  try? await Task.sleep(nanoseconds: 400_000_000) // (the check after each placement passes: overlay and window on screen together)
+  check("the check after placing them: no fallback", !shell.ownSpaceFellBack)
+
+  // ---- a window ordered out a read before it leaves the list (a close, Safari quitting: Tirth's log, 21:57:20) ----
+  stuck = true
+  place([(w1, r1, false), (w2, r2, true)])
+  shell.track()
+  check("its overlay on screen while it isn't: put away at once, looked at again, no fallback yet", !o1.isShown && shell.suspectsOwnSpace(k1) && !shell.ownSpaceFellBack)
+  check("the log says what was read", said.contains { $0.hasPrefix("\(k1): its overlay (window \(o1.windowNumber)) reads on screen while its window \(w1.windowNumber) is listed off screen (") })
+  place([(w2, r2, true)])
+  shell.track()
+  check("gone from the list the next read: no fallback", !shell.suspectsOwnSpace(k1) && !shell.ownSpaceFellBack)
+  check("and the log says why", said.contains("\(k1): no own-Space fallback: window \(w1.windowNumber) left the window server's list (closed, or the browser quit)"))
+  try? await Task.sleep(nanoseconds: 500_000_000)
+  check("still none 0.5 s on, the other overlay where it was", !shell.ownSpaceFellBack && o2.isShown && o2.panel.collectionBehavior == OverlayController.ownSpaceBehavior)
+  stuck = false
+  place([(w1, r1, true), (w2, r2, true)])
+  check("listed again (a blip of the list): shown again", await until(3, { o1.isShown }))
+
+  // ---- one window closed (⌘W) while the other stays open ----
+  stuck = true
+  place([(w1, r1, false), (w2, r2, true)])
+  shell.track()
+  check("⌘W: ordered out first, its overlay put away, looked at again", !o1.isShown && shell.suspectsOwnSpace(k1))
+  place([(w2, r2, true)])
+  fake.tell(["do": "windows", "id": "A", "list": [win(2, r2, focused: true)]])
+  check("then gone: its overlay closed", await until(3, { shell.overlays[k1] == nil }))
+  try? await Task.sleep(nanoseconds: 500_000_000)
+  check("no fallback, the other overlay still in its own Space and shown", !shell.ownSpaceFellBack && o2.isShown && o2.panel.collectionBehavior == OverlayController.ownSpaceBehavior)
+
+  // ---- Safari quitting: its last window ordered out, then gone, the link dropped with no goodbye ----
+  place([(w2, r2, false)])
+  shell.track()
+  check("quitting: ordered out first, looked at again", !o2.isShown && shell.suspectsOwnSpace(k2))
+  place([])
+  check("the link drops", await drop("A"))
+  try? await Task.sleep(nanoseconds: 500_000_000)
+  shell.track()
+  check("no fallback", !shell.ownSpaceFellBack && !shell.suspectsOwnSpace(k2))
+  check("then its overlays close after the grace", await until(5, { shell.overlays.isEmpty }))
+  stuck = false
+
+  // ---- a dropped link: kept overlays follow the windows ----
+  (w1, w2) = newWindows()
+  place([(w1, r1, true), (w2, r2, true)])
+  check("linked again (Safari open again)", await connect("B", copy: "copy-2", [win(1, r1, focused: true), win(2, r2)]))
+  check("its overlays shown", await until(15, { shell.overlays[k1]?.isShown == true && shell.overlays[k2]?.isShown == true }))
+  weak var gone1: OverlayController?, gone2: OverlayController?
+  weak var panel2: OverlayPanel?
+  var from = 0, at = Date(), ok = false
+  do { // (no strong reference to them kept past this block)
+  guard let p1 = shell.overlays[k1], let p2 = shell.overlays[k2] else { return }
+  (gone1, gone2, panel2) = (p1, p2, p2.panel)
+  // A relink 1 s later, the windows as they were: no put-away, no show (nothing blinks).
+  from = said.count
+  check("the link drops: its overlays kept", await drop("B") && shell.isReconnecting("safari:P1") && p1.isShown && p2.isShown)
+  let tracksAtDrop = shell.tracks
+  try? await Task.sleep(nanoseconds: 1_000_000_000)
+  check("the window server still read while it's away", shell.tracks > tracksAtDrop + 2, "\(shell.tracks - tracksAtDrop) reads")
+  check("back 1 s later, the same copy", await connect("B2", copy: "copy-2", [win(1, r1, focused: true), win(2, r2)]) && !shell.isReconnecting("safari:P1"))
+  try? await Task.sleep(nanoseconds: 500_000_000)
+  check("the same overlays, shown all along: none put away or shown again", shell.overlays[k1] === p1 && shell.overlays[k2] === p2 && p1.isShown && p2.isShown
+        && !saidSince(from).contains { $0.hasPrefix("overlay put away (\(k1))") || $0.hasPrefix("overlay put away (\(k2))") || $0.hasPrefix("overlay shown over \(k1)") || $0.hasPrefix("overlay shown over \(k2)") },
+        "\(saidSince(from).filter { $0.contains("overlay") })")
+  // A window that leaves full screen while its link is away: put away within a read, not after the grace.
+  check("the link drops again", await drop("B2") && shell.isReconnecting("safari:P1"))
+  at = Date()
+  let windowed = CGRect(x: r1.minX, y: r1.minY, width: 900, height: 600)
+  place([(w1, windowed, true), (w2, r2, true)])
+  ok = await until(1, { !p1.isShown })
+  check("a window out of full screen meanwhile: its overlay put away within a read (\(Int(Date().timeIntervalSince(at) * 1000)) ms)", ok && shell.isReconnecting("safari:P1") && p2.isShown)
+  check("the log says why", said.contains { $0.hasPrefix("overlay put away (\(k1)): its window moved or changed size (out of full screen?), while its link is reconnecting") })
+  check("back: the windowed one stays without, the other kept", await connect("B3", copy: "copy-2", [win(1, windowed, state: "normal"), win(2, r2, focused: true)]) && !p1.isShown && p2.isShown)
+  // Safari quitting: every window gone, the link dropped with no goodbye: put away within a read.
+  at = Date()
+  fake.tell(["do": "close", "id": "B3"])
+  place([])
+  ok = await until(1.5, { !p2.isShown })
+  check("Safari quitting: its overlay put away within a read or so (\(Int(Date().timeIntervalSince(at) * 1000)) ms), not after the 3 s grace", ok && Date().timeIntervalSince(at) < 2.5)
+  check("its windows gone: why, in the log", said.contains { $0.hasPrefix("overlay put away (\(k2)): its window is gone from the window server, while its link is reconnecting") })
+  }
+  // Closed after the grace, and nothing of them left (each panel and its controller let go).
+  check("closed once the grace is over", await until(5, { shell.overlays.isEmpty && !shell.isReconnecting("safari:P1") }))
+  check("no overlay panel left after the grace (each let go)", await until(3, { gone1 == nil && gone2 == nil && panel2 == nil }), "\(gone1 == nil) \(gone2 == nil) \(panel2 == nil)")
+
+  // ---- a link dropping while the browser isn't in front: put away at once ----
+  (w1, w2) = newWindows()
+  place([(w1, r1, true), (w2, r2, true)])
+  check("linked again", await connect("C", copy: "copy-3", [win(1, r1, focused: true), win(2, r2)]))
+  check("shown", await until(15, { shell.overlays[k1]?.isShown == true && shell.overlays[k2]?.isShown == true }))
+  apps.frontPid = 1
+  shell.track()
+  from = said.count
+  check("dropped with another app in front: kept but put away at once", await drop("C") && shell.isReconnecting("safari:P1") && shell.overlays[k1]?.isShown == false && shell.overlays[k2]?.isShown == false)
+  check("the log says so", saidSince(from).contains { $0.hasPrefix("safari:P1 dropped (") && $0.hasSuffix("put away (the browser isn't in front)") }, "\(saidSince(from))")
+  check("back: shown again once the browser is in front", await connect("C2", copy: "copy-3", [win(1, r1, focused: true), win(2, r2)]))
+  apps.bringToFront(browserPid)
+  check("both shown again", await until(5, { shell.overlays[k1]?.isShown == true && shell.overlays[k2]?.isShown == true }))
+
+  // ---- the own-Space fallback, still there for the real case: an overlay kept on screen without its window ----
+  stuck = true
+  place([(w1, r1, false), (w2, r2, true)])
+  shell.track()
+  at = Date()
+  check("an overlay on screen while its window is listed off screen: looked at again", shell.suspectsOwnSpace(k1) && !shell.ownSpaceFellBack)
+  ok = await until(2, { shell.ownSpaceFellBack })
+  check("still so 0.3 s on, no Space change, the link up: every overlay joins every Space (\(Int(Date().timeIntervalSince(at) * 1000)) ms)", ok && Date().timeIntervalSince(at) >= Shell.ownSpaceWait
+        && shell.overlays[k2]?.panel.collectionBehavior == OverlayController.collectionBehavior)
+  check("the log says why", said.contains { $0.contains("\(k1): its overlay read on screen while its window \(w1.windowNumber) didn't, and ") && $0.hasSuffix("overlays join every Space again, until no link and no overlay is left") })
+  stuck = false
+  place([(w1, r1, true), (w2, r2, true)])
+  check("after the fallback: both shown again, in every Space", await until(3, { shell.overlays[k1]?.isShown == true && shell.overlays[k2]?.isShown == true })
+        && shell.overlays[k1]?.panel.collectionBehavior == OverlayController.collectionBehavior)
+
+  // Every link gone and every overlay closed (Safari quit): the next run of Safari gets its own Spaces again.
+  fake.tell(["do": "close", "id": "C2"])
+  place([])
+  check("Safari quits: links and overlays gone", await until(6, { shell.links.isEmpty && shell.overlays.isEmpty }))
+  check("the fallback ends with them", !shell.ownSpaceFellBack && said.contains("no link and no overlay left: overlays join only their window's Space again"))
+  (w1, w2) = newWindows()
+  place([(w1, r1, true)])
+  check("Safari open again", await connect("D", copy: "copy-4", [win(1, r1, focused: true)]))
+  apps.bringToFront(browserPid)
+  check("its overlay shown, in its window's own Space", await until(15, { shell.overlays[k1]?.isShown == true }) && shell.overlays[k1]?.panel.collectionBehavior == OverlayController.ownSpaceBehavior)
+
+  var stopped = false
+  shell.stop { stopped = true }
+  _ = await until(3, { stopped })
+  print(String(format: "  timings: the overlays scenario %.1f s", Date().timeIntervalSince(started)))
+}
+

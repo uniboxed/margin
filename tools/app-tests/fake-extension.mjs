@@ -210,7 +210,7 @@ function setSpace(s, windowId, spaceId) {
   s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
 }
 
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null }) {
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null }) {
   const to = old ? kept : link;
   const ws = new WebSocket(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
@@ -242,7 +242,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       const ok = m.k === 'welcome' && m.v === 2 && m.key === to.key;
       say({ ev: 'welcome', id, ok });
       if (!ok) return ws.close();
-      s.send({ k: 'hello', v: 2, profile, browser: 'safari', origin: ORIGIN, since: 1, ext: '2.0.0', owner, instanceId: `fake-${id}` });
+      s.send({ k: 'hello', v: 2, profile, browser: 'safari', origin: ORIGIN, since: 1, ext: '2.0.0', owner, instanceId: instanceId ?? `fake-${id}` }); // (`instanceId`: the same copy linking again)
       if (!owner) return;
       snapshot();
       say({ ev: 'sent', id, what: 'snapshot' });

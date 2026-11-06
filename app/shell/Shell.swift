@@ -34,6 +34,10 @@
 //    saying it's reconnecting; the copy linking again in that time takes
 //    them back as they are, else they close. The copy's pages go back to
 //    drawing their own UI on the same clock (background/link.js GONE_MS).
+//    Meanwhile the window server is still read, and a kept overlay is put
+//    away once the window it's over is gone, off screen (not in its own
+//    Space) or no longer where it was; dropped while the browser isn't in
+//    front, they're put away at once.
 
 import AppKit
 
@@ -135,6 +139,9 @@ struct HeldPushes {
 final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     struct Options {
         var harness = false
+        // The own-Space check (checkOwnSpace, judgeOwnSpace) in a harness too: its window source says
+        // which windows are on screen (the harness's stand-in windows have no Spaces of their own).
+        var harnessOwnSpaceCheck = false
         var root: URL? // the overlay's page folder (dist/app); default: the app's Resources/app
         var overlay = OverlayController.Options()
         var restPoll: TimeInterval = 0.25 // a linked browser in front
@@ -205,7 +212,15 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // Links that dropped a moment ago: their overlays kept, dimmed, until this timer.
     private var reconnecting: [String: Timer] = [:]
     // Their theme and keys meanwhile: the overlays stay drawn as the link comes back, not hidden until the theme is sent again.
-    private var keptForReconnect: [String: (theme: String?, themeId: String?, keys: [String: [String]]?)] = [:]
+    // And which browser's, with its process from the last hello: its windows are still read meanwhile.
+    private struct Kept {
+        var theme: String?
+        var themeId: String?
+        var keys: [String: [String]]?
+        var browser: String
+        var pid: Int?
+    }
+    private var keptForReconnect: [String: Kept] = [:]
 
     // ---- spaces across profiles (ShellProfiles.swift) ----
     var browserProfiles: [String: BrowserProfiles] = [:]
@@ -222,6 +237,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         self.apps = apps
         self.shortcuts = AppShortcuts(registrar: hotKeys)
         self.options = options
+        ownSpaceWanted = options.overlay.ownSpace
         let dataRoot = options.dataRoot
             ?? (options.harness ? FileManager.default.temporaryDirectory.appendingPathComponent("margin-harness-\(UUID().uuidString)", isDirectory: true) : DataStore.appRoot)
         data = DataSync(store: DataStore(root: dataRoot))
@@ -280,7 +296,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         data.linkUp(connection)
         if let timer = reconnecting.removeValue(forKey: connection.key) {
             timer.invalidate()
-            if let kept = keptForReconnect.removeValue(forKey: connection.key) { (entry.theme, entry.themeId, entry.keys) = kept }
+            if let kept = keptForReconnect.removeValue(forKey: connection.key) { (entry.theme, entry.themeId, entry.keys) = (kept.theme, kept.themeId, kept.keys) }
             Diagnostics.note("\(connection.key) is back: its overlays kept")
             for overlay in overlays.values where overlay.key.link == connection.key { overlay.push(raw: #"{"type":"link","state":"linked"}"#) }
         }
@@ -352,23 +368,32 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         links[connection.key] = nil
         data.linkDown(connection)
         let shown = overlays(of: entry)
+        ownSpaceSuspects = ownSpaceSuspects.filter { $0.key.link != connection.key }
         // Dropped (not replaced, not a goodbye, not quitting): kept, dimmed, for a while.
         if why != "replaced", !why.hasPrefix("stopped"), !why.hasPrefix("bye"), options.reconnectGrace > 0, !shown.isEmpty {
             for overlay in shown { overlay.push(raw: #"{"type":"link","state":"reconnecting"}"#) }
             reconnecting[connection.key]?.invalidate()
             let key = connection.key
-            keptForReconnect[key] = (entry.theme, entry.themeId, entry.keys)
+            let hello = connection.hello
+            keptForReconnect[key] = Kept(theme: entry.theme, themeId: entry.themeId, keys: entry.keys, browser: hello.browser, pid: hello.pid)
             reconnecting[key] = Timer.scheduledTimer(withTimeInterval: options.reconnectGrace, repeats: false) { [weak self] _ in
                 MainActor.assumeIsolated { self?.reconnectGaveUp(key) }
             }
-            Diagnostics.note("\(key) dropped (\(why)): its overlays kept, dimmed, for \(Int(options.reconnectGrace)) s")
+            // The browser not in front: nothing of it on screen is worth keeping (the relink shows them again).
+            var pids = options.bundleIds[hello.browser].map { apps.pids(of: $0) } ?? []
+            if let pid = hello.pid { pids.insert(pid_t(pid)) }
+            let inFront = apps.frontPid.map(pids.contains) ?? false
+            if !inFront { for overlay in shown { overlay.hide("its link dropped while the browser isn't in front") } }
+            Diagnostics.note("\(key) dropped (\(why)): its overlays kept, dimmed, for \(Int(options.reconnectGrace)) s\(inFront ? " while their windows stay as they are" : ", put away (the browser isn't in front)")")
         } else {
             for overlay in shown {
                 overlay.close()
                 overlays[overlay.key] = nil
             }
         }
-        if links.isEmpty { started = false }
+        // (Still following the windows while a dropped link's overlays are kept.)
+        if links.isEmpty && reconnecting.isEmpty { started = false }
+        ownSpaceResetIfIdle()
         burst("link down: \(connection.key)")
         acrossSoon()
         switcher.tick()
@@ -449,6 +474,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlays[overlay.key] = nil
         }
         Diagnostics.note("\(key) didn't come back: its overlays closed")
+        if links.isEmpty && reconnecting.isEmpty { started = false }
+        ownSpaceResetIfIdle()
         burst("gave up on \(key)")
     }
 
@@ -525,10 +552,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // An overlay just placed in its window's own Space: checked a moment later that macOS has it on
     // screen together with its window. If not (macOS put it in another Space, or kept it out), every
-    // overlay goes back to joining every Space for this launch, and the log says why.
+    // overlay goes back to joining every Space until the browser's links and overlays are all gone
+    // (ownSpaceResetIfIdle), and the log says why.
     private(set) var ownSpaceFellBack = false
+    private let ownSpaceWanted: Bool // options.overlay.ownSpace as the shell started
+    private var ownSpaceChecks: Bool { !options.harness || options.harnessOwnSpaceCheck }
     private func checkOwnSpace(_ overlay: OverlayController, browser number: Int) {
-        guard !ownSpaceFellBack, !options.harness else { return }
+        guard !ownSpaceFellBack, ownSpaceChecks else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak overlay] in
             MainActor.assumeIsolated {
                 guard let self, let overlay, overlay.isShown, overlay.aboveWindow == number, overlay.ownSpace else { return }
@@ -546,10 +576,63 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private func ownSpaceFallBack(_ why: String) {
         guard !ownSpaceFellBack else { return }
         ownSpaceFellBack = true
+        ownSpaceSuspects = [:]
         options.overlay.ownSpace = false
-        Diagnostics.warn("\(why): overlays join every Space again for this launch")
+        Diagnostics.warn("\(why): overlays join every Space again, until no link and no overlay is left")
         for o in overlays.values { o.joinEverySpace() }
         burst("own Space fallback")
+    }
+
+    // An overlay in its window's own Space read as on screen while its window isn't. A window closing,
+    // or every window of a browser quitting, is ordered out a read or so before it leaves the window
+    // server's list (Tirth's log, 21:57:20: 73 ms), so one read proves nothing: the overlay is put away
+    // at once and the window looked at again. Only a later read, `ownSpaceWait` on or more, with no
+    // Space change since, the link up, the window still its copy's and bound to the same window, that
+    // still lists the window as off screen falls back (judgeOwnSpace).
+    static let ownSpaceWait: TimeInterval = 0.3
+    private struct OwnSpaceSuspicion { let number: Int; let at: TimeInterval }
+    private var ownSpaceSuspects: [WindowKey: OwnSpaceSuspicion] = [:]
+    // Whether an overlay's window is being looked at again (tests read it).
+    func suspectsOwnSpace(_ key: WindowKey) -> Bool { ownSpaceSuspects[key] != nil }
+
+    private func suspectOwnSpace(_ overlay: OverlayController, number: Int) {
+        guard ownSpaceSuspects[overlay.key] == nil else { return }
+        let now = Diagnostics.now()
+        ownSpaceSuspects[overlay.key] = OwnSpaceSuspicion(number: number, at: now)
+        let since = spaceChangedAt == -.infinity ? "no Space change since the start" : "the Space changed \(Int((now - spaceChangedAt) * 1000)) ms ago"
+        Diagnostics.note("\(overlay.key): its overlay (window \(overlay.windowNumber)) reads on screen while its window \(number) is listed off screen (\(since)): put away; looked at again in \(Int(Shell.ownSpaceWait * 1000)) ms before overlays join every Space")
+    }
+
+    // Each suspicion, on a read that told something: dropped, kept for a later read, or the fallback.
+    private func judgeOwnSpace(_ ext: [WindowKey: (ExtWindow, Link)], _ byNumber: [Int: ServerWindow]) {
+        let now = Diagnostics.now()
+        for (key, s) in ownSpaceSuspects.sorted(by: { $0.key < $1.key }) {
+            let cleared: String?
+            if links[key.link] == nil { cleared = "its link went down" }
+            else if ext[key] == nil { cleared = "its copy no longer has the window (closed)" }
+            else if matches[key] != s.number { cleared = "it's no longer bound to window \(s.number)" }
+            else if spaceChangedAt > s.at { cleared = "the active Space changed since" }
+            else if let server = byNumber[s.number] { cleared = server.onScreen ? "window \(s.number) is on screen again" : nil }
+            else { cleared = "window \(s.number) left the window server's list (closed, or the browser quit)" }
+            if let cleared {
+                ownSpaceSuspects[key] = nil
+                Diagnostics.note("\(key): no own-Space fallback: \(cleared)")
+                continue
+            }
+            guard now - s.at >= Shell.ownSpaceWait else { continue }
+            ownSpaceSuspects[key] = nil
+            ownSpaceFallBack("\(key): its overlay read on screen while its window \(s.number) didn't, and \(Int((now - s.at) * 1000)) ms later the window is still listed off screen, with no Space change, the link up and the window its copy's")
+        }
+    }
+
+    // No link and no overlay left (the browser quit, or every copy gone): a fallback was for that run of
+    // the browser; overlays made from now on join only their window's Space again, if that's the setting.
+    private func ownSpaceResetIfIdle() {
+        guard ownSpaceFellBack || options.overlay.ownSpace != ownSpaceWanted, links.isEmpty, reconnecting.isEmpty, overlays.isEmpty else { return }
+        ownSpaceFellBack = false
+        ownSpaceSuspects = [:]
+        options.overlay.ownSpace = ownSpaceWanted
+        if ownSpaceWanted { Diagnostics.note("no link and no overlay left: overlays join only their window's Space again") }
     }
 
     // A slow read of the window server and all that follows it, in the log (at most every 10 s).
@@ -582,14 +665,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         } }
     }
 
-    private func linkedPids() -> [String: Set<pid_t>] {
+    // Each linked browser's processes. `reconnecting`: a dropped link's browser too (from its last
+    // hello), for reading its windows while its overlays are kept; not for the keys (nothing would take them).
+    private func linkedPids(reconnecting withKept: Bool = false) -> [String: Set<pid_t>] {
         var out: [String: Set<pid_t>] = [:]
-        for entry in links.values {
-            let browser = entry.connection.hello.browser
+        func add(_ browser: String, _ pid: Int?) {
             var pids = options.bundleIds[browser].map { apps.pids(of: $0) } ?? []
-            if let pid = entry.connection.hello.pid { pids.insert(pid_t(pid)) }
+            if let pid { pids.insert(pid_t(pid)) }
             out[browser, default: []].formUnion(pids)
         }
+        for entry in links.values { add(entry.connection.hello.browser, entry.connection.hello.pid) }
+        if withKept { for (key, kept) in keptForReconnect where reconnecting[key] != nil { add(kept.browser, kept.pid) } }
         return out
     }
 
@@ -600,17 +686,19 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard !stopped else { return }
         let began = Diagnostics.now()
         defer { trackTook(Diagnostics.now() - began) }
-        let byBrowser = linkedPids()
-        let allPids = byBrowser.values.reduce(into: Set<pid_t>()) { $0.formUnion($1) }
+        // (A dropped link's browser too, while its overlays are kept: they're checked against its windows.)
+        let byBrowser = linkedPids(reconnecting: true)
+        let readPids = byBrowser.values.reduce(into: Set<pid_t>()) { $0.formUnion($1) }
+        let allPids = linkedPids().values.reduce(into: Set<pid_t>()) { $0.formUnion($1) } // the keys': live links only
         let front = apps.frontPid
-        let browserInFront = front.map(allPids.contains) ?? false
+        let browserInFront = front.map(readPids.contains) ?? false
         if !started {
             guard browserInFront else { return updateKeys(list: [], allPids: allPids) } // nothing until a linked browser is in front
             started = true
             Diagnostics.note("a linked browser is in front: following its windows")
         }
         tracks += 1
-        var own = allPids
+        var own = readPids
         own.insert(ProcessInfo.processInfo.processIdentifier)
         let read = windowSource.read(of: own)
         let list = read ?? []
@@ -663,10 +751,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 // the window, already drawn (nothing to show again when the Space returns).
                 if overlay.ownSpace, overlay.isShown, overlay.aboveWindow == number, overlay.windowFrame == server.bounds {
                     overlay.reveal()
-                    // But on screen itself while its window isn't (macOS kept it in the Space showing): back to every Space.
-                    // (Not in the test harness: its stand-in windows have no Spaces, so an overlay always reads as on screen.)
-                    if !options.harness, !spaceChanged, byNumber[overlay.windowNumber]?.onScreen == true {
-                        ownSpaceFallBack("an overlay is on screen while its window isn't")
+                    // But on screen itself while its window isn't (macOS kept it in the Space showing): put away,
+                    // and back to every Space if a later read still says so (judgeOwnSpace: a closing window
+                    // reads like this for a moment).
+                    // (Not in the test harness unless it asks: its stand-in windows have no Spaces.)
+                    if ownSpaceChecks, !ownSpaceFellBack, !spaceChanged, byNumber[overlay.windowNumber]?.onScreen == true {
+                        suspectOwnSpace(overlay, number: number)
                         overlay.hide("its window isn't on screen")
                     }
                     continue
@@ -699,10 +789,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if !wasShown, overlay.ownSpace { checkOwnSpace(overlay, browser: number) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
+        if read != nil { judgeOwnSpace(ext, byNumber) }
+        if read != nil { followKept(byNumber) }
         // (Not a link's that dropped a moment ago, nor one back but without its state yet: kept as they are.)
         for (key, overlay) in overlays where ext[key] == nil && reconnecting[key.link] == nil && links[key.link]?.mirror.hasState != false {
             overlay.close()
             overlays[key] = nil
+            ownSpaceSuspects[key] = nil
         }
         if overlays.values.contains(where: \.isShown) { pointer.start() } else { pointer.stop() }
         updateKeys(list: list, allPids: allPids)
@@ -712,9 +805,34 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // The next read.
         let now = Diagnostics.now()
         let every = now < burstUntil ? options.burstPoll : (browserInFront ? options.restPoll : options.idlePoll)
-        guard !links.isEmpty else { return }
+        guard !links.isEmpty || !reconnecting.isEmpty else { return }
         pollTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
+        }
+    }
+
+    // A dropped link's overlays, kept dimmed for it to come back (nothing of its copy says where its
+    // windows are meanwhile): each checked against the window it's over. Put away once that window is
+    // gone from the window server, off screen (not left in its own Space), moved or resized (out of
+    // full screen), or no longer fills its display; shown again by the relink.
+    private func followKept(_ byNumber: [Int: ServerWindow]) {
+        for (key, overlay) in overlays.sorted(by: { $0.key < $1.key }) where reconnecting[key.link] != nil && links[key.link] == nil && overlay.isShown {
+            guard let number = overlay.aboveWindow else { continue }
+            let why: String?
+            if let server = byNumber[number] {
+                if !server.onScreen {
+                    why = overlay.ownSpace && overlay.windowFrame == server.bounds ? nil : "its window isn't on screen"
+                } else if let was = overlay.windowFrame, was != server.bounds {
+                    why = "its window moved or changed size (out of full screen?)"
+                } else if !(options.harness || options.windowedToo || ScreenGeometry.fillsDisplay(server.bounds)) {
+                    why = "its window doesn't fill its display"
+                } else {
+                    why = nil
+                }
+            } else {
+                why = "its window is gone from the window server"
+            }
+            if let why { overlay.hide("\(why), while its link is reconnecting") }
         }
     }
 

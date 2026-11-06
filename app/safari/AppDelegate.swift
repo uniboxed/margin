@@ -31,19 +31,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         bundle = BundleWatch(quit: { RunLoop.main.perform { NSApp.terminate(nil) } })
         // The storyboard's window, shown at launch (but opened with --background).
+        // How it started goes in the log (a run with the set-up window open is a regular app with a
+        // Dock icon, and doesn't quit by itself while that window is open).
         if let window = NSApp.windows.first(where: { $0.contentViewController is ViewController }) {
             keep(window)
-            if CommandLine.arguments.contains("--background") || Self.startedForLink() {
+            let background = CommandLine.arguments.contains("--background")
+            if background || Self.startedForLink() {
                 window.orderOut(nil)
                 NSApp.setActivationPolicy(.accessory)
+                Diagnostics.note(background ? "Margin.app started with --background: no set-up window" : "Margin.app started for a link (the extension's note): no set-up window")
             } else {
                 // An agent app (LSUIElement, scripts/make-xcode.sh): opened by
                 // the person, it gets its Dock icon and comes forward.
                 NSApp.setActivationPolicy(.regular)
                 NSApp.activate()
+                Diagnostics.note("Margin.app opened by hand: set-up window shown")
             }
         } else {
             NSApp.setActivationPolicy(.accessory)
+            Diagnostics.note("Margin.app started: no set-up window in its storyboard")
         }
         signal(SIGTERM, SIG_IGN)
         terminating = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
@@ -105,10 +111,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     static let idleCheckEvery: TimeInterval = 30
     private var idleCheck: Timer?
     private var idleSince: Date?
+    private var keptBySetupSaid = false // the log said, once, that the set-up window keeps it running
     private func checkIdle() {
         // Another build in this one's place: quits, linked or not (BundleWatch.swift).
         if bundle?.check("the 30 s check") == true { return }
         let setupOpen = setup?.window?.isVisible == true
+        if shell.links.isEmpty, setupOpen {
+            if !keptBySetupSaid { Diagnostics.note("no copy linked, but the set-up window is open: Margin.app doesn't quit by itself while it is") }
+            keptBySetupSaid = true
+        } else {
+            keptBySetupSaid = false
+        }
         guard shell.links.isEmpty, !setupOpen else { idleSince = nil; return }
         let since = idleSince ?? Date()
         idleSince = since

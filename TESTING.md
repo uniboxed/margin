@@ -693,6 +693,14 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Open the palette and type in it, then click the page: the palette closes and typing goes to the page (the log says `gave the keyboard back: a press on the page or another app`).
 - [ ] If you ever see a field in Margin's sidebar or launcher that looks focused while what you type goes to Safari, note the time and send me the lines around it with `keyboard`, `focus` or `let go` in them.
 
+**Closing windows, links that drop.** `npm run log:app -- --stream` open.
+- [ ] Two full-screen windows. Close one (⌘W): the other keeps its sidebar, and the log has `…: no own-Space fallback: window N left the window server's list (closed, or the browser quit)` (or nothing about it), never `overlays join every Space again`.
+- [ ] Quit Safari with full-screen windows open, then open it again within a few minutes (Margin.app keeps running): the log has no `overlays join every Space again` line at the quit. Switch between the windows: the sidebar is already there as each slides in, as before the quit.
+- [ ] If a line `overlays join every Space again, until no link and no overlay is left` ever comes, send it with the line before it (`…: its overlay read on screen while its window N didn't, and … ms later …`). After Safari quits, the log says `no link and no overlay left: overlays join only their window's Space again`.
+- [ ] Quit Safari while Margin is linked: the sidebars go with the windows at once, not dimmed on the desktop for a few seconds. The log may say `overlay put away (…): its window is gone from the window server, while its link is reconnecting`.
+- [ ] Anything that makes a sidebar dim with "Reconnecting" (an update, `npm run safari`): if you take its window out of full screen or close it meanwhile, the dimmed sidebar goes at once. If you leave the window alone and the link comes back within a second or two, the sidebar never goes away (no blink).
+- [ ] Open Margin.app from Applications or Spotlight: the log says `Margin.app opened by hand: set-up window shown`. With no profile linked and the set-up window open, it says once `no copy linked, but the set-up window is open: Margin.app doesn't quit by itself while it is`. After `npm run safari` with Safari open, the new build says `Margin.app started with --background: no set-up window` or `Margin.app started for a link (the extension's note): no set-up window`.
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.
@@ -740,7 +748,7 @@ What changed for you: no Margin sleep page any more (Safari's sleeping tabs are 
 
 - [ ] Switch between them (three-finger swipe, ⌃→/⌃←, Mission Control, ⌘\`): Margin's sidebar is already there as the window slides in, never appearing a moment after. Also after each window has been shown once since Margin.app started (the first showing of a window may still take a moment).
 - [ ] Swipe to the desktop and back: nothing of Margin's on the desktop.
-- [ ] `npm run log:app`: no line "overlays join every Space again for this launch". If there is one, macOS didn't keep an overlay with its window: tell me the time, and Margin has fallen back to the earlier behaviour for that launch.
+- [ ] `npm run log:app`: no line "overlays join every Space again". If there is one, macOS didn't keep an overlay with its window: tell me the time, and Margin has fallen back to the earlier behaviour until Safari quits (since "Margin 2: Safari reliability"; before, for the rest of Margin.app's launch).
 - [ ] ⌘⌥I docked at the bottom, then left and right: Margin moves out of its way as it opens, and follows as you drag its edge, with no noticeable wait.
 
 ## Margin 2 Phase 2 step 8: what you saw in full-screen Safari, fixed (2026-11-05)

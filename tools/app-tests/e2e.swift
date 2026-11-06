@@ -105,13 +105,15 @@ final class ScriptedWindows: WindowSource {
   weak var shell: Shell?
   var somethingBetween = false
   var noList = false // the window server giving no list at all (CGWindowListCopyWindowInfo's nil)
+  // Whether an overlay over a window reads as on screen (nil: always; e2e-overlays.swift plays Spaces with it).
+  var overlayOnScreen: ((ServerWindow) -> Bool)?
   func read(of pids: Set<pid_t>) -> [ServerWindow]? { noList ? nil : windows(of: pids) }
   func windows(of pids: Set<pid_t>) -> [ServerWindow] {
     var out: [ServerWindow] = []
     var order = 0
     for w in browser.sorted(by: { $0.order < $1.order }) {
       if let overlay = shell?.overlays.values.first(where: { $0.isShown && $0.aboveWindow == w.number }) {
-        out.append(ServerWindow(number: overlay.windowNumber, pid: ProcessInfo.processInfo.processIdentifier, bounds: overlay.frameTopLeft, order: order))
+        out.append(ServerWindow(number: overlay.windowNumber, pid: ProcessInfo.processInfo.processIdentifier, bounds: overlay.frameTopLeft, onScreen: overlayOnScreen?(w) ?? true, order: order))
         order += 1
         if somethingBetween {
           out.append(ServerWindow(number: 1, pid: 4242, bounds: w.bounds.insetBy(dx: 100, dy: 100), order: order))
@@ -618,6 +620,12 @@ final class Runner: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     if env["MARGIN_APP_VERBOSE"] != nil { Diagnostics.echo = { print("  app:", $0) } }
     Task { @MainActor in
+      // MARGIN_E2E_ONLY=overlays: that scenario alone (while working on it).
+      if env["MARGIN_E2E_ONLY"] == "overlays" {
+        await overlaysScenario()
+        print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
+        exit(failures == 0 ? 0 : 1)
+      }
       await scenario()
       await dataScenario()
       await carryScenario() // e2e-data.swift
@@ -625,6 +633,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await windowsScenario()
       await windowsScenario(ownSpace: true)
       await keyboardScenario() // e2e-keyboard.swift
+      await overlaysScenario() // e2e-overlays.swift
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }
@@ -637,7 +646,7 @@ final class Runner: NSObject, NSApplicationDelegate {
     app.setActivationPolicy(.accessory)
     let runner = Runner()
     app.delegate = runner
-    Timer.scheduledTimer(withTimeInterval: 120, repeats: false) { _ in print("FAIL timed out"); exit(1) }
+    Timer.scheduledTimer(withTimeInterval: 180, repeats: false) { _ in print("FAIL timed out"); exit(1) }
     withExtendedLifetime(runner) { app.run() }
   }
 }
