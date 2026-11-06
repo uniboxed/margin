@@ -167,14 +167,23 @@ let pageRecorder = """
   }
 }
 
+// A window AppKit leaves where it's put. A titled window is moved onto a screen as it's ordered
+// in (constrainFrameRect(_:to:)), so the host's window, set at (-20000, -20000), showed at the
+// top left of the main display, in front of the person's own windows, for every run.
+final class OffScreenWindow: NSWindow {
+  override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
 @MainActor final class Win: NSObject, WKWebExtensionWindow {
   var tabs: [Tab] = []
   var active: Tab?
   let nsWindow: NSWindow
   override init() {
-    nsWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+    nsWindow = OffScreenWindow(contentRect: NSRect(x: -20000, y: -20000, width: 1200, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
     super.init()
-    // Off screen and never activated: tests run without showing anything.
+    // Off screen and never activated: tests run without showing anything. Ordered in all the
+    // same (behind everything), so WebKit counts its web views in a window and visible.
+    nsWindow.animationBehavior = .none
     nsWindow.setFrameOrigin(NSPoint(x: -20000, y: -20000))
     nsWindow.orderBack(nil)
   }
@@ -793,13 +802,15 @@ func pinchField(_ n: UInt32) -> CGEventField { CGEventField(rawValue: n)! }
 @MainActor func pinchOn(_ wv: WKWebView, _ step: [String: Any]) async {
   let deltas = step["deltas"] as! [Double]
   let x = step["x"] as? Double ?? 700, y = step["y"] as? Double ?? 400
+  // The event has no window, so its locationInWindow is its screen point, and WebKit takes that
+  // as a point in the web view's window: the point is given as one (x, y from the window's top
+  // left), wherever the window is. Measured 2026-11-06: a gesturestart's clientX/Y is (x, y).
   let screenH = NSScreen.screens[0].frame.height
-  let origin = wv.window?.frame.origin ?? .zero
   let seq: [(Double, Int64)] = deltas.enumerated().map { ($1, $0 == 0 ? 1 : 2) } + [(0, 4)]
   for (mag, phase) in seq {
     let cg = CGEvent(source: nil)!
     cg.type = CGEventType(rawValue: 29)!
-    cg.location = CGPoint(x: origin.x + x, y: screenH - (origin.y + 800 - y))
+    cg.location = CGPoint(x: x, y: screenH - (800 - y))
     cg.setIntegerValueField(pinchField(110), value: 8)
     cg.setDoubleValueField(pinchField(113), value: mag)
     cg.setIntegerValueField(pinchField(132), value: phase)

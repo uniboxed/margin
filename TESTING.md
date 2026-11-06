@@ -7,7 +7,7 @@ npm test            # unit tests: node --test tests/*.test.js
 npm run test:e2e    # builds dist/, then Playwright, headless Chromium, loads dist/chrome/ unpacked
 ```
 
-Everything below this line is **manual, in Safari on macOS**. The automated tests only prove the extension works in Chromium. (Not run for now: Tirth's "no E2E for now". Since Margin 2 the e2e suite is mostly skipped tests waiting to be rewritten against Margin.app; `npm run test:webkit` and `npm run test:app` cover the extension and the app off screen.) Sections marked superseded test what Margin 2 removed: they're kept as history.
+Everything below this line is **manual, in Safari on macOS**. The automated tests only prove the extension works in Chromium. (Not run for now: Tirth's "no E2E for now". Since Margin 2 the e2e suite is mostly skipped tests waiting to be rewritten against Margin.app; `npm run test:webkit` and `npm run test:app` cover the extension and the app off screen: the WebKit host's window stays at −20000, −20000 for the whole run, never on a display (until 2026-11-06 AppKit moved it to the top left of the main display, in front of your windows).) Sections marked superseded test what Margin 2 removed: they're kept as history.
 
 ## Safari behaviors to confirm first
 
