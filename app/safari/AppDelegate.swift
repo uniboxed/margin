@@ -102,6 +102,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Replaced while it was starting: no shell at all.
             if bundle.check("at launch") { return }
         }
+        // macOS's private calls for the profile handoff, checked before the shell starts: anything
+        // missing or changed turns that part off, with one log line (PrivateCalls.swift).
+        shell.checkPrivateCalls()
         shell.start()
         idleCheck = Timer.scheduledTimer(withTimeInterval: Self.idleCheckEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkIdle() }

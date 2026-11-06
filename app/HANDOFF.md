@@ -392,6 +392,15 @@ The AppKit lab's own retry toggled B back out: B had entered, then "dropped; ask
 - **Already in Margin.app, also listed** (not new, not part of the choices): WebKit's `drawsBackground` key (`app/shell/OverlayWebView.swift:178`, a `responds`/`value(forKey:)` check at launch, logged), and Safari's files read only (`SafariTabs.db`, each profile's `Extensions.plist`, `CloudTabs.db`, with the schema checks those readers already do).
 - **Considered and not used:** `SLSManagedDisplaySetCurrentSpace` (it didn't shorten the entry), `SLSOrderWindow` and other direct window calls (refused cross-process with error 1000, or silently ignored: `S/handoff/xp.swift:76-110`), and minimizing.
 
+Built (WP1): `app/shell/PrivateCalls.swift` and `PRIVATE-APIS.md`. Settled on the way:
+
+- **Row 12's selector is SkyLight's, not WindowManagement's.** Both classes and their `-performWithWMBridgeDelegate` are implemented in SkyLight (read with `class_getImageName` and `dladdr` on 26B123). `WindowManagement.framework` is still opened and checked: every lab that parked had it loaded, and whether the bridge needs it is untested.
+- **The encodings** (macOS 27.2, 26B123): `-initWithSpaceID:windows:options:` `@36@0:8Q16@24I32`, `-initWithWindows:spaces:` `@32@0:8@16@24`, `-performWithWMBridgeDelegate` `v16@0:8`. The perform selector is checked on each class, so the launch line says 4 selectors, not 3.
+- **The enumerator's candidate** (row 13) is only looked up, never called: its signature isn't known. `Availability.enumerator` stays false until `PrivateCalls.enumeratorPassedG5` is set after gate G5.
+- **The wrappers** are `SkyLight` (nonisolated, so the freezer's watchdog can reveal from its own queue). They're filled in only for the parts the check passed, so a changed encoding never reaches its initializer. Each returns nil or false when it refuses.
+- **The bridge's operations are asynchronous** (superclass `SLSAsynchronousBridgedWindowManagementOperation`). The labs never released them. `SkyLight` keeps the last 16 alive instead of leaking each one.
+- **`drawsBackground` has no launch check yet.** `OverlayWebView.swift:178` sets it unconditionally, not with the `responds`/`value(forKey:)` check written above. `PRIVATE-APIS.md` lists it as still to add (not in WP1's files).
+
 ### 4.2 At launch
 
 New `app/shell/PrivateCalls.swift`:
@@ -401,6 +410,7 @@ New `app/shell/PrivateCalls.swift`:
 - **macOS build:** `sysctl kern.osversion` against the last one in `UserDefaults` (`MarginPrivateCallsBuild`). Every launch checks everything anyway. A changed build adds one log line.
 - **Missing anything falls back silently:** no notice to the person, one log line.
 - **Tests never call the real functions.** The real resolver and wrappers are made only in `Shell.forApp()` (`Shell.swift:277-286`). The real freezer and parker refuse to run when `MARGIN_APP_TESTS` is set.
+- Built (WP1): `PrivateCalls.check(resolver:defaults:)` returns `Availability { freeze, spaces, park, enumerator, missing, mismatched }`, plus each off part's reason and the counts for the launch line. `Shell.checkPrivateCalls()` runs it from `AppDelegate.startShell`, before `shell.start()`. The real resolver goes in `Shell.Options.privateResolver`, set only in `forApp()`. With none (every test, the harness), nothing is checked and every part stays off. `RealPrivateResolver` and `SkyLight` both refuse under `MARGIN_APP_TESTS`, which `tools/app-tests/run.sh` now sets. The self-test is WP3's.
 - Under the hardened runtime, `dlopen` of Apple's own frameworks passes library validation. No entitlement is added. **Gate G1** confirms that the freeze and cross-process bridge work from a Developer-ID, hardened Margin.app with Screen Recording and Accessibility denied. All the labs so far ran as children of an app that had Screen Recording.
 
 ### 4.3 Every real call verified
@@ -761,17 +771,17 @@ The build order is WP13 (lab tool) and WP1 first, so that G1 can run before anyt
 
 These override the sections they name. Where §12 asked, this is the decision.
 
-1. **Margin.app quits with windows parked (overrides §6.4 "a clean quit"):** every parked window is **closed** by its own copy (`closeWindow`, its tabs kept as not-open tabs, as any closed window's). Only the window on screen stays. This includes the quit from `npm run safari` (`scripts/app-swap.sh`) and `BundleWatch`. A parked window whose drafts check finds unsent text (or doesn't answer): still open, pending Tirth's answer (asked 2026-11-06); until then it's returned to the Desktop behind the shown window, never closed with a draft. A copy that isn't linked at quit: its parked windows are returned to the Desktop (they'd come back by themselves anyway).
+1. **Margin.app quits with windows parked (overrides §6.4 "a clean quit"):** every parked window is **closed** by its own copy (`closeWindow`, its tabs kept as not-open tabs, as any closed window's). Only the window on screen stays. This includes the quit from `npm run safari` (`scripts/app-swap.sh`) and `BundleWatch`. No drafts check at quit: Tirth (2026-11-06) wants every parked window closed, unsent text or not. A copy that isn't linked at quit: its parked windows are returned to the Desktop (they'd come back by themselves anyway).
 2. **Margin.app crashes (overrides §6.4 "the new instance at launch"):** nothing can run at the crash, and the parked windows come back by themselves. The crash marker (`parked.json`) records what's needed to find them again: each parked window's number, link, copy window id, bounds and pid, plus the window that was shown (never a title or address). At the next launch, if Safari's pid is the same, each window from the marker that's still alive is **parked again** (no freeze, no handoff; logged), and the shown one stays. Windows whose pid changed (Safari restarted too) are left as normal windows (answer 3).
 3. **Safari restarts:** as designed: restored windows stay normal windows, each parked the first time a switch leaves it.
 4. **A draft in a window that close mode would close:** as designed (kept open), and the notice offers a **Close window** action so the person can close it themselves (`closeWindow` on their click, no drafts check then).
 5. **"Close windows to save memory":** one setting for the whole browser, as designed.
 6. **No cap** on parked windows. Only close mode closes them, as each switch leaves them.
 7. **The cover:** no snapshot, for now.
-8. (Asked again in plain words; designed default stands until answered.)
+8. **Closing the shown window closes every parked window (overrides §6.2 and §6.3's ⌘W case):** to the person it's one window. When the window Margin shows is closed by the person (⌘W, its close button, the Window menu: any close that isn't Margin's own close handoff, a create's undo, or Safari quitting), Margin closes every parked window of every profile too (each by its own copy's `closeWindow`; tabs kept as not-open tabs; no drafts check). Their private Spaces are destroyed. So §6.2's "every window parked, Safari activated" no longer arises from ⌘W; a Dock click then opens Safari's own new window, bound as usual. §6.2's no-A handoff stays only for a return Margin can't explain (logged), and shows the last shown window. A person's own second window (answer 11) isn't closed.
 9. **Late landing:** as designed, for now.
 10. **A dialog in A blocks the switch** with a notice: as designed.
-11. (Asked again in plain words; designed default stands until answered.)
+11. **One window per profile (overrides §6.11 and §1.5 rule 1's same-profile case):** a profile is one window, and its spaces switch inside it (`setSpace`), never by a handoff. A second window the person opens themselves (⌘N) is left alone: never parked, never a handoff target, and Margin's pins and tabs go to the profile's own window (the one Margin shows and parks, `registry.lastShown`). No same-profile handoffs are built.
 12. **No pre-made windows** for now. (A pre-made window costs a whole Safari window, ~100-300 MB, and saves about 0.3 s on the first switch into a profile only.)
 13. **Two or more displays must work like one display**, built right after the single-display handoff works properly. Until then, the multi-display rule of §6.7 stands.
 14. **The gates may run** (Tirth on another computer, 2026-11-06). The lab tool may use Screen Recording (through the terminal's existing grant); Margin.app never does.

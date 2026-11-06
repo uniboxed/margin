@@ -177,6 +177,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Safari's data folder, for iCloud Tabs (CloudTabs.swift); nil: not read (the harness, unless a test gives a stand-in).
         var cloudTabsData: URL?
         var cloudWatch = CloudTabsWatcher.Options()
+        // macOS's private calls for the profile handoff (PrivateCalls.swift): the system's only in
+        // forApp(); nil (every test, the harness): none, and every part they serve stays off.
+        var privateResolver: PrivateResolver?
+        var privateCallsDefaults: UserDefaults? // where the macOS build last checked is kept; nil: not kept
     }
 
     final class Link {
@@ -251,6 +255,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var opened: [URL] = [] // a test's: what the overlays asked to open
     var copied: [String] = [] // a test's: what they asked to copy
 
+    // ---- private calls (PrivateCalls.swift, app/HANDOFF.md §4.2) ----
+    var privateCalls = PrivateCalls.Availability.off // what the launch check found
+    var skyLight: SkyLight? // the functions it passed, behind their wrappers; nil until checked
+
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
         self.windowSource = windows
@@ -282,7 +290,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // drawn when its window's Space comes back; on unless MarginOverlayOwnSpace is set to NO.
         options.overlay.ownSpace = UserDefaults.standard.object(forKey: "MarginOverlayOwnSpace") as? Bool ?? true
         Diagnostics.note(options.overlay.ownSpace ? "overlays join only their window's Space (each kept there while it's away)" : "overlays join every Space (MarginOverlayOwnSpace is off)")
+        options.privateResolver = RealPrivateResolver()
+        options.privateCallsDefaults = .standard
         return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
+    }
+
+    // At launch, before start() (AppDelegate.startShell): which private calls are there. With no
+    // resolver nothing is checked, and the freeze and parking stay off.
+    func checkPrivateCalls() {
+        guard let resolver = options.privateResolver else { return }
+        privateCalls = PrivateCalls.check(resolver: resolver, defaults: options.privateCallsDefaults)
+        skyLight = SkyLight(resolver: resolver, availability: privateCalls)
     }
 
     func start() {

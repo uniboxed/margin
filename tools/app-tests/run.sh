@@ -6,7 +6,8 @@
 #         profiles (profiles-tests.swift: the order, the names' file, the
 #         cross-profile switch against a fake world and clock); Safari's profile
 #         names and iCloud Tabs read from stand-ins for Safari's files
-#         (safari-profiles-tests.swift, cloud-tabs-tests.swift)
+#         (safari-profiles-tests.swift, cloud-tabs-tests.swift); macOS's private calls'
+#         launch check and wrappers against a fake resolver (private-calls-tests.swift)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
 #         extension (fake-extension.mjs, Node), and a picture of the overlay
@@ -26,7 +27,10 @@
 # Built with swiftc as the app target builds it (Swift 5, main actor by
 # default), no XCTest. Exits 1 if a check failed. Nothing shows on screen and
 # nothing reaches Safari. ./run.sh [unit|e2e|all] (default all).
+# MARGIN_APP_TESTS is set for every binary here: macOS's private calls refuse to
+# run under it (PrivateCalls.swift), so no test calls one or freezes the screen.
 set -u
+export MARGIN_APP_TESTS=1
 cd "$(dirname "$0")"
 BUILD="${MARGIN_APP_TESTS_BUILD:-$PWD/build}"
 mkdir -p "$BUILD"
@@ -64,7 +68,7 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/safari/AppDelegate.swift ../../app/safari/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/safari/SafariWebExtensionHandler.swift
-  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift fake-safari.swift window-tests.swift "${SHELL_SOURCES[@]}"
+  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift fake-safari.swift window-tests.swift private-calls-tests.swift "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
