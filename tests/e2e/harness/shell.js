@@ -97,6 +97,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   const held = new Map(); // windowId (-1 every window) → type → msg
   const heldPalette = new Map(); // windowId → { msg, until, newTab }
   const fullscreenAsked = new Set();
+  const saidOff = new Set(); // windows a test said the app doesn't draw over (`drawn(id, false)`)
   let holding = false; // the app's word to its overlays held back (a test makes the overlay lag)
   const backlog = [];
 
@@ -285,7 +286,7 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
         unwanted.delete(id);
         const o = overlays.get(id);
         if (!o && themeJSON) openOverlay(w);
-        else if (o) { sendDrawn(id, true); o.resize(w); offerLayout(o); }
+        else if (o) { if (!saidOff.has(id)) sendDrawn(id, true); o.resize(w); offerLayout(o); }
       } else {
         if (makeFullscreen && !fullscreenAsked.has(id) && w.state === 'normal' && overlays.size) {
           fullscreenAsked.add(id);
@@ -488,7 +489,10 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     navigate(action, windowId = frontWindowId()) { return request('navigate', { action, windowId }, windowId); },
     /** What the app sends an overlay (pointer, pressOutside, blur, shown…). */
     tell(windowId, msg) { overlays.get(windowId)?.push(msg); },
-    drawn(windowId, on) { sendDrawn(windowId, on); },
+    drawn(windowId, on) {
+      if (on) saidOff.delete(windowId); else saidOff.add(windowId);
+      sendDrawn(windowId, on);
+    },
     /** Holds back what the overlays are told (`true`), then gives it all in order (`false`). */
     hold(on) {
       holding = on;
