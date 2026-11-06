@@ -22,6 +22,7 @@ import { startLoads } from './loads.js';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.js';
 import { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor } from '../shared/app-link.js';
 import { probeFrames, watchVisible } from '../shared/frame-probe.js';
+import { startScrollRecord } from './scroll-record.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -415,6 +416,10 @@ export function startCore() {
   // When it last turned visible, for Margin.app's frame probe (shared/frame-probe.js).
   const visibleAt = watchVisible();
 
+  // Where the page is scrolled, kept with its Margin tab and taken once when it's opened again
+  // (content/scroll-record.js).
+  const scrollRecord = startScrollRecord({ send, retired, boxed: () => !!box });
+
   // The state taken: this page's tab and window (its box is its window's
   // layout), the gestures' settings.
   let firstRender = true; // until the page first takes the state
@@ -423,6 +428,7 @@ export function startCore() {
     if (fullscreenOnly() && fullscreen === null) return; // until the background says (above)
     // Known tab → its window. Until the background answers `hello`, guess.
     windowId = state.tabs?.[tabId]?.windowId ?? helloWindowId ?? V.guessWindow(state, location.href);
+    if (tabId != null) scrollRecord.take(!!state.tabs?.[tabId]?.restoreScroll);
     layout.settle();
     trackpad.update();
     if (firstRender) {

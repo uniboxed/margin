@@ -373,6 +373,8 @@ extension Shell: SwitchWorld {
             if profiles.setCloseWindows(on) {
                 Diagnostics.note("\(browser): close windows to save memory \(on ? "on" : "off")")
                 acrossSoon()
+                // On with windows parked: each closed by its copy, drafts permitting (HANDOFF.md §5).
+                if on { switcher.closeParkedWindows() }
             }
         case "switch.coverShown":
             switchCoverShown(overlay)

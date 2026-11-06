@@ -216,6 +216,9 @@ function keptRecord(r, spaceId, { why, now, from = null, wasTab = null }) {
     order: placeOf(r),
     lastActive: r.lastActive ?? now,
     ...(r.wokeAt != null ? { wokeAt: r.wokeAt } : {}),
+    // Where its page was scrolled (noteScroll), with the address it's for: opened again, it goes
+    // back there once (linkKept, takeScroll).
+    ...(r.scroll > 0 ? { scroll: { y: r.scroll, url: r.url } } : {}),
     keptAt: now,
     why,
     ...(from ? { from } : {}),
@@ -320,6 +323,8 @@ function linkKept(state, tabId, keptId, now) {
   const spaceId = hasSpace(state, k.spaceId) ? k.spaceId : state.tabSpace[tabId];
   const record = { ...r, mid: k.id, order: k.order, title: r.title && r.title !== r.url ? r.title : k.title || r.title, lastActive: now, placed: true };
   if (!r.favIconUrl && k.favIconUrl) record.favIconUrl = k.favIconUrl;
+  // Its page's scroll, for the page to take once as it loads (takeScroll).
+  if (k.scroll?.y > 0 && sameUrl(k.scroll.url, k.url)) record.restoreScroll = { y: k.scroll.y, url: k.url };
   const next = forgetKept(state, keptId);
   return { ...next, tabs: { ...next.tabs, [tabId]: record }, ...(spaceId ? { tabSpace: { ...next.tabSpace, [tabId]: spaceId } } : {}) };
 }
@@ -337,6 +342,36 @@ function keptForUrl(state, url, spaceId) {
 /** @param {State} state */
 function keptWasTab(state, tabId) {
   return Object.values(state.keptTabs ?? {}).find((k) => k.wasTab === tabId) ?? null;
+}
+
+// ---- the scroll record (DATA.md "The scroll record") -------------------------------
+// Where an open tab's page is scrolled, as its page last said (content/core.js, as it's hidden or
+// left; background/sleep.js, as it's asked before a close): `scroll` on its record, in px, for the
+// record's address only. Kept with its Margin tab when the tab closes and is kept (keptRecord), and
+// taken once by the page when that Margin tab opens again (linkKept, takeScroll). This device's
+// only: never in the data set (shared/data-set.js names a tab's fields).
+const sameUrl = (a, b) => typeof a === 'string' && typeof b === 'string' && normalizeUrl(a) === normalizeUrl(b);
+
+// The page at `url` in tab `tabId` is scrolled to `y`. Not its record's address (it has moved on, or
+// the message came late): nothing.
+/** @param {State} state @param {number} tabId @param {{ y: number, url: string }} said */
+function noteScroll(state, tabId, { y, url }) {
+  const r = state.tabs[tabId];
+  if (!r || !isWebPage(r.url) || !sameUrl(url, r.url) || !Number.isFinite(y)) return state;
+  const at = Math.max(0, Math.round(y));
+  if ((r.scroll ?? 0) === at) return state;
+  const { scroll: _, ...rest } = r;
+  return { ...state, tabs: { ...state.tabs, [tabId]: at > 0 ? { ...rest, scroll: at } : rest } };
+}
+
+// The scroll a reopened Margin tab's page takes, once: `y` (null: none, or for another address),
+// and the state without it.
+/** @param {State} state @param {number} tabId @param {string} url @returns {{ state: State, y: number | null }} */
+function takeScroll(state, tabId, url) {
+  const r = state.tabs[tabId];
+  if (!r?.restoreScroll) return { state, y: null };
+  const { restoreScroll, ...rest } = r;
+  return { state: { ...state, tabs: { ...state.tabs, [tabId]: rest } }, y: sameUrl(url, restoreScroll.url) ? restoreScroll.y : null };
 }
 
 // ---- places in the list ------------------------------------------------------
@@ -577,6 +612,10 @@ function tabRecord(tab, prev, now) {
     ...(Number.isFinite(prev?.order) ? { order: prev.order } : {}),
     ...(prev?.restored ? { restored: true, restoredFrom: prev.restoredFrom } : {}),
     ...(prev?.placed ? { placed: true } : {}),
+    // Its page's scroll while it's that page; a scroll to take once while it loads that page, or
+    // isn't at a web page yet (a tab made with an address starts blank: noteScroll, takeScroll).
+    ...(prev?.scroll > 0 && sameUrl(seen.url || seen.pendingUrl || prev.url, prev.url) ? { scroll: prev.scroll } : {}),
+    ...(prev?.restoreScroll && (!isWebPage(seen.url || seen.pendingUrl) || sameUrl(seen.url || seen.pendingUrl, prev.restoreScroll.url)) ? { restoreScroll: prev.restoreScroll } : {}),
     // Asleep since `at`; awake again since `wokeAt` (a tab woken isn't put
     // to sleep again until it's been left that long once more: sleepyTabs).
     ...(seen.asleep ? { sleeping: { at: prev?.sleeping?.at ?? now, how: seen.asleep } } : {}),
@@ -1313,6 +1352,8 @@ export {
   linkKept,
   keptForUrl,
   keptWasTab,
+  noteScroll,
+  takeScroll,
   placeKept,
   orderTabs,
   stripIndexFor,

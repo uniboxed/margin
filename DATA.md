@@ -7,6 +7,7 @@ What Margin keeps between launches, the shape Margin.app stores it in on the Mac
 - **Lasting (the data set):** spaces, pins (by address), folders, Margin's tabs (open or not), the archive, settings, each theme's settings, site icons, user themes. Margin.app owns it, one data set per browser and profile.
 - **Live (the extension only):** browser tab and window ids, which Margin tab is open in which browser tab and window, each window's space, the owner lease between Margin's copies. These exist only in the running browser and change at every relaunch, so they never go in the data set. The app learns them from the state messages (`PLAN.md` §5: `snapshot`, `delta`, `windows`).
 - **This device's, not kept:** a site's page zoom, the sidebar's scroll per window, the cached copy of the active theme's package.
+- **This device's, kept by the extension only:** where each Margin tab's page was scrolled (the scroll record, below). It's in the extension's storage, never in the data set.
 
 ## The data set
 
@@ -35,6 +36,23 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 | `userThemes` | the theme's id | the stored package (`ui/theme-loader.js`: `format`, `id`, `version`, `manifest`, `html`, `css`, `files`) |
 
 Only web pages are Margin tabs worth keeping: a new-tab page or an extension page isn't in `tabs`. In the extension, an open Margin tab is a browser tab's record with its Margin id (`mid`) and place (`order`); one that isn't open is in `keptTabs` (`state/model.js`).
+
+## The scroll record
+
+A page closed by Margin opens again where it was scrolled, once. That covers a window closed by Margin.app's switch ("Close windows to save memory", `app/HANDOFF.md` §4.5 and §5) and a tab put to sleep. The record (`state/model.js` `noteScroll`, `takeScroll`; `background/scroll-record.js`; `content/scroll-record.js`):
+
+- **Written:** the page says where it's scrolled (`pageScroll { y, url }`), in px, rounded:
+  - when it's hidden: at most once a second, the last one after that;
+  - when it's left (`pagehide`): at once;
+  - only when the place moved since it last said. A page never scrolled says nothing.
+- **Also written from the checks before a close:** the drafts check (`windowDrafts`, asked before every close of a window) and the sleep check each answer with the top frame's place (`scrollY`, left out at the top). So a window the switch closes has fresh places for all its pages.
+- **Where it's kept:**
+  - an open tab: `scroll` on its record in `openTabs.tabs`, for the record's address only. A word for another address (a late one, after a navigation) is ignored, and the record drops it when its page changes;
+  - a Margin tab that isn't open: `scroll: { y, url }` on its record in `openTabs.keptTabs`, taken from the open record when the tab closes and is kept (`keepTab`).
+- **Restored once:** when a kept tab opens again (`linkKept`: the sidebar, a switch's new window, the tabs opened behind it), its open record gets `restoreScroll: { y, url }`. Its page sees that in the state and asks for it (`takeScroll { url }`). The answer is the place, and the background drops it in the same change, so a reload doesn't scroll again. A page at another address (a redirect) gets nothing, and it's dropped too. The page sets the place as soon as it's parsed, and again every 200 ms while the page is still too short, until it's there, the person scrolls, types or clicks, or 5 s pass. `<html>` is the page's scroller, or `<body>` while Margin's page box is on.
+- **Not in the data set:** `shared/data-set.js` names a tab's fields, and these aren't among them. So they never reach Margin.app or another device. A refill from the app's set keeps a kept tab's own fields, this one with them.
+- **Written with the next write:** a place alone waits up to 5 s (`mutate`'s `within`). It goes with any write before then.
+- **Never logged:** no address, no place.
 
 ## The merge
 
@@ -134,6 +152,6 @@ data/<browser>/browser.json   { format: 1, browser, order: [[profile, spaceId]],
 - **A profile's last space** can't be deleted (each copy needs a space), as before with one profile.
 - Written like the sets' files (a temporary file, `fsync`, `.bak`, rename), at once (it's a few KB).
 
-**Not-open tabs of a profile with no window** are the app's (`Shell.notOpenTabs`: all of a profile's Margin tabs when it isn't linked) and the copy's own kept tabs (`keptTabs`): a window closed by the switch keeps its tabs there (step 1's rule for a window closing), and the profile's copy opens them again when the space is switched back to (`state/model.js spaceWindowTabs`: in front, the space's tab used last; behind it, the others that were open with it in that window, in their old order). They start fresh, with no Back history.
+**Not-open tabs of a profile with no window** are the app's (`Shell.notOpenTabs`: all of a profile's Margin tabs when it isn't linked) and the copy's own kept tabs (`keptTabs`): a window closed by the switch keeps its tabs there (step 1's rule for a window closing), and the profile's copy opens them again when the space is switched back to (`state/model.js spaceWindowTabs`: in front, the space's tab used last; behind it, the others that were open with it in that window, in their old order). They start fresh, with no Back history, each page scrolled back to where it was (the scroll record, above).
 
 What each overlay is sent (`across`, `ui/host-app.js`, `shared/across.js`): `{ v: 1, profile, profiles: [{ id, name, emoji, color, named, nameFrom?, symbol?, here, linked, lastSeen, stale, spaces }], spaces: [{ profile, id, name, emoji, color, tabCount }], switching? }`, in the overlay's `hello` and again (`{ type: 'across' }`) whenever it changes. `nameFrom: "safari"`: the name is Safari's own (above), and `symbol` its SF Symbol drawn by the app as a small white PNG (a `data:` URL, about 24 px, for a theme's profile mark as an `m-icon`); a page takes only a PNG data URL there. `tabCount` is the space's Margin tabs in the app's set, open or not. `switching`: the cross-profile switch under way (`profile`, `space`, `phase`) and, when the person has something to do or it failed, `notice` (Margin's words).

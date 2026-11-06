@@ -82,7 +82,8 @@ final class ProfileSwitch {
         case after // unfrozen: a late park, the focus check, then landed
         case landed // every step done, waiting for the Spaces to stay still
         case recovering // a step failed: back to a visible window (§4.4)
-        // The close-based switch's.
+        // The close-based switch's; closing and checking are also close mode's A closed under its
+        // second freeze, and the Desktop drop's check after it, seen (Handoff.swift, §4.5).
         case creating, settling, closing, checking
     }
     enum Event: Equatable {
@@ -241,11 +242,13 @@ final class ProfileSwitch {
     }
 
     // Looked at again on every poll: the handoff every 8 ms, the close-based switch every 50 ms, and
-    // the aftercare's watches (Handoff.swift) every 100 ms while there are any.
+    // the aftercare's watches (Handoff.swift) every 100 ms while there are any, as is the setting's
+    // close of parked windows asked for mid-switch.
     func poll() {
         pollTimer?.cancel()
         let waiting = phase == .waitingForProfile || phase == .waitingForLink
-        let every: Double? = run != nil && !waiting ? options.handoff.poll : busy ? options.poll : session.watches.isEmpty ? nil : options.handoff.watchPoll
+        let idleWork = !session.watches.isEmpty || session.closeParkedAsked // the aftercare, or §5's close after a switch
+        let every: Double? = run != nil && !waiting ? options.handoff.poll : busy ? options.poll : idleWork ? options.handoff.watchPoll : nil
         guard let every else { return }
         pollTimer = clock.after(every) { [weak self] in self?.tick() }
     }

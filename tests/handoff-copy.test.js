@@ -3,7 +3,9 @@
 // closeWindow) refused past their notAfter and busy while another for the window is pending,
 // setWindowState waiting for the state to land and sending the window list at once; the frame probe
 // (the background's side, the page's own with a fake animation frame, and Margin's new-tab page);
-// the drafts before a close; the app's `parked` per epoch (the link's own end, against the fake app);
+// the drafts before a close, their answers carrying each page's scroll; the scroll record (written as a
+// page is hidden or left, kept with its Margin tab as its window closes, taken once when it's opened
+// again, and the page's own part); the app's `parked` per epoch (the link's own end, against the fake app);
 // `parkedActivity` for a tab Margin didn't open, for focus that isn't Margin's (and not within 1 s of
 // its own call), and in place of raising a parked window; openPin and a row's tab preferring a window
 // that isn't parked; sleep sparing a parked window's tab in front; openSpaceWindow's bounds.
@@ -32,6 +34,7 @@ const fake = {
   probe: (/** @type {number} */ _tabId, /** @type {any} */ _m) => /** @type {any} */ (undefined),
   drafts: (/** @type {number} */ _tabId) => 'none',
   denied: new Set(),
+  scrollY: /** @type {Record<number, number>} */ ({}), // where each tab's page is scrolled, in its answer to the draft check
 };
 const win = (id, extra = {}) => ({ id, state: 'fullscreen', focused: false, left: 0, top: 0, width: 1512, height: 982, ...extra });
 globalThis.fetch = async () => ({ ok: true, text: async () => '{}', json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) });
@@ -99,7 +102,8 @@ globalThis.chrome = {
       const said = fake.drafts(target.tabId);
       if (said === 'never') return new Promise(() => {});
       if (said === 'error') throw new Error('Could not execute script on this tab');
-      return [{ frameId: 0, result: said === 'draft' ? { ok: false, why: 'edited', judged: 'margin', top: true } : { ok: true, judged: 'margin', top: true, foreign: 0 } }];
+      const scroll = fake.scrollY[target.tabId] != null ? { scrollY: fake.scrollY[target.tabId] } : {};
+      return [{ frameId: 0, result: said === 'draft' ? { ok: false, why: 'edited', judged: 'margin', top: true, ...scroll } : { ok: true, judged: 'margin', top: true, foreign: 0, ...scroll } }];
     },
     getRegisteredContentScripts: async () => [], registerContentScripts: async () => {}, unregisterContentScripts: async () => {}, updateContentScripts: async () => {},
   },
@@ -653,4 +657,200 @@ test('Margin\'s new-tab page: answers the frame probe as a web page does', async
   } finally {
     for (const k of ['document', 'addEventListener', 'location', 'history', 'requestAnimationFrame', 'outerWidth', 'outerHeight', 'browser']) delete globalThis[k];
   }
+});
+
+// ---- the scroll record (DATA.md "The scroll record") ------------------------------------------
+
+test('the scroll record in the model: on the record for its address only, kept with its Margin tab, taken once when it opens again, never in the data set', async () => {
+  const { collectionFrom } = await import('../extension/shared/data-set.js');
+  let s = M.normalizeState({});
+  s = M.upsertTab(s, { id: 5, windowId: 1, url: 'https://read.test/long', title: 'Long', index: 0, active: true }, 1000);
+  s = M.noteScroll(s, 5, { y: 1234.6, url: 'https://read.test/long#part' });
+  assert.equal(s.tabs[5].scroll, 1235, 'rounded, the same page with a fragment');
+  assert.equal(M.noteScroll(s, 5, { y: 50, url: 'https://elsewhere.test/' }), s, 'another address (a late word): nothing');
+  assert.equal(M.noteScroll(s, 5, { y: 1235, url: 'https://read.test/long' }), s, 'the same place: no change to write');
+  assert.equal(M.noteScroll(s, 99, { y: 50, url: 'https://read.test/long' }), s, 'no record: nothing');
+  assert.equal(M.noteScroll(s, 5, { y: 0, url: 'https://read.test/long' }).tabs[5].scroll, undefined, 'back at the top: none');
+  assert.equal(M.upsertTab(s, { id: 5, windowId: 1, url: 'https://read.test/long', title: 'Long (2)', index: 0 }, 1100).tabs[5].scroll, 1235, 'kept through its updates');
+  assert.equal(M.upsertTab(s, { id: 5, windowId: 1, url: 'https://read.test/other', title: 'Other', index: 0 }, 1100).tabs[5].scroll, undefined, 'another page: dropped');
+  assert.ok(!('scroll' in collectionFrom(s, 'tabs')[s.tabs[5].mid]), 'not in the data set');
+
+  // Its window closing: kept, with the place and the address it's for.
+  const closed = M.closedTab(s, 5, { windowClosing: true, now: 2000, archiveId: 'a-1' });
+  const kept = Object.values(closed.keptTabs)[0];
+  assert.deepEqual(kept.scroll, { y: 1235, url: 'https://read.test/long' });
+  assert.ok(!('scroll' in collectionFrom(closed, 'tabs')[kept.id]), 'a kept tab\'s neither');
+  // Opened again (a tab made blank, then at its address): the place to take, once.
+  let open = M.upsertTab(closed, { id: 6, windowId: 2, url: '', title: '', index: 0 }, 3000);
+  open = M.linkKept(open, 6, kept.id, 3000);
+  assert.deepEqual(open.tabs[6].restoreScroll, { y: 1235, url: 'https://read.test/long' });
+  open = M.upsertTab(open, { id: 6, windowId: 2, url: 'https://read.test/long', title: 'Long', index: 0 }, 3100);
+  assert.ok(open.tabs[6].restoreScroll, 'kept while it loads its page');
+  assert.equal(M.upsertTab(open, { id: 6, windowId: 2, url: 'https://redirected.test/', title: '', index: 0 }, 3100).tabs[6].restoreScroll, undefined, 'at another page: dropped');
+  const first = M.takeScroll(open, 6, 'https://read.test/long');
+  assert.equal(first.y, 1235);
+  assert.equal(first.state.tabs[6].restoreScroll, undefined);
+  assert.equal(M.takeScroll(first.state, 6, 'https://read.test/long').y, null, 'once');
+  assert.equal(M.takeScroll(open, 6, 'https://other.test/').y, null, 'another address: none');
+  assert.equal(M.takeScroll(open, 6, 'https://other.test/').state.tabs[6].restoreScroll, undefined, '…and it\'s gone');
+  // A kept tab with no place: nothing to take.
+  const plain = M.closedTab(M.upsertTab(M.normalizeState({}), { id: 7, windowId: 1, url: 'https://top.test/', title: '', index: 0 }, 1), 7, { windowClosing: true, now: 2, archiveId: 'a-2' });
+  const k2 = Object.values(plain.keptTabs)[0];
+  assert.equal(k2.scroll, undefined);
+  assert.equal(M.linkKept(M.upsertTab(plain, { id: 8, windowId: 1, url: '', title: '', index: 0 }, 3), 8, k2.id, 3).tabs[8].restoreScroll, undefined);
+});
+
+test('the scroll record in the background: a page\'s word written to its tab, kept as its window closes, taken once by the page of the reopened tab', async () => {
+  fake.windows.set(8, win(8, { state: 'normal' }));
+  const url = 'https://scroll.test/article';
+  const tab = { id: 81, windowId: 8, url, title: 'Article', index: 0, active: true, status: 'complete' };
+  fake.tabs.set(81, tab);
+  await store.mutate((s) => M.upsertTab(s, tab, Date.now()));
+  assert.equal(await handlers.pageScroll({ y: 2200, url }, { tab: { id: 81 } }), null);
+  assert.equal((await store.load()).tabs[81].scroll, 2200);
+  await handlers.pageScroll({ y: 10, url: 'https://elsewhere.test/' }, { tab: { id: 81 } });
+  assert.equal((await store.load()).tabs[81].scroll, 2200, 'another page\'s word: nothing');
+  await handlers.pageScroll({ y: 10, url }, {});
+  assert.equal((await store.load()).tabs[81].scroll, 2200, 'no tab: nothing');
+
+  // Its window closes (the app's closeWindow): kept with its place.
+  fake.tabs.delete(81);
+  fake.windows.delete(8);
+  await fire('onRemoved', 81, { windowId: 8, isWindowClosing: true });
+  await store.mutate((s) => s);
+  const kept = Object.values((await store.load()).keptTabs).find((k) => k.url === url);
+  assert.deepEqual(kept?.scroll, { y: 2200, url });
+
+  // Opened again from the sidebar: its page asks, once.
+  const { shown } = await handlers.activateTab({ tabId: kept.id, windowId: 1 }, { tab: { windowId: 1 } });
+  assert.deepEqual((await store.load()).tabs[shown].restoreScroll, { y: 2200, url });
+  assert.equal(await handlers.takeScroll({ url }, { tab: { id: shown } }), 2200);
+  assert.equal(await handlers.takeScroll({ url }, { tab: { id: shown } }), null, 'once');
+  assert.equal((await store.load()).tabs[shown].restoreScroll, undefined);
+  fake.tabs.delete(shown);
+  await store.mutate((s) => M.removeTab(s, shown));
+});
+
+test('the draft answers: each page\'s scroll with them, written to its tab just before the close they were asked for; the sleep check\'s too', async () => {
+  fake.windows.set(9, win(9));
+  const tabs = [
+    { id: 91, windowId: 9, url: 'https://one.test/', title: '', index: 0, active: true, status: 'complete' },
+    { id: 92, windowId: 9, url: 'https://two.test/', title: '', index: 1, active: false, status: 'complete' },
+  ];
+  for (const t of tabs) fake.tabs.set(t.id, t);
+  await store.mutate((s) => tabs.reduce((st, t) => M.upsertTab(st, t, Date.now()), s));
+  fake.scrollY = { 91: 640 };
+  fake.drafts = (tabId) => (tabId === 92 ? 'draft' : 'none');
+  assert.deepEqual(await handlers.windowDrafts({ windowId: 9 }), { drafts: [92], unknown: [] });
+  await store.mutate((s) => s);
+  const s = await store.load();
+  assert.equal(s.tabs[91].scroll, 640);
+  assert.equal(s.tabs[92].scroll, undefined, 'at the top (said nothing of it): none');
+
+  // The page's own answer: <html>'s place, or <body>'s while Margin's box scrolls it; the top frame only.
+  const { sleepInPage } = await import('../extension/background/sleep.js');
+  const run = (html, body, top = true) => {
+    const doc = { visibilityState: 'hidden', querySelectorAll: () => [], scrollingElement: { scrollTop: html }, body: { scrollTop: body } };
+    Object.assign(globalThis, { window: {}, document: doc, location: { href: 'https://a.test/' } });
+    globalThis.window.top = top ? globalThis.window : {};
+    globalThis.window.frameElement = null;
+    try {
+      return sleepInPage('https://a.test/', Date.now() + 1000, true);
+    } finally {
+      for (const k of ['window', 'document', 'location']) delete globalThis[k];
+    }
+  };
+  assert.equal(run(320.4, 0).scrollY, 320);
+  assert.equal(run(0, 900).scrollY, 900, 'the box\'s <body>');
+  assert.equal(run(0, 0).scrollY, undefined, 'at the top: not said');
+  assert.equal(run(320, 0, false).scrollY, undefined, 'another frame says nothing of it');
+  for (const t of tabs) fake.tabs.delete(t.id);
+  fake.windows.delete(9);
+  fake.scrollY = {};
+  fake.drafts = () => 'none';
+  await store.mutate((st) => tabs.reduce((x, t) => M.removeTab(x, t.id), st));
+});
+
+test('the page\'s part: its scroll said as it\'s hidden (once a second, the last after that) and as it\'s left, only when it moved; a reopened tab\'s place taken once, until it\'s there or the person moves', async () => {
+  const { startScrollRecord } = await import('../extension/content/scroll-record.js');
+  const page = () => {
+    const on = {};
+    const add = (target) => (type, fn) => (on[`${target}:${type}`] ??= []).push(fn);
+    const remove = (target) => (type, fn) => { on[`${target}:${type}`] = (on[`${target}:${type}`] ?? []).filter((f) => f !== fn); };
+    const html = { scrollTop: 0 };
+    const body = { scrollTop: 0, max: Infinity };
+    const doc = {
+      visibilityState: 'visible', readyState: 'complete', scrollingElement: html, body,
+      addEventListener: add('doc'), removeEventListener: remove('doc'),
+    };
+    const win = { location: { href: 'https://page.test/a' }, addEventListener: add('win'), removeEventListener: remove('win') };
+    const sent = [];
+    const answers = { takeScroll: null };
+    const send = async (type, payload) => { sent.push({ type, ...payload }); return answers[type] ?? null; };
+    const emit = (key) => { for (const fn of [...(on[key] ?? [])]) fn(); };
+    return { doc, win, html, body, sent, answers, send, emit, on };
+  };
+  const p = page();
+  let boxed = false;
+  const rec = startScrollRecord({ send: p.send, retired: () => false, boxed: () => boxed, doc: p.doc, win: p.win, everyMs: 60, restoreMs: 300 });
+  p.doc.visibilityState = 'hidden';
+  p.emit('doc:visibilitychange');
+  assert.deepEqual(p.sent, [], 'never scrolled: nothing said');
+  p.html.scrollTop = 410;
+  p.emit('doc:visibilitychange');
+  assert.deepEqual(p.sent, [{ type: 'pageScroll', y: 410, url: 'https://page.test/a' }]);
+  p.html.scrollTop = 500;
+  p.emit('doc:visibilitychange');
+  assert.equal(p.sent.length, 1, 'within a second of the last: later');
+  await sleep(80);
+  assert.deepEqual(p.sent.at(-1), { type: 'pageScroll', y: 500, url: 'https://page.test/a' }, 'the last, after the wait');
+  p.emit('doc:visibilitychange');
+  assert.equal(p.sent.length, 2, 'not moved: nothing');
+  p.html.scrollTop = 520;
+  p.emit('win:pagehide');
+  assert.deepEqual(p.sent.at(-1), { type: 'pageScroll', y: 520, url: 'https://page.test/a' }, 'left: at once');
+
+  // Reopened: asked once, set until it's there (the page growing), with the box on: <body>.
+  const q = page();
+  q.answers.takeScroll = 1800;
+  boxed = true;
+  q.body.scrollTop = 0;
+  let tall = false;
+  Object.defineProperty(q.body, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = tall ? v : Math.min(v, 300); }, configurable: true });
+  const rec2 = startScrollRecord({ send: q.send, retired: () => false, boxed: () => boxed, doc: q.doc, win: q.win, everyMs: 60, restoreMs: 1000 });
+  rec2.take(false);
+  assert.deepEqual(q.sent, [], 'no place on its record: not asked');
+  rec2.take(true);
+  rec2.take(true);
+  await sleep(5);
+  assert.deepEqual(q.sent, [{ type: 'takeScroll', url: 'https://page.test/a' }], 'asked once');
+  assert.equal(q.body.scrollTop, 300, 'as far as the page goes yet');
+  tall = true;
+  await sleep(250);
+  assert.equal(q.body.scrollTop, 1800, 'then there');
+  assert.equal(q.html.scrollTop, 0, '<html> left alone under the box');
+  assert.ok((q.on['win:wheel'] ?? []).length === 0, 'done: its listeners gone');
+
+  // The person scrolls first: left where they put it.
+  const r = page();
+  r.answers.takeScroll = 5000;
+  boxed = false;
+  Object.defineProperty(r.html, 'scrollTop', { get() { return this._y ?? 0; }, set(v) { this._y = Math.min(v, 100); }, configurable: true });
+  const rec3 = startScrollRecord({ send: r.send, retired: () => false, boxed: () => boxed, doc: r.doc, win: r.win, everyMs: 60, restoreMs: 2000 });
+  rec3.take(true);
+  await sleep(5);
+  r.emit('win:wheel');
+  r.html._y = 40;
+  await sleep(450);
+  assert.equal(r.html.scrollTop, 40, 'not set again after the person moved');
+  // A page still loading: set once it's parsed.
+  const t = page();
+  t.answers.takeScroll = 70;
+  t.doc.readyState = 'loading';
+  startScrollRecord({ send: t.send, retired: () => false, boxed: () => false, doc: t.doc, win: t.win }).take(true);
+  await sleep(5);
+  assert.equal(t.html.scrollTop, 0);
+  t.emit('doc:DOMContentLoaded');
+  assert.equal(t.html.scrollTop, 70);
+  void rec;
 });

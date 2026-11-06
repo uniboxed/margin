@@ -230,7 +230,7 @@ Before the freeze, in `preparing`:
 - **The aftercare's watches:** `parkWhenNormal` (a recovered B, an A whose normal timed out) and `leaveFullScreen` (an A whose copy was gone). A recovered B whose full-screen request was sent is watched after it's parked again: going full screen later is a late landing. It counts only if it was seen not in full screen since, or its normal never reached Safari (`busy`, `late`). A Space swipe that aborts a switch is the person's act, so what lands after it isn't adopted. A late landing that isn't adopted puts the shown window back in front. Both mark the window's focus as Margin's (`noteCall`), so the sweep doesn't take it for the person's.
 - **Parking off only after ops went out and didn't land.** A show refused before any op (`busy`, `gone`) fails this switch only. A parked target mid-step is waited for (as a pending call, 1 s), and picked again if its step let it go.
 - **For WP9:** call `switcher.tick()` (the aftercare) before `parking.sweep`, and pass `switcher.movingNumbers` as the sweep's `moving`. Wire `coverShown(in:)`, `framed(_:mode:)`, `personActed()`, `revealNow(.sleep/.safariQuit/.quit)`, and `start(…, asked:)` for `parkedActivity`. `isTarget` and `leaving` serve §2.3 and §2.4.
-- **For WP11:** close mode is freeze 1 with A untouched, then `closeOrKeepA` after the reveal. That's where the second freeze goes. A failed close is already tried once more after 0.5 s.
+- **For WP11:** close mode is freeze 1 with A untouched, then `closeOrKeepA` after the reveal. That's where the second freeze goes. A failed close is already tried once more after 0.5 s. Done: §4.5's "Built (WP11)".
 
 ## 2. Parking
 
@@ -559,9 +559,17 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
 - **Gate G3:** this form in STP, against a single-freeze close. Until it passes, close-mode timings in TESTING.md are marked unmeasured.
 - **Drafts:** asked in `preparing`. If a tab has a draft or didn't answer, A isn't closed (`keep`), and B's overlay says so with a new notice kind `window-kept-draft`: "Kept Work's window open: a page in it has text you haven't sent." (Open question 3.)
 - **Pages reload** when the profile is opened again. Their tabs come back from Margin's records (`state/model.js spaceWindowTabs`, `DATA.md:134`).
-- **Scroll:** Margin keeps no page scroll positions today. A small new record restores them (WP11). Until then, close-mode pages reload at the top.
+- **Scroll:** each page goes back to where it was scrolled, once (the scroll record, `DATA.md` "The scroll record").
 - **Media restarts.** PiP ends with its window.
 - **Honest timings:** a create plus entry is about 1.1-1.7 s still, then about 0.3 s of B, then about 0.15 s still again (G3 measures it). The setting's text says switching is slower and pages reload (§5).
+- Built (WP11): `Handoff.swift` `startClose`, `closeTry`, `closingStep`, `checkingStep`; tests in `tools/app-tests/handoff-tests.swift`. Settled on the way:
+  - **When freeze 2 starts:** in `after`, once B's focus check (§6.6, 300 ms) is done and the cooldown has passed (300 ms since the reveal; 1 s after a watchdog reveal). The phase is then `closing`, and `checking` for a drop left at the watchdog. Both names are the close-based switch's too, for the same steps.
+  - **The close's `notAfter`:** 600 ms into freeze 2. A close that would land after the freeze is refused rather than carried out seen. Unfrozen, `closeTimeout` as before.
+  - **"B in front":** B's Space is the active one (the Space reads) and B is Safari's first window on screen (`inFront`). A is gone when the window server stops listing it; its copy's list lags.
+  - **The Desktop drop's `focusWindow(B)`:** once, and only in the first 750 ms of freeze 2, so it has time to land before the watchdog. A drop still there at the watchdog (or after as long, unfrozen) is today's checking: B in front for 0.5 s, else focused again every 1.2 s, twice, then "macOS didn't show its window: click it in Mission Control". A switch that closed A always lands on B, even when it ends that way.
+  - **A failed close** (an error, `busy`, `refused`): freeze 2 is revealed at once. One more try after 0.5 s, under a new freeze when the cooldown allows. Then A stays in its full-screen Space, logged (`A kept (its close failed)`).
+  - **Close mode with no freeze** (and a parked target, so the handoff runs): the same steps, seen.
+  - **A's copy not linked at the close:** A is kept with no draft notice (it isn't a draft).
 
 ---
 
@@ -573,6 +581,12 @@ The lab only ever closed A under a second freeze after B's reveal (`S/handoff/la
   - "Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept."
 - **How it reaches Margin.app:** `saveField` for this field returns `{ perform: 'switch.closeWindows', arg: { on } }`. `ShellProfiles.performAcross` writes `browser.json` and pushes `across` again.
 - **Turned on with windows parked:** each parked window is set normal (it already is), returned out of sight, and closed by its copy, drafts permitting (those stay parked, and the notice says so). Turned off: nothing changes until the next switch.
+- Built (WP11): `ProfileSwitch.closeParkedWindows()` (`Handoff.swift`), called by `ShellProfiles`' `switch.closeWindows` when it turns on (a no-op until the shell is a `HandoffWorld`, WP9). For each parked window that isn't mid-step:
+  - its drafts are asked (`windowDrafts`, 1 s at most from the app's side);
+  - nothing typed: closed by its copy where it's parked, through `ParkingRegistry.close(number:…)` (new: one window's close, as `endAll` does for all). Closed: its Space destroyed, the entry forgotten. Not closed in `closeTimeout`, or its copy couldn't: it stays parked as it was. One more try after 0.5 s, then it stays;
+  - a draft or no answer: it stays parked, and `window-kept-draft` names it (its Close window closes it). The shell keeps one notice, so with several kept, the last one shows;
+  - while a switch runs: done once it's idle.
+  - **Not "returned out of sight" first:** it's closed in its private Space, as quit's close is (§13.1). A return is one more step that could show the window, and quit already relies on closing a parked window in place.
 - Built (WP10): `BrowserProfiles.closeWindows` and `setCloseWindows` (`browser.json` `switching.closeWindows`; a file without it reads as off), `across.switchSettings`, the `closeWindows` field (`CLOSE_WINDOWS_LABEL`), shown when `ui/host-app.js` gives the feature `switchSettings` (Safari, more than one profile in `across`, and the app said the value), and `performAcross`'s `switch.closeWindows`. Closing the parked windows when it's turned on is WP11's.
 
 ---

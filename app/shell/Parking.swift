@@ -456,6 +456,51 @@ final class ParkingRegistry {
         }
     }
 
+    // One parked window closed by its copy while Margin runs ("Close windows to save memory" turned
+    // on, §5; its drafts asked first by the caller). Closed: its Space destroyed and the entry
+    // forgotten. Its copy couldn't, it can't be asked, or `within` ran out: it stays parked as it was
+    // (a late "closed" still forgets it). Never returned to the Desktop here: it's still parked.
+    func close(number: Int, cause: Cause, within: Double, close: Closer, done: @escaping (Bool) -> Void) {
+        guard let e = entries[number], !e.stepping else { return done(false) }
+        let was = e.phase
+        var settled = false
+        let back = { [weak self] (why: String?) in
+            guard let self, var e = self.entries[number], e.phase == .closing else { return }
+            e.phase = was
+            e.cause = nil
+            self.entries[number] = e
+            if let why { Diagnostics.note("handoff: window \(number) (\(e.label)): \(why), still parked") }
+        }
+        var asking = e
+        asking.phase = .closing
+        mark(&asking, cause)
+        entries[number] = asking
+        clock.after(within) {
+            guard !settled else { return }
+            settled = true
+            back("its copy didn't answer the close in \(Int((within * 1000).rounded())) ms")
+            done(false)
+        }
+        let sent = close(e) { [weak self] closed in
+            guard let self else { return }
+            if closed, self.entries[number] != nil {
+                self.parker.destroySpace(of: number)
+                self.forget(number, .closedByCopy)
+                if !settled { settled = true; done(true) }
+                return
+            }
+            guard !settled else { return }
+            settled = true
+            back(nil)
+            done(false)
+        }
+        if !sent, !settled {
+            settled = true
+            back(nil)
+            done(false)
+        }
+    }
+
     // Every parked window back on its Desktop (a copy that can't be reached; WP9's returns).
     func returnAll(cause: Cause = .quit, within: Double? = nil, done: @escaping (ParkingEnd) -> Void) {
         endAll(cause: cause, within: within ?? options.quitWithin, close: nil, done: done)

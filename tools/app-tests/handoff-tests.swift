@@ -362,6 +362,8 @@ final class FakeHandoffWorld: HandoffWorld {
     var wrongBounds: Set<WindowKey> = [] // enters, but its bounds never fill the display
     var noCreateAnswer = false
     var closeFails = 0
+    var dropOnClose = false // macOS shows the Desktop as a closed window's full-screen Space goes (§4.5)
+    var ignoreFocus = 0 // focusWindow calls that bring nothing to the front
     var dialogs: [ServerWindow] = []
     var outOverlays: [WindowKey] = []
     var requests: [Req] = []
@@ -577,6 +579,10 @@ final class FakeHandoffWorld: HandoffWorld {
                 }
             }
         case "focusWindow":
+            if ignoreFocus > 0 {
+                ignoreFocus -= 1
+                return done(["windowId": key.windowId, "state": win(key)?.state ?? "normal"], nil)
+            }
             if r.payload["fullscreen"] as? Bool == true { enter(key) { _ in } }
             focus(key)
             done(["windowId": key.windowId, "state": win(key)?.state ?? "normal"], nil)
@@ -586,6 +592,7 @@ final class FakeHandoffWorld: HandoffWorld {
                 return done(nil, "couldn't close")
             }
             close(key)
+            if dropOnClose { setActive(desktop) }
             done([:], nil)
         default:
             done(nil, "unknown")
@@ -748,17 +755,74 @@ func handoffMachineTests() {
         check("park, no freeze: done, A parked, B in front, nothing frozen", w.events.last == .done(toB) && w.registry.isParked(1010) && w.fullAndInFront(hKB) && w.freezer.calls.isEmpty)
         handoffInvariants("park, no freeze", w, s)
     }
-    // ---- close+freeze: B under the freeze, A closed after the reveal ----
+    // ---- close+freeze (§4.5): B under the first freeze with A untouched, A closed under a second ----
     do {
         let (w, s) = handoffSetup { $0.closeWindows = true }
         s.start(toB, from: hA, windowId: 10)
-        handoffUntil(w, max: 3) { !w.types(hA, "closeWindow").isEmpty }
+        handoffUntil(w, max: 3) { w.freezer.calls.count >= 2 }
+        let revealed = w.clock.now()
+        check("close+freeze: B revealed with A untouched in its full-screen Space", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"]
+              && w.types(hA, "setWindowState").isEmpty && w.types(hA, "closeWindow").isEmpty && w.win(hKA)?.state == "fullscreen" && w.fullAndInFront(hKB), "\(w.freezer.calls)")
+        handoffUntil(w, max: 2) { w.freezer.isLive }
+        let frozen2 = w.clock.now()
+        check("close+freeze: a second freeze with its 1.0 s watchdog, at least 300 ms after the reveal",
+              w.freezer.calls.last == "freeze 1.0 s: 0" && frozen2 - revealed >= 0.3 - 1e-6 && frozen2 - revealed < 0.4, "\(frozen2 - revealed) \(w.freezer.calls)")
         let close = w.types(hA, "closeWindow").first
-        check("close+freeze: A untouched under the freeze, closed after the reveal",
-              close?.frozen == false && w.types(hA, "setWindowState").isEmpty && w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"], "\(w.freezer.calls)")
+        check("close+freeze: A's close sent under it, refused past 600 ms into it",
+              close?.frozen == true && num(close?.payload["notAfter"]).map { abs($0 - (close!.at + 0.6) * 1000) < 5 } == true, "\(String(describing: close?.payload))")
+        handoffUntil(w, max: 1) { w.win(hKA) == nil }
+        let gone = w.clock.now()
+        handoffUntil(w, max: 1.5) { !w.freezer.isLive }
+        let held = w.clock.now() - gone
+        check("close+freeze: revealed once A is gone with B in front for 120 ms", w.freezer.calls.last == "reveal 2 ready: 0" && held >= 0.12 - 0.005 && held < 0.15
+              && w.fullAndInFront(hKB), "\(held) \(w.freezer.calls)")
         handoffRun(w, 3)
         check("close+freeze: done, A gone, nothing parked of A's", w.events.last == .done(toB) && w.win(hKA) == nil && !w.registry.isParked(1010) && w.fullAndInFront(hKB))
+        let line = s.session.lines.last ?? ""
+        check("close+freeze: its line says A closed and the second freeze's time", line.contains("(close+freeze, parked target)") && line.contains("A closed") && line.contains("close frozen 1"), line)
         handoffInvariants("close+freeze", w, s)
+    }
+    do {
+        // macOS drops to the Desktop as A's Space goes: B focused once, inside the second freeze.
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.dropOnClose = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        let focus = w.types(hB, "focusWindow")
+        check("close+freeze, a Desktop drop: B focused once, inside the second freeze", focus.count == 1 && focus[0].frozen && focus[0].payload["fullscreen"] as? Bool == true, "\(focus.map(\.payload))")
+        check("close+freeze, a Desktop drop: revealed on B, not by the watchdog", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0", "freeze 1.0 s: 0", "reveal 2 ready: 0"]
+              && w.events.last == .done(toB) && w.fullAndInFront(hKB) && (s.session.lines.last ?? "").contains("Desktop drop, B focused"), "\(w.freezer.calls) \(s.session.lines.last ?? "")")
+        handoffInvariants("close+freeze, a Desktop drop", w, s)
+    }
+    do {
+        // The drop still there at the second freeze's watchdog: today's checking path, seen.
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.dropOnClose = true; $0.ignoreFocus = 1 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 5) { s.phase == .checking }
+        check("close+freeze, the drop left: revealed by the watchdog at 1.0 s, then checking, seen",
+              s.phase == .checking && w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0", "freeze 1.0 s: 0", "reveal 2 watchdog: 0"] && w.types(hB, "focusWindow").count == 1, "\(w.freezer.calls)")
+        handoffRun(w, 4)
+        let focus = w.types(hB, "focusWindow")
+        check("close+freeze, the drop left: B focused again, unfrozen, and done", focus.count == 2 && !focus[1].frozen && w.events.last == .done(toB) && w.fullAndInFront(hKB)
+              && (s.session.lines.last ?? "").contains("close frozen 1000 ms (watchdog)"), "\(w.events) \(s.session.lines.last ?? "")")
+        handoffInvariants("close+freeze, checking", w, s)
+    }
+    do {
+        // Never back in front: two more focuses, then the person is told, as today's switch does.
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.dropOnClose = true; $0.ignoreFocus = 9 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 10)
+        check("close+freeze, never in front: B focused three times in all, then failed with today's words, landed on B",
+              w.types(hB, "focusWindow").count == 3 && w.events.last == .failed(toB, "macOS didn’t show its window: click it in Mission Control") && !s.busy && !w.freezer.isLive
+              && w.win(hKA) == nil, "\(w.events) \(s.history.suffix(3))")
+    }
+    do {
+        // Close mode with no freeze and a parked target: the same steps, seen.
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.noFreezer = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("close, no freeze, a parked target: the handoff's close, unfrozen", s.history.contains { $0.hasPrefix("safari:A#10 → safari:B/b1 (close)") } && w.freezer.calls.isEmpty
+              && w.types(hA, "closeWindow").count == 1 && w.types(hA, "closeWindow").first?.frozen == false && w.win(hKA) == nil && w.events.last == .done(toB), "\(s.history.prefix(3))")
+        handoffInvariants("close, no freeze, parked", w, s)
     }
     // ---- close without a freeze and no parked target: today's switch, with the drafts check ----
     do {
@@ -863,6 +927,7 @@ func handoffMachineTests() {
         handoffRun(w, 4)
         check("drafts: close mode with a draft: A kept in its Space, told in B's overlay with its window", w.win(hKA)?.state == "fullscreen" && w.types(hA, "closeWindow").isEmpty
               && w.notices == [SwitchNotice(.windowKeptDraft, profile: hA, shownIn: hKB, kept: hKA)] && w.events.last == .done(toB))
+        check("drafts: … and no second freeze for it", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"], "\(w.freezer.calls)")
         handoffInvariants("drafts", w, s)
     }
     do {
@@ -1169,10 +1234,15 @@ func handoffMachineTests() {
         handoffRun(w, 4)
         let closes = w.types(hA, "closeWindow")
         check("recovery: a failed close tried again after 0.5 s, then closed", closes.count == 2 && abs((closes[1].at - closes[0].at) - 0.54) < 0.05 && w.win(hKA) == nil, "\(closes.map(\.at))")
+        check("recovery: … each try under a second freeze of its own, the failed one's revealed at once",
+              w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0", "freeze 1.0 s: 0", "reveal 2 failed: 0", "freeze 1.0 s: 0", "reveal 3 ready: 0"] && closes.allSatisfy(\.frozen)
+              && s.history.contains { $0.contains("'s close failed (couldn't close): again in 500 ms") }, "\(w.freezer.calls)")
         let (w2, s2) = handoffSetup { $0.closeWindows = true; $0.closeFails = 2 }
         s2.start(toB, from: hA, windowId: 10)
         handoffRun(w2, 4)
         check("recovery: failed twice: A stays where it is, the switch done", w2.types(hA, "closeWindow").count == 2 && w2.win(hKA) != nil && w2.events.last == .done(toB))
+        check("recovery: … in its full-screen Space, logged, nothing held", w2.win(hKA)?.state == "fullscreen" && !w2.freezer.isLive && w2.fullAndInFront(hKB)
+              && s2.history.contains { $0.contains("not closed (couldn't close): it stays") } && (s2.session.lines.last ?? "").contains("A kept (its close failed)"), "\(s2.session.lines.last ?? "")")
         handoffInvariants("recovery, close", w2, s2)
     }
     // ---- §1.5: targets ----
@@ -1425,6 +1495,58 @@ func handoffMachineTests() {
         w.fs.removeAll { made.contains($0) }
         w.updateDisplays()
         handoffInvariants("landed", w, s)
+    }
+    // ---- §5: "Close windows to save memory" turned on with windows parked ----
+    do {
+        // B's parked window with nothing typed; C's with a draft.
+        let kC = WindowKey(link: hC, windowId: 30)
+        let (w, s) = handoffSetup { w in
+            w.add(hC, id: 30, number: 3030, state: "normal", space: "c1")
+            w.park(kC)
+            w.drafts[kC] = ["drafts": [5], "unknown": []]
+        }
+        let bSpace = w.registry.entries[2020]?.space
+        s.closeParkedWindows()
+        handoffRun(w, 2)
+        check("setting on: a parked window with nothing typed closed by its copy, after its drafts", w.win(hKB) == nil && !w.registry.isParked(2020)
+              && w.types(hB, "windowDrafts").count == 1 && w.types(hB, "closeWindow").count == 1
+              && bSpace.map { w.reads.destroyed.contains($0) } == true, "\(s.history.suffix(4))")
+        check("setting on: one with a draft stays parked, and the person is told with its Close window",
+              w.win(kC) != nil && w.registry.entries[3030]?.phase == .parked && w.types(hC, "closeWindow").isEmpty
+              && w.notices == [SwitchNotice(.windowKeptDraft, profile: hC, kept: kC)], "\(w.notices)")
+        check("setting on: the window in front untouched", w.fullAndInFront(hKA) && w.types(hA).isEmpty && !w.freezer.isLive && w.freezer.calls.isEmpty)
+        handoffInvariants("setting on", w, s, [hA])
+    }
+    do {
+        // No drafts answer: kept; a close that fails twice: tried again after 0.5 s, then kept.
+        let (w, s) = handoffSetup { $0.silentDrafts = true }
+        s.closeParkedWindows()
+        handoffRun(w, 2)
+        check("setting on, no drafts answer: stays parked, told", w.registry.entries[2020]?.phase == .parked && w.types(hB, "closeWindow").isEmpty
+              && w.notices.first?.kind == .windowKeptDraft && w.notices.first?.kept == hKB)
+        let (w2, s2) = handoffSetup { $0.closeFails = 2 }
+        s2.closeParkedWindows()
+        handoffRun(w2, 3)
+        let closes = w2.types(hB, "closeWindow")
+        check("setting on, a close that fails: tried again after 0.5 s, then it stays parked as it was",
+              closes.count == 2 && closes[1].at - closes[0].at >= 0.5 && w2.registry.entries[2020]?.phase == .parked && w2.win(hKB) != nil
+              && s2.history.contains { $0.contains("not closed: it stays parked") }, "\(s2.history.suffix(3))")
+        handoffInvariants("setting on, failed", w2, s2, [hA])
+        handoffInvariants("setting on, no answer", w, s, [hA])
+    }
+    do {
+        // Turned on mid-switch: nothing closed until the switch is idle, then A (parked by it) and none other.
+        let (w, s) = handoffSetup()
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 1) { s.phase == .frozen }
+        s.closeParkedWindows()
+        check("setting on mid-switch: nothing asked yet", w.types(hA, "windowDrafts").count == 1 && w.types(hA, "closeWindow").isEmpty && s.session.closeParkedAsked)
+        handoffUntil(w, max: 5) { !s.busy }
+        let parkedThen = w.registry.isParked(1010)
+        handoffRun(w, 2)
+        check("setting on mid-switch: after it, the window it parked closed by its copy", parkedThen && w.win(hKA) == nil && !w.registry.isParked(1010)
+              && w.types(hA, "windowDrafts").count == 2 && w.fullAndInFront(hKB) && !s.session.closeParkedAsked, "\(s.history.suffix(4))")
+        handoffInvariants("setting on mid-switch", w, s, [hB])
     }
     // ---- nothing logged but ids and numbers ----
     check("log: no addresses or titles in the machine's lines", !said.contains { $0.contains("http") || $0.contains("title") }, "\(said.filter { $0.contains("http") })")

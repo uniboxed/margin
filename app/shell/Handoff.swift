@@ -4,6 +4,7 @@
 // it runs.
 //
 //   idle ─start─▶ preparing ─coverShown, or 250 ms─▶ frozen ─▶ after ─▶ landed ─▶ idle
+//                                     close mode: after ─300 ms─▶ closing (freeze 2) ─▶ (checking) ─▶ landed
 //                  │ cover up, target picked,         show B, B to full screen,
 //                  │ blockers, B's space,             R1+R2, then A to normal
 //                  │ A's drafts                       (latest 1.15 s), park A,
@@ -41,9 +42,14 @@
 // - The aftercare (§1.9) owns what lands late: a B that goes full screen after
 //   its switch gave up (a late landing, if nothing happened since), an A whose
 //   normal lands late (parked as meant), an A whose copy comes back (§1.8).
-// - Close mode (§4.5) runs the first freeze here with A untouched, then closes
-//   A after the reveal, drafts permitting: the second freeze is WP11's, here
-//   the visible close.
+// - Close mode (§4.5): two freezes. The first shows B with A untouched; at
+//   least 300 ms after its reveal a second one (its watchdog 1.0 s) closes A,
+//   drafts permitting, and holds until A is gone and B is in front for 120 ms.
+//   A Desktop drop gets one focusWindow(B) inside it; one left at its watchdog
+//   is today's checking path, seen (phases closing, then checking). A failed
+//   close is tried once more after 0.5 s; then A stays.
+// - "Close windows to save memory" turned on with windows parked (§5): each
+//   closed by its copy, drafts permitting (closeParkedWindows).
 // - Tirth's §13.11: a profile is one window. A switch within a profile is a
 //   setSpace; a window the person opened themselves is never parked and never a
 //   target.
@@ -101,6 +107,12 @@ struct HandoffOptions {
     var aftercareFor: Double = 10 // §1.9
     var boundWait: Double = 2 // §1.5: a parked target with no copy id, shown by number, bound by then
     var closeRetry: Double = 0.5 // §4.4: a failed close tried once more
+    // §4.5: close mode's second freeze, at least revealCooldown after B's reveal.
+    var closeWatchdog: Double = FreezerOptions().closeWatchdog // its own watchdog
+    var closeNotAfter: Double = 0.6 // A's closeWindow refused past this into it (it would land seen)
+    var closeHold: Double = 0.12 // A gone, B's Space active and B in front this long: revealed
+    var closeFocusBy: Double = 0.75 // a Desktop drop's focusWindow(B) only this early into it (time to land)
+    var draftsWait: Double = 1 // §5: a parked window's drafts not answered by then: unknown, kept
     var fullScreenRetry = false // §3.4, until gate G4
     var retryAfter: Double = 0.4 // §3.4: the evidence that a request never took
 }
@@ -215,6 +227,19 @@ final class HandoffRun {
     var aClosedAt: Double?
     var aKept: String?
     var aDone = false // A's part is over: parked, closed, kept, gone, or there's none
+    // close mode (§4.5): A closed under a second freeze, once B is revealed
+    var closeDue = false // after the focus check and the cooldown
+    var closeTries = 0
+    var closeAt: Double? // this try's start: its freeze, its closeWindow
+    var closeRetryAt: Double? // a failed close tried once more then
+    var closeHandle: Int32?
+    var closeLive = false
+    var closeLate = false // its watchdog revealed it
+    var closeHeldMs: Int?
+    var holdSince: Double? // A gone and B in front since
+    var dropSeen = false // the Desktop showed as A went
+    var dropFocused = false // B focused once for it
+    var checkTries = 0 // today's checking path, seen: B focused again
     var r5At: Double?
     var leftBehind = 0
 
@@ -276,6 +301,7 @@ struct HandoffSession {
     var runs = 0
     var shown: (key: WindowKey, number: Int?)? // where the last switch landed
     var lines: [String] = [] // each switch's summary, the last 5
+    var closeParkedAsked = false // §5: the setting turned on while a switch ran: its parked windows closed after it
 }
 
 extension ProfileSwitch: FreezerDelegate {
@@ -312,6 +338,7 @@ extension ProfileSwitch: FreezerDelegate {
     func revealNow(_ why: RevealWhy) {
         guard let run, let hw = handoffWorld else { return }
         if run.live { reveal(run, hw, why) }
+        if run.closeLive { revealClose(run, hw, why) }
         if [.preparing, .waitingForLink].contains(phase) { return }
         if [.frozen].contains(phase), why != .quit { recover(run, hw, "the switch was interrupted (\(why.rawValue))") }
     }
@@ -323,8 +350,12 @@ extension ProfileSwitch: FreezerDelegate {
         guard let run else { return }
         switch reported {
         case .revealed(let handle, .watchdog, let heldMs), .revealFailed(let handle, .watchdog, _, _, let heldMs):
-            guard handle == run.handle else { return }
-            late(run, (run.freezeAt ?? clock.now()) + Double(heldMs) / 1000)
+            if handle == run.closeHandle {
+                closeWatchdog(run, heldMs)
+            } else {
+                guard handle == run.handle else { return }
+                late(run, (run.freezeAt ?? clock.now()) + Double(heldMs) / 1000)
+            }
             tick()
         default:
             return
@@ -507,7 +538,11 @@ extension ProfileSwitch: FreezerDelegate {
             recoverStep(run, hw, now)
         case .landed:
             landedStep(run, hw, now)
-        case .idle, .creating, .settling, .closing, .checking:
+        case .closing:
+            closingStep(run, hw, now)
+        case .checking:
+            checkingStep(run, hw, now)
+        case .idle, .creating, .settling:
             return
         }
     }
@@ -1075,25 +1110,29 @@ extension ProfileSwitch: FreezerDelegate {
             run.aDeferred = false
             if hw.isLinked(a.link) { askA(run, hw, a) }
         }
-        // Close mode: A closed now, drafts permitting (the second freeze of §4.5 is WP11's).
-        if run.choice.old == .close, let a = run.a, !run.aGone, !run.aDone, run.aKept == nil { closeOrKeepA(run, hw, a) }
+        // Close mode: A closed under a second freeze once the focus check is done and the cooldown has
+        // passed, drafts permitting (§4.5).
+        if run.choice.old == .close, run.a != nil, !run.aGone, !run.aDone, run.aKept == nil { run.closeDue = true }
     }
 
     // A drafts check before every close (§1.1, §4.5): a draft or no answer keeps it, and the person is
     // told in B's overlay, with a Close window button (§13.4).
     private func closeOrKeepA(_ run: HandoffRun, _ hw: HandoffWorld, _ a: WindowKey) {
-        guard !run.aCloseAsked else { return }
-        guard run.drafts?.mayClose == true, hw.isLinked(a.link) else {
-            run.aKept = run.drafts.map { "\($0.drafts.count) with drafts, \($0.unknown.count) unknown" } ?? "no drafts answer"
-            run.aDone = true
-            outA(run, hw, a)
-            note("\(a) kept open: \(run.aKept!)")
-            notices.append(SwitchNotice(.windowKeptDraft, profile: a.link, shownIn: run.b, kept: a))
-            return
-        }
+        guard !run.aCloseAsked, mayCloseA(run, hw, a) else { return }
         run.aCloseAsked = true
         outA(run, hw, a)
         closeA(run, hw, a, tries: 1)
+    }
+
+    // A's drafts allow its close, and its copy can be asked; else A is kept, and the person told.
+    private func mayCloseA(_ run: HandoffRun, _ hw: HandoffWorld, _ a: WindowKey) -> Bool {
+        if run.drafts?.mayClose == true, hw.isLinked(a.link) { return true }
+        run.aKept = !hw.isLinked(a.link) ? "its copy isn't linked" : run.drafts.map { "\($0.drafts.count) with drafts, \($0.unknown.count) unknown" } ?? "no drafts answer"
+        run.aDone = true
+        outA(run, hw, a)
+        note("\(a) kept open: \(run.aKept!)")
+        if hw.isLinked(a.link) { notices.append(SwitchNotice(.windowKeptDraft, profile: a.link, shownIn: run.b, kept: a)) }
+        return false
     }
 
     private func closeA(_ run: HandoffRun, _ hw: HandoffWorld, _ a: WindowKey, tries: Int) {
@@ -1116,6 +1155,224 @@ extension ProfileSwitch: FreezerDelegate {
         }
     }
 
+    // ---- close mode's second freeze (§4.5) ----
+
+    // The lab only ever closed A under a freeze of its own after B's reveal, never inside the first:
+    // macOS can drop to the Desktop as A's full-screen Space goes. So, at least 300 ms after B's
+    // reveal: freeze 2 (its watchdog 1.0 s), closeWindow(A), and hold until A is gone, B's Space is
+    // the active one and B is Safari's first window on screen for 120 ms. A Desktop drop gets one
+    // focusWindow(B) inside the freeze while there's time for it to land; one still there at the
+    // watchdog is today's checking path, seen. Without a freeze, the same steps, seen.
+    private func startClose(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+        run.closeDue = false
+        guard let a = run.a, !run.aCloseAsked, mayCloseA(run, hw, a) else { return }
+        run.aCloseAsked = true
+        outA(run, hw, a)
+        enter(.closing, for: options.closeTimeout)
+        closeTry(run, hw, now)
+    }
+
+    private func closeTry(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+        guard let a = run.a else { return }
+        run.closeTries += 1
+        run.closeAt = now
+        run.closeRetryAt = nil
+        run.holdSince = nil
+        run.dropFocused = false
+        if run.choice.freeze, session.rules.on, cooledDown(now), let freezer = hw.handoffFreezer {
+            freezer.delegate = self
+            switch freezer.freeze(watchdog: ho.closeWatchdog) {
+            case .frozen(let handle):
+                run.closeHandle = handle
+                run.closeLive = true
+                run.closeLate = false
+            case .failed(let result):
+                note("the close's freeze answered \(result): A closed without one")
+            case .unavailable(let why):
+                note("no freeze for the close: \(why)")
+            }
+        }
+        // Under the freeze, a close that would land after it is refused instead: seen, it could drop
+        // to the Desktop with nothing held.
+        let notAfter = msNow(run.closeLive ? ho.closeNotAfter : options.closeTimeout)
+        let tryNo = run.closeTries
+        windowCall(hw, a, .closeWindow(windowId: a.windowId, notAfter: notAfter)) { [weak self, weak run] answer, error in
+            guard let self, let run, self.run === run, run.closeTries == tryNo, [.closing, .checking].contains(self.phase) else { return }
+            if error == nil, answer?.called != false { return } // its copy closed it: the window server says when it's gone
+            self.revealClose(run, hw, .failed)
+            let why = error ?? answer.map { "\($0)" } ?? "no answer"
+            // §4.4: tried once more after 0.5 s, then A stays where it is.
+            guard run.closeTries < 2 else {
+                self.note("\(a) not closed (\(why)): it stays")
+                run.aKept = "its close failed"
+                run.aDone = true
+                return self.enterLanded(run, hw)
+            }
+            self.note("\(a)'s close failed (\(why)): again in \(Int(self.ho.closeRetry * 1000)) ms")
+            run.closeRetryAt = self.clock.now() + self.ho.closeRetry
+        }
+    }
+
+    private func closingStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+        // The second freeze gone by its watchdog, its report still on its way.
+        if run.closeLive, hw.handoffFreezer?.isLive != true { closeWatchdog(run, nil) }
+        if let at = run.closeRetryAt {
+            if now >= at - 1e-9 { closeTry(run, hw, now) }
+            return
+        }
+        guard let a = run.a, let b = run.b, hw.isLinked(b.link) else {
+            revealClose(run, hw, .closed)
+            return enterLanded(run, hw)
+        }
+        // Gone from the window server (its copy's list lags up to a second); with no reads, its copy's word.
+        let aThere: Bool
+        if let reads = hw.spaceReads, let n = run.aNumber { aThere = reads.window(n) != nil } else { aThere = hw.copyWindows(a.link).contains { $0.key == a } }
+        if aThere {
+            guard now >= deadline else { return }
+            revealClose(run, hw, .failed)
+            note("\(a) still there \(Int(options.closeTimeout)) s after its close: it stays")
+            run.aKept = "not closed in time"
+            run.aDone = true
+            return enterLanded(run, hw)
+        }
+        if run.aClosedAt == nil {
+            run.aClosedAt = now
+            run.aGone = true
+            run.aDone = true
+        }
+        if bInFront(run, hw, b) {
+            let since = run.holdSince ?? now
+            run.holdSince = since
+            guard now - since >= ho.closeHold - 1e-9 else { return }
+            revealClose(run, hw, .ready)
+            return enterLanded(run, hw)
+        }
+        run.holdSince = nil
+        run.dropSeen = true
+        let into = now - (run.closeAt ?? now)
+        // One focusWindow(B), inside the freeze while it has time to land.
+        if !run.dropFocused, !run.closeLive || into <= ho.closeFocusBy + 1e-9 {
+            run.dropFocused = true
+            note("the Desktop showed as \(a) closed: \(b) focused\(run.closeLive ? " inside the close's freeze" : "")")
+            windowCall(hw, b, .focusWindow(windowId: b.windowId, fullscreen: true, notAfter: msNow(ho.closeWatchdog))) { _, _ in }
+            return
+        }
+        // Still there at the watchdog (or as long, unfrozen): today's checking path, seen.
+        if run.closeLive || into < ho.closeWatchdog - 1e-9 { return }
+        note("\(b) not in front \(Int((into * 1000).rounded())) ms after the close: checked, seen")
+        enter(.checking, for: options.frontCheck)
+    }
+
+    // Today's checking (ProfileSwitch: after the close, the new window in front and still for
+    // frontHold, else its copy focuses it again, twice), now that A is gone and the screen is seen.
+    private func checkingStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+        guard let b = run.b else { return enterLanded(run, hw) }
+        if !hw.copyWindows(b.link).contains(where: { $0.key == b }), run.bNumber.map({ hw.spaceReads?.window($0) == nil }) ?? true {
+            note("\(b) closed after the switch")
+            run.endEvent = .cancelled(run.target)
+            return enterLanded(run, hw)
+        }
+        if bInFront(run, hw, b) {
+            let since = run.holdSince ?? now
+            run.holdSince = since
+            if now - since >= options.frontHold - 1e-9 {
+                note("\(b) in front\(run.checkTries > 0 ? " after \(run.checkTries) focus" : "")")
+                enterLanded(run, hw)
+            }
+            return
+        }
+        run.holdSince = nil
+        guard now >= deadline else { return }
+        guard run.checkTries < options.recoverTries else {
+            let why = "macOS didn’t show its window: click it in Mission Control"
+            note("\(b) not in front after \(run.checkTries) tries")
+            run.failure = why
+            run.endEvent = .failed(run.target, why)
+            return enterLanded(run, hw)
+        }
+        run.checkTries += 1
+        note("\(b) not in front after the close: focused again (\(run.checkTries))")
+        windowCall(hw, b, .focusWindow(windowId: b.windowId, fullscreen: true, notAfter: msNow(options.frontCheck))) { _, _ in }
+        enter(.checking, for: options.frontCheck)
+    }
+
+    // B in front: its Space the active one (the window server), and Safari's first window on screen.
+    private func bInFront(_ run: HandoffRun, _ hw: HandoffWorld, _ b: WindowKey) -> Bool {
+        if let reads = hw.spaceReads, let n = run.bNumber ?? hw.number(of: b), let active = reads.activeSpace() {
+            guard reads.spaces(of: n)?.contains(active) == true else { return false }
+        }
+        return hw.inFront(b.link, windowId: b.windowId)
+    }
+
+    private func revealClose(_ run: HandoffRun, _ hw: HandoffWorld, _ why: RevealWhy) {
+        guard run.closeLive else { return }
+        run.closeLive = false
+        let r = hw.handoffFreezer?.reveal(why)
+        if r == .notLive { return closeWatchdog(run, nil) }
+        run.closeHeldMs = run.closeAt.map { Int(((clock.now() - $0) * 1000).rounded()) }
+    }
+
+    // The second freeze revealed by its own watchdog (its report, or found not live).
+    private func closeWatchdog(_ run: HandoffRun, _ heldMs: Int?) {
+        let wasLive = run.closeLive
+        run.closeLive = false
+        guard wasLive || run.closeHeldMs == nil else { return }
+        run.closeLate = true
+        run.closeHeldMs = heldMs ?? run.closeAt.map { Int(((clock.now() - $0) * 1000).rounded()) }
+        note("the close's freeze revealed by its watchdog at \(run.closeHeldMs ?? 0) ms")
+    }
+
+    // ---- §5: the setting turned on with windows parked ----
+
+    // "Close windows to save memory" turned on (ShellProfiles' switch.closeWindows): each parked
+    // window closed by its own copy, drafts permitting. One with a draft, or no answer, stays
+    // parked, and the person is told (its notice's Close window closes it). While a switch runs: after
+    // it. A close that fails is tried once more after 0.5 s; then the window stays parked.
+    func closeParkedWindows() {
+        guard let hw = handoffWorld, let parking = hw.parking else { return }
+        guard !busy else {
+            session.closeParkedAsked = true
+            return note("close windows to save memory on mid-switch: the parked windows after it")
+        }
+        session.closeParkedAsked = false
+        let list = parking.entries.values.filter { !$0.stepping }.sorted { $0.number < $1.number }
+        guard !list.isEmpty else { return }
+        note("close windows to save memory on: \(list.count) parked window\(list.count == 1 ? "" : "s"), their drafts asked")
+        for e in list { closeParked(e.number, hw, tries: 1) }
+    }
+
+    private func closeParked(_ number: Int, _ hw: HandoffWorld, tries: Int) {
+        guard let parking = hw.parking, let e = parking.entries[number], !e.stepping else { return }
+        guard let key = e.key, hw.isLinked(key.link) else { return note("window \(number) stays parked: its copy can't be asked") }
+        var answered = false
+        let decide = { [weak self] (drafts: WindowDrafts?) in
+            guard let self, !answered else { return }
+            answered = true
+            guard drafts?.mayClose == true else {
+                self.note("window \(number) (\(key)) stays parked: \(drafts.map { "\($0.drafts.count) with drafts, \($0.unknown.count) unknown" } ?? "no drafts answer")")
+                hw.showSwitchNotice(SwitchNotice(.windowKeptDraft, profile: key.link, shownIn: self.session.shown?.key, kept: key))
+                return
+            }
+            parking.close(number: number, cause: .handoff, within: self.options.closeTimeout, close: { [weak self] w, closed in
+                guard let self, let k = w.key, hw.isLinked(k.link) else { return false }
+                self.windowCall(hw, k, .closeWindow(windowId: k.windowId, notAfter: self.msNow(self.options.closeTimeout))) { answer, error in
+                    closed(error == nil && answer?.called != false)
+                }
+                return true
+            }) { [weak self] closed in
+                guard let self else { return }
+                if closed { return self.note("window \(number) (\(key)) closed: close windows to save memory") }
+                guard tries < 2 else { return self.note("window \(number) (\(key)) not closed: it stays parked") }
+                self.note("window \(number) (\(key))'s close failed: again in \(Int(self.ho.closeRetry * 1000)) ms")
+                self.clock.after(self.ho.closeRetry) { [weak self] in self?.closeParked(number, hw, tries: tries + 1) }
+            }
+        }
+        hw.request(key.link, "windowDrafts", HandoffRequest.windowDrafts(windowId: key.windowId).payload, windowId: key.windowId) { result, _ in
+            decide(result.flatMap { WindowDrafts($0) } ?? WindowDrafts(drafts: [], unknown: [-1]))
+        }
+        clock.after(ho.draftsWait) { decide(nil) }
+    }
+
     private func afterStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
         aSteps(run, hw, now)
         // §6.6: B key within 300 ms, else asked once more.
@@ -1130,6 +1387,12 @@ extension ProfileSwitch: FreezerDelegate {
                 run.focusLine = "focus asked again"
                 windowCall(hw, b, .focusWindow(windowId: b.windowId, notAfter: msNow(1.5))) { _, _ in }
             }
+        }
+        // Close mode (§4.5): the second freeze once B's focus is checked and the cooldown has passed (at
+        // most the watchdog's, 1 s, after a watchdog reveal: within this phase).
+        if run.closeDue, run.focusDone, !run.aGone {
+            if run.choice.freeze, session.rules.on, hw.handoffFreezer != nil, !cooledDown(now) { return }
+            return startClose(run, hw, now)
         }
         guard (run.aDone || run.a == nil || run.aGone) && run.focusDone || now >= deadline else { return }
         if !run.aDone, let a = run.a, let n = run.aNumber, !run.aGone {
@@ -1171,7 +1434,8 @@ extension ProfileSwitch: FreezerDelegate {
         session.lines = Array((session.lines + [line]).suffix(5))
         Diagnostics.note(line)
         let landed: (profile: String, windowId: Int?)?
-        if case .done = event, let b = run.b {
+        let onB: Bool = { if case .done = event { return true }; return run.aClosedAt != nil }() // A closed: only B is left
+        if onB, let b = run.b {
             landed = (b.link, b.windowId)
         } else {
             landed = run.a.map { ($0.link, $0.windowId) } ?? run.b.map { ($0.link, $0.windowId) }
@@ -1195,6 +1459,13 @@ extension ProfileSwitch: FreezerDelegate {
         if run.aLeftAt != nil { parts.append("A normal \(run.ms(run.aLeftAt))") }
         if run.aParkedAt != nil { parts.append("A parked \(run.ms(run.aParkedAt))") }
         if run.aClosedAt != nil { parts.append("A closed \(run.ms(run.aClosedAt))") }
+        if run.closeTries > 0 {
+            var close = "close \(run.closeHeldMs.map { "frozen \($0) ms" } ?? "unfrozen")"
+            if run.closeLate { close += " (watchdog)" }
+            if run.closeTries > 1 { close += ", \(run.closeTries) tries" }
+            if run.dropSeen { close += ", Desktop drop" + (run.dropFocused ? ", B focused" : "") + (run.checkTries > 0 ? ", checked \(run.checkTries)" : "") }
+            parts.append(close)
+        }
         if let kept = run.aKept { parts.append("A kept (\(kept))") }
         parts.append("settled \(run.ms(run.r5At))")
         s += ": " + parts.joined(separator: ", ")
@@ -1311,6 +1582,7 @@ extension ProfileSwitch: FreezerDelegate {
     private func dropWatch(_ number: Int) { session.watches.removeAll { $0.number == number } }
 
     func aftercare() {
+        if session.closeParkedAsked, !busy { closeParkedWindows() }
         guard let hw = handoffWorld, !session.watches.isEmpty else { return }
         let now = clock.now()
         // A later switch that takes a window drops its watch as it does (dropWatch); a switch's own

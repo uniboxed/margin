@@ -17,6 +17,7 @@ import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES } from '../themes/index.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
 import { getScroll, setScroll } from './scroll.js';
+import { keepScroll, takeScroll } from './scroll-record.js';
 import { closeTabs, noteClosing } from './closing.js';
 import { appLink } from './app-link.js';
 import { noticeAnswered } from './notices.js';
@@ -219,8 +220,9 @@ async function handOff(tab) {
 // A Margin tab that isn't open (state/model.js keptTabs), clicked: opened in
 // the window where it was clicked (the last focused one if none is named),
 // at its place in the tab strip, in its space, and from then on that browser
-// tab is the Margin tab (linkKept). Its Back history and scroll position are
-// gone, as for any closed tab reopened. Answers which tab came to the front.
+// tab is the Margin tab (linkKept). Its Back history is gone, as for any
+// closed tab reopened; its page goes back to where it was scrolled, once (the
+// scroll record: background/scroll-record.js). Answers which tab came to the front.
 /** @param {string} keptId @param {{ windowId?: number | null, deadline?: number, sidebarTop?: number }} options */
 async function openKept(keptId, { windowId = null, deadline, sidebarTop } = {}) {
   const s = await load();
@@ -785,6 +787,18 @@ export const handlers = {
   async windowDrafts({ windowId }) {
     if (!Number.isInteger(windowId)) throw new Error('no window');
     return windowDrafts(windowId);
+  },
+  // A page's scroll as it's hidden or left (content/core.js), kept on its tab's record for its
+  // Margin tab (background/scroll-record.js, DATA.md "The scroll record").
+  /** @param {{ y: number, url: string }} message */
+  async pageScroll({ y, url }, sender) {
+    await keepScroll(sender?.tab?.id, url, y);
+    return null;
+  },
+  // A reopened Margin tab's page asking where it was scrolled, once: the place, or null.
+  /** @param {{ url: string }} message */
+  async takeScroll({ url }, sender) {
+    return takeScroll(sender?.tab?.id, url);
   },
   // The order of this profile's spaces as the app's order across profiles has them.
   /** @param {{ spaceIds: string[] }} message */

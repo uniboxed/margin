@@ -45,6 +45,10 @@ export interface TabRecord {
   sleeping?: { at: number; how: 'page' | 'discarded' };
   /** when it last woke from that sleep */
   wokeAt?: number;
+  /** where its page is scrolled (px), as it last said, for this address (state/model.js noteScroll) */
+  scroll?: number;
+  /** a scroll its page takes once as it loads: its Margin tab opened again (state/model.js linkKept, takeScroll) */
+  restoreScroll?: { y: number; url: string };
 }
 /** A tab from before ids changed that no open tab matched yet (an earlier build's lostTabs: moved into keptTabs as read). */
 export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }
@@ -58,6 +62,8 @@ export interface KeptTab {
   from?: { key: string; at: number; size: number; index: number; windowId?: number | string };
   /** the browser's id it had, this session (a sync found it gone before its close was heard) */
   wasTab?: number;
+  /** where its page was scrolled as it closed, and the address that's for (the scroll record) */
+  scroll?: { y: number; url: string };
   /** view.sidebar only: not open */
   kept?: true;
 }
