@@ -321,4 +321,129 @@ test('a layout with no box anywhere (the frame turned off): registered at once; 
   assert.equal(registered()?.left, 280, 'a box after another: not yet (LAYOUT_SETTLE_MS)');
 });
 
+// Layout changes on a fake clock (background/settle.js): what registers, and when.
+test('a lone layout change (none in the 2 s before it) registered at once; a drag (a burst) registers its first at once at most, then only the layout it settles at, once it has; a burst back to the registered layout registers nothing more', async () => {
+  const { layoutsChanged, useLayoutClock } = await import('../extension/background/registered.js');
+  const { layoutOfFiles } = await import('../extension/shared/page-box.js');
+  const { fakeClock } = await import('./fake-clock.js');
+  const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
+  const at = (left) => ({ 1: { insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } });
+  const clock = fakeClock(Date.now() + 60_000); // (well after the tests before's changes)
+  useLayoutClock(clock);
+  let updates = 0;
+  const update = chrome.scripting.updateContentScripts;
+  chrome.scripting.updateContentScripts = async (list) => { updates++; return update(list); };
+  const change = async (left) => { linkSays({ drawn: { 1: true }, layouts: at(left) }); layoutsChanged(); await settled(); };
+  try {
+    await change(320);
+    assert.equal(registered()?.left, 320, 'lone: at once (no tick of the clock)');
+    assert.equal(updates, 1);
+    clock.tick(2000);
+    await settled();
+    assert.equal(updates, 1, 'settled at the one registered: nothing more');
+
+    // A drag starting after a quiet while: its first at once, then nothing until it ends.
+    clock.tick(500);
+    for (let left = 330; left <= 400; left += 10) { await change(left); clock.tick(16); }
+    assert.equal(registered()?.left, 330, 'the drag\'s first at once, nothing of the rest yet');
+    assert.equal(updates, 2);
+    clock.tick(2000 - 16 - 1);
+    await settled();
+    assert.equal(registered()?.left, 330, 'not before 2 s with no change');
+    clock.tick(1);
+    await settled();
+    assert.equal(registered()?.left, 400, 'settled: the layout it ended at');
+    assert.equal(updates, 3, 'a drag: two registrations at most');
+
+    // A drag that comes back to where it started.
+    clock.tick(5000);
+    await change(410);
+    assert.equal(registered()?.left, 410);
+    clock.tick(16);
+    await change(420);
+    clock.tick(16);
+    await change(410);
+    const before = updates;
+    clock.tick(2000);
+    await settled();
+    assert.equal(registered()?.left, 410);
+    assert.equal(updates, before, 'back at the registered one: nothing more');
+  } finally {
+    chrome.scripting.updateContentScripts = update;
+  }
+});
+
+test('a burst never ends at a layout it passed through: the settled one is chosen once a registration still under way (the lone change\'s, on a slow background) is done', async () => {
+  const { layoutsChanged, useLayoutClock } = await import('../extension/background/registered.js');
+  const { layoutOfFiles } = await import('../extension/shared/page-box.js');
+  const { fakeClock } = await import('./fake-clock.js');
+  const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
+  const at = (left) => ({ 1: { insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } });
+  const clock = fakeClock(Date.now() + 120_000);
+  useLayoutClock(clock);
+  linkSays({ drawn: { 1: true }, layouts: at(500) });
+  layoutsChanged();
+  await settled();
+  assert.equal(registered()?.left, 500);
+  clock.tick(3000);
+  await settled();
+  // The next registration held in WebKit (a busy Mac) until let go.
+  const update = chrome.scripting.updateContentScripts;
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  chrome.scripting.updateContentScripts = async (list) => { await held; return update(list); };
+  try {
+    linkSays({ drawn: { 1: true }, layouts: at(600) });
+    layoutsChanged(); // lone: its registration starts, and is held
+    await sleep(30);
+    clock.tick(16);
+    linkSays({ drawn: { 1: true }, layouts: at(500) }); // and back, in the same burst
+    layoutsChanged();
+    clock.tick(2000); // settled while 600's registration is still under way
+    await sleep(30);
+    chrome.scripting.updateContentScripts = update;
+    release();
+    await settled();
+    await settled();
+    assert.equal(registered()?.left, 500, 'the layout the burst ended at, not the one under way as it settled');
+  } finally {
+    chrome.scripting.updateContentScripts = update;
+    release();
+  }
+});
+
+test('windows at different layouts: the registered one is most windows\' (a tie keeps it), so a lone change in one window that doesn\'t tip that registers nothing (its pages get their own as they commit), and one that does registers at once', async () => {
+  const { layoutsChanged, useLayoutClock } = await import('../extension/background/registered.js');
+  const { layoutOfFiles } = await import('../extension/shared/page-box.js');
+  const { fakeClock } = await import('./fake-clock.js');
+  const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
+  const box = (left) => ({ insets: { left, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' });
+  const clock = fakeClock(Date.now() + 180_000);
+  useLayoutClock(clock);
+  const change = async (layouts) => { linkSays({ drawn: { 1: true, 2: true }, layouts }); layoutsChanged(); await settled(); };
+  await change({ 1: box(700), 2: box(700) });
+  assert.equal(registered()?.left, 700);
+  clock.tick(3000);
+  let updates = 0;
+  const update = chrome.scripting.updateContentScripts;
+  chrome.scripting.updateContentScripts = async (list) => { updates++; return update(list); };
+  try {
+    await change({ 1: box(700), 2: box(720) });
+    assert.equal(registered()?.left, 700, 'a tie: the one registered stays');
+    assert.equal(updates, 0);
+    fake.inserted.length = 0;
+    await commit(20); // (window 2's page)
+    assert.equal(fake.inserted.length, 1);
+    assert.match(fake.inserted[0].css, /--margin-at-left: 720px/, 'window 2\'s page: its own as it commits');
+    clock.tick(3000);
+    await settled();
+    assert.equal(updates, 0, 'settled: still a tie');
+    await change({ 1: box(720), 2: box(720) });
+    assert.equal(registered()?.left, 720, 'both at 720: registered at once');
+    assert.equal(updates, 1);
+  } finally {
+    chrome.scripting.updateContentScripts = update;
+  }
+});
+
 test.after(() => setTimeout(() => process.exit(0), 50));

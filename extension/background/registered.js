@@ -16,18 +16,19 @@
 // (`drawn` false: not in full screen, or not found among the window server's)
 // counts for none, and its pages get `--margin-fp: off` as they commit: no
 // box beside a sidebar that isn't there. Registered again only when that layout or the
-// theme changes, and a layout only once it's been the same for
-// LAYOUT_SETTLE_MS: WebKit keeps every registration it was given applying to
-// new pages (until it restarts), so each one piles up there, and a resize of
-// the sidebar sends many layouts; meanwhile the fix-up has new pages right,
-// when it's in time. It often isn't: the sheet has to be in within the 17 to
-// 21 ms between a page's commit and its first frame, and WebKit runs the
-// background at background priority (it shows no page), so on a busy Mac it
-// gets there 30 to 70 ms late, after the first frames (the host, 2026-11-06).
-// So whether the app draws a window is followed at once (windowDrawnChanged), not
-// after a settle: the app already says it only as it changes, and off only
-// after its grace (app/shell/Shell.swift DrawnOutbox); and so is a layout that
-// leaves no box anywhere.
+// theme changes, and a layout at once when it changes alone, but in a burst
+// (a resize of the sidebar sends many layouts) only once it's been the same
+// for LAYOUT_SETTLE_MS: WebKit keeps every registration it was given
+// applying to new pages (until it restarts), so each one piles up there;
+// meanwhile the fix-up has new pages right, when it's in time. It often
+// isn't: the sheet has to be in within the 17 to 21 ms between a page's
+// commit and its first frame, and WebKit runs the background at background
+// priority (it shows no page), so on a busy Mac it gets there 30 to 70 ms
+// late, after the first frames (the host, 2026-11-06). So whether the app
+// draws a window is followed at once (windowDrawnChanged), not after a
+// settle: the app already says it only as it changes, and off only after its
+// grace (app/shell/Shell.swift DrawnOutbox); and so is a layout that leaves
+// no box anywhere, and a lone one (layoutsChanged).
 // Once registered in a run of Safari it's only ever updated, never taken
 // away: no longer linked (or no box anywhere), it's updated to a layout of
 // zeros, which a page's world reads as no box and leaves the page alone.
@@ -47,6 +48,7 @@ import { themeFor } from '../themes/index.js';
 import { PACKAGE_THEMES } from '../themes/packages.js';
 import { api, cached, isOwner } from './store.js';
 import { storeActiveTheme } from './theme-package.js';
+import { realClock, settler } from './settle.js';
 
 const PAGE_ID = 'margin-page';
 // The build before Phase 3's first-paint placeholder (its file now an empty
@@ -224,28 +226,45 @@ export const whenRegistered = () => registrations;
 const another = () => keyOf(chooseFor(cached()?.settings, layoutSource(), registeredKey)) !== registeredKey;
 
 // A window's layout changed (background.js: the link's onLayout): the
-// registration follows once layouts have settled (a sidebar dragged
-// re-registers once at most), if the one to register is another now. One
-// with no box anywhere follows at once, as a change in what the app draws
-// does (windowDrawnChanged): the box left registered meanwhile would be drawn
-// in new pages until their commit's sheet takes it away (the frame turned
-// off, say; a drag never comes to that). And so does a box back after a
-// layout with none: while zeros are registered there's no fix-up (fixUp
-// only puts in a window's own layout beside a registered box), so new pages
-// would start with no box beside a sidebar kept open again, for the 2 s
-// (Keep open turned off and on again with the frame off).
-let settleTimer = null;
-export function layoutsChanged() {
-  clearTimeout(settleTimer);
-  settleTimer = null;
-  if (isOwner()) {
-    const chosen = chooseFor(cached()?.settings, layoutSource(), registeredKey);
-    if (registeredKey != null ? chosen === null : noBoxForLayout && chosen !== null) return void queueRegistrations();
-  }
-  settleTimer = setTimeout(() => {
-    settleTimer = null;
+// registration follows at once if it comes alone (no layout change in the
+// LAYOUT_SETTLE_MS before it), and in any case once layouts have settled, if
+// the one to register is another then: a sidebar dragged sends many, and
+// registers its first at once at most, then only the one it settles at
+// (each registration restyles every open page, and WebKit keeps them all).
+// Waiting the 2 s for a lone change too left the pages opened meanwhile to
+// fixUp's sheet, which a background slow to run puts in after their first
+// frames (the host's first-paint, W0: the old box, then their own, about 1
+// run in 5). One with no box anywhere follows at once even in a burst, as a
+// change in what the app draws does (windowDrawnChanged): the box left
+// registered meanwhile would be drawn in new pages until their commit's
+// sheet takes it away (the frame turned off, say; a drag never comes to
+// that). And so does a box back after a layout with none: while zeros are
+// registered there's no fix-up (fixUp only puts in a window's own layout
+// beside a registered box), so new pages would start with no box beside a
+// sidebar kept open again, for the 2 s (Keep open turned off and on again
+// with the frame off). The settled one is chosen once any registration
+// under way is done (registeredKey is then what it left), from the layouts
+// as they are then, so a burst never ends at a value it passed through.
+// Which one is registered with windows at different layouts is
+// chooseLayout's (most windows', a tie keeping the one registered): a lone
+// change in a window that doesn't tip that registers nothing, and its pages
+// get its own as they commit (fixUp), as before.
+let layoutClock = realClock;
+/** Tests: the settle's clock. @param {import('./settle.js').Clock} clock */
+export const useLayoutClock = (clock) => { layoutClock = clock; };
+const layoutSettle = settler(LAYOUT_SETTLE_MS, () => {
+  void registrations.then(() => {
     if (!isOwner() || registeredKey == null || another()) void queueRegistrations();
-  }, LAYOUT_SETTLE_MS);
+  });
+}, () => layoutClock);
+export function layoutsChanged() {
+  const lone = layoutSettle.change();
+  if (!isOwner()) return;
+  // (Lone: a sync whatever registeredKey says now, as one under way may change it; it updates
+  // nothing when the one to register is the one registered.)
+  if (lone) return void queueRegistrations();
+  const chosen = chooseFor(cached()?.settings, layoutSource(), registeredKey);
+  if (registeredKey != null ? chosen === null : noBoxForLayout && chosen !== null) void queueRegistrations();
 }
 
 // Whether the app draws a window changed (background.js: the link's onDrawn): the registration
