@@ -974,10 +974,33 @@ export function createLink({
   // not loaded yet, one whose window just showed another tab (cleared, the new tab asked again).
   // Margin.app tells same-bounds full-screen windows of different profiles apart by it
   // (app/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
-  /** @type {Map<number, { windowId: number, visible: boolean, at: number }>} */
+  // (`source`, `heard`: what said it and when the background heard it, for the log.)
+  /** @type {Map<number, { windowId: number, visible: boolean, at: number, source?: string, heard?: number }>} */
   const visibility = new Map();
   // Each page in front asked to say again whether it's shown (the background starting, a tab shown).
   const askVisibility = (/** @type {number} */ tabId) => { void Promise.resolve(api.tabs.sendMessage?.(tabId, { type: 'reportVisibility' })).catch(() => {}); };
+  // Each window shown or hidden, as its tab in front says (a tab behind isn't the window's word): one
+  // line in Margin.app's log per change, with when the page saw it, what said it and how late the
+  // background heard it (ids and times only). Whether a full-screen window on a Space that isn't
+  // showing says hidden, and how fast, is read from these. Looked at VISIBLE_NOTE_MS after a word,
+  // so the tab left behind as another is shown (it says hidden first) isn't taken for the window.
+  const VISIBLE_NOTE_MS = 150;
+  /** @type {Map<number, boolean>} */
+  const visibleSaid = new Map();
+  /** @type {Map<number, any>} */
+  const visibleNoting = new Map();
+  /** @param {number} windowId @param {number} tabId the tab that spoke (the window's, if its tab in front isn't known) */
+  function noteVisibility(windowId, tabId) {
+    if (visibleNoting.has(windowId)) return;
+    visibleNoting.set(windowId, setTimeout(() => {
+      visibleNoting.delete(windowId);
+      const front = lastList?.find((w) => w.windowId === windowId)?.activeTabId ?? tabId;
+      const word = visibility.get(front);
+      if (!word || word.windowId !== windowId || visibleSaid.get(windowId) === word.visible) return;
+      visibleSaid.set(windowId, word.visible);
+      note(`window ${windowId} ${word.visible ? 'shown' : 'hidden'} at ${clock(word.at)} (${word.source ?? 'unknown'}, tab ${front}, heard ${Math.max(0, (word.heard ?? word.at) - word.at)} ms later)`);
+    }, VISIBLE_NOTE_MS));
+  }
   // The focus flags and visibility of each windows report, in Margin.app's log when they change
   // (ids and times only), so the log says what Safari's flags were when the app bound a window.
   let lastFlags = '';
@@ -1196,6 +1219,8 @@ export function createLink({
     gone();
     clearInterval(pingTimer);
     clearTimeout(askTimer);
+    for (const timer of visibleNoting.values()) clearTimeout(timer);
+    visibleNoting.clear();
     try { port?.disconnect(); } catch {}
     port = null;
   }
@@ -1288,13 +1313,15 @@ export function createLink({
       void windowsNow();
     },
     // A page saying whether it's shown (handlers.js visibility), at `at` (its Date.now()): its
-    // window's `visible` and `visibleAt` while it's that window's tab in front.
-    /** @param {number} windowId @param {number} tabId @param {boolean} visible @param {number} at */
-    visibility(windowId, tabId, visible, at) {
+    // window's `visible` and `visibleAt` while it's that window's tab in front. `source`: what said
+    // it ('content script', 'new-tab page' or 'unknown'), for the log.
+    /** @param {number} windowId @param {number} tabId @param {boolean} visible @param {number} at @param {string} [source] */
+    visibility(windowId, tabId, visible, at, source = 'unknown') {
       if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof visible !== 'boolean' || !Number.isFinite(at)) return;
       const had = visibility.get(tabId);
       if (had && had.windowId === windowId && had.at > at) return; // an older word than the one kept
-      visibility.set(tabId, { windowId, visible, at: Math.min(at, Date.now()) });
+      visibility.set(tabId, { windowId, visible, at: Math.min(at, Date.now()), source, heard: Date.now() });
+      noteVisibility(windowId, tabId);
       if (!windowsFromKnown()) void windowsNow();
     },
     // A tab shown in its window (tabs.onActivated): what its window's tabs said is forgotten (the
@@ -1321,6 +1348,9 @@ export function createLink({
       createdAt.delete(windowId);
       viewports.delete(windowId);
       for (const [id, v] of visibility) if (v.windowId === windowId) visibility.delete(id);
+      visibleSaid.delete(windowId);
+      clearTimeout(visibleNoting.get(windowId));
+      visibleNoting.delete(windowId);
       forgetWindows([String(windowId)]);
       void windowsNow();
     },

@@ -578,6 +578,7 @@ test('link: which page is shown — each window\'s `visible` from its tab in fro
     await wait(120);
     assert.ok(app.received.slice(from).filter((m) => m.k === 'windows').every((m) => !('visible' in m.list[0])), 'a tab behind: not the window\'s');
     link.visibility(7, 13, false, T0 + 100);
+    await wait(200); // (the log's line is written 150 ms after a word: below)
     let win = await app.next('windows', { from, test: (m) => 'visible' in m.list[0] });
     assert.equal(win.list[0].visible, false);
     assert.equal(win.list[0].visibleAt, T0 + 100);
@@ -621,6 +622,16 @@ test('link: which page is shown — each window\'s `visible` from its tab in fro
     assert.ok(logged().some((l) => /^windows report at [\d:.]+: 7 focused \(focus heard [\d:.]+\); blur heard [\d:.]+$/.test(l)), `${logged().filter((l) => l.startsWith('windows report'))}`);
     assert.ok(logged().some((l) => /^windows report at [\d:.]+: 7 focused shown [\d:.]+$/.test(l)), 'a report\'s shown page in the log');
     assert.ok(!logged().some((l) => /https?:|example/.test(l)), 'ids and times only');
+    // Each change of a window's word one line: shown or hidden, when the page saw it, what said it, how late it was heard.
+    const seen = () => logged().filter((l) => l.startsWith('window 7 '));
+    assert.ok(/^window 7 hidden at \d\d:\d\d:\d\d\.\d{3} \(unknown, tab 13, heard \d+ ms later\)$/.test(seen()[0] ?? ''), `${seen()}`);
+    // (Shown again by tab 13 and then by 14, the tab shown next: one line, a change; which tab depends on when it was looked at.)
+    assert.ok(/^window 7 shown at [\d:.]+ \(unknown, tab 1[34], heard \d+ ms later\)$/.test(seen()[1] ?? ''), `${seen()}`);
+    assert.equal(seen().length, 2, `the same word again, a tab behind, another tab of the window saying shown: no line (${seen()})`);
+    assert.ok(Number(/heard (\d+) ms/.exec(seen()[0])?.[1]) >= 60_000 - 100, 'how late: from the page\'s time (a minute back) to now');
+    link.visibility(7, 14, false, Date.now(), 'content script');
+    assert.ok(await until(() => seen().length === 3));
+    assert.match(seen()[2], /^window 7 hidden at [\d:.]+ \(content script, tab 14, heard \d+ ms later\)$/);
     // A closed window's words go with it.
     link.visibility(8, 20, true, T0 + 800);
     link.windowClosed(8);

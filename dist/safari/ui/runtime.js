@@ -63,6 +63,7 @@ const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
  *   onSwitchFailed?: () => void,
  *   onPalette?: (what: 'run' | 'close', request?: any) => void,
  *   onSwitching?: (tabId: number | null) => void,
+ *   onSwitchRun?: (run: import('../shared/switching.js').SwitchRun) => void,
  * }} options `ui`: the UI state to start from; `log`: every action refused;
  * `onSwitching`: the tab a switch from the UI is highlighting (null: none);
  * `onPalette`: the palette closed, a row chosen (`run`, with what it sends
@@ -70,9 +71,10 @@ const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
  * page's hand-off (newtab/newtab.js);
  * `onSwitchSlow`, `onSwitchFailed`: a switch asked for from the UI takes a
  * while, or didn't happen (shared/switching.js; the in-page host's loading
- * pill and notice)
+ * pill and notice); `onSwitchRun`: each chain of switches as it ends, with a
+ * host whose UI stays on screen (shared/switching.js SwitchRun: Margin.app's log)
  */
-export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching }) {
+export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun }) {
   /** @type {UiState & Record<string, any>} */
   let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, ...start };
   /** @type {ViewModel | null} */
@@ -172,6 +174,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
     doc,
     front: stays ? frontTab : null,
+    onRun: stays && onSwitchRun ? (run) => { if (!destroyed) onSwitchRun(run); } : null,
   });
 
   // The UI state with what the host knows (its window, tab and mode).

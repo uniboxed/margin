@@ -221,6 +221,7 @@ export const SCENARIOS = {
     checkPage('D', 'D, passed, never came into view', '__seen.length === 0 && document.hidden'),
     checkPage('C', 'C, passed, never came into view', '__seen.length === 0 && document.hidden'),
     checkPage('B', 'B came into view once', `JSON.stringify(__seen) === '["visible"]'`),
+    { op: 'appHeard', label: 'the run is one line in Margin.app\'s log: 4 presses, Safari asked twice, 2 taken over, landed, never told backwards', has: ['"ev":"extension log"', 'key run in window', ': 4 tab presses, Safari asked 2 times, 2 skipped (a newer press took their place), landed ', 'highlight told backwards 0 times'], timeout: 2000 },
     noPageErrors('B'),
   ],
   // Margin updated while a page with a typed draft is open: the new copy
@@ -1255,12 +1256,14 @@ Object.assign(SCENARIOS, {
     appWith(260),
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), shown('A'),
     { op: 'appHeard', label: 'A, in front, says it\'s shown: its window\'s report carries it', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"', timeout: 8000 },
+    { op: 'appHeard', label: 'and the copy\'s line says the window is shown, when, what said it and how late', has: ['"ev":"extension log"'], re: 'window [0-9]+ shown at [0-9:.]+ \\(content script, tab [0-9]+, heard [0-9]+ ms later\\)"', timeout: 8000 },
     { op: 'appMark' },
     { op: 'open', name: 'B', url: '/p/B', active: true }, shown('B'),
     checkPage('A', 'A is hidden now', `document.hidden`),
     { op: 'appHeard', label: 'B shown in the window: the window\'s word forgotten (not taken as hidden)', has: ['"ev":"extension log"', 'windows report at'], re: 'windows report at [0-9:.]+: [0-9]+( focused)?( \\(focus heard [0-9:.]+\\))?(; blur heard [0-9:.]+)?"' },
     { op: 'appHeard', label: 'and B, asked, says it\'s shown', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"' },
     { op: 'appHeard', label: 'never the hidden tab A\'s word as the window\'s', has: ['"ev":"extension log"', 'windows report at', 'hidden'], none: true },
+    { op: 'appHeard', label: 'nor in the copy\'s line: A, left behind, saying hidden isn\'t the window hidden', has: ['"ev":"extension log"', ' hidden at '], none: true },
     { op: 'appMark' },
     // (The start page: a fresh new tab would hand off to the tab before it.)
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true }, shown('N'),

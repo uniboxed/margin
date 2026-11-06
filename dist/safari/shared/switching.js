@@ -55,15 +55,27 @@ export const SETTLE_MS = 2000;
 // only once the state has had another tab in front since: until then the
 // state's front is stale, and an earlier target's late change would show it.
 export const PASSED_MS = 300;
+// Each chain (`front` only), as it ends, to `onRun` for Margin.app's log: how many targets it had,
+// whether it ended on its last one, and whether the highlight went back (to the tab it started
+// from, or one it passed: that's the flicker, and it must never happen) or elsewhere (another tab
+// came to the front, a real switch it didn't make), and how long after its last target it ended.
+/** @typedef {{ targets: number, landed: boolean, back: number, elsewhere: number, failed: boolean, ms: number }} SwitchRun */
+/** A chain as a line for the log (app/overlay/overlay.js); null for a lone switch that landed. @param {SwitchRun} run */
+export function describeSwitchRun(run) {
+  if (run.targets < 2 && run.landed) return null;
+  const end = run.failed ? 'failed' : run.landed ? 'on its last target' : run.back ? 'back on a tab it had passed' : 'on another tab (a switch it didn\'t make)';
+  return `switch chain: ${run.targets} target${run.targets === 1 ? '' : 's'} highlighted, ended ${end} ${run.ms} ms after the last; the highlight went back ${run.back} time${run.back === 1 ? '' : 's'}`;
+}
 
 /**
- * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document, front?: (() => number | null) | null }} options
+ * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document, front?: (() => number | null) | null, onRun?: ((run: SwitchRun) => void) | null }} options
  * `onChange`: redraw the sidebar with this target (null: none); `onSlow`: the pill on or off;
  * `failed`: whether a request's result means it didn't switch (default: never);
  * `front`: the tab in front as the state has it, for a UI that stays on
- * screen (above): with it, a switch ends as the state says it landed.
+ * screen (above): with it, a switch ends as the state says it landed;
+ * `onRun`: each chain as it ends (SwitchRun, above).
  */
-export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, front = null }) {
+export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, front = null, onRun = null }) {
   /** @type {number | null} */
   let target = null;
   let current = null; // this start's token: an older start's request can't end a newer one
@@ -87,12 +99,19 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
    * had it in front since it was passed (null: not yet); `stale`, the state
    * had this target in front as it was asked for; `other`, it has had
    * another tab in front since.
-   * @type {{ from: number | null, passed: Map<number, number | null>, stale: boolean, other: boolean } | null}
+   * `targets`, `lastAt`: how many it had and when the last was asked, for `onRun`.
+   * @type {{ from: number | null, passed: Map<number, number | null>, stale: boolean, other: boolean, targets: number, lastAt: number } | null}
    */
   let chain = null;
-  function end() {
+  function end(didFail = false) {
     if (passedTimer) clearTimeout(passedTimer);
     passedTimer = null;
+    if (chain && onRun && front && target != null) {
+      const f = front();
+      const back = !didFail && f !== target && (f === chain.from || (f != null && chain.passed.has(f))) ? 1 : 0;
+      const elsewhere = !didFail && f !== target && !back ? 1 : 0;
+      try { onRun({ targets: chain.targets, landed: f === target, back, elsewhere, failed: didFail, ms: Date.now() - chain.lastAt }); } catch {}
+    }
     chain = null;
     if (target == null) return;
     target = null;
@@ -133,8 +152,10 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     if (front) {
       const f = front();
       // A new chain only with no switch under way; else this one goes on, past its last target.
-      if (target == null || !chain) chain = { from: f, passed: new Map(), stale: false, other: false };
+      if (target == null || !chain) chain = { from: f, passed: new Map(), stale: false, other: false, targets: 0, lastAt: 0 };
       else if (target !== tabId && target !== chain.from && !chain.passed.has(target)) chain.passed.set(target, null);
+      chain.targets++;
+      chain.lastAt = Date.now();
       chain.passed.delete(tabId);
       chain.stale = f === tabId;
       chain.other = false;
@@ -154,7 +175,7 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     timers.push(setTimeout(() => mine() && end(), request ? MAX_MS : UNASKED_MAX_MS));
     const didFail = () => {
       if (!mine()) return;
-      end();
+      end(true);
       onFailed(tabId);
     };
     request?.then(
@@ -184,8 +205,8 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
   }
   // Hidden (another tab came to the front): over.
   doc.addEventListener('visibilitychange', () => { if (doc.hidden) end(); });
-  doc.defaultView?.addEventListener('pagehide', end);
-  return { start, toFront, end, settle, target: () => target };
+  doc.defaultView?.addEventListener('pagehide', () => end());
+  return { start, toFront, end: () => end(), settle, target: () => target };
 }
 
 // A switch the background makes from this page (next/previous key): it says

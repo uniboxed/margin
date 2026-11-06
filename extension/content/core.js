@@ -406,7 +406,7 @@ export function startCore() {
   // which one's page in front is shown: background/link.js visibility). Its time is when it was seen.
   function tellVisibility() {
     if (!platform?.nativeApp || retired()) return;
-    void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now() }, false);
+    void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'page' }, false);
   }
   document.addEventListener('visibilitychange', tellVisibility);
   addEventListener('pageshow', (event) => event.persisted && tellVisibility());

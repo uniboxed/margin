@@ -1,7 +1,7 @@
 // shared/switching.js: the tab being switched to, from a page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSwitching, backgroundSwitches } from '../extension/shared/switching.js';
+import { createSwitching, backgroundSwitches, describeSwitchRun } from '../extension/shared/switching.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -196,6 +196,8 @@ test('switching from the background: done isn\'t taken for a failure (it resolve
 // state's tab in front).
 function onScreen() {
   const doc = fakeDocument();
+  /** @type {any[]} */
+  const runs = [];
   let front = 1;
   let target = null;
   const drawn = [];
@@ -208,6 +210,7 @@ function onScreen() {
     onSlow: () => {},
     failed: (result) => result === undefined,
     front: () => front,
+    onRun: (run) => runs.push(run),
   });
   const state = (id) => { front = id; switching.settle(); draw(); };
   // The copy's key switches as the overlay takes them (app/overlay/overlay.js 'switching',
@@ -224,8 +227,38 @@ function onScreen() {
     if (id === front) switching.toFront(id, request);
     else switching.start(id, request);
   };
-  return { switching, state, drawn, key, done, click, front: () => front };
+  return { switching, state, drawn, key, done, click, front: () => front, runs };
 }
+
+test('switching, on screen: each chain as it ends, for Margin.app\'s log: its targets, where it ended, whether the highlight went back', async () => {
+  const { PASSED_MS } = await import('../extension/shared/switching.js');
+  const only = (runs) => runs.map(({ targets, landed, back, elsewhere, failed }) => ({ targets, landed, back, elsewhere, failed }));
+  // Landed on its last target.
+  let s = onScreen();
+  s.key(2, 'nav-1'); s.key(3, 'nav-2'); s.done(3, 'nav-2');
+  await sleep(0);
+  s.state(3);
+  assert.deepEqual(only(s.runs), [{ targets: 2, landed: true, back: 0, elsewhere: 0, failed: false }]);
+  assert.ok(s.runs[0].ms >= 0 && s.runs[0].ms < 100);
+  // A passed tab in front past PASSED_MS: the highlight went back to it.
+  s = onScreen();
+  s.key(2, 'nav-1'); s.key(3, 'nav-2'); s.done(3, 'nav-2');
+  await sleep(0);
+  s.state(2);
+  await sleep(PASSED_MS + 50);
+  assert.deepEqual(only(s.runs), [{ targets: 2, landed: false, back: 1, elsewhere: 0, failed: false }]);
+  // Another tab, outside the chain: elsewhere, not back.
+  s = onScreen();
+  s.key(2, 'nav-1'); s.key(3, 'nav-2');
+  s.state(5);
+  assert.deepEqual(only(s.runs), [{ targets: 2, landed: false, back: 0, elsewhere: 1, failed: false }]);
+  // Failed: neither.
+  s = onScreen();
+  s.key(2, 'nav-1');
+  s.switching.start(4, Promise.resolve(undefined));
+  await sleep(0);
+  assert.deepEqual(only(s.runs), [{ targets: 2, landed: false, back: 0, elsewhere: 0, failed: true }]);
+});
 
 test('switching, on screen: answered before the state has the tab, the highlight stays on it; it moves once (1 → 2), never back', async () => {
   const { switching, state, drawn } = onScreen();
@@ -353,4 +386,16 @@ test('switching, on screen: a new chain after one is over starts from the tab in
   s.key(3, 'nav-2');
   s.state(1); // not 3's chain's start (2), nor passed: someone else's switch
   assert.deepEqual(s.drawn, [1, 2, 3, 1]);
+});
+
+test('switching: a chain as a line for Margin.app\'s log (the overlay\'s); a lone switch that landed says nothing', () => {
+  assert.equal(describeSwitchRun({ targets: 1, landed: true, back: 0, elsewhere: 0, failed: false, ms: 20 }), null);
+  assert.equal(describeSwitchRun({ targets: 12, landed: true, back: 0, elsewhere: 0, failed: false, ms: 180 }),
+    'switch chain: 12 targets highlighted, ended on its last target 180 ms after the last; the highlight went back 0 times');
+  assert.equal(describeSwitchRun({ targets: 2, landed: false, back: 1, elsewhere: 0, failed: false, ms: 340 }),
+    'switch chain: 2 targets highlighted, ended back on a tab it had passed 340 ms after the last; the highlight went back 1 time');
+  assert.equal(describeSwitchRun({ targets: 1, landed: false, back: 0, elsewhere: 1, failed: false, ms: 5 }),
+    'switch chain: 1 target highlighted, ended on another tab (a switch it didn\'t make) 5 ms after the last; the highlight went back 0 times');
+  assert.equal(describeSwitchRun({ targets: 3, landed: false, back: 0, elsewhere: 0, failed: true, ms: 9 }),
+    'switch chain: 3 targets highlighted, ended failed 9 ms after the last; the highlight went back 0 times');
 });

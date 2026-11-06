@@ -91,7 +91,7 @@ api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && c
 shortcuts.installNavigation({ send, getSettings: () => settingsNow });
 // Whether this page is shown, as web pages say it (content/core.js tellVisibility): at each change,
 // at the start and when the background asks.
-const tellVisibility = () => { if (platform?.nativeApp) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now() }); };
+const tellVisibility = () => { if (platform?.nativeApp) void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now(), from: 'newtab' }); };
 document.addEventListener('visibilitychange', tellVisibility);
 addEventListener('pageshow', (event) => event.persisted && tellVisibility());
 tellVisibility();

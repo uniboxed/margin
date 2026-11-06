@@ -399,11 +399,13 @@ export const handlers = {
   // A page saying whether it's shown (content/core.js and the new-tab page: document.visibilityState,
   // at a change, at its start and when asked), for Margin.app to tell same-bounds windows of different
   // profiles apart (background/link.js visibility).
-  /** @param {{ visible?: boolean, at?: number }} message */
-  async visibility({ visible, at } = {}, sender) {
+  // `from`: which said it ('page': a web page's content script, 'newtab': Margin's new-tab page), for the log.
+  /** @param {{ visible?: boolean, at?: number, from?: string }} message */
+  async visibility({ visible, at, from } = {}, sender) {
     const tab = sender?.tab;
     if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof visible !== 'boolean') return;
-    appLink.visibility(tab.windowId, tab.id, visible, Number.isFinite(at) ? /** @type {number} */ (at) : Date.now());
+    const source = from === 'page' ? 'content script' : from === 'newtab' ? 'new-tab page' : 'unknown';
+    appLink.visibility(tab.windowId, tab.id, visible, Number.isFinite(at) ? /** @type {number} */ (at) : Date.now(), source);
   },
   async getZoom(_, sender) {
     if (!sender.tab) return null;

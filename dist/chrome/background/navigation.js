@@ -2,6 +2,7 @@ import * as M from '../state/model.js';
 import * as V from '../shared/view.js';
 import { api, cached, isSynced, load, mutate, now, recheckSoon, StaleError } from './store.js';
 import { anyFocusing, focusTab, openTab, tellApp, tellPage } from './tabs.js';
+import { appLog } from './switch-log.js';
 
 // Next/previous tab and space. Three delivery paths land here: Margin.app's
 // keys (`navigate` requests, while it draws Margin), the manifest `commands`
@@ -47,6 +48,42 @@ let seqs = 0;
  * @type {Map<number, { busy: Press | null, waiting: Press[], chain: number, asked: Map<number, number>, shown: number | null, front: number | null }>}
  */
 const runs = new Map();
+// Each key run (a window's presses until KEY_RUN_QUIET_MS after the last one's switch is over, none
+// waiting) as one line in Margin.app's log (switch-log.js appLog): its presses, how many switches
+// Safari was asked for (tabs.update, or a space's), how many presses a newer one took the place of
+// before their turn, how many were heard twice, how long from the last press to landing (Safari's
+// activation of its tab, else its answer), and how many times the overlay was told an older
+// press's target after a newer one's (its highlight going back: must be 0). Ids and counts only.
+export const KEY_RUN_QUIET_MS = 400;
+/**
+ * @typedef {{ tabs: number, spaces: number, asked: number, skipped: number, twice: number, none: number, failed: number,
+ *   lastPressAt: number, lastSeq: number, lastTarget: any, toldSeq: number, back: number, answeredAt: number | null, activatedAt: number | null, timer: any }} KeyRun
+ * @type {Map<number, KeyRun>}
+ */
+const keyRuns = new Map();
+const keyRunOf = (/** @type {number} */ windowId) => {
+  let r = keyRuns.get(windowId);
+  if (!r) keyRuns.set(windowId, r = { tabs: 0, spaces: 0, asked: 0, skipped: 0, twice: 0, none: 0, failed: 0, lastPressAt: 0, lastSeq: 0, lastTarget: undefined, toldSeq: 0, back: 0, answeredAt: null, activatedAt: null, timer: null });
+  clearTimeout(r.timer);
+  r.timer = null;
+  return r;
+};
+/** @param {number} windowId */
+function keyRunIdle(windowId) {
+  const r = keyRuns.get(windowId);
+  const run = runs.get(windowId);
+  if (!r || run?.busy || run?.waiting.length) return; // (said once its switches are over)
+  clearTimeout(r.timer);
+  r.timer = setTimeout(() => {
+    keyRuns.delete(windowId);
+    const n = (/** @type {number} */ k, /** @type {string} */ what) => `${k} ${what}${k === 1 ? '' : what.endsWith('s') ? 'es' : 's'}`;
+    const presses = [r.tabs ? n(r.tabs, 'tab press') : '', r.spaces ? n(r.spaces, 'space press') : ''].filter(Boolean).join(' and ');
+    const landedAt = r.activatedAt ?? r.answeredAt;
+    const landed = landedAt == null ? 'never landed' : `landed ${Math.max(0, landedAt - r.lastPressAt)} ms after the last press (${r.activatedAt != null ? 'Safari\'s activation' : 'Safari\'s answer'})`;
+    const extra = [r.none ? `${r.none} already in front` : '', r.failed ? `${r.failed} failed` : '', r.twice ? `${n(r.twice, 'press')} heard twice, counted once` : ''].filter(Boolean).join(', ');
+    appLog(`key run in window ${windowId}: ${presses}, Safari asked ${n(r.asked, 'time')}, ${r.skipped} skipped (a newer press took their place)${extra ? `, ${extra}` : ''}, ${landed}; highlight told backwards ${n(r.back, 'time')}`);
+  }, KEY_RUN_QUIET_MS);
+}
 const runOf = (/** @type {number} */ windowId) => {
   let run = runs.get(windowId);
   if (!run) runs.set(windowId, run = { busy: null, waiting: [], chain: 0, asked: new Map(), shown: null, front: null });
@@ -76,8 +113,15 @@ function spaceTargetNow(windowId, dir) {
 }
 
 // The overlay told about a key's switch (only it: the page is told as the switch starts).
-const tellOverlay = (/** @type {number} */ windowId, /** @type {Press} */ press, /** @type {string} */ type, reason = null) =>
+function tellOverlay(/** @type {number} */ windowId, /** @type {Press} */ press, /** @type {string} */ type, reason = null) {
+  const r = keyRuns.get(windowId);
+  if (r && type === 'switching') {
+    if (press.seq < r.toldSeq) r.back++;
+    else r.toldSeq = press.seq;
+    if (press.seq === r.lastSeq) r.lastTarget = press.target;
+  }
   tellApp(windowId, { type, tabId: press.target, switchId: press.switchId, chain: press.chain, seq: press.seq, ...(reason ? { reason } : {}) });
+}
 
 /** @param {string} action @param {string} source @param {number | null | undefined} windowId */
 export function navigate(action, source, windowId) {
@@ -85,14 +129,24 @@ export function navigate(action, source, windowId) {
   if (windowId == null) return Promise.resolve();
   const run = runOf(windowId);
   const idle = () => run.busy?.done ?? Promise.resolve();
-  if (action === lastNav.action && source !== lastNav.source && t - lastNav.at < NAV_DEDUPE_MS) return idle();
+  if (action === lastNav.action && source !== lastNav.source && t - lastNav.at < NAV_DEDUPE_MS) {
+    const r = keyRuns.get(windowId);
+    if (r) r.twice++;
+    return idle();
+  }
   Object.assign(lastNav, { action, source, at: t });
   const kind = action === 'next-tab' || action === 'prev-tab' ? 'tab' : action === 'next-space' || action === 'prev-space' ? 'space' : null;
   if (!kind) return Promise.resolve();
+  const keyRun = keyRunOf(windowId);
+  keyRun[kind === 'tab' ? 'tabs' : 'spaces']++;
+  keyRun.lastPressAt = Date.now();
+  keyRun.answeredAt = keyRun.activatedAt = null;
+  keyRun.lastTarget = undefined;
   const dir = action.startsWith('next') ? 1 : -1;
   /** @type {() => void} */ let finish = () => {};
   const done = new Promise((resolve) => { finish = () => resolve(undefined); });
   const seq = ++seqs;
+  keyRun.lastSeq = seq;
   /** @type {Press} */
   const press = { kind, action, dir, target: undefined, seq, chain: run.chain, switchId: `nav-${seq}`, done, finish };
   // Its target now, unless a press of the other kind is ahead of it (a tab
@@ -101,7 +155,7 @@ export function navigate(action, source, windowId) {
   const mixed = ahead.some((p) => p?.kind !== kind || p?.target === undefined);
   if (kind === 'tab' && !mixed) {
     const { target, chained } = tabTargetNow(windowId, dir);
-    if (target === null) { finish(); return idle(); } // nothing to go to
+    if (target === null) { finish(); keyRunIdle(windowId); return idle(); } // nothing to go to
     if (target !== undefined) {
       if (!chained) run.chain++;
       press.chain = run.chain;
@@ -111,9 +165,10 @@ export function navigate(action, source, windowId) {
     }
   } else if (kind === 'space' && !mixed) {
     const target = spaceTargetNow(windowId, dir);
-    if (target === null) { finish(); return idle(); }
+    if (target === null) { finish(); keyRunIdle(windowId); return idle(); }
     if (target !== undefined) {
       press.target = target;
+      if (keyRun.lastSeq === seq) keyRun.lastTarget = target;
       const chained = spaceTarget.get(windowId);
       const spaces = chained && now() - chained.at < NAV_CHAIN_MS ? chained.spaces : new Set();
       spaceTarget.set(windowId, { spaceId: target, at: now(), spaces: spaces.add(target) });
@@ -123,6 +178,7 @@ export function navigate(action, source, windowId) {
   const last = run.waiting.at(-1);
   if (last && last.kind === kind && last.target !== undefined && press.target !== undefined) {
     run.waiting.pop();
+    keyRun.skipped++;
     if (kind === 'tab') tellOverlay(windowId, last, 'switch-done'); // (the overlay has moved on to this one)
     void done.then(last.finish);
   }
@@ -142,7 +198,10 @@ function drive(windowId) {
     .finally(() => {
       run.busy = null;
       press.finish();
+      const r = keyRuns.get(windowId);
+      if (r && press.seq === r.lastSeq && r.answeredAt == null) r.answeredAt = Date.now();
       drive(windowId);
+      if (!run.busy && !run.waiting.length) keyRunIdle(windowId);
     });
 }
 
@@ -165,12 +224,15 @@ async function runPress(windowId, press, run) {
       tellOverlay(windowId, press, 'switching');
     }
     const next = /** @type {number} */ (press.target);
+    const keyRun = keyRuns.get(windowId);
     // Back to the tab this window's last switch showed, with nothing shown since: nothing to ask Safari.
     if (run.shown === next && run.front === next) {
+      if (keyRun) keyRun.none++;
       tellOverlay(windowId, press, 'switch-done');
       return;
     }
     run.asked.set(next, Date.now());
+    if (keyRun) keyRun.asked++;
     // The page on screen is told (`from` says which page it's for: Margin's own pages hear it as a broadcast).
     const shownPage = api.tabs.query({ active: true, windowId }).then(([shown]) => {
       if (!shown || shown.id === next) return null;
@@ -185,6 +247,7 @@ async function runPress(windowId, press, run) {
       await focusTab(next, { source: press.action });
     } catch (err) {
       run.shown = null;
+      if (keyRun) keyRun.failed++;
       void told('switch-failed', String(/** @type {any} */ (err)?.message ?? err));
       throw err;
     }
@@ -197,7 +260,9 @@ async function runPress(windowId, press, run) {
     const spaceId = press.target !== undefined ? press.target : V.cycleSpace(await load(), windowId, press.dir);
     if (spaceId == null) return;
     run.shown = null;
-    await showSpace(windowId, spaceId);
+    const keyRun = keyRuns.get(windowId);
+    if (keyRun) keyRun.asked++;
+    await showSpace(windowId, spaceId).catch((err) => { if (keyRun) keyRun.failed++; throw err; });
     // Show where you landed (auto-hide mode), once the presses are done; Margin's own pages ignore it.
     if (run.waiting.length) return;
     const [tab] = await api.tabs.query({ active: true, windowId });
@@ -214,6 +279,8 @@ const OWN_MS = 1500;
 export function navActivated(windowId, tabId) {
   const run = runs.get(windowId);
   if (run) run.front = tabId;
+  const keyRun = keyRuns.get(windowId);
+  if (keyRun && keyRun.lastTarget === tabId && keyRun.activatedAt == null) keyRun.activatedAt = Date.now();
   const asked = run?.asked.get(tabId);
   for (const [id, at] of run?.asked ?? []) if (Date.now() - at >= OWN_MS) run?.asked.delete(id);
   if (asked != null && Date.now() - asked < OWN_MS) return;

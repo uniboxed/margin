@@ -514,6 +514,7 @@ extension Tests {
             && w.said.contains("safari:C#795: window 18342 missing from one read (kept for 3 s)"), w.said)
       w.blipped = []; w.read(0.042)
       check("blips: listed again 42 ms later: the same binding, nothing missing", w.binder.numbers == [k(C, 795): 18342] && w.binder.absentNumbers.isEmpty)
+      check("blips: and the log says it's back, after how long", w.lines.last == "safari:C#795: window 18342 back after 42 ms", "\(w.lines.suffix(3))")
       w.collapse = true; w.read(0.25)
       check("blips: a read without any of the browser's windows: the binding kept", w.binder.numbers == [k(C, 795): 18342] && w.binder.lastReadCollapsed && w.binder.absentNumbers == [18342])
       w.read(0.033); w.read(0.033)
@@ -524,9 +525,39 @@ extension Tests {
       check("blips: each read without them said once, with the counts and where the bound window was", collapsedLines.count == 2
             && collapsedLines[0].hasPrefix("safari: a read of the window server without the browser's windows (2 entries, 2 the browser's, 2 at layer 0; window 18342 not listed): bindings kept")
             && collapsedLines[1].hasPrefix("safari: a read of the window server without the browser's windows (0 entries, 0 the browser's, 0 at layer 0; window 18342 not listed): bindings kept"), "\(collapsedLines)")
+      check("blips: each such line says what the last read that told something had, and what the source gave", collapsedLines.count == 2
+            && collapsedLines[0].hasSuffix("; the last read that told something had 3 at layer 0; the source gave a list")
+            && collapsedLines[1].hasSuffix("; the last read that told something had 3 at layer 0; the source gave an empty list"), "\(collapsedLines)")
+      let wholeAgain = w.lines.suffix(from: before).filter { $0.contains("has the browser's windows again") }
+      check("blips: each episode's end one line, with how long and how many reads told nothing", wholeAgain == [
+        "safari: the window server's list has the browser's windows again after 42 ms (1 read told nothing)",
+        "safari: the window server's list has the browser's windows again after 99 ms (3 reads told nothing)",
+      ], "\(wholeAgain)")
+      check("blips: back after the read without any: said once, after how long", w.lines.suffix(from: before).filter { $0.hasPrefix("safari:C#795: window 18342 back after") } == [
+        "safari:C#795: window 18342 back after 42 ms", "safari:C#795: window 18342 back after 99 ms",
+      ], w.lines.suffix(from: before).joined(separator: "\n"))
       w.run(20)
       check("blips: 20 s on, still bound; never 'no longer', nothing wrong", w.binder.numbers == [k(C, 795): 18342] && !w.said.contains("is no longer") && w.wrong.isEmpty, w.said)
       check("blips: no 'can't be told' lines churned by the blips", w.lines.suffix(from: before).filter { $0.contains("isn't bound") }.isEmpty, w.lines.suffix(from: before).joined(separator: "\n"))
+    }
+    do {
+      // Each focus event weighed has its outcome in the log, the ones that change nothing too.
+      let w = three()
+      w.show(18278); w.run(2)
+      w.show(18342); w.read(0.05); w.focus(k(C, 795), at: w.t - 0.02); w.run(2.4, every: 0.1)
+      check("focus events: one that agrees with its window's binding says so", w.lines.contains { $0.hasPrefix("safari:C#795: focus heard at ") && $0.contains(" agrees with its binding (window 18342 came to the front by ") },
+            w.said)
+      w.show(18278); w.run(2)
+      w.show(18342); w.read(0.05); w.focus(k(C, 795), at: w.t - 0.02); w.read(0.05)
+      w.close(C, 795); w.run(2.4, every: 0.1)
+      check("focus events: one for a window its copy no longer reports says so", w.lines.contains { $0.hasPrefix("safari:C#795: focus heard at ") && $0.hasSuffix(" not used: its copy no longer reports it") }, w.said)
+      // The visible rule not weighed at all (the browser not in front): why, once per change of reason.
+      let lines = w.lines.count
+      w.inFront = false; w.run(1)
+      w.inFront = true; w.run(1)
+      w.inFront = false; w.run(1)
+      let off = w.lines.suffix(from: lines).filter { $0.contains("the visible rule not weighed") }
+      check("visible rule: not weighed while the browser isn't in front, said once each time", off == Array(repeating: "safari: the visible rule not weighed: the browser isn't in front", count: 2), "\(off)")
     }
     do {
       // Every same-bounds window missing for 0.4 s (reads in a burst), with no list at all for some.

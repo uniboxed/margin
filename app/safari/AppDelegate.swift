@@ -83,7 +83,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     private func waitForOthers() {
-        others = others.filter { kill($0, 0) == 0 }
+        let alive = others.filter { kill($0, 0) == 0 }
+        let ended = others.filter { !alive.contains($0) }
+        others = alive
+        let took = Int((Self.othersWait - othersUntil.timeIntervalSinceNow) * 1000)
+        for pid in ended { Diagnostics.note("ended an older Margin.app (pid \(pid)) in \(took) ms") }
         guard others.isEmpty || Date() >= othersUntil else { return }
         if !others.isEmpty { Diagnostics.warn("another Margin.app (pid \(others.map(String.init).joined(separator: ", "))) is still running after \(Int(Self.othersWait)) s: starting anyway") }
         othersTimer?.invalidate()

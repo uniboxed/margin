@@ -19,7 +19,7 @@ import { createRuntime } from '../../extension/ui/runtime.js';
 import { loadTheme } from '../../extension/ui/theme-loader.js';
 import { createAppHost, hitRects } from '../../extension/ui/host-app.js';
 import { createAppNotices, createGestureFeedback } from '../../extension/ui/app-feedback.js';
-import { backgroundSwitches } from '../../extension/shared/switching.js';
+import { backgroundSwitches, describeSwitchRun } from '../../extension/shared/switching.js';
 
 const bridge = /** @type {any} */ (globalThis).webkit?.messageHandlers?.margin;
 /** @param {string} op @param {Record<string, any>} [body] */
@@ -180,6 +180,9 @@ async function mount(pkg) {
     host, theme, container: document, ui: keep, onWarn: (message) => log('warn', message),
     // A switch asked for here that didn't happen: why, as a notice (its request's error).
     onSwitchFailed: () => { notices.switchFailed(host?.takeFailure()?.error); },
+    // Each chain of switches (keys pressed fast, a click during them) as it ends, in Margin.app's log:
+    // whether the highlight ever went back (it must not). A lone switch that landed says nothing.
+    onSwitchRun: (run) => { const line = describeSwitchRun(run); if (line) log('note', line); },
   });
   const root = runtime.view.rootElement();
   // The pointer over the page slot is the page's (the app lets it through); what the theme draws there keeps it.

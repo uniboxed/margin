@@ -94,6 +94,11 @@ appLink.push = (windowId, msg) => {
   for (const take of [...takers]) take(entry);
   return true;
 };
+// Margin.app's log lines (switch-log.js appLog, through the link's note).
+/** @type {string[]} */
+const notes = [];
+appLink.note = (line) => { notes.push(String(line)); };
+const keyRunLines = () => notes.filter((l) => l.startsWith('key run in window'));
 const { switchLog } = await import('../extension/background/switch-log.js');
 const { fromStorage } = await import('../extension/shared/stored.js');
 const { createSwitching, backgroundSwitches } = await import('../extension/shared/switching.js');
@@ -118,6 +123,8 @@ async function inFront(id) {
 // change drawn recorded.
 function overlay() {
   const drawn = [storedFront()];
+  /** @type {any[]} */
+  const runs = [];
   let target = null;
   const draw = () => { const h = target ?? storedFront(); if (drawn.at(-1) !== h) drawn.push(h); };
   const switching = createSwitching({
@@ -126,6 +133,7 @@ function overlay() {
     onSlow: () => {},
     failed: (r) => r === undefined,
     front: storedFront,
+    onRun: (run) => runs.push(run),
   });
   const copy = backgroundSwitches();
   const onState = (changes, area) => { if (area === 'local' && 'openTabs' in changes) { switching.settle(); draw(); } };
@@ -142,6 +150,7 @@ function overlay() {
   takers.push(take);
   return {
     drawn,
+    runs, // each chain as it ended (shared/switching.js onRun)
     // A switch asked for in the overlay itself (a click on a row): highlighted at once, its request's answer.
     click: (id, request) => switching.start(id, request),
     stop() { listeners.sChanged.splice(listeners.sChanged.indexOf(onState), 1); takers.splice(takers.indexOf(take), 1); },
@@ -259,6 +268,7 @@ test('fast presses: the overlay told at each press, Safari only the newest waiti
   await sleep(NAV_SETTLE_MS);
   const o = overlay();
   pushed.length = 0;
+  notes.length = 0;
   fake.updates = [];
   fake.updateMs = () => 120 + Math.random() * 60;
   const presses = [];
@@ -301,6 +311,16 @@ test('fast presses: the overlay told at each press, Safari only the newest waiti
   await sleep(300);
   assert.equal(fake.updates.length, after, 'nothing switching after the last press is handled');
   assert.equal(front(), last);
+  // Margin.app's log: the run as one line, and the overlay's chain as it ended.
+  const lines = keyRunLines();
+  assert.equal(lines.length, 1, `${lines}`);
+  const m = /^key run in window 1: 12 tab presses, Safari asked (\d+) times?, (\d+) skipped \(a newer press took their place\), landed (\d+) ms after the last press \(Safari's activation\); highlight told backwards 0 times$/.exec(lines[0]);
+  assert.ok(m, lines[0]);
+  assert.equal(Number(m[1]), updates.length, 'as many as Safari was asked');
+  assert.equal(Number(m[2]), 12 - updates.length, 'the rest were taken over by newer presses');
+  assert.ok(Number(m[3]) > 0 && Number(m[3]) < 1000, lines[0]);
+  assert.deepEqual(o.runs.map(({ targets, landed, back, elsewhere, failed }) => ({ targets, landed, back, elsewhere, failed })),
+    [{ targets: 12, landed: true, back: 0, elsewhere: 0, failed: false }], 'one chain: all 12 targets, ended on the last, never back');
 });
 
 test('fast presses: a press after the switches are done is never skipped, and goes at once', async () => {
@@ -323,6 +343,7 @@ test('one press heard twice (the app\'s key and the page\'s keydown) counts once
   await sleep(NAV_SETTLE_MS);
   pushed.length = 0;
   fake.updates = [];
+  notes.length = 0;
   const [a] = nextTabs(1, 1);
   await press(APP);
   await press(PAGE);
@@ -330,6 +351,9 @@ test('one press heard twice (the app\'s key and the page\'s keydown) counts once
   await sleep(100);
   assert.deepEqual(pushed.filter((p) => p.msg.type === 'switching').map((p) => p.msg.tabId), [a]);
   assert.deepEqual(fake.updates.map((u) => u.id), [a]);
+  await sleep(500);
+  assert.deepEqual(keyRunLines().map((l) => l.replace(/landed \d+ ms/, 'landed N ms')),
+    ['key run in window 1: 1 tab press, Safari asked 1 time, 0 skipped (a newer press took their place), 1 press heard twice, counted once, landed N ms after the last press (Safari\'s activation); highlight told backwards 0 times']);
 });
 
 test('the activations of a chain\'s own switches don\'t restart it: presses during a slow switch go on from the last target', async () => {
@@ -389,4 +413,20 @@ test('fast space presses: one space switch with Safari at a time, the newest wai
   const shown = fromStorage(fake.local);
   assert.equal(shown.tabSpace[front()], want, 'its tab in front');
   assert.ok(fake.updates.length < 6, `Safari asked ${fake.updates.length} times`);
+});
+
+test('a page\'s word that it\'s shown carries what said it: a web page\'s content script, Margin\'s new-tab page, or unknown', async () => {
+  const heard = [];
+  const was = appLink.visibility;
+  appLink.visibility = (...args) => { heard.push(args); };
+  try {
+    const tab = { tab: { id: 3, windowId: 1 } };
+    await handlers.visibility({ visible: false, at: 5, from: 'page' }, tab);
+    await handlers.visibility({ visible: true, at: 6, from: 'newtab' }, tab);
+    await handlers.visibility({ visible: true, at: 7 }, tab);
+    await handlers.visibility({ visible: true, at: 8, from: 'https://a.test/' }, tab);
+  } finally {
+    appLink.visibility = was;
+  }
+  assert.deepEqual(heard, [[1, 3, false, 5, 'content script'], [1, 3, true, 6, 'new-tab page'], [1, 3, true, 7, 'unknown'], [1, 3, true, 8, 'unknown']]);
 });
