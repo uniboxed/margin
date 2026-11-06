@@ -1,0 +1,789 @@
+# The full-screen handoff with parking: design
+
+Draft 2, 2026-11-06 (revised after two critics' reviews: Appendix A). Nothing here is built. It replaces today's close-based cross-profile switch (`app/shell/ProfileSwitch.swift`) with Tirth's freeze-based handoff, and keeps the old profile's window alive ("parked") instead of closing it.
+
+Where things are:
+
+- **Repo:** `/Users/tirth/Projects/margin`, read at `merge/icloud-tabs` (df6877e). File:line references are to that commit.
+- **Labs:** `S = /private/tmp/claude-501/-Users-tirth-Projects-margin/1bb1ea82-aa29-4c73-85e7-63051090d15a/scratchpad`. `S/handoff/RESULTS.md`, `S/handoff/RESULTS-park.md`, `S/handoff/xp.swift`, `S/handoff/park.swift`, `S/handoff/lab.swift`, `S/stp/stp-handoff.swift`, `S/stp/stp-lab.swift`, and the STP logs `S/stp/margin-park-handoff.mp4.log`, `S/stp/stp-1793947553.log`, `S/stp/stp-1793947586.log`, `S/stp/stp-1793947722.log`.
+
+Words used below:
+
+- **A**: the window the switch starts from (shown, full screen, with Margin's overlay).
+- **B**: the target window. Usually another profile's. It can be the same profile's (§6.11).
+- **Parked**: hidden in a private Space Margin made for that window. Alive, normal (not full screen), not minimized, in no user Space, not in Mission Control.
+- **Freeze**: the screen held still by `SLSNewTransition`. **Reveal**: `SLSInvokeTransition(cid, handle, 0)`.
+- **Copy**: one Safari profile's running extension. Window and tab ids resolve only in their own copy (`app/PROTOCOL.md:9`).
+- **Gate Gn**: a lab run that must pass before the build relies on that part (§10.4). Until it passes, the part ships turned off, behind an `Options` flag, or with the fallback named next to it.
+
+---
+
+## 0. What Tirth decided, and what this design adds
+
+Decided (2026-11-05/06):
+
+- A freeze-based handoff replaces the slide. Private calls are OK. No Accessibility, no screen recording in the mechanism, no AppleScript.
+- The old window is parked, not closed.
+- Two modes: **Keep windows alive** (default) and **Close windows to save memory** (a visible setting).
+- Fallback chain: 1) bridge parking; 2) the close handoff. No Desktop parking. A failed close is retried and logged. The old window stays in its own full-screen Space.
+- Every private call is checked at launch, verified on use, logged locally only, and listed in a checked-in `PRIVATE-APIS.md`, with a lab tool for each macOS beta.
+- UX: the swipe stays live in the sidebar, a "switching profile" cover shows in the page area, and the handoff runs behind it. About 1.1-1.3 s of still screen in Safari, against today's 0.4-0.65 s slide.
+
+This design adds the following, each defended below:
+
+- **The freeze and the old window's fate are two separate choices** (§1.1). Without the freeze, parking still runs and the person sees macOS's slide. A close happens only when parking is off or failed, or the setting asks for it, and always after a drafts check.
+- **The registry is keyed by window-server number**, and each parked window has its own private Space (§2.1). An entry is never forgotten just because its copy is quiet.
+- **Every window return records who caused it** (§2.6). Only the person's own act (focus landing on a parked window) starts a handoff.
+- **Late answers are owned** (§1.9). Requests carry a `notAfter`, a copy refuses a second windows call while one is pending, and an aftercare watch handles whatever lands late.
+- A rAF probe to the target's front page and an overlay "framed" ack serve as readiness gates (R3, R4). R3 depends on gate G2.
+- A small `parked` message to each copy (like `drawn`), and one `parkedActivity` push back (§2.5, §6.1).
+- The close handoff uses two freezes: the form the lab proved (§4.5).
+
+---
+
+## 1. The switch's state machine
+
+### 1.1 Two choices per switch: freeze, and the old window
+
+Each switch picks both, from the launch check, what failed this session, the setting and the setup at that moment:
+
+| Choice | Values | Picked |
+|---|---|---|
+| **Freeze** | `on` / `off` | `on` when the freeze calls passed the launch check, the session hasn't turned it off, and exactly one display is managed (`SLSCopyManagedDisplaySpaces` count, read per switch, §6.7) |
+| **Old window** | `park` / `close` / `keep` | `park` when the bridge passed the launch and self-tests and the session hasn't turned it off, and the setting is "Keep windows alive". `close` when the setting is on, or parking is off. `keep` (A stays in its own full-screen Space) when closing isn't allowed this time: a draft in A, A's copy gone, A busy (§1.10), a failed close, or the multi-display rule (§6.7) |
+
+- So the modes are `park+freeze` (the default), `park` without a freeze (the person sees the slide, and A is still kept alive), `close+freeze` (the two-freeze close, §4.5), `close` without a freeze (today's switch, plus the drafts check), and `keep`.
+- **There's no lasting `plain` level.** Today's flow (`ProfileSwitch.swift:10-24`) is `close` without a freeze, run by the same machine.
+- **Session demotions** (until Margin.app quits, Tirth's "for the session"), each one log line:
+  - **park off:** the bridge is missing at launch, the self-test failed, or a park or show didn't land after one retry.
+  - **freeze off:** missing at launch, `SLSNewTransition` nonzero on two switches in a row, or a reveal nonzero (then released).
+- **Setup facts aren't demotions:** the display count and drafts are read per switch. Unplugging the second display brings the freeze back on the next switch.
+- **A drafts check comes before every close**, in every mode (§4.5). A close never loses typed text without asking first.
+
+### 1.2 Phases
+
+```text
+idle
+ └ start ─▶ preparing ──coverShown, or 250 ms──▶ frozen ──────────────────────────────┐
+             │ (cover up, target chosen,           showing B (bridge)                 │
+             │  blockers checked §1.10,            entering (B to full screen)        │
+             │  B's space set while parked,        waitingReady (R1-R4)               │
+             │  drafts asked if a close may come)  leaving (A to normal) from R1+R2   │
+             │                                     parking A / closing A (§4.5)       │
+             │                                     settling (R5)                      │
+             │                                     └ all done ─▶ reveal ─▶ after ─▶ landed ─▶ idle
+             │                                     watchdog 1.7 s ─▶ reveal; the same steps go on unfrozen ("late")
+             ├ the target's copy isn't linked, and the profile has no parked window ─▶ waitingForProfile (90 s) ─▶ preparing
+             ├ … but it has a parked window ─▶ waitingForLink (up to 3 s, §1.5) ─▶ preparing, or that window returned to its Desktop
+             └ cancel / back to A before the freeze ─▶ idle (cover down, nothing touched)
+any failure ─▶ recovering (§4.4) ─▶ after ─▶ landed ─▶ idle
+```
+
+- **`after`** (unfrozen, at most 1.5 s, part of the switch): a late park of A and its verification, the focus check (§6.6), the registry's verification of both windows, and one diagnostics line.
+- **`landed`**: every step done (the late park included) or recovery done, **and** no full-screen Space change for 150 ms. Only then is the switch idle. A queued switch starts only from idle (§1.7).
+- Every phase has a deadline. Today's machine has `createTimeout` 8 s and `settleTimeout` 6 s (`ProfileSwitch.swift:70-80`). The new ones are in §1.4.
+- **A foreign Space change aborts:** during the freeze the active Space may only be A's, or a type-4 Space that holds B. Any other active Space for 100 ms (the Desktop, another full-screen Space: a trackpad swipe, Mission Control, §6.10) means reveal at once and recover. The log says `aborted: the active Space moved to N`. Gate G15 checks that Safari's entry never passes through another Space.
+
+### 1.3 The order: enter-first, one freeze
+
+From the STP recording (`S/stp/stp-handoff.swift:188-221`, log `S/stp/margin-park-handoff.mp4.log`):
+
+1. **Freeze.** `SLSNewTransition(cid, spec{version 0, type 1, option 0, window 0, nil}, &handle)`. A nonzero result means this switch runs without a freeze. Two in a row turn the freeze off for the session.
+2. **Show B**, only if B is parked or a normal window on another Space (§3.1).
+3. **B full screen and focused**, from B's copy: `setWindowState { windowId: B, state: 'fullscreen', focused: true, notAfter }` (§3.3). **Sent once. No blind retry** (§3.4).
+4. **Wait for R1 and R2** (B in its own active full-screen Space, bounds steady for 3 polls), then R3 and R4 (§3.2) **in parallel with steps 5-7**.
+5. **A to normal**, from A's copy: `setWindowState { windowId: A, state: 'normal', notAfter }`. It starts at R1+R2, not after R3/R4. **Latest start: 1.15 s after the freeze** (§1.4). If B isn't steady by then, A isn't touched under this freeze.
+   - Before step 5, A's overlay and its edge panel are ordered out explicitly (`overlay.hide`, never `reveal`, §2.3). A's full-screen Space is about to go, and the overlay must not be in it.
+   - A leaves full screen in the background, with no change of the active Space (`S/handoff/RESULTS-park.md`). In STP that took 101-360 ms after B was ready (log: B 827/841/951/790 ms, A left 1176/942/1063/1150 ms).
+6. **Park A** in its own private Space (§2.1), only once its copy's state and the window server both say A is normal and out of its old Space (`S/stp/stp-handoff.swift:209-213`). Then verify.
+7. **Settle (R5):** A off screen and in no user Space, A's overlay off screen, at least 130 ms after A's exit (`S/stp/stp-handoff.swift:216`), and no Safari window left over A's last bounds other than B's (§1.10).
+8. **Reveal** when R3, R4 and R5 hold (or their timeouts pass). A nonzero result means `SLSReleaseTransition` (`S/stp/stp-handoff.swift:77`) and the freeze off for the session.
+
+In `close` mode, steps 5-7 are replaced by §4.5's second freeze. In `keep` mode, steps 5-7 are skipped: A stays in its full-screen Space, and its overlay is ordered out. Without a freeze, the steps are the same and the person sees them.
+
+### 1.4 The timeline against the 2 s limit
+
+macOS releases a freeze by itself at about 2 s. Margin's watchdog reveals at 1.7 s (the lab used 1.7-1.85 s, and 1.7 leaves room for a late timer).
+
+Parked B, with STP's numbers (`S/stp/margin-park-handoff.mp4.log`, 4 handoffs):
+
+| From the freeze | What | Source |
+|---|---|---|
+| 0 | freeze | |
+| 7-13 ms | B shown | STP: 8, 7, 9, 13 |
+| +~20 ms | `setWindowState` reaches B's copy | link round trip, median about 20 ms (`PLAN.md` §14, Spike 3) |
+| 790-951 ms | B in its full-screen Space, steady (R1+R2): step 5 starts | STP |
+| +30-80 ms | B's page frames (R3), B's overlay framed (R4), in parallel | estimate, gate G2 |
+| +101-360 ms after R1+R2 | A has left full screen | STP: 349, 101, 112, 360 |
+| +4 ms | A parked | STP |
+| +130 ms | settle | STP's lab rule |
+| 1.02-1.44 s | reveal | from the rows above. STP's own strict order gave 1093-1318 ms |
+
+- Headroom to the watchdog at the worst STP row: about 260 ms. Gate G16 measures the real distribution in release Safari with Margin's extension and real sites. It sets `Options.watchdog` and whether the late-reveal rate is acceptable.
+- **Step 5's latest start is 1.15 s:** 1.7 s minus STP's worst exit (360 ms), the settle (130 ms) and 60 ms of margin. A B that isn't steady by then is revealed at the watchdog with A untouched. A's exit and park then run in `after`, with A's Space not the active one. Gate G17 checks that a background exit started after a reveal shows nothing.
+- **Gate timeouts:** R3 waits 250 ms after R2, and R4 200 ms. Both run while A is leaving, so in the common case they cost nothing.
+
+**The watchdog fires** (1.7 s) in one of three states:
+
+- **B ready, A parking or settling:** reveal. A is normal and in no user Space, or in a Space that isn't active, so it shouldn't show. Gate G17 records what a reveal during the settle shows.
+- **B ready, A not started** (B steady after 1.15 s): reveal. A's exit and park run in `after`.
+- **B not ready:** reveal. The person sees the tail of Safari's full-screen entry. The steps go on unfrozen until `settleTimeout` (6 s), then success or recovery (§4.4). The log says `late` with the phase.
+
+### 1.5 The target: which window, and what's done first
+
+A switch's target is a **window**, not just a profile: `Target { link, space, number?, windowId? }`. The window, in this order:
+
+1. **The window that asked**, when the switch comes from a parked window's activity (§6.1: a link landed there, or the person focused it).
+2. **P's home window**: the window number Margin last showed for P (`registry.lastShown[link]`), parked.
+3. Any parked window of P, the most recently parked first.
+4. A full-screen window of P that isn't parked: the **focus** variant. Step 2 is skipped, and step 3 is `setWindowState(fullscreen, focused)`. macOS's Space slide runs hidden under the freeze.
+5. A normal window of P on some Space: the **show** variant, the same as parked. The bridge op with options 7 adds it to the active Space and removes it from its others.
+6. A minimized window is **not a target in the first build**. Un-minimizing plays the genie and slides to the Desktop, and a genie under a freeze stalls. With only minimized windows, P gets the create variant, and the minimized window stays as it is. Gate G18 tries showing a minimized window through the bridge.
+7. None: the **create** variant (§1.6).
+
+**The target's copy isn't linked** (link down, reconnecting, a new copy relinking):
+
+- **P has a parked window:** `waitingForLink`, up to 3 s, with the cover up and no freeze. The link usually comes back (`reconnectGrace`, `Shell.swift:398-407`). If it doesn't, the window is returned by number to its display's Desktop Space (§2.1 `returnToDesktop`, no copy needed), and the notice says: "Work's window is on the Desktop. Margin can't reach its extension right now." The window is never stranded, and the person never sees "isn't open in Safari" for a profile whose window exists.
+- **P has none:** `waitingForProfile`, as today (`ProfileSwitch.swift:137-143`, `ShellProfiles.swift:369`).
+
+**A parked target whose copy id is unknown** (a new copy, not yet rebound, §2.2): no freeze. Margin shows it by number into the active Space, the binder binds it from on-screen evidence, and the switch goes on from step 3 once it's bound (visible, logged). This is rare: §2.2's rebinding usually binds it first.
+
+**Done in `preparing`**, before the freeze, while B is still parked and hidden:
+
+- **The space.** If B's active space (`openTabs.activeSpaceByWindow`, `ShellProfiles.swift:189-199`) isn't the target, `setSpace { windowId: B, spaceId }` goes to B's copy now. Safari switches B's tab behind, and R3 later probes the new tab in front.
+- **Blockers** (§1.10).
+- **Drafts**, whenever this switch may close A (the `close` choice, or `park` with a close possible after a failed park): `windowDrafts { windowId: A }`, at most 400 ms (§4.5).
+- **The cover** in A's overlay (§7). The freeze starts when A's overlay says `coverShown`, or 250 ms after the start, whichever comes first. The sidebar's swipe settles for `SETTLE_MS` (220 ms) after the release (`extension/ui/behaviors/swipe.js:16`, `:63-72`). The freeze is screen-wide, so it must not start mid-slide.
+- **The cooldown.** At least 1 s since a watchdog reveal (gate G7 may shorten it), and at least 300 ms since any reveal.
+
+### 1.6 The target has no window: create under the freeze
+
+`openSpaceWindow` can take up to about 2 s (1 in 20 creates took 1.3-1.9 s in Chrome: `PLAN.md` §15, and `ProfileSwitch.swift:71`). The options were:
+
+- **Create before the freeze.** This can't be done quietly. A window created while the app has a full-screen window is put into full screen by macOS, and macOS slides to it (`PLAN.md` §15 "bg-create": 10 of 10).
+- **Pre-park ahead of time.** That costs a window per profile with no intent behind it. Not done (open question 9).
+- **Create under the freeze, reveal at the watchdog if it's slow, and go on unfrozen.** Chosen.
+
+The create variant, in the freeze:
+
+1. `openSpaceWindow { spaceId, fullscreen: true }`, as today (`handlers.js:715-741`). The app calls `binder.expect` for the new window (`Shell.swift:995-1002`), and B's overlay page loads early (`Shell.swift:792`).
+2. **No second full-screen request.** macOS already puts the new window into full screen (bg-create 10/10), and the copy already asks with `state: 'fullscreen'`. Today's `fullScreenAfter` re-ask (`ProfileSwitch.swift:74`, `:211-215`) applies only after gate G4, and only on §3.4's evidence.
+3. When the copy answers and the binder binds B: R1-R4 as for any B. The made-by-Margin binding needs the copy's bounds to fit (`WindowMatcher.swift:609-614`), so `openSpaceWindow` answers with the window's bounds too, and the copy pushes its window list at once (§3.3).
+4. Then A as in §1.3, steps 5-8.
+
+- A fast create (answer in 200-300 ms) comes to about 1.3-1.7 s, with STP's entry and exit times. Some creates hit the watchdog. The person then sees the end of the slide, which is no worse than today.
+- In `park` mode, a create happens once per profile per Safari session.
+
+### 1.7 A switch while one is under way, and the keys
+
+- One switch at a time. A new target is queued, and **the last one asked wins**, as today (`ProfileSwitch.swift:119-128`).
+- **During `preparing` or `waitingForLink`** (no freeze yet): a new target replaces the current one, and `preparing` starts again. A target in A's own profile cancels the switch: the cover goes, and a `setSpace` runs in A if the space differs.
+- **From the freeze until `landed`:** the new target waits. **It starts only from idle**, after `after` has finished and the 150 ms with no Space change have passed (§1.2). It starts from where this switch landed. The same profile as the landing window is a `setSpace` there, as today (`ProfileSwitch.swift:296-305`).
+- **A window with a request still pending** (§1.9) can't be the next switch's A or B. The next switch waits for it up to 1 s, then picks another target by §1.5, or fails with "Safari is busy in that window".
+- **Held keys:** the space keys' repeat stops before another profile's space (`ShellProfiles.swift:201-232`), so a held key never chains handoffs.
+- **The hot keys while a switch is busy.** Today the keys are on only while the front window has a shown overlay (`Shell.swift:1038-1044`, `:1125-1126`), and under the freeze B is on top with no overlay shown yet. So `updateKeys` keeps them on while `switcher.busy` and Safari or Margin is in front, and `run` sends them to the switcher instead: the space keys queue (above), and the others (⌘T, the sidebar key) are dropped and logged. Margin's keys never reach Safari's key window mid-switch, so A's copy never runs `navigate` or a hand-off there.
+
+### 1.8 A cancelled switch, and a copy going away
+
+- **Cancelled before the freeze** (back to A, or the target's space deleted): the cover goes and nothing else happens.
+- **B closed by the person mid-switch:** reveal at once. If A was already left or parked, A comes back (§4.4).
+- **A closed by the person mid-switch:** go on to B. There's nothing to park.
+- **B's copy gone mid-switch** (link down, Safari quitting): reveal at once, then §4.4 "B fails". Parking B again needs only its number, but it also needs B normal (§4.4), which needs B's copy. So a B already asked for full screen stays where it lands, and a B still floating normal is parked again.
+- **A's copy gone after B is ready:** A can't be asked to leave full screen, so it's `keep`. A stays in its full-screen Space and B is shown. When A's copy relinks, the aftercare (§1.9) parks it: normal first, then parked, in the background.
+- **Safari quitting:** both copies go. Reveal at once, and the registry forgets entries whose pid is gone (§2.1).
+
+### 1.9 Requests that land late
+
+Safari carries out a windows call stuck behind a hung tab later, when it gets to it (`background/tabs.js:156-158`, `:174`). Once the call is made, it can't be taken back. So:
+
+- **`notAfter`.** Every `setWindowState` carries `notAfter` (ms since 1970: the app and the copies share the clock). The copy checks it just before it calls `windows.update` and answers `{ refused: 'late' }` if it's past. Values: B's full screen, 1.5 s after the freeze; A's normal, the switch's `settleTimeout`.
+- **One windows call per window.** The copy keeps `pendingWindowCall[windowId]`. A second `setWindowState`, `focusWindow` or `closeWindow` for that window while one is pending answers `{ busy: true }` without calling. That's also positive evidence of a stuck window: the log says so, and §1.7 waits or moves on.
+- **The aftercare watch.** After each switch, the shell keeps an expectation per touched window for 10 s, or until that window is a later switch's A or B (which then owns it): parked windows stay parked, and the shown window stays full screen. Each read compares:
+  - **A parked window enters full screen late** (B's stuck request from a switch that gave up). If no switch started since and the person hasn't acted (no key, no click in Margin), it's a **late landing**: B is adopted as the shown window, the window shown before is set normal and parked in the background, and the notice says "Switched to Work (Safari was slow)". Otherwise B is set normal and parked again (visible, logged).
+  - **The shown window leaves full screen late** (A's stuck `normal`), and it isn't the shown window any more: it's parked, as was meant.
+  - **A parked window back in a user Space or on screen with no focus on it:** re-parked quietly (§2.6, a system return).
+  - **A window answering `busy` or `refused: late`:** logged, with nothing else done.
+- So a request already sent is always owned by someone: its switch, the aftercare, or the next switch that takes the window.
+
+### 1.10 What blocks a handoff: dialogs, sheets, a busy A
+
+Before the freeze, in `preparing`:
+
+- **A sheet or dialog on A.** The app reads Safari's windows from the window server: a layer-0 window of Safari's pid, other than A and A's full-screen toolbar window (`WindowMatcher.fullScreenToolbar`), whose bounds sit inside A's. Then there's no handoff. The cover goes, and the notice says "Finish the dialog in this window first." Gate G8 checks which of Safari's prompts are separate windows (a JavaScript `alert`, permission and passkey prompts, "leave page?").
+- **A busy** (its copy answered `busy`, §1.9): no handoff, and the notice says "Safari is busy in this window".
+- **After the park (R5):** no Safari window may stay on screen over A's last bounds other than B and B's toolbar. One that stays is logged (`A's dialog window left behind`) and counted, and the switch still lands.
+- A detached Web Inspector is an ordinary Safari window bound to no copy. It's left where it is.
+
+---
+
+## 2. Parking
+
+### 2.1 The registry: keyed by window number
+
+New `app/shell/Parking.swift`, one per shell:
+
+```swift
+struct ParkedWindow {
+    let number: Int           // the window server's (CGWindowID): the key
+    var link: String          // the profile's link key: kept across relinks and new copies
+    var windowId: Int?        // its copy's id; nil after a new copy until rebound (§2.2)
+    let pid: pid_t            // Safari's process then
+    var space: UInt64         // its own private Space
+    var bounds: CGRect        // its normal bounds when parked, for rebinding
+    let since: Double
+    var phase: Phase          // .parking, .parked, .showing, .returning
+}
+enum Cause { case handoff, recovery, quit, aftercare, system(String), person }
+final class ParkingRegistry {
+    private(set) var entries: [Int: ParkedWindow]
+    var lastShown: [String: Int]            // per link: the home window's number (§1.5)
+    func isParked(_ number: Int) -> Bool
+    func park(number: Int, link: String, windowId: Int?, done: (Result) -> Void)    // own Space + bridge op + verify
+    func show(number: Int, cause: Cause, done: (Result) -> Void)                     // bridge op + removal + verify + destroy its Space
+    func returnToDesktop(number: Int, cause: Cause, done: (Result) -> Void)          // to its display's type-0 Space
+    func sweep(_ read: SweepRead) -> [SweepFinding]                                  // each read (§2.5)
+    func rebind(link: String, unbound: [ExtWindow]) -> [WindowKey: Int]              // §2.2
+    func returnAll(done: () -> Void)                                                 // quit (§6.4)
+}
+```
+
+- **One private Space per parked window**, made at its park (`SLSSpaceCreate(cid, 1, nil)`) and destroyed after its show or return is verified (`SLSSpaceDestroy`). A recovery that destroys a Space affects only that window. A "later return into an older private Space" (`S/stp/stp-1793947586.log` G) can't happen, because a window's Space is gone once it's shown. The removal op still runs (`S/stp/stp-handoff.swift:59`). Gate G5 measures the create and destroy cost, and checks that destroying an empty private Space disturbs nothing.
+- **An entry is forgotten only when the window no longer exists:** a per-number liveness read (`CGWindowListCopyWindowInfo(.optionIncludingWindow, n)`) comes back empty for 3 s while Safari's pid is alive, or that pid is gone, or the same copy instance (not a new one) stops listing its `windowId`. Nothing about `ext` or links alone forgets an entry. Gate G6 checks that the liveness read lists a parked window.
+- **Hard rule:** the registry never drops an entry that's still alive. Every path that stops tracking a window calls `returnToDesktop` first and verifies it. A debug assertion and a unit test cover it.
+- **Memory only**, except the crash marker (§6.4).
+
+### 2.2 The window binder (`app/shell/WindowMatcher.swift`)
+
+Today, a bound window missing from reads keeps its binding for `Timing.absent` (3 s), then the binding goes (`WindowMatcher.swift:211-213`, `:529-534`). A new copy drops all its bindings (`:514-519`).
+
+Changes:
+
+- `WindowBinder.update(…, parked: Set<Int>)`, given the registry's numbers by `Shell.track` (`Shell.swift:774-777`).
+- **A bound parked number never drops** for being missing or off screen. It still drops for "closed in the browser" (the same copy stopped listing it), "the browser isn't running", and "a new copy". In the last case the registry keeps the number with `windowId = nil`, and the rebinding below binds the new id.
+- **Rebinding after a new copy** (a Margin update gives every window a new id: memory note "safari-tab-ids"): for each link with parked numbers whose `windowId` is nil, `registry.rebind` looks at that copy's unbound windows. A unique match binds by `expectParked(key, number, why)`, like `expect`:
+  1. by elimination: one unbound window of that copy with state `normal`, and one nil-id number of that link;
+  2. else by bounds: one unbound `normal` window whose bounds fit the stored `bounds` within 2 pt.
+  Several matches leave it unbound (§1.5 covers that), and the log says so.
+- Parked numbers are left out of the "read that tells nothing" test (`liveBound`, `reliableBig`: `WindowMatcher.swift:398-404`, `:546-548`), and they're never front-window candidates, elimination rivals, or subjects of the moved or visible rules.
+
+### 2.3 The overlays (`app/shell/Overlay.swift`, `Shell.track`)
+
+- **Hidden while parked, never closed.** In `Shell.track`'s loop (`Shell.swift:788-850`), a parked key gets `overlay.hide("its window is parked")` and is skipped. The overlay's web view keeps its page, theme and state.
+- **A's overlay leaves before A's Space goes** (§1.3 step 5). It's an own-Space panel (`.managed` + `.fullScreenAuxiliary`, `Overlay.swift:67`), which `track` would otherwise leave in A's Space to slide back in with it (`Shell.swift:804-817`). Step 5 orders it and its edge panel out first, and R5 checks it's off screen. Gate G14 records what macOS does with an own-Space panel when its full-screen Space is destroyed.
+- **Own-Space checks skip the switch's windows.** `suspectOwnSpace` and `judgeOwnSpace` (`Shell.swift:641-680`), and `checkOwnSpace` (`:609-624`), leave out parked keys and the current switch's A and B. Their suspicions are cleared at park. A handoff can't trip `ownSpaceFallBack`.
+- **B's overlay is decided from the app's own reads during a switch.** For the switch's target, `wanted` doesn't wait for the copy's `fullscreen`. The copy's list lags by up to `WINDOWS_MS` (1 s, `background/link.js:92`, `:727`), and Safari's `onBoundsChanged` is optional (`background.js:406`). The target's overlay is made or kept from the switch's start (the early overlay, `Shell.swift:792`, generalized). It's shown once R1 and R2 hold and B fills its display.
+- **Never shown over nothing:** otherwise an overlay shows only over a bound, on-screen, display-filling window (`Shell.swift:794-823`).
+- **Memory:** each kept overlay keeps its web view (open question 8).
+
+### 2.4 `drawn`, mode and layout
+
+Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grace.notWanted`) its copy hears `drawn: false` and its pages lose their box (`Shell.swift:72-128`, `:902-951`).
+
+- `wanted` becomes `((fullscreen || windowedToo) || registry.isParked(number) || switcher.isTarget(key)) && theme != nil`, in both places it's computed (`Shell.swift:790`, `:905`). A parked window's pages keep their box at its full-screen insets, and B is wanted for the whole entry, however late its copy reports.
+- **Mode pinned to full screen.** The overlay page takes its mode from its own window's state in every `windows` push (`extension/ui/host-app.js:133`, `:322-329`), and `PageLayout` carries the mode that `LayoutOutbox` compares (`LinkMessage.swift:37`, `Shell.swift:50-57`). So:
+  - the shell doesn't forward a copy's `windows` list (`Shell.swift:556-567`) to the overlay of a parked window or of the switch's target until that copy's list says the window is full screen. Then the latest list is sent;
+  - `hello` says `mode: 'fullscreen'` for those windows (`Shell.swift:1150`);
+  - `layoutChanged` (`Shell.swift:1171-1179`) does nothing for a parked key, or for any overlay that isn't shown.
+- With these, a parked window's pages get no `setLayout` while it's parked, and none when it's shown again, because the slot is the same size and in the same mode, so `LayoutOutbox` sees no change.
+- **The palette path skips the switch's windows.** `palettePush` for a parked window or the current A or B is dropped (logged) with no `notShown` and no `paletteDropped` (`Shell.swift:448-473`). `drawn` never flips for a parked window, and Margin's new-tab page never opens in one.
+
+### 2.5 The copies' window lists, `parked`, and the sweep
+
+- The copies still list parked windows (`windows.getAll()`): state `normal`, their own `focused` flag, and `visible: false` once the page says so.
+- **New app → copy message** `parked { epoch, windowId, on, at }`, sent like `drawn` (`app/PROTOCOL.md:62`, `LinkMessage.swift:239`, `:258`). The copy keeps `appLink.parked[windowId]`, and a new epoch clears it. The copy uses it for:
+  - `parkedActivity` (§6.1);
+  - `focusTab` and `openPin`, which prefer a tab in a window that isn't parked (`handlers.js:631-636`, `background/tabs.js:176-199`). When the only match is in a parked window, the copy doesn't raise it: it sends `parkedActivity { why: 'raise', windowId, tabId }`, and the app hands off to that window (§6.11);
+  - sleeping tabs: a parked window's tab in front doesn't sleep (`background/sleep.js`).
+- **`registry.sweep`**, on every read, gets the window-server read, Safari's pids, the copies' windows, the binder's held links (link without state, reconnecting) and the switch's state. For each entry:
+  - **gone** (§2.1's rule only): forgotten;
+  - **its link held or down:** nothing changes;
+  - **a new copy:** `windowId = nil`, then rebinding (§2.2);
+  - **back in a user Space or on screen, no switch moving it:** §2.6 decides who caused it.
+
+### 2.6 Who caused a return
+
+- **Margin** (a handoff's show, recovery, quit, aftercare): the registry marks the number before it calls. Such a return never starts a handoff.
+- **The system** (wake, a display change, the Dock or WindowManager restarting: `NSWorkspace` launch of `com.apple.dock`; or a window found back with no focus on it): for 3 s after such an event, any parked window found back is re-parked quietly. If parking is off, it's returned to its display's Desktop. **It never starts a handoff.**
+- **The person:** only **focus landing on a parked window** that Margin didn't cause: its copy's `windows.onFocusChanged` names it, outside a switch, and not within 1 s of Margin's own windows call for it. This covers Safari's Window menu, ⌘`, the Dock's window list, and a link from another app (§6.1). The STP lab showed that a focused parked window stays parked and invisible (`S/stp/stp-1793947586.log` D), so focus, not visibility, is the signal. It's one debounced `parkedActivity` (150 ms) and one handoff to that window.
+
+---
+
+## 3. Showing a parked window, and readiness
+
+### 3.1 Showing
+
+1. The bridge op `SLSBridgedSpaceAddWindowsAndRemoveFromSpacesOperation initWithSpaceID: active windows: [B] options: 7`, sent by `-performWithWMBridgeDelegate` (`S/stp/stp-handoff.swift:47-53`).
+2. `SLSBridgedRemoveWindowsFromSpacesOperation initWithWindows: [B] spaces: [B's private Space]` (`S/stp/stp-handoff.swift:54-58`).
+3. Verify within 300 ms: `SLSCopySpacesForWindows(cid, 7, [B])` isn't empty and holds the active Space. The lab took 11-21 ms. If gate G5 finds a read that lists a private Space's windows, also check that B is no longer listed there.
+4. `SLSSpaceDestroy(B's private Space)`.
+5. B appears as a floating window in A's full-screen Space, hidden by the freeze, then enters its own Space (`S/handoff/RESULTS-park.md`: the same on 12 returns).
+
+### 3.2 Readiness: R1-R5, polled every 8 ms during the freeze
+
+The freeze has its own poll timer (8 ms), apart from `track`'s burst (33 ms, `Shell.swift:155-160`). Each poll reads `SLSGetActiveSpace`, `SLSCopySpacesForWindows([B, A])`, the type-4 Spaces from `SLSCopyManagedDisplaySpaces`, and B's, A's and A's overlay's bounds and on-screen state (`CGWindowListCopyWindowInfo(.optionIncludingWindow, n)`). Each read takes about 0.1-0.3 ms.
+
+- **R1, B's Space.** The active Space isn't A's (noted at the freeze), it's in B's Spaces, and it's a type-4 Space (`S/stp/stp-handoff.swift:199-205`).
+- **R2, B's bounds.** B fills its display (`ScreenGeometry.fillsDisplay`, `WindowServer.swift:87-92`) with the same bounds for 3 polls in a row.
+- **R3, a fresh page frame (gate G2).** `frameProbe { windowId: B, width, height, frames: 6, nudgeMs: 80, timeoutMs: 400 }` goes to B's copy when R1 first holds. The copy passes it to B's tab in front (`tabs.sendMessage`, as `reportVisibility` is: `background/link.js:983`, `content/core.js:590`). The page:
+  - nudges for `nudgeMs`: a 1×1 fixed element, alternating alpha 0.01/0.02 each frame, outside the layout. In the AppKit lab, changed frames cleared full screen's leftover image (`S/handoff/RESULTS.md` step 4);
+  - answers after `frames` `requestAnimationFrame`s at the full-screen width (within 2 pt): `{ tabId, frames, firstAt, lastAt, width, height, hasFocus, visible }`.
+  - Margin's new-tab page answers the same way (`extension/newtab/newtab.js`).
+  - **Unknown until G2:** whether WebKit runs rAF for B's page under the freeze before it marks the page visible, and whether its commits count as fresh commits of Safari's window. The STP pages animated all the time, which masks the leftover. So R3 ships behind `Options.frameProbe`. G2 runs STP with still pages and logs, per poll, when rAF resumes and when `visibilitychange` fires relative to R1/R2. If rAF doesn't run under the freeze, R3 becomes "the page's `visibilitychange` to visible after R2" and the nudge runs from that. If neither signal comes, R3 is off, and the risk (a leftover or a dark first frame on still pages) is written in TESTING.md.
+  - **No answer** within 250 ms of R2: go on, and the log says `no page frames (tab T)`.
+- **R4, B's overlay.** B's overlay is shown just above B (`WindowMatcher.stackedAbove`, `WindowMatcher.swift:159-169`) and has said `framed { mode }` since this show, with `mode: 'fullscreen'`. After the shell's `shown` push (`app/overlay/overlay.js:274`), the overlay page answers on its next `requestAnimationFrame`. Timeout: 200 ms after R2, then go on (logged). G2 also checks the overlay web view's rAF under the freeze.
+- **R5, the old window.** A off screen and in no user Space (parked), or gone (closed), or (`keep`) its Space not active. A's overlay off screen. At least 130 ms since A left full screen. No Safari window left over A's bounds (§1.10). "Left full screen" means the first poll where A's bounds no longer fill the display and A isn't in its old Space (`S/stp/stp-handoff.swift:209-210`).
+
+**Without a freeze:** the same reads drive the steps. If the Space reads are missing too, R1 is today's public "in front" check (`ShellProfiles.swift:355-362`).
+
+### 3.3 New copy requests
+
+All go through `APP_REQUESTS` (`background/link.js:117-130`) and `handlers.js`:
+
+- **`setWindowState { windowId, state, focused?, notAfter }`:**
+  - refused (`{ refused: 'late' }`) past `notAfter`, and `{ busy: true }` while a windows call for that window is pending (§1.9);
+  - otherwise `windows.update(windowId, { state, …(focused ? { focused: true } : {}) })`;
+  - then it **polls `windows.get` every 100 ms until the state lands** (as `fullscreen.js` `waitForState` does, `:21-28`), at most 3 s, and **pushes the window list at once** (`windowsNow`), so the app and B's overlay hear the new state without the 1 s lag;
+  - answers `{ windowId, state, landedAt }`, or `{ windowId, state, timedOut: true }`.
+  - It's not `focusWindow`, which always focuses (`handlers.js:750-756`): A must leave full screen without taking focus.
+- **`frameProbe { … }`** (above). Answers `{ none: 'no page' }` when the tab doesn't answer within `timeoutMs`.
+- **`windowDrafts { windowId }`:** the tabs of that window with typed text not sent, from the sleeping-tabs draft check (`background/sleep.js:250-266`), all tabs in parallel, 400 ms. Answers `{ drafts: [tabId], unknown: [tabId] }`.
+- **`openSpaceWindow`** answers `bounds` too, and pushes the window list at once (§1.6).
+- **`focusWindow` and `closeWindow`** take `notAfter` and the one-call-per-window rule too.
+
+### 3.4 The full-screen request: once, and no blind retry
+
+The AppKit lab's own retry toggled B back out: B had entered, then "dropped; asking again", then `didExitFullScreen B` 3 ms later, and the watchdog fired (`S/handoff/park-enter-1793945331.log`). The "dropped while Spaces move" finding came from window creation in that lab's setup (`S/handoff/RESULTS.md` "Setup"), and STP sent one request each time (`S/stp/stp-handoff.swift:196`).
+
+- **The first build sends one request per window per switch.** A request that never takes effect leads to the watchdog, then recovery.
+- **A retry needs positive evidence, and gate G4.** G4 sends a duplicate full-screen update mid-entry in STP and finds how Safari treats it, and when a new type-4 Space first appears after a request. A retry may then be allowed only if all of these hold at least 400 ms after the request: the copy's `windows.get` says `normal`, B's bounds and Spaces haven't changed at all since the show, and no new type-4 Space has appeared on B's display. Never while any full-screen Space change is under way. Until G4 passes, `Options.fullScreenRetry = false`.
+
+---
+
+## 4. The fallback chain, checks and verification
+
+### 4.1 Every private call (the list `PRIVATE-APIS.md` holds)
+
+| # | Name | Kind | Used for | Launch check |
+|---|---|---|---|---|
+| 1 | `SLSMainConnectionID` | function | the connection for all of these | `dlsym` |
+| 2 | `SLSNewTransition` | function | the freeze | `dlsym` |
+| 3 | `SLSInvokeTransition` | function | the reveal | `dlsym` |
+| 4 | `SLSReleaseTransition` | function | after a failed reveal | `dlsym` |
+| 5 | `SLSGetActiveSpace` | function | R1, where to show | `dlsym` |
+| 6 | `SLSCopySpacesForWindows` | function | R1, park and show verified | `dlsym` |
+| 7 | `SLSCopyManagedDisplaySpaces` | function | type-4 Spaces, each display's Desktop, the display count | `dlsym` |
+| 8 | `SLSSpaceCreate` | function | a parked window's private Space | `dlsym` |
+| 9 | `SLSSpaceDestroy` | function | after a show or return | `dlsym` |
+| 10 | `SLSBridgedSpaceAddWindowsAndRemoveFromSpacesOperation` | class, `initWithSpaceID:windows:options:` | park, show, return | `NSClassFromString`, `instancesRespond(to:)`, **`method_getTypeEncoding` against the expected encoding** |
+| 11 | `SLSBridgedRemoveWindowsFromSpacesOperation` | class, `initWithWindows:spaces:` | show and return (out of the private Space) | the same |
+| 12 | `-performWithWMBridgeDelegate` | selector, via `WindowManagement.framework` | sending 10 and 11 | `dlopen` of the framework, `instancesRespond(to:)` on both classes, its type encoding |
+| 13? | a read that lists a Space's windows (candidate: `SLSCopyWindowsWithOptionsAndTags`), or a mask of `SLSCopySpacesForWindows` that includes private Spaces | function | orphan check (§4.4 invariant 3) | only if gate G5 finds one. Without it, no orphan check |
+
+- **Signatures:** every Copy function is declared as returning `Unmanaged<CFArray>?`, and nil means "unknown" (never a crash). The bridge initializers are called only when the type encodings match the ones recorded in `PRIVATE-APIS.md` (from macOS 27.2). A mismatch means parking is off at launch.
+- **Already in Margin.app, also listed** (not new, not part of the choices): WebKit's `drawsBackground` key (`app/shell/OverlayWebView.swift:178`, a `responds`/`value(forKey:)` check at launch, logged), and Safari's files read only (`SafariTabs.db`, each profile's `Extensions.plist`, `CloudTabs.db`, with the schema checks those readers already do).
+- **Considered and not used:** `SLSManagedDisplaySetCurrentSpace` (it didn't shorten the entry), `SLSOrderWindow` and other direct window calls (refused cross-process with error 1000, or silently ignored: `S/handoff/xp.swift:76-110`), and minimizing.
+
+### 4.2 At launch
+
+New `app/shell/PrivateCalls.swift`:
+
+- `PrivateCalls.check(resolver:)` runs before the shell starts (`AppDelegate.startShell`). It returns `Availability { freeze, spaces, park, enumerator, missing: [String], mismatched: [String] }`.
+- **The park self-test runs across processes.** Margin.app starts a copy of its own binary as a child (`Margin --park-probe`, no new Xcode target). The child shows a 1×1 borderless window at alpha 0, off screen, and prints its window number. Margin parks it, shows it, returns it and checks each step, then the child exits. It takes about 50 ms and shows nothing. A failure means parking is off. This tests the case that can break: Margin moving another process's window. The freeze isn't self-tested, because that would freeze the screen.
+- **macOS build:** `sysctl kern.osversion` against the last one in `UserDefaults` (`MarginPrivateCallsBuild`). Every launch checks everything anyway. A changed build adds one log line.
+- **Missing anything falls back silently:** no notice to the person, one log line.
+- **Tests never call the real functions.** The real resolver and wrappers are made only in `Shell.forApp()` (`Shell.swift:277-286`). The real freezer and parker refuse to run when `MARGIN_APP_TESTS` is set.
+- Under the hardened runtime, `dlopen` of Apple's own frameworks passes library validation. No entitlement is added. **Gate G1** confirms that the freeze and cross-process bridge work from a Developer-ID, hardened Margin.app with Screen Recording and Accessibility denied. All the labs so far ran as children of an app that had Screen Recording.
+
+### 4.3 Every real call verified
+
+| Call | Verified by | On failure |
+|---|---|---|
+| freeze | result 0, a handle | this switch without a freeze. Two switches in a row: freeze off for the session |
+| reveal | result 0 | `SLSReleaseTransition`. Freeze off for the session |
+| watchdog | the freezer's own timer on a private queue at 1.7 s | counted and logged. Not a call failure |
+| show | B in the active Space within 300 ms | retry once, then §4.4 "B's show didn't land" |
+| park | in no user Space and off screen within 300 ms | retry once, then parking off for the session, and A is `close` (drafts permitting) or `keep` |
+| return | in its display's Desktop Space within 300 ms | retry once, logged. The window comes back by itself when Margin exits (§6.4) |
+| private Space | a nonzero id | parking off for the session |
+
+- **Not checkable in the product:** whether a freeze really holds the screen for this process. Only a capture of the screen shows it, and screen recording is ruled out of the mechanism. The lab tool checks it on each macOS beta (§10.3), and `PRIVATE-APIS.md` records the result.
+- **The watchdog belongs to the freezer** (`RealFreezer`): a `DispatchSourceTimer` on a private serial queue calls `SLSInvokeTransition` if the handle is still live at 1.7 s, with a lock guarding the handle. A stuck main thread can't hold the screen. Gate G13 kills a freezing process to learn whether macOS releases a dead process's freeze.
+- **Reveal-at-once paths:** quit (`Shell.stop`, `Shell.swift:294`), will-sleep (§6.8), Safari quitting, a foreign Space change (§1.2), and any failure.
+
+### 4.4 Never strand a window
+
+Invariants, each with a unit test:
+
+1. **Every switch ends with a visible window of A's or B's** in front: B full screen, A full screen again, or (when neither can be) one of them as a normal window on its display's Desktop. Never nothing.
+2. **The screen is always revealed:** the watchdog, plus every exit path.
+3. **Every window Margin parked stays in the registry** until Margin has returned or shown it (verified), or it no longer exists (§2.1). Nothing else removes an entry. The registry can check this from its own records. An orphan check of the private Spaces exists only if gate G5 finds an enumerator.
+4. **At quit, every entry is returned** (verified) and every private Space destroyed (§6.4).
+5. **No handoff starts from a return Margin or the system caused** (§2.6).
+
+Recovery, by where it failed. **A window is parked again only once its copy reports it normal**: if needed, it's asked for `normal` first, then parked when it lands. Gate G10 records what macOS does when a window mid-entry or just after entry is bridged. Recovery after the freeze is visible, and TESTING.md says so.
+
+- **B fails before A was touched** (not full screen in time, closed, its copy gone, a show that didn't land): A is as it was. B is set `normal` (if its full-screen request was sent) and parked again, or closed if this switch created it (today's undo, `ProfileSwitch.swift:271-277`), and the aftercare watches B (§1.9). Reveal. The notice, as today (`ShellProfiles.swift:364-382`): "Couldn't switch to X: …".
+- **B fails after A went normal but before it was parked:** A back to full screen and focused, then B as above. This is visible: a second entry (0.8-1.0 s) doesn't fit in the freeze.
+- **B fails after A was parked:** A shown (§3.1), full screen and focused, then B as above. Visible.
+- **B's show didn't land** (still parked after a retry): destroy B's own private Space only, and check whether B comes back (gate G5). If not, B's copy closes B (`closeWindow`: its tabs are kept as not-open tabs, `PLAN.md` §6), drafts permitting, and the switch goes on as a create. Parking is off for the session. Other parked windows aren't touched: each stays in its own Space.
+- **A's park didn't land:** A is a normal window on its Desktop Space, out of sight. Parking is off for the session. A is `close`d now (drafts permitting) or `keep`: it stays a normal window on the Desktop, and the notice says so.
+- **A's close failed:** retried once after 0.5 s, and logged. A stays where it is (Tirth's decision).
+
+### 4.5 The close handoff (`close`): two freezes
+
+The lab only ever closed A under a second freeze after B's reveal (`S/handoff/lab.swift:287-296`: hold2 142-149 ms in every run), never inside the first freeze. Today's machine needs a front check after the close because macOS can drop to the Desktop as A's Space goes (`ProfileSwitch.swift:75-76`). So:
+
+1. **Freeze 1**, the same as §1.3 steps 1-4, then reveal on B. A isn't touched, and stays in its own full-screen Space.
+2. At least 300 ms later (the lab's pause; the cooldown in §1.5), **freeze 2**, with its own watchdog at 1.0 s.
+3. `closeWindow { windowId: A, notAfter }` from A's copy.
+4. Wait until A is gone from the window server, the active Space is still B's, and B is the first Safari window on screen, for 120 ms (the lab's rule). If macOS dropped to the Desktop, `focusWindow(B)` once, inside the freeze, while time allows.
+5. Reveal. A Desktop drop that's still there at the watchdog is today's `checking` path, visible.
+
+- **Gate G3:** this form in STP, against a single-freeze close. Until it passes, close-mode timings in TESTING.md are marked unmeasured.
+- **Drafts:** asked in `preparing`. If a tab has a draft or didn't answer, A isn't closed (`keep`), and B's overlay says so with a new notice kind `window-kept-draft`: "Kept Work's window open: a page in it has text you haven't sent." (Open question 3.)
+- **Pages reload** when the profile is opened again. Their tabs come back from Margin's records (`state/model.js spaceWindowTabs`, `DATA.md:134`).
+- **Scroll:** Margin keeps no page scroll positions today. A small new record restores them (WP11). Until then, close-mode pages reload at the top.
+- **Media restarts.** PiP ends with its window.
+- **Honest timings:** a create plus entry is about 1.1-1.7 s still, then about 0.3 s of B, then about 0.15 s still again (G3 measures it). The setting's text says switching is slower and pages reload (§5).
+
+---
+
+## 5. "Close windows to save memory"
+
+- **Where it lives:** the app's browser-level file `data/safari/browser.json` (`BrowserProfiles.swift:107-115`, `DATA.md:121-126`), as `switching: { closeWindows: false }`. It's about switching between profiles, not about any one profile, so every profile's Settings show the same value (open question 6).
+- **How it reaches the overlay:** `across` gets `switchSettings: { closeWindows }` (`ShellProfiles.swift:151-180`, `shared/across.js`), and `ui/host-app.js` passes it to the form as a feature, as it does `cloudTabs` (`host-app.js:146-150`).
+- **The field:** a toggle in the form after "Show iCloud Tabs" (`settings-form.js:115`), shown for Safari with Margin.app and more than one profile:
+  - "Close windows to save memory: when you switch to another profile, the window you leave closes. Switching takes a little longer and its pages reload when you come back. Off: the window stays open, out of sight, with your place, text and video kept."
+- **How it reaches Margin.app:** `saveField` for this field returns `{ perform: 'switch.closeWindows', arg: { on } }`. `ShellProfiles.performAcross` writes `browser.json` and pushes `across` again.
+- **Turned on with windows parked:** each parked window is set normal (it already is), returned out of sight, and closed by its copy, drafts permitting (those stay parked, and the notice says so). Turned off: nothing changes until the next switch.
+
+---
+
+## 6. Edge cases
+
+### 6.1 A link from another app, or the person's focus, lands in a parked window
+
+- Seen in STP: with the only window parked, a link opened as a hidden tab in it, the page focused but `vis=hidden`, and no window showed (`S/stp/stp-1793947586.log` D).
+- **The copy:** for a tab created in a parked window that Margin didn't open (`markMarginOpening`, `background/tabs.js:291`; `openKeptBehind`'s tabs), or `windows.onFocusChanged` naming a parked window not within 1 s of Margin's own call, it pushes `{ type: 'parkedActivity', windowId, tabId?, why: 'tab' | 'focus' | 'raise' }`.
+- **The app** merges a burst into one event (150 ms), ignores it while a switch is busy or in its aftercare for that window, and runs a handoff to **that window** (§1.5 rule 1), with the tab's space as the target space. It's a full handoff from whatever is in front, or a no-A handoff (§6.2).
+- A tab can't be moved to the visible window instead: it belongs to another profile's copy.
+
+### 6.2 Safari activated with every shown window gone
+
+- With every window parked, activating Safari showed nothing (`S/stp/stp-1793947586.log` C).
+- This happens when the person closes the shown window (⌘W) while other profiles' windows are parked. Nothing is shown at the ⌘W, because it reads as "I closed my window".
+- **The trigger:** Safari activated (`NSWorkspace.didActivateApplicationNotification`), no switch running, parked windows exist, and **no bound, unparked Safari window is in any user Space** (`SLSCopySpacesForWindows`). It's checked after the active-Space notification or a settled read (two reads 100 ms apart that agree), never at a fixed time. A full-screen window that macOS is still sliding to is in a user Space, so this can't fire during that slide.
+- **Then:** a no-A handoff to the profile's home window last shown (freeze, show, full screen, ready, reveal). Open question 7.
+- If a Dock click makes Safari open a new window instead (gate G9), that window is bound as usual, and the parked ones stay parked.
+
+### 6.3 A parked window closed, or Safari quitting
+
+- **Closed** (Safari's Window menu, or ⌘W while it was key, §6.6): its copy stops listing it. The binder drops it, `DrawnOutbox.closed` runs (`Shell.swift:118-127`), the registry forgets it and destroys its Space, and its tabs are kept as not-open tabs.
+- **Safari quits:** the registry forgets that pid's entries and destroys their Spaces. Safari's own restore may bring the windows back next launch as normal windows on the Desktop. Margin leaves them there, and each is parked the first time a switch leaves it (open question 11).
+
+### 6.4 Margin.app quitting, crashing, or replaced by `npm run safari`
+
+- **The lab:** when the parking process dies, the windows come back by themselves within 0-8 ms (`S/stp/stp-1793947722.log`), to Space 1, which was both the active Space and their old one. Gate G13 checks where they land when a full-screen Space is active.
+- **A clean quit** (`applicationShouldTerminate` → `shell.stop`, `AppDelegate.swift:154-157`; the SIGTERM from `scripts/app-swap.sh`, `AppDelegate.swift:54-57`; `BundleWatch`'s quit):
+  1. reveal if frozen;
+  2. each parked window `returnToDesktop` (to its display's type-0 Space, out of its private Space), cause `quit`;
+  3. verified, at most 300 ms in all;
+  4. each private Space destroyed;
+  5. then the existing stop.
+  So they land on the Desktop as ordinary normal windows, not floating over the full-screen page (open question 1).
+- **A crash:** nothing runs, and the windows come back where macOS puts them.
+- **The crash marker:** `~/Library/Application Support/Margin/parked.json` (`{ pid, build, at, count }`, never a title or address), written at the first park and removed at a clean quit. The harness writes it to its temporary root (`Shell.swift:259-263`).
+- **The new instance at launch** never re-parks on its own. If the marker is there, the log says `Margin.app didn't quit cleanly: N parked windows came back by themselves`. Those windows are ordinary normal windows of their profiles (open question 2).
+
+### 6.5 The window binder through the switch
+
+- B keeps its number through show and full screen, so its binding holds. Its bounds change on both sides together, so the moved rule doesn't fire.
+- A keeps its binding as a parked number (§2.2).
+- A created B binds by "made by Margin" (`WindowMatcher.swift:330-338`), with the bounds the copy now answers (§1.6).
+
+### 6.6 Focus after each switch
+
+- A parked window can stay key: `document.hasFocus()` stayed true in a parked page (`S/stp/stp-1793947553.log`).
+- **After the reveal**, within 300 ms, B must be key: B's copy reports B `focused` with a `focusedAt` after the switch began, and R3's answer (or a second `frameProbe` with `frames: 1`) says `hasFocus: true`. If not, `focusWindow { windowId: B }` once more, logged either way.
+- **Focus moving to a parked window** outside a switch is §6.1 (`why: 'focus'`): the person's choice. Margin never forces focus back to B. That would fight ⌘` and the Window menu.
+
+### 6.7 Multiple displays
+
+- The freeze is screen-wide, and `SLSGetActiveSpace` belongs to the active display. Nothing has been tested on two displays.
+- **Read per switch:** the number of managed displays from `SLSCopyManagedDisplaySpaces` (one entry per display; mirrored displays count once), not `NSScreen.screens.count`.
+- **More than one:** the freeze is off for that switch.
+  - **Parking a new A:** `keep` until gate G11 (a Sidecar iPad is enough) passes. A stays in its own full-screen Space, so nothing is lost. It costs a Mission Control Space for now, and the log says so (open question 4).
+  - **Showing an already parked B:** allowed. Its copy first moves B's bounds onto A's display while it's still parked (`windows.update { left, top }`, gate G11), then B is shown into that display's current Space. If B ends up on another display, the switch still finishes and logs it.
+- **Back to one display:** the next switch freezes and parks again. Windows kept in their own Spaces are parked the next time a switch leaves them.
+
+### 6.8 Sleep and wake, display changes, the Dock restarting
+
+- `WorkspaceApps` (`WindowServer.swift:120-136`) gets `NSWorkspace.willSleepNotification`, and a launch of `com.apple.dock` (the Dock or WindowManager restarting). It already has `didWakeNotification` and display changes.
+- **Will sleep:** reveal at once, and the switch recovers to a safe state (§4.4).
+- **Woke, the displays changed, or the Dock restarted:** for 3 s these are system causes (§2.6). Each parked window is verified, and one found back is re-parked quietly, never handed off. If its private Space is gone (a Dock restart may clear it, gate G5), it gets a new one.
+
+### 6.9 PiP and sound while parked
+
+- PiP keeps playing over B while A is parked, sound keeps playing from a parked window, the page goes `hidden`, and its timers run (`S/stp/margin-park-handoff.mp4.log`, `S/handoff/RESULTS-park.md` "Media"). Nothing to build. Starting PiP needs a click or key in the page.
+- **Not Margin's:** AirPods switching to another Mac can pause media (`audioaccessoryd` "Hijackv2"). TESTING.md says so.
+
+### 6.10 Input during the freeze
+
+- **Margin's keys** are the switcher's while it's busy (§1.7).
+- **Other keys and clicks** reach the windows underneath. Until step 3 they go to A. This can't be prevented, so it's accepted, and the live checklist has a "typing during a switch" line.
+- **A trackpad Space swipe or Mission Control** during the still screen moves Spaces under the freeze: §1.2's foreign-Space abort reveals at once and recovers, rather than waiting for the watchdog. Gate G15 records it.
+
+### 6.11 A profile with more than one window, and same-profile handoffs
+
+- A profile can have a shown window and a parked one. For example, Work's W2 is in its own full-screen Space while W1 is parked, or W1 is shown while W2 is parked.
+- **Within one copy:** `focusTab` and `openPin` prefer a window that isn't parked. When the only match is in a parked window, the copy sends `parkedActivity { why: 'raise' }` instead of raising it (§2.5).
+- **A same-profile handoff:** A and B are both one copy's windows. The machine works per window, so it's the same steps (park W1, show W2), only with one copy. It's never turned into a `setSpace` (`ShellProfiles.swift:251-255` applies only to a target without a window).
+- **A link lands in a parked W2 while W1 is home:** the handoff goes to W2, the window that changed (§1.5 rule 1), not to W1.
+
+---
+
+## 7. The UX before the freeze
+
+What exists today: `across.switching { profile, space, phase, notice }` (`ShellProfiles.swift:182-187`), the target chip's `switching: true` (`extension/ui/view-model.js:393`, `:412`), and a notice for "needs profile" and failures (`view-model.js:567`). There's no cover.
+
+New, kept small:
+
+- **`switchCover`** in the view model, only in A's overlay and only while `phase` is `preparing`, `waitingForLink` or `frozen`: `{ profile: { name, emoji, color, symbol? }, space: { name, emoji } }`.
+- **A guarded slot `<m-switch-cover>`** drawn over the page slot, like the launcher (`extension/themes/README.md:69`; slots in `ui/render.js:38-69`, `ui/sanitize.js:294`, `:373-385`). Every word is Margin's: "Switching to {profile}…", with the space's name under it. It's the one other exception, besides the launcher, to "never paint under `<m-page>`".
+- **Margin's default part** when a theme has none: a centred card in the theme's colours. Arcadia and Neo-brutalism each get their own part.
+- No fade in the first build. The "animated later" Tirth mentioned is a later change.
+- **`coverShown`:** the overlay page posts `perform('switch.coverShown')` after the cover has been in the DOM for 2 animation frames and no swipe is settling (`m-settling`, `swipe.js:63-72`).
+- **After the switch**, the cover goes from A's (now hidden) overlay with the next `across`. R4 makes sure A's page has drawn without it the next time A is shown.
+- **No snapshot of the target** in the first build. It would be stale, it would cross the 1 MB link cap (`app/PROTOCOL.md:105`), and it would be the only page content the app holds (open question 5).
+- **Honest numbers** for TESTING.md and DECISIONS.md, until G16 replaces them:
+  - a parked window: about 1.0-1.45 s of still screen behind the cover (STP 1.09-1.32 s);
+  - the first switch to a profile in a session (a create): about 1.3-1.7 s;
+  - a slow switch: the 1.7 s watchdog, then visible motion;
+  - close mode: §4.5;
+  - more than one display: today's slide (0.4-0.65 s);
+  - today's slide, for comparison: 0.4-0.65 s, with Margin's overlay gone for about 180 ms (`PLAN.md` §15).
+
+---
+
+## 8. Local diagnostics, and `PRIVATE-APIS.md`
+
+### 8.1 The log
+
+`Diagnostics.note` (`app/shell/Diagnostics.swift:15-18`), with the prefix `handoff:` or `private calls:`. It holds ids, window numbers, counts, modes, results and milliseconds only. Never a title, an address or a page's words. Nothing is sent anywhere.
+
+- **Launch:** `private calls on macOS 27.2 (26C123): freeze ok, spaces ok, park ok (9/9 functions, 2/2 classes, 3/3 selectors, encodings ok); cross-process self-test park 12 ms, show 15 ms, return 14 ms`, or `… park off: initWithSpaceID:windows:options: encoding changed`.
+- **A build change:** `macOS build changed from 26B88 to 26C123: private calls checked again`.
+- **Each switch, one summary line:** `handoff: safari:s-a#3 → safari:s-b#7 (park+freeze, parked target), frozen 1214 ms (result 0): shown 9, B steady 830, A asked 831, page frames 912 (6, tab 44), overlay framed 930, A normal 1062, A parked 1066, settled 1196; focus ok`. Plus `late (watchdog at 1700 ms, waiting for page frames)`, `aborted: the active Space moved to N`, `recovered: …` or `late landing` when they apply.
+- **A demotion:** `private calls: park off for this session: window 18342's show didn't land in 300 ms (spaces [], on screen false)`.
+- **The registry:** `parked window 18342 (safari:s-a#3) in its Space 2431 in 9 ms`, `shown … in 14 ms`, `window 18342 rebound to safari:s-a#11 (a new copy; by elimination)`, `window 18400 back after a wake: parked again`, `returned 2 parked windows to the Desktop at quit (31 ms)`.
+- **The aftercare:** `aftercare: window 18400 went full screen 3.1 s after the switch gave up: late landing`.
+- **The copy's side** (`appLink.note`): `parkedActivity window 3: focus (not Margin's)`, `setWindowState window 3: refused, 210 ms past notAfter`, `frameProbe tab 44: 6 frames in 74 ms at 1512×982`.
+
+### 8.2 `PRIVATE-APIS.md` (new, next to `PLAN.md`)
+
+One table, kept up to date with every change. For each call:
+
+- the **name and kind** (function, class, selector, KVC key, file format), the **framework**, and the exact signature or selector **with its type encoding**;
+- **what it's used for**, and the **file and function** that calls it;
+- the **launch check**, the **run-time verification**, and the **fallback**;
+- the **risk** (high for the bridge: Apple closed similar tricks in macOS 14.5 and 15), the macOS versions seen working, and the last lab run's date, build and gate results (§10.4).
+
+It also holds:
+
+- the rule: no private call without a fallback and a launch-time check;
+- the "considered, not used" list (§4.1);
+- how to run the lab tool on a beta (§10.3), including the freeze-holds capture check, which the product can't do (§4.3);
+- what to watch: the yabai and Hammerspoon trackers, and macOS beta notes.
+
+---
+
+## 9. A dev-only test hook (removed before production)
+
+For live tests without Accessibility, AppleScript or clicks.
+
+- **New `app/shell/DevHooks.swift`.** It listens to `DistributedNotificationCenter` (as `ExtensionLink.swift:211` already does for `io.tirth.margin.setup`).
+- **Off unless** `defaults write io.tirth.margin MarginDevHooks -bool YES`, checked at each notification.
+- **Only Test A and Test B:** it refuses a target unless Safari's own name for the profile (`SafariProfiles.swift`) is exactly "Test A" or "Test B". Without names it refuses everything.
+- **Notifications:**
+  - `io.tirth.margin.dev.switch { to: "Test B", space? }`: a switch from the front window, as a key press would (`startSwitch`, `ShellProfiles.swift:234-240`);
+  - `io.tirth.margin.dev.dump`: logs the registry, the choices, the availability, the aftercare and the last 5 switch lines;
+  - `io.tirth.margin.dev.mode { freeze: on|off, old: park|close|keep }`: caps the choices for the session;
+  - `io.tirth.margin.dev.fail { step: "show" | "park" | "reveal" | "fullscreen" }`: makes the next such call count as not landed (the call isn't made).
+- Every honoured notification is logged: `dev hook: switch to Test B (asked by pid N)`.
+- **A sender:** `tools/handoff-lab/devswitch.swift`.
+- **Removal:** the file, its call sites and the sender go before production. Each has a `DEV-HOOK` comment so one grep finds them.
+
+---
+
+## 10. The test plan
+
+These must keep passing: `npm test`, `npm run test:theme`, `npm run test:app`, `tools/webkit-host/run.sh`. No `npm run test:e2e`. Tests never read Tirth's real Margin or Safari data, never call a real private function, and never freeze the screen.
+
+### 10.1 Unit and app tests (`npm run test:app`, `npm test`)
+
+- **`tools/app-tests/handoff-tests.swift` (new):** the machine against fakes, in the `SwitchWorld`/`SwitchClock` pattern (`tools/app-tests/profiles-tests.swift:12-80`; `FakeClock` reused).
+  - `FakeHandoffWorld`: links (up, held, down, new copy), the copies' windows (id, state, focused, focusedAt, bounds), window numbers, Spaces and the active Space, overlays (ready, framed with mode), the cover, the display count, and scripted answers, lags, `busy` and `refused` for each request.
+  - `FakeFreezer`: freeze, reveal and release results, and a watchdog driven by the fake clock.
+  - `FakeParker`: park, show and return results and lags, per-window Spaces, and "came back by itself".
+  - **Cases:**
+    - every row of §1.1 (each mode, each demotion, and the display count per switch with no lasting demotion);
+    - the drafts check before every close;
+    - every phase's deadline;
+    - the watchdog in each of its three states;
+    - step 5's latest start;
+    - the foreign-Space abort;
+    - queued switches starting only from `landed` (including after a watchdog reveal with A's late park pending);
+    - a window with a pending request as a next target;
+    - every §1.9 aftercare reaction (late landing; late normal; a return with no focus);
+    - every §4.4 recovery row, with "parked again only once normal";
+    - §1.5's targets, including `waitingForLink` with a parked window, and return-to-Desktop on its timeout;
+    - the create variant with no second request;
+    - §1.10's blockers;
+    - §6.11's same-profile handoff.
+  - **The invariants of §4.4** run after every case.
+- **`tools/app-tests/parking-tests.swift` (new):** the registry.
+  - Keyed by number, and forgotten only by §2.1's rule. Never forgotten by a link down, a reconnecting link or a new copy.
+  - Rebinding by elimination and by bounds, and ambiguity left unbound.
+  - §2.6's causes: a system return re-parked, never a handoff; a focus event a handoff.
+  - A failed show destroys only that window's Space.
+  - `returnAll`; the crash marker in the harness root.
+- **`tools/app-tests/window-tests.swift`:** the binder with `parked` (never dropped for missing; dropped for closed, browser gone and new copy; left out of `liveBound`, `reliableBig`, front candidates and the rules) and `expectParked`.
+- **`tools/app-tests/private-calls-tests.swift` (new):** `PrivateCalls.check` with a fake resolver: each missing symbol, class or selector, and each mismatched encoding, gives the right availability. Nil Copy results read as unknown. The real wrappers refuse under `MARGIN_APP_TESTS`.
+- **`tools/app-tests/e2e-profiles.swift`:** the whole switch with stand-in windows and `fake-extension.mjs` (the fake parker and freezer injected through `Shell` options).
+  - the cover and `coverShown`;
+  - A's overlay ordered out before A's normal;
+  - B's overlay shown from the app's reads before the copy says full screen;
+  - no `windows` push and no `setLayout` to a parked window's overlay, and `hello` mode `fullscreen`;
+  - `drawn` staying on through park and show;
+  - the hot keys on mid-switch, with a space key queued and ⌘T dropped;
+  - no palette drop for a parked window;
+  - `parked` messages sent;
+  - `parkedActivity` starting a handoff, and none while busy;
+  - the own-Space checks skipping the switch's windows;
+  - quit returning every window.
+- **`npm test` (extension):** `setWindowState` (`notAfter`, `busy`, waiting for the state, pushing the list), `frameProbe` in the content script and the new-tab page (a fake rAF), `windowDrafts`, `parked` kept per epoch, `parkedActivity` (tab, focus not Margin's, raise), `focusTab`/`openPin` preferring an unparked window, sleep sparing a parked window's front tab, `openSpaceWindow`'s bounds, the settings field and its `perform`, the cover slot in the view model and sanitizer, and `framed { mode }`.
+- **`npm run test:theme`:** the cover slot in Arcadia and Neo-brutalism, and Margin's default part.
+
+### 10.2 The WebKit host (`tools/webkit-host/run.sh`)
+
+It must pass as before. A scenario for `frameProbe` in a real WebKit page (rAF answers, nudge element outside the layout, no layout shift), and the overlay's `framed` answer. It can't show the freeze or parking (its window is ours).
+
+### 10.3 The lab tool (`tools/handoff-lab/`, a repo test tool run on each macOS beta)
+
+- Built from the STP labs (`S/stp/stp-handoff.swift`, `S/stp/stp-lab.swift`, `S/handoff/park.swift`, `S/handoff/xp.swift`), sharing `PrivateCalls.swift`'s declarations so the lab tests what ships.
+- Runs against Safari Technology Preview with its own test extension (`S/stp/ext`), or release Safari in Test A/Test B. Only with Tirth's go-ahead, since it drives windows on screen (memory: on-screen test discipline: one dry run first, abort on the first failure).
+- It records frames with ScreenCaptureKit, which needs Screen Recording **for the lab tool only**, never for Margin.app. That's how it checks that a freeze holds the screen (§4.3).
+- Its report is one file per run (`tools/handoff-lab/results/<build>-<date>.md`): per gate, pass or fail and the numbers. `PRIVATE-APIS.md` links the latest.
+
+### 10.4 Gates (lab runs that decide what the build turns on)
+
+Each gate is a mode of the lab tool. Until it passes, the part named stays off or uses its fallback.
+
+| Gate | What it runs | Decides |
+|---|---|---|
+| G1 | the freeze and a cross-process bridge park/show from a Developer-ID, hardened Margin.app build, with Screen Recording and Accessibility denied | the whole mechanism. Fails: freeze and park off |
+| G2 | STP handoffs with still pages (still variants of `a/b/n.html`) and the real nudge in a content script: per poll, rAF and `visibilitychange` against R1/R2, the overlay web view's rAF, and frames after the reveal | R3's signal (rAF, `visibilitychange`, or off), R4 |
+| G3 | the close handoff in STP: two freezes against one | close mode's form and timings |
+| G4 | a duplicate full-screen update mid-entry in STP, and when a new type-4 Space first appears after a request | `fullScreenRetry` and its evidence (§3.4) |
+| G5 | per-window private Space create/destroy cost; destroying an empty one; a read or mask that lists a private Space's windows; the private Space after a Dock restart | per-window Spaces, the enumerator (§4.1 row 13), §6.8 |
+| G6 | whether `.optionAll` and `.optionIncludingWindow` list a parked window, and with what bounds | the liveness read (§2.1), the binder's inputs |
+| G7 | rapid A→B→A, and a second freeze 0.15, 0.3, 0.6 and 1 s after a watchdog reveal | the cooldown (§1.5) |
+| G8 | `alert()`, `confirm()`, a permission prompt, "leave page?", and a detached Web Inspector in A at switch time | §1.10's blocker rule |
+| G9 | ⌘`, the Window menu, the Dock's window list, ⌘H then unhide, Bring All to Front, a Dock click with every window parked | §2.6 and §6.2 |
+| G10 | parking a window mid-entry and just after entry | recovery (§4.4) |
+| G11 | two displays (a Sidecar iPad), including `windows.update {left, top}` on a parked window | §6.7 |
+| G12 | `S/handoff/park.swift` `PARK=bridge` with the webkit-host window gone: frame counts | the bridge's frame evidence |
+| G13 | killing the freezing process mid-freeze; where windows land when the parker dies with a full-screen Space active | §4.3, §6.4 |
+| G14 | an own-Space panel (Margin's overlay behaviour) in a full-screen Space that's destroyed | §2.3 |
+| G15 | the active Space during Safari's entry, polled; a trackpad swipe during a freeze | §1.2's abort rule |
+| G16 | at least 30 handoffs in release Safari (Test A/Test B) with Margin's extension, real sites, and R3/R4 on: the reveal-time distribution and the late-reveal rate | the honest numbers, `Options.watchdog`, the step-5 limit. **Acceptance for the build, with Tirth's go-ahead** |
+| G17 | a watchdog reveal during A's exit, and during the settle | §1.4's claim that nothing shows |
+| G18 | the bridge on a minimized window | §1.5 rule 6 |
+
+### 10.5 The live checklist (TESTING.md, in Test A and Test B only)
+
+Switch both ways, ten times. Switch with PiP and with sound. A link from Mail into a parked profile. ⌘` and the Window menu. ⌘W the shown window, then click the Dock. Type during a switch. Swipe the sidebar into a switch. Sleep mid-switch. Quit Margin with windows parked. `npm run safari` with windows parked. A draft in close mode. Two windows in one profile. A second display. Each line says what to expect, including what's visible on purpose (recovery, a late reveal, close mode's two still moments).
+
+---
+
+## 11. Work packages
+
+The work packages are listed in the structured output. They map to these sections:
+
+- WP1 → §4.1-4.3 and `PRIVATE-APIS.md`.
+- WP2 → the freezer.
+- WP3 → the Space reads and parker, with the self-test.
+- WP4 → §2.1, §2.6 and §6.4.
+- WP5 → §2.2.
+- WP6 → §3.3, §2.5 and the copy-side parts of §6.1 and §6.11.
+- WP7 → the protocol.
+- WP8 → §1.
+- WP9 → the shell's parts of §2.3, §2.4, §1.7, §6.
+- WP10 → §7 and §5's UI.
+- WP11 → §4.5 and the scroll record.
+- WP12 → §8 and §9.
+- WP13 → §10.3 and §10.4.
+
+The build order is WP13 (lab tool) and WP1 first, so that G1 can run before anything relies on the mechanism.
+
+---
+
+## 12. Open questions for Tirth
+
+1. At quit, parked windows go back to the Desktop as normal windows. OK, or should they be closed?
+2. After a crash, windows that came back by themselves are left as normal windows. Should they be parked again?
+3. A draft in a window that close mode would close: keep it open with a notice (designed), or ask first?
+4. With more than one display, the first build keeps the old window in its own full-screen Space (an extra Mission Control Space) until the two-display lab passes. OK, and how soon do you want two displays supported?
+5. A snapshot of the target in the cover: leave it out (designed)?
+6. "Close windows to save memory" for the whole browser (designed), or per profile?
+7. With every window parked and Safari activated: show the home window (designed), or nothing?
+8. A cap on how many windows stay parked (memory)? If so, how many, and is the oldest closed (drafts permitting)?
+9. Pre-park a window per profile ahead of time? Not designed.
+10. A slow switch that lands late, with nothing done meanwhile: go to it ("late landing", designed), or undo it?
+11. After Safari restarts, its restored windows are normal windows on the Desktop. Park them at once, or only when a switch leaves them (designed)?
+12. A pin or tab click whose tab is only in a parked window of the same profile: hand off to that window (designed), or move the tab into the shown window?
+13. A dialog up in the current window: refuse the switch with a notice (designed)?
+14. The gates need on-screen runs in STP and in Test A/Test B (G1-G18, G16 at least 30 handoffs). When may they run, and may the lab tool have Screen Recording?
+15. The launch self-test starts a hidden child copy of Margin for about 50 ms. OK?
+
+---
+
+## Appendix A. Critiques: what was accepted, and what wasn't
+
+Two critics reviewed draft 1. Each problem was checked against the code at df6877e and the lab files. Their numbering follows the order they were given.
+
+| # | Problem (short) | Verdict | Where it's solved, or why not |
+|---|---|---|---|
+| 1 | The sweep forgets a parked window when its copy's link drops or its ids change, stranding it | **Accepted.** Confirmed: `linkDown` removes `links[key]` at once (`Shell.swift:394`), `ext` is built only from links with state (`:769-772`), and a new copy drops its bindings (`WindowMatcher.swift:514-519`) | §2.1 (keyed by number, forgotten only when the window is gone, the hard rule), §2.2 (rebinding), §2.5 (the sweep gets held links), §1.5 (`waitingForLink`, show or return by number) |
+| 2 | A queued switch starts while the previous one's late steps still run | **Accepted.** Confirmed: draft 1 started 150 ms after the reveal, and today's `finish()` chains at once (`ProfileSwitch.swift:286-308`) | §1.2 (`after` and `landed`), §1.7 (only from idle), §1.5 (cooldown), G7 |
+| 3 | Late answers to `setWindowState` have no owner | **Accepted**, with the generation number replaced by `notAfter` (the app is the only sender, and a deadline does the same job) | §1.9, §3.3 |
+| 4 | `plain` drops "Keep windows alive" whenever there are two displays or one freeze call fails, and closes without a drafts check | **Accepted** | §1.1 (two separate choices, per-switch setup facts, two failures to turn the freeze off, drafts before every close) |
+| 5 | One shared private Space: a recovery releases every profile's windows, and the returns become a chain of handoffs | **Accepted** | §2.1 (a Space per window), §2.6 (causes), §6.8, §4.4 invariant 5 |
+| 6 | R4 and `drawn` wait for the copy's lagging `fullscreen` | **Accepted.** Confirmed: `WINDOWS_MS` 1 s, and the optional `onBoundsChanged` | §2.3, §2.4 (`isTarget`), §3.3 (the copy polls the state and pushes) |
+| 7 | A parked window's hidden overlay flips to `windowed` and sends `setLayout` | **Accepted.** Confirmed: `windows` goes to every overlay of the link (`Shell.swift:556-567`, via `overlays(of:)`), and the mode comes from it (`host-app.js:322-329`) | §2.4 (no list until full screen, `hello` mode, `layoutChanged` held), R4's `framed { mode }` |
+| 8 | A's own-Space overlay stays in A's Space as it's destroyed; own-Space suspicion can fall back | **Accepted** | §1.3 step 5, §2.3, R5, G14 |
+| 9 | The hot keys go off under the freeze, and Margin's keys reach Safari | **Accepted.** Confirmed: `run` needs `frontOverlay` (`Shell.swift:1125`), and the keys are active only with one (`:1038-1044`) | §1.7, §2.4 (palette path) |
+| 10 | Retrying the full-screen request can toggle B out | **Accepted.** The AppKit log shows exactly that (`S/handoff/park-enter-1793945331.log`) | §3.4, §1.6 step 2, G4 |
+| 11 | A profile can have a parked and a shown window. Margin's own `focusTab`/`openPin` raise parked windows, and links target the home window | **Accepted** | §1.5 (window targets), §2.5, §6.1, §6.11 |
+| 12 | "None on screen 0.5 s after activation" matches a normal slide | **Accepted** | §6.2 (no user Space, settled read) |
+| 13 | A watchdog reveal can land in A's exit or settle; STP exit times are longer than the AppKit lab's | **Accepted** in its budget part (STP's numbers, step 5 from R1+R2, a latest start). That A's frames would show is **not established**: A is out of the active Space by then. It's recorded as G17 rather than designed around | §1.3, §1.4, G17 |
+| 14 | (the same as 10, with the log) | **Accepted**, merged with 10 | §3.4 |
+| 15 | The self-test parks Margin's own window; the freeze is unverified; no lab ran without TCC | **Accepted** for the cross-process self-test and the hardened, TCC-less run (G1). **Rejected:** treating "freeze appears ineffective" as a run-time demotion signal. Only a screen capture can see it, and screen recording is ruled out of the mechanism. The lab tool checks it per beta instead (§4.3, §10.3) | §4.2, §4.3, G1 |
+| 16 | The close handoff was never run with A closed inside the freeze; the Desktop drop isn't budgeted | **Accepted** | §4.5 (two freezes, the lab's proven form), G3, §7 numbers |
+| 17 | R3/R4 rely on rAF under the freeze, untested with still pages | **Accepted** | §3.2 (R3 behind G2, with fallbacks), G2 |
+| 18 | Safari focusing a parked window leaves it parked; draft 1's "focus B again" fights the person | **Accepted.** Confirmed: `S/stp/stp-1793947586.log` D | §2.6 (focus is the person's signal), §6.1, §6.6, G9 |
+| 19 | Recovery parks windows mid-entry, a state no lab parked | **Accepted** | §4.4 (parked again only once normal; visible recovery stated), G10 |
+| 20 | Verification can't see the private Space; invariant 3 can't be checked | **Accepted.** Invariant 3 restated in checkable terms, and the enumerator search added | §4.4, §4.1 row 13, G5, §6.8 |
+| 21 | The budget rests on 4 STP handoffs | **Accepted.** G16 is the acceptance figure, and it needs Tirth's go-ahead for on-screen runs | §1.4, §7, G16 |
+| 22 | (the same as 2) | **Accepted**, merged with 2 | §1.7 |
+| 23 | Sheets, dialogs and inspectors aren't handled | **Accepted** | §1.10, R5, G8 |
+| 24 | The launch checks don't check signatures; non-optional `Unmanaged` can crash | **Accepted** | §4.1 (encodings, optional returns), G13 |
+| 25 | Multiple displays: bridge shows untested; the display count is weak | **Accepted** | §6.7 (managed-display count, `keep` until G11, B's bounds moved first), G11 |
+| 26 | Bridge frame counts are mixed with the webkit-host window | **Accepted** | G12 |
+| 27 | A minimized target slides visibly; swipes during the freeze aren't handled | **Accepted** | §1.5 rule 6, G18, §1.2's abort, §6.10, G15 |
+
+Smaller points, partly rejected:
+
+- **3's "have the copy refuse a stuck call":** a call already made can't be refused. The copy's check covers only requests that arrive late, so the aftercare (§1.9) handles calls that were made and then stuck.
+- **5's "a private Space per attempt":** per window was chosen. A window's Space is destroyed once it's shown, so each park is a new attempt anyway.
+- **11's "refuse to raise":** the copy asks the app instead of refusing, so a pin click still does what the person meant.
