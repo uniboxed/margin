@@ -386,13 +386,14 @@ export const handlers = {
   // page's zoomed pixels) and Margin's pinch; remembered per site.
   // Where the page in front's area sits in its window, when Safari takes part of it (the docked Web
   // Inspector: content/core.js viewportNow), for Margin.app's overlay (background/link.js viewport).
-  /** @param {{ viewport?: { x: number, y: number, width: number, height: number } | null }} message */
+  // `measured`: the page found where its area starts from a pointer event (else it's a guess).
+  /** @param {{ viewport?: { x: number, y: number, width: number, height: number, measured?: boolean } | null }} message */
   async viewport({ viewport = null } = {}, sender) {
     const tab = sender?.tab;
     if (!tab || tab.active === false || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) return;
     const ok = (v) => Number.isFinite(v) && v >= 0 && v < 100_000;
     const rect = viewport && ok(viewport.x) && ok(viewport.y) && ok(viewport.width) && ok(viewport.height) && viewport.width > 0 && viewport.height > 0
-      ? { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height } : null;
+      ? { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, ...(viewport.measured === true ? { measured: true } : {}) } : null;
     appLink.viewport(tab.windowId, tab.id, rect);
   },
   // A page saying whether it's shown (content/core.js and the new-tab page: document.visibilityState,

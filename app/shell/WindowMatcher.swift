@@ -78,6 +78,9 @@ struct ExtWindow: Equatable {
     // when that's less than the whole window: the docked Web Inspector (or Safari's sidebar) takes
     // the rest (background/link.js `viewport`). Nil: the whole window.
     var viewport: CGRect?
+    // Whether the page measured where its area starts (from a pointer event: content/core.js
+    // pointerOrigin) rather than taking the missing width to be on the left.
+    var viewportMeasured = false
     // Whether its tab in front's page says it's shown (document.visibilityState), and when it last said
     // so (seconds since 1970). Nil: not known (no word from that page), never taken as hidden.
     var visible: Bool?
@@ -107,10 +110,12 @@ struct ExtWindow: Equatable {
             let ms = { (v: Any?) in num(v).flatMap { $0 > 0 ? $0 / 1000 : nil } }
             let visibleAt = ms(w["visibleAt"])
             let visible = visibleAt == nil ? nil : w["visible"] as? Bool
-            return ExtWindow(key: WindowKey(link: link, windowId: id), bounds: bounds, state: w["state"] as? String ?? "normal",
-                             focused: w["focused"] as? Bool ?? false, activeTabId: int(w["activeTabId"]),
-                             focusedAt: ms(w["focusedAt"]), createdAt: ms(w["createdAt"]), viewport: viewport(w["viewport"]),
-                             visible: visible, visibleAt: visible == nil ? nil : visibleAt, blurredAt: ms(w["blurredAt"]))
+            var e = ExtWindow(key: WindowKey(link: link, windowId: id), bounds: bounds, state: w["state"] as? String ?? "normal",
+                              focused: w["focused"] as? Bool ?? false, activeTabId: int(w["activeTabId"]),
+                              focusedAt: ms(w["focusedAt"]), createdAt: ms(w["createdAt"]), viewport: viewport(w["viewport"]),
+                              visible: visible, visibleAt: visible == nil ? nil : visibleAt, blurredAt: ms(w["blurredAt"]))
+            e.viewportMeasured = e.viewport != nil && (w["viewport"] as? JSONObject)?["measured"] as? Bool == true
+            return e
         }
     }
 }

@@ -772,7 +772,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             let wasShown = overlay.isShown && overlay.aboveWindow == number
             let wasShownAnywhere = overlay.isShown
             // Over the part of the window that's the page's and Margin's: not the docked Web Inspector.
-            let frame = Shell.overlayFrame(window: server.bounds, viewport: w.state == "fullscreen" ? w.viewport : nil)
+            // (Not for Safari's own sidebar sliding in under Margin's docked one: `dockedLeft`.)
+            let viewport = w.state == "fullscreen" ? w.viewport : nil
+            let docked = Shell.dockedLeft(overlay)
+            let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: docked)
+            noteLeftPart(overlay, window: server.bounds, viewport: viewport, measured: w.viewportMeasured, docked: docked, frame: frame)
             if frame != server.bounds, overlay.windowFrame != server.bounds || overlay.frameTopLeft != frame {
                 Diagnostics.note("\(key): Safari takes part of its window (the Web Inspector docked?): Margin draws in \(frame) of \(server.bounds)")
             }
@@ -880,12 +884,55 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // tab in front's page area is only part of it (`viewport`: the Web Inspector docked at the bottom,
     // left or right), that part, so Margin is laid out beside the inspector, draws nothing over it,
     // and the pointer always reaches it. A part too small to lay a theme out in (under 200 pt) or
-    // outside the window: the whole window.
-    static func overlayFrame(window: CGRect, viewport: CGRect?) -> CGRect {
+    // outside the window: the whole window. An edge within `edgeSnap` of the window's is the
+    // window's (Safari's sidebar ends its slide 1 or 2 pt off).
+    // Not on the left when Margin's sidebar is docked at least that wide (`dockedLeft`: its left
+    // inset): that's Safari's own sidebar sliding in under Margin's (Tirth's log, 19:37:14: x 19, 213,
+    // 238, 240, … 2, 0, over about 1.3 s, open 0.4 to 1.1 s), and the overlay stays over the whole
+    // window. The page's box keeps its place (shared/app-link.js boxFromLayout takes the viewport's
+    // offset off the layout's left inset). Whether the page measured where its area starts (`measured`)
+    // doesn't change that: a pointer moving over the page while Safari's sidebar slides away measures
+    // each step. A hidden Margin sidebar, or a part wider than its docked one (a left-docked
+    // inspector, Safari's sidebar kept open past it): carved out, at once.
+    static let edgeSnap: CGFloat = 2
+    static func overlayFrame(window: CGRect, viewport: CGRect?, dockedLeft: CGFloat? = nil) -> CGRect {
         guard let viewport else { return window }
-        let part = viewport.offsetBy(dx: window.minX, dy: window.minY).intersection(window)
+        var part = viewport.offsetBy(dx: window.minX, dy: window.minY).intersection(window)
         guard !part.isNull, part.width >= 200, part.height >= 200 else { return window }
-        return part.integral == part ? part : CGRect(x: part.minX.rounded(), y: part.minY.rounded(), width: part.width.rounded(), height: part.height.rounded())
+        part = CGRect(x: part.minX.rounded(), y: part.minY.rounded(), width: part.width.rounded(), height: part.height.rounded())
+        var minX = part.minX, minY = part.minY, maxX = part.maxX, maxY = part.maxY
+        if minX - window.minX <= edgeSnap { minX = window.minX }
+        if minY - window.minY <= edgeSnap { minY = window.minY }
+        if window.maxX - maxX <= edgeSnap { maxX = window.maxX }
+        if window.maxY - maxY <= edgeSnap { maxY = window.maxY }
+        if minX > window.minX, let dockedLeft, minX - window.minX <= dockedLeft { minX = window.minX }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    // How wide an overlay's docked sidebar is (its page wants no pointer positions: PointerWant none,
+    // Margin's sidebar docked): its last layout's left inset, from the overlay's own left edge, so it's
+    // the same whether or not the overlay is carved out (no back and forth), and still right for the
+    // moment after a resize before its page measures again (the sidebar's width doesn't change with
+    // the overlay's); nil otherwise.
+    static func dockedLeft(_ overlay: OverlayController) -> CGFloat? {
+        guard overlay.pointerWant.mode == .none, let layout = overlay.layout, layout.left > 0 else { return nil }
+        return CGFloat(layout.left)
+    }
+
+    // A part of the window on the left as it first shows (for the edge guard's question: does Safari's
+    // sidebar come out even with the guard in place?): where the pointer and the guard were, and what
+    // the overlay did. Once per appearance.
+    private var leftPartSaid: Set<WindowKey> = []
+    private func noteLeftPart(_ overlay: OverlayController, window: CGRect, viewport: CGRect?, measured: Bool, docked: CGFloat?, frame: CGRect) {
+        let left = viewport.map { $0.minX } ?? 0
+        guard left > Shell.edgeSnap else { leftPartSaid.remove(overlay.key); return }
+        guard !leftPartSaid.contains(overlay.key) else { return }
+        leftPartSaid.insert(overlay.key)
+        let p = PointerWatch.location
+        let pointer = String(format: "(%.0f, %.0f)", p.x - window.minX, p.y - window.minY)
+        let guardAt = overlay.edgeFrame.map { String(format: "x %.0f, %.0f pt wide", $0.minX - window.minX, $0.width) } ?? "none"
+        let did = frame.minX > window.minX ? "carved out" : docked.map { "left under Margin's docked sidebar (\(Int($0)) pt)" } ?? "not carved"
+        Diagnostics.note("\(overlay.key): a part on the left, \(Int(left)) pt (\(measured ? "measured" : "guessed")), appeared: the pointer at \(pointer) in the window, the edge guard \(guardAt); \(did)")
     }
 
     // A window the app's own request made (the profile switch's openSpaceWindow, asked at `asked`):

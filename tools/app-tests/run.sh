@@ -16,7 +16,8 @@
 #         two profiles and several same-bounds windows, Spaces played by
 #         on-screen flags and the copies' focus flags lagging; and e2e-keyboard.swift,
 #         the overlay's keyboard and its page's focus through shows, put-aways and relinks; and
-#         e2e-overlays.swift, overlays through a window closing and a link dropping
+#         e2e-overlays.swift, overlays through a window closing, a link dropping and Safari's
+#         own sidebar sliding in
 # window-tests.swift's randomized runs take WINDOW_RUNS (default 300),
 # WINDOW_LAG (the flags' lag, default 1.2 s) and WINDOW_SEED (one run, printed).
 # Built with swiftc as the app target builds it (Swift 5, main actor by

@@ -429,3 +429,26 @@ test('loads: the page being left told at once, taken back when it stays; a slow 
   handlers.beforeunload[0](ev);
   assert.equal(said.length, before, 'not drawn by the app: nothing');
 });
+
+// ---- where the page's area sits in its window ------------------------------------------
+
+test('viewport: the page\'s word goes to the link with `measured` only when a pointer event said where the area starts; junk is null', async () => {
+  const { appLink } = await import('../extension/background/app-link.js');
+  const heard = [];
+  const was = appLink.viewport;
+  appLink.viewport = (windowId, tabId, rect) => heard.push([windowId, tabId, rect]);
+  try {
+    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949, measured: true } });
+    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949 } });
+    await ask('viewport', { viewport: { x: 240, y: 0, width: 1272, height: 949, measured: 'yes' } });
+    await ask('viewport', { viewport: { x: -5, y: 0, width: 1272, height: 949, measured: true } });
+    assert.deepEqual(heard, [
+      [1, 1, { x: 240, y: 0, width: 1272, height: 949, measured: true }],
+      [1, 1, { x: 240, y: 0, width: 1272, height: 949 }],
+      [1, 1, { x: 240, y: 0, width: 1272, height: 949 }],
+      [1, 1, null],
+    ]);
+  } finally {
+    appLink.viewport = was;
+  }
+});

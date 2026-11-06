@@ -564,6 +564,19 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("docked on the right: the part left of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1000, height: 949)) == CGRect(x: 0, y: 33, width: 1000, height: 949))
     check("docked on the left: the part right of it", Shell.overlayFrame(window: win, viewport: CGRect(x: 512, y: 0, width: 1000, height: 949)) == CGRect(x: 512, y: 33, width: 1000, height: 949))
     check("a part too small to lay out in, or outside the window: the whole window", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 150, height: 949)) == win && Shell.overlayFrame(window: win, viewport: CGRect(x: 4000, y: 0, width: 800, height: 900)) == win)
+    // Safari's own sidebar sliding in (Tirth's log, 19:37:14.956-18.706) under Margin's docked one (260 pt).
+    let xs: [CGFloat] = [19, 213, 238, 239, 240, 177, 54, 2, 115, 222, 237, 240, 215, 84, 2]
+    check("Safari's sidebar at each logged step, guessed, under a docked 260 pt sidebar: the whole window",
+          xs.allSatisfy { Shell.overlayFrame(window: win, viewport: CGRect(x: $0, y: 0, width: 1512 - $0, height: 949), dockedLeft: 260) == win })
+    check("its last step, 1 pt short on the right: the whole window", Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1511, height: 949), dockedLeft: 260) == win
+          && Shell.overlayFrame(window: win, viewport: CGRect(x: 0, y: 0, width: 1511, height: 949)) == win)
+    check("2 pt or less off the window's edge: the edge (no docked sidebar needed)", Shell.overlayFrame(window: win, viewport: CGRect(x: 2, y: 0, width: 1510, height: 949)) == win)
+    check("wider than the docked sidebar (a 500 pt inspector on the left): carved out", Shell.overlayFrame(window: win, viewport: CGRect(x: 500, y: 0, width: 1012, height: 949), dockedLeft: 260) == CGRect(x: 500, y: 33, width: 1012, height: 949))
+    check("one 1 pt wider than the docked sidebar: carved out", Shell.overlayFrame(window: win, viewport: CGRect(x: 261, y: 0, width: 1251, height: 949), dockedLeft: 260) == CGRect(x: 261, y: 33, width: 1251, height: 949))
+    check("Margin's sidebar not docked: Safari's carved out at once, as before", Shell.overlayFrame(window: win, viewport: CGRect(x: 240, y: 0, width: 1272, height: 949)) == CGRect(x: 240, y: 33, width: 1272, height: 949))
+    check("under the docked sidebar with an inspector at the bottom too: only the bottom carved", Shell.overlayFrame(window: win, viewport: CGRect(x: 240, y: 0, width: 1272, height: 600), dockedLeft: 260) == CGRect(x: 0, y: 33, width: 1512, height: 600))
+    let parsedVp = ExtWindow.parse([["windowId": 3, "viewport": ["x": 240, "y": 0, "width": 1272, "height": 949, "measured": true]], ["windowId": 4, "viewport": ["x": 240, "y": 0, "width": 1272, "height": 949]]], link: "safari:P")
+    check("a viewport's `measured` read, false when it isn't said", parsedVp.count == 2 && parsedVp[0].viewportMeasured && !parsedVp[1].viewportMeasured)
     let measured = PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 10, radii: [10, 10, 10, 10], width: 1000, height: 949, mode: "fullscreen")
     let right = measured.inWindow(overlay: CGRect(x: 512, y: 33, width: 1000, height: 949), window: win)
     check("insets from the window's edges: the inspector on the left adds its width to the left", right.left == 772 && right.right == 8 && right.top == 8 && right.width == 1512)

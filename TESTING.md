@@ -693,12 +693,16 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Open the palette and type in it, then click the page: the palette closes and typing goes to the page (the log says `gave the keyboard back: a press on the page or another app`).
 - [ ] If you ever see a field in Margin's sidebar or launcher that looks focused while what you type goes to Safari, note the time and send me the lines around it with `keyboard`, `focus` or `let go` in them.
 
-**Closing windows, links that drop.** `npm run log:app -- --stream` open.
+**Closing windows, links that drop, Safari's own sidebar.** `npm run log:app -- --stream` open.
 - [ ] Two full-screen windows. Close one (⌘W): the other keeps its sidebar, and the log has `…: no own-Space fallback: window N left the window server's list (closed, or the browser quit)` (or nothing about it), never `overlays join every Space again`.
 - [ ] Quit Safari with full-screen windows open, then open it again within a few minutes (Margin.app keeps running): the log has no `overlays join every Space again` line at the quit. Switch between the windows: the sidebar is already there as each slides in, as before the quit.
 - [ ] If a line `overlays join every Space again, until no link and no overlay is left` ever comes, send it with the line before it (`…: its overlay read on screen while its window N didn't, and … ms later …`). After Safari quits, the log says `no link and no overlay left: overlays join only their window's Space again`.
 - [ ] Quit Safari while Margin is linked: the sidebars go with the windows at once, not dimmed on the desktop for a few seconds. The log may say `overlay put away (…): its window is gone from the window server, while its link is reconnecting`.
 - [ ] Anything that makes a sidebar dim with "Reconnecting" (an update, `npm run safari`): if you take its window out of full screen or close it meanwhile, the dimmed sidebar goes at once. If you leave the window alone and the link comes back within a second or two, the sidebar never goes away (no blink).
+- [ ] Margin's sidebar docked: move the pointer to the very left edge so Safari's own sidebar slides in, then away. Margin's sidebar stays where it is, with no jump sideways and back, and the page doesn't move. The log has `…: a part on the left, N pt (guessed), appeared: the pointer at (x, y) in the window, the edge guard x 0, 4 pt wide; left under Margin's docked sidebar (… pt)`. Send me that line: the pointer's x says whether Safari's sidebar came out with the pointer over Margin's guard.
+- [ ] Margin's sidebar hidden (Keep open off): open Safari's sidebar (⌘⇧L). Margin moves beside it as before, and back when it closes.
+- [ ] Margin's sidebar docked: ⌘⇧L now opens Safari's sidebar under Margin's, where you don't see it, and Margin doesn't move. Tell me if you'd rather Margin moved beside it then.
+- [ ] Web Inspector docked on the left (⌘⌥I, then dock left): Margin moves beside it as before.
 - [ ] Open Margin.app from Applications or Spotlight: the log says `Margin.app opened by hand: set-up window shown`. With no profile linked and the set-up window open, it says once `no copy linked, but the set-up window is open: Margin.app doesn't quit by itself while it is`. After `npm run safari` with Safari open, the new build says `Margin.app started with --background: no set-up window` or `Margin.app started for a link (the extension's note): no set-up window`.
 
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)

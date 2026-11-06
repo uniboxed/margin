@@ -1,6 +1,6 @@
-// Overlays through a window closing and a link dropping
+// Overlays through a window closing, a link dropping and Safari's own sidebar
 // (part of e2e.swift's run; DECISIONS.md "Margin 2: Safari reliability", the
-// own-Space fallback, overlays kept through a drop):
+// own-Space fallback, overlays kept through a drop, Safari's sidebar slide):
 // the real link, shell and overlays against fake-extension.mjs, one profile's
 // full-screen windows as stand-ins. Spaces are played by on-screen flags: an
 // overlay reads as on screen when its window does, or always while `stuck`
@@ -218,3 +218,126 @@ func overlaysScenario() async {
   print(String(format: "  timings: the overlays scenario %.1f s", Date().timeIntervalSince(started)))
 }
 
+// Safari's own sidebar sliding in and out under Margin's docked one, its own run: an overlay made to
+// join every Space (as e2e.swift's), whose page measures again when it's resized (one made in its
+// window's own Space off every display doesn't, in the harness), so "no setLayout" means something.
+@MainActor
+func sidebarSlideScenario() async {
+  func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { e2eCheck("Safari's sidebar: \(label)", ok, detail()) }
+  let started = Date()
+  let fake = Fake()
+  do { try fake.start() } catch { return check("the fake extension starts", false, "\(error)") }
+  defer { fake.stop() }
+  guard await until(5, { fake.first("ready") != nil }) else { return check("the fake extension starts", false) }
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-slide-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.slide.\(ProcessInfo.processInfo.processIdentifier)"),
+                        timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
+  let windows = ScriptedWindows()
+  let apps = ScriptedApps()
+  var options = Shell.Options()
+  options.harness = true
+  options.overlay.harness = true
+  options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
+  options.bundleIds = ["safari": fakeBundle]
+  options.dataRoot = root
+  var said: [String] = []
+  let echo = Diagnostics.echo
+  Diagnostics.echo = { said.append($0); echo?($0) }
+  defer { Diagnostics.echo = echo }
+  let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: FakeKeys(), options: options)
+  windows.shell = shell
+  shell.start()
+  guard await until(3, { link.port != nil }) else { return check("listening", false) }
+  fake.tell(["do": "wantLink"])
+  guard await until(3, { fake.first("wantLink") != nil }), let nonce = fake.first("wantLink")?["nonce"] as? String else { return check("wantLink", false) }
+  link.wantLink(nonce: nonce)
+  guard await until(3, { fake.first("link") != nil }) else { return check("linked", false) }
+  let r1 = CGRect(x: -20000, y: -20000, width: 1280, height: 800)
+  let r2 = CGRect(x: -18000, y: -20000, width: 1200, height: 760)
+  let w1 = standIn(r1), w2 = standIn(r2)
+  defer { w1.close(); w2.close() }
+  windows.browser = [ServerWindow(number: w2.windowNumber, pid: browserPid, bounds: r2, order: 0), ServerWindow(number: w1.windowNumber, pid: browserPid, bounds: r1, order: 1)]
+  // (`tab`: the tab in front; a change redraws the overlay's page, which then measures the slot again:
+  // in the harness a resize alone doesn't, its web views off every display draw no frames.)
+  func win(_ id: Int, _ r: CGRect, focused: Bool = false, viewport: JSONObject? = nil, tab: Int = 13) -> JSONObject {
+    var o: JSONObject = ["windowId": id, "left": r.minX, "top": r.minY, "width": r.width, "height": r.height, "state": "fullscreen", "focused": focused, "activeTabId": tab]
+    if let viewport { o["viewport"] = viewport }
+    return o
+  }
+  let k2 = WindowKey(link: "safari:P1", windowId: 2)
+  fake.tell(["do": "connect", "id": "S", "profile": "P1", "windows": [win(1, r1), win(2, r2, focused: true)]])
+  check("linked", await until(8, { shell.links["safari:P1"]?.mirror.hasState == true }))
+  apps.bringToFront(browserPid)
+  check("its overlay shown", await until(15, { shell.overlays[k2]?.isShown == true }))
+  guard let q = shell.overlays[k2] else { return }
+  // The page told it was resized, as a drawn page would be at its next frame (in the harness its web
+  // view, off every display, draws none): it measures the slot again, and a new layout goes as setLayout.
+  func resized() async { _ = await js(q.webView, "dispatchEvent(new Event('resize')); return innerWidth") }
+  // ---- Safari's own sidebar sliding in and out under Margin's docked one (Tirth's log, 19:37:14.956-18.706) ----
+  check("Margin's sidebar docked: no pointer positions wanted, the edge guarded", await until(5, { q.pointerWant.mode == .none && q.edgeFrame != nil && q.layout != nil }))
+  try? await Task.sleep(nanoseconds: 800_000_000) // (the layout sent and settled)
+  var mark = fake.events.count
+  // The logged left parts (x, width in a 1512 pt window) and when each came, replayed in this 1200 pt one.
+  let slide: [(at: Double, x: Double, right: Double)] = [
+    (14.956, 19, 0), (15.098, 213, 0), (15.184, 238, 0), (15.233, 239, 0), (15.375, 240, 0), (15.961, 177, 0), (16.042, 54, 0), (16.265, 2, 0),
+    (17.685, 115, 0), (17.803, 222, 0), (17.854, 237, 0), (17.927, 240, 0), (18.326, 215, 0), (18.419, 84, 0), (18.653, 2, 0), (18.706, 0, 1),
+  ]
+  var frames: Set<String> = []
+  var guarded = true
+  var prev = slide[0].at
+  for (i, step) in slide.enumerated() {
+    try? await Task.sleep(nanoseconds: UInt64(max(0, step.at - prev) * 1_000_000_000))
+    prev = step.at
+    let vp: JSONObject = ["x": step.x, "y": 0, "width": r2.width - step.x - step.right, "height": r2.height]
+    fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true, viewport: vp, tab: i % 2 == 0 ? 12 : 13)]])
+    try? await Task.sleep(nanoseconds: 40_000_000)
+    await resized()
+    frames.insert("\(q.frameTopLeft)")
+    guarded = guarded && q.edgeFrame != nil
+  }
+  try? await Task.sleep(nanoseconds: 50_000_000)
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true)]])
+  try? await Task.sleep(nanoseconds: 300_000_000)
+  frames.insert("\(q.frameTopLeft)")
+  check("Safari's sidebar sliding in and out twice: the overlay over the whole window all along", frames == ["\(r2)"], "\(frames)")
+  check("no setLayout sent during the slide", fake.first("setLayout", since: mark) == nil, "\(fake.all("setLayout", since: mark).count)")
+  check("the edge guard placed all along", guarded && q.edgeFrame != nil)
+  check("the log says what the first part on the left did", said.contains { $0.hasPrefix("\(k2): a part on the left, 19 pt (guessed), appeared: the pointer at (") && $0.hasSuffix("left under Margin's docked sidebar (\(Int(Shell.dockedLeft(q) ?? 0)) pt)") },
+        "\(said.filter { $0.contains("a part on the left") })")
+  // A left part wider than Margin's docked sidebar (the Web Inspector docked on the left, 500 pt): carved out at once.
+  mark = fake.events.count
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true, viewport: ["x": 500, "y": 0, "width": r2.width - 500, "height": r2.height], tab: 12)]])
+  check("a 500 pt inspector on the left: carved out", await until(2, { q.frameTopLeft == CGRect(x: r2.minX + 500, y: r2.minY, width: r2.width - 500, height: r2.height) }), "\(q.frameTopLeft)")
+  await resized()
+  check("and its layout sent, from the window's edges", await until(5, { (fake.all("setLayout", since: mark).last.flatMap { ($0["msg"] as? JSONObject)?["insets"] as? JSONObject }).map { (num($0["left"]) ?? 0) >= 500 } ?? false }),
+        "\(fake.all("setLayout", since: mark).map { ($0["msg"] as? JSONObject)?["insets"] ?? "" }) \(String(describing: q.layout))")
+  check("the guard away (the inspector is Safari's)", q.edgeFrame == nil)
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true)]])
+  check("gone: the whole window again, the guard back", await until(2, { q.frameTopLeft == r2 && q.edgeFrame != nil }))
+  // Safari's sidebar sliding away with the pointer over the page (each step measured by a pointer event): still under Margin's.
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true, viewport: ["x": 180, "y": 0, "width": r2.width - 180, "height": r2.height, "measured": true], tab: 12)]])
+  try? await Task.sleep(nanoseconds: 300_000_000)
+  await resized()
+  check("a measured part under the docked sidebar: still the whole window", q.frameTopLeft == r2, "\(q.frameTopLeft)")
+  check("and the log says it was measured", said.contains { $0.hasPrefix("\(k2): a part on the left, 180 pt (measured), appeared") })
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true)]])
+  // Margin's sidebar hidden: Safari's sidebar shows through, carved out at once as before.
+  let stateNow = shell.links["safari:P1"]?.mirror.stateJSON().flatMap { try? JSONSerialization.jsonObject(with: $0) as? JSONObject } ?? [:]
+  let settings = (stateNow["settings"] as? JSONObject) ?? [:]
+  func keepOpen(_ on: Bool) { var s = settings; s["sidebarPinnedOpen"] = on; fake.tell(["do": "delta", "id": "S", "changes": ["settings": ["newValue": s]]]) }
+  keepOpen(false)
+  check("Margin's sidebar hidden", await until(5, { q.pointerWant.mode != .none }), "\(q.pointerWant)")
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true, viewport: ["x": 240, "y": 0, "width": r2.width - 240, "height": r2.height])]])
+  check("hidden: Safari's sidebar (240 pt) carved out", await until(2, { q.frameTopLeft.minX == r2.minX + 240 }), "\(q.frameTopLeft)")
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true, viewport: ["x": 0, "y": 0, "width": r2.width, "height": r2.height - 300])]])
+  check("the inspector at the bottom: carved out as before", await until(2, { q.frameTopLeft == CGRect(x: r2.minX, y: r2.minY, width: r2.width, height: r2.height - 300) }), "\(q.frameTopLeft)")
+  keepOpen(true)
+  fake.tell(["do": "windows", "id": "S", "list": [win(1, r1), win(2, r2, focused: true)]])
+  check("back to the whole window", await until(2, { q.frameTopLeft == r2 }))
+
+  var stopped = false
+  shell.stop { stopped = true }
+  _ = await until(3, { stopped })
+  print(String(format: "  timings: the Safari sidebar scenario %.1f s", Date().timeIntervalSince(started)))
+}

@@ -956,7 +956,7 @@ export function createLink({
   }
   // Where each window's tab in front says its page area sits in the window, when that's less than
   // all of it (content/core.js viewportNow: the docked Web Inspector): windowId → { tabId, rect }.
-  /** @type {Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number } }>} */
+  /** @type {Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean } }>} */
   const viewports = new Map();
   // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
   // app tells same-bounds windows apart by them (app/shell/WindowMatcher.swift). Not kept past the background.
@@ -1277,7 +1277,7 @@ export function createLink({
       void windowsNow();
     },
     // A page in front saying where its area sits in its window (handlers.js viewport; null: all of it).
-    /** @param {number} windowId @param {number} tabId @param {{ x: number, y: number, width: number, height: number } | null} rect */
+    /** @param {number} windowId @param {number} tabId @param {{ x: number, y: number, width: number, height: number, measured?: boolean } | null} rect */
     viewport(windowId, tabId, rect) {
       if (!Number.isInteger(windowId) || !Number.isInteger(tabId)) return;
       const had = JSON.stringify(viewports.get(windowId) ?? null);

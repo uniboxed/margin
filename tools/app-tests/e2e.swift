@@ -623,6 +623,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       // MARGIN_E2E_ONLY=overlays: that scenario alone (while working on it).
       if env["MARGIN_E2E_ONLY"] == "overlays" {
         await overlaysScenario()
+        await sidebarSlideScenario()
         print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
         exit(failures == 0 ? 0 : 1)
       }
@@ -634,6 +635,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await windowsScenario(ownSpace: true)
       await keyboardScenario() // e2e-keyboard.swift
       await overlaysScenario() // e2e-overlays.swift
+      await sidebarSlideScenario()
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }

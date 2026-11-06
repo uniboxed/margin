@@ -269,7 +269,8 @@ export function startCore() {
     const x = known ? known.x : offX;
     const y = known ? known.y : full ? 0 : offY;
     const half = (v) => Math.round(v * 2) / 2;
-    return { x: half(x), y: half(y), width: half(w), height: half(h) };
+    // `measured`: where the area starts came from a pointer event, not the guess (for Margin.app's log).
+    return { x: half(x), y: half(y), width: half(w), height: half(h), ...(known ? { measured: true } : {}) };
   };
   const learnOrigin = (/** @type {MouseEvent} */ e) => {
     const z = pageZoom || 1;

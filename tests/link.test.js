@@ -441,6 +441,10 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
     const from3 = app.received.length;
     link.viewport(7, 13, { x: 0, y: 0, width: 1440, height: 500 });
     assert.deepEqual((await app.next('windows', { from: from3, test: (m) => !!m.list[0].viewport })).list[0].viewport, { x: 0, y: 0, width: 1440, height: 500 });
+    // One whose start a pointer event measured: `measured` passed on (the app carves out a measured left part).
+    const from3b = app.received.length;
+    link.viewport(7, 13, { x: 220, y: 0, width: 1220, height: 800, measured: true });
+    assert.deepEqual((await app.next('windows', { from: from3b, test: (m) => m.list[0].viewport?.x === 220 })).list[0].viewport, { x: 220, y: 0, width: 1220, height: 800, measured: true });
     const from4 = app.received.length;
     link.viewport(7, 99, { x: 0, y: 0, width: 1000, height: 800 }); // a tab behind (its inspector isn't shown): not the window's
     link.viewport(7, 13, null); // closed
