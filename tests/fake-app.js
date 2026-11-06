@@ -18,9 +18,11 @@ function frame(text, opcode = 1) {
 }
 
 /**
- * @param {{ token?: string, key?: string, welcome?: (key: string) => any }} [options]
+ * `onMessage`, `onOpen` and `onClose` (optional): each message as it comes,
+ * and each socket opening and closing (the e2e suite's shell follows them).
+ * @param {{ token?: string, key?: string, welcome?: (key: string) => any, onMessage?: (message: any) => void, onOpen?: () => void, onClose?: () => void }} [options]
  */
-export async function startFakeApp({ token = randomUUID(), key = randomUUID(), welcome = (k) => ({ k: 'welcome', v: 2, key: k }) } = {}) {
+export async function startFakeApp({ token = randomUUID(), key = randomUUID(), welcome = (k) => ({ k: 'welcome', v: 2, key: k }), onMessage = () => {}, onOpen = () => {}, onClose = () => {} } = {}) {
   /** @type {any[]} */
   const received = [];
   const sockets = new Set();
@@ -37,7 +39,8 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
     const accept = createHash('sha1').update(String(req.headers['sec-websocket-key']) + GUID).digest('base64');
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
     sockets.add(socket);
-    socket.on('close', () => sockets.delete(socket));
+    onOpen();
+    socket.on('close', () => { sockets.delete(socket); onClose(); });
     socket.on('error', () => {});
     socket.write(frame(JSON.stringify(welcome(key))));
     let buf = Buffer.alloc(0);
@@ -62,6 +65,7 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
         if (opcode !== 1) continue;
         const message = JSON.parse(body.toString('utf8'));
         received.push(message);
+        onMessage(message);
         for (const w of [...waiters]) w();
       }
     });
