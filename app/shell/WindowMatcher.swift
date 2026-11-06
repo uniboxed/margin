@@ -211,6 +211,10 @@ final class WindowBinder {
         // A window missing from the window server's list this long is gone (a bound one's binding goes, a
         // closed one's number may be bound again); shorter, it's a blip: the same window when it's back.
         var absent: Double = 3.0
+        // A copy that reported and now neither reports nor is held (its link gone for good: the socket guard,
+        // its background torn down, its last window closed) is taken as away this long, then forgotten: a
+        // window of its may still be the one listed while one of a reporting copy's is missing.
+        var away: Double = 5.0
         // No front window (the browser not in front, none on screen) for less than this, between two reads with
         // one: a blip, not a front change, for focus moved.
         var frontBlip: Double = 0.5
@@ -282,8 +286,11 @@ final class WindowBinder {
     private var frontMissingAfter: Double?
     // Each window server window's settled bounds: the last it kept for `moved` with no Space change meanwhile.
     private var settledBounds: [Int: CGRect] = [:]
-    // Every link that has reported this session (its copy's hello): one not reporting now may have windows unseen.
-    private var linksSeen: Set<String> = []
+    // Each link that has reported, and when it last reported or was held: one neither reporting nor held now
+    // may have windows unseen, for `Timing.away` (then it's taken as gone for good: the socket guard, its
+    // background torn down, its last window closed; its windows still open are counted by their bounds).
+    // Forgotten when the browser isn't running.
+    private var linksSeen: [String: Double] = [:]
     private var firstReadAt: Double?
     // Reads that told something (whole lists, nothing missing), in a row since.
     private var steadySince: Double?
@@ -292,7 +299,8 @@ final class WindowBinder {
     // begun (the read before a new front window was seen; a Space change when it was heard); `latest`: the
     // latest it can have happened (the read it was seen in, the Space change heard). A Space change heard
     // within `visibleLag` after a new front window, with no other since, is taken as the same one (macOS
-    // says the Space changed once its slide is over).
+    // says the Space changed once its slide is over); so is a new front window that may have come before a
+    // Space change heard since the read before it (both seen in one read).
     private struct Transition { var at: Double; var latest: Double; var space: Bool; var front: Bool }
     private var transitions: [Transition] = []
     private var lastSpaceChange: Double = -.infinity
@@ -347,7 +355,10 @@ final class WindowBinder {
         defer { lastRead = now; noteFront(now) }
         let T = timing
         if firstReadAt == nil { firstReadAt = now }
-        linksSeen.formUnion(reporting)
+        if pids.isEmpty { linksSeen = [:] }
+        for link in reporting { linksSeen[link] = now }
+        for link in held where linksSeen[link] != nil { linksSeen[link] = now } // (kept while held)
+        linksSeen = linksSeen.filter { now - $0.value < T.away }
         // A Space change: the same transition as a new front window just before it, or one of its own.
         if spaceChangedAt > lastSpaceChange {
             lastSpaceChange = spaceChangedAt
@@ -455,11 +466,20 @@ final class WindowBinder {
                 frontSince = now
                 frontMissingAfter = nil
                 frontNoted.append("\(nowFront.map(String.init) ?? "none") at \(WindowMatcher.clock(now))")
-                // Another window in front: a transition, from when it may have begun.
+                // Another window in front: a transition, from when it may have begun. A Space change heard
+                // since then (in this read, or across reads that told nothing) may have come after it: the same
+                // transition, from the earlier of the two (Tirth's log, 2026-11-05 21:53:03: the front window
+                // changed 166 ms before the Space change was heard, and one read saw both).
                 if let n = nowFront, n != lastFrontNumber {
                     if lastFrontNumber != nil {
-                        transitions.append(Transition(at: since, latest: now, space: false, front: true))
-                        transitions = Array(transitions.suffix(4))
+                        if let i = transitions.indices.last, transitions[i].space, !transitions[i].front, since <= transitions[i].latest {
+                            transitions[i].front = true
+                            transitions[i].at = min(transitions[i].at, since)
+                            transitions[i].latest = max(transitions[i].latest, now)
+                        } else {
+                            transitions.append(Transition(at: since, latest: now, space: false, front: true))
+                            transitions = Array(transitions.suffix(4))
+                        }
                     }
                     lastFrontNumber = n
                 }
@@ -697,9 +717,9 @@ final class WindowBinder {
         // (Not on a read that lost a window the last one listed: the window it'd pick may be standing in for that one.)
         // (And counting windows offset for a moment by their settled bounds. Full-screen bounds, which every
         // profile's full-screen window on a display shares: only while every window with them is a reported one,
-        // no link is held and every copy seen this session reports: a held or missing copy's window may be the
-        // one listed while this one's is missing. Otherwise at once, as ever.)
-        let copiesAway = !held.isEmpty || !linksSeen.isSubset(of: reporting)
+        // no link is held and no copy has stopped reporting in the last `away`: a held or missing copy's window
+        // may be the one listed while this one's is missing. Otherwise at once, as ever.)
+        let copiesAway = !held.isEmpty || linksSeen.keys.contains { !reporting.contains($0) }
         func eliminate() {
             guard !lostSome else { return }
             var changed = true

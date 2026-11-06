@@ -35,6 +35,10 @@ final class World {
   private var pageTarget: [WindowKey: Bool] = [:]
   private var pageDue: [(at: Double, key: WindowKey, visible: Bool)] = []
   private var pageLast: [WindowKey: Double] = [:]
+  // When each window server window was last in a read the binder was given, and every binding dropped
+  // for a window missing from the reads less than `Timing.absent` (the copy still reporting its window).
+  private var lastListed: [Int: Double] = [:]
+  var earlyDrops: [String] = []
 
   init(timing: WindowBinder.Timing = .init()) {
     binder = WindowBinder(browser: "safari", timing: timing, log: { [unowned self] in self.lines.append($0) })
@@ -62,8 +66,16 @@ final class World {
       }
     }
     let listed = noList ? [] : collapse ? server.filter { !pids.contains($0.pid) } : server.filter { !blipped.contains($0.number) }
+    let said = lines.count
     let out = binder.update(now: t, ext: ext.keys.sorted().flatMap { ext[$0]! }, reporting: Set(ext.keys), copies: copies, held: held,
                             server: listed, pids: pids, browserInFront: inFront, listed: !noList, spaceChangedAt: spaceAt)
+    // Measured, not read from the line's words: how long the window had been out of the reads.
+    for line in lines[said...] where line.contains(" is gone from the window server") {
+      guard let n = line.range(of: "is no longer window ").flatMap({ Int(line[$0.upperBound...].prefix { $0.isNumber }) }), !pids.isEmpty else { continue }
+      let away = t - (lastListed[n] ?? -.infinity)
+      if away < binder.timing.absent - 1e-9 { earlyDrops.append("window \(n) dropped \(String(format: "%.2f", away)) s after it was last listed: \(line)") }
+    }
+    for w in listed where pids.contains(w.pid) { lastListed[w.number] = t }
     for (k, n) in out where truth[k] != nil && truth[k] != n { wrong.append("\(k) bound to \(n), is \(truth[k]!) (t+\(String(format: "%.2f", t - 1_800_000_000)))") }
     return out
   }
@@ -798,11 +810,19 @@ extension Tests {
           w.run(r.range(0.2, 3.5), every: 0.05)
           current = next
         }
-        if !w.wrong.isEmpty || w.binder.numbers.values.contains(900) {
-          check("visible, a Private window (seed \(seed)): never bound to it, never wrong", false, "\(w.wrong.prefix(3)) \(w.binder.numbers)\n\(w.lines.suffix(30).joined(separator: "\n"))")
+        // Then each reported window shown calmly with its focus change: all three bound.
+        slowHide = false
+        w.run(1.5, every: 0.1)
+        // (The window in front last: one already in front doesn't come forward.)
+        let inFrontNow = w.front
+        for (key, n) in w.truth.sorted(by: { ($0.value == inFrontNow ? 1 : 0, $0.key) < ($1.value == inFrontNow ? 1 : 0, $1.key) }) {
+          w.show(n); w.read(0.05); w.spaceChanged(); w.focus(key, at: w.t - 0.03); w.run(2.5, every: 0.1)
+        }
+        if !w.wrong.isEmpty || w.binder.numbers.values.contains(900) || w.binder.numbers != w.truth {
+          check("visible, a Private window (seed \(seed)): never bound to it, never wrong, the three bound once each is shown with its focus change", false, "\(w.wrong.prefix(3)) \(w.binder.numbers)\n\(w.lines.suffix(30).joined(separator: "\n"))")
           break
         }
-        if seed == 40 { check("visible: a same-bounds window no copy reports, shown while another page still says it's shown for up to 3 s (40 runs): never bound to, never wrong", true) }
+        if seed == 40 { check("visible: a same-bounds window no copy reports, shown while another page still says it's shown for up to 3 s (40 runs): never bound to, never wrong, and the three reported windows bound once each is shown with its focus change", true) }
       }
       let w = threeShown()
       w.add(900, screen)
@@ -812,6 +832,86 @@ extension Tests {
       w.run(4)
       check("visible: the Private window shown: nothing bound to it, and the log says why", !w.binder.numbers.values.contains(900)
             && w.said.contains("safari: window 900 (on screen, 0,0 1512×982) not bound from its page: 4 window(s) have its bounds, 3 reported (a Private window, or a profile without Margin?)"), w.said)
+    }
+    do {
+      // The front window and the Space change seen in one read (Tirth's log, 2026-11-05 21:53:03: the front
+      // window changed 166 ms before macOS said the Space changed, and the Shell reads at once on the notice).
+      // One transition, from the read before: the page's word at the slide's end counts.
+      let w = threeShown()
+      w.pages = true
+      w.run(2)
+      check("visible, one read: set up (B bound by its page)", w.binder.numbers == [k(B, 153): 18285], "\(w.binder.numbers)\n\(w.said)")
+      w.pageLag = { key, visible in key == k(C, 795) && visible ? 0.1 : 0.05 }
+      w.show(18342)
+      w.spaceChanged(ago: -0.2) // heard before the read that first sees the new front window
+      w.read(0.25)
+      w.run(1.5, every: 0.1)
+      check("visible: a new front window and the Space change seen in the same read are one transition (the page's word at the slide's end counts)",
+            w.binder.numbers[k(C, 795)] == 18342 && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      // A front change seen in a read after the one that heard the Space change, but which may have come
+      // before it (the reads between told nothing): the same transition too.
+      let v = threeShown()
+      v.pages = true
+      v.run(2)
+      v.pageLag = { key, visible in key == k(C, 795) && visible ? 0.1 : 0.05 }
+      v.show(18342)
+      v.collapse = true; v.read(0.1) // a read without the browser's windows
+      v.spaceChanged(); v.read(0.05)
+      v.collapse = false; v.read(0.1)
+      v.run(1.5, every: 0.1)
+      check("visible: a new front window first seen after reads that told nothing, the Space change heard among them: one transition",
+            v.binder.numbers[k(C, 795)] == 18342 && v.wrong.isEmpty, "\(v.binder.numbers)\n\(v.said)")
+    }
+    do {
+      // One page silent (Safari's own page in front, a PDF): the windows whose pages speak are still bound,
+      // each as it's shown with its focus change (focus moved), never wrong; the silent one waits.
+      let w = threeShown()
+      w.silent = [k(A, 155)]
+      w.pages = true
+      w.run(2)
+      for (key, n) in [(k(C, 795), 18342), (k(B, 153), 18285)] {
+        w.show(n); w.read(0.05); w.spaceChanged(); w.focus(key, at: w.t - 0.03); w.run(2.5, every: 0.1)
+      }
+      check("visible: one page silent: the two that speak are bound once each is shown with its focus change", w.binder.numbers[k(C, 795)] == 18342 && w.binder.numbers[k(B, 153)] == 18285 && w.wrong.isEmpty,
+            "\(w.binder.numbers)\n\(w.said)")
+      // And with a Private window of the same bounds: the same.
+      let p = threeShown()
+      p.add(900, screen)
+      p.pages = true
+      p.run(2)
+      for (key, n) in [(k(C, 795), 18342), (k(B, 153), 18285), (k(A, 155), 18278)] {
+        p.show(n); p.read(0.05); p.spaceChanged(); p.focus(key, at: p.t - 0.03); p.run(2.5, every: 0.1)
+      }
+      check("visible: a Private window of the same bounds: the three reported windows bound as each is shown with its focus change, none to it",
+            p.binder.numbers == p.truth && p.wrong.isEmpty, "\(p.binder.numbers)\n\(p.said)")
+    }
+    do {
+      // A copy that linked and has gone for good (its socket guard turned it off, its last window closed):
+      // after a moment it no longer holds up full-screen windows of other profiles bound alone by their bounds.
+      let w = World()
+      w.add(100, screen, on: true); w.add(300, second)
+      w.put(A, 1, screen); w.put(C, 3, second)
+      w.truth = [k(A, 1): 100, k(C, 3): 300]
+      w.inFront = false // no page or focus rule: elimination alone
+      w.run(1)
+      check("away: set up (each bound as the only free window with its bounds)", w.binder.numbers == w.truth, "\(w.binder.numbers)\n\(w.said)")
+      _ = w.ext.removeValue(forKey: C); w.remove(300) // C's copy gone, its window closed
+      w.close(A, 1); w.remove(100)
+      w.run(1)
+      w.add(101, screen, on: true); w.put(A, 2, screen); w.truth = [k(A, 2): 101]
+      w.run(1)
+      check("away: a copy just gone: a new full-screen window waits (a window of its may be the one listed)", w.binder.numbers.isEmpty, "\(w.binder.numbers)")
+      w.run(WindowBinder.Timing().away)
+      check("away: a copy gone for good: the new full-screen window bound as the only free window with its bounds", w.binder.numbers == w.truth && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      // Safari quit with Margin.app still running and opened with one profile: nothing held over.
+      let q = World()
+      q.add(100, screen, on: true); q.add(200, second)
+      q.put(A, 1, screen); q.put(B, 2, second)
+      q.run(1)
+      q.ext = [:]; q.server = []; q.pids = []; q.run(1)
+      q.pids = [2]; q.add(101, screen, on: true, pid: 2); q.put(A, 5, screen); q.truth = [k(A, 5): 101]
+      q.run(0.5)
+      check("away: Safari quit and opened again with one profile: its full-screen window bound at once", q.binder.numbers == q.truth && q.wrong.isEmpty, "\(q.binder.numbers)\n\(q.said)")
     }
     do {
       // A binding its pages contradict (made wrong some other way): dropped after 2 s, then each bound right.
@@ -929,6 +1029,7 @@ extension Tests {
       let only = ProcessInfo.processInfo.environment["WINDOW_SEED"].flatMap { Int($0) }
       let runs = ProcessInfo.processInfo.environment["VISIBLE_RUNS"].flatMap { Int($0) } ?? 1000
       var wrongRuns = 0, firstWrong = "", bound = 0, total = 0, unboundAtEnd = 0, firstUnbound = ""
+      var boundByPages = 0, totalByPages = 0, boundByFocus = 0, totalByFocus = 0
       for seed in only.map({ $0...$0 }) ?? 1...runs {
         var r = Seeded(state: UInt64(seed) &* 0x9E37_79B9 &+ 17)
         let w = World()
@@ -981,16 +1082,30 @@ extension Tests {
         }
         for (_, _, f) in due.sorted(by: { ($0.0, $0.1) < ($1.0, $1.1) }) { f() }
         w.inFront = true; w.blipped = []; w.collapse = false; w.noList = false; slowHide = false
-        // Then each window shown in turn, calmly, its Space change heard: the pages bind what they can.
-        for (_, n) in fs { w.show(n); w.read(0.05); w.spaceChanged(); w.run(2.5, every: 0.1) }
+        // Then each window shown in turn, calmly, its Space change heard: the pages bind what they can. With
+        // a page that never says or a Private window, the pages can't (never guessed): each is shown with its
+        // focus change too, as Safari gives one when a window comes forward.
+        let pagesAlone = !privateWindow && w.silent.isEmpty
+        w.run(1.5, every: 0.1)
+        // (The window in front last: one already in front doesn't come forward.)
+        let inFrontNow = w.front
+        for (key, n) in fs.filter({ $0.1 != inFrontNow }) + fs.filter({ $0.1 == inFrontNow }) {
+          w.show(n); w.read(0.05); w.spaceChanged(); if !pagesAlone { w.focus(key, at: w.t - 0.03) }; w.run(2.5, every: 0.1)
+        }
         total += fs.count
-        bound += fs.filter { w.binder.numbers[$0.0] == $0.1 }.count
-        if !privateWindow, w.silent.isEmpty, fs.contains(where: { w.binder.numbers[$0.0] != $0.1 }) { unboundAtEnd += 1; if firstUnbound.isEmpty { firstUnbound = "seed \(seed): \(w.binder.numbers)\n" + w.lines.suffix(only != nil ? 300 : 25).joined(separator: "\n") } }
+        let boundHere = fs.filter { w.binder.numbers[$0.0] == $0.1 }.count
+        bound += boundHere
+        if pagesAlone { boundByPages += boundHere; totalByPages += fs.count } else { boundByFocus += boundHere; totalByFocus += fs.count }
+        if fs.contains(where: { w.binder.numbers[$0.0] != $0.1 }) {
+          unboundAtEnd += 1
+          if firstUnbound.isEmpty { firstUnbound = "seed \(seed) (\(pagesAlone ? "every page saying" : "a page silent or a Private window, focus changes")): \(w.binder.numbers)\n" + w.lines.suffix(only != nil ? 300 : 25).joined(separator: "\n") }
+        }
         if !w.wrong.isEmpty { wrongRuns += 1; if firstWrong.isEmpty { firstWrong = "seed \(seed): \(w.wrong[0])\n" + w.lines.suffix(only != nil ? 300 : 25).joined(separator: "\n") } }
       }
       check("randomized pages (\(runs) runs of 20 Space switches, the pages' word lagging up to 0.6 s, the one shown before up to 3 s when a Private window is shown, some never saying, words forgotten, blips, Space changes heard late): never bound wrong", wrongRuns == 0, "\(wrongRuns) runs; \(firstWrong)")
-      check("randomized pages: with every page saying and no Private window, every full-screen window bound once each was shown calmly", unboundAtEnd == 0, "\(unboundAtEnd) runs; \(firstUnbound)")
-      print("  (randomized pages: \(bound) of \(total) full-screen windows bound at the end)")
+      check("randomized pages: every full-screen window bound once each was shown calmly (by the pages with every page saying and no Private window; else with its focus change)",
+            unboundAtEnd == 0 && (only != nil || (totalByPages > 0 && totalByFocus > 0)), "\(unboundAtEnd) runs; \(firstUnbound)")
+      print("  (randomized pages: \(bound) of \(total) full-screen windows bound at the end: \(boundByPages) of \(totalByPages) by the pages alone, \(boundByFocus) of \(totalByFocus) with focus changes)")
     }
 
     // ---- randomized: Space switches among several windows, flags lagging and disagreeing ----
@@ -998,7 +1113,7 @@ extension Tests {
     let lag = ProcessInfo.processInfo.environment["WINDOW_LAG"].flatMap { Double($0) } ?? 1.2
     let runs = ProcessInfo.processInfo.environment["WINDOW_RUNS"].flatMap { Int($0) } ?? 300
     for blips in [false, true] {
-    var wrongRuns = 0, unboundRuns = 0, firstWrong = "", blipDrops = 0
+    var wrongRuns = 0, unboundRuns = 0, firstWrong = "", blipDrops = 0, firstDrop = ""
     for seed in only.map({ $0...$0 }) ?? 1...runs {
       var r = Seeded(state: UInt64(seed))
       let w = World()
@@ -1075,13 +1190,14 @@ extension Tests {
       }
       if !w.wrong.isEmpty { wrongRuns += 1; if firstWrong.isEmpty { firstWrong = "seed \(seed): \(w.wrong[0])\n" + w.lines.suffix(only != nil ? 200 : 12).joined(separator: "\n") } }
       if w.binder.numbers != w.truth { unboundRuns += 1 }
-      // A binding goes for the window server only after 3 s without its window (every window here stays open).
-      if w.lines.contains(where: { $0.contains("is gone from the window server") && !$0.contains("(not listed for 3 s)") }) { blipDrops += 1 }
+      // A binding goes for the window server only after 3 s without its window (every window here stays open),
+      // measured from the reads (World.earlyDrops), not from what the line says.
+      if !w.earlyDrops.isEmpty { blipDrops += 1; if firstDrop.isEmpty { firstDrop = "seed \(seed): \(w.earlyDrops[0])" } }
     }
     let with = blips ? ", the window server's list blipping" : ""
     check("randomized (\(runs) runs of 12 Space switches, flags lagging up to \(lag) s and disagreeing\(with)): never bound wrong", wrongRuns == 0, "\(wrongRuns) runs; \(firstWrong)")
     check("and every window bound once each was shown cleanly\(with)", unboundRuns == 0, "\(unboundRuns) runs")
-    check("and no binding dropped for a window missing less than 3 s\(with)", blipDrops == 0, "\(blipDrops) runs")
+    check("and no binding dropped for a window missing less than 3 s\(with)", blipDrops == 0, "\(blipDrops) runs; \(firstDrop)")
     }
   }
 }
