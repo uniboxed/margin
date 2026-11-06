@@ -1,9 +1,10 @@
 // The e2e suite's test site: about twenty pages that look and behave like
 // real sites, each site on its own `.test` host name, all from one local
 // port. Nothing here reaches the network: the pictures are drawn (art.js),
-// the raster files are made in memory (make-media.mjs), committed files
-// live in files/<site>/, and fonts are the system's or the neo-brutalism
-// theme's bundled ones.
+// the raster files are made in memory (make-media.mjs), the video is a
+// committed file made by make-video.mjs (files/<site>/), and fonts are the
+// system's or the neo-brutalism theme's bundled ones. README.md lists the
+// sites and what each one is for.
 //
 //   const site = await startSite();          // { port, url(host, path), sites, close }
 //   site.url('shop.test', '/p/canvas-tote')  // 'http://shop.test:<port>/p/canvas-tote'
@@ -24,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { extname, join, normalize } from 'node:path';
 import { artFor } from './art.js';
 import { media } from './make-media.mjs';
-import { notFound } from './sites/common.js';
+import { FIRST_FRAMES, notFound } from './sites/common.js';
 import { SITES } from './sites/index.js';
 import { searchResults as resultsPage } from './sites/search.js';
 
@@ -35,20 +36,6 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 const FILES = join(HERE, 'files');
 const FONTS = fileURLToPath(new URL('../../../extension/themes/neo-brutalism/fonts/', import.meta.url));
 const TYPES = { '.webm': 'video/webm', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json' };
-
-const FIRST_FRAMES = `<script>(() => {
-  const late = Number(new URLSearchParams(location.search).get('late') || 0);
-  const fp = window.__fp = { frames: [], held: 0, heard: 0 };
-  addEventListener('margin:box', (e) => { if (performance.now() < late) { e.stopImmediatePropagation(); e.preventDefault(); fp.held++; } else fp.heard++; }, true);
-  const look = () => {
-    const html = document.documentElement;
-    const s = getComputedStyle(html);
-    const m = new DOMMatrix(s.transform);
-    fp.frames.push({ t: Math.round(performance.now()), x: m.e, y: m.f, w: Math.round(parseFloat(s.width)), mark: html.getAttribute('data-margin-at'), said: s.getPropertyValue('--margin-fp').trim(), left: s.getPropertyValue('--margin-at-left').trim(), frame: getComputedStyle(html, '::after').boxShadow });
-    if (fp.frames.length < 40) requestAnimationFrame(look);
-  };
-  requestAnimationFrame(look);
-})();</script>`;
 
 let made; // the raster files, made once a process
 const art = new Map(); // drawn pictures, by address
@@ -102,7 +89,7 @@ async function route(site, req, res, u, url) {
     return body ? { type: 'image/svg+xml', body, cache: true } : notFoundOut(site, path);
   }
   const key = `${site.dir ?? site.host.replace('.test', '')}${path}`;
-  if (made.has(key)) return { ...made.get(key), cache: true, delay: site.mediaDelay?.(path, u) };
+  if (made.has(key)) return ranged(req, made.get(key).type, made.get(key).body);
   if (path.startsWith('/fonts/') && site.fonts) return file(join(FONTS, path.slice('/fonts/'.length)), site, path);
   if (path.startsWith('/files/')) return file(join(FILES, site.dir ?? site.host.replace('.test', ''), path.slice('/files/'.length)), site, path, req);
   if (site.assets?.[path]) return { ...site.assets[path], cache: false };
@@ -125,9 +112,11 @@ function file(full, site, path, req) {
   const clean = normalize(full);
   if (!clean.startsWith(FILES) && !clean.startsWith(normalize(FONTS))) return notFoundOut(site, path);
   if (!existsSync(clean)) return notFoundOut(site, path);
-  const bytes = readFileSync(clean);
-  const type = TYPES[extname(clean)] ?? 'application/octet-stream';
-  // Video is asked for in ranges.
+  return ranged(req, TYPES[extname(clean)] ?? 'application/octet-stream', readFileSync(clean));
+}
+
+// Audio and video are asked for in ranges.
+function ranged(req, type, bytes) {
   const range = req?.headers.range && /bytes=(\d*)-(\d*)/.exec(req.headers.range);
   if (range) {
     const start = range[1] ? Number(range[1]) : 0;

@@ -302,12 +302,13 @@ document.querySelector('.share .save')?.addEventListener('click', (e) => e.curre
 export default {
   host: 'dispatch.test',
   name: 'The Dispatch',
+  blurb: 'Independent journalism since 1897.',
   look: { bg: '#faf6ef', ink: '#1c1a17', accent: '#b3261e', font: '"Iowan Old Style", Palatino, ui-serif, Georgia, serif' },
   iconLink: ICON,
   pages: [
-    { path: '/2026/11/the-quiet-city', title: 'The Quiet City | The Dispatch', what: 'A magazine article: hero, byline, drop cap, pull quotes, sticky bar', art: STORIES[0].hero },
-    { path: '/longread', title: `${LONG_TITLE} | The Dispatch`, what: 'The same layout with a 180-character title', art: STORIES[1].hero },
-    { path: '/', title: 'The Dispatch — Independent journalism since 1897', what: 'The magazine’s front page', art: STORIES[3].hero },
+    { path: '/2026/11/the-quiet-city', title: 'The Quiet City | The Dispatch', what: 'A magazine article: hero, byline, drop cap, pull quotes, sticky bar', snippet: STORIES[0].dek, art: STORIES[0].hero },
+    { path: '/longread', title: `${LONG_TITLE} | The Dispatch`, what: 'The same layout with a 180-character title', snippet: STORIES[1].dek, art: STORIES[1].hero },
+    { path: '/', title: 'The Dispatch — Independent journalism since 1897', what: 'The magazine’s front page', snippet: 'Independent journalism since 1897: cities, culture, science, food and travel.', art: STORIES[4].hero },
   ],
   longTitle: LONG_TITLE,
   assets: {

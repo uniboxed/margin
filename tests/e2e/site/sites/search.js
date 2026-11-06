@@ -14,7 +14,7 @@ export function searchResults(q, link) {
   const all = SITES.filter((s) => s.host !== 'margin.test' && s.host !== 'search.test').flatMap((s) => (s.pages ?? []).map((p) => ({ site: s, ...p })));
   const scored = all
     .map((p) => {
-      const hay = `${p.title} ${p.what} ${p.site.name} ${p.site.host}`.toLowerCase();
+      const hay = `${p.title} ${p.snippet ?? ''} ${p.site.blurb ?? ''} ${p.site.name} ${p.site.host}`.toLowerCase();
       return { p, score: words.reduce((n, w) => n + (hay.includes(w) ? (p.title.toLowerCase().includes(w) ? 3 : 1) : 0), 0) };
     })
     .filter((r) => r.score > 0)
@@ -23,7 +23,7 @@ export function searchResults(q, link) {
   const items = results
     .map(({ p }) => {
       const href = link(p.site.host, p.path);
-      return `<li><a href="${href}" class="r"><span class="where"><i style="background:${p.site.look?.accent ?? '#555'}">${esc(p.site.name[0])}</i><span><b>${esc(p.site.name)}</b><small>${esc(p.site.host)}${esc(p.path === '/' ? '' : p.path)}</small></span></span><h3>${esc(p.title)}</h3></a><p>${esc(p.what)}. ${esc(p.site.blurb ?? '')}</p></li>`;
+      return `<li><a href="${href}" class="r"><span class="where"><i style="background:${p.site.look?.accent ?? '#555'}">${esc(p.site.name[0])}</i><span><b>${esc(p.site.name)}</b><small>${esc(p.site.host)}${esc(p.path === '/' ? '' : p.path)}</small></span></span><h3>${esc(p.title)}</h3></a><p>${esc(p.snippet ?? p.site.blurb ?? '')}</p></li>`;
     })
     .join('');
   const related = ['near me', 'meaning', 'reviews', 'how to', 'open now', 'best'].map((s) => `${query || 'search'} ${s}`);

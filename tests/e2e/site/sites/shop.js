@@ -21,6 +21,8 @@ const LINES = [
   ['candle', 'Cedar Candle', '#e9c46a', 'Home', 'Fig Candle', '#9d6381'],
   ['headphones', 'Studio Headphones', '#2b2d42', 'Desk', 'Wireless Cans', '#e5989b'],
 ];
+// What each kind of thing costs, roughly.
+const BASE = { tote: 48, mug: 24, lamp: 120, sneaker: 95, backpack: 110, plant: 32, chair: 340, bottle: 28, cap: 34, notebook: 16, candle: 26, headphones: 180 };
 const GROUNDS = ['#efe9df', '#e4ece4', '#f3e6dc', '#e5e9f0', '#f1ede4', '#ebe4ee'];
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '');
 
@@ -34,7 +36,7 @@ export const PRODUCTS = LINES.flatMap(([kind, a, ca, cat, b, cb], i) =>
       color,
       cat,
       bg: GROUNDS[(i * 2 + k) % GROUNDS.length],
-      price: Math.round(18 + r() * 160) + (r() < 0.5 ? 0 : 0.5),
+      price: Math.round(BASE[kind] * (0.85 + r() * 0.3)),
       rating: Math.round((3.8 + r() * 1.2) * 10) / 10,
       reviews: Math.round(12 + r() * 600),
       badge: k === 0 && i % 4 === 0 ? 'New' : k === 1 && i % 5 === 1 ? 'Sale' : '',
@@ -66,7 +68,7 @@ ${body}
 
 const productCard = (p) => `<a class="product" href="/p/${p.slug}">
   <div class="ph"><img src="${pic(p)}" alt="${esc(p.name)}" loading="lazy" width="400" height="400">${p.badge ? `<span class="badge ${p.badge === 'Sale' ? 'sale' : ''}">${p.badge}</span>` : ''}<button class="fav" aria-label="Save" onclick="event.preventDefault(); this.classList.toggle('on')">${icon('heart', { size: 18 })}</button></div>
-  <div class="pi"><h3>${esc(p.name)}</h3><span class="price">${p.badge === 'Sale' ? `<s>${money(p.price * 1.25)}</s> ` : ''}${money(p.price)}</span></div>
+  <div class="pi"><h3>${esc(p.name)}</h3><span class="price">${p.badge === 'Sale' ? `<s>${money(Math.round(p.price * 1.25))}</s> ` : ''}${money(p.price)}</span></div>
   <div class="meta">${stars(p.rating)}<span>${p.rating} (${p.reviews})</span></div>
 </a>`;
 

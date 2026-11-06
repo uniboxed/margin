@@ -26,7 +26,7 @@ function signin({ email = '', error = '' } = {}) {
         <div class="field">${icon('mail', { size: 18 })}<input id="email" name="email" type="email" autocomplete="username" placeholder="you@company.test" value="${esc(email)}" required></div>
         <p class="err" id="email-err" hidden>Enter an email address like name@company.test.</p>
         <div class="row"><label for="password">Password</label><a href="/signin">Forgot password?</a></div>
-        <div class="field">${icon('lock', { size: 18 })}<input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••" required><button type="button" class="show" aria-label="Show password">${icon('eye', { size: 18 })}</button></div>
+        <div class="field">${icon('lock', { size: 18 })}<input id="password" name="password" type="password" autocomplete="current-password" placeholder="Your password" required><button type="button" class="show" aria-label="Show password">${icon('eye', { size: 18 })}</button></div>
         <p class="err" id="password-err" hidden>Enter your password.</p>
         <label class="remember"><input type="checkbox" name="remember" checked> Keep me signed in for 30 days</label>
         <button type="submit" class="primary">Sign in</button>

@@ -3,6 +3,22 @@
 
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
+// ?fp on any page: where <html> sits in each of the first 40 frames
+// (window.__fp), with Margin's word to the box held back until &late=N ms.
+export const FIRST_FRAMES = `<script>(() => {
+  const late = Number(new URLSearchParams(location.search).get('late') || 0);
+  const fp = window.__fp = { frames: [], held: 0, heard: 0 };
+  addEventListener('margin:box', (e) => { if (performance.now() < late) { e.stopImmediatePropagation(); e.preventDefault(); fp.held++; } else fp.heard++; }, true);
+  const look = () => {
+    const html = document.documentElement;
+    const s = getComputedStyle(html);
+    const m = new DOMMatrix(s.transform);
+    fp.frames.push({ t: Math.round(performance.now()), x: m.e, y: m.f, w: Math.round(parseFloat(s.width)), mark: html.getAttribute('data-margin-at'), said: s.getPropertyValue('--margin-fp').trim(), left: s.getPropertyValue('--margin-at-left').trim(), frame: getComputedStyle(html, '::after').boxShadow });
+    if (fp.frames.length < 40) requestAnimationFrame(look);
+  };
+  requestAnimationFrame(look);
+})();</script>`;
+
 // A picture's address on this site (art.js draws it).
 export const art = (kind, params = {}) => `/media/art/${kind}.svg?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]))}`;
 export const avatar = (name) => art('avatar', { name });
