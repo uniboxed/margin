@@ -127,7 +127,27 @@ export const APP_REQUESTS = new Set([
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
   // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
   'paletteDropped',
+  // The profile handoff (app/HANDOFF.md §3.3): a window's state without taking focus, the frames of
+  // its tab in front, and its drafts before a close.
+  'setWindowState', 'frameProbe', 'windowDrafts',
 ]);
+// The requests that call windows.update or windows.remove for one window: each carries `notAfter`
+// from the handoff, and only one runs per window at a time (app/HANDOFF.md §1.9).
+export const WINDOW_CALLS = new Set(['setWindowState', 'focusWindow', 'closeWindow']);
+// What a parked window's `parkedActivity` says happened there (app/PROTOCOL.md "The handoff").
+export const PARKED_WHY = new Set(['tab', 'focus', 'raise']);
+
+// A windows call that mustn't run, and its answer: past its `notAfter` (milliseconds since 1970, the
+// app's clock and this copy's being the same), `{ refused: 'late', pastMs }`; another windows call for
+// that window still pending, `{ busy: true }`; else null (run it). A request with no `notAfter`
+// (today's switch) is never late. Only the arrival is checked: a call made can't be taken back.
+/** @param {{ windowId?: number, notAfter?: number }} message @param {{ has(id: number): boolean }} pending @param {number} [at] */
+export function windowCallRefusal(message, pending, at = Date.now()) {
+  const { windowId, notAfter } = message ?? {};
+  if (typeof notAfter === 'number' && Number.isFinite(notAfter) && at > notAfter) return { refused: 'late', pastMs: Math.round(at - notAfter) };
+  if (Number.isInteger(windowId) && pending.has(/** @type {number} */ (windowId))) return { busy: true };
+  return null;
+}
 
 // A time as Margin.app's log shows its own (local, to the millisecond), for lines sent there.
 const clock = (/** @type {number} */ ms) => {
@@ -1306,6 +1326,18 @@ export function createLink({
     // Something for one window's UI (no windowId: every window's).
     push(windowId, msg) {
       return !!ws && send({ k: 'push', epoch, windowId: windowId ?? null, msg });
+    },
+    // One of this copy's parked windows used while out of sight (app/HANDOFF.md §6.1): told to the
+    // app, which hands off to it. `why`: 'tab' (a tab Margin didn't open made there), 'focus' (focus
+    // landed there, not Margin's doing) or 'raise' (Margin's UI asked for a tab that's only there);
+    // 'tab' and 'raise' name their tab. Ids only in the log.
+    /** @param {number} windowId @param {'tab' | 'focus' | 'raise'} why @param {number | null} [tabId] */
+    parkedActivity(windowId, why, tabId = null) {
+      if (!Number.isInteger(windowId) || windowId < 0 || !PARKED_WHY.has(why)) return false;
+      if (why !== 'focus' && !Number.isInteger(tabId)) return false;
+      if (!ws) return false;
+      note(`parkedActivity window ${windowId}${Number.isInteger(tabId) ? ` (tab ${tabId})` : ''}: ${why}`);
+      return send({ k: 'push', epoch, windowId, msg: { type: 'parkedActivity', windowId, ...(Number.isInteger(tabId) ? { tabId } : {}), why } });
     },
     // Windows opened, closed, focused, moved, a tab shown: looked at now.
     windowsChanged: () => void windowsNow(),

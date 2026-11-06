@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { startFakeApp } from './fake-app.js';
 
 globalThis.chrome = { runtime: { getURL: (p) => `safari-web-extension://test/${p}`, getManifest: () => ({ version: '2.0.0' }) } };
-const { createLink, keyBindings, themePieces, SESSION_KEY, LINK_META, STATE_KEYS, APP_REQUESTS } = await import('../extension/background/link.js');
+const { createLink, keyBindings, themePieces, SESSION_KEY, LINK_META, STATE_KEYS, APP_REQUESTS, WINDOW_CALLS, PARKED_WHY, windowCallRefusal } = await import('../extension/background/link.js');
 const { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, NOT_DRAWN } = await import('../extension/shared/app-link.js');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1050,6 +1050,60 @@ test('link: a copy that doesn\'t own the state never links', async () => {
     assert.ok(!link.linked());
     assert.equal(api.native.length, 0);
     assert.equal(api.ports.length, 0, 'no port either');
+  } finally {
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: the handoff\'s words — its requests taken, others refused, the windows calls\' refusals, parkedActivity pushed', async () => {
+  for (const type of ['setWindowState', 'frameProbe', 'windowDrafts', 'focusWindow', 'closeWindow', 'openSpaceWindow']) assert.ok(APP_REQUESTS.has(type), type);
+  for (const type of ['parked', 'parkedActivity', 'setWindowStates', 'windowsUpdate', 'framed']) assert.ok(!APP_REQUESTS.has(type), type);
+  assert.deepEqual([...WINDOW_CALLS].sort(), ['closeWindow', 'focusWindow', 'setWindowState']);
+  for (const type of WINDOW_CALLS) assert.ok(APP_REQUESTS.has(type), type);
+  assert.deepEqual([...PARKED_WHY].sort(), ['focus', 'raise', 'tab']);
+
+  const none = new Set();
+  assert.deepEqual(windowCallRefusal({ windowId: 3, notAfter: 1000 }, none, 1210), { refused: 'late', pastMs: 210 }, 'past notAfter');
+  assert.equal(windowCallRefusal({ windowId: 3, notAfter: 1000 }, none, 1000), null, 'at notAfter: still in time');
+  assert.equal(windowCallRefusal({ windowId: 3 }, none, 1e15), null, 'no notAfter (today\'s switch): never late');
+  assert.deepEqual(windowCallRefusal({ windowId: 3, notAfter: 2000 }, new Set([3]), 1000), { busy: true }, 'a call for that window pending');
+  assert.equal(windowCallRefusal({ windowId: 4, notAfter: 2000 }, new Set([3]), 1000), null, 'another window\'s pending: runs');
+  assert.deepEqual(windowCallRefusal({ windowId: 3, notAfter: 1000 }, new Set([3]), 1500), { refused: 'late', pastMs: 500 }, 'late and busy: late first');
+
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const routed = [];
+  const { link } = makeLink(api);
+  try {
+    assert.equal(link.parkedActivity(3, 'focus'), false, 'not linked: nothing');
+    await link.start({ route: async (m) => { routed.push(m); return { ok: true, result: m.type === 'setWindowState' ? { windowId: m.windowId, state: m.state, landedAt: 5 } : null }; } });
+    const hello = await app.next('hello');
+    await app.next('data.hello');
+    const from = app.received.length;
+    app.send({ k: 'req', id: 1, epoch: hello.epoch, windowId: 7, type: 'setWindowState', payload: { windowId: 7, state: 'normal', notAfter: 99 } });
+    assert.deepEqual((await app.next('reply', { from, test: (m) => m.id === 1 })).result, { windowId: 7, state: 'normal', landedAt: 5 });
+    assert.deepEqual(routed[0], { windowId: 7, state: 'normal', notAfter: 99, type: 'setWindowState' }, 'the payload as sent');
+    app.send({ k: 'req', id: 2, epoch: hello.epoch, windowId: 7, type: 'frameProbe', payload: { windowId: 7, width: 1280, height: 800, frames: 6, nudgeMs: 80, timeoutMs: 400 } });
+    app.send({ k: 'req', id: 3, epoch: hello.epoch, windowId: 7, type: 'windowDrafts', payload: { windowId: 7 } });
+    app.send({ k: 'req', id: 4, epoch: hello.epoch, windowId: 7, type: 'parkedActivity', payload: { windowId: 7 } });
+    assert.equal((await app.next('reply', { from, test: (m) => m.id === 2 })).ok, true);
+    assert.equal((await app.next('reply', { from, test: (m) => m.id === 3 })).ok, true);
+    assert.match((await app.next('reply', { from, test: (m) => m.id === 4 })).error, /not a request/, 'a word of the copy\'s isn\'t a request');
+    assert.deepEqual(routed.map((m) => m.type), ['setWindowState', 'frameProbe', 'windowDrafts']);
+
+    assert.equal(link.parkedActivity(3, 'tab', 44), true);
+    assert.equal(link.parkedActivity(3, 'focus'), true);
+    assert.equal(link.parkedActivity(3, 'raise'), false, 'a raise names its tab');
+    assert.equal(link.parkedActivity(3, 'tab'), false, 'so does a tab\'s');
+    assert.equal(link.parkedActivity(3, /** @type {any} */ ('hover'), 1), false, 'a why not known');
+    assert.equal(link.parkedActivity(-1, 'focus'), false, 'no window');
+    const tab = await app.next('push', { from, test: (m) => m.msg?.type === 'parkedActivity' && m.msg.why === 'tab' });
+    assert.deepEqual(tab, { k: 'push', epoch: hello.epoch, windowId: 3, msg: { type: 'parkedActivity', windowId: 3, tabId: 44, why: 'tab' } });
+    const focus = await app.next('push', { from, test: (m) => m.msg?.type === 'parkedActivity' && m.msg.why === 'focus' });
+    assert.deepEqual(focus.msg, { type: 'parkedActivity', windowId: 3, why: 'focus' }, 'no tab');
+    await wait(50);
+    assert.equal(app.received.slice(from).filter((m) => m.msg?.type === 'parkedActivity').length, 2, 'the refused ones sent nothing');
   } finally {
     link.stop();
     await app.close();

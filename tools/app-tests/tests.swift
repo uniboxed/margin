@@ -57,6 +57,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     let started = Date()
     linkMessages()
     appMessages()
+    handoffMessages()
     handshake()
     frames()
     chunks()
@@ -170,6 +171,78 @@ final class FakeRegistrar: HotKeyRegistrar {
     let chunk = Chunk(id: "t", transfer: String(repeating: "0", count: 64), part: 0, parts: 1, size: 3, data: "YWJj")
     let theme = object(AppMessage.theme(epoch: "e", chunk: chunk).encode())
     check("a theme chunk from the app", theme?["k"] as? String == "theme" && theme?["id"] as? String == "t" && theme?["parts"] as? Int == 1 && theme?["data"] as? String == "YWJj")
+  }
+
+  // The profile handoff's words (app/PROTOCOL.md "The handoff"): the app's parked, the copy's
+  // parkedActivity, the requests' payloads and what their answers read as.
+  static func handoffMessages() {
+    let parked = object(AppMessage.parked(epoch: "e", windowId: 7, on: true).encode())
+    check("parked: the window and whether it's parked, with the time", parked?["k"] as? String == "parked" && parked?["epoch"] as? String == "e"
+      && parked?["windowId"] as? Int == 7 && parked?["on"] as? Bool == true && (parked?["at"] as? Double ?? 0) > 1.7e12)
+    check("parked off", object(AppMessage.parked(epoch: "e", windowId: 7, on: false).encode())?["on"] as? Bool == false)
+
+    // parkedActivity, as the copy sends it (a push), back to what it said.
+    for activity in [ParkedActivity(windowId: 3, tabId: 44, why: .tab), ParkedActivity(windowId: 3, why: .focus), ParkedActivity(windowId: 0, tabId: 9, why: .raise)] {
+      let text = jsonString(["k": "push", "epoch": "e", "windowId": activity.windowId, "msg": activity.msg]) ?? ""
+      if case .parkedActivity(let epoch, let back)? = LinkMessage.decode(text) {
+        check("parkedActivity \(activity.why): round trip", epoch == "e" && back == activity, "\(back)")
+      } else { check("parkedActivity \(activity.why) decodes", false, text) }
+    }
+    check("parkedActivity: focus says no tab", ParkedActivity(windowId: 3, why: .focus).msg["tabId"] == nil)
+    if case .parkedActivity(_, let a)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":5,"msg":{"type":"parkedActivity","why":"focus"}}"#) {
+      check("parkedActivity: the push's window stands in for the msg's", a.windowId == 5)
+    } else { check("parkedActivity with the push's window decodes", false) }
+    check("parkedActivity: the push and the msg naming two windows: not one",
+          LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":5,"msg":{"type":"parkedActivity","windowId":6,"why":"focus"}}"#) == nil)
+    check("parkedActivity: a why not known: not one",
+          LinkMessage.decode(#"{"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"hover"}}"#) == nil)
+    check("parkedActivity: a tab's with no tab: not one",
+          LinkMessage.decode(#"{"k":"push","epoch":"e","msg":{"type":"parkedActivity","windowId":6,"why":"tab"}}"#) == nil)
+    check("parkedActivity: a raise with no tab: not one", ParkedActivity(["type": "parkedActivity", "windowId": 6, "why": "raise"]) == nil)
+    check("parkedActivity: no window at all: not one",
+          LinkMessage.decode(#"{"k":"push","epoch":"e","msg":{"type":"parkedActivity","why":"focus"}}"#) == nil)
+    if case .push(_, _, let msg)? = LinkMessage.decode(#"{"k":"push","epoch":"e","windowId":5,"msg":{"type":"notice","kind":"x"}}"#) {
+      check("other pushes stay pushes", msg["type"] as? String == "notice")
+    } else { check("a notice push decodes", false) }
+
+    // The requests' payloads, through a req.
+    let full = HandoffRequest.setWindowState(windowId: 4, state: .fullscreen, focused: true, notAfter: 1_800_000_000_123.4)
+    let req = object(AppMessage.req(id: 1, epoch: "e", windowId: full.windowId, type: full.type, payload: full.payload).encode())
+    let p = req?["payload"] as? JSONObject
+    check("setWindowState: full screen and focused, with notAfter in whole ms", req?["type"] as? String == "setWindowState" && req?["windowId"] as? Int == 4
+      && p?["windowId"] as? Int == 4 && p?["state"] as? String == "fullscreen" && p?["focused"] as? Bool == true && p?["notAfter"] as? Double == 1_800_000_000_123)
+    let normal = HandoffRequest.setWindowState(windowId: 4, state: .normal, notAfter: 1).payload
+    check("setWindowState: normal, not focused (no focused key)", normal["state"] as? String == "normal" && normal["focused"] == nil)
+    let probe = HandoffRequest.frameProbe(windowId: 4, width: 1512, height: 982).payload
+    check("frameProbe: the design's defaults", probe["frames"] as? Int == 6 && probe["nudgeMs"] as? Int == 80 && probe["timeoutMs"] as? Int == 400 && probe["width"] as? Double == 1512)
+    check("windowDrafts: the window", HandoffRequest.windowDrafts(windowId: 9).type == "windowDrafts" && HandoffRequest.windowDrafts(windowId: 9).payload["windowId"] as? Int == 9)
+    let focus = HandoffRequest.focusWindow(windowId: 4, fullscreen: true, notAfter: 5).payload
+    check("focusWindow: notAfter when given", focus["notAfter"] as? Double == 5 && focus["fullscreen"] as? Bool == true)
+    check("focusWindow and closeWindow: today's payloads with none", same(HandoffRequest.focusWindow(windowId: 4).payload, ["windowId": 4])
+      && same(HandoffRequest.closeWindow(windowId: 4).payload, ["windowId": 4]) && HandoffRequest.closeWindow(windowId: 4, notAfter: 9).payload["notAfter"] as? Double == 9)
+    check("openSpaceWindow: no window yet", HandoffRequest.openSpaceWindow(spaceId: "s").windowId == nil && HandoffRequest.openSpaceWindow(spaceId: "s").payload["fullscreen"] as? Bool == true)
+
+    // The answers.
+    check("answer: landed", WindowCallAnswer(["windowId": 4, "state": "fullscreen", "landedAt": 12.0]) == .landed(windowId: 4, state: "fullscreen", at: 12))
+    check("answer: timed out", WindowCallAnswer(["windowId": 4, "state": "fullscreen", "timedOut": true]) == .timedOut(windowId: 4, state: "fullscreen"))
+    check("answer: busy, no call made", WindowCallAnswer(["busy": true]) == .busy && !WindowCallAnswer(["busy": true]).called)
+    check("answer: refused late, by how much", WindowCallAnswer(["refused": "late", "pastMs": 210]) == .refused(why: "late", pastMs: 210) && !WindowCallAnswer(["refused": "late"]).called)
+    check("answer: focusWindow's ordinary one", WindowCallAnswer(["windowId": 4, "state": "fullscreen"]) == .done(state: "fullscreen") && WindowCallAnswer([:]) == .done(state: nil)
+      && WindowCallAnswer([:]).called)
+    let frames = FrameProbeAnswer(["tabId": 44, "frames": 6, "firstAt": 1.0, "lastAt": 75.0, "width": 1512, "height": 982, "hasFocus": true, "visible": true, "visibleAt": 2.0])
+    if case .frames(let f)? = frames {
+      check("frameProbe answer: the frames", f.tabId == 44 && f.frames == 6 && f.lastAt - f.firstAt == 74 && f.width == 1512 && f.hasFocus && f.visible && f.visibleAt == 2)
+    } else { check("frameProbe answer decodes", false) }
+    check("frameProbe answer: none", FrameProbeAnswer(["none": "no page"]) == FrameProbeAnswer.none(why: "no page"))
+    check("frameProbe answer: not one", FrameProbeAnswer(["frames": 6]) == nil)
+    check("windowDrafts answer", WindowDrafts(["drafts": [3], "unknown": []]) == WindowDrafts(drafts: [3], unknown: []) && WindowDrafts(["drafts": [], "unknown": []])?.mayClose == true
+      && WindowDrafts(["drafts": [], "unknown": [5]])?.mayClose == false && WindowDrafts(["drafts": [3]]) == nil)
+    let made = SpaceWindowAnswer(["windowId": 50, "state": "fullscreen", "tabId": 7, "bounds": ["left": 0, "top": 0, "width": 1512, "height": 982]])
+    check("openSpaceWindow answer: with its bounds", made?.windowId == 50 && made?.tabId == 7 && made?.bounds == CGRect(x: 0, y: 0, width: 1512, height: 982))
+    check("openSpaceWindow answer: an older copy's, no bounds", SpaceWindowAnswer(["windowId": 50, "state": "normal", "tabId": NSNull()])?.bounds == nil
+      && SpaceWindowAnswer(["windowId": 50, "bounds": ["left": 0, "top": 0, "width": 0, "height": 982]])?.bounds == nil && SpaceWindowAnswer(["state": "normal"]) == nil)
+    check("framed: the mode, round trip", OverlayFramed(OverlayFramed(mode: .fullscreen).body) == OverlayFramed(mode: .fullscreen)
+      && OverlayFramed(["mode": "windowed"])?.mode == .windowed && OverlayFramed(["mode": "odd"]) == nil && OverlayFramed([:]) == nil)
   }
 
   static func handshake() {

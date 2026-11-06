@@ -294,6 +294,7 @@ Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grac
   - `parkedActivity` (§6.1);
   - `focusTab` and `openPin`, which prefer a tab in a window that isn't parked (`handlers.js:631-636`, `background/tabs.js:176-199`). When the only match is in a parked window, the copy doesn't raise it: it sends `parkedActivity { why: 'raise', windowId, tabId }`, and the app hands off to that window (§6.11);
   - sleeping tabs: a parked window's tab in front doesn't sleep (`background/sleep.js`).
+- Built (WP7): `AppMessage.parked` and the copy's `parkedActivity` push (`link.parkedActivity(windowId, why, tabId)`). The app decodes that push as its own `LinkMessage.parkedActivity`, so it never reaches an overlay. A `tab` or `raise` must name its tab. A push and a msg that name two different windows aren't a message.
 - **`registry.sweep`**, on every read, gets the window-server read, Safari's pids, the copies' windows, the binder's held links (link without state, reconnecting) and the switch's state. For each entry:
   - **gone** (§2.1's rule only): forgotten;
   - **its link held or down:** nothing changes;
@@ -349,6 +350,14 @@ All go through `APP_REQUESTS` (`background/link.js:117-130`) and `handlers.js`:
 - **`windowDrafts { windowId }`:** the tabs of that window with typed text not sent, from the sleeping-tabs draft check (`background/sleep.js:250-266`), all tabs in parallel, 400 ms. Answers `{ drafts: [tabId], unknown: [tabId] }`.
 - **`openSpaceWindow`** answers `bounds` too, and pushes the window list at once (§1.6).
 - **`focusWindow` and `closeWindow`** take `notAfter` and the one-call-per-window rule too.
+
+Built (WP7, the words only; the handlers are WP6's): `HandoffRequest`, `WindowCallAnswer`, `FrameProbeAnswer`, `WindowDrafts`, `SpaceWindowAnswer` and `OverlayFramed` in `LinkMessage.swift`; `APP_REQUESTS`, `WINDOW_CALLS` and `windowCallRefusal` in `background/link.js`; all of it in `app/PROTOCOL.md` "The handoff". Settled on the way:
+
+- `busy` and `refused` are ordinary answers (`ok: true`), so the app tells "nothing done" from a failure.
+- `refused: 'late'` also says `pastMs`, for the log line in §8.1.
+- A request with no `notAfter` (today's switch) is never late. Late is checked before busy.
+- `frameProbe`'s answer may carry `visibleAt` (the page's last `visibilitychange` to visible), for G2's fallback.
+- `openSpaceWindow`'s `bounds` is `{ left, top, width, height }`, as the `windows` list has them.
 
 ### 3.4 The full-screen request: once, and no blind retry
 
