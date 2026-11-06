@@ -21,7 +21,8 @@
 //   <template m-part>       a named part, shown in its slot (<m-menu>: `menu`,
 //                           <m-editor>: `space-editor`, <m-palette>: `palette`,
 //                           <m-notice>: `notice`, <m-launcher>: `launcher`,
-//                           <m-prompt>: `prompt`) while the view model says so;
+//                           <m-prompt>: `prompt`, <m-cloud-tabs>: `cloud-tabs`)
+//                           while the view model says so;
 //                           in Margin's menus, notices and prompts only bound
 //                           text shows (ui/sanitize.js GUARDED_PARTS)
 // Theme packages are loaded (sanitized, fonts made, sheets built) by
@@ -34,9 +35,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // never takes clicks: the browser's page is there.
 const BASE_CSS = `
 m-page{display:block;box-sizing:border-box;background:none!important;pointer-events:none!important}
-m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings{display:block}
+m-window-controls,m-drag-region,m-palette,m-notice,m-menu,m-editor,m-launcher,m-prompt,m-settings,m-cloud-tabs{display:block}
 m-menu{position:fixed;left:var(--m-menu-x,0px);top:var(--m-menu-y,0px);z-index:2147483600;outline:none}
-m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty{display:none}
+m-menu:empty,m-editor:empty,m-palette:empty,m-notice:empty,m-launcher:empty,m-prompt:empty,m-settings:empty,m-cloud-tabs:empty{display:none}
 template{display:none!important}
 [m-passthrough]{pointer-events:none!important}
 :where([m-passthrough])>:where(:not(m-page)){pointer-events:auto}
@@ -63,6 +64,9 @@ const SLOTS = {
   'm-launcher': { part: 'launcher', test: ['launcher'] },
   'm-prompt': { part: 'prompt', test: ['prompt'] },
   'm-settings': { part: 'settings', test: ['settingsForm'] },
+  // iCloud Tabs' live folder: drawn whole by its part, so a theme can put it
+  // anywhere (the sidebar now; later, perhaps, by the sidebar's toggle).
+  'm-cloud-tabs': { part: 'cloud-tabs', test: ['cloudTabs'] },
 };
 // Margin's own words (ui/sanitize.js GUARDED_PARTS): inside these parts and
 // slots, text the theme wrote is dropped again here, whatever tree the

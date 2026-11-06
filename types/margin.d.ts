@@ -69,6 +69,12 @@ export interface Shortcuts { nextTab: string; prevTab: string; nextSpace: string
 export interface Settings {
   sidebarPinnedOpen: boolean;
   frameWhenHidden?: boolean;
+  /** iCloud Tabs (Margin.app with Safari): shown in the sidebar and the palette */
+  showCloudTabs?: boolean;
+  /** iCloud Tabs' folder open */
+  cloudTabsOpen?: boolean;
+  /** the devices whose tabs iCloud Tabs' folder hides (Safari's device ids) */
+  cloudTabsClosed?: string[];
   archiveAfterHours: number;
   /** tabs unused this long are put to sleep (background/sleep.js); 0: never */
   sleepAfterHours: number;

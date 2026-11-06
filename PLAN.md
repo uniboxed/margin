@@ -241,6 +241,7 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 ### Phase 5: Chrome and Edge on the Mac
 
 - Native messaging host install, window matching for Chromium windows, both browsers at once.
+- iCloud Tabs' folder and palette section for Chrome and Edge windows (built for Safari on 2026-11-05: `DECISIONS.md` "Margin 2: iCloud Tabs"): the extension's `sessions.getDevices()` gives the person's other devices and their open tabs (its own sync, not iCloud), sent to the app for its overlays in the same shape as `cloudTabs` (`app/PROTOCOL.md` "iCloud Tabs").
 - Their profiles' own names, as Safari's are shown from Phase 2 step 9 (`app/shell/SafariProfiles.swift`; not built for them yet): each browser's `Local State` file (JSON; Chrome: `~/Library/Application Support/Google/Chrome/Local State`, Edge: `~/Library/Application Support/Microsoft Edge/Local State`), `profile.info_cache`, keyed by the profile's folder (`Default`, `Profile 1`…), with `name` (and `avatar_icon`, `default_avatar_fill_color`). Readable without Full Disk Access, but macOS 27 asks before an app reads another app's data (TCC "app data"): the set-up window will need its own step. The extension sees no profile id at all in Chromium, so the link from a copy to its folder still has to be found (its `Extensions/`/`Local Extension Settings/<extension id>/` folder under the profile is one lead).
 
 ### Phase 6: Neo-brutalism and Pixel, and user themes
@@ -282,6 +283,7 @@ Still open: nothing. Phase 0 settled the drawing method (section 14).
 - **Mini player:** controls for whatever tab is playing (title, play/pause), from the audible tab and the page's media session, shown by themes that have a place for it.
 - **Favorites:** a small grid of always-there sites above the space's tabs, across spaces (Arc's favorites), as their own list in the state.
 - **Theme gallery:** themes listed inside Margin's Settings and installed with one click, on top of file import. Needs hosting, a listing review, and the same checks as an imported file on every download.
+- **iCloud Tabs beside the sidebar's toggle:** iCloud Tabs (a live folder in the sidebar and a palette section since 2026-11-05, `DECISIONS.md` "Margin 2: iCloud Tabs") moved, as the person chooses, out of the sidebar into an icon at the top of the sidebar, right of the sidebar's slide/toggle icon, opening the same `cloud-tabs` part in a popover. The part already draws the whole folder on its own, so it's a new place to show it and a setting, not new theme code.
 
 ## 14. Phase 0 results (2026-11-04)
 

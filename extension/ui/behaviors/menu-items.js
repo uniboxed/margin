@@ -6,13 +6,14 @@
 // the runtime keeps the action. Pure: runs in Node.
 
 import { foreignSpace, isMultiProfile, profileOf } from '../../shared/across.js';
+import { cloudShown } from '../../shared/cloud-tabs.js';
 
 // The space editor's swatches (Arcadia's).
 export const SPACE_COLORS = Object.freeze(['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#d63031', '#e84393', '#636e72']);
 
 /**
  * @typedef {{ id: string, label: string, separator: boolean, danger: boolean, confirm: boolean, action: string | null, arg?: any }} MenuItem
- * @typedef {{ kind: 'tab' | 'pin' | 'folder' | 'space' | 'add', id?: string | number | null }} MenuTarget
+ * @typedef {{ kind: 'tab' | 'pin' | 'folder' | 'space' | 'add' | 'cloud', id?: string | number | null }} MenuTarget
  */
 
 /**
@@ -117,6 +118,16 @@ export function menuItems(target, { state, space }) {
         separator();
         item('Delete Space', 'space.delete', sp.id, { danger: true, confirm: true });
       }
+      break;
+    }
+    case 'cloud': {
+      // A tab of iCloud Tabs (on another device): opened here, or its address
+      // copied. Margin can't close it there, and there's no "new window with
+      // this address" request to offer.
+      const tab = cloudShown(state)?.devices.flatMap((d) => d.tabs).find((t) => t.id === target.id);
+      if (!tab) return [];
+      item('Open', 'cloud.open', tab.id);
+      item('Copy Link', 'cloud.copy', tab.id);
       break;
     }
     case 'add':

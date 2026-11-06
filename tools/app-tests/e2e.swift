@@ -209,6 +209,14 @@ func scenario() async {
   defer { try? FileManager.default.removeItem(at: dataRoot) }
   options.dataRoot = dataRoot
   options.reconnectGrace = 1.5
+  // iCloud Tabs from a stand-in for Safari's file (e2e-cloud.swift), never Safari's own.
+  let cloud = E2ECloud()
+  defer { cloud.remove() }
+  options.cloudTabsData = cloud.folder
+  options.cloudWatch.thisMac = E2ECloud.thisMac
+  options.cloudWatch.debounce = 0.1
+  options.cloudWatch.latency = 0.05
+  options.cloudWatch.retry = 0.3
   let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: keys, options: options)
   windows.shell = shell
   shell.start()
@@ -478,6 +486,9 @@ func scenario() async {
   shell.pressed(CGPoint(x: r7.minX + 700, y: r7.minY + 400)) // on the page
   check("a press on the page: the keyboard goes back to the browser", await until(3, { !o7.hasKeyboard }) && o7.handedBack == 1)
   check("and the palette closes", (await waitJS(o7.webView, "return !document.querySelector('.palette-layer')")))
+
+  // ---- iCloud Tabs (e2e-cloud.swift) ----
+  await cloudScenario(shell: shell, fake: fake, overlay: o7, cloud: cloud)
 
   // ---- a second profile, a copy not in charge, a newer link ----
   mark = fake.events.count

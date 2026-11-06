@@ -15,7 +15,7 @@
 import { menuItems } from './menu-items.js';
 
 // What a row's action says it is (for rows with no m-drag).
-const ROW_OF_ACTION = { 'tab.activate': 'tab', 'pin.open': 'pin', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space' };
+const ROW_OF_ACTION = { 'tab.activate': 'tab', 'pin.open': 'pin', 'folder.toggle': 'folder', 'space.switch': 'space', 'space.edit': 'space', 'cloud.open': 'cloud' };
 
 /** @param {any} rt */
 export function installMenus(rt) {

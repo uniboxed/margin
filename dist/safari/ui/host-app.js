@@ -28,13 +28,19 @@
 //   background/page-loads.js): the tab's status, a page being left, a site's
 //   own same-page navigation; drawn as each tab's `loading` (the view model);
 // - why the last request failed (`takeFailure`), for the notice of a switch
-//   that didn't happen.
+//   that didn't happen;
+// - iCloud Tabs (Safari's windows only): the app's own data, never the
+//   copy's, in the hello (`cloudTabs`) and as `{ type: 'cloudTabs' }` when it
+//   changes (app/shell/ShellCloudTabs.swift), checked (shared/cloud-tabs.js
+//   cloudOf) and kept as the state's `cloudTabs`; the folder's Full Disk
+//   Access button and its Copy Link are the app's (`cloud.access`, `copyText`).
 //
 // No browser API here: only the DOM and `post`.
 /** @import { Geometry, Host } from './host.js' */
 import { fromStorage } from '../shared/stored.js';
 import { isNewTabPage } from '../shared/view.js';
 import { acrossOf, foreignSpace } from '../shared/across.js';
+import { cloudOf } from '../shared/cloud-tabs.js';
 import { platform as profile } from '../shared/platform.js';
 
 /**
@@ -127,6 +133,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   let mode = hello?.mode === 'windowed' ? 'windowed' : 'fullscreen';
   // Every profile's spaces in the one order, and the profiles (app/shell/ShellProfiles.swift): `state.across`.
   let across = acrossOf(hello?.across);
+  // iCloud Tabs, as the app read them (Safari only; null: none).
+  let cloud = cloudOf(hello?.cloudTabs);
   /** @type {Geometry | null} */
   let layout = null;
   let destroyed = false;
@@ -136,8 +144,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // page gave them when Settings were drawn there.
   const platform = {
     browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'), os: 'mac', app: true,
-    features: { sleepTabs: profile?.sleepTabs ?? false, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search },
+    features: { sleepTabs: profile?.sleepTabs ?? false, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search, cloudTabs: false },
   };
+  // "Show iCloud Tabs" in Settings: Safari's windows (Chrome and Edge: Phase 5, sessions.getDevices()).
+  platform.features.cloudTabs = platform.browser === 'safari';
   // The window's tabs loading, as the copy last said (`push` `loading`).
   /** @type {Set<number>} */
   let loading = new Set();
@@ -147,6 +157,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   const rebuild = () => {
     const next = raw ? fromStorage(raw) : null;
     let built = next?.spaces?.length ? (across ? { ...next, across } : next) : null;
+    if (built && cloud) built = { ...built, cloudTabs: cloud };
     if (built && loading.size && built.tabs) {
       const tabs = { ...built.tabs };
       for (const id of loading) if (tabs[id]) tabs[id] = { ...tabs[id], loading: true };
@@ -267,6 +278,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'space.move':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
+        // iCloud Tabs (app/shell/ShellCloudTabs.swift): System Settings at Full Disk Access, an address copied.
+        case 'cloud.access':
+          void post('perform', { name, arg: null }).catch(() => {});
+          return true;
+        case 'copyText':
+          if (typeof arg?.text !== 'string') return false;
+          void post('perform', { name, arg: { text: arg.text } }).catch(() => {});
+          return true;
         case 'notice':
           // The runtime closed it; the overlay's notices tell the copy what was chosen.
           onNotice(arg ?? {});
@@ -293,6 +312,10 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return emit();
         case 'across':
           across = acrossOf(msg.across);
+          rebuild();
+          return emit();
+        case 'cloudTabs':
+          cloud = cloudOf(msg.cloudTabs);
           rebuild();
           return emit();
         case 'windows': {

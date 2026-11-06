@@ -24,6 +24,7 @@ import { checkIconUrl } from './sanitize.js';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.js';
 import { settingsFields } from './settings-form.js';
 import { isMultiProfile, orderedSpaces } from '../shared/across.js';
+import { STALE_MS, cloudShown, deviceNames, lastUsed, onDevice, updatedText } from '../shared/cloud-tabs.js';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;
@@ -117,11 +118,35 @@ export const VM_VERSION = 1;
  *   id: number, loading: boolean, audible: boolean, asleep: boolean, pinned: boolean, newTab: boolean,
  * }} ActiveTab
  * @typedef {Face & { id: string, spaceId: string, closedAt: number, ago: string }} ArchiveRow
+ * A palette row. `section`: the heading of a run of rows from one place
+ * ("On Tirth's iPhone": iCloud Tabs), `sectionStart` on its first row ('' and
+ * false for Margin's own rows).
  * @typedef {{
  *   id: string, kind: string, title: string, subtitle: string, badge: string,
  *   emoji: string, icon: string | null, letter: string, color: string,
- *   selected: boolean, goes: boolean,
+ *   selected: boolean, goes: boolean, section: string, sectionStart: boolean,
  * }} PaletteRow
+ *
+ * iCloud Tabs (`<m-cloud-tabs>`, the theme's `cloud-tabs` part): the tabs
+ * open on the person's other devices, a live folder (Margin.app with Safari,
+ * "Show iCloud Tabs" on; else null). Read only: nothing is dragged into it or
+ * reordered in it, and a remote tab can't be closed. `open`: the folder
+ * expanded; one of `ready` (devices to show), `empty` (none with tabs),
+ * `noAccess` (no Full Disk Access: `canFix`, its button runs cloud.access),
+ * `noData` (iCloud Tabs off, or not synced), `failed`, with `message` saying
+ * so in Margin's words (`hasMessage`). `count`: tabs on all devices.
+ * @typedef {Face & { kind: 'cloud', id: string, pinned: boolean, deviceId: string, label: string }} CloudTabRow
+ * @typedef {{
+ *   kind: 'cloud-device', id: string, name: string, label: string, describe: string, updated: string,
+ *   isPhone: boolean, isPad: boolean, isMac: boolean, isVision: boolean, isOther: boolean,
+ *   open: boolean, stale: boolean, count: number, tabs: CloudTabRow[], shown: CloudTabRow[],
+ * }} CloudDeviceRow
+ * @typedef {{
+ *   open: boolean, ready: boolean, empty: boolean, noAccess: boolean, noData: boolean, failed: boolean,
+ *   message: string, hasMessage: boolean, canFix: boolean,
+ *   devices: CloudDeviceRow[], hasDevices: boolean, count: number, hasCount: boolean,
+ *   labels: { title: string, toggle: string, fix: string, pinned: string },
+ * }} CloudTabsView
  *
  * A context menu's row: an item (its label; what it runs stays in Margin)
  * or a separator. `confirming`: pressed once, it asks again ("Really delete?").
@@ -190,6 +215,7 @@ export const VM_VERSION = 1;
  *   gesture: GestureView | null,
  *   launcher: LauncherView | null,
  *   settingsForm: SettingsFormView | null,
+ *   cloudTabs: CloudTabsView | null,
  *   settings: Record<string, string | number | boolean>,
  *   platform: { browser: string, os: string },
  * }} ViewModel
@@ -317,7 +343,7 @@ function fresh(input) {
       space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, profile: null, foreign: false, profileMark: false, profileStart: false, switching: false, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], profiles: [], profile: null, multiProfile: false, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
-      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, settingsForm: null, settings, platform,
+      menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, settingsForm: null, cloudTabs: null, settings, platform,
     };
   }
 
@@ -448,6 +474,8 @@ function fresh(input) {
         color,
         selected: i === at,
         goes: GOES.has(item.kind),
+        section: item.section ?? '',
+        sectionStart: !!item.sectionStart,
       };
     });
     selected = at >= 0 ? items[at].id : null;
@@ -559,8 +587,55 @@ function fresh(input) {
     gesture,
     launcher,
     settingsForm,
+    cloudTabs: cloudView(state, now),
     settings,
     platform,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// iCloud Tabs (shared/cloud-tabs.js): the folder, its devices and their tabs.
+
+const CLOUD_LABELS = Object.freeze({ title: 'iCloud Tabs', fix: 'Open Full Disk Access', pinned: 'Pinned on that device' });
+const CLOUD_MESSAGES = Object.freeze({
+  empty: 'No tabs are open on your other devices.',
+  noAccess: 'Margin needs Full Disk Access to show the tabs open on your other devices.',
+  noData: 'No iCloud Tabs yet. They show here once Safari syncs your tabs with iCloud (System Settings › your name › iCloud › Safari, on each device).',
+  failed: 'Margin couldn’t read iCloud Tabs from this version of Safari.',
+});
+
+/** @param {State} state @param {number} now @returns {CloudTabsView | null} */
+function cloudView(state, now) {
+  const cloud = cloudShown(state);
+  if (!cloud) return null;
+  const open = state.settings?.cloudTabsOpen !== false;
+  const closed = new Set(Array.isArray(state.settings?.cloudTabsClosed) ? state.settings.cloudTabsClosed : []);
+  const names = deviceNames(cloud.devices);
+  const devices = cloud.devices.map((d) => {
+    const used = lastUsed(d);
+    const name = names.get(d.id) ?? d.name;
+    const updated = updatedText(used.at, used.exact, now);
+    const tabs = d.tabs.map((t) => {
+      const f = face(state, { url: t.url }, t.title || hostOf(t.url) || t.url);
+      const label = (f.host && f.host !== f.title ? `${f.title}, ${f.host}` : f.title) + (t.pinned ? `, ${CLOUD_LABELS.pinned.toLowerCase()}` : '');
+      return { kind: /** @type {'cloud'} */ ('cloud'), id: t.id, ...f, pinned: t.pinned, deviceId: d.id, label };
+    });
+    const shown = !closed.has(d.id);
+    return {
+      kind: /** @type {'cloud-device'} */ ('cloud-device'), id: d.id, name, label: onDevice(name), describe: updated ? `${onDevice(name)}, ${updated}` : onDevice(name), updated,
+      isPhone: d.kind === 'phone', isPad: d.kind === 'pad', isMac: d.kind === 'mac', isVision: d.kind === 'vision', isOther: d.kind === 'other',
+      open: shown, stale: !!used.at && now - used.at > STALE_MS, count: tabs.length, tabs, shown: shown ? tabs : [],
+    };
+  });
+  const ready = cloud.status === 'ready' && devices.length > 0;
+  const empty = cloud.status === 'ready' && !devices.length;
+  const message = empty ? CLOUD_MESSAGES.empty : cloud.status === 'ready' ? '' : CLOUD_MESSAGES[cloud.status] ?? '';
+  const count = devices.reduce((n, d) => n + d.count, 0);
+  return {
+    open, ready, empty, noAccess: cloud.status === 'noAccess', noData: cloud.status === 'noData', failed: cloud.status === 'failed',
+    message, hasMessage: !!message, canFix: cloud.status === 'noAccess',
+    devices, hasDevices: devices.length > 0, count, hasCount: count > 0,
+    labels: { ...CLOUD_LABELS, toggle: open ? 'Hide iCloud Tabs' : 'Show iCloud Tabs' },
   };
 }
 
@@ -606,7 +681,7 @@ function ago(ts, now) {
 const LAUNCHER_ARCHIVE = 12;
 // The words of Margin's own parts (the menu's and the editor's), which a
 // theme binds rather than writes (ui/sanitize.js GUARDED_PARTS).
-const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New' });
+const MENU_LABELS = Object.freeze({ tab: 'Tab', pin: 'Pin', folder: 'Folder', space: 'Space', add: 'New', cloud: 'iCloud Tab' });
 const EDITOR_LABELS = Object.freeze({ title: 'Edit space', name: 'Space name', emoji: 'Space emoji', colors: 'Space color', save: 'Save', cancel: 'Cancel', note: '' });
 const PROFILE_EDITOR_LABELS = Object.freeze({ title: 'Edit profile', name: 'Profile name', emoji: 'Profile emoji', colors: 'Profile color', save: 'Save', cancel: 'Cancel', note: '' });
 const PROFILE_EDITOR_SAFARI_LABELS = Object.freeze({
@@ -615,7 +690,7 @@ const PROFILE_EDITOR_SAFARI_LABELS = Object.freeze({
 });
 
 // Rows that go somewhere (Arcadia's arrow button).
-const GOES = new Set(['tab', 'pin', 'archive', 'go']);
+const GOES = new Set(['tab', 'pin', 'archive', 'go', 'cloud']);
 
 /**
  * What shared/search.js ranks the palette for: this window and tab.

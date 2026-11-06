@@ -73,6 +73,9 @@
           </m-for>
         </div>
 
+        <!-- iCloud Tabs (Margin.app with Safari): a live folder above NEW TAB, outside every drop zone. -->
+        <m-cloud-tabs class="cloud-slot"></m-cloud-tabs>
+
         <div class="today-zone" m-drop="tabs">
           <div class="divider">
             <span class="dash"></span>
@@ -150,7 +153,9 @@
         <label class="palette-label" for="palette-input">SEARCH OR TYPE A URL</label>
         <input id="palette-input" class="palette-input" m-input="palette" placeholder="Go anywhere…" autocomplete="off" spellcheck="false">
         <m-for each="palette.rows" as="r">
-          <button class="btn row palette-row" m-class:on="{{r.selected}}" m-action="palette.run" m-arg="{{r.id}}">
+          <!-- A run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): its heading. -->
+          <m-if test="r.sectionStart"><div class="palette-section" aria-hidden="true">{{r.section}}</div></m-if>
+          <button class="btn row palette-row" m-class:on="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
             <span class="tag" m-style:--tag="{{r.color}}">{{r.badge}}</span>
             <span class="grow left ellipsis">{{r.title}}</span>
             <span class="enter">↵</span>
@@ -165,6 +170,59 @@
   <m-editor class="editor-slot"></m-editor>
   <m-notice class="notice-slot"></m-notice>
   <m-prompt class="prompt-slot"></m-prompt>
+
+  <!-- iCloud Tabs: the tabs open on the person's other devices. A folder card
+       with a sky-blue head and a cloud, nothing to drag in or out; each
+       device a black tag with its icon and name and when it was last used,
+       its tabs under it. Every word is Margin's (a guarded part). -->
+  <template m-part="cloud-tabs">
+    <div class="cloud" role="group" m-attr:aria-label="{{cloudTabs.labels.title}}" m-class:open="{{cloudTabs.open}}">
+      <button class="btn row cloud-head" title="{{cloudTabs.labels.toggle}}" m-attr:aria-expanded="{{cloudTabs.open}}" m-action="cloud.toggle">
+        <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+        <svg class="ico cloud-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5h10.5a3.75 3.75 0 0 0 .4-7.48A5.75 5.75 0 0 0 6.9 9.6 4.45 4.45 0 0 0 7 18.5Z"></path></svg>
+        <span class="cloud-name">{{cloudTabs.labels.title}}</span>
+        <m-if test="cloudTabs.hasCount"><span class="folder-count">{{cloudTabs.count}}</span></m-if>
+      </button>
+      <m-if test="cloudTabs.open">
+        <div class="cloud-body">
+          <m-if test="cloudTabs.hasMessage">
+            <div class="cloud-note" role="status">
+              <span class="text">{{cloudTabs.message}}</span>
+              <m-if test="cloudTabs.canFix"><button class="btn push small cloud-fix" m-action="cloud.access">{{cloudTabs.labels.fix}}</button></m-if>
+            </div>
+          </m-if>
+          <m-for each="cloudTabs.devices" as="d">
+            <button class="btn cloud-device" data-device-id="{{d.id}}" title="{{d.describe}}" m-class:open="{{d.open}}" m-class:stale="{{d.stale}}" m-attr:aria-expanded="{{d.open}}" m-attr:aria-label="{{d.describe}}" m-action="cloud.toggleDevice" m-arg="{{d.id}}">
+              <span class="device-tag">
+                <m-if test="d.isPhone"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19"></rect><path d="M10.5 18h3"></path></svg></m-if>
+                <m-if test="d.isPad"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="2.5" width="15" height="19"></rect><path d="M10.5 18h3"></path></svg></m-if>
+                <m-if test="d.isMac"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="10"></rect><path d="M2.5 18.5h19"></path></svg></m-if>
+                <m-if test="d.isVision"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 11c0-2.8 2-4.5 5-4.5h9c3 0 5 1.7 5 4.5 0 3-1.8 5.2-4.4 5.2-2.1 0-2.9-1.7-5.1-1.7s-3 1.7-5.1 1.7C4.3 16.2 2.5 14 2.5 11Z"></path></svg></m-if>
+                <m-if test="d.isOther"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c-4.6 5-4.6 13 0 18M12 3c4.6 5 4.6 13 0 18"></path></svg></m-if>
+                <span class="device-name">{{d.name}}</span>
+              </span>
+              <span class="device-when">{{d.updated}}</span>
+            </button>
+            <m-for each="d.shown" as="t">
+              <button class="btn row cloud-tab" data-cloud-tab-id="{{t.id}}" title="{{t.url}}" m-class:stale="{{d.stale}}" m-attr:aria-label="{{t.label}}" m-action="cloud.open" m-arg="{{t.id}}">
+                <m-if test="t.icon">
+                  <img class="fav" alt="" m-icon="{{t.icon}}">
+                  <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                </m-if>
+                <span class="cloud-text">
+                  <span class="title">{{t.title}}</span>
+                  <span class="cloud-host">{{t.host}}</span>
+                </span>
+                <m-if test="t.pinned">
+                  <span class="pinned-mark" title="{{cloudTabs.labels.pinned}}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-.8 6.2L17.5 12.5v1.5h-11v-1.5l3.3-3.3ZM12 14v7"></path></svg></span>
+                </m-if>
+              </button>
+            </m-for>
+          </m-for>
+        </div>
+      </m-if>
+    </div>
+  </template>
 
   <template m-part="notice">
     <div class="notice" role="status">

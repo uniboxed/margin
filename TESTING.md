@@ -725,6 +725,43 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] While holding ⌃⌘↓ for a few seconds, the log gets at most one `windows report at …` line a second from that profile, not one per tab.
 - [ ] Right after a sidebar disappears (or in a window you just put in full screen, before its sidebar shows), press ⌘T: within about 2 s Margin's new-tab page opens in that window, with its address field and a note that Margin.app hasn't placed the window. The log says `palette push for window N (…) dropped: …; its copy asked to open Margin's new-tab page there`, then from the copy `the app couldn't show the palette over window N: Margin's new-tab page opened there`. Once the sidebar is back, ⌘T opens the palette again.
 
+## Margin 2: iCloud Tabs (2026-11-05)
+
+`npm run safari` from `feat/icloud-tabs` (Margin.app changes; the Xcode project is made again because shell files were added). Margin.app has Full Disk Access. Have Safari open on at least one other device signed in to the same Apple Account (an iPhone with a few tabs is enough), and keep `npm run log:app -- --stream` open.
+
+**The folder.**
+- [ ] In a full-screen Safari window, the sidebar shows "iCloud Tabs" above "+ New Tab" (Arcadia: a blue cloud where a folder's icon would be, a count and a chevron; Neo-brutalism: a card with a sky-blue head). Under it, one heading per other device (its icon, its name, "updated … ago"), and that device's tabs, each with its title over its site. This Mac isn't listed. Tell me if a device of yours is missing, or this Mac shows up.
+- [ ] The tabs of a device are in the order that device has them (compare with Safari's own tab overview, "From your other devices", or the iPhone's tab view). Tell me if the order is wrong; the order comes from Safari's own position values.
+- [ ] A tab pinned on the iPhone has a small pin mark.
+- [ ] Sites you've opened in this Mac's Margin show their icon; others show a letter. Margin made no network request for them (nothing to check unless you watch the network).
+- [ ] The log has one `icloud tabs: N other devices (…), M tabs; left out: …` line, with counts only: no titles, addresses or device names. Send me the line.
+- [ ] A device you haven't used for over a week is dimmed (Neo-brutalism: its tag dashed).
+
+**Live.**
+- [ ] Open a new tab on the iPhone (wait for it to sync: Safari on the Mac shows it in its tab overview): it appears in the folder within a couple of seconds of Safari having it, with no flicker of the other rows and the sidebar's scroll where it was. Close a tab there: it goes.
+- [ ] Rename nothing, just browse on the Mac for a minute: the log shows no new `icloud tabs` line unless something on another device changed, and Margin.app stays near 0% CPU in Activity Monitor.
+
+**Clicks, keys and menus.**
+- [ ] Click an iCloud tab: it opens in a new tab in this window, in the space you're in, and comes to the front. Over Margin's new-tab page, it opens in that tab instead.
+- [ ] Right-click (or ⌃-click) an iCloud tab: a menu with Open and Copy Link. Copy Link puts its address on the clipboard (paste it somewhere).
+- [ ] Click a device's heading: its tabs fold away; click again: back. Click "iCloud Tabs": the whole folder folds, its count stays. Both stay folded after switching spaces, windows, and after quitting and reopening Safari.
+- [ ] Nothing can be dragged into the folder or out of it, and dragging one of your tabs over it does nothing there.
+- [ ] Tab into the folder with VoiceOver on (if you use it): the folder and devices say whether they're expanded; a tab says its title and site.
+
+**The palette.**
+- [ ] ⌘T, type part of an iCloud tab's title: below your own tabs, pins and the other matches, a heading "On <device name>" with the matching tabs from that device, then "Search for …" last. Enter on one opens it as a click does.
+- [ ] Before typing, the palette shows no iCloud tabs (as before).
+- [ ] A page that's open in this window already isn't offered again from another device.
+
+**States.**
+- [ ] Settings (the start page's Settings): "Show iCloud Tabs: …" is on, next to the frame setting. Turn it off: the folder and the palette's section go at once, and the log says the reads stopped (no more `icloud tabs` lines). Turn it on: they come back.
+- [ ] Turn Margin.app off in Full Disk Access: within about 10 s the folder shows one row, "Margin needs Full Disk Access…", with an "Open Full Disk Access" button that opens System Settings at that list. Turn it back on: the tabs come back within about 10 s (tell me if they don't until Margin.app is reopened).
+- [ ] The set-up window's Full Disk Access step is now called "Show Safari's profile names and iCloud Tabs" and says Margin reads the tabs open on your other devices.
+- [ ] If you can, sign out of iCloud's Safari sync on the other devices (or test on a Mac with iCloud Tabs off): the folder says "No iCloud Tabs yet…" or "No tabs are open on your other devices."
+- [ ] Chrome and Edge windows (later, Phase 5): no folder, no setting.
+
+**Send me** the log lines of anything that didn't do as described, with the time, and a screenshot of the folder in each theme if anything looks off.
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.
