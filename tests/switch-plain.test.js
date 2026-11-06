@@ -164,14 +164,24 @@ test('a tab that\'s gone: the switch fails, and says why', async () => {
   assert.match(reply.error, /no longer open|No tab with id/);
 });
 
-test('Safari not answering the update (a hung tab process): answered as made after 2 s, not left waiting; Safari carries it out', async () => {
+test('Safari not answering the update (a hung tab process): answered as made after 1 s, not left waiting; Safari carries it out', async () => {
   await inFront(1);
   fake.hang.add(3);
   const t = Date.now();
   const reply = await ask('activateTab', { tabId: 3, windowId: 1 });
   fake.hang.delete(3);
   assert.deepEqual(reply, { ok: true, result: { shown: 3 } });
-  assert.ok(Date.now() - t >= 1900 && Date.now() - t < 3000, `${Date.now() - t} ms`);
+  assert.ok(Date.now() - t >= 900 && Date.now() - t < 2000, `${Date.now() - t} ms`);
+});
+
+test('a hung tab and a page with a short deadline: answered as made before the deadline, never "too late"', async () => {
+  await inFront(1);
+  fake.hang.add(3);
+  const t = Date.now();
+  const reply = await ask('activateTab', { tabId: 3, windowId: 1, deadline: t + 1500 });
+  fake.hang.delete(3);
+  assert.deepEqual(reply, { ok: true, result: { shown: 3 } });
+  assert.ok(Date.now() - t < 1500, `answered ${Date.now() - t} ms after it was asked`);
 });
 
 test('each switch\'s timeline is one line for Margin.app\'s log: asked, tabs.update, updated, onActivated, stored, delta out', async () => {

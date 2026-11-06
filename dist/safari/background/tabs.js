@@ -127,7 +127,11 @@ async function answerBy(promise, until) {
 // leaves the window's focus alone; `deadline`: when the page that asked stops
 // waiting (no switch is started within REFUSE_MS of it).
 /** @typedef {{ source?: string, raise?: boolean, deadline?: number }} FocusOptions */
-const UPDATE_ANSWER_MS = 2000;
+const UPDATE_ANSWER_MS = 1000;
+// Within a page's deadline, what's left for the answer to reach it: the
+// background answers "too late" REPLY_GUARD_MS (500) before the deadline
+// (background.js), so the switch is done 300 ms before that.
+const ANSWER_LEAVES_MS = 800;
 // A tab suspected of a gone copy (cutOffSuspects): asked this long at most before its switch.
 const CUT_OFF_SWITCH_MS = 150;
 /** @param {number} tabId @param {FocusOptions} [options] @returns {Promise<{ tab: any }>} */
@@ -148,20 +152,31 @@ export async function focusTab(tabId, { source = 'other', raise = true, deadline
     activating(tabId);
     movedOn(cached()?.tabs[tabId]?.windowId ?? null);
     line.step('tabs.update');
-    // Safari's answer, UPDATE_ANSWER_MS at most: one stuck behind the tab's
+    // Safari's answer, UPDATE_ANSWER_MS (1 s) at most: one stuck behind the tab's
     // hung process (2026-11-03) is carried out when Safari gets to it, so the
     // switch is answered as made rather than its page told it failed. A tab
     // that's gone fails at once.
+    // Held to the page's deadline too (less what the answer needs to reach
+    // it), so a page always hears the switch was made rather than "too late".
     const update = Promise.resolve().then(() => api.tabs.update(tabId, { active: true }));
-    const answered = await answerBy(update.then((t) => ({ tab: t })), Date.now() + UPDATE_ANSWER_MS);
+    const byDeadline = Number.isFinite(deadline) && /** @type {number} */ (deadline) - ANSWER_LEAVES_MS < Date.now() + UPDATE_ANSWER_MS;
+    const until = byDeadline ? /** @type {number} */ (deadline) - ANSWER_LEAVES_MS : Date.now() + UPDATE_ANSWER_MS;
+    const answered = await answerBy(update.then((t) => ({ tab: t })), until);
     if (!answered) {
-      line.step(`no answer in ${UPDATE_ANSWER_MS}`);
+      line.step(byDeadline ? 'no answer by its page\'s deadline' : `no answer in ${UPDATE_ANSWER_MS}`);
       void update.catch(() => {});
     } else line.step('updated');
     const tab = answered?.tab ?? null;
     const windowId = tab?.windowId ?? cached()?.tabs[tabId]?.windowId ?? null;
     line.window(windowId);
-    if (raise) await focusWindow(windowId, line);
+    // The window to the front: waited for only while the page's deadline
+    // allows (Safari's windows calls can wait behind a stalled tab too); it's
+    // carried out either way.
+    if (raise) {
+      const raising = focusWindow(windowId, line);
+      if (Number.isFinite(deadline)) await answerBy(raising, /** @type {number} */ (deadline) - ANSWER_LEAVES_MS);
+      else await raising;
+    }
     return { tab: { ...(tab ?? {}), id: tabId, active: true, windowId } };
   } catch (err) {
     line.fail(err);
