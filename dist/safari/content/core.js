@@ -309,15 +309,23 @@ export function startCore() {
   // What the background says of the link: the page's box from the app's
   // layout from now on, or none.
   const appKey = (l) => JSON.stringify([l?.state ?? null, l?.layouts ?? null, l?.drawn ?? null]);
+  // What the log last said of the app here, said again as it changes (the window known later too).
+  // Linked, the box is the app's layout for the window: none where it said it draws nothing.
+  let saidOfApp = null;
+  function sayApp() {
+    if (appLink === undefined) return;
+    const said = !appUi() ? 'Margin.app isn\'t linked: the page as it is, no box' : drawsWindow(appLink, windowId ?? helloWindowId) ? 'Margin.app draws Margin around this window' : 'Margin.app is linked but draws nothing over this window: the page as it is, no box';
+    if (said !== saidOfApp) console.debug(`[margin] ${said}`);
+    saidOfApp = said;
+  }
   function setAppLink(next) {
     const value = next && typeof next === 'object' ? next : { state: 'off', layouts: {} };
     if (appLink !== undefined && appKey(value) === appKey(appLink)) return;
-    const was = appLink === undefined ? null : appUi();
     appLink = value;
     const now = appUi();
     mark(marks, 'app', String(appLink.state ?? 'off')); // test/debug hook
     layout.setSource(now ? appGeometry : null);
-    if (now !== was) console.debug(`[margin] ${now ? 'Margin.app draws Margin around this window' : 'Margin.app isn\'t linked: the page as it is, no box'}`);
+    sayApp();
     applyApp();
   }
   Margin.content.appDraws = () => appUi();
@@ -557,6 +565,7 @@ export function startCore() {
       if (typeof ctx.app?.drawn === 'boolean' && ctx.windowId != null) drawn[ctx.windowId] = ctx.app.drawn;
       setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, layouts, drawn } : { state: 'off', layouts, drawn: {} });
     }
+    sayApp();
     render(); // its window is known now
   });
 

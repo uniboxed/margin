@@ -7,7 +7,8 @@
 // and Margin's keys there go the unlinked way: ⌘T and the palette's key open
 // Margin's new-tab page, a new tab Safari made stays (no palette pushed for
 // it), the new-tab page is told the app doesn't draw there, and the sidebar's
-// key is logged; in a window the app draws, they're left to the app.
+// key is logged; in a window the app draws, they're left to the app. The
+// registration follows what the app draws at once.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -272,6 +273,48 @@ test('a page committing in a tab Margin\'s state doesn\'t have yet: its window f
   void commit(70);
   assert.match(fake.inserted[0]?.css ?? '', /--margin-at-left: 300px/, 'the window its own update named');
   await sleep(50);
+});
+
+test('the app saying it draws nothing over a window: the registration follows at once, from the link\'s own word (not after layouts settle, nor once storage has it), so the window\'s new pages don\'t wait on the sheet put in as each commits; drawn again: its box registered again at once', async () => {
+  const { windowDrawnChanged } = await import('../extension/background/registered.js');
+  const { layoutOfFiles } = await import('../extension/shared/page-box.js');
+  const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
+  const box = { 1: { insets: { left: 300, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } };
+  const stored = JSON.stringify(fake.local.appLink);
+  const follows = async () => {
+    const at = Date.now();
+    windowDrawnChanged();
+    await whenRegistered();
+    return Date.now() - at;
+  };
+  linkSays({ drawn: { 1: true }, layouts: box });
+  await follows();
+  assert.equal(registered()?.left, 300, 'drawn, at its layout');
+  linkSays({ drawn: { 1: false }, layouts: box });
+  assert.ok(await follows() < 500, 'at once (LAYOUT_SETTLE_MS is 2 s)');
+  assert.deepEqual(registered(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0 }, 'drawn nothing over: a layout of zeros, no box');
+  assert.equal(JSON.stringify(fake.local.appLink), stored, '(storage not told yet)');
+  linkSays({ drawn: { 1: true }, layouts: box });
+  assert.ok(await follows() < 500);
+  assert.equal(registered()?.left, 300, 'drawn again: its box at once');
+});
+
+test('a layout with no box anywhere (the frame turned off): registered at once; one with a box waits for layouts to settle', async () => {
+  const { layoutsChanged } = await import('../extension/background/registered.js');
+  const { layoutOfFiles } = await import('../extension/shared/page-box.js');
+  const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
+  const at = (left, top = 8) => ({ 1: { insets: { left, top, right: top, bottom: top }, radius: 6.25, epoch: 'e1' } });
+  linkSays({ drawn: { 1: true }, layouts: at(300) });
+  assert.equal(registered()?.left, 300, '(from the test before)');
+  linkSays({ drawn: { 1: true }, layouts: at(0, 0) });
+  layoutsChanged();
+  await whenRegistered();
+  assert.deepEqual(registered(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0 }, 'no box: at once');
+  linkSays({ drawn: { 1: true }, layouts: at(280) });
+  layoutsChanged();
+  await sleep(100);
+  await whenRegistered();
+  assert.deepEqual(registered(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0 }, 'a box: not yet (LAYOUT_SETTLE_MS)');
 });
 
 test.after(() => setTimeout(() => process.exit(0), 50));
