@@ -38,6 +38,10 @@
 //    away once the window it's over is gone, off screen (not in its own
 //    Space) or no longer where it was; dropped while the browser isn't in
 //    front, they're put away at once.
+//  - The profile handoff (ShellHandoff.swift, app/HANDOFF.md), behind its gate
+//    (`Options.handoff`): each read also sweeps the parked windows, a parked
+//    window's overlay stays hidden as it was, and the windows a switch moves
+//    are drawn from the app's own reads. With the gate off, nothing of it runs.
 
 import AppKit
 
@@ -181,6 +185,16 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // forApp(); nil (every test, the harness): none, and every part they serve stays off.
         var privateResolver: PrivateResolver?
         var privateCallsDefaults: UserDefaults? // where the macOS build last checked is kept; nil: not kept
+        // The profile handoff in place of the close-based switch (app/HANDOFF.md, ShellHandoff.swift).
+        // Off until gate G1 has passed for Margin.app itself (§10.4): every switch is then the
+        // close-based one, exactly as before. `MarginHandoff` in the defaults turns it on (forApp).
+        var handoff = false
+        // A harness's stand-ins for the Space reads, the parker and the freezer (never the system's):
+        // given, they're used as the launch check's would be, with no self-test.
+        var handoffParts: HandoffParts?
+        // Whether a window's bounds fill its display (R2, a window shown over): the screens' by
+        // default (ScreenGeometry.fillsDisplay); a harness's stand-in windows are off every screen.
+        var fillsDisplay: ((CGRect) -> Bool)?
     }
 
     final class Link {
@@ -194,6 +208,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var resyncTimer: Timer?
         var keys: [String: [String]]? // the copy's shortcuts, once it said
         var held = HeldPushes() // what an overlay made later is given with its hello
+        var parked: [Int: Bool] = [:] // whether each window is parked, as the copy was told (HANDOFF.md §2.5)
         init(_ connection: LinkConnection) { self.connection = connection }
     }
 
@@ -264,9 +279,26 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var parker: BridgeParker?
     var parkSelfTest = ParkSelfTest.Outcome.notRun
     var parkSelfTestRun: ParkSelfTest?
-    var parkingOn: Bool { privateCalls.park && parker?.isAvailable == true && parkSelfTest.passed }
+    var parkingOn: Bool {
+        if options.handoffParts != nil { return parker?.isAvailable == true }
+        return privateCalls.park && parker?.isAvailable == true && parkSelfTest.passed
+    }
     // The parked windows (Parking.swift), made with the parker. Nil: nothing can be parked.
     var parking: ParkingRegistry?
+
+    // ---- the profile handoff in the shell (ShellHandoff.swift) ----
+    var freezer: Freezer? // the freeze (RealFreezer, from what the launch check passed), or a harness's
+    var heldOut: Set<WindowKey> = [] // overlays a switch ordered out (its A's, §2.3): kept out until it's over
+    var windowsHeld: Set<WindowKey> = [] // overlays whose `windows` push waits for their copy's full screen (§2.4)
+    var windowsPushes: [WindowKey: Int] = [:] // `windows` pushes given to each overlay (the tests read it)
+    var activity: [WindowKey: (tabId: Int?, why: String, timer: Timer)] = [:] // a parked window's use, merged for 150 ms (§6.1)
+    var activitySaid: Set<WindowKey> = [] // a person's return already logged as waiting
+    var lastExtKeys: Set<WindowKey> = [] // the copies' windows at the last read (a closed shown window, §13.8)
+    var marginCloses: Set<WindowKey> = [] // windows Margin itself asked to close outside a switch
+    var safariActivated = false // Safari came to the front: §6.2's check is due
+    var everyParkedSince: TimeInterval? // §6.2: a read with Safari in front and every window parked
+    var parkedEnding = false // §13.8: the shown window was closed, its parked windows closing
+    var parkedBindAsked: Set<Int> = [] // parked windows the binder was asked to bind from the registry's record
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
@@ -283,11 +315,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if collections.contains("spaces") || collections.contains("tabs") { self?.acrossSoon() }
         }
         apps.onChange = { [weak self] why in
-            if why == "Space changed" { self?.spaceDidChange() } else { self?.burst(why) }
+            if why == "Space changed" { self?.spaceDidChange() } else { self?.appsChanged(why) }
         }
         shortcuts.onCommand = { [weak self] command, isRepeat in self?.run(command, isRepeat: isRepeat) }
         pointer.onMove = { [weak self] at in self?.pointerMoved(at) }
         pointer.onPress = { [weak self] at in self?.pressed(at) }
+        if let parts = options.handoffParts { useHandoffParts(parts) }
     }
 
     // The app's own: Safari through the window server and NSWorkspace, Carbon's hot keys.
@@ -301,6 +334,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         Diagnostics.note(options.overlay.ownSpace ? "overlays join only their window's Space (each kept there while it's away)" : "overlays join every Space (MarginOverlayOwnSpace is off)")
         options.privateResolver = RealPrivateResolver()
         options.privateCallsDefaults = .standard
+        // The handoff: off until its gates pass (HANDOFF.md §10.4), unless MarginHandoff is set for their runs.
+        options.handoff = UserDefaults.standard.bool(forKey: "MarginHandoff")
+        Diagnostics.note(options.handoff ? "handoff: on (MarginHandoff is set): profile switches hand off when the private calls allow"
+                         : "handoff: off until its gates pass (MarginHandoff isn't set): every profile switch is the close-based one")
         return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
     }
 
@@ -311,6 +348,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         privateCalls = PrivateCalls.check(resolver: resolver, defaults: options.privateCallsDefaults)
         let sky = SkyLight(resolver: resolver, availability: privateCalls)
         skyLight = sky
+        // The freeze's session rules start off when the launch check didn't pass it (Freezer.swift).
+        switcher.session.rules = FreezeRules(availability: privateCalls)
+        if privateCalls.freeze { freezer = RealFreezer(skyLight: sky) }
         guard privateCalls.spaces else { return }
         let spaces = SkyLightSpaces(sky: sky, availability: privateCalls)
         spaceReads = spaces
@@ -318,7 +358,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             let parker = SpaceParker(reads: spaces, bridge: spaces, clock: options.switchClock)
             self.parker = parker
             parking = ParkingRegistry(parker: parker, reads: spaces, clock: options.switchClock, marker: parkingMarkerURL, build: resolver.build,
-                                      parkingOn: { [weak self] in self?.parkingOn == true })
+                                      parkingOn: { [weak self] in self?.parkingOn == true && self?.handoffOn == true })
         }
     }
 
@@ -328,7 +368,19 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         startSafariNames()
     }
 
+    // Quitting (§6.4, §13.1): the screen revealed if frozen, every parked window closed by its own copy
+    // (no drafts check; one whose copy can't be asked returned to its Desktop), 300 ms in all, then the
+    // rest. The copies' links stay up until then.
     func stop(then: @escaping () -> Void) {
+        guard !stopped else { return stopNow(then) }
+        switcher.revealNow(.quit)
+        guard let parking else { return stopNow(then) }
+        stopped = true // no more reads meanwhile
+        pollTimer?.invalidate()
+        parking.quit(close: parkedCloser()) { [weak self] _ in self?.stopNow(then) }
+    }
+
+    private func stopNow(_ then: @escaping () -> Void) {
         stopped = true
         pollTimer?.invalidate()
         for timer in reconnecting.values { timer.invalidate() }
@@ -420,6 +472,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             guard epoch == connection.epoch else { return }
             entry.keys = bindings
             burst("keys")
+        case .parkedActivity(let epoch, let activity):
+            guard epoch == connection.epoch else { return }
+            parkedActivity(entry, activity)
         default:
             break
         }
@@ -489,6 +544,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private var heldPalette: [WindowKey: (json: String, until: TimeInterval, newTab: Bool)] = [:]
     private func palettePush(_ entry: Link, _ windowId: Int, _ json: String, newTab: Bool) {
         let key = WindowKey(link: entry.connection.key, windowId: windowId)
+        // A parked window, or one a switch is moving (§2.4): nothing to show it in, and nothing to tell
+        // its copy (its `drawn` stays on, and Margin's new-tab page never opens there).
+        if let held = handoffHolds(key) { return Diagnostics.note("palette push for window \(windowId) (\(key)): dropped: \(held)") }
         if let overlay = overlays[key], overlay.isShown, matches[key] != nil { return overlay.push(raw: json) }
         let why = overlays[key] == nil ? "no overlay drawn there" : matches[key] == nil ? "no overlay drawn there (its window isn't bound)" : "its overlay isn't shown yet"
         Diagnostics.note("palette push for window \(windowId) (\(key)): \(why): held \(Shell.paletteHold) s for it to show")
@@ -600,7 +658,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 return
             }
             let json = jsonString(["type": "windows", "list": list]) ?? ""
-            for overlay in shown { overlay.push(raw: json) }
+            for overlay in shown {
+                // A parked window's overlay, or one a switch is moving, hears no list until its copy says
+                // the window is in full screen (§2.4): its mode stays full screen, so no layout changes.
+                if windowsWait(overlay.key, list) { windowsHeld.insert(overlay.key); continue }
+                windowsHeld.remove(overlay.key)
+                pushWindows(overlay, json)
+            }
             burst("windows")
         default:
             break
@@ -701,6 +765,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         for (key, s) in ownSpaceSuspects.sorted(by: { $0.key < $1.key }) {
             let cleared: String?
             if links[key.link] == nil { cleared = "its link went down" }
+            else if isParkedKey(key) || inSwitch(key) { cleared = "its window is parked, or a switch is moving it" }
             else if ext[key] == nil { cleared = "its copy no longer has the window (closed)" }
             else if matches[key] != s.number { cleared = "it's no longer bound to window \(s.number)" }
             else if spaceChangedAt > s.at { cleared = "the active Space changed since" }
@@ -802,6 +867,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var absent: Set<Int> = []
         var ext: [WindowKey: (ExtWindow, Link)] = [:]
         let wallNow = options.clock()
+        // What the parked windows' sweep needs of each browser's read (ShellHandoff.swift).
+        var sweepHeld: Set<String> = [], sweepCopies: [String: String] = [:], sweepReporting: Set<String> = []
+        let parkedNumbers = parking?.numbers ?? []
         for (browser, pids) in byBrowser {
             let all = links.values.filter { $0.connection.hello.browser == browser }
             let entries = all.filter { $0.mirror.hasState }
@@ -814,26 +882,51 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             let binder = binders[browser] ?? WindowBinder(browser: browser)
             binders[browser] = binder
             let bound = binder.update(now: wallNow, ext: windows.map(\.0), reporting: Set(entries.map(\.connection.key)), copies: copies, held: held,
-                                      server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, listed: read != nil, spaceChangedAt: spaceChangedWall)
+                                      server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, listed: read != nil, spaceChangedAt: spaceChangedWall,
+                                      parked: parkedNumbers)
             next.merge(bound) { a, _ in a }
             absent.formUnion(binder.absentNumbers)
+            sweepHeld.formUnion(held)
+            sweepCopies.merge(copies) { a, _ in a }
+            sweepReporting.formUnion(entries.map(\.connection.key))
         }
+        let before = matches
         matches = next
+        // The parked windows: the aftercare, the sweep, the copies told, the person's returns (§2.5, §2.6).
+        if read != nil { handoffRead(ext, before: before, held: sweepHeld, copies: sweepCopies, reporting: sweepReporting, byBrowser: byBrowser, list: list) }
         // Each copy told which of its windows the app draws over, before any overlay shows or layout goes.
         updateDrawn(ext)
 
         // The overlays: made when wanted, shown when they can be, closed when their window is gone.
         for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
-            let wanted = (w.state == "fullscreen" || options.windowedToo) && entry.theme != nil
+            let full = w.state == "fullscreen" || options.windowedToo
+            // Parked: its overlay kept as it is, hidden (§2.3). The switch's target: made or kept from the
+            // switch's start, shown from the app's own reads (R1, R2), not its copy's lagging state.
+            let parked = isParkedKey(key)
+            let target = switcher.run != nil && switcher.isTarget(key)
+            let wanted = (full || parked || target) && entry.theme != nil
             // The window a profile switch is making: its overlay's page loads while it goes full screen.
             let early = !wanted && entry.theme != nil && switcher.busy && switcher.target?.profile == key.link && switcher.newWindow == key.windowId
             guard wanted || early else {
                 overlays[key]?.hide(entry.theme == nil ? "no theme yet" : "its window isn't in full screen")
                 continue
             }
+            if parked, !target {
+                ownSpaceSuspects[key] = nil
+                overlays[key]?.hide("its window is parked")
+                continue
+            }
+            // The window the switch leaves: its overlay ordered out before its Space goes, and kept out.
+            if heldOut.contains(key) {
+                if switcher.run != nil, switcher.leaving == key {
+                    overlays[key]?.hide("its window leaves full screen for a switch")
+                    continue
+                }
+                heldOut.remove(key)
+            }
             let overlay = overlays[key] ?? makeOverlay(key)
             // Never shown over a window that isn't bound, isn't on screen, or doesn't fill its display yet.
-            guard wanted else { overlay.hide("its window is still being made"); continue }
+            guard full || (target && switcher.run?.r2At != nil) else { overlay.hide("its window is still being made"); continue }
             guard let number = next[key] else { overlay.hide("its window isn't bound to one of the window server's"); continue }
             // Bound, but missing from this read (WindowBinder keeps it for a moment): kept where it is, unseen.
             if absent.contains(number) { overlay.conceal(); continue }
@@ -847,7 +940,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                     // and back to every Space if a later read still says so (judgeOwnSpace: a closing window
                     // reads like this for a moment).
                     // (Not in the test harness unless it asks: its stand-in windows have no Spaces.)
-                    if ownSpaceChecks, !ownSpaceFellBack, !spaceChanged, byNumber[overlay.windowNumber]?.onScreen == true {
+                    // (Not a window a switch is moving: its Spaces change on purpose, §2.3.)
+                    if ownSpaceChecks, !ownSpaceFellBack, !spaceChanged, !inSwitch(key), byNumber[overlay.windowNumber]?.onScreen == true {
                         suspectOwnSpace(overlay, number: number)
                         overlay.hide("its window isn't on screen")
                     }
@@ -856,7 +950,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 overlay.hide(spaceChanged ? "the active Space changed and its window isn't on screen" : "its window isn't on screen")
                 continue
             }
-            guard options.harness || options.windowedToo || ScreenGeometry.fillsDisplay(server.bounds) else {
+            guard options.harness || options.windowedToo || fillsDisplay(server.bounds) else {
                 overlay.hide("its window doesn't fill its display (going into or out of full screen)")
                 continue
             }
@@ -882,9 +976,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             if showed, !wasShownAnywhere { appeared(overlay, w, list: list) }
             if showed { deliverHeldPalette(overlay) }
-            if !wasShown, overlay.ownSpace { checkOwnSpace(overlay, browser: number) }
+            if !wasShown, overlay.ownSpace, !inSwitch(key) { checkOwnSpace(overlay, browser: number) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
+        releaseHeldWindows()
         if read != nil { judgeOwnSpace(ext, byNumber) }
         if read != nil { followKept(byNumber) }
         // (Not a link's that dropped a moment ago, nor one back but without its state yet: kept as they are.)
@@ -939,7 +1034,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private func updateDrawn(_ ext: [WindowKey: (ExtWindow, Link)]) {
         let now = Diagnostics.now()
         for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
-            let wanted = (w.state == "fullscreen" || options.windowedToo) && entry.theme != nil
+            // A parked window's pages keep their box (at its full-screen insets), and the switch's target
+            // is wanted for its whole entry, however late its copy reports (§2.4).
+            let wanted = (w.state == "fullscreen" || options.windowedToo || isParkedKey(key) || (switcher.run != nil && switcher.isTarget(key))) && entry.theme != nil
             let r = entry.drawn.offer(windowId: key.windowId, now: now, bound: matches[key] != nil, wanted: wanted)
             if let on = r.send { sendDrawn(entry, key, on, r.why) }
             if let due = r.due {
@@ -1079,7 +1176,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let has = front != nil
         // The front window's copy's combinations (each profile's Settings may differ).
         if let front, let keys = links[front.key.link]?.keys { shortcuts.rebind(ShortcutSet.bindings(from: keys)) }
-        shortcuts.set(active: ShortcutSet.active(frontPid: apps.frontPid, linkedPids: allPids, frontWindowHasOverlay: has))
+        // Mid-handoff no overlay may be shown over the front window (B is on top, its own not up yet):
+        // the keys stay the app's with Safari or Margin in front, and `run` gives them to the switch (§1.7).
+        let ownPid = ProcessInfo.processInfo.processIdentifier
+        let midSwitch = switcher.run != nil && switcher.busy && apps.frontPid.map { allPids.contains($0) || $0 == ownPid } == true
+        shortcuts.set(active: ShortcutSet.active(frontPid: apps.frontPid, linkedPids: allPids, frontWindowHasOverlay: has) || midSwitch)
     }
 
     // ---- the pointer ----
@@ -1161,6 +1262,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // `isRepeat`: a held key's repeat (AppShortcuts), not a press.
     func run(_ command: AppCommand, isRepeat: Bool = false) {
+        switcher.personActed()
+        if switcher.run != nil, switcher.busy { return runMidSwitch(command, isRepeat: isRepeat) }
         guard let overlay = frontOverlay(), let entry = links[overlay.key.link] else { return }
         switch command {
         case .palette:
@@ -1185,7 +1288,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let window = ExtWindow.parse(entry.mirror.windows, link: entry.connection.key).first { $0.key == overlay.key }
         let head: JSONObject = [
             "windowId": overlay.key.windowId, "profile": hello.profile, "browser": hello.browser,
-            "mode": window?.state == "fullscreen" ? "fullscreen" : "windowed",
+            // A parked window's overlay, or one a switch is moving, is drawn in full screen (§2.4).
+            "mode": window?.state == "fullscreen" || handoffHolds(overlay.key) != nil ? "fullscreen" : "windowed",
             "platform": ["browser": hello.browser, "os": "mac", "app": true],
         ]
         var json = String((jsonString(head) ?? "{}").dropLast())
@@ -1208,6 +1312,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // (the copy has been told it's drawn first: updateDrawn).
     func layoutChanged(_ overlay: OverlayController, _ layout: PageLayout) {
         guard matches[overlay.key] != nil else { return }
+        // Nothing for a parked window, nor from a hidden overlay a switch is moving (§2.4): its pages
+        // keep the layout they had, so showing it again changes nothing.
+        if isParkedKey(overlay.key) || (!overlay.isShown && inSwitch(overlay.key)) { return }
         let size = overlay.frameTopLeft.size
         guard abs(layout.width - size.width) < 1, abs(layout.height - size.height) < 1 else { return }
         let window = overlay.windowFrame ?? overlay.frameTopLeft
@@ -1222,6 +1329,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     func perform(from overlay: OverlayController, _ name: String, _ arg: Any?) {
+        // A click in Margin: what lands late isn't the person's choice any more (§1.9). (The cover's word is the page's.)
+        if name != "switch.coverShown" { switcher.personActed() }
         guard let entry = links[overlay.key.link] else { return }
         switch name {
         case "window.fullscreen":

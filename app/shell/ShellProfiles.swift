@@ -271,6 +271,7 @@ extension Shell: SwitchWorld {
         pushAcross()
         guard action == "close", let kept, let entry = links[kept.link] else { return }
         Diagnostics.note("profile switch: \(kept) kept open, closed by the person")
+        marginCloses.insert(kept) // not the shown window closed by the person (§13.8)
         Task { _ = try? await entry.connection.request(type: "closeWindow", payload: ["windowId": kept.windowId], windowId: kept.windowId) }
     }
 
@@ -280,6 +281,7 @@ extension Shell: SwitchWorld {
     func switchCoverShown(_ overlay: OverlayController) {
         guard switcher.busy, let from = switcher.from, from.profile == overlay.key.link, from.windowId == overlay.key.windowId else { return }
         Diagnostics.note("profile switch: the cover is drawn in \(overlay.key)")
+        switcher.coverShown(in: overlay.key)
     }
 
     // The window's space now: its copy's activeSpaceByWindow (or the chained one, a moment after a key).

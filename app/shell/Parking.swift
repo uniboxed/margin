@@ -845,6 +845,6 @@ extension Shell {
             guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return false }
             return me != nil && app.bundleIdentifier == me
         }) else { return }
-        parking.adoptAfterCrash(marker, safariPids: apps.pids(of: safariIdentifier))
+        parking.adoptAfterCrash(marker, safariPids: apps.pids(of: options.bundleIds["safari"] ?? safariIdentifier))
     }
 }

@@ -38,6 +38,8 @@ protocol OverlayDelegate: AnyObject {
     // Drawn, crashed, the slot or its hits changed: whether it shows, and how the mouse goes, may have changed.
     func overlayChanged(_ overlay: OverlayController, _ why: String)
     func perform(from overlay: OverlayController, _ name: String, _ arg: Any?)
+    // Its page drew after a `shown`, in this mode (`framed`: the handoff's R4, app/HANDOFF.md §3.2).
+    func framed(_ overlay: OverlayController, mode: OverlayFramed.Mode)
 }
 
 final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate {
@@ -378,6 +380,9 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             pointerWant = PointerWant(body)
         case "perform":
             delegate?.perform(from: self, body["name"] as? String ?? "", body["arg"])
+        case OverlayFramed.op:
+            guard isShown, let framed = OverlayFramed(body) else { return }
+            delegate?.framed(self, mode: framed.mode)
         case "log":
             let text = "overlay page (\(key)): \(body["text"] as? String ?? "")"
             if ["error", "warn"].contains(body["level"] as? String ?? "") { Diagnostics.warn(text) } else { Diagnostics.note(text) }

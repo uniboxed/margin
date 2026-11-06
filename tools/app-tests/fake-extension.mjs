@@ -27,7 +27,8 @@
 //   { do: 'theme', id, theme, chunkBytes?, corrupt? } → a theme again
 //     (`corrupt`: one piece's bytes changed);
 //   { do: 'send', id, msg } → msg as is, its epoch filled in;
-//   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id }.
+//   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id };
+//   { do: 'play', id, play } → connect's `play` changed (below).
 // A socket done by hand (node:net), for what a page's WebSocket can't send (a close of 1001, an
 // empty close, a TCP end with no close frame, a socket that never says hello):
 //   { do: 'rawConnect', id, profile?, upgrade? (default true), hello? (default true) } → a TCP
@@ -60,6 +61,17 @@
 // list and answers { windowId, state }; closeWindow takes the window out and
 // sends the list; focusWindow and setSpace answer ok (setSpace also makes
 // the space the window's). Each says { ev: 'req', … } first, as any req.
+// The handoff's requests (app/HANDOFF.md §3.3), played the same way with
+// connect's `play` ({ enterMs, exitMs, listLagMs, normal }: how long Safari
+// takes to enter and leave full screen, how much later the copy's list says
+// so, and a normal window's bounds): setWindowState refuses past `notAfter`
+// and answers `busy` while another windows call for that window is under way,
+// else lands the state after its time, says { ev: 'landed', id, windowId,
+// state }, sends the list (`listLagMs` later) and answers { windowId, state,
+// landedAt }; windowDrafts answers connect's `drafts` ({ windowId: [tabId] },
+// none by default); frameProbe answers { none }. openSpaceWindow also says
+// { ev: 'made', id, windowId } and closeWindow { ev: 'closed', id, windowId },
+// so the host can play the window server's side.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
 // payload } }); setLayout → { ev: 'setLayout', msg }; drawn →
@@ -176,25 +188,54 @@ function takeData(s, m) {
   }
 }
 
-// A window request played as Safari would (above); null: the usual echo.
+// A window request played as Safari would (above); null: the usual echo. A promise: answered when it settles.
 function playWindow(s, m) {
   if (!s.newWindow) return null;
   const sendWindows = () => s.send({ k: 'windows', seq: ++s.seq, list: s.windows });
+  const windowId = m.payload?.windowId;
+  // The handoff's one windows call per window, never late (background/handoff.js windowCall).
+  const windowCall = ['setWindowState', 'focusWindow', 'closeWindow'].includes(m.type);
+  if (windowCall && typeof m.payload?.notAfter === 'number' && Date.now() > m.payload.notAfter) return { refused: 'late', pastMs: Date.now() - m.payload.notAfter };
+  if (windowCall && s.calling.has(windowId)) return { busy: true };
   switch (m.type) {
     case 'openSpaceWindow': {
       const id = s.nextWindow++;
       const b = s.newWindow;
-      s.windows = [...s.windows, { windowId: id, left: b.left, top: b.top, width: b.width, height: b.height, state: 'fullscreen', focused: true, activeTabId: 13 }];
+      s.windows = [...s.windows, { windowId: id, left: b.left, top: b.top, width: b.width, height: b.height, state: 'fullscreen', focused: true, focusedAt: Date.now(), activeTabId: 13 }];
       setSpace(s, id, m.payload?.spaceId);
+      say({ ev: 'made', id: s.id, windowId: id });
       sendWindows();
-      return { windowId: id, state: 'fullscreen' };
+      return { windowId: id, state: 'fullscreen', bounds: b };
     }
     case 'closeWindow':
-      s.windows = s.windows.filter((w) => w.windowId !== m.payload?.windowId);
+      s.windows = s.windows.filter((w) => w.windowId !== windowId);
+      say({ ev: 'closed', id: s.id, windowId });
       sendWindows();
       return {};
+    case 'setWindowState': {
+      const w = s.windows.find((x) => x.windowId === windowId);
+      const state = m.payload?.state;
+      if (!w) return { windowId, state, timedOut: true };
+      const same = w.state === state;
+      s.calling.add(windowId);
+      return new Promise((done) => setTimeout(() => {
+        s.calling.delete(windowId);
+        const b = state === 'fullscreen' ? s.newWindow : (s.play.normal ?? { left: s.newWindow.left + 100, top: s.newWindow.top + 80, width: s.newWindow.width - 200, height: s.newWindow.height - 160 });
+        s.windows = s.windows.map((x) => (x.windowId !== windowId ? (m.payload?.focused ? { ...x, focused: false } : x)
+          : { ...x, state, left: b.left, top: b.top, width: b.width, height: b.height, ...(m.payload?.focused ? { focused: true, focusedAt: Date.now() } : {}) }));
+        say({ ev: 'landed', id: s.id, windowId, state });
+        if (s.play.listLagMs) setTimeout(sendWindows, s.play.listLagMs); else sendWindows();
+        done({ windowId, state, landedAt: Date.now() });
+      }, same ? 0 : (state === 'fullscreen' ? s.play.enterMs ?? 300 : s.play.exitMs ?? 100)));
+    }
+    case 'windowDrafts':
+      return { drafts: s.drafts?.[windowId] ?? [], unknown: [] };
+    case 'frameProbe':
+      return { none: 'no page' };
     case 'focusWindow':
-      return { windowId: m.payload?.windowId, state: 'fullscreen' };
+      s.windows = s.windows.map((x) => ({ ...x, focused: x.windowId === windowId, ...(x.windowId === windowId ? { focusedAt: Date.now() } : {}) }));
+      sendWindows();
+      return { windowId, state: s.windows.find((x) => x.windowId === windowId)?.state ?? 'fullscreen' };
     case 'setSpace':
       setSpace(s, m.payload?.windowId, m.payload?.spaceId);
       return { shown: null };
@@ -210,7 +251,7 @@ function setSpace(s, windowId, spaceId) {
   s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
 }
 
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null }) {
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null, instanceId = null, play = {}, drafts = null, nextWindow = 90 }) {
   const to = old ? kept : link;
   const ws = new WebSocket(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
@@ -226,7 +267,7 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
     Object.assign(raw.openTabs.tabs[newTabPage], { url: `${ORIGIN}/newtab/newtab.html`, title: 'New Tab' });
   }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
-  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow: 90 };
+  const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow, play, drafts, calling: new Set() };
   sockets.set(id, s);
   s.send = (m) => ws.send(JSON.stringify({ epoch: s.epoch, ...m }));
   const snapshot = () => s.send({ k: 'snapshot', seq: ++s.seq, state: s.raw, windows: s.windows });
@@ -261,7 +302,9 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       case 'req': {
         say({ ev: 'req', id, msg: m });
         const played = m.epoch === s.epoch ? playWindow(s, m) : null;
-        return s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: played ?? { type: m.type, windowId: m.windowId, payload: m.payload } });
+        const reply = (result) => s.send({ k: 'reply', id: m.id, ok: m.epoch === s.epoch, result: result ?? { type: m.type, windowId: m.windowId, payload: m.payload } });
+        if (played instanceof Promise) return void played.then(reply);
+        return reply(played);
       }
       case 'setLayout':
         return say({ ev: 'setLayout', id, msg: m });
@@ -361,6 +404,9 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       return say({ ev: 'sent', id: c.id, what: 'data.hello' });
     case 'mute':
       s.muted = c.on;
+      return;
+    case 'play':
+      s.play = { ...s.play, ...c.play };
       return;
     case 'close':
       s.ws.close();

@@ -98,6 +98,10 @@ enum ScreenGeometry {
 }
 
 // Which apps are running and in front (NSWorkspace; tests script it).
+// `onChange`'s words the shell acts on beyond a read: "Space changed", "app activated", "app quit",
+// and the system's moves the profile handoff weighs (app/HANDOFF.md §6.8): "will sleep" (the screen
+// revealed at once), "woke", "displays changed" and "the Dock restarted" (a launch of com.apple.dock:
+// the Dock or WindowManager starting again), each a system cause for 3 s.
 protocol AppWatch: AnyObject {
     var frontPid: pid_t? { get }
     func pids(of bundleId: String) -> Set<pid_t>
@@ -122,9 +126,9 @@ final class WorkspaceApps: AppWatch {
         let workspace = NSWorkspace.shared.notificationCenter
         let names: [(NotificationCenter, Notification.Name, String)] = [
             (workspace, NSWorkspace.didActivateApplicationNotification, "app activated"),
-            (workspace, NSWorkspace.didLaunchApplicationNotification, "app launched"),
             (workspace, NSWorkspace.didTerminateApplicationNotification, "app quit"),
             (workspace, NSWorkspace.activeSpaceDidChangeNotification, "Space changed"),
+            (workspace, NSWorkspace.willSleepNotification, "will sleep"),
             (workspace, NSWorkspace.didWakeNotification, "woke"),
             (NotificationCenter.default, NSApplication.didChangeScreenParametersNotification, "displays changed"),
         ]
@@ -133,6 +137,11 @@ final class WorkspaceApps: AppWatch {
                 MainActor.assumeIsolated { self?.onChange?(why) }
             }))
         }
+        // A launch: the Dock's own (it restarted, and WindowManager with it) is a system event.
+        observers.append((workspace, workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            let dock = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == "com.apple.dock"
+            MainActor.assumeIsolated { self?.onChange?(dock ? "the Dock restarted" : "app launched") }
+        }))
     }
 
     func stop() {

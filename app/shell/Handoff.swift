@@ -59,6 +59,10 @@ import AppKit
 
 // What the machine needs from the shell beyond SwitchWorld (Shell, via WP9; the tests' fake).
 protocol HandoffWorld: SwitchWorld {
+    // Whether the handoff may run at all (the shell: its gate, HANDOFF.md §10.4). False: the world is
+    // treated as a plain SwitchWorld, so every switch is the close-based one exactly as before (no
+    // drafts asked, no notices).
+    var handoffOn: Bool { get }
     var handoffFreezer: Freezer? { get } // nil: no freeze calls
     var spaceReads: SpaceReads? { get } // nil: no Space reads, and so the close-based switch
     var parker: BridgeParker? { get }
@@ -82,6 +86,10 @@ protocol HandoffWorld: SwitchWorld {
     // Shown just above its window (WindowMatcher.stackedAbove): R4's first half.
     func overlayAbove(_ key: WindowKey) -> Bool
     func showSwitchNotice(_ notice: SwitchNotice)
+}
+
+extension HandoffWorld {
+    var handoffOn: Bool { true }
 }
 
 struct HandoffOptions {
@@ -305,7 +313,7 @@ struct HandoffSession {
 }
 
 extension ProfileSwitch: FreezerDelegate {
-    var handoffWorld: HandoffWorld? { world as? HandoffWorld }
+    var handoffWorld: HandoffWorld? { (world as? HandoffWorld).flatMap { $0.handoffOn ? $0 : nil } }
     private var ho: HandoffOptions { options.handoff }
 
     // ---- for the shell (WP9) ----

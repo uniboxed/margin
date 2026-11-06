@@ -4,7 +4,7 @@
 //   the screen frozen while the target profile's window is shown and put in
 //   full screen, and the window left is parked out of sight (or closed, or kept
 //   in its own full-screen Space). It runs when the world is a HandoffWorld with
-//   the Space reads, and each switch picks its freeze and the old window's fate
+//   the handoff on (the shell's gate) and the Space reads, and each switch picks its freeze and the old window's fate
 //   from what passed at launch, what failed this session, the setting and the
 //   displays at that moment.
 // - The close-based switch below (PLAN.md §15, Tirth 2026-11-05), the fallback:
@@ -199,7 +199,7 @@ final class ProfileSwitch {
     // In a HandoffWorld, the old window's drafts before it may be closed (HANDOFF.md §1.1): asked now,
     // answered long before the new window is in front.
     private func askDrafts() {
-        guard world is HandoffWorld, let from, let old = from.windowId, from.profile != target?.profile, let world, world.isLinked(from.profile) else { return }
+        guard handoffWorld != nil, let from, let old = from.windowId, from.profile != target?.profile, let world, world.isLinked(from.profile) else { return }
         draftsAsked = true
         let g = gen
         world.request(from.profile, "windowDrafts", HandoffRequest.windowDrafts(windowId: old).payload, windowId: old) { [weak self] result, _ in
@@ -381,7 +381,7 @@ final class ProfileSwitch {
         let told = notices
         notices = []
         defer {
-            if let hw = world as? HandoffWorld { for n in told { hw.showSwitchNotice(n) } }
+            if let hw = handoffWorld { for n in told { hw.showSwitchNotice(n) } }
             poll()
         }
         // What was asked meanwhile, from where the switch landed.

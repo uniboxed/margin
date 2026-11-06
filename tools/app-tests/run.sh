@@ -20,7 +20,10 @@
 #         e2e-data.swift, the lasting data over the real link, in a temporary
 #         folder (never ~/Library/Application Support/Margin); and e2e-profiles.swift,
 #         two profiles' copies and the app driving a switch between them with
-#         stand-in windows; and e2e-windows.swift, which window is which with
+#         stand-in windows, the close-based one with the handoff's gate off, then
+#         the handoff with stand-ins for macOS's Spaces, the parker and the freeze
+#         (parking, showing, the keys mid-switch, a wake, a parked window used, a
+#         dialog, the shown window closed, a crash's marker, quit); and e2e-windows.swift, which window is which with
 #         two profiles and several same-bounds windows, Spaces played by
 #         on-screen flags and the copies' focus flags lagging; and e2e-keyboard.swift,
 #         the overlay's keyboard and its page's focus through shows, put-aways and relinks;

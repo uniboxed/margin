@@ -341,6 +341,7 @@ final class FakeHandoffWorld: HandoffWorld {
     var unbound: Set<Int> = [] // numbers the binder hasn't bound
     var noFreezer = false
     var noReads = false
+    var gateOff = false // the shell's gate (Options.handoff) off
     var parkingOnFlag = true
     var closeWindows = false
     var lag = 0.02 // each way
@@ -499,6 +500,7 @@ final class FakeHandoffWorld: HandoffWorld {
 
     // ---- HandoffWorld ----
 
+    var handoffOn: Bool { !gateOff }
     var handoffFreezer: Freezer? { noFreezer ? nil : freezer }
     var spaceReads: SpaceReads? { noReads ? nil : reads }
     var parker: BridgeParker? { spaceParker }
@@ -849,6 +851,17 @@ func handoffMachineTests() {
         handoffRun(w, 5)
         check("no Space reads: done as today", w.events.last == .done(toC) && w.win(hKA) == nil)
         handoffInvariants("no Space reads", w, s, [hA, hC])
+    }
+    do {
+        // The shell's gate off (Options.handoff, until G1): a plain SwitchWorld, today's switch exactly,
+        // with no drafts asked and no freeze, though the reads, the parker and the freezer are there.
+        let (w, s) = handoffSetup { $0.gateOff = true }
+        s.start(toC, from: hA, windowId: 10)
+        check("gate off: the close-based switch", s.phase == .creating && s.run == nil && s.handoffWorld == nil)
+        handoffRun(w, 5)
+        check("gate off: done as before, with no drafts asked and nothing frozen", w.events.last == .done(toC) && w.win(hKA) == nil
+              && w.types(hA, "windowDrafts").isEmpty && w.freezer.calls.isEmpty && w.types(nil, "setWindowState").isEmpty, "\(w.requests.map(\.type))")
+        handoffInvariants("gate off", w, s, [hA, hC])
     }
     // ---- keep: two displays; and the next switch on one display freezes again ----
     do {
