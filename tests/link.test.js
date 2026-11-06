@@ -274,6 +274,59 @@ test('link: what isn\'t the app — a wrong key, a link of another nonce, no app
   l3.stop();
 });
 
+test('link: Margin.app running but sending no link (one an update left): asked again at the short wait three times, then less and less often; pages told it isn\'t answering', async () => {
+  const api = browser({ app: null, appOpen: () => true });
+  const at = [];
+  const sendNative = api.runtime.sendNativeMessage;
+  api.runtime.sendNativeMessage = async (id, message) => {
+    if (message.type === 'wantLink') at.push(Date.now());
+    return sendNative(id, message);
+  };
+  const { link } = makeLink(api, { timing: { ...FAST, linkWait: 20, noLinkAsk: 60, noLinkAsks: 3, ask: [150, 1200], gone: 50 } });
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(await until(() => at.length >= 7, 4000), `asked 7 times (${at.length})`);
+    const gaps = at.slice(1).map((t, i) => t - at[i]);
+    // Each gap is the link's wait (20 ms) and then the wait before asking again.
+    assert.ok(gaps.slice(0, 3).every((g) => g >= 70 && g < 150), `three asks after the short wait: ${gaps}`);
+    assert.ok(gaps[3] >= 150 && gaps[4] > gaps[3] + 80 && gaps[5] > gaps[4] + 160, `then doubling: ${gaps}`);
+    assert.equal(link.pageState(), 'off');
+    const written = api.storage.local.data[APP_LINK_KEY];
+    assert.equal(written?.state, 'off');
+    assert.equal(written?.why, 'no-link', 'pages: running, not answering');
+  } finally {
+    link.stop();
+  }
+  // Linked at last: no `why` left behind; the short waits again after the next drop to no link.
+  const app = await startFakeApp();
+  let answering = false;
+  const api2 = browser({ app: null, appOpen: () => true });
+  const native = api2.runtime.sendNativeMessage;
+  api2.runtime.sendNativeMessage = async (id, message) => {
+    if (answering && message.type === 'wantLink') setTimeout(() => api2.ports.at(-1)?.deliver(app.linkInfo(message.nonce)), 5);
+    return native(id, message);
+  };
+  const { link: l2 } = makeLink(api2, { timing: { ...FAST, linkWait: 20, noLinkAsk: 60, noLinkAsks: 3, ask: [150, 1200], gone: 50 } });
+  try {
+    await l2.start({ route: async () => ({ ok: true }) });
+    assert.ok(await until(() => api2.storage.local.data[APP_LINK_KEY]?.why === 'no-link', 1000));
+    answering = true;
+    assert.ok(await until(() => l2.linked(), 1000), 'linked at the next short ask');
+    assert.ok(await until(() => api2.storage.local.data[APP_LINK_KEY]?.state === 'linked', 500));
+    assert.equal(api2.storage.local.data[APP_LINK_KEY]?.why, undefined, 'linked: no why');
+  } finally {
+    l2.stop();
+    await app.close();
+  }
+  // Not running at all: no `why` (the page offers to start it).
+  const api3 = browser({ app: null });
+  const { link: l3 } = makeLink(api3);
+  await l3.start({ route: async () => ({ ok: true }) });
+  assert.ok(await until(() => api3.storage.local.data[APP_LINK_KEY] === undefined || api3.storage.local.data[APP_LINK_KEY]?.why === undefined, 300));
+  assert.equal(api3.storage.local.data[APP_LINK_KEY]?.why, undefined);
+  l3.stop();
+});
+
 test('link: an app started on demand (the handler says `launching`) is asked again soon, then linked', async () => {
   const app = await startFakeApp();
   let up = false;

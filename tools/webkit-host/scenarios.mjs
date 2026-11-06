@@ -1179,6 +1179,24 @@ Object.assign(SCENARIOS, {
     boxed('A'),
   ],
 
+  // Margin.app running but every link it dispatches refused (one an update
+  // left running, before scripts/safari.sh quit it: SFErrorDomain 1): the
+  // new-tab page says it isn't answering, with no start button (it's
+  // running); asked again 5 s later, and linked once the app's dispatches go
+  // through: the page is the app's from then on.
+  'newtab-no-link': [
+    appWith(260), { op: 'appRefuse' },
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, ready('A'),
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
+    checkPage('N', 'N: Margin.app isn\'t answering, no start button, the address field', `!document.getElementById('notice').hidden && document.getElementById('title').textContent === 'Margin.app isn’t answering' && document.getElementById('start').hidden && !!document.getElementById('address')`, 8000),
+    check('A', 'pages: off, why no-link', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'off' && appLink?.why === 'no-link'`, 2000),
+    { op: 'appHeard', label: 'the app\'s link refused, never delivered', has: ['"ev":"dispatch refused"', '"name":"link"'] },
+    { op: 'appRefuse', refuse: false },
+    checkPage('N', 'N: asked again 5 s later and linked: loaded again, drawn by the app', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 9000),
+    check('A', 'pages: linked, no why left', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'linked' && appLink.why === undefined`, 2000),
+    linked('A'), boxed('A'),
+  ],
+
   // ---- Margin 2 Phase 2 step 7: what pages said in their own UI, said by Margin.app's overlay ----
   // Through the app's real end of the link (link-server/): what it heard
   // (appHeard), and a request from its UI (appReq). The overlay drawing it is

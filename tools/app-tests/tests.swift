@@ -74,6 +74,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     dataSync()
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
+    oneMargin()
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }
@@ -491,6 +492,36 @@ final class FakeRegistrar: HotKeyRegistrar {
     // Over the inspector the overlay isn't there at all: the pointer is Safari's.
     let slot = PassThrough.slot(in: CGRect(x: 0, y: 33, width: 1512, height: 600), layout: PageLayout(left: 260, top: 8, right: 8, bottom: 8, radius: 0, radii: [0, 0, 0, 0], width: 1512, height: 600, mode: "fullscreen"))
     check("the slot ends above the inspector", slot.rect.maxY == 33 + 600 - 8)
+  }
+
+  // One Margin.app at a time (BundleWatch.swift, AppDelegate.swift): a new instance ends the others of its bundle.
+  static func oneMargin() {
+    let here = "/Users/t/Applications/Margin.app"
+    let running = [BundleWatch.Running(pid: 10, bundlePath: here), BundleWatch.Running(pid: 11, bundlePath: here + "/"),
+                   BundleWatch.Running(pid: 12, bundlePath: here + ".old"), BundleWatch.Running(pid: 13, bundlePath: "/Users/t/Projects/margin/xcode/build/Build/Products/Release/Margin.app"),
+                   BundleWatch.Running(pid: 14, bundlePath: nil), BundleWatch.Running(pid: 15, bundlePath: "/Users/t/Library/Developer/Xcode/DerivedData/Margin-x/Build/Products/Debug/Margin.app")]
+    check("one Margin.app: the others of this bundle (and one an update moved aside) end, never this one", BundleWatch.othersToEnd(running, me: 10, bundlePath: here) == [11, 12])
+    check("never a build folder's or Xcode's copy, nor one whose bundle isn't known", !BundleWatch.othersToEnd(running, me: 99, bundlePath: here).contains { [13, 14, 15].contains($0) })
+    check("alone: nothing to end", BundleWatch.othersToEnd([BundleWatch.Running(pid: 10, bundlePath: here)], me: 10, bundlePath: here).isEmpty)
+    // The executable's identity, read from a real file (in a temporary folder) as scripts/safari.sh swaps the bundle.
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appendingPathComponent("margin-bundle-\(UUID().uuidString)", isDirectory: true)
+    defer { try? fm.removeItem(at: dir) }
+    try? fm.createDirectory(at: dir.appendingPathComponent("Margin.app/Contents/MacOS"), withIntermediateDirectories: true)
+    let exe = dir.appendingPathComponent("Margin.app/Contents/MacOS/Margin")
+    try? Data("old build".utf8).write(to: exe)
+    let first = FileIdentity.of(exe)
+    check("an executable's identity: read, and the same when nothing changed", first != nil && FileIdentity.of(exe) == first)
+    try? fm.createDirectory(at: dir.appendingPathComponent("Margin.app.new/Contents/MacOS"), withIntermediateDirectories: true)
+    try? Data("new build".utf8).write(to: dir.appendingPathComponent("Margin.app.new/Contents/MacOS/Margin"))
+    try? fm.moveItem(at: dir.appendingPathComponent("Margin.app"), to: dir.appendingPathComponent("Margin.app.old"))
+    check("mid-swap (the bundle moved aside): can't be read", FileIdentity.of(exe) == nil)
+    try? fm.moveItem(at: dir.appendingPathComponent("Margin.app.new"), to: dir.appendingPathComponent("Margin.app"))
+    check("the new bundle in its place: another file at the same path", FileIdentity.of(exe) != nil && FileIdentity.of(exe) != first)
+    var quit = 0
+    let watch = BundleWatch(read: { FileIdentity.of(exe) }, quit: { quit += 1 })
+    try? fm.removeItem(at: dir.appendingPathComponent("Margin.app.old"))
+    check("its own build in place: no quit", !watch.check("test") && quit == 0)
   }
 
   static func edgeAndPointer() {

@@ -72,46 +72,48 @@ xcodebuild -project xcode/Margin/Margin.xcodeproj -scheme Margin -configuration 
   -derivedDataPath "$DERIVED" -allowProvisioningUpdates -quiet $SIGN build
 BUILT="$DERIVED/Build/Products/Release/Margin.app"
 
-# Over the installed copy (same app, same extension: Safari takes it as an update).
+# Over the installed copy (same app, same extension: Safari takes it as an
+# update), by scripts/app-swap.sh: the new copy in place of the old one and
+# registered, then the Margin.app that was running from it quit, and only
+# then the old copy deleted; the new one started if Safari is running and
+# nothing started it.
+. scripts/app-swap.sh
 FIRST=true
 [ -d "$DEST" ] && FIRST=false
 mkdir -p "$HOME/Applications"
 rm -rf "$DEST.new" "$DEST.old" && ditto "$BUILT" "$DEST.new"
-# The old copy out of the way in one step (a rename), the new one in its place
-# (another), and only then the old one deleted. Deleted in place, file by
-# file, Safari could read the extension half gone: its files no longer
-# matching their signature, it turned Margin off and blocked it
-# (WKWebExtensionErrorDomain 3, "Disabling and blocking extension", Tirth's
-# Safari, 2026-11-04).
-[ -d "$DEST" ] && mv "$DEST" "$DEST.old"
-mv "$DEST.new" "$DEST"
-"$LSREGISTER" -u "$DEST.old" 2>/dev/null || true
-rm -rf "$DEST.old"
-# The build's own copy goes (it would be a second Margin.app on the Mac; the
-# build folder keeps what makes the next build quick).
-"$LSREGISTER" -u "$BUILT" 2>/dev/null || true
-rm -rf "$BUILT"
-"$LSREGISTER" -f -R "$DEST"
-# Safari lists Margin only once the system has the extension. Its record can
-# be dropped seconds after it's added (the copies unregistered above are
-# handled late, even after it was listed), so it's added again whenever it's
-# gone, until the system has kept listing this copy for 5 seconds.
-APPEX="$DEST/Contents/PlugIns/Margin Extension.appex"
 REGISTERED=false
-KEPT=0
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-  if pluginkit -m -v -i io.tirth.margin.Extension 2>/dev/null | grep -qF "$APPEX"; then
-    KEPT=$((KEPT + 1))
-    if [ "$KEPT" -ge 10 ]; then
-      REGISTERED=true
-      break
+register_app() {
+  "$LSREGISTER" -u "$1.old" 2>/dev/null || true
+  # The build's own copy goes (it would be a second Margin.app on the Mac; the
+  # build folder keeps what makes the next build quick).
+  "$LSREGISTER" -u "$BUILT" 2>/dev/null || true
+  rm -rf "$BUILT"
+  "$LSREGISTER" -f -R "$1"
+  # Safari lists Margin only once the system has the extension. Its record can
+  # be dropped seconds after it's added (the copies unregistered above are
+  # handled late, even after it was listed), so it's added again whenever it's
+  # gone, until the system has kept listing this copy for 5 seconds.
+  APPEX="$1/Contents/PlugIns/Margin Extension.appex"
+  KEPT=0
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+    if pluginkit -m -v -i io.tirth.margin.Extension 2>/dev/null | grep -qF "$APPEX"; then
+      KEPT=$((KEPT + 1))
+      if [ "$KEPT" -ge 10 ]; then
+        REGISTERED=true
+        break
+      fi
+    else
+      KEPT=0
+      pluginkit -a "$APPEX"
     fi
-  else
-    KEPT=0
-    pluginkit -a "$APPEX"
-  fi
-  sleep 0.5
-done
+    sleep 0.5
+  done
+}
+safari_running() { pgrep -x Safari >/dev/null 2>&1; }
+# In the background, never hidden (-j): a hidden Margin.app's overlays never show.
+open_app() { open -g "$1" --args --background; }
+swap_app "$DEST.new" "$DEST"
 [ "$REGISTERED" = true ] || echo "warning: the system doesn't list Margin's extension; open $DEST once so Safari sees it." >&2
 # Only this copy: one Xcode left elsewhere (its own build folder) would be a
 # second Margin in Safari, with storage of its own.

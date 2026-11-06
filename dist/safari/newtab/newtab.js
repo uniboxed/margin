@@ -4,8 +4,10 @@
 // place (ui/host-app.js), and the page draws nothing of its own. Not linked
 // (Margin 2: nothing of Margin's UI is drawn in pages, this one included), it
 // says Margin.app isn't running, with a button that starts it and an address
-// field, so a new tab still works. It's loaded again when the link comes or
-// goes. (Phase 7 makes the prompt to install the app.)
+// field, so a new tab still works; or, when the app is running but sent no
+// link (appLink.why 'no-link', background/link.js), that it isn't answering,
+// with no button (it's running: starting it does nothing). It's loaded again
+// when the link comes or goes. (Phase 7 makes the prompt to install the app.)
 import { platform } from '../shared/platform.js';
 import { resolveInput } from '../shared/search.js';
 import * as shortcuts from '../shared/shortcuts.js';
@@ -48,7 +50,10 @@ if (fresh) void send('newTabPage');
 const { [APP_LINK_KEY]: appLinkNow } = await api.storage.local.get(APP_LINK_KEY);
 const drawnByApp = appDraws(appLinkNow);
 api.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && APP_LINK_KEY in changes && appDraws(changes[APP_LINK_KEY].newValue) !== drawnByApp) location.reload();
+  if (area !== 'local' || !(APP_LINK_KEY in changes)) return;
+  const now = changes[APP_LINK_KEY].newValue;
+  if (appDraws(now) !== drawnByApp) location.reload();
+  else if (!drawnByApp) describe(now);
 });
 const self = await api.tabs.getCurrent();
 // Next/previous tab and space from Settings' shortcuts, as on web pages.
@@ -65,6 +70,21 @@ const address = () => /** @type {HTMLInputElement | null} */ (document.getElemen
 
 if (!drawnByApp) showNotice();
 
+// Not running, or running and not answering (it sent no link): said in the
+// notice; the start button only for the first.
+function describe(appLink) {
+  const title = document.getElementById('title');
+  const why = document.getElementById('why');
+  const start = /** @type {HTMLButtonElement | null} */ (document.getElementById('start'));
+  if (!title || !why || !start || !platform?.nativeApp) return;
+  const noLink = appLink?.why === 'no-link';
+  title.textContent = noLink ? 'Margin.app isn’t answering' : 'Margin.app isn’t running';
+  why.textContent = noLink
+    ? 'Margin.app is running but didn’t link to Margin. Margin keeps asking; this page changes once it’s linked.'
+    : 'Margin’s sidebar, palette and Settings are drawn by Margin.app.';
+  start.hidden = noLink;
+}
+
 function showNotice() {
   const notice = document.getElementById('notice');
   const start = /** @type {HTMLButtonElement} */ (document.getElementById('start'));
@@ -77,6 +97,7 @@ function showNotice() {
   // is loaded again once it's linked.
   if (platform?.nativeApp) {
     start.hidden = false;
+    describe(appLinkNow);
     let timer = null;
     start.addEventListener('click', async () => {
       start.disabled = true;

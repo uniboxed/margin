@@ -32,7 +32,8 @@
 // What pages see (storage.local appLink, shared/app-link.js): 'linked', then
 // on a drop 'reconnecting' for GONE_MS (the app keeps the last picture,
 // dimmed, saying it's reconnecting), and only then 'off' (pages lose their
-// box: no Margin then). The app saying goodbye (it quit) is 'off' at once. Each
+// box: no Margin then), with `why: 'no-link'` while Margin.app is running but
+// sends no link (NO_LINK_ASK_MS). The app saying goodbye (it quit) is 'off' at once. Each
 // window's layout is kept there too (pages new and old read it), and the
 // window's page in front is told at once (`appLayout`).
 //
@@ -68,6 +69,12 @@ export const ASK_MS = [5000, 60_000]; // asked again after this long, doubling u
 export const GONE_MS = 6000; // a drop not mended in this long: 'off', pages lose their box
 export const LAUNCH_ASK_MS = 500; // the app being started on demand: asked again this often…
 export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other time
+// Margin.app running but sending no link (the handler said appOpen, nothing came): asked
+// again after NO_LINK_ASK_MS, at most NO_LINK_ASKS times in a row, then less and less often
+// as any other time. An app replaced under itself by an update quits once it notices
+// (app/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
+export const NO_LINK_ASK_MS = 5000;
+export const NO_LINK_ASKS = 3;
 const DELTA_MS = 16;
 export const WINDOWS_MS = 1000;
 const LAYOUT_WRITE_MS = 120;
@@ -164,7 +171,8 @@ export function createLink({
 }) {
   const T = {
     ping: PING_MS, dead: DEAD_MS, check: CHECK_MS, linkWait: LINK_WAIT_MS, openWait: OPEN_WAIT_MS, keptWait: KEPT_WAIT_MS,
-    reconnect: RECONNECT_MS, ask: ASK_MS, gone: GONE_MS, windows: WINDOWS_MS, layoutWrite: LAYOUT_WRITE_MS, launchAsk: LAUNCH_ASK_MS, launchAsks: LAUNCH_ASKS, ...timing,
+    reconnect: RECONNECT_MS, ask: ASK_MS, gone: GONE_MS, windows: WINDOWS_MS, layoutWrite: LAYOUT_WRITE_MS, launchAsk: LAUNCH_ASK_MS, launchAsks: LAUNCH_ASKS,
+    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, ...timing,
   };
   // What the link does, in the background's console and, through the lasting
   // native port, in Margin.app's own log (the extension handler writes it to
@@ -244,6 +252,7 @@ export function createLink({
     if (state === pageState.state && pageState.epoch === epoch) return;
     const changed = state !== pageState.state;
     pageState = { ...pageState, state, epoch, at: Date.now() };
+    if (state !== 'off') delete pageState.why;
     if (changed) for (const cb of [...listeners]) cb(state);
     writePageState(0);
   }
@@ -267,6 +276,15 @@ export function createLink({
     clearTimeout(goneTimer);
     goneTimer = null;
     setPageState('off');
+  }
+  // Why there's no link, for the new-tab page: 'no-link' (Margin.app is
+  // running but sent none), or nothing said (it isn't running, or not known).
+  function setWhy(why) {
+    if (pageState.why === why) return;
+    pageState = { ...pageState };
+    if (why) pageState.why = why;
+    else delete pageState.why;
+    writePageState(0);
   }
 
   // ---- the native port --------------------------------------------------------
@@ -366,7 +384,7 @@ export function createLink({
     linkWaiter = null;
     if (!got || !on) {
       if (on) note(`wantLink: Margin.app is running but sent no link within ${T.linkWait} ms`);
-      return failed();
+      return failed({ noLink: true });
     }
     if (await open(got, T.openWait)) return true;
     note(`the link on port ${got.port} didn't open within ${T.openWait} ms`);
@@ -375,11 +393,16 @@ export function createLink({
   // No app to link to: asked again later (and when a page starts, or the app
   // says it's up). Pages lose their box once it's clear.
   let launches = 0;
-  function failed({ appGone = false, launching = false } = {}) {
+  let noLinks = 0;
+  function failed({ appGone = false, launching = false, noLink = false } = {}) {
     if (appGone) gone();
     else if (pageState.state !== 'off' && !goneTimer) dropping();
+    if (noLink || appGone || launching) setWhy(noLink ? 'no-link' : undefined);
+    if (!noLink) noLinks = 0;
     // Starting: every LAUNCH_ASK_MS for a while (its appUp may come first).
     if (launching && launches++ < T.launchAsks) askMs = T.launchAsk;
+    // Running, no link: NO_LINK_ASK_MS a few times (it may be quitting for a new build), then as below.
+    else if (noLink && noLinks++ < T.noLinkAsks) askMs = T.noLinkAsk;
     else askMs = Math.min(Math.max(askMs * 2, T.ask[0]), T.ask[1]);
     clearTimeout(askTimer);
     askTimer = on ? setTimeout(() => { askTimer = null; void link({ kept: false }); }, askMs) : null;
@@ -479,6 +502,7 @@ export function createLink({
     lastHeard = Date.now();
     askMs = 0;
     launches = 0;
+    noLinks = 0;
     lastWindows = '';
     lastList = null;
     lastKeys = '';
@@ -912,6 +936,7 @@ export function createLink({
       if (ws) return true;
       askMs = 0;
       launches = 0;
+      noLinks = 0;
       void link({ kept: false });
       return true;
     },

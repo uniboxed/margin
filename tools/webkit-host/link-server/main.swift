@@ -9,7 +9,7 @@
 // As the copy links, it sends a setLayout for the copy's first window (300/40/20/24, or
 // MARGIN_LINK_LAYOUT="left,top,right,bottom"), and once the theme's pieces add up, a request
 // (`updateSettings`, the sidebar's shortcut to ⌥J) whose effect a page can see. Stdin:
-// { wantLink: nonce } | { bye: true } | { layout: [left, top, right, bottom] } (a new
+// { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) | { layout: [left, top, right, bottom] } (a new
 // setLayout for the linked copy's first window: the host's `appLayout` step) | { req: { type, payload } }
 // (a request from the app's UI for that window, its reply said: the host's `appReq` step).
 // Built by run.sh with the app's flags; never shows anything.
@@ -22,9 +22,20 @@ func say(_ object: JSONObject) {
   fflush(stdout)
 }
 
-struct StdoutDispatch: ExtensionDispatch {
-  func dispatch(_ name: String, _ info: JSONObject) { say(["dispatch": name, "info": info]) }
+// `refusing` (stdin { refuse: true }): every dispatch refused as Safari refuses one from a
+// Margin.app whose bundle was replaced under it (SFErrorDomain 1), nothing delivered.
+final class StdoutDispatch: ExtensionDispatch {
+  var refusing = false
+  func dispatch(_ name: String, _ info: JSONObject, done: @escaping @MainActor (String?) -> Void) {
+    if refusing {
+      say(["ev": "dispatch refused", "name": name])
+      return done("SFErrorDomain 1")
+    }
+    say(["dispatch": name, "info": info])
+    done(nil)
+  }
 }
+let dispatcher = StdoutDispatch()
 
 // The insets the app's overlay would measure for the page slot (left, top, right, bottom).
 var insets: [Double] = {
@@ -52,7 +63,7 @@ final class Harness: ExtensionLinkDelegate {
   }
 
   init() {
-    link = SocketLink(dispatch: StdoutDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.link.\(getpid())"))
+    link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.link.\(getpid())"))
     // The host's extension pages are webkit-extension:// (Safari's are safari-web-extension://).
     link.allowedOrigins = ["safari-web-extension://", "webkit-extension://"]
     link.delegate = self
@@ -126,6 +137,7 @@ FileHandle.standardInput.readabilityHandler = { handle in
     DispatchQueue.main.async {
       MainActor.assumeIsolated {
         if let nonce = object["wantLink"] as? String { harness.link.wantLink(nonce: nonce) }
+        if let refuse = object["refuse"] as? Bool { dispatcher.refusing = refuse; say(["ev": refuse ? "refusing dispatches" : "passing dispatches on"]) }
         if object["bye"] as? Bool == true { harness.link.stop(why: "Margin.app quit") { say(["ev": "stopped"]); exit(0) } }
         if let req = object["req"] as? JSONObject, let type = req["type"] as? String, let c = harness.current {
           let payload = req["payload"] as? JSONObject ?? [:]

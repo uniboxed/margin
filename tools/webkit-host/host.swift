@@ -742,6 +742,9 @@ Task { @MainActor in
     case "appLayout": // { op: 'appLayout', layout: [left, top, right, bottom] }: the app's overlay measured the slot again
       appLink.tell(["layout": (step["layout"] as? [NSNumber])?.map { $0.doubleValue } ?? []]); log("appLayout \(step["layout"] ?? "")")
     case "appQuit": appLink.tell(["bye": true]); log("appQuit")
+    case "appRefuse": // { op: 'appRefuse', refuse? }: the app's dispatches refused (as Safari's SFErrorDomain 1) or, refuse false, passed on again
+      let refuse = step["refuse"] as? Bool ?? true
+      appLink.tell(["refuse": refuse]); log("appRefuse \(refuse)")
     case "appKill": appLink.kill()
     case "appPings": log("app: \(appLink.pings) pings on the port so far")
     case "appMark": appLink.mark = appLink.heard.count; log("appMark at \(appLink.mark)")

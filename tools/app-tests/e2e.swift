@@ -79,8 +79,14 @@ final class Fake {
   func stop() { process.terminate() }
 }
 
-struct FakeDispatch: ExtensionDispatch {
-  func dispatch(_ name: String, _ info: JSONObject) { Fake.current?.tell(["native": ["name": name, "info": info]]) }
+// `refuse`: each dispatch refused for this reason (as Safari refuses one: "SFErrorDomain 1"), nothing delivered.
+final class FakeDispatch: ExtensionDispatch {
+  var refuse: String?
+  func dispatch(_ name: String, _ info: JSONObject, done: @escaping @MainActor (String?) -> Void) {
+    if let refuse { return done(refuse) }
+    Fake.current?.tell(["native": ["name": name, "info": info]])
+    done(nil)
+  }
 }
 
 final class ScriptedApps: AppWatch {
@@ -185,7 +191,8 @@ func scenario() async {
   guard await until(5, { fake.first("ready") != nil }) else { return check("the fake extension starts", false) }
 
   let note = Notification.Name("io.tirth.margin.test.\(ProcessInfo.processInfo.processIdentifier)")
-  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: note,
+  let dispatcher = FakeDispatch()
+  let link = SocketLink(dispatch: dispatcher, safariSince: { nil }, wake: note,
                         timing: .init(tick: 0.5, dead: 1.5, keep: 30, hello: 2, request: 5, safariSettled: 2))
   let windows = ScriptedWindows()
   let apps = ScriptedApps()
@@ -498,6 +505,57 @@ func scenario() async {
   check("its overlay kept a moment, dimmed, saying it's reconnecting", shell.isReconnecting("safari:P2") && shell.overlays[k9] != nil)
   if let o9 = shell.overlays[k9] { check("the note shown", await waitJS(o9.webView, "return document.documentElement.hasAttribute('data-reconnecting') && !!document.getElementById('margin-reconnecting')")) }
   check("then closed, the copy not back", await until(3, { shell.overlays[k9] == nil && !shell.isReconnecting("safari:P2") }))
+
+  // ---- a dispatch Safari refuses, and the app replaced on disk under it (an update) ----
+  var said: [String] = []
+  let echo = Diagnostics.echo
+  Diagnostics.echo = { said.append($0); echo?($0) }
+  func saidSince(_ from: Int) -> [String] { Array(said.dropFirst(from)) }
+  check("a link is up for what follows", !link.connections.isEmpty)
+  dispatcher.refuse = "SFErrorDomain 1"
+  mark = fake.events.count
+  var from = said.count
+  link.wantLink(nonce: "refused-1")
+  let handed = saidSince(from).first { $0.hasPrefix("wantLink: link handed to Safari (port ") } ?? ""
+  let number = handed.range(of: #"#\d+"#, options: .regularExpression).map { String(handed[$0]) } ?? "#?"
+  check("refused: handed to Safari, then not passed on, with why", saidSince(from).contains("warning: link \(number) not passed on: SFErrorDomain 1"), "\(saidSince(from))")
+  check("refused: never said to have reached the extension, nor sent", !saidSince(from).contains { $0.contains("reached the extension") || $0.contains("link sent") }, "\(saidSince(from))")
+  try? await Task.sleep(nanoseconds: 200_000_000)
+  check("refused: nothing reached the copy", fake.first("link", since: mark) == nil)
+  var identity = FileIdentity(id: "build-1" as NSString, modified: Date(timeIntervalSince1970: 1))
+  var quits = 0
+  let watch = BundleWatch(read: { identity }, quit: { quits += 1 })
+  watch.watch(link)
+  from = said.count
+  link.wantLink(nonce: "refused-2")
+  link.wantLink(nonce: "refused-3")
+  check("refused three times in a row, the same build on disk: not quit", quits == 0 && !watch.quitting && link.refusedInARow == 3, "quits \(quits), in a row \(link.refusedInARow)")
+  check("the count in the log", saidSince(from).contains { $0.hasSuffix("not passed on: SFErrorDomain 1 (3 in a row)") }, "\(saidSince(from))")
+  check("the 30 s check, the same build: not quit", !watch.check("the 30 s check") && quits == 0)
+  identity = FileIdentity(id: "build-2" as NSString, modified: Date(timeIntervalSince1970: 2))
+  from = said.count
+  link.wantLink(nonce: "refused-4")
+  check("another build in its place: the next refusal quits it, once", quits == 1 && watch.quitting && saidSince(from).contains { $0.hasPrefix("Margin.app was replaced on disk: quitting so the new build starts") }, "quits \(quits) \(saidSince(from))")
+  link.wantLink(nonce: "refused-5")
+  check("and not again: neither a refusal nor the 30 s check", watch.check("the 30 s check") && quits == 1)
+  dispatcher.refuse = nil
+  link.onDispatchRefused = nil
+  from = said.count
+  link.wantLink(nonce: "passed-on")
+  check("passed on: reached the extension, the count back to 0", saidSince(from).contains { $0.hasPrefix("link #") && $0.hasSuffix("reached the extension") } && link.refusedInARow == 0, "\(saidSince(from))")
+  // The 30 s check alone, links up: quits too (the old build would draw the new build's overlay files).
+  var build = FileIdentity(id: "build-1" as NSString, modified: nil)
+  var timerQuits = 0
+  let timed = BundleWatch(read: { build }, quit: { timerQuits += 1 })
+  check("the timer's watch: the same build, no quit", !timed.check("the 30 s check") && timerQuits == 0)
+  build = FileIdentity(id: "build-1" as NSString, modified: Date())
+  check("copied over in place (the same file id, a new date), links up: quit once", !link.connections.isEmpty && timed.check("the 30 s check") && timed.check("the 30 s check") && timerQuits == 1)
+  var unreadable: FileIdentity? = FileIdentity(id: "x" as NSString, modified: nil)
+  var unreadQuits = 0
+  let gap = BundleWatch(read: { unreadable }, quit: { unreadQuits += 1 })
+  unreadable = nil
+  check("the executable missing for a moment (mid-swap): looked at again later, not quit", !gap.check("the 30 s check") && unreadQuits == 0)
+  Diagnostics.echo = echo
 
   // ---- quitting ----
   mark = fake.events.count

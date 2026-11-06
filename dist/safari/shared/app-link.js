@@ -1,6 +1,6 @@
 // What pages know of Margin.app's link (app/PROTOCOL.md), from storage.local
 // `appLink`, which the background's link client (background/link.js) writes:
-// { state, epoch, at, layouts }.
+// { state, epoch, at, layouts, why? }.
 //
 // - `state`: 'linked' (the app draws Margin's UI around this copy's
 //   windows, and pages have their box from its layout), 'reconnecting' (the
@@ -8,6 +8,8 @@
 //   last picture dimmed meanwhile, and pages keep their box), 'off' (no app:
 //   pages are left as they are, with no box). No page draws Margin's UI in
 //   any state (Margin 2 Phase 2 step 5).
+// - `why` (only while 'off'): 'no-link' when Margin.app is running but sent
+//   no link (the new-tab page says it isn't answering); absent otherwise.
 // - `layouts`: each window's page slot as the app's overlay measured it
 //   (setLayout): { [windowId]: { insets, radius, radii, container, mode,
 //   seq, epoch } }, insets in points from the window's edges.

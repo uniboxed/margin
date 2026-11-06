@@ -43,9 +43,11 @@ enum LinkError: Error {
     case notJSON
 }
 
-// What the app says into the extension (its copies' native ports).
+// What the app says into the extension (its copies' native ports). `done`:
+// nil once it's delivered, else why not ("Safari isn't running", or the
+// error's domain and code, as "SFErrorDomain 1").
 protocol ExtensionDispatch {
-    func dispatch(_ name: String, _ info: JSONObject)
+    func dispatch(_ name: String, _ info: JSONObject, done: @escaping @MainActor (String?) -> Void)
 }
 
 let marginExtensionIdentifier = "io.tirth.margin.Extension"
@@ -57,16 +59,23 @@ func safariRunningSince() -> Date? {
 }
 
 // SFSafariApplication.dispatchMessage, as one JSON string (userInfo.e). Never
-// while Safari isn't running: it would open Safari.
+// while Safari isn't running: it would open Safari. Refused here, `done` is
+// called at once; else once Safari has taken it or refused it.
+// SFErrorDomain 1 is SFErrorNoExtensionFound: seen from a Margin.app whose
+// bundle was replaced under it (an update, scripts/safari.sh, before it quit
+// the running app), and for a few seconds after an install while the system
+// adds the extension again (BundleWatch, AppDelegate.swift).
 struct SafariDispatch: ExtensionDispatch {
-    func dispatch(_ name: String, _ info: JSONObject) {
-        guard safariRunningSince() != nil else { return Diagnostics.note("\(name) not sent: Safari isn't running") }
-        guard let json = jsonString(info) else { return }
+    func dispatch(_ name: String, _ info: JSONObject, done: @escaping @MainActor (String?) -> Void) {
+        guard safariRunningSince() != nil else { return done("Safari isn't running") }
+        guard let json = jsonString(info) else { return done("not JSON") }
         Task {
             do {
                 try await SFSafariApplication.dispatchMessage(withName: name, toExtensionWithIdentifier: marginExtensionIdentifier, userInfo: ["e": json])
+                done(nil)
             } catch {
-                Diagnostics.warn("\(name) not passed on to Margin: \(error.localizedDescription)")
+                let error = error as NSError
+                done("\(error.domain) \(error.code)")
             }
         }
     }
@@ -165,6 +174,11 @@ final class SocketLink {
     private var rotation: Timer?
     private var appUpTimer: Timer?
     private var stopped = false
+    // Each dispatch's number (the log's #n), and how many in a row weren't passed on.
+    private var dispatches = 0
+    private(set) var refusedInARow = 0
+    // A dispatch Safari didn't pass on (its name and why): BundleWatch checks whether the app was replaced.
+    var onDispatchRefused: ((String, String) -> Void)?
 
     var connections: [LinkConnection] { links.values.sorted { $0.key < $1.key } }
     func connection(_ key: String) -> LinkConnection? { links[key] }
@@ -269,8 +283,27 @@ final class SocketLink {
     private func answer(_ nonce: String) {
         guard let port else { return }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        dispatch.dispatch("link", ["v": LinkProtocol.version, "nonce": nonce, "port": Int(port), "token": token, "key": key, "app": ["version": version], "at": Self.at()])
-        Diagnostics.note("wantLink: link sent (port \(port))")
+        let n = nextDispatch()
+        Diagnostics.note("wantLink: link handed to Safari (port \(port), #\(n))")
+        dispatch.dispatch("link", ["v": LinkProtocol.version, "nonce": nonce, "port": Int(port), "token": token, "key": key, "app": ["version": version], "at": Self.at()]) { [weak self] why in
+            self?.dispatched("link", n, why)
+        }
+    }
+
+    private func nextDispatch() -> Int {
+        dispatches += 1
+        return dispatches
+    }
+
+    // What became of a dispatch: only now is it said whether it reached the extension.
+    private func dispatched(_ name: String, _ n: Int, _ why: String?) {
+        guard let why else {
+            refusedInARow = 0
+            return Diagnostics.note("\(name) #\(n) reached the extension")
+        }
+        refusedInARow += 1
+        Diagnostics.warn("\(name) #\(n) not passed on: \(why)" + (refusedInARow > 1 ? " (\(refusedInARow) in a row)" : ""))
+        onDispatchRefused?(name, why)
     }
 
     // Safari open before the app: its copies are told to ask. Only once Safari
@@ -280,8 +313,11 @@ final class SocketLink {
         guard let since = safariSince() else { return }
         let wait = timing.safariSettled - Date().timeIntervalSince(since)
         if wait <= 0 {
-            dispatch.dispatch("appUp", ["v": LinkProtocol.version, "at": Self.at()])
-            Diagnostics.note("appUp sent")
+            let n = nextDispatch()
+            Diagnostics.note("appUp handed to Safari (#\(n))")
+            dispatch.dispatch("appUp", ["v": LinkProtocol.version, "at": Self.at()]) { [weak self] why in
+                self?.dispatched("appUp", n, why)
+            }
             return
         }
         appUpTimer = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { [weak self] _ in

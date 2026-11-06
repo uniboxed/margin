@@ -4,13 +4,17 @@
 // drawing Margin around the browser's windows (app/shell/Shell.swift), which
 // does nothing until a linked browser is in front. Opening the app again
 // shows the set-up window again. Quitting, the copies are told first; a
-// SIGTERM quits the same way (scripts/safari.sh, before it puts a new build
-// in its place, then opens that with --background: no set-up window). Started
-// by the extension handler for a link (Tirth, 2026-11-05: no login item
-// needed), there's no set-up window either: the handler's arguments never
-// reach a sandboxed caller's app, so it leaves a note instead (startedForLink).
-// With no copy linked for 10 minutes (and no set-up window), it quits by itself.
-// Copied over the converter's by scripts/make-xcode.sh.
+// SIGTERM quits the same way. scripts/safari.sh puts a new build in place of
+// the installed one, then sends a SIGTERM to the Margin.app it found running
+// from there (a KILL after 5 s), and if Safari is running and nothing has
+// started the new build in 2 s, opens it with --background (no set-up
+// window). Started by the extension handler for a link (Tirth, 2026-11-05: no
+// login item needed), there's no set-up window either: the handler's
+// arguments never reach a sandboxed caller's app, so it leaves a note instead
+// (startedForLink). With no copy linked for 10 minutes (and no set-up
+// window), it quits by itself. Replaced on disk some other way, it notices and
+// quits (BundleWatch.swift), and starting, it ends any other instance of its
+// bundle first. Copied over the converter's by scripts/make-xcode.sh.
 
 import Cocoa
 
@@ -21,8 +25,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var setup: NSWindowController?
     private var closing: NSObjectProtocol?
     private var terminating: DispatchSourceSignal?
+    // The executable as it was at launch; quits once another build is in its place.
+    private var bundle: BundleWatch?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        bundle = BundleWatch(quit: { RunLoop.main.perform { NSApp.terminate(nil) } })
         // The storyboard's window, shown at launch (but opened with --background).
         if let window = NSApp.windows.first(where: { $0.contentViewController is ViewController }) {
             keep(window)
@@ -43,6 +50,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Not from inside the handler: quitting waits on the main queue (the goodbye sent).
         terminating?.setEventHandler { RunLoop.main.perform { NSApp.terminate(nil) } }
         terminating?.resume()
+        endOthers()
+    }
+
+    // Another Margin.app of this bundle still running (one an update left, or
+    // opened twice): told to quit (a SIGTERM, as safari.sh sends: no Apple
+    // Event, so nothing to allow), waited for up to 2 s, and only then this
+    // one's shell starts, so only one answers the copies and draws.
+    static let othersWait: TimeInterval = 2
+    private var others: [pid_t] = []
+    private var othersUntil = Date()
+    private var othersTimer: Timer?
+    private func endOthers() {
+        let me = ProcessInfo.processInfo.processIdentifier
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "io.tirth.margin")
+            .map { BundleWatch.Running(pid: $0.processIdentifier, bundlePath: $0.bundleURL?.path) }
+        others = BundleWatch.othersToEnd(running, me: me, bundlePath: Bundle.main.bundleURL.path)
+        guard !others.isEmpty else { return startShell() }
+        for pid in others {
+            Diagnostics.note("another Margin.app of this install is running (pid \(pid)): asked to quit")
+            kill(pid, SIGTERM)
+        }
+        othersUntil = Date().addingTimeInterval(Self.othersWait)
+        othersTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.waitForOthers() }
+        }
+    }
+    private func waitForOthers() {
+        others = others.filter { kill($0, 0) == 0 }
+        guard others.isEmpty || Date() >= othersUntil else { return }
+        if !others.isEmpty { Diagnostics.warn("another Margin.app (pid \(others.map(String.init).joined(separator: ", "))) is still running after \(Int(Self.othersWait)) s: starting anyway") }
+        othersTimer?.invalidate()
+        othersTimer = nil
+        startShell()
+    }
+
+    private func startShell() {
+        guard idleCheck == nil else { return }
+        if let bundle {
+            bundle.watch(shell.link)
+            // Replaced while it was starting: no shell at all.
+            if bundle.check("at launch") { return }
+        }
         shell.start()
         idleCheck = Timer.scheduledTimer(withTimeInterval: Self.idleCheckEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkIdle() }
@@ -57,6 +106,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var idleCheck: Timer?
     private var idleSince: Date?
     private func checkIdle() {
+        // Another build in this one's place: quits, linked or not (BundleWatch.swift).
+        if bundle?.check("the 30 s check") == true { return }
         let setupOpen = setup?.window?.isVisible == true
         guard shell.links.isEmpty, !setupOpen else { idleSince = nil; return }
         let since = idleSince ?? Date()
