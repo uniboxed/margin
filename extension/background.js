@@ -424,10 +424,17 @@ appLink.onPageState((state) => {
 // follows once layouts settle; a window with another gets its own as each
 // page commits).
 appLink.onLayout((windowId, layout) => {
-  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout }).catch(() => {}), () => {});
+  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout, drawn: appLink.drawn(windowId) }).catch(() => {}), () => {});
   layoutsChanged();
 });
-setLayoutSource(() => appLink.layouts());
+// Whether the app draws over a window (its `drawn`): the same way. Its pages lose their box
+// where it draws nothing (and get it back from the window's layout when it draws there again),
+// and new pages there get none from their first paint (registered.js fixUp).
+appLink.onDrawn((windowId, drawn) => {
+  void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout: appLink.layout(windowId), drawn }).catch(() => {}), () => {});
+  layoutsChanged();
+});
+setLayoutSource(() => appLink.view());
 watchCommits();
 
 // What a page's zoom answer keeps (handlers.js getZoom), in every copy: a

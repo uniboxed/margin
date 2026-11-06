@@ -21,6 +21,11 @@
 //    window when it changes (LayoutOutbox), and used, with what the theme
 //    draws over the slot (`hits`), to let the pointer through to the page
 //    (PassThrough.swift).
+//  - Each copy is told, per window, whether the app draws over it (`drawn`,
+//    DrawnOutbox): on while the window is bound and wanted, off after a
+//    grace. Its pages have a box only where it's on (a window the app draws
+//    nothing over gets no empty sidebar gutter). A layout goes only for a
+//    bound window.
 //  - Margin's keys (Shortcuts.swift) are the app's only while a linked
 //    browser is in front with an overlay on its front window, with the
 //    combinations that window's copy sent (`keys`: its Settings shortcuts).
@@ -49,6 +54,57 @@ struct LayoutOutbox {
 
     mutating func forget(windowId: Int) { sent[windowId] = nil }
     mutating func reset() { sent = [:]; seq = [:] }
+}
+
+// Whether the app draws over each of one copy's windows, as the copy is told (`drawn`,
+// app/PROTOCOL.md). On while the window is bound to one of the window server's and wanted (in full
+// screen, or `windowedToo`, with the copy's theme here), whether or not its overlay is on screen
+// right now: one left in its window's Space, or kept unseen through a blip of the window server's
+// list, stays on, so a Space change never says anything. Off only after a grace, so a full-screen
+// animation or a binding that comes back a moment later doesn't take the box from the window's
+// pages: not wanted for `notWanted`, never bound since its copy first reported it for `neverBound`,
+// bound before and unbound now for `unbound`. A closed window that was on: off at once. Only a
+// change is sent.
+struct DrawnOutbox {
+    struct Grace {
+        var notWanted: TimeInterval = 1.5 // covers the full-screen animation
+        var neverBound: TimeInterval = 1.5
+        var unbound: TimeInterval = 3 // the binder keeps a window missing from a read for 3 s (WindowBinder)
+    }
+    var grace = Grace()
+    private(set) var sent: [Int: Bool] = [:]
+    private var everBound: Set<Int> = []
+    private var offSince: [Int: TimeInterval] = [:] // when the window stopped being drawn (or was first reported)
+
+    // The windows it has heard of.
+    var windows: Set<Int> { Set(offSince.keys).union(sent.keys).union(everBound) }
+
+    // What to send for the window now (nil: nothing), why, and when to look again if off is pending.
+    mutating func offer(windowId id: Int, now: TimeInterval, bound: Bool, wanted: Bool) -> (send: Bool?, why: String, due: TimeInterval?) {
+        if bound { everBound.insert(id) }
+        if bound && wanted {
+            offSince[id] = nil
+            guard sent[id] != true else { return (nil, "", nil) }
+            sent[id] = true
+            return (true, "bound, and in full screen", nil)
+        }
+        let since = offSince[id] ?? now
+        offSince[id] = since
+        let (wait, why) = !wanted ? (grace.notWanted, "not in full screen (or no theme yet)")
+            : everBound.contains(id) ? (grace.unbound, "no longer bound to one of the window server's")
+            : (grace.neverBound, "not bound to one of the window server's since its copy reported it")
+        guard sent[id] != false else { return (nil, "", nil) }
+        let due = since + wait
+        guard now >= due else { return (nil, "", due) }
+        sent[id] = false
+        return (false, "\(why) for \(String(format: "%.1f", now - since)) s", nil)
+    }
+
+    // The window closed (its copy no longer reports it): off, if it was on; forgotten.
+    mutating func closed(windowId id: Int) -> Bool? {
+        defer { sent[id] = nil; everBound.remove(id); offSince[id] = nil }
+        return sent[id] == true ? false : nil
+    }
 }
 
 // What a copy pushed for a window that an overlay made later still needs
@@ -92,6 +148,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // or a new temporary folder for a harness (a test never touches the real one).
         var dataRoot: URL?
         var reconnectGrace: TimeInterval = 6 // a dropped link's overlays, kept dimmed (background/link.js GONE_MS)
+        var drawnGrace = DrawnOutbox.Grace() // how long a window is unbound or out of full screen before its copy hears it isn't drawn
         var bundleIds = ["safari": safariIdentifier, "chrome": "com.google.Chrome", "edge": "com.microsoft.edgemac"]
         var profileSwitch = ProfileSwitch.Options() // switching to another profile's space (ProfileSwitch.swift)
         var switchClock: SwitchClock = RunLoopClock()
@@ -109,6 +166,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var theme: String? // the theme package's JSON (background/theme-package.js ThemeMessage)
         var themeId: String?
         var outbox = LayoutOutbox()
+        var drawn = DrawnOutbox() // whether the app draws over each window, as told to the copy
         var resyncTimer: Timer?
         var keys: [String: [String]]? // the copy's shortcuts, once it said
         var held = HeldPushes() // what an overlay made later is given with its hello
@@ -201,6 +259,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pollTimer?.invalidate()
         for timer in reconnecting.values { timer.invalidate() }
         reconnecting = [:]
+        for t in drawnTimers.values { t.timer.invalidate() }
+        drawnTimers = [:]
         shortcuts.set(active: false)
         pointer.stop()
         apps.stop()
@@ -214,6 +274,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     func linkUp(_ connection: LinkConnection) {
         let entry = Link(connection)
+        entry.drawn.grace = options.drawnGrace
         entry.mirror.begin(connection.hello)
         links[connection.key] = entry
         data.linkUp(connection)
@@ -519,6 +580,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             absent.formUnion(binder.absentNumbers)
         }
         matches = next
+        // Each copy told which of its windows the app draws over, before any overlay shows or layout goes.
+        updateDrawn(ext)
 
         // The overlays: made when wanted, shown when they can be, closed when their window is gone.
         for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
@@ -591,6 +654,46 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pollTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.track() }
         }
+    }
+
+    // Whether the app draws over each reported window, to its copy (DrawnOutbox): on at once as it's
+    // bound (and wanted), off after the grace (a timer per window looks again then), off at once for a
+    // closed window that was on. A link held (no state yet, reconnecting) says nothing meanwhile.
+    private var drawnTimers: [WindowKey: (due: TimeInterval, timer: Timer)] = [:]
+    private func updateDrawn(_ ext: [WindowKey: (ExtWindow, Link)]) {
+        let now = Diagnostics.now()
+        for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
+            let wanted = (w.state == "fullscreen" || options.windowedToo) && entry.theme != nil
+            let r = entry.drawn.offer(windowId: key.windowId, now: now, bound: matches[key] != nil, wanted: wanted)
+            if let on = r.send { sendDrawn(entry, key, on, r.why) }
+            if let due = r.due {
+                if drawnTimers[key]?.due != due {
+                    drawnTimers[key]?.timer.invalidate()
+                    let timer = Timer.scheduledTimer(withTimeInterval: max(0.01, due - now + 0.01), repeats: false) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            self?.drawnTimers[key] = nil
+                            self?.soon()
+                        }
+                    }
+                    drawnTimers[key] = (due, timer)
+                }
+            } else if let t = drawnTimers.removeValue(forKey: key) {
+                t.timer.invalidate()
+            }
+        }
+        for entry in links.values where entry.mirror.hasState {
+            let link = entry.connection.key
+            for id in entry.drawn.windows where ext[WindowKey(link: link, windowId: id)] == nil {
+                let key = WindowKey(link: link, windowId: id)
+                drawnTimers.removeValue(forKey: key)?.timer.invalidate()
+                if let on = entry.drawn.closed(windowId: id) { sendDrawn(entry, key, on, "closed") }
+            }
+        }
+    }
+
+    private func sendDrawn(_ entry: Link, _ key: WindowKey, _ on: Bool, _ why: String) {
+        entry.connection.send(.drawn(epoch: entry.connection.epoch, windowId: key.windowId, on: on))
+        Diagnostics.note("\(key): told \(on ? "drawn" : "not drawn"): \(why)")
     }
 
     // Where an overlay goes over a window (top left): the whole window, or, when its copy says the
@@ -763,8 +866,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // Only a layout measured at the window's own size goes (one from before the overlay
-    // was sized to it, or mid-resize, is followed by the right one).
+    // was sized to it, or mid-resize, is followed by the right one), and only for a bound window
+    // (the copy has been told it's drawn first: updateDrawn).
     func layoutChanged(_ overlay: OverlayController, _ layout: PageLayout) {
+        guard matches[overlay.key] != nil else { return }
         let size = overlay.frameTopLeft.size
         guard abs(layout.width - size.width) < 1, abs(layout.height - size.height) < 1 else { return }
         let window = overlay.windowFrame ?? overlay.frameTopLeft

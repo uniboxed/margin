@@ -1,7 +1,8 @@
 // The extension's end of the link to Margin.app (app/PROTOCOL.md; the app's
 // end is app/shell/ExtensionLink.swift). While it's up, the app draws all of
 // Margin's UI around this copy's windows (pages never draw any): pages have
-// their box, which comes from the app's layout per window (setLayout).
+// their box, which comes from the app's layout per window (setLayout), in
+// the windows the app draws over (`drawn`: a window it doesn't gets none).
 // Safari only (platform.nativeApp), in the copy that owns its profile's state.
 //
 // Getting linked (the app can't open anything into the extension, and the
@@ -226,7 +227,7 @@ export function createLink({
   let socketsOff = null;
   let toldWorker = false;
   // What pages see (storage.local appLink).
-  let pageState = { state: 'off', epoch: null, at: 0, layouts: {} };
+  let pageState = { state: 'off', epoch: null, at: 0, layouts: {}, drawn: {} };
   let goneTimer = null;
   let layoutTimer = null;
   let stateWrite = Promise.resolve();
@@ -254,14 +255,21 @@ export function createLink({
 
   // ---- what pages see -------------------------------------------------------
   // A new state is written at once; layouts a moment later (several at once in one write).
+  // A new epoch's hello, or off: what the app said of each window is another epoch's (its
+  // layouts and whether it draws them), and goes; a new link says it again. The layouts are kept
+  // as `lastLayouts`, only for the first paint's registration to start from (registered.js
+  // chooseLayout): no page takes its box from them.
   function setPageState(state) {
     if (state === pageState.state && pageState.epoch === epoch) return;
     const changed = state !== pageState.state;
-    pageState = { ...pageState, state, epoch, at: Date.now() };
+    const fresh = state === 'off' || (state === 'linked' && epoch !== pageState.epoch);
+    const last = Object.keys(pageState.layouts ?? {}).length ? pageState.layouts : pageState.lastLayouts ?? {};
+    pageState = { ...pageState, state, epoch, at: Date.now(), ...(fresh ? { layouts: ofEpoch(pageState.layouts, epoch), drawn: {}, lastLayouts: last } : {}) };
     if (state !== 'off') delete pageState.why;
     if (changed) for (const cb of [...listeners]) cb(state);
     writePageState(0);
   }
+  const ofEpoch = (layouts, at) => Object.fromEntries(Object.entries(layouts ?? {}).filter(([, l]) => at != null && l?.epoch === at));
   function writePageState(ms) {
     if (!isOwner()) return;
     clearTimeout(layoutTimer);
@@ -599,6 +607,8 @@ export function createLink({
         return void request(message);
       case 'setLayout':
         return setLayout(message);
+      case 'drawn':
+        return drawn(message);
       case 'resync':
         if (message.epoch === epoch) void snapshot();
         return;
@@ -653,6 +663,31 @@ export function createLink({
     for (const cb of [...layoutListeners]) cb(m.windowId, layout);
   }
   const layoutListeners = new Set();
+  // Whether the app draws over a window (its binding, not whether its overlay is on screen now):
+  // false, its pages get no box (shared/app-link.js layoutFor). Only a change is sent; this
+  // epoch's only.
+  function drawn(m) {
+    if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
+    if (pageState.drawn?.[m.windowId] === m.on) return;
+    pageState = { ...pageState, drawn: { ...pageState.drawn, [m.windowId]: m.on } };
+    note(`the app ${m.on ? 'draws' : 'draws nothing'} over window ${m.windowId}`);
+    writePageState(T.layoutWrite);
+    for (const cb of [...drawnListeners]) cb(m.windowId, m.on);
+  }
+  const drawnListeners = new Set();
+  // A window gone: what the app said of it goes too.
+  function forgetWindows(ids) {
+    const layouts = { ...pageState.layouts };
+    const drawnNow = { ...pageState.drawn };
+    let changed = false;
+    for (const id of ids) {
+      if (id in layouts) { delete layouts[id]; changed = true; }
+      if (id in drawnNow) { delete drawnNow[id]; changed = true; }
+    }
+    if (!changed) return;
+    pageState = { ...pageState, layouts, drawn: drawnNow };
+    writePageState(T.layoutWrite);
+  }
 
   // ---- the state, to the app ---------------------------------------------------------
   async function snapshot() {
@@ -770,13 +805,7 @@ export function createLink({
     const list = await windowList();
     if (!ws || epoch !== at) return;
     const ids = new Set(list.map((w) => w.windowId));
-    const left = Object.keys(pageState.layouts).filter((id) => !ids.has(Number(id)));
-    if (left.length) {
-      const layouts = { ...pageState.layouts };
-      for (const id of left) delete layouts[id];
-      pageState = { ...pageState, layouts };
-      writePageState(T.layoutWrite);
-    }
+    forgetWindows([...Object.keys(pageState.layouts), ...Object.keys(pageState.drawn ?? {})].filter((id) => !ids.has(Number(id))));
     const json = JSON.stringify(list);
     if (json === lastWindows) return;
     lastWindows = json;
@@ -924,10 +953,19 @@ export function createLink({
   // The page state left by the background before this one: kept while this
   // one tries the link it kept (the app may still be there), else off once
   // the first try fails.
+  // Only the windows windows.getAll() lists keep what the app said of them (Safari's ids change
+  // across a relaunch); none are kept while off.
   async function readPageState() {
     const got = await Promise.resolve(local().get(APP_LINK_KEY)).catch(() => null);
     const before = got?.[APP_LINK_KEY];
-    if (before && typeof before === 'object') pageState = { state: before.state === 'off' ? 'off' : 'reconnecting', epoch: null, at: Date.now(), layouts: before.layouts ?? {} };
+    if (before && typeof before === 'object') {
+      const wins = await Promise.resolve(api.windows?.getAll?.()).catch(() => null);
+      const ids = Array.isArray(wins) ? new Set(wins.map((w) => String(w?.id))) : null;
+      const listed = (o) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {}).filter(([id]) => !ids || ids.has(id)));
+      const off = before.state === 'off';
+      const last = before.layouts && typeof before.layouts === 'object' && Object.keys(before.layouts).length ? before.layouts : before.lastLayouts ?? {};
+      pageState = { state: off ? 'off' : 'reconnecting', epoch: null, at: Date.now(), layouts: off ? {} : listed(before.layouts), drawn: off ? {} : listed(before.drawn), lastLayouts: last };
+    }
     if (pageState.state !== 'off') writePageState(0);
   }
   /** @param {{ route: typeof route, settings?: any }} options */
@@ -1062,12 +1100,7 @@ export function createLink({
       createdAt.delete(windowId);
       viewports.delete(windowId);
       for (const [id, v] of visibility) if (v.windowId === windowId) visibility.delete(id);
-      if (pageState.layouts[windowId]) {
-        const layouts = { ...pageState.layouts };
-        delete layouts[windowId];
-        pageState = { ...pageState, layouts };
-        writePageState(T.layoutWrite);
-      }
+      forgetWindows([String(windowId)]);
       void windowsNow();
     },
     linked: () => !!ws,
@@ -1075,10 +1108,20 @@ export function createLink({
     pageState: () => pageState.state,
     layout: (windowId) => pageState.layouts[windowId] ?? null,
     layouts: () => ({ ...pageState.layouts }),
+    // What the app said of each window, for the first paint (background/registered.js): this
+    // epoch's layouts and whether it draws each window.
+    view: () => ({ epoch: pageState.epoch, layouts: { ...pageState.layouts }, drawn: { ...pageState.drawn }, lastLayouts: { ...pageState.lastLayouts } }),
+    // Whether the app said it draws over the window (true, false), or hasn't said (undefined).
+    drawn: (windowId) => (windowId == null ? undefined : pageState.drawn?.[windowId]),
+    // Whether the app draws Margin around the window: linked or reconnecting, and not said
+    // otherwise for it (shared/app-link.js drawsWindow).
+    drawsWindow: (windowId) => pageState.state !== 'off' && (windowId == null || pageState.drawn?.[windowId] !== false),
     /** @param {(state: string) => void} cb */
     onPageState(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     /** @param {(windowId: number, layout: any) => void} cb */
     onLayout(cb) { layoutListeners.add(cb); return () => layoutListeners.delete(cb); },
+    /** @param {(windowId: number, on: boolean) => void} cb */
+    onDrawn(cb) { drawnListeners.add(cb); return () => drawnListeners.delete(cb); },
     profile: () => profile,
     acked: () => acked,
     rev: () => rev,

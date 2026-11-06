@@ -155,6 +155,8 @@ final class FakeRegistrar: HotKeyRegistrar {
     let set = object(AppMessage.setLayout(epoch: "e", windowId: 7, seq: 2, layout: layout).encode())
     check("setLayout: the window, its number, the insets, radius and size", set?["k"] as? String == "setLayout" && set?["windowId"] as? Int == 7 && set?["seq"] as? Int == 2
       && same(set?["insets"], ["left": 260, "top": 8, "right": 8, "bottom": 8]) && set?["radius"] as? Double == 6.25 && same(set?["container"], ["width": 1280, "height": 800]) && set?["mode"] as? String == "fullscreen")
+    let drawn = object(AppMessage.drawn(epoch: "e", windowId: 7, on: false).encode())
+    check("drawn: the window and whether it's drawn", drawn?["k"] as? String == "drawn" && drawn?["epoch"] as? String == "e" && drawn?["windowId"] as? Int == 7 && drawn?["on"] as? Bool == false)
     check("resync", object(AppMessage.resync(epoch: "e").encode())?["epoch"] as? String == "e")
     check("bye", object(AppMessage.bye(why: "quit").encode())?["why"] as? String == "quit")
     check("tick", object(AppMessage.tick.encode())?["k"] as? String == "tick")
@@ -291,6 +293,26 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("forgotten: sent again, numbered on", outbox.offer(windowId: 7, resized)?.seq == 4)
     outbox.reset()
     check("a new link: from 1", outbox.offer(windowId: 7, resized)?.seq == 1)
+
+    // Whether the app draws over each window, as the copy is told (DrawnOutbox).
+    var d = DrawnOutbox()
+    check("drawn: bound and in full screen, on at once", d.offer(windowId: 1, now: 0, bound: true, wanted: true).send == true)
+    check("drawn: the same again: nothing", d.offer(windowId: 1, now: 0.1, bound: true, wanted: true).send == nil)
+    let fresh = d.offer(windowId: 2, now: 0, bound: false, wanted: true)
+    check("drawn: never bound: nothing yet, looked at again in 1.5 s", fresh.send == nil && fresh.due == 1.5, "\(fresh)")
+    check("drawn: never bound: still nothing at 1.4 s", d.offer(windowId: 2, now: 1.4, bound: false, wanted: true).send == nil)
+    check("drawn: never bound for 1.5 s: off", d.offer(windowId: 2, now: 1.5, bound: false, wanted: true).send == false)
+    check("drawn: off again: nothing", d.offer(windowId: 2, now: 2, bound: false, wanted: true).send == nil)
+    check("drawn: then bound: on", d.offer(windowId: 2, now: 3, bound: true, wanted: true).send == true)
+    check("drawn: its binding gone 40 ms (a blip): nothing", d.offer(windowId: 2, now: 3.5, bound: false, wanted: true).send == nil && d.offer(windowId: 2, now: 3.54, bound: true, wanted: true).send == nil)
+    check("drawn: unbound after being bound: nothing for 3 s", d.offer(windowId: 2, now: 4, bound: false, wanted: true).send == nil && d.offer(windowId: 2, now: 6.9, bound: false, wanted: true).send == nil)
+    check("drawn: unbound for 3 s: off", d.offer(windowId: 2, now: 7, bound: false, wanted: true).send == false)
+    check("drawn: a normal window: off after 1.5 s", d.offer(windowId: 3, now: 0, bound: true, wanted: false).send == nil && d.offer(windowId: 3, now: 1.5, bound: true, wanted: false).send == false)
+    check("drawn: leaving full screen: nothing during the animation, off after 1.5 s", d.offer(windowId: 1, now: 10, bound: true, wanted: false).send == nil
+          && d.offer(windowId: 1, now: 11, bound: true, wanted: false).send == nil && d.offer(windowId: 1, now: 11.5, bound: true, wanted: false).send == false)
+    check("drawn: back in full screen: on", d.offer(windowId: 1, now: 12, bound: true, wanted: true).send == true)
+    check("drawn: closed while on: off", d.closed(windowId: 1) == false && !d.windows.contains(1))
+    check("drawn: closed while off: nothing", d.closed(windowId: 3) == nil)
   }
 
   static func stacking() {

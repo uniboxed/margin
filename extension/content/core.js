@@ -230,7 +230,8 @@ export function startCore() {
   // its insets from the window's edges, less where this viewport sits in the
   // window, in this page's zoomed pixels. No layout for the window yet
   // (null): the box stays as it is (the first-paint one, registered while
-  // the app is linked: background/registered.js).
+  // the app is linked: background/registered.js). A window the app said it
+  // draws nothing over: a layout of zeros, no box.
   function appGeometry() {
     const l = layoutFor(appLink, windowId ?? helloWindowId);
     if (!l) return null;
@@ -306,7 +307,7 @@ export function startCore() {
   const applyApp = () => { layout.settle(); tellViewport(); };
   // What the background says of the link: the page's box from the app's
   // layout from now on, or none.
-  const appKey = (l) => JSON.stringify([l?.state ?? null, l?.layouts ?? null]);
+  const appKey = (l) => JSON.stringify([l?.state ?? null, l?.layouts ?? null, l?.drawn ?? null]);
   function setAppLink(next) {
     const value = next && typeof next === 'object' ? next : { state: 'off', layouts: {} };
     if (appLink !== undefined && appKey(value) === appKey(appLink)) return;
@@ -550,7 +551,9 @@ export function startCore() {
     if (ctx.app !== undefined) {
       const layouts = { ...(appLink?.layouts ?? {}) };
       if (ctx.app?.layout && ctx.windowId != null) layouts[ctx.windowId] = ctx.app.layout;
-      setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, layouts } : { state: 'off', layouts });
+      const drawn = { ...(appLink?.drawn ?? {}) };
+      if (typeof ctx.app?.drawn === 'boolean' && ctx.windowId != null) drawn[ctx.windowId] = ctx.app.drawn;
+      setAppLink(ctx.app ? { ...(appLink ?? {}), state: ctx.app.state, layouts, drawn } : { state: 'off', layouts, drawn: {} });
     }
     render(); // its window is known now
   });
@@ -583,10 +586,12 @@ export function startCore() {
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     if (message?.type === 'reportVisibility') return tellVisibility();
-    // Margin.app's layout for this window, as it changes (background/link.js).
+    // Margin.app's layout for this window, and whether it draws over it, as they change (background/link.js).
     if (message?.type === 'appLayout' && Number.isInteger(message.windowId)) {
       if (!appLink) return;
-      setAppLink({ ...appLink, layouts: { ...(appLink.layouts ?? {}), [message.windowId]: message.layout } });
+      const layouts = message.layout ? { ...(appLink.layouts ?? {}), [message.windowId]: message.layout } : appLink.layouts;
+      const drawn = typeof message.drawn === 'boolean' ? { ...(appLink.drawn ?? {}), [message.windowId]: message.drawn } : appLink.drawn;
+      setAppLink({ ...appLink, layouts, drawn });
     }
   };
   api.runtime.onMessage.addListener(onMessage);

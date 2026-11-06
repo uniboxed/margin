@@ -52,7 +52,8 @@
 // the space the window's). Each says { ev: 'req', … } first, as any req.
 // What the app sends: tick → { ev: 'tick' } and tock (unless muted); req →
 // { ev: 'req', msg } and its reply ({ ok: true, result: { type, windowId,
-// payload } }); setLayout → { ev: 'setLayout', msg }; resync →
+// payload } }); setLayout → { ev: 'setLayout', msg }; drawn →
+// { ev: 'drawn', id, windowId, on, msg }; resync →
 // { ev: 'resync' } and the state again; bye → { ev: 'bye', why }; anything
 // else → { ev: 'message', msg }. Every message from the app is checked to be
 // under 1 MB ({ ev: 'tooBig' } if not).
@@ -249,6 +250,8 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
       }
       case 'setLayout':
         return say({ ev: 'setLayout', id, msg: m });
+      case 'drawn':
+        return say({ ev: 'drawn', id, windowId: m.windowId, on: m.on, msg: m });
       case 'resync':
         say({ ev: 'resync', id });
         return snapshot();

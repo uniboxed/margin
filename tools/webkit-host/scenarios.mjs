@@ -135,6 +135,9 @@ const firstFrame = (tab, [l, t, r, b], { theme = 'arcadia', how = 'registered', 
   `const fp = window.__fp; if (!fp || fp.frames.length < 12 || performance.now() < ${late} + 50) return false; const f0 = fp.frames[0]; const right = (f) => f.x === ${l} && f.y === ${t} && f.w === ${1200 - l - r}; const early = fp.frames.filter((f) => f.t < ${late}); return f0.t < ${late} && right(f0) && early.every(right) && early.every((f) => f.mark === '${theme}') && f0.said === '${theme}' && ${how === 'own' ? "/^\\d/.test(f0.left)" : "f0.left.startsWith('calc(')"}`, 6000);
 // No box in any of its first frames: the page as it is, no mark, no frame, none of Margin's page scripts.
 const firstBare = (tab, label) => checkPage(tab, `${tab}: ${label}`, `const fp = window.__fp; if (!fp || fp.frames.length < 12) return false; return fp.frames.every((f) => f.x === 0 && f.y === 0 && f.w === 1200 && !f.mark && f.frame === 'none') && !window[Symbol.for('margin.page')]`, 6000);
+// No box in any of its first frames, no mark, no frame, though Margin's page script may have started
+// (the registered first paint seen before its window's `off`, put in as it committed, outweighed it).
+const firstUnboxed = (tab, label) => checkPage(tab, `${tab}: ${label}`, `const fp = window.__fp; if (!fp || fp.frames.length < 12) return false; return fp.frames.every((f) => f.x === 0 && f.y === 0 && f.w === 1200 && !f.mark && f.frame === 'none')`, 6000);
 // What a page's first frame was, in the log (the measurements).
 const firstLog = (tab) => ({ op: 'page', in: tab, js: `const fp = window.__fp; return '${tab} first frame ' + JSON.stringify(fp.frames[0]) + ', ' + fp.frames.filter((f) => f.t < ${LATE}).length + ' frames before Margin spoke (' + fp.held + ' word(s) held back)'` });
 // Margin.app's layout settled, and registered (background/registered.js LAYOUT_SETTLE_MS, then a sync).
@@ -1348,6 +1351,28 @@ Object.assign(SCENARIOS, {
     fresh('O1'), firstBare('O1', 'and the next'),
     appWith(260), reload('A'), linked('A'), wait(1500),
     ...pages('L', 2, [260, 8, 8, 8]),
+  ],
+  // A window Margin.app draws nothing over (Margin 2: Safari reliability): the shell tells the copy
+  // `drawn` false for a window it hasn't bound, or one not in full screen (here `appDrawn`). The page
+  // open there loses its box (no empty sidebar beside it), a fresh page has none from its first frame
+  // (its window's pages get `--margin-fp: off` as they commit, then a registration of zeros once that
+  // has settled), and drawn again, the open page is back in its box with no frame in between at
+  // another place, and fresh pages are boxed from their first frame again.
+  'undrawn': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
+    { op: 'appDrawn', on: false },
+    bare('A'),
+    check('A', 'A: the copy keeps the window\'s layout apart (only drawn changed)', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.drawn && Object.values(appLink.drawn).includes(false) && Object.keys(appLink.layouts ?? {}).length === 1`, 2000),
+    fresh('U0'), firstUnboxed('U0', 'U0 (fresh, in the undrawn window, before the registration follows): no box from its first frame'), firstLog('U0'),
+    settledLayout,
+    fresh('U1'), firstBare('U1', 'U1 (fresh, once the registration followed): no box from its first frame'),
+    { op: 'show', name: 'A' }, shown('A'),
+    { op: 'page', in: 'A', js: `window.__xs = []; const look = () => { const t = getComputedStyle(document.documentElement).transform; window.__xs.push(t === 'none' ? 0 : new DOMMatrix(t).e); if (window.__xs.length < 600) requestAnimationFrame(look); }; requestAnimationFrame(look); return 'watching'` },
+    wait(200), { op: 'appDrawn', on: true },
+    boxed('A'),
+    checkPage('A', 'A: back in its box with no blink (no box until then, in it from then on, never anywhere else)', `const xs = window.__xs; const at = xs.indexOf(260); return at > 0 && xs.slice(0, at).every((x) => x === 0) && xs.slice(at).every((x) => x === 260)`, 3000),
+    settledLayout,
+    ...pages('K', 2, [260, 8, 8, 8]),
   ],
   // Another theme: its own first paint (its mark and its look), and none of
   // the theme registered before it, whose CSS WebKit keeps applying.

@@ -641,6 +641,12 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Send me any lines like `settled focus can't bind window W: …`, `focus heard at … not used: …`, `focus heard: window N at …` / `focus heard: none (WINDOW_ID_NONE) at …` and `safari: the front window: …` from a time a window stayed without its sidebar for more than a few seconds. They say what Safari's focus flags did across profiles.
 - [ ] A sidebar that disappears from a window while you look at it, with `is no longer window W: its page has said it's hidden …`: tell me the time. That line means the pages contradicted the binding.
 
+**Windows Margin.app doesn't draw over** (the empty sidebar beside a page).
+- [ ] With Margin linked, open a normal (not full-screen) Safari window and load a few pages there: they fill the window as in plain Safari, with no grey area at the left and no frame. Reload one: still none, from its first frame. The log says `safari:…#N: told not drawn: not in full screen (or no theme yet) for 1.5 s`.
+- [ ] Put that window in full screen: once its sidebar shows, its pages are in their box beside it (the log says `told drawn: bound, and in full screen`). Take it out of full screen: about 1.5 s after the animation its pages fill the window again.
+- [ ] Three profiles in full screen on one display, as above. If a window ever shows no sidebar for more than 2 s, its page fills the window (no empty grey gutter beside it), and the log has `told not drawn` for it. When its sidebar comes back, the page goes back in its box without first jumping somewhere else.
+- [ ] Swipe between the three Spaces for a while: no page loses its box or jumps as its Space slides in, and the log has no `told not drawn` line for a window that kept its sidebar.
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.

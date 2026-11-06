@@ -55,8 +55,9 @@ final class Fake {
     while let nl = buffer.firstIndex(of: 0x0a) {
       let line = buffer[buffer.startIndex..<nl]
       buffer = Data(buffer[(nl + 1)...])
-      if let o = (try? JSONSerialization.jsonObject(with: line)) as? JSONObject {
+      if var o = (try? JSONSerialization.jsonObject(with: line)) as? JSONObject {
         if env["MARGIN_APP_VERBOSE"] != nil { print("  fake:", String(decoding: line, as: UTF8.self).prefix(200)) }
+        o["_at"] = Date().timeIntervalSince1970 // when it was heard here
         events.append(o)
       }
     }

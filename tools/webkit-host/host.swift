@@ -741,6 +741,9 @@ Task { @MainActor in
       appLink.onDemand = true; appLink.onDemandLayout = (step["layout"] as? [NSNumber])?.map { $0.doubleValue }; log("appOnDemand")
     case "appLayout": // { op: 'appLayout', layout: [left, top, right, bottom] }: the app's overlay measured the slot again
       appLink.tell(["layout": (step["layout"] as? [NSNumber])?.map { $0.doubleValue } ?? []]); log("appLayout \(step["layout"] ?? "")")
+    case "appDrawn": // { op: 'appDrawn', on }: the app says whether it draws over the copy's first window (`drawn`)
+      let on = step["on"] as? Bool ?? true
+      appLink.tell(["drawn": on]); log("appDrawn \(on)")
     case "appQuit": appLink.tell(["bye": true]); log("appQuit")
     case "appRefuse": // { op: 'appRefuse', refuse? }: the app's dispatches refused (as Safari's SFErrorDomain 1) or, refuse false, passed on again
       let refuse = step["refuse"] as? Bool ?? true

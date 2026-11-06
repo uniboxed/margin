@@ -69,7 +69,8 @@ import { FIRST_PAINT_MARK, readFirstPaint } from '../../shared/page-box.js';
   // variables change, until Margin's content script says where the box goes
   // (its first `margin:box`: the mark comes off, the box is this world's
   // own). `off`: Margin.app doesn't draw (a registration left over says
-  // otherwise): nothing here. Nothing at all by the last look: no first
+  // otherwise), or draws nothing over this window: nothing here, and a box
+  // an earlier look started from the registered CSS goes. Nothing at all by the last look: no first
   // paint (the build before Phase 3's registration, before the background
   // replaces it): nothing here either; the content script brings this in if
   // a box is wanted.
@@ -82,7 +83,17 @@ import { FIRST_PAINT_MARK, readFirstPaint } from '../../shared/page-box.js';
     const fp = firstPaint();
     if (!fp) return true; // not yet
     const { theme, layout } = fp;
-    if (!theme || !layout) return !!box; // (a box from an earlier look stays: the content script will say)
+    if (!theme || !layout) {
+      // `off` put in as the page committed (its window's own: Margin.app draws nothing over that
+      // window, or its layout has no box: background/registered.js fixUp), after an earlier look
+      // started the registered box: the box goes before it's drawn. (Not one the content script
+      // has spoken for: `told`, above.)
+      if (box && root.hasAttribute(FIRST_PAINT_MARK)) {
+        root.removeAttribute(FIRST_PAINT_MARK);
+        box.set('off');
+      }
+      return !!box;
+    }
     const noBox = ['left', 'top', 'right', 'bottom'].every((side) => layout[side] < 0.5);
     if (!box) {
       if (noBox) return false;

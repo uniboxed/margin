@@ -7,12 +7,17 @@
 //   link dropped a moment ago and is being tried again: the app keeps the
 //   last picture dimmed meanwhile, and pages keep their box), 'off' (no app:
 //   pages are left as they are, with no box). No page draws Margin's UI in
-//   any state (Margin 2 Phase 2 step 5).
+//   any state (Margin 2 Phase 2 step 5). Either of the first two, a window
+//   the app said it draws nothing over (`drawn`) has no box.
 // - `why` (only while 'off'): 'no-link' when Margin.app is running but sent
 //   no link (the new-tab page says it isn't answering); absent otherwise.
 // - `layouts`: each window's page slot as the app's overlay measured it
 //   (setLayout): { [windowId]: { insets, radius, radii, container, mode,
 //   seq, epoch } }, insets in points from the window's edges.
+// - `drawn`: whether the app draws over each window (`drawn` messages, this
+//   link's epoch only): { [windowId]: boolean }. False: Margin.app draws
+//   nothing over that window (not in full screen, or not found among the
+//   window server's yet), so its pages get no box. Missing: not said (yet, or an older app): as drawn.
 //
 // A page gives its own box from its window's layout, less where its viewport
 // sits in the window (boxFromLayout). Pure: content scripts, the new-tab page
@@ -23,19 +28,34 @@ export const APP_LINK_KEY = 'appLink';
 /** Whether the app draws Margin around the window (or will again in a moment): pages have their box. @param {any} link */
 export const appDraws = (link) => link?.state === 'linked' || link?.state === 'reconnecting';
 
+/** Whether the app said it draws nothing over the window (`drawn` false). @param {any} link @param {number | null | undefined} windowId */
+export const undrawn = (link, windowId) => windowId != null && link?.drawn?.[windowId] === false;
+/**
+ * Whether the app draws Margin around this window: it draws (appDraws) and
+ * hasn't said it draws nothing over the window. The keys a page or the
+ * background hears there are left to the app only then.
+ * @param {any} link @param {number | null | undefined} windowId
+ */
+export const drawsWindow = (link, windowId) => appDraws(link) && !undrawn(link, windowId);
+
 const finite = (v) => (Number.isFinite(v) ? v : 0);
 
+// A window the app draws nothing over: a layout with nothing at any edge (no box).
+export const NOT_DRAWN = Object.freeze({ insets: Object.freeze({ left: 0, top: 0, right: 0, bottom: 0 }), radius: 0, radii: null, drawn: false });
+
 /**
- * The layout for a window: its own, else, while the page doesn't know its
- * window yet, the one every window has (one window, or several of one size
- * and mode), else null.
+ * The layout for a window: NOT_DRAWN where the app said it draws nothing
+ * over it; its own; for a known window with none of its own yet, null (not
+ * measured yet: the page keeps the box it has); while the page doesn't know
+ * its window yet, the one every drawn window has (one window, or several of
+ * one size and mode), else null.
  * @param {any} link @param {number | null | undefined} windowId
  */
 export function layoutFor(link, windowId) {
   const layouts = link?.layouts && typeof link.layouts === 'object' ? link.layouts : {};
-  if (windowId != null && layouts[windowId]) return layouts[windowId];
-  if (windowId != null && Object.keys(layouts).length > 1) return null;
-  const all = Object.values(layouts);
+  if (undrawn(link, windowId)) return NOT_DRAWN;
+  if (windowId != null) return layouts[windowId] ?? null;
+  const all = Object.entries(layouts).filter(([id]) => link?.drawn?.[id] !== false).map(([, l]) => l);
   if (!all.length) return null;
   const key = (l) => JSON.stringify([l?.insets, l?.container, l?.mode]);
   return all.every((l) => key(l) === key(all[0])) ? all[0] : null;

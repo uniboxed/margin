@@ -283,7 +283,12 @@ const STYLE_MAX_CHARS = 8_000_000;
 
 // Whether Margin.app draws the UI for a page's window, and where its box goes
 // (background/link.js): in `hello`, so a page knows before it draws.
-const appState = (windowId) => (appLink.pageState() === 'off' ? null : { state: appLink.pageState(), layout: windowId != null ? appLink.layout(windowId) : null });
+// `drawn`: whether the app said it draws over the window (left out: not said).
+const appState = (windowId) => {
+  if (appLink.pageState() === 'off') return null;
+  const drawn = appLink.drawn(windowId);
+  return { state: appLink.pageState(), layout: windowId != null ? appLink.layout(windowId) : null, ...(typeof drawn === 'boolean' ? { drawn } : {}) };
+};
 
 export const handlers = {
   // A page starting: which tab and window it is, this copy, whether the window is in Margin's

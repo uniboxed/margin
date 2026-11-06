@@ -232,6 +232,8 @@ enum AppMessage {
     case resync(epoch: String)
     // Where the theme put the page in a window. `seq` counts up per window, per epoch.
     case setLayout(epoch: String, windowId: Int, seq: Int, layout: PageLayout)
+    // Whether the app draws over a window (bound and wanted: Shell.swift DrawnOutbox). Only a change is sent.
+    case drawn(epoch: String, windowId: Int, on: Bool)
     case theme(epoch: String, chunk: Chunk)
     // The lasting data (DATA.md "Messages": data.need, data.snapshot, data.changes, data.ack).
     case data(kind: String, body: JSONObject)
@@ -250,6 +252,8 @@ enum AppMessage {
             return ["k": "resync", "epoch": epoch]
         case .setLayout(let epoch, let windowId, let seq, let layout):
             return layout.object.merging(["k": "setLayout", "epoch": epoch, "windowId": windowId, "seq": seq, "at": at]) { $1 }
+        case .drawn(let epoch, let windowId, let on):
+            return ["k": "drawn", "epoch": epoch, "windowId": windowId, "on": on, "at": at]
         case .theme(let epoch, let chunk):
             return chunk.fields.merging(["k": "theme", "epoch": epoch]) { $1 }
         case .data(let kind, let body):

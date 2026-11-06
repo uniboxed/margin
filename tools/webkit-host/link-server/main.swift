@@ -11,7 +11,8 @@
 // (`updateSettings`, the sidebar's shortcut to ⌥J) whose effect a page can see. Stdin:
 // { wantLink: nonce } | { bye: true } | { refuse: Bool } (dispatches refused or passed on: the host's `appRefuse`) | { layout: [left, top, right, bottom] } (a new
 // setLayout for the linked copy's first window: the host's `appLayout` step) | { req: { type, payload } }
-// (a request from the app's UI for that window, its reply said: the host's `appReq` step).
+// (a request from the app's UI for that window, its reply said: the host's `appReq` step) | { drawn: Bool }
+// (whether the app draws over that window: the host's `appDrawn` step).
 // Built by run.sh with the app's flags; never shows anything.
 import AppKit
 import Foundation
@@ -150,6 +151,12 @@ FileHandle.standardInput.readabilityHandler = { handle in
               say(["ev": "reply failed", "type": type, "error": "\(error)"])
             }
           }
+        }
+        if let on = object["drawn"] as? Bool {
+          if let c = harness.current, let id = harness.firstWindow[c.epoch] {
+            c.send(.drawn(epoch: c.epoch, windowId: id, on: on))
+            say(["ev": "drawn sent", "windowId": id, "on": on])
+          } else { say(["ev": "drawn kept: no copy linked"]) }
         }
         if let given = object["layout"] as? [Double], given.count == 4 {
           insets = given

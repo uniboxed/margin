@@ -59,3 +59,21 @@ test('what\'s registered: linked, the page\'s script with the layout\'s files an
   assert.deepEqual(pagePlan(keepOpen, { linked: true, showing: false, layout: L(260), wasOn: true }).css, zeros, 'Chrome with no window in full screen');
   assert.equal(on.on, true);
 });
+
+test('the layout to register counts only the windows Margin.app draws, of this epoch; the settings\' only before it said anything of a window; it draws none: none', () => {
+  const at = (left, epoch = 'e1') => ({ ...app(left), epoch });
+  const link = (drawn, epoch = 'e1') => ({ epoch, drawn });
+  assert.deepEqual(chooseLayout({}, { 1: at(300), 2: at(300), 3: at(260) }, null, link({ 1: false, 2: false, 3: true })), L(260), 'two undrawn windows outweigh nothing');
+  assert.deepEqual(chooseLayout({}, { 1: at(300, 'e0'), 2: at(300, 'e0'), 3: at(260) }, null, link({})), L(260), 'an older epoch\'s layouts count for nothing');
+  assert.deepEqual(chooseLayout(keepOpen, {}, null, link({})), L(260), 'nothing said yet this epoch: the settings\'');
+  assert.equal(chooseLayout(keepOpen, { 1: at(300) }, null, link({ 1: false })), null, 'every window undrawn: no box');
+  assert.equal(chooseLayout(keepOpen, {}, null, link({ 1: false, 2: false })), null);
+  const registered = JSON.stringify(spelled(L(300)));
+  assert.deepEqual(chooseLayout(keepOpen, {}, registered, link({ 1: true })), L(300), 'one drawn but not measured yet: the one registered stays');
+  assert.deepEqual(chooseLayout(keepOpen, {}, null, link({ 1: true })), L(260), 'or the settings\' with none registered');
+  assert.deepEqual(chooseLayout({}, { 1: app(300), 2: app(300) }), L(300), 'no link given (an older background\'s layouts): as before');
+  const last = { 41: at(300, 'e0'), 42: at(300, 'e0') };
+  assert.deepEqual(chooseLayout(keepOpen, {}, null, { epoch: 'e1', drawn: {}, last }), L(300), 'nothing said yet this epoch: the epoch before\'s (a relink, a relaunch: no registration in between)');
+  assert.deepEqual(chooseLayout(keepOpen, { 1: at(260) }, null, { epoch: 'e1', drawn: {}, last }), L(260), 'this epoch\'s once there');
+  assert.equal(chooseLayout(keepOpen, {}, null, { epoch: 'e1', drawn: { 1: false }, last }), null, 'the epoch before\'s never outweighs this one\'s word');
+});

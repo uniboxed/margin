@@ -13,7 +13,7 @@ import { startFakeApp } from './fake-app.js';
 
 globalThis.chrome = { runtime: { getURL: (p) => `safari-web-extension://test/${p}`, getManifest: () => ({ version: '2.0.0' }) } };
 const { createLink, keyBindings, themePieces, SESSION_KEY, LINK_META, STATE_KEYS, APP_REQUESTS } = await import('../extension/background/link.js');
-const { APP_LINK_KEY, appDraws, boxFromLayout, layoutFor } = await import('../extension/shared/app-link.js');
+const { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, NOT_DRAWN } = await import('../extension/shared/app-link.js');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(test, ms = 2000) {
@@ -114,6 +114,15 @@ test('link: helpers — the keys from Settings, the theme in checked pieces, wha
   assert.equal(layoutFor({ layouts: { 7: a } }, null), a, 'one window: its layout before the page knows its window');
   assert.equal(layoutFor({ layouts: { 7: a, 8: { ...a, insets: { ...a.insets, left: 8 } } } }, null), null, 'two that differ: not known yet');
   assert.equal(layoutFor({ layouts: { 7: a, 8: a } }, 9), null, 'another window: none');
+  assert.equal(layoutFor({ layouts: { 7: a } }, 9), null, 'another window, the only layout another\'s: none (not measured yet: the page keeps its box)');
+  // A window Margin.app said it draws nothing over: a layout of zeros (no box), not "not measured yet".
+  const undrawn = { state: 'linked', layouts: { 7: a, 8: a }, drawn: { 7: false, 8: true } };
+  assert.equal(layoutFor(undrawn, 7), NOT_DRAWN);
+  assert.equal(boxFromLayout(layoutFor(undrawn, 7), { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 800 }), null, 'no box');
+  assert.equal(layoutFor(undrawn, 8), a, 'a drawn window: its own');
+  assert.equal(layoutFor({ layouts: { 7: a } , drawn: { 7: false } }, null), null, 'a page that doesn\'t know its window yet: never an undrawn window\'s');
+  assert.ok(!drawsWindow(undrawn, 7) && drawsWindow(undrawn, 8) && drawsWindow(undrawn, 9) && drawsWindow(undrawn, null), 'drawn unless the app said not');
+  assert.ok(!drawsWindow({ state: 'off', drawn: {} }, 8), 'not linked: none');
   assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 800 }), { left: 260, top: 8, right: 8, bottom: 8 }, 'full screen: the insets as they are');
   assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1280, innerHeight: 748 }), { left: 260, top: 0, right: 8, bottom: 8 }, 'a toolbar 52 pt above the page: the top inset less that');
   assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1024, innerHeight: 640, zoom: 1.25 }), { left: 208, top: 6.5, right: 6.5, bottom: 6.5 }, 'zoomed: in the page\'s pixels');
@@ -460,6 +469,83 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
   } finally {
     link.stop();
     await app.close();
+  }
+});
+
+test('link: drawn — whether the app draws over each window, kept for pages apart from the layouts; dropped with older epochs\' layouts on a new epoch\'s hello and when off; a closed window\'s goes', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  api.windowList = [...api.windowList, { id: 8, left: 0, top: 0, width: 1280, height: 800, state: 'fullscreen', focused: false }];
+  const { link } = makeLink(api, { timing: { ...FAST, dead: 10_000 } });
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    const hello = await app.next('hello');
+    const told = [];
+    link.onDrawn((w, on) => told.push([w, on]));
+    const layout = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6.5, container: { width: 1280, height: 800 }, mode: 'fullscreen' };
+    app.send({ k: 'setLayout', epoch: hello.epoch, windowId: 7, seq: 1, ...layout, at: 1 });
+    app.send({ k: 'drawn', epoch: hello.epoch, windowId: 7, on: true, at: 1 });
+    app.send({ k: 'drawn', epoch: hello.epoch, windowId: 8, on: false, at: 1 });
+    app.send({ k: 'drawn', epoch: 'old', windowId: 8, on: true, at: 1 });
+    app.send({ k: 'drawn', epoch: hello.epoch, windowId: 8, on: false, at: 2 });
+    const stored = () => api.storage.local.data[APP_LINK_KEY];
+    assert.ok(await until(() => stored()?.drawn?.[8] === false && stored()?.drawn?.[7] === true && stored()?.layouts?.[7]));
+    await wait(40);
+    assert.deepEqual(told, [[7, true], [8, false]], 'a change only, this epoch\'s only');
+    assert.equal(link.drawn(8), false);
+    assert.equal(link.drawn(9), undefined, 'not said');
+    assert.ok(link.drawsWindow(7) && !link.drawsWindow(8) && link.drawsWindow(9));
+    assert.deepEqual(link.view().drawn, { 7: true, 8: false });
+    assert.equal(stored().layouts[7].insets.left, 260, 'the layouts apart from it');
+    assert.ok(!drawsWindow(stored(), 8) && drawsWindow(stored(), 7), 'pages read the same');
+    // Window 8 closed: what the app said of it goes.
+    api.windowList = api.windowList.slice(0, 1);
+    link.windowClosed(8);
+    assert.ok(await until(() => stored()?.drawn && !(8 in stored().drawn)));
+    // A drop and a new epoch: what the epoch before said of the windows goes as the new one says hello.
+    app.send({ k: 'drawn', epoch: hello.epoch, windowId: 7, on: false, at: 3 });
+    assert.ok(await until(() => stored()?.drawn?.[7] === false));
+    const from = app.received.length;
+    app.drop();
+    const again = await app.next('hello', { from });
+    assert.notEqual(again.epoch, hello.epoch);
+    assert.ok(await until(() => stored()?.state === 'linked' && stored()?.epoch === again.epoch));
+    assert.deepEqual(stored().drawn, {}, 'drawn: none said yet this epoch');
+    assert.deepEqual(stored().layouts, {}, 'the epoch before\'s layouts gone');
+    assert.equal(stored().lastLayouts?.[7]?.insets?.left, 260, 'kept apart, only for the first paint\'s registration to start from');
+    assert.ok(link.drawsWindow(7), 'not said: drawn (an app that never says behaves as before)');
+    // Off: none either.
+    app.send({ k: 'drawn', epoch: again.epoch, windowId: 7, on: false, at: 4 });
+    assert.ok(await until(() => stored()?.drawn?.[7] === false));
+    api.app = null;
+    app.send({ k: 'bye', why: 'Margin.app quit' });
+    assert.ok(await until(() => stored()?.state === 'off'));
+    assert.deepEqual(stored().drawn, {});
+    assert.ok(!link.drawsWindow(7));
+  } finally {
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: a background started again keeps what the one before said of the windows Safari still lists, and nothing while off', async () => {
+  const layout = { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 6.5, epoch: 'e0', seq: 1 };
+  // (Margin.app running but sending no link: the state stays as read for a while, then off.)
+  const api = browser({ appOpen: () => true, local: { ...STATE, [APP_LINK_KEY]: { state: 'linked', epoch: 'e0', layouts: { 7: layout, 41: layout }, drawn: { 7: true, 41: false } } } });
+  const writes = [];
+  const set = api.storage.local.set.bind(api.storage.local);
+  api.storage.local.set = async (values) => { if (values[APP_LINK_KEY]) writes.push(structuredClone(values[APP_LINK_KEY])); return set(values); };
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(await until(() => writes.length > 0));
+    assert.equal(writes[0].state, 'reconnecting');
+    assert.deepEqual(Object.keys(writes[0].layouts), ['7'], 'window 41 isn\'t open any more');
+    assert.deepEqual(writes[0].drawn, { 7: true });
+    assert.ok(await until(() => writes.at(-1).state === 'off', 3000), 'no link: off');
+    assert.deepEqual([writes.at(-1).layouts, writes.at(-1).drawn], [{}, {}], 'off: nothing of the windows kept');
+  } finally {
+    link.stop();
   }
 });
 

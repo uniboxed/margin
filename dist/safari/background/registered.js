@@ -12,7 +12,10 @@
 // (firstPaintFile). Registrations are the same for every window, so the
 // layout most windows have is registered, and a window with another gets its
 // own as each of its pages commits (fixUp: scripting.insertCSS, on
-// webNavigation.onCommitted). Registered again only when that layout or the
+// webNavigation.onCommitted). A window Margin.app said it draws nothing over
+// (`drawn` false: not in full screen, or not found among the window server's)
+// counts for none, and its pages get `--margin-fp: off` as they commit: no
+// box beside a sidebar that isn't there. Registered again only when that layout or the
 // theme changes, and a layout only once it's been the same for
 // LAYOUT_SETTLE_MS: WebKit keeps every registration it was given applying to
 // new pages (until it restarts), so each one piles up there, and a resize of
@@ -72,23 +75,40 @@ export function layoutFromSettings(settings, theme = themeFor(settings)) {
 }
 
 /**
- * The layout to register: the one most windows have (a tie: the one
- * registered now, if it's among them, so a tie never re-registers), else, with
- * no window measured yet, the settings'.
+ * The layout to register: the one most windows the app draws have, of this
+ * link's epoch (a tie: the one registered now, if it's among them, so a tie
+ * never re-registers); else, before the app has said anything of a window
+ * this epoch, the one most windows had in the epoch before (`last`: a relink
+ * or a relaunch starts where it was), or the settings'; else (it said it
+ * draws one but hasn't measured it yet) the one registered now, or the
+ * settings'; else (it draws none) none.
  * @param {any} settings @param {Record<string, any>} layouts the link's @param {string | null} [registered] keyOf the registered one
+ * @param {{ epoch?: string | null, drawn?: Record<string, boolean>, last?: Record<string, any> }} [link] the epoch the layouts must be of (absent: any), what the app said it draws, and the epoch before's layouts
  * @returns {Layout | null}
  */
-export function chooseLayout(settings, layouts, registered = null) {
-  const count = new Map();
-  for (const l of Object.values(layouts ?? {})) {
-    const layout = layoutOf(l);
-    if (!layout) continue;
-    const key = keyOf(layout);
-    count.set(key, { layout, n: (count.get(key)?.n ?? 0) + 1 });
+export function chooseLayout(settings, layouts, registered = null, { epoch, drawn = {}, last = {} } = {}) {
+  const most = (/** @type {Record<string, any>} */ from, /** @type {(id: string, l: any) => boolean} */ counts) => {
+    const count = new Map();
+    for (const [id, l] of Object.entries(from ?? {})) {
+      if (!counts(id, l)) continue;
+      const layout = layoutOf(l);
+      if (!layout) continue;
+      const key = keyOf(layout);
+      count.set(key, { layout, n: (count.get(key)?.n ?? 0) + 1 });
+    }
+    if (!count.size) return undefined;
+    const best = [...count.entries()].sort(([ka, a], [kb, b]) => b.n - a.n || Number(kb === registered) - Number(ka === registered))[0][1].layout;
+    return hasBox(best) ? best : null;
+  };
+  const now = most(layouts, (id, l) => drawn?.[id] !== false && (epoch === undefined || l?.epoch === epoch));
+  if (now !== undefined) return now;
+  const said = Object.values(drawn ?? {});
+  if (!said.length) {
+    const before = most(last, () => true);
+    return before !== undefined ? before : layoutFromSettings(settings);
   }
-  if (!count.size) return layoutFromSettings(settings);
-  const best = [...count.entries()].sort(([ka, a], [kb, b]) => b.n - a.n || Number(kb === registered) - Number(ka === registered))[0][1].layout;
-  return hasBox(best) ? best : null;
+  if (!said.includes(true)) return null;
+  return (registered && registered !== 'none' ? JSON.parse(registered) : null) ?? layoutFromSettings(settings);
 }
 
 /** The theme whose first paint pages get: the active one's, else Arcadia's. */
@@ -122,11 +142,16 @@ const markOn = async () => {
 const wasOnHere = async () => onHere || !!(await api.storage.session?.get(ON_KEY).catch(() => null))?.[ON_KEY];
 /** The registered layout, as keyOf (null: none, or off): what fixUp compares a window's with. */
 let registeredKey = /** @type {string | null} */ (null);
-// The link's layouts as last read (fixUp, between syncs: setLayoutSource gives the live ones).
-let lastLayouts = {};
-let layoutSource = () => lastLayouts;
-/** Where the windows' layouts come from (background.js: the link's own, in memory). @param {() => Record<string, any>} fn */
+// What the app said of the windows as last read (fixUp, between syncs: setLayoutSource gives the
+// live ones): this epoch's layouts, and whether it draws each window.
+/** @typedef {{ epoch?: string | null, layouts: Record<string, any>, drawn?: Record<string, boolean>, lastLayouts?: Record<string, any> }} LinkView */
+/** @type {LinkView} */
+let lastView = { layouts: {} };
+let layoutSource = () => lastView;
+/** Where the windows' layouts come from (background.js: the link's own, in memory). @param {() => LinkView} fn */
 export const setLayoutSource = (fn) => { layoutSource = fn; };
+/** @param {LinkView} view */
+const chooseFor = (settings, view, registered) => chooseLayout(settings, view?.layouts ?? {}, registered, { epoch: view?.epoch ?? undefined, drawn: view?.drawn ?? {}, last: view?.lastLayouts ?? {} });
 
 const sameScript = (a, b) => JSON.stringify(a ? { js: a.js ?? [], css: a.css ?? [] } : null) === JSON.stringify(b ? { js: b.js ?? [], css: b.css ?? [] } : null);
 async function syncPage() {
@@ -134,7 +159,8 @@ async function syncPage() {
   const got = await api.storage.local.get(['settings', APP_LINK_KEY]);
   const settings = got.settings;
   const linked = appDraws(got[APP_LINK_KEY]);
-  lastLayouts = got[APP_LINK_KEY]?.layouts ?? {};
+  const link = got[APP_LINK_KEY];
+  lastView = { epoch: link?.epoch ?? null, layouts: link?.layouts ?? {}, drawn: link?.drawn ?? {}, lastLayouts: link?.lastLayouts ?? {} };
   for (const id of PREVIOUS_IDS) {
     if ((await api.scripting.getRegisteredContentScripts({ ids: [id] }).catch(() => [])).length) await api.scripting.unregisterContentScripts({ ids: [id] }).catch(() => {});
   }
@@ -144,7 +170,7 @@ async function syncPage() {
   // for, as `reconnecting`, else updated to no box).
   if (current?.js?.length) await markOn();
   const nowKey = current?.js?.length ? keyOf(layoutOfFiles(current.css)) : null;
-  const layout = chooseLayout(settings, lastLayouts, nowKey);
+  const layout = chooseFor(settings, lastView, nowKey);
   const showing = worksInWindows(settings) || await anyFullscreen();
   const want = pagePlan(settings, { linked, showing, layout, wasOn: await wasOnHere() });
   if (want && !sameScript(want, current)) {
@@ -177,9 +203,10 @@ export const queueRegistrations = () => {
 // Settles once the registrations match the settings and the link (tests).
 export const whenRegistered = () => registrations;
 
-// A window's layout changed (background.js: the link's onLayout): the
-// registration follows once layouts have settled, if the one to register is
-// another now.
+// A window's layout changed, or whether the app draws it (background.js: the
+// link's onLayout, onDrawn): the registration follows once they have settled
+// (a binding that comes and goes, or a sidebar dragged, re-registers once at
+// most), if the one to register is another now.
 let settleTimer = null;
 export function layoutsChanged() {
   clearTimeout(settleTimer);
@@ -187,7 +214,7 @@ export function layoutsChanged() {
     settleTimer = null;
     if (!isOwner() || registeredKey == null) return void queueRegistrations();
     const settings = cached()?.settings;
-    if (keyOf(chooseLayout(settings, layoutSource(), registeredKey)) !== registeredKey) void queueRegistrations();
+    if (keyOf(chooseFor(settings, layoutSource(), registeredKey)) !== registeredKey) void queueRegistrations();
   }, LAYOUT_SETTLE_MS);
 }
 
@@ -195,16 +222,20 @@ export function layoutsChanged() {
 // Its page gets its window's layout as it commits, before its first
 // rendering update (Spike 4: 96 of 96 pages in WebKit and Chromium; the
 // page's world reads the variables again then: content/page/main.js). One
-// with no box there gets `--margin-fp: off`, so the registered one isn't drawn.
+// with no box there, or one Margin.app draws nothing over, gets
+// `--margin-fp: off`, so the registered one isn't drawn.
+export const OFF_CSS = 'html:root { --margin-fp: off; }';
 /** What fixUp did, the last few (tests). @type {{ tabId: number, css: string, ok: boolean | string }[]} */
 export const fixUps = [];
 /** @param {number} tabId @param {string | undefined} documentId */
 async function fixUp(tabId, documentId) {
   if (registeredKey == null || !isOwner() || !api.scripting?.insertCSS) return;
   const windowId = cached()?.tabs?.[tabId]?.windowId ?? (await api.tabs.get(tabId).catch(() => null))?.windowId;
-  const own = windowId != null ? layoutOf(layoutSource()?.[windowId]) : null;
-  if (!own || keyOf(own) === registeredKey) return;
-  const css = hasBox(own) ? layoutOwnCss(own) : 'html:root { --margin-fp: off; }';
+  const view = layoutSource();
+  const off = windowId != null && view?.drawn?.[windowId] === false;
+  const own = off ? null : windowId != null ? layoutOf(view?.layouts?.[windowId]) : null;
+  if (!off && (!own || keyOf(own) === registeredKey)) return;
+  const css = own && hasBox(own) ? layoutOwnCss(own) : OFF_CSS;
   const insert = (target) => Promise.resolve(api.scripting.insertCSS({ target, css }));
   const ok = await (documentId ? insert({ tabId, documentIds: [documentId] }).catch(() => insert({ tabId, frameIds: [0] })) : insert({ tabId, frameIds: [0] })).then(() => true, (err) => String(err?.message ?? err));
   fixUps.push({ tabId, css, ok });

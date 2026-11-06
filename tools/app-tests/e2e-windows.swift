@@ -6,7 +6,10 @@
 // shows is played with their on-screen flags, the copies' focus flags lagging
 // the switch and disagreeing. Checked all along (every 20 ms): an overlay is
 // only ever shown over its own window; a window that can't be told yet has
-// none shown.
+// none shown. And what each copy is told of whether the app draws over its
+// windows (`drawn`): off for the ones it can't tell apart after 1.5 s and for
+// the normal window, on as each is bound and before its layout, nothing
+// through Space slides and blips, off for one closed.
 import AppKit
 
 @MainActor
@@ -88,7 +91,15 @@ func windowsScenario(ownSpace: Bool = false) async {
   fake.tell(["do": "connect", "id": "A", "profile": "P1", "windows": p1List.map { win($0, full, "fullscreen", focused: $0 == a1) }])
   fake.tell(["do": "connect", "id": "B", "profile": "P2", "windows": [win(b1, full, "fullscreen"), win(b5, desk, "normal")]])
   check("windows: both copies linked", await until(8, { shell.links[p1]?.mirror.hasState == true && shell.links[p2]?.mirror.hasState == true }))
+  let frontAt = Date().timeIntervalSince1970
   apps.bringToFront(browserPid)
+  // What each copy was told of a window's drawing (`drawn`), in order: (on, when).
+  func drawnSaid(_ copy: String, _ windowId: Int, since: Int = 0) -> [(on: Bool, at: Double)] {
+    fake.all("drawn", since: since) { $0["id"] as? String == copy && $0["windowId"] as? Int == windowId }.map { ($0["on"] as? Bool ?? false, $0["_at"] as? Double ?? 0) }
+  }
+  func index(_ ev: String, _ copy: String, _ windowId: Int, _ test: (JSONObject) -> Bool = { _ in true }) -> Int? {
+    fake.events.firstIndex { $0["ev"] as? String == ev && $0["id"] as? String == copy && (($0["windowId"] as? Int) ?? (($0["msg"] as? JSONObject)?["windowId"] as? Int)) == windowId && test($0) }
+  }
 
   // Watched all along: an overlay shown only over its own window.
   final class Watch { var on = true; var wrong: [String] = []; var looks = 0; var truth: [WindowKey: Int] = [:] }
@@ -114,6 +125,13 @@ func windowsScenario(ownSpace: Bool = false) async {
   check("windows: three full-screen windows with the same bounds, just linked: none bound on a guess, no overlay shown over them",
         shell.matches[a1] == nil && shell.matches[a2] == nil && shell.matches[b1] == nil && !shell.overlays.values.contains { $0.isShown && $0.key != b5 }, "\(shell.matches)")
   check("windows: and the log says why", said.contains { $0.contains("safari:P1#1 (fullscreen") && $0.contains("3 windows have its bounds") })
+  // The copies told the app draws nothing over them (their pages lose the empty sidebar's box), only after the grace.
+  check("windows: the three it can't tell apart and the normal one: their copies told not drawn",
+        await until(4, { [("A", 1), ("A", 2), ("B", 1), ("B", 5)].allSatisfy { drawnSaid($0.0, $0.1).map(\.on) == [false] } }),
+        "\(fake.all("drawn").map { "\($0["id"] ?? "")#\($0["windowId"] ?? ""): \($0["on"] ?? "")" })")
+  check("windows: and not before 1.5 s", [("A", 1), ("A", 2), ("B", 1), ("B", 5)].allSatisfy { (drawnSaid($0.0, $0.1).first?.at ?? 0) - frontAt >= 1.4 },
+        "\(fake.all("drawn").map { ($0["_at"] as? Double ?? 0) - frontAt })")
+  check("windows: no layout sent for a window that isn't bound", fake.all("setLayout").isEmpty, "\(fake.all("setLayout").map { ($0["msg"] as? JSONObject)?["windowId"] ?? "" })")
 
   // A Space switch to P2's full-screen window: the slide (both on screen), P2's copy hears the focus and says so
   // 0.3 s late; P1's copy still calls its window focused for 0.6 s more.
@@ -128,6 +146,10 @@ func windowsScenario(ownSpace: Bool = false) async {
   check("windows: a focus change with the front window changing then: P2's window bound, its overlay shown over it",
         await until(15, { shell.matches[b1] == wC.windowNumber && shell.overlays[b1]?.isShown == true && shell.overlays[b1]?.aboveWindow == wC.windowNumber }), "\(shell.matches)")
   check("windows: P1's two still can't be told apart: nothing shown over them", shell.matches[a1] == nil && shell.matches[a2] == nil && shell.overlays[a1]?.isShown != true)
+  check("windows: P2's copy told its window is drawn as it's bound, before the window's layout went",
+        drawnSaid("B", 1).map(\.on) == [false, true] && (index("drawn", "B", 1) { $0["on"] as? Bool == true }).map { on in index("setLayout", "B", 1).map { on < $0 } ?? true } == true,
+        "\(drawnSaid("B", 1)) \(String(describing: index("setLayout", "B", 1)))")
+  check("windows: and its layout sent once it's drawn", await until(5, { index("setLayout", "B", 1) != nil }))
 
   // Back to P1's first window: the same lag the other way. Then P1's other one is the only free window left.
   space(wA, also: wC)
@@ -147,6 +169,8 @@ func windowsScenario(ownSpace: Bool = false) async {
     check("windows: P1's overlay over its window, P2's put away (its Space not showing)", await until(15, { shell.overlays[a1]?.isShown == true && shell.overlays[b1]?.isShown == false }))
   }
   let putAwayBefore = said.filter { $0.contains("overlay put away") }.count
+  check("windows: P1's copy told both its windows are drawn", await until(3, { drawnSaid("A", 1).last?.on == true && drawnSaid("A", 2).last?.on == true }), "\(drawnSaid("A", 1)) \(drawnSaid("A", 2))")
+  let drawnBefore = fake.events.count
 
   // Swipes back and forth with the flags lagging and disagreeing (Tirth's log): nothing changes hands.
   let bound = shell.matches
@@ -162,6 +186,8 @@ func windowsScenario(ownSpace: Bool = false) async {
     try? await Task.sleep(nanoseconds: 900_000_000)
   }
   check("windows: four swipes with the copies' flags lagging: every binding held", shell.matches == bound, "\(shell.matches)")
+  check("windows: and no copy told anything of its windows' drawing through the slides (an overlay left in another Space is still drawn)",
+        fake.all("drawn", since: drawnBefore).isEmpty, "\(fake.all("drawn", since: drawnBefore).map { "\($0["id"] ?? "")#\($0["windowId"] ?? ""): \($0["on"] ?? "")" })")
   if ownSpace {
     check("windows: swiping between placed windows: no overlay put away or shown again",
           said.filter { $0.contains("overlay put away") }.count == putAwayBefore && shell.overlays[b1]?.aboveWindow == wC.windowNumber && shell.overlays[a1]?.aboveWindow == wA.windowNumber,
@@ -209,6 +235,7 @@ func windowsScenario(ownSpace: Bool = false) async {
     let since = said.suffix(from: lines)
     check("windows: the front window missing for 40 ms, then all of them, then no list: bound and over its window all along", look.bad.isEmpty, "\(look.bad.prefix(5))")
     check("windows: unseen while missing, seen again after", look.concealed > 0 && shell.overlays[key]?.isConcealed == false, "\(look.concealed)")
+    check("windows: and its copy told nothing through the blips", fake.all("drawn", since: drawnBefore).isEmpty)
     check("windows: no overlay put away or shown again, no binding dropped", !since.contains { $0.contains("overlay put away") || $0.contains("overlay shown") || $0.contains("is no longer") }, "\(since.filter { $0.contains("overlay") || $0.contains("no longer") }.prefix(4))")
     check("windows: the log says the window was missing, and the reads that told nothing", since.contains { $0.contains("window \(front) missing from one read (kept for 3 s)") }
           && since.contains { $0.contains("without the browser's windows") } && since.contains { $0.contains("the window server gave no list") }, "\(since.prefix(6))")
@@ -223,6 +250,7 @@ func windowsScenario(ownSpace: Bool = false) async {
   truth[a2] = nil
   watch.truth = truth
   check("windows: a window closed: its binding dropped, its overlay closed", await until(3, { shell.matches[a2] == nil && shell.overlays[a2] == nil }))
+  check("windows: and its copy told it isn't drawn", await until(3, { drawnSaid("A", 2, since: drawnBefore).map(\.on) == [false] }), "\(drawnSaid("A", 2, since: drawnBefore))")
   let wE = standIn(full)
   stand.append(wE)
   let a3 = WindowKey(link: p1, windowId: 3)
