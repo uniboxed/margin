@@ -44,8 +44,11 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         var crashLimit = 3 // reloads after the page's process died, within crashWindow; past that, it stays put away
         var crashWindow: TimeInterval = 300
         var edgeWidth: CGFloat = EdgeGuard.width // the edge guard's (PassThrough.swift EdgeGuard); 0: none
-        // Joining only its window's Space instead of every Space (an experiment for Tirth's Safari:
-        // `defaults write io.tirth.margin MarginOverlayOwnSpace -bool YES`; Shell.forApp).
+        // Joining only its window's Space instead of every Space, so it's already drawn when that
+        // Space comes back (Tirth, 2026-11-05: the layout at once on every window switch). On by
+        // default in the app (`defaults write io.tirth.margin MarginOverlayOwnSpace -bool NO` turns it
+        // off); the shell falls back to every Space for the launch if macOS doesn't place it with its
+        // window (Shell.checkOwnSpace).
         var ownSpace = false
     }
 
@@ -67,7 +70,15 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     let panel: OverlayPanel
     let webView: OverlayWebView
     private let pages: OverlayPages
-    private let options: Options
+    private var options: Options
+    var ownSpace: Bool { options.ownSpace }
+    // Back to every Space (the shell's fallback when macOS didn't keep an overlay with its window).
+    func joinEverySpace() {
+        guard options.ownSpace else { return }
+        options.ownSpace = false
+        panel.collectionBehavior = Self.collectionBehavior
+        edgePanel?.collectionBehavior = Self.collectionBehavior
+    }
 
     private(set) var isReady = false // the page has drawn
     private(set) var isShown = false

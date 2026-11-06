@@ -577,6 +577,15 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Delete a test profile in Safari (one with a space in Margin): the log says `profile “…” (…) is gone from the browser`; the profile keeps that name in Margin (now as a typed name you can change), and can be forgotten from its menu as before.
 - [ ] Nothing slows Safari: browse and switch tabs for a minute; the log shows at most one `safari profiles` line per change of names, and Activity Monitor shows Margin.app near 0% CPU while you browse (it reads Safari's database at most once a second while Safari writes it, and logs only when the names change).
 
+## Margin 2: the layout at once on window switches, a faster inspector (2026-11-05)
+
+`npm run safari`. Two or more full-screen Safari windows (one profile or two).
+
+- [ ] Switch between them (three-finger swipe, ⌃→/⌃←, Mission Control, ⌘\`): Margin's sidebar is already there as the window slides in, never appearing a moment after. Also after each window has been shown once since Margin.app started (the first showing of a window may still take a moment).
+- [ ] Swipe to the desktop and back: nothing of Margin's on the desktop.
+- [ ] `npm run log:app`: no line "overlays join every Space again for this launch". If there is one, macOS didn't keep an overlay with its window: tell me the time, and Margin has fallen back to the earlier behaviour for that launch.
+- [ ] ⌘⌥I docked at the bottom, then left and right: Margin moves out of its way as it opens, and follows as you drag its edge, with no noticeable wait.
+
 ## Margin 2 Phase 2 step 8: what you saw in full-screen Safari, fixed (2026-11-05)
 
 Build and install as usual (`npm run safari`), open Margin.app's log in Terminal first: `npm run log:app -- --stream` (or `scripts/margin-log.sh 10` afterwards for the last 10 minutes). Each check says what the log shows.

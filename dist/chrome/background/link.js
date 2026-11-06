@@ -480,6 +480,7 @@ export function createLink({
     askMs = 0;
     launches = 0;
     lastWindows = '';
+    lastList = null;
     lastKeys = '';
     lastTheme = '';
     clearTimeout(goneTimer);
@@ -716,7 +717,26 @@ export function createLink({
     const json = JSON.stringify(list);
     if (json === lastWindows) return;
     lastWindows = json;
+    lastList = list;
     send({ k: 'windows', epoch, seq: ++seq, list });
+  }
+  // The last list sent, for a change only this copy knows (a page's area: the docked inspector),
+  // sent at once without asking Safari again; windowsNow follows with Safari's own.
+  /** @type {any[] | null} */
+  let lastList = null;
+  function windowsWithViewports() {
+    if (!ws || snapshotting || !lastList) return false;
+    const list = lastList.map((w) => {
+      const { viewport: _old, ...rest } = w;
+      const vp = viewports.get(w.windowId);
+      return vp && vp.tabId === w.activeTabId ? { ...rest, viewport: vp.rect } : rest;
+    });
+    const json = JSON.stringify(list);
+    if (json === lastWindows) return true;
+    lastWindows = json;
+    lastList = list;
+    send({ k: 'windows', epoch, seq: ++seq, list });
+    return true;
   }
   async function sendTheme() {
     if (!ws) return;
@@ -935,7 +955,9 @@ export function createLink({
       const had = JSON.stringify(viewports.get(windowId) ?? null);
       if (rect) viewports.set(windowId, { tabId, rect });
       else if (viewports.get(windowId)?.tabId === tabId || rect === null) viewports.delete(windowId);
-      if (JSON.stringify(viewports.get(windowId) ?? null) !== had) void windowsNow();
+      if (JSON.stringify(viewports.get(windowId) ?? null) === had) return;
+      windowsWithViewports();
+      void windowsNow();
     },
     // A switch's timeline (background/switch-log.js) and other lines for Margin.app's log.
     note: (/** @type {any[]} */ ...args) => note(...args),

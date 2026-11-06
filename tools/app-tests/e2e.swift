@@ -16,6 +16,8 @@ import WebKit
 
 var failures = 0
 var passed = 0
+// `check` for scenarios that wrap it in a local one of the same name.
+func e2eCheck(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") { check(label, ok, detail()) }
 func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") {
   if ok { passed += 1; print("ok   \(label)") } else { failures += 1; print("FAIL \(label)" + (detail().isEmpty ? "" : ": \(detail())")) }
 }
@@ -529,6 +531,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await dataScenario()
       await profilesScenario()
       await windowsScenario()
+      await windowsScenario(ownSpace: true)
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }

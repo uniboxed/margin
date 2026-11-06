@@ -306,7 +306,14 @@ export function startCore() {
     toldViewport = key;
     void send('viewport', { viewport: v }, false);
   }
-  addEventListener('resize', () => setTimeout(tellViewport, 120));
+  // At once (the next frame: Safari's resize as the inspector docks), and again once a drag of its
+  // edge settles; the copy and the app pass it on without waiting (Margin's area follows quickly).
+  let viewportSettle = 0;
+  addEventListener('resize', () => {
+    requestAnimationFrame(tellViewport);
+    clearTimeout(viewportSettle);
+    viewportSettle = setTimeout(tellViewport, 120);
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) return; if (toldViewport !== 'null') toldViewport = 'unset'; tellViewport(); });
   const applyApp = () => { layout.settle(); tellViewport(); };
   // What the background says of the link: the page's box from the app's

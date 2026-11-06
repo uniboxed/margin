@@ -10,7 +10,13 @@
 import AppKit
 
 @MainActor
-func windowsScenario() async {
+func windowsScenario(ownSpace: Bool = false) async {
+  // With `ownSpace` (the app's default since 2026-11-05) an overlay stays in its window's Space while
+  // that Space isn't showing, so it's already drawn when it comes back: checked below.
+  let tag = ownSpace ? "windows (own Space)" : "windows"
+  func check(_ label: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") {
+    e2eCheck(label.replacingOccurrences(of: "windows:", with: "\(tag):"), ok, detail())
+  }
   let fake = Fake()
   do { try fake.start() } catch { return check("windows: the fake extension starts", false, "\(error)") }
   defer { fake.stop() }
@@ -27,6 +33,7 @@ func windowsScenario() async {
   options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
   options.bundleIds = ["safari": fakeBundle]
   options.dataRoot = root
+  options.overlay.ownSpace = ownSpace
   var said: [String] = []
   let echo = Diagnostics.echo
   Diagnostics.echo = { said.append($0); echo?($0) }
@@ -91,6 +98,10 @@ func windowsScenario() async {
     while watch.on {
       watch.looks += 1
       for (key, o) in shell.overlays where o.isShown {
+        // (With `ownSpace`, an overlay kept in a Space that isn't showing can't be seen: only those whose
+        // window is on screen are judged, so a window closed away from its Space isn't counted before the
+        // shell hears of it.)
+        if ownSpace, let above = o.aboveWindow, windows.browser.first(where: { $0.number == above })?.onScreen != true { continue }
         if let above = o.aboveWindow, watch.truth[key] != above { watch.wrong.append("\(key)'s overlay over \(above), its window is \(watch.truth[key].map(String.init) ?? "gone")") }
       }
       for (key, n) in shell.matches where watch.truth[key] != nil && watch.truth[key] != n { watch.wrong.append("\(key) bound to \(n)") }
@@ -129,7 +140,13 @@ func windowsScenario() async {
   try? await Task.sleep(nanoseconds: 500_000_000)
   report2(focused: nil)
   check("windows: P1's window bound by its focus change, P1's other by elimination", await until(6, { shell.matches[a1] == wA.windowNumber && shell.matches[a2] == wB.windowNumber }), "\(shell.matches)")
-  check("windows: P1's overlay over its window, P2's put away (its Space not showing)", await until(15, { shell.overlays[a1]?.isShown == true && shell.overlays[b1]?.isShown == false }))
+  if ownSpace {
+    check("windows: P1's overlay over its window, P2's kept in its own Space (not showing), still over its window",
+          await until(15, { shell.overlays[a1]?.isShown == true && shell.overlays[b1]?.isShown == true && shell.overlays[b1]?.aboveWindow == wC.windowNumber }))
+  } else {
+    check("windows: P1's overlay over its window, P2's put away (its Space not showing)", await until(15, { shell.overlays[a1]?.isShown == true && shell.overlays[b1]?.isShown == false }))
+  }
+  let putAwayBefore = said.filter { $0.contains("overlay put away") }.count
 
   // Swipes back and forth with the flags lagging and disagreeing (Tirth's log): nothing changes hands.
   let bound = shell.matches
@@ -145,8 +162,14 @@ func windowsScenario() async {
     try? await Task.sleep(nanoseconds: 900_000_000)
   }
   check("windows: four swipes with the copies' flags lagging: every binding held", shell.matches == bound, "\(shell.matches)")
-  check("windows: the overlay in front is the front window's own", await until(5, { shell.overlays[b1]?.isShown == true && shell.overlays[b1]?.aboveWindow == wC.windowNumber
-    && shell.overlays.values.filter(\.isShown).count == 1 }))
+  if ownSpace {
+    check("windows: swiping between placed windows: no overlay put away or shown again",
+          said.filter { $0.contains("overlay put away") }.count == putAwayBefore && shell.overlays[b1]?.aboveWindow == wC.windowNumber && shell.overlays[a1]?.aboveWindow == wA.windowNumber,
+          "\(said.filter { $0.contains("overlay put away") }.suffix(3))")
+  } else {
+    check("windows: the overlay in front is the front window's own", await until(5, { shell.overlays[b1]?.isShown == true && shell.overlays[b1]?.aboveWindow == wC.windowNumber
+      && shell.overlays.values.filter(\.isShown).count == 1 }))
+  }
 
   // P1's second window closed: its binding and overlay go. A new full-screen window: bound to its own window.
   p1List = [a1]

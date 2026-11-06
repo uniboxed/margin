@@ -122,7 +122,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     let apps: AppWatch
     let shortcuts: AppShortcuts
     private let pointer = PointerWatch()
-    let options: Options
+    private(set) var options: Options
     private lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot)
 
     private(set) var links: [String: Link] = [:]
@@ -183,9 +183,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     static func forApp() -> Shell {
         var options = Options()
         options.safariData = SafariProfiles.safariFolder
-        // The overlays in their window's Space only (Overlay.swift ownSpaceBehavior): an experiment, off by default.
-        options.overlay.ownSpace = UserDefaults.standard.bool(forKey: "MarginOverlayOwnSpace")
-        if options.overlay.ownSpace { Diagnostics.note("overlays join only their window's Space (MarginOverlayOwnSpace)") }
+        // The overlays in their window's Space only (Overlay.swift ownSpaceBehavior), so each is already
+        // drawn when its window's Space comes back; on unless MarginOverlayOwnSpace is set to NO.
+        options.overlay.ownSpace = UserDefaults.standard.object(forKey: "MarginOverlayOwnSpace") as? Bool ?? true
+        Diagnostics.note(options.overlay.ownSpace ? "overlays join only their window's Space (each kept there while it's away)" : "overlays join every Space (MarginOverlayOwnSpace is off)")
         return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
     }
 
@@ -399,6 +400,35 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         return linkedPids().values.contains { $0.contains(front) }
     }
 
+    // An overlay just placed in its window's own Space: checked a moment later that macOS has it on
+    // screen together with its window. If not (macOS put it in another Space, or kept it out), every
+    // overlay goes back to joining every Space for this launch, and the log says why.
+    private(set) var ownSpaceFellBack = false
+    private func checkOwnSpace(_ overlay: OverlayController, browser number: Int) {
+        guard !ownSpaceFellBack, !options.harness else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak overlay] in
+            MainActor.assumeIsolated {
+                guard let self, let overlay, overlay.isShown, overlay.aboveWindow == number, overlay.ownSpace else { return }
+                let list = self.windowSource.windows(of: [ProcessInfo.processInfo.processIdentifier, overlay.browserPid])
+                let mine = list.first { $0.number == overlay.windowNumber }
+                let browser = list.first { $0.number == number }
+                guard let browser, browser.onScreen else { return } // its window went away meanwhile: nothing to judge
+                if mine?.onScreen == true { return }
+                self.ownSpaceFallBack("an overlay placed in its window's Space isn't on screen with it")
+                overlay.hide("moved to every Space")
+            }
+        }
+    }
+
+    private func ownSpaceFallBack(_ why: String) {
+        guard !ownSpaceFellBack else { return }
+        ownSpaceFellBack = true
+        options.overlay.ownSpace = false
+        Diagnostics.warn("\(why): overlays join every Space again for this launch")
+        for o in overlays.values { o.joinEverySpace() }
+        burst("own Space fallback")
+    }
+
     // A slow read of the window server and all that follows it, in the log (at most every 10 s).
     private var slowTrackSaidAt: TimeInterval = -.infinity
     private var slowTracksUnsaid = 0
@@ -496,7 +526,19 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // Never shown over a window that isn't bound, isn't on screen, or doesn't fill its display yet.
             guard wanted else { overlay.hide("its window is still being made"); continue }
             guard let number = next[key] else { overlay.hide("its window isn't bound to one of the window server's"); continue }
-            guard let server = byNumber[number], server.onScreen else {
+            guard let server = byNumber[number] else { overlay.hide("its window is gone from the window server"); continue }
+            if !server.onScreen {
+                // In its window's own Space, which isn't showing: left there, so it slides back in with
+                // the window, already drawn (nothing to show again when the Space returns).
+                if overlay.ownSpace, overlay.isShown, overlay.aboveWindow == number, overlay.windowFrame == server.bounds {
+                    // But on screen itself while its window isn't (macOS kept it in the Space showing): back to every Space.
+                    // (Not in the test harness: its stand-in windows have no Spaces, so an overlay always reads as on screen.)
+                    if !options.harness, !spaceChanged, byNumber[overlay.windowNumber]?.onScreen == true {
+                        ownSpaceFallBack("an overlay is on screen while its window isn't")
+                        overlay.hide("its window isn't on screen")
+                    }
+                    continue
+                }
                 overlay.hide(spaceChanged ? "the active Space changed and its window isn't on screen" : "its window isn't on screen")
                 continue
             }
@@ -519,6 +561,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar) {
                 overlay.reorder()
             }
+            if !wasShown, overlay.ownSpace { checkOwnSpace(overlay, browser: number) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
         // (Not a link's that dropped a moment ago, nor one back but without its state yet: kept as they are.)
