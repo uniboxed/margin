@@ -32,6 +32,7 @@ import { neverSleeps } from '../shared/sleep.js';
 import { foundWithNoPage, isFocusing, mayAccess, switchBusy } from './tabs.js';
 import { appLog } from './switch-log.js';
 import { noteClosing, takeClosing } from './closing.js';
+import { isParked } from './handoff.js';
 
 // Times (tests shorten them: setSleepTiming).
 const TIMING = {
@@ -65,8 +66,10 @@ const TIMING = {
 // frames in it it can't look into (`foreign`): each of those must answer
 // for itself (pageAnswer). Not past `until` (the background no longer waits
 // for the answer then).
-/** @param {string} expected @param {number} until */
-export function sleepInPage(expected, until) {
+// `draftsOnly`: only whether something is typed and not sent (Margin.app's handoff asking before it
+// closes a window: windowDrafts): shown, playing or at another address doesn't matter then.
+/** @param {string} expected @param {number} until @param {boolean} [draftsOnly] */
+export function sleepInPage(expected, until, draftsOnly = false) {
   let top = true;
   let apart = false;
   try {
@@ -77,10 +80,10 @@ export function sleepInPage(expected, until) {
   }
   try {
     if (Date.now() > until) return { ok: false, why: 'late', top };
-    if (document.visibilityState !== 'hidden') return { ok: false, why: 'shown', top };
-    if (top && location.href !== expected) return { ok: false, why: 'moved', top };
+    if (!draftsOnly && document.visibilityState !== 'hidden') return { ok: false, why: 'shown', top };
+    if (!draftsOnly && top && location.href !== expected) return { ok: false, why: 'moved', top };
     const playing = (/** @type {Document} */ doc) => [...doc.querySelectorAll('audio, video')].some((/** @type {any} */ el) => (!el.paused && !el.ended) || (typeof MediaStream !== 'undefined' && el.srcObject instanceof MediaStream));
-    if (playing(document) || /** @type {any} */ (navigator).mediaSession?.playbackState === 'playing' || /** @type {any} */ (document).pictureInPictureElement || document.fullscreenElement) return { ok: false, why: 'playing', top };
+    if (!draftsOnly && (playing(document) || /** @type {any} */ (navigator).mediaSession?.playbackState === 'playing' || /** @type {any} */ (document).pictureInPictureElement || document.fullscreenElement)) return { ok: false, why: 'playing', top };
     const inUse = (/** @type {Document | null} */ doc, depth = 0) => {
       if (!doc || depth > 4) return false;
       for (const el of /** @type {any[]} */ ([...doc.querySelectorAll('textarea, input:not([type]), input[type=text], input[type=search], input[type=email], input[type=url], input[type=tel], input[type=number], input[type=password]')])) if (String(el.value ?? '').trim()) return true;
@@ -203,6 +206,9 @@ async function sleepTab(record, afterMs) {
   if (!stillDue(record.id, afterMs)) return 'used';
   const tab = await api.tabs.get(record.id).catch(() => null);
   if (!tab) return 'gone';
+  // A parked window's tab in front (out of sight while another profile's window is shown:
+  // app/HANDOFF.md §2.5) is the page shown when the window comes back: it never sleeps.
+  if (tab.active && isParked(tab.windowId)) return 'in front, parked';
   if (tab.active) return 'in front';
   if (tab.discarded) return 'asleep';
   if (!/^https?:/i.test(tab.url ?? '')) return 'not a web page';
@@ -292,6 +298,54 @@ export function pageAnswer(rows) {
   }
   if (unseen > answered) return { ok: false, why: 'frame unknown', judged: 'frame' };
   return top.result;
+}
+
+// ---- drafts, before Margin.app closes a window ------------------------------------------
+// The window's tabs with text typed and not sent (app/HANDOFF.md §4.5: the app closes a window only
+// when there's none), asked in every tab at once with the same check as a sleep's (sleepInPage, its
+// drafts only, in every frame), DRAFTS_MS in all. `unknown`: a web page that couldn't say (no access,
+// no answer in time, a frame nothing can look into); the app keeps the window then too. Not asked: a
+// tab that isn't a web page (Margin's own pages, Safari's) and one with no page to hold text (asleep,
+// or unloaded by Safari).
+const DRAFTS_MS = 400;
+/** @param {number} windowId @param {{ ms?: number }} [options] @returns {Promise<{ drafts: number[], unknown: number[] }>} */
+export async function windowDrafts(windowId, { ms = DRAFTS_MS } = {}) {
+  const started = Date.now();
+  const until = started + ms;
+  const tabs = await answerOrNull(Promise.resolve(api.tabs.query({ windowId })), ms);
+  // Not an answer: the app keeps the window, as for a draft.
+  if (!Array.isArray(tabs)) throw new Error(`Safari didn't list the window's tabs in ${ms} ms`);
+  /** @type {number[]} */
+  const drafts = [];
+  /** @type {number[]} */
+  const unknown = [];
+  await Promise.all(tabs.map(async (tab) => {
+    if (!Number.isInteger(tab?.id) || !/^https?:/i.test(tab.url ?? '') || tab.discarded || foundWithNoPage(tab.id)) return;
+    const said = await answerOrNull(draftIn(tab, until), Math.max(0, until - Date.now()));
+    if (said === 'draft') drafts.push(tab.id);
+    else if (said !== 'none') unknown.push(tab.id);
+  }));
+  appLog(`windowDrafts window ${windowId}: ${tabs.length} tabs, ${drafts.length} with a draft, ${unknown.length} unknown (${Date.now() - started} ms)`);
+  return { drafts, unknown };
+}
+// 'draft', 'none', or null (it couldn't say).
+/** @param {any} tab @param {number} until */
+async function draftIn(tab, until) {
+  if (!(await mayAccess(tab.url))) return null;
+  const call = (/** @type {boolean} */ allFrames) => Promise.resolve(api.scripting?.executeScript?.({ target: allFrames ? { tabId: tab.id, allFrames: true } : { tabId: tab.id }, func: sleepInPage, args: [tab.url, until, true] }));
+  const answer = await call(true).then(pageAnswer, () => call(false).then(pageAnswer, () => 'no page'));
+  if (answer === 'no page' || !answer) return null;
+  if (answer.ok) return 'none';
+  return answer.why === 'edited' ? 'draft' : null;
+}
+/** @template T @param {Promise<T>} promise @param {number} ms @returns {Promise<T | null>} */
+async function answerOrNull(promise, ms) {
+  let timer;
+  try {
+    return await Promise.race([promise.catch(() => null), new Promise((resolve) => { timer = setTimeout(() => resolve(null), ms); })]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ---- pages that said no ---------------------------------------------------------

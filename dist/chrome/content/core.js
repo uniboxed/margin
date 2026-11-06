@@ -21,6 +21,7 @@ import { startLayout } from './layout.js';
 import { startLoads } from './loads.js';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.js';
 import { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor } from '../shared/app-link.js';
+import { probeFrames, watchVisible } from '../shared/frame-probe.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -411,6 +412,8 @@ export function startCore() {
   document.addEventListener('visibilitychange', tellVisibility);
   addEventListener('pageshow', (event) => event.persisted && tellVisibility());
   tellVisibility();
+  // When it last turned visible, for Margin.app's frame probe (shared/frame-probe.js).
+  const visibleAt = watchVisible();
 
   // The state taken: this page's tab and window (its box is its window's
   // layout), the gestures' settings.
@@ -588,6 +591,13 @@ export function startCore() {
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
     if (message?.type === 'reportVisibility') return tellVisibility();
+    // Margin.app's profile handoff asking whether this page draws frames at the full-screen size
+    // (shared/frame-probe.js): answered when it's done, or null by its timeout.
+    if (message?.type === 'frameProbe') {
+      if (retired()) return;
+      void probeFrames(message, { visibleAt }).then((answer) => sendResponse(answer), () => sendResponse(null));
+      return true;
+    }
     // Margin.app's layout for this window, and whether it draws over it, as they change (background/link.js).
     if (message?.type === 'appLayout' && Number.isInteger(message.windowId)) {
       if (!appLink) return;

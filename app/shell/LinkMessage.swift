@@ -424,7 +424,7 @@ enum FrameProbeAnswer: Equatable {
         let tabId: Int
         let frames: Int
         let firstAt: Double, lastAt: Double
-        let width: Double, height: Double // the page's viewport at the last frame, in CSS pixels
+        let width: Double, height: Double // the page's window size at the last frame (outerWidth, outerHeight: points)
         let hasFocus: Bool // document.hasFocus()
         let visible: Bool // document.visibilityState is 'visible'
         let visibleAt: Double? // the page's last visibilitychange to visible, if it heard one (gate G2 may use it)

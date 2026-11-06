@@ -21,6 +21,7 @@ import { platform } from '../shared/platform.js';
 import { resolveInput } from '../shared/search.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { APP_LINK_KEY, appDraws, undrawn } from '../shared/app-link.js';
+import { probeFrames, watchVisible } from '../shared/frame-probe.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -95,10 +96,17 @@ const tellVisibility = () => { if (platform?.nativeApp) void send('visibility', 
 document.addEventListener('visibilitychange', tellVisibility);
 addEventListener('pageshow', (event) => event.persisted && tellVisibility());
 tellVisibility();
+// When it last turned visible, for Margin.app's frame probe, which this page answers as web pages do.
+const visibleAt = watchVisible();
 // The background switching from this tab (next/previous tab): never covered here.
 api.runtime.onMessage.addListener((message, _, sendResponse) => {
   if (message?.type === 'switching' && message.from === self?.id) sendResponse(false);
   if (message?.type === 'reportVisibility') tellVisibility();
+  // Margin.app's profile handoff asking whether this page draws frames at the full-screen size.
+  if (message?.type === 'frameProbe') {
+    void probeFrames(message, { visibleAt }).then((answer) => sendResponse(answer), () => sendResponse(null));
+    return true;
+  }
   // ⌘T or the palette's key with this page in front, not the app's: its address field.
   if (message?.type === 'command' && message.tabId === self?.id && mode !== 'app') address()?.focus();
 });

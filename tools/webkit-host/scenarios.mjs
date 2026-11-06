@@ -1356,6 +1356,40 @@ Object.assign(SCENARIOS, {
     { op: 'appHeard', label: 'let go: done', has: ['"type":"gesture"', '"kind":"pull"', '"state":"trigger"'] },
     checkPage('A', 'A: reloaded by the pull', '!window.__before', 4000),
   ],
+  // Margin.app's frame probe during a profile handoff (app/HANDOFF.md §3.2, R3), asked from the
+  // app's end (`appReq frameProbe`, as the handoff asks the target window's copy): the page in front
+  // nudges with one 1×1 fixed element under <html> (its alpha changing frame to frame) and answers
+  // the frames it drew at the window's size; nothing in the page moves in any frame (every element's
+  // place, the scroll and the page's size the same), and the nudge is gone after. Then the drafts
+  // before a close (`windowDrafts`): a tab with text typed is named, nothing unknown.
+  'frame-probe': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'F', url: '/p/FB' },
+    wait(800), { op: 'install' }, linked('A'), ready('F'),
+    { op: 'show', name: 'F' }, wait(150),
+    { op: 'page', in: 'F', js: `document.querySelector('textarea').focus(); return 'focused'` },
+    key('F', 0, 0x61), key('F', 11, 0x62),
+    checkPage('F', 'F: a draft typed', `document.querySelector('textarea').value === 'ab'`),
+    { op: 'show', name: 'A' }, boxed('A'), wait(300),
+    { op: 'page', in: 'A', js: `const p = window.__probe = { added: [], removed: 0, styles: 0, frames: [] };
+      const place = () => JSON.stringify([...document.querySelectorAll('body *')].slice(0, 30).map((e) => { const r = e.getBoundingClientRect(); return [e.localName, r.x, r.y, r.width, r.height]; }).concat([[document.documentElement.scrollWidth, document.documentElement.scrollHeight, scrollX, scrollY]]));
+      p.before = place();
+      p.children = document.documentElement.children.length;
+      new MutationObserver((records) => { for (const r of records) { if (r.type === 'attributes') { p.styles++; continue; } for (const n of r.addedNodes) if (n.nodeType === 1) { const cs = getComputedStyle(n); const b = n.getBoundingClientRect(); p.added.push({ name: n.localName, underHtml: n.parentNode === document.documentElement, position: cs.position, w: b.width, h: b.height, x: b.x, y: b.y, events: cs.pointerEvents, bg: cs.backgroundColor }); } for (const n of r.removedNodes) if (n.nodeType === 1) p.removed++; } }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+      const loop = () => { p.frames.push(place()); if (p.frames.length < 300) requestAnimationFrame(loop); };
+      requestAnimationFrame(loop);
+      return 'watching'` },
+    { op: 'appMark' },
+    { op: 'appReq', type: 'frameProbe', in: 'A', js: `return JSON.stringify({ width: outerWidth, height: outerHeight, frames: 6, nudgeMs: 80, timeoutMs: 1500 })` },
+    { op: 'appHeard', label: 'the probe answered from the page in front: 6 frames at the window\'s size, shown', has: ['"ev":"reply"', '"type":"frameProbe"', '"ok":true', '"frames":6', '"visible":true', '"firstAt":', '"lastAt":'], timeout: 4000 },
+    { op: 'appHeard', label: 'and not "no page"', has: ['"type":"frameProbe"', '"none":'], none: true, timeout: 200 },
+    checkPage('A', 'the nudge: one element, under <html>, fixed at the top left, 1×1, no hit target, nearly clear; its colour changed frame to frame; gone after', `const p = window.__probe; const a = p.added[0]; return p.added.length === 1 && a.underHtml && a.position === 'fixed' && a.x === 0 && a.y === 0 && a.w === 1 && a.h === 1 && a.events === 'none' && /rgba\\(128, 128, 128, 0\\.0[12]\\)/.test(a.bg) && p.styles >= 3 && p.removed === 1`, 3000),
+    checkPage('A', 'nothing in the page moved in any frame of the probe (every element\'s place, the scroll, the page\'s size)', `const p = window.__probe; return p.frames.length > 10 && p.frames.every((f) => f === p.before) && document.documentElement.children.length === p.children`, 3000),
+    nothingDrawn('A'),
+    { op: 'appMark' },
+    { op: 'appReq', type: 'windowDrafts', payload: {} },
+    { op: 'appHeard', label: 'the drafts before a close: the tab with text typed named, none unknown', has: ['"ev":"reply"', '"type":"windowDrafts"', '"ok":true', '"unknown":[]', '"drafts":['], timeout: 3000 },
+    { op: 'appHeard', label: 'and not an empty list of drafts', has: ['"type":"windowDrafts"', '"drafts":[]'], none: true, timeout: 200 },
+  ],
   // A page's first read of storage with a big theme package stored (a user
   // theme can be 3 MB): pages no longer read it (Margin.app's link does).
   // Logs the read's time and size as a page did it before (all of storage)

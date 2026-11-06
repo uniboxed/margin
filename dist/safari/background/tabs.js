@@ -170,10 +170,16 @@ export async function focusTab(tabId, { source = 'other', raise = true, deadline
     const tab = answered?.tab ?? null;
     const windowId = tab?.windowId ?? cached()?.tabs[tabId]?.windowId ?? null;
     line.window(windowId);
-    // The window to the front: waited for only while the page's deadline
-    // allows (Safari's windows calls can wait behind a stalled tab too); it's
-    // carried out either way.
-    if (raise) {
+    // A tab in a window Margin.app has parked (out of sight, app/HANDOFF.md
+    // §2.5): raising it would focus it and show nothing. The tab is in front
+    // there now, and the app is asked to hand off to that window instead. Not
+    // linked (the app can't be told), it's raised as before.
+    if (raise && parkedRaise(windowId, tabId)) {
+      line.step('its window is parked: the app asked to show it');
+    } else if (raise) {
+      // The window to the front: waited for only while the page's deadline
+      // allows (Safari's windows calls can wait behind a stalled tab too); it's
+      // carried out either way.
       const raising = focusWindow(windowId, line);
       if (Number.isFinite(deadline)) await answerBy(raising, /** @type {number} */ (deadline) - ANSWER_LEAVES_MS);
       else await raising;
@@ -189,6 +195,15 @@ export async function focusTab(tabId, { source = 'other', raise = true, deadline
     else focusing.delete(tabId);
   }
 }
+// A tab Margin's UI asked for in a window the app has parked: the app told (parkedActivity `raise`),
+// true once it is; false when the window isn't parked or the app can't be told.
+/** @param {number | null} windowId @param {number} tabId */
+function parkedRaise(windowId, tabId) {
+  return windowId != null && appLink.parked?.(windowId) === true && appLink.parkedActivity(windowId, 'raise', tabId);
+}
+// Whether a tab's window is one the app has parked (out of sight): a tab found for a row is one in a
+// window that isn't, when there's a choice.
+export const inParkedWindow = (/** @type {{ windowId?: number } | null | undefined} */ tab) => tab?.windowId != null && appLink.parked?.(tab.windowId) === true;
 // The window comes forward only if it isn't already (see focusTab).
 /** @param {number | null} windowId @param {{ step(what: string): void } | null} [line] */
 async function focusWindow(windowId, line = null) {
@@ -241,7 +256,8 @@ export async function resolveTab(tabId, hint, preferWindow, { deadline } = {}) {
     // The same page open twice: the one with the row's title, if that tells them apart.
     if (candidates.length > 1 && hint.title && candidates.some((t) => t.title === hint.title)) candidates = candidates.filter((t) => t.title === hint.title);
     if (!candidates.length) return null;
-    const distance = (t) => (t.windowId === preferWindow ? 0 : 1e6) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
+    // The asking page's window first, then a window that isn't parked (app/HANDOFF.md §2.5), then the nearest place.
+    const distance = (t) => (t.windowId === preferWindow ? 0 : 2e6) + (inParkedWindow(t) ? 1e6 : 0) + Math.abs((t.index ?? 0) - (hint.index ?? 0));
     return candidates.reduce((best, t) => (distance(t) < distance(best) ? t : best));
   };
   // Margin's own tabs first, once they're this copy's (matched to the open

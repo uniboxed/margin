@@ -71,7 +71,7 @@ The `req` types the copy runs for the app (`link.js APP_REQUESTS`) are what the 
 
 ### The handoff
 
-Margin.app's switch to another profile's window under a still screen, with the old window parked instead of closed (`app/HANDOFF.md`). These words are in `LinkMessage.swift` (`AppMessage.parked`, `ParkedActivity`, `HandoffRequest`, the answers) and `background/link.js` (`APP_REQUESTS`, `WINDOW_CALLS`, `windowCallRefusal`, `parkedActivity`). What each end does with them comes with the handoff's later work packages.
+Margin.app's switch to another profile's window under a still screen, with the old window parked instead of closed (`app/HANDOFF.md`). These words are in `LinkMessage.swift` (`AppMessage.parked`, `ParkedActivity`, `HandoffRequest`, the answers) and `background/link.js` (`APP_REQUESTS`, `WINDOW_CALLS`, `windowCallRefusal`, `parkedActivity`). The copy's end is `background/handoff.js`, `background/handlers.js`, `background/sleep.js` (`windowDrafts`) and `shared/frame-probe.js`; the app's comes with the handoff's later work packages.
 
 **Times.** `notAfter`, `landedAt`, `firstAt`, `lastAt` and `visibleAt` are `Date.now()` milliseconds: the app and its copies read the same clock.
 
@@ -94,9 +94,9 @@ The app merges a burst into one (150 ms), ignores it while a switch is busy or w
 | `type` | Payload | Answer (the reply's `result`) |
 |---|---|---|
 | `setWindowState` | `windowId`, `state: 'fullscreen' \| 'normal'`, `focused?`, `notAfter` | `windows.update(windowId, { state, focused? })`, then `windows.get` every 100 ms until the state lands (at most 3 s), then the `windows` list at once (not after `WINDOWS_MS`). `{ windowId, state, landedAt }`, or `{ windowId, state, timedOut: true }`. Not `focusWindow`: `normal` leaves focus where it is. |
-| `frameProbe` | `windowId`, `width`, `height`, `frames` (6), `nudgeMs` (80), `timeoutMs` (400) | Passed to the window's tab in front (`tabs.sendMessage`). The page nudges for `nudgeMs` (a 1×1 fixed element outside the layout, alpha 0.01 and 0.02 on alternate frames), then counts `frames` animation frames at that size (within 2 pt). `{ tabId, frames, firstAt, lastAt, width, height, hasFocus, visible, visibleAt? }` (`visibleAt`: its last `visibilitychange` to visible), or `{ none: 'no page' }` when the tab doesn't answer in `timeoutMs`. Margin's new-tab page answers the same way. |
-| `windowDrafts` | `windowId` | The window's tabs with typed text not sent (the sleeping tabs' draft check, every tab at once, 400 ms in all): `{ drafts: [tabId], unknown: [tabId] }`. The app closes the window only when both are empty. |
-| `focusWindow`, `closeWindow` | as above, plus `notAfter?` | As above. |
+| `frameProbe` | `windowId`, `width`, `height`, `frames` (6), `nudgeMs` (80), `timeoutMs` (400) | Passed to the window's tab in front (`tabs.sendMessage`). The page nudges (a 1×1 fixed element outside the layout, alpha 0.01 and 0.02 on alternate frames) for `nudgeMs` and on until it answers, and counts `frames` animation frames after `nudgeMs` with its window at that size (`outerWidth` and `outerHeight` within 2 pt; a size of 0 isn't checked). `{ tabId, frames, firstAt, lastAt, width, height, hasFocus, visible, visibleAt? }` (`width`, `height`: the window's size the page sees at the last frame; `visibleAt`: its last `visibilitychange` to visible), or `{ none: 'no page' }` when the tab doesn't answer in `timeoutMs`. Margin's new-tab page answers the same way. |
+| `windowDrafts` | `windowId` | The window's tabs with typed text not sent (the sleeping tabs' draft check, every tab at once, 400 ms in all): `{ drafts: [tabId], unknown: [tabId] }` (`unknown`: a web page that couldn't say in time; a tab that isn't a web page, or has no page loaded, isn't asked). The app closes the window only when both are empty. Safari not listing the window's tabs in time answers `ok: false`. |
+| `focusWindow`, `closeWindow` | as above, plus `notAfter?` | As above. With no `notAfter` (today's switch) they're never late or `busy`, as before; they count as pending for a handoff's call all the same. |
 
 **The windows calls** (`WINDOW_CALLS`: `setWindowState`, `focusWindow`, `closeWindow`). Safari carries out a windows call stuck behind a hung tab when it gets to it, and a call made can't be taken back. So the copy checks each one as it arrives, before it calls Safari (`windowCallRefusal`):
 

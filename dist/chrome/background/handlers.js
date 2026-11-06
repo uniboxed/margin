@@ -7,8 +7,9 @@ import * as V from '../shared/view.js';
 import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
-import { focusTab, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.js';
-import { sleepIdle, wakeAll } from './sleep.js';
+import { focusTab, inParkedWindow, reloadCutOff, handingOff, instanceId, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab } from './tabs.js';
+import { sleepIdle, wakeAll, windowDrafts } from './sleep.js';
+import { probeWindow, setWindowState, windowCall } from './handoff.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
@@ -630,7 +631,9 @@ export const handlers = {
     // would switch the window to that space.
     const key = M.normalizeUrl(pin.url);
     const matches = Object.values(s.tabs).filter((t) => M.normalizeUrl(t.url) === key && s.tabSpace[t.id] === pin.spaceId);
-    const existing = matches.find((t) => t.windowId === windowId) ?? matches[0];
+    // The window asking first, then one that isn't parked (out of sight: app/HANDOFF.md §2.5); a tab
+    // only in a parked window is shown by the app's handoff to it (focusTab).
+    const existing = matches.find((t) => t.windowId === windowId) ?? matches.find((t) => !inParkedWindow(t)) ?? matches[0];
     if (existing) {
       await focusTab(existing.id, { source: 'openPin', deadline });
       return { shown: existing.id };
@@ -736,22 +739,52 @@ export const handlers = {
       return next;
     });
     if (rest.length) setTimeout(() => void openKeptBehind(win.id, spaceId, rest.map((k) => k.id)), SPACE_WINDOW_REST_MS);
-    return { windowId: win.id, state: win.state ?? 'normal', tabId: tab?.id ?? null };
+    // Its bounds as Safari gave them, and the window list sent now: the app binds the window as made
+    // by Margin from them before the list's next look (app/HANDOFF.md §1.6). One full-screen request
+    // only: macOS puts a window made while Safari has one in full screen there itself.
+    void appLink.windowsNow?.();
+    const bounds = [win.left, win.top, win.width, win.height].every(Number.isFinite) && win.width > 0 && win.height > 0
+      ? { left: win.left, top: win.top, width: win.width, height: win.height } : null;
+    return { windowId: win.id, state: win.state ?? 'normal', tabId: tab?.id ?? null, ...(bounds ? { bounds } : {}) };
   },
   // The app's switch closing this profile's window (its tabs are kept, not open: a window closing).
-  /** @param {{ windowId: number }} message */
-  async closeWindow({ windowId }) {
-    if (!Number.isInteger(windowId)) throw new Error('no window');
-    await api.windows.remove(windowId);
+  // Never past `notAfter`, and not while another windows call for it is pending (handoff.js).
+  /** @param {{ windowId: number, notAfter?: number }} message */
+  async closeWindow(message) {
+    return windowCall('closeWindow', message, async () => {
+      await api.windows.remove(message.windowId);
+      return null;
+    });
   },
   // The app's switch bringing a window of this profile to the front (macOS
-  // slides to its Space), in full screen if asked.
-  /** @param {{ windowId: number, fullscreen?: boolean }} message */
-  async focusWindow({ windowId, fullscreen = false }) {
+  // slides to its Space), in full screen if asked. As closeWindow: never past `notAfter`, one at a time.
+  /** @param {{ windowId: number, fullscreen?: boolean, notAfter?: number }} message */
+  async focusWindow(message) {
+    const { windowId, fullscreen = false } = message;
+    return windowCall('focusWindow', message, async () => {
+      const w = await api.windows.update(windowId, { focused: true, ...(fullscreen ? { state: 'fullscreen' } : {}) })
+        .catch(() => api.windows.update(windowId, { focused: true }));
+      return { windowId, state: w?.state ?? null };
+    });
+  },
+  // Margin.app's profile handoff (app/HANDOFF.md §3.3): a window to full screen or normal, its focus
+  // left alone unless asked; answered once Safari says it's there (background/handoff.js).
+  /** @param {{ windowId: number, state: 'fullscreen' | 'normal', focused?: boolean, notAfter?: number }} message */
+  async setWindowState(message) {
+    return setWindowState(message);
+  },
+  // The handoff's look at the window's tab in front (R3): it nudges and counts its frames at the
+  // full-screen size (shared/frame-probe.js); `{ none }` when no page answers in `timeoutMs`.
+  /** @param {{ windowId: number, width: number, height: number, frames?: number, nudgeMs?: number, timeoutMs?: number }} message */
+  async frameProbe({ windowId, width, height, frames = 6, nudgeMs = 80, timeoutMs = 400 }) {
     if (!Number.isInteger(windowId)) throw new Error('no window');
-    const w = await api.windows.update(windowId, { focused: true, ...(fullscreen ? { state: 'fullscreen' } : {}) })
-      .catch(() => api.windows.update(windowId, { focused: true }));
-    return { windowId, state: w?.state ?? null };
+    return probeWindow(windowId, { width, height, frames, nudgeMs, timeoutMs });
+  },
+  // The window's tabs with typed text not sent, before the app closes it (background/sleep.js).
+  /** @param {{ windowId: number }} message */
+  async windowDrafts({ windowId }) {
+    if (!Number.isInteger(windowId)) throw new Error('no window');
+    return windowDrafts(windowId);
   },
   // The order of this profile's spaces as the app's order across profiles has them.
   /** @param {{ spaceIds: string[] }} message */

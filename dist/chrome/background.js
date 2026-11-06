@@ -25,6 +25,7 @@ import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
 import { platform } from './shared/platform.js';
 import { appLink } from './background/app-link.js';
+import * as handoff from './background/handoff.js';
 import * as pageLoads from './background/page-loads.js';
 import { linkedAgain } from './background/notices.js';
 import { APP_LINK_KEY, appDraws } from './shared/app-link.js';
@@ -405,6 +406,11 @@ api.windows?.onRemoved?.addListener((windowId) => appLink.windowClosed(windowId)
 api.windows?.onFocusChanged?.addListener((windowId) => appLink.windowFocused(windowId));
 api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
 api.tabs.onActivated.addListener((info) => appLink.tabActivated(info?.tabId, info?.windowId));
+// A window Margin.app parked (out of sight) used anyway: a tab Margin didn't open made there, or focus
+// landing there not by Margin's own call. The app is told, and hands off to it (background/handoff.js).
+api.tabs.onCreated.addListener((tab) => void handoff.tabCreated(tab));
+api.windows?.onFocusChanged?.addListener((windowId) => void handoff.focusChanged(windowId));
+api.windows?.onRemoved?.addListener((windowId) => handoff.windowClosed(windowId));
 // What a tab's page said of being shown is forgotten once it's another page, gone or elsewhere.
 api.tabs.onRemoved.addListener((tabId) => appLink.tabGone(tabId));
 api.tabs.onReplaced?.addListener((_added, removed) => appLink.tabGone(removed));

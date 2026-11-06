@@ -385,6 +385,7 @@ export function createLink({
     clearTimeout(goneTimer);
     goneTimer = null;
     setPageState('off');
+    forgetParked('off');
   }
   // Why there's no link, for the new-tab page: 'no-link' (Margin.app is
   // running but sent none), 'sockets-off' (the socket guard turned the link
@@ -701,6 +702,7 @@ export function createLink({
     lastTheme = '';
     clearTimeout(goneTimer);
     goneTimer = null;
+    forgetParked('a new link');
     void Promise.resolve(session()?.set({ [SESSION_KEY]: { port: at, token, key } })).catch(() => {});
     setLast('linked', `on port ${at}`);
     const { origin, since } = copy();
@@ -821,6 +823,8 @@ export function createLink({
         return setLayout(message);
       case 'drawn':
         return drawn(message);
+      case 'parked':
+        return parkedSaid(message);
       case 'resync':
         if (message.epoch === epoch) void snapshot();
         return;
@@ -887,6 +891,29 @@ export function createLink({
     for (const cb of [...drawnListeners]) cb(m.windowId, m.on);
   }
   const drawnListeners = new Set();
+  // Which of this copy's windows the app has parked (app/HANDOFF.md §2.5): out of sight in a private
+  // Space of their own, alive and normal. Kept per window as the app says it, this epoch's only: a
+  // new link, the link going off and the window closing forget it (a new link says it again). Not
+  // stored: no page reads it. windowId → when the app parked it.
+  /** @type {Map<number, number>} */
+  const parked = new Map();
+  function parkedSaid(m) {
+    if (m.epoch !== epoch || !Number.isInteger(m.windowId) || typeof m.on !== 'boolean') return;
+    if (parked.has(m.windowId) === m.on) return;
+    if (m.on) parked.set(m.windowId, Number.isFinite(m.at) ? m.at : Date.now());
+    else parked.delete(m.windowId);
+    note(`the app ${m.on ? 'parked' : 'no longer parks'} window ${m.windowId}`);
+    for (const cb of [...parkedListeners]) cb(m.windowId, m.on);
+  }
+  /** @param {string} why */
+  function forgetParked(why) {
+    if (!parked.size) return;
+    note(`parked windows forgotten (${why}): ${[...parked.keys()].join(', ')}`);
+    const ids = [...parked.keys()];
+    parked.clear();
+    for (const id of ids) for (const cb of [...parkedListeners]) cb(id, false);
+  }
+  const parkedListeners = new Set();
   // A window gone: what the app said of it goes too.
   function forgetWindows(ids) {
     const layouts = { ...pageState.layouts };
@@ -1411,8 +1438,17 @@ export function createLink({
       clearTimeout(visibleNoting.get(windowId));
       visibleNoting.delete(windowId);
       forgetWindows([String(windowId)]);
+      parked.delete(windowId);
       void windowsNow();
     },
+    // The window list looked at and sent now if it changed (a handoff's windows call landed: the app
+    // and its overlays hear the new state without WINDOWS_MS's wait).
+    windowsNow: () => windowsNow(),
+    // Whether the app said it parked the window (this epoch).
+    parked: (/** @type {number | null | undefined} */ windowId) => windowId != null && parked.has(windowId),
+    parkedWindows: () => [...parked.keys()],
+    /** @param {(windowId: number, on: boolean) => void} cb */
+    onParked(cb) { parkedListeners.add(cb); return () => parkedListeners.delete(cb); },
     linked: () => !!ws,
     // 'linked', 'reconnecting' or 'off', as pages see it.
     pageState: () => pageState.state,

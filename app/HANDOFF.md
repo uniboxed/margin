@@ -325,6 +325,12 @@ Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grac
   - `focusTab` and `openPin`, which prefer a tab in a window that isn't parked (`handlers.js:631-636`, `background/tabs.js:176-199`). When the only match is in a parked window, the copy doesn't raise it: it sends `parkedActivity { why: 'raise', windowId, tabId }`, and the app hands off to that window (§6.11);
   - sleeping tabs: a parked window's tab in front doesn't sleep (`background/sleep.js`).
 - Built (WP7): `AppMessage.parked` and the copy's `parkedActivity` push (`link.parkedActivity(windowId, why, tabId)`). The app decodes that push as its own `LinkMessage.parkedActivity`, so it never reaches an overlay. A `tab` or `raise` must name its tab. A push and a msg that name two different windows aren't a message.
+- Built (WP6): the copy keeps `parked` in `background/link.js` (`appLink.parked(windowId)`, `parkedWindows()`, `onParked`), in memory only (no page reads it). A new link (a new epoch), the link going off and the window closing forget it. A drop that's still reconnecting keeps it: the app may still have the window parked. Settled on the way:
+  - **`tab`:** `tabs.onCreated` in a parked window, unless Margin opened a tab in the last 2 s (`openedByMargin`, which `openKeptBehind` and every Margin open mark).
+  - **`focus`:** `windows.onFocusChanged` naming a parked window, unless one of this copy's windows calls for it is pending or started or ended within 1 s. Each one heard is pushed: the app merges a burst.
+  - **`raise`:** `focusTab` still brings the tab to the front of its parked window (so the handoff shows it, and R3 probes it), then pushes `raise` instead of focusing the window. Not linked (the push can't go), the window is raised as before.
+  - **A window that isn't parked first:** `openPin` takes the asking window's tab, then one in a window that isn't parked, then any. A row's tab found by its address (`resolveTab`) ranks the same way.
+  - **Sleep:** a parked window's tab in front is skipped as `in front, parked`, its own reason in the pass's log line. (A tab in front never sleeps anyway. This names why.)
 - **`registry.sweep`**, on every read, gets the window-server read, Safari's pids, the copies' windows, the binder's held links (link without state, reconnecting) and the switch's state. For each entry:
   - **gone** (§2.1's rule only): forgotten;
   - **its link held or down:** nothing changes;
@@ -403,6 +409,14 @@ Built (WP7, the words only; the handlers are WP6's): `HandoffRequest`, `WindowCa
 - A request with no `notAfter` (today's switch) is never late. Late is checked before busy.
 - `frameProbe`'s answer may carry `visibleAt` (the page's last `visibilitychange` to visible), for G2's fallback.
 - `openSpaceWindow`'s `bounds` is `{ left, top, width, height }`, as the `windows` list has them.
+
+Built (WP6, the copy's side): `extension/background/handoff.js` (`windowCall`, `setWindowState`, `probeWindow`, `tabCreated`, `focusChanged`), the handlers in `background/handlers.js`, `windowDrafts` in `background/sleep.js`, and `extension/shared/frame-probe.js` (`probeFrames`, `watchVisible`) answered by `content/core.js` and `newtab/newtab.js`; tests in `tests/handoff-copy.test.js`, and the WebKit host's `frame-probe` scenario. Settled on the way:
+
+- **Today's switch keeps its calls.** `ProfileSwitch.swift` sends `focusWindow` and `closeWindow` with no `notAfter`. Those are never late and never `busy`, so its undo's close is never dropped behind its own focus. They still count as pending, so a handoff's call for that window meanwhile is `busy`.
+- **`pending` is held until Safari answers** the windows call (and, for `setWindowState`, through the poll). No cap: a call that never answers keeps its window `busy`, which is §1.9's evidence of a stuck window.
+- **`setWindowState`** polls every 100 ms for 3 s, and sends the window list at once (`appLink.windowsNow`) whether it landed or not. The log line is the window, the state and the milliseconds.
+- **The probe's nudge runs on until the count is done** (at least `nudgeMs`), so every frame counted is a changed one. A frame counts once `nudgeMs` has passed and the window is at the size asked (`outerWidth`/`outerHeight` within 2 pt: the window's size, so the page's zoom and Safari's own sidebar don't change it; a size of 0 isn't checked). The nudge is a `div` under `<html>`, every property `!important` after `all: initial`, its background alpha 0.01/0.02. The answer's `width`/`height` are that window size. The background adds the `tabId`, and waits `timeoutMs` + 50 ms. In the WebKit host, `outerWidth` is 0 (its window isn't Safari's), so the size match is checked only in the unit tests.
+- **`windowDrafts`** asks every tab at once with the sleep's own check, drafts only (`sleepInPage(…, draftsOnly)`: shown, playing or moved don't count), in every frame. Not asked: a tab that isn't a web page (Margin's own pages, Safari's), one asleep (`discarded`), and one Safari had unloaded (`foundWithNoPage`): none can hold typed text. `unknown`: no access, no script, a frame nothing can look into, or no answer in 400 ms. Safari not listing the window's tabs in 400 ms is an error, not an answer (the app keeps the window).
 
 ### 3.4 The full-screen request: once, and no blind retry
 
