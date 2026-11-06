@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Window controls</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#2563eb}a:hover{color:#1d4ed8}
+.btn{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .12s,background .15s,width .18s}
+.btn:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.btn:active{transform:scale(.9)}
+.g{opacity:0;transition:opacity .12s}
+.grp:hover .g,.grp:focus-within .g{opacity:1}
+.grp:hover .pillx{width:22px}
+.hov:hover{background:rgba(0,0,0,.06)}
+</style>
+</helmet>
+
+<div style="width: 1200px; height: 760px; box-sizing: border-box; padding: 40px 48px; display: flex; flex-direction: column; gap: 22px; font-family: Inter, system-ui, sans-serif; color: #18181b; background: #f4f4f5">
+  <div style="display: flex; align-items: flex-end; gap: 16px">
+    <div style="flex: 1">
+      <h1 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.4px">Window controls</h1>
+      <p style="margin: 6px 0 0 0; color: #52525b">Hover any set to reveal the glyphs · click full screen to toggle enter / exit</p>
+    </div>
+    <div role="group" aria-label="Preview options" style="display: flex; gap: 8px">
+      <button class="btn hov" aria-pressed="{{inactivePressed}}" onClick="{{toggleInactive}}" style="{{optStyleA}}">Window inactive</button>
+      <button class="btn hov" onClick="{{cycleSpace}}" style="height: 34px; gap: 8px; padding: 0 12px; border-radius: 9px; background: #fff; box-shadow: 0 0 0 1px #e4e4e7; font-weight: 500"><span style="{{spaceDot}}"></span>Space: {{spaceName}}</button>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; flex: 1">
+    <sc-for list="{{variants}}" as="v" hint-placeholder-count="4">
+      <section aria-label="{{v.name}}" style="display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px #e4e4e7">
+        <div style="display: flex; align-items: baseline; gap: 8px"><b style="font-size: 15px">{{v.name}}</b><span style="font-size: 12.5px; color: #52525b">{{v.desc}}</span></div>
+
+        <!-- Mock sidebar header -->
+        <div style="{{v.stage}}">
+          <div class="grp" role="group" aria-label="Window controls" style="{{v.groupStyle}}">
+            <sc-for list="{{v.btns}}" as="b" hint-placeholder-count="3">
+              <button class="btn {{b.extra}}" aria-label="{{b.label}}" onClick="{{b.go}}" style="{{b.style}}">
+                <svg class="g" viewBox="0 0 12 12" aria-hidden="true" style="{{b.glyphStyle}}"><path d="{{b.path}}"></path></svg>
+              </button>
+            </sc-for>
+          </div>
+          <div style="flex: 1"></div>
+          <span style="{{v.chip}}">⌘⇧F</span>
+        </div>
+
+        <div style="display: flex; gap: 14px; font-size: 12.5px; color: #52525b">
+          <span>Size {{v.size}}</span><span>·</span><span>Gap {{v.gap}}</span><span>·</span><span>{{v.note}}</span>
+        </div>
+      </section>
+    </sc-for>
+  </div>
+
+  <div role="status" style="height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 10px; background: #18181b; color: #fafafa; font-size: 13.5px">
+    <span style="width: 8px; height: 8px; border-radius: 50%; background: {{statusDot}}"></span>{{status}}
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":760}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { full: false, inactive: false, space: 0, last: 'Hover a set, then click a control.' };
+  }
+  renderVals() {
+    const st = this.state;
+    const SPACES = [['Personal', '#e8a27c', '#f6dccf'], ['Work', '#7ea6f0', '#d9e4f7'], ['Studio', '#b49cf0', '#e4dcf5']];
+    const [spName, spTint, spBg] = SPACES[st.space];
+    const P = {
+      close: 'M3.6 3.6l4.8 4.8M8.4 3.6l-4.8 4.8',
+      min: 'M3 6h6',
+      enter: 'M3.2 7.6V3.2h4.4zM8.8 4.4v4.4H4.4z',
+      exit: 'M6 1.4v4.6H1.4zM6 10.6V6h4.6z'
+    };
+    const fullPath = st.full ? P.exit : P.enter;
+    const fullLabel = st.full ? 'Exit full screen' : 'Enter full screen';
+    const act = (msg, extra) => () => this.setState(Object.assign({ last: msg }, extra || {}));
+    const onFull = () => this.setState({ full: !st.full, last: st.full ? 'Exited full screen — sidebar and window frame are back.' : 'Entered full screen — the controls now show the exit glyph.' });
+    const actions = [
+      ['Close window', P.close, act('Closed the window (tabs are kept for next launch).')],
+      ['Minimize window', P.min, act('Minimized to the Dock.')],
+      [fullLabel, fullPath, onFull]
+    ];
+    const inactiveFill = '#d4d4d8';
+
+    // 1. Classic traffic lights
+    const classicCols = [['#ff5f57', '#e0443e', '#4d0000'], ['#febc2e', '#dea123', '#5a3600'], ['#28c840', '#1aab29', '#003d00']];
+    const classic = {
+      name: 'Classic', desc: 'Familiar colors, Arc-like spacing', size: '12 px', gap: '8 px', note: 'Gray when the window loses focus',
+      stage: 'height: 64px; display: flex; align-items: center; padding: 0 16px; border-radius: 12px; background: ' + spBg + ';',
+      groupStyle: 'display: flex; gap: 8px; padding: 6px;',
+      chip: 'font-size: 11px; color: #52525b; opacity: .7',
+      btns: actions.map(([label, path, go], i) => ({
+        label, go, path, extra: '',
+        style: 'width: 12px; height: 12px; border-radius: 50%; background: ' + (st.inactive ? inactiveFill : classicCols[i][0]) + '; box-shadow: inset 0 0 0 .5px ' + (st.inactive ? '#bdbdc2' : classicCols[i][1]) + ';',
+        glyphStyle: 'width: 8px; height: 8px; fill: ' + (i === 2 ? classicCols[i][2] : 'none') + '; stroke: ' + classicCols[i][2] + '; stroke-width: ' + (i === 2 ? '0' : '1.4') + '; stroke-linecap: round;'
+      }))
+    };
+
+    // 2. Space-tinted
+    const tinted = {
+      name: 'Space-tinted', desc: 'Picks up the current space color', size: '13 px', gap: '7 px', note: 'Only close turns red on hover',
+      stage: 'height: 64px; display: flex; align-items: center; padding: 0 16px; border-radius: 12px; background: ' + spBg + ';',
+      groupStyle: 'display: flex; gap: 7px; padding: 6px;',
+      chip: 'font-size: 11px; color: #52525b; opacity: .7',
+      btns: actions.map(([label, path, go], i) => ({
+        label, go, path, extra: '',
+        style: 'width: 13px; height: 13px; border-radius: 50%; background: ' + (st.inactive ? 'rgba(0,0,0,.12)' : spTint) + '; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12), 0 1px 0 rgba(255,255,255,.6);',
+        glyphStyle: 'width: 9px; height: 9px; fill: ' + (i === 2 ? 'rgba(0,0,0,.6)' : 'none') + '; stroke: ' + (i === 0 ? '#b42318' : 'rgba(0,0,0,.6)') + '; stroke-width: ' + (i === 2 ? '0' : '1.5') + '; stroke-linecap: round;'
+      }))
+    };
+
+    // 3. Minimal pill
+    const pill = {
+      name: 'Minimal pill', desc: 'Three soft dots in one capsule', size: '10 px → 22 px', gap: '4 px', note: 'Dots stretch into buttons on hover',
+      stage: 'height: 64px; display: flex; align-items: center; padding: 0 16px; border-radius: 12px; background: #fafafa; box-shadow: inset 0 0 0 1px #e4e4e7;',
+      groupStyle: 'display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 999px; background: rgba(0,0,0,.05);',
+      chip: 'font-size: 11px; color: #52525b; opacity: .7',
+      btns: actions.map(([label, path, go], i) => ({
+        label, go, path, extra: 'pillx',
+        style: 'width: 10px; height: 10px; border-radius: 999px; background: ' + (st.inactive ? '#d4d4d8' : ['#f87171', '#fbbf24', '#4ade80'][i]) + ';',
+        glyphStyle: 'width: 8px; height: 8px; fill: ' + (i === 2 ? '#3f3f46' : 'none') + '; stroke: #3f3f46; stroke-width: ' + (i === 2 ? '0' : '1.5') + '; stroke-linecap: round;'
+      }))
+    };
+
+    // 4. Glass / dark
+    const glass = {
+      name: 'Glass on dark', desc: 'For dark spaces and full-screen overlays', size: '13 px', gap: '8 px', note: 'Outlined, fills with color on hover',
+      stage: 'height: 64px; display: flex; align-items: center; padding: 0 16px; border-radius: 12px; background: linear-gradient(135deg, #1e1b2e, #2a2140);',
+      groupStyle: 'display: flex; gap: 8px; padding: 7px 9px; border-radius: 999px; background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14);',
+      chip: 'font-size: 11px; color: #d4d4d8; opacity: .8',
+      btns: actions.map(([label, path, go], i) => ({
+        label, go, path, extra: '',
+        style: 'width: 13px; height: 13px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px ' + (st.inactive ? 'rgba(255,255,255,.25)' : ['#ff8a80', '#ffd166', '#7ee787'][i]) + '; background: transparent;',
+        glyphStyle: 'width: 9px; height: 9px; fill: ' + (i === 2 ? '#fafafa' : 'none') + '; stroke: #fafafa; stroke-width: ' + (i === 2 ? '0' : '1.5') + '; stroke-linecap: round;'
+      }))
+    };
+
+    return {
+      variants: [classic, tinted, pill, glass],
+      spaceName: spName, spaceDot: 'width: 10px; height: 10px; border-radius: 50%; background: ' + spTint + ';',
+      cycleSpace: () => this.setState({ space: (st.space + 1) % 3 }),
+      inactivePressed: st.inactive ? 'true' : 'false',
+      optStyleA: 'height: 34px; padding: 0 12px; border-radius: 9px; font-weight: 500;' + (st.inactive ? ' background: #18181b; color: #fff;' : ' background: #fff; box-shadow: 0 0 0 1px #e4e4e7;'),
+      toggleInactive: () => this.setState({ inactive: !st.inactive, last: !st.inactive ? 'Window lost focus — controls turn neutral gray.' : 'Window focused again.' }),
+      status: st.last + (st.full ? '  ·  Full screen: on' : ''),
+      statusDot: st.full ? '#28c840' : '#a1a1aa'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -2824,3 +2824,17 @@ On `feat/icloud-tabs` (from `feat/margin-app` at e3725be). Tirth asked for it on
 
 **Open, for Tirth:** the `TESTING.md` checks ("Margin 2: iCloud Tabs"), first that this Mac isn't listed and that each device's order matches Safari's.
 
+
+## Margin 2, Phase 6 plan: Pixel, Neo-brutalism, user themes (2026-11-06)
+
+On `feat/pixel-user-themes`. The plan is `docs/phase6-themes.md`; the boards, a renderer for them (`tools/boards/`) and reference shots are in `docs/phase6/`. Choices the plan makes, for Tirth to confirm before they're built:
+
+- **User themes belong to the Mac, not a profile.** Margin.app keeps each one in `~/Library/Application Support/Margin/themes/<id>.json` with an index. Each profile's data set gets only the index (`userThemes`, a few hundred bytes), never a package: a package can be 4.5 MB, over the link's 1 MB cap.
+- **Import goes through the app.** The overlay can't open a file picker, so Settings asks the app (`perform theme.import`), which shows `NSOpenPanel` over full screen and reads a folder or a `.margintheme` zip within the package caps. The checks run once, in JS, with the same code as every load: the zip is read in the overlay, not in Swift.
+- **Preview before use,** under a bar of Margin's own in the top layer that no theme can style or cover, and that cancels by itself after 30 s.
+- **Arcadia is the fallback,** bundled with the app's overlay, for a theme that's refused, missing, or leaves no usable page. Removing the active theme puts Arcadia back in every profile that used it.
+- **User themes get a plain first paint** (the box, nothing around it), not Arcadia's frame.
+- **Pixel and Neo-brutalism keep one look in both system modes,** as their boards have one each.
+- **A space's number** (`number`, from 1) joins the view model, for Pixel's "WORLD 2-1" and numbered chips; templates have no arithmetic.
+- **Bundled SVG images stay unsanitized:** they're only ever drawn as images (an `img` or a CSS image), where WebKit runs no script and loads nothing. A payload test keeps that true.
+- **`npm run test:security`** gathers the sanitizer, guard, package and import payloads, every built-in theme, and any packages named in `MARGIN_THEMES`. No CI is added; the plan says how a macOS runner would run it later.
