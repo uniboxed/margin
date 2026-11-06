@@ -9,10 +9,40 @@
 //   worker, because WebKit hangs one there) let through: Chromium's service
 //   worker opens sockets fine. It's one exact string in the bundle; if it
 //   moves, this fails at once rather than test an unlinked copy.
+//
+// And one thing Chromium does that Safari doesn't: Safari gives extensions no
+// tab.favIconUrl (background/site-icons.js fetches each site's icon itself).
+// The background here sees tabs without it (SAFARI_TABS, put before the
+// bundle), so the icons Margin draws are the ones it fetched, as in Safari.
 import { generateKeyPairSync, createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildTo } from '../../../scripts/build.js';
+
+export const SAFARI_TABS = `// e2e: tabs as Safari gives them (no favIconUrl).
+(() => {
+  const strip = (v) => {
+    if (Array.isArray(v)) v.forEach(strip);
+    else if (v && typeof v === 'object') { delete v.favIconUrl; if (Array.isArray(v.tabs)) v.tabs.forEach(strip); }
+    return v;
+  };
+  for (const ns of new Set([globalThis.chrome, globalThis.browser].filter(Boolean))) {
+    for (const [area, fns] of [[ns.tabs, ['get', 'query', 'create', 'update', 'duplicate', 'move', 'reload', 'getCurrent']], [ns.windows, ['get', 'getAll', 'getCurrent', 'getLastFocused', 'create', 'update']]]) {
+      if (!area) continue;
+      for (const name of fns) {
+        const fn = area[name];
+        if (typeof fn === 'function') area[name] = (...args) => { const out = fn.apply(area, args); return out && typeof out.then === 'function' ? out.then(strip) : out; };
+      }
+    }
+    for (const event of ['onCreated', 'onUpdated']) {
+      const e = ns.tabs?.[event];
+      if (!e) continue;
+      const add = e.addListener.bind(e);
+      e.addListener = (cb) => add((...args) => { args.forEach(strip); if (event === 'onUpdated' && args[1] && Object.keys(args[1]).length === 0) return; return cb(...args); });
+    }
+  }
+})();
+`;
 
 export const SOCKET_GUARD = 'canSocket=()=>typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"';
 
@@ -35,6 +65,6 @@ export function testBuild(dir) {
   const bundlePath = join(path, 'background.bundle.js');
   const bundle = readFileSync(bundlePath, 'utf8');
   if (!bundle.includes(SOCKET_GUARD)) throw new Error('the e2e harness: the link\'s socket guard (background/link.js canSocket) is no longer the string it patches; update SOCKET_GUARD in tests/e2e/harness/build.js');
-  writeFileSync(bundlePath, bundle.replace(SOCKET_GUARD, 'canSocket=()=>!0'));
+  writeFileSync(bundlePath, SAFARI_TABS + bundle.replace(SOCKET_GUARD, 'canSocket=()=>!0'));
   return { path, id: extensionId(der) };
 }
