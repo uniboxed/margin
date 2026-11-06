@@ -296,7 +296,8 @@ export function startCore() {
     layout.settle();
   };
   for (const type of ['pointermove', 'pointerdown']) addEventListener(type, learnOrigin, { capture: true, passive: true });
-  let toldViewport = 'unset';
+  // (Nothing said while the page's area is the whole window: the copy keeps only the tab in front's word.)
+  let toldViewport = 'null';
   function tellViewport() {
     if (document.hidden || !appUi() || retired()) return;
     const v = viewportNow();
@@ -306,7 +307,7 @@ export function startCore() {
     void send('viewport', { viewport: v }, false);
   }
   addEventListener('resize', () => setTimeout(tellViewport, 120));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { toldViewport = 'unset'; tellViewport(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) return; if (toldViewport !== 'null') toldViewport = 'unset'; tellViewport(); });
   const applyApp = () => { layout.settle(); tellViewport(); };
   // What the background says of the link: the page's box from the app's
   // layout from now on, or none.
