@@ -12,7 +12,7 @@ function reset({ reads }) {
   // `reads`: what each storage read of appLink gives, in turn (the last one from then on).
   Object.assign(page, { reads: [...reads], changed: [], doc: {}, win: {}, reloads: 0, sent: [] });
   const el = (extra = {}) => ({ hidden: true, textContent: '', disabled: false, value: '', listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; }, focus() { page.focused = true; }, ...extra });
-  page.els = { notice: el(), title: el({ textContent: 'Margin.app isn’t running' }), why: el(), start: el(), status: el(), go: el(), address: el() };
+  page.els = { notice: el(), title: el({ textContent: 'Margin.app isn’t running' }), why: el(), start: el(), retry: el(), status: el(), go: el(), address: el() };
   page.visibility = 'visible';
 }
 const on = (store) => (type, fn) => { (store[type] ??= []).push(fn); };
@@ -98,4 +98,25 @@ test('the new-tab page: linked and drawn (or not said): nothing of its own', asy
   await load();
   assert.equal(page.els.notice.hidden, true);
   assert.equal(page.reloads, 0);
+});
+
+test('the new-tab page: Margin turned its link off (the socket guard): when, and until when; Try again, no Start; the words change in place', async () => {
+  const offAt = new Date(2026, 10, 6, 9, 41).getTime();
+  const sameDay = new Date(offAt).toDateString() === new Date().toDateString();
+  reset({ reads: [{ state: 'off', why: 'sockets-off', offAt }] });
+  await load();
+  assert.equal(page.els.title.textContent, 'Margin turned its link off');
+  assert.match(page.els.why.textContent, /^Margin turned its link off at 0?9[:.]41.* after a socket never opened\. It tries again when Safari next starts\.$/);
+  if (!sameDay) assert.match(page.els.why.textContent, / on .*6.* after/, 'another day: the day too');
+  assert.equal(page.els.start.hidden, true, 'no Start');
+  assert.equal(page.els.retry.hidden, false, 'Try again');
+  await page.els.retry.listeners.click();
+  assert.ok(page.sent.includes('retryLink'), 'asked to try again');
+  assert.ok(!page.sent.includes('startApp'));
+  for (const fn of page.changed) fn({ appLink: { newValue: { state: 'off', why: 'sockets-off', offAt, offUntil: offAt + 24 * 3600_000 } } }, 'local');
+  assert.match(page.els.why.textContent, /It tries again at 0?9[:.]41/, 'the 24 h off: until when');
+  for (const fn of page.changed) fn({ appLink: { newValue: { state: 'off' } } }, 'local');
+  assert.equal(page.els.retry.hidden, true, 'on again, not linked yet: no Try again');
+  assert.equal(page.els.start.hidden, false, 'Start instead');
+  assert.equal(page.els.title.textContent, 'Margin.app isn’t running');
 });

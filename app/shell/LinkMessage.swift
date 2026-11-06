@@ -123,6 +123,8 @@ enum LinkMessage {
         let origin: String? // the copy whose ids the state has
         let since: Double?
         let pid: Int? // the browser's process, if the copy knows it (Chrome's relay helper does)
+        // What the copy says of a time its link was off (its socket guard, background/link.js), for the log.
+        var socketsOff: String? = nil
 
         // The link's key: one link per browser profile.
         var key: String { "\(browser):\(profile)" }
@@ -173,7 +175,8 @@ enum LinkMessage {
                   profilePattern.firstMatch(in: profile, range: NSRange(profile.startIndex..., in: profile)) != nil,
                   let browser = m["browser"] as? String, ["safari", "chrome", "edge"].contains(browser) else { return nil }
             return .hello(Hello(epoch: epoch, profile: profile, browser: browser, ext: m["ext"] as? String, owner: m["owner"] as? Bool ?? false,
-                                instanceId: m["instanceId"] as? String, origin: m["origin"] as? String, since: num(m["since"]), pid: int(m["pid"])))
+                                instanceId: m["instanceId"] as? String, origin: m["origin"] as? String, since: num(m["since"]), pid: int(m["pid"]),
+                                socketsOff: (m["socketsOff"] as? String).map { String($0.prefix(200)) }))
         case "snapshot":
             guard let epoch, let seq, let state = m["state"] as? JSONObject else { return nil }
             return .snapshot(epoch: epoch, seq: seq, state: state, windows: m["windows"] as? [JSONObject] ?? [])

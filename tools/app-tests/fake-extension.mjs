@@ -26,6 +26,14 @@
 //     (`corrupt`: one piece's bytes changed);
 //   { do: 'send', id, msg } → msg as is, its epoch filled in;
 //   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id }.
+// A socket done by hand (node:net), for what a page's WebSocket can't send (a close of 1001, an
+// empty close, a TCP end with no close frame, a socket that never says hello):
+//   { do: 'rawConnect', id, profile?, upgrade? (default true), hello? (default true) } → a TCP
+//     connection to the linked port, the WebSocket handshake with the link's token (unless
+//     `upgrade` false), then hello as `profile` (unless `hello` false) → { ev: 'rawUpgraded', id },
+//     { ev: 'rawClosed', id };
+//   { do: 'rawClose', id, payload } → a close frame with that payload (an array of bytes, maybe
+//     empty); { do: 'rawEnd', id } → the TCP connection ended, no close frame.
 // The lasting data (DATA.md "Messages"), with `data` on connect:
 //   data: { acked?, rev?, queue?, wiped?, icons?, parts?, now? } → after the
 //     state (and theme), data.hello with `acked` (default 0), `rev` (the set's
@@ -57,7 +65,8 @@
 // { ev: 'resync' } and the state again; bye → { ev: 'bye', why }; anything
 // else → { ev: 'message', msg }. Every message from the app is checked to be
 // under 1 MB ({ ev: 'tooBig' } if not).
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { connect as tcpConnect } from 'node:net';
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -264,6 +273,36 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
   };
 }
 
+// A client's frame (masked, as every client's must be).
+function clientFrame(opcode, payload) {
+  const body = Buffer.from(payload);
+  const mask = randomBytes(4);
+  const head = body.length < 126 ? Buffer.from([0x80 | opcode, 0x80 | body.length]) : Buffer.from([0x80 | opcode, 0x80 | 126, body.length >> 8, body.length & 255]);
+  const masked = Buffer.from(body.map((b, i) => b ^ mask[i & 3]));
+  return Buffer.concat([head, mask, masked]);
+}
+const raws = new Map(); // id → net.Socket
+function rawConnect({ id, profile = 'PR', upgrade = true, hello = true }) {
+  const sock = tcpConnect(link.port, '127.0.0.1');
+  raws.set(id, sock);
+  let head = Buffer.alloc(0);
+  let upgraded = false;
+  sock.on('connect', () => {
+    if (!upgrade) return;
+    sock.write(`GET /?t=${encodeURIComponent(link.token)} HTTP/1.1\r\nHost: 127.0.0.1:${link.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${randomBytes(16).toString('base64')}\r\nSec-WebSocket-Version: 13\r\nOrigin: ${ORIGIN}\r\n\r\n`);
+  });
+  sock.on('data', (chunk) => {
+    if (upgraded) return; // (the app's welcome and ticks: not read)
+    head = Buffer.concat([head, chunk]);
+    if (head.indexOf('\r\n\r\n') < 0) return;
+    upgraded = true;
+    say({ ev: 'rawUpgraded', id });
+    if (hello) sock.write(clientFrame(1, Buffer.from(JSON.stringify({ k: 'hello', v: 2, epoch: randomUUID(), profile, browser: 'safari', origin: ORIGIN, since: 1, ext: '2.0.0', owner: true, instanceId: `raw-${id}` }))));
+  });
+  sock.on('close', () => say({ ev: 'rawClosed', id }));
+  sock.on('error', () => {});
+}
+
 createInterface({ input: process.stdin }).on('line', (line) => {
   const c = JSON.parse(line);
   if (c.native) {
@@ -319,6 +358,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       return;
     case 'close':
       s.ws.close();
+      return;
+    case 'rawConnect':
+      return rawConnect(c);
+    case 'rawClose':
+      raws.get(c.id)?.write(clientFrame(8, c.payload ?? []));
+      return;
+    case 'rawEnd':
+      raws.get(c.id)?.end();
       return;
     default:
       return say({ ev: 'unknown', c });

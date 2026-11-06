@@ -810,6 +810,11 @@ export const handlers = {
   async startApp() {
     return appLink.askNow();
   },
+  // The new-tab page's "Try again" while Margin turned its link off (its socket guard,
+  // background/link.js): sockets on again and the link asked for now. A person's choice only.
+  async retryLink() {
+    return appLink.retrySockets();
+  },
   // Escape in the palette of a fresh new tab (⌘T; newtab/newtab.js):
   // back to the tab the user was on, and this one closes, as if no tab had
   // been opened. The window's only tab (⌘N) stays, with the start page.

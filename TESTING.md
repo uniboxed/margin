@@ -657,6 +657,15 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Quit Margin.app with a new tab open in each profile's window, then open Margin.app again: each of those new-tab pages stops saying "Margin.app isn't running" within a few seconds of the link, including ones in Spaces you weren't looking at (check each when you switch to it).
 - [ ] With a new tab saying "Margin.app isn't running", start Margin.app from Applications, then press Start on that tab: the page reloads as Margin's (no second app, no "didn't answer" text).
 
+**Why a link went down, in the log** (the 19:54:53 drop nothing explained).
+- [ ] Quit Safari with Margin linked, then open it again. For each profile the log has `background started (kept link: …, page state before: …, last stop: …)` from the copy, and `link down (safari:…): closed by the extension (1001 going away)` (or another code) from the app as Safari quit. Send me those lines.
+- [ ] With Margin linked, put the Mac to sleep for a minute and wake it. The link stays (no `reconnecting` dimming). The log may say `paused N s (a link check ran late)` from a copy, and `listener waiting: …` or `listener still waiting after 5 s: made again` from the app. Send me those lines with the times.
+- [ ] Any time a sidebar dims with "Reconnecting", send me the lines around it. They now say who closed the link and how: `closed by the extension (…)` or `dropped: … (code)`, the `kept link try n of 5 (port P): …` lines, and `socket ended before its hello …`. Notes a copy made while its native port was down come in a bunch with `(at HH:MM:SS.mmm)` in front, at their own times.
+
+**The socket guard** (it could turn a profile's link off for good).
+- [ ] Nothing to do unless it fires. If a new tab ever says "Margin turned its link off at <time> after a socket never opened", send me the log lines with `socket guard` in them (`npm run log:app | grep -i "socket guard\|sockets off"`), then press Try again: the page becomes Margin's within a few seconds.
+- [ ] After updating to this build, every profile links as before. A profile that was off before this build (new tabs always said "Margin.app isn't running" there, whatever you did) links now; the log says `an old lasting off (until another version) was left: removed, sockets on again` for it.
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.

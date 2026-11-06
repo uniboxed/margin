@@ -152,6 +152,7 @@ final class SocketLink {
         var hello: TimeInterval = 5 // an accepted socket, to say hello
         var request: TimeInterval = 15
         var safariSettled: TimeInterval = 2 // before appUp
+        var listenWait: TimeInterval = 5 // the listener waiting this long (after sleep or wake): made again
     }
 
     weak var delegate: ExtensionLinkDelegate?
@@ -173,6 +174,8 @@ final class SocketLink {
     private var ticker: Timer?
     private var rotation: Timer?
     private var appUpTimer: Timer?
+    private var listenWaitTimer: Timer?
+    private var listenerWaiting = false
     private var stopped = false
     // Each dispatch's number (the log's #n), and how many in a row weren't passed on.
     private var dispatches = 0
@@ -240,19 +243,55 @@ final class SocketLink {
         guard listener === self.listener else { return }
         switch state {
         case .ready:
+            listenerWaiting = false
+            listenWaitTimer?.invalidate()
+            listenWaitTimer = nil
             port = listener.port?.rawValue
             Diagnostics.note("listening on 127.0.0.1:\(port ?? 0)")
             let nonces = asked
             asked = []
             for nonce in nonces { answer(nonce) }
         case .failed(let error):
+            listenerWaiting = false
             Diagnostics.warn("listener failed: \(error)")
             listener.cancel()
             self.listener = nil
             port = nil
             retryListen()
-        default:
-            break
+        case .waiting(let error):
+            // As after sleep or wake, or a network change: made again if it lasts.
+            Diagnostics.warn("listener waiting: \(error)")
+            listenerWaiting = true
+            waitForListener(listener)
+        case .setup:
+            Diagnostics.note("listener setting up")
+        case .cancelled:
+            // Not by stop() or a restart here (those let it go first): the system's.
+            Diagnostics.warn("listener cancelled")
+            self.listener = nil
+            port = nil
+            retryListen()
+        @unknown default:
+            Diagnostics.note("listener state: \(state)")
+        }
+    }
+
+    // A listener still waiting after `listenWait`: cancelled and made again (a new port; copies
+    // with the old one kept ask again).
+    private func waitForListener(_ listener: NWListener) {
+        guard listenWaitTimer == nil else { return }
+        listenWaitTimer = Timer.scheduledTimer(withTimeInterval: timing.listenWait, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.listenWaitTimer = nil
+                guard !self.stopped, listener === self.listener, self.listenerWaiting else { return }
+                Diagnostics.warn("listener still waiting after \(Int(self.timing.listenWait)) s: made again")
+                self.listenerWaiting = false
+                self.listener = nil
+                self.port = nil
+                listener.cancel()
+                self.listen()
+            }
         }
     }
 
@@ -335,7 +374,7 @@ final class SocketLink {
         Timer.scheduledTimer(withTimeInterval: timing.hello, repeats: false) { [weak self, weak socket] _ in
             MainActor.assumeIsolated {
                 guard let self, let socket, socket.connection == nil, self.sockets.contains(where: { $0 === socket }) else { return }
-                socket.close(1008, "no hello")
+                socket.close(1008, "no hello within \(Int(self.timing.hello)) s")
             }
         }
     }
@@ -398,7 +437,7 @@ final class SocketLink {
                 MainActor.assumeIsolated { self?.tick() }
             }
         }
-        Diagnostics.note("hello: \(hello.key), Margin \(hello.ext ?? "?")")
+        Diagnostics.note("hello: \(hello.key), Margin \(hello.ext ?? "?")" + (hello.socketsOff.map { "; its link was off before: \($0)" } ?? ""))
         delegate?.linkUp(link)
     }
 
@@ -415,7 +454,15 @@ final class SocketLink {
 
     fileprivate func closed(_ socket: Socket, _ why: String) {
         sockets.removeAll { $0 === socket }
-        guard let link = socket.connection, links[link.key] === link else { return }
+        guard let link = socket.connection else {
+            // Ended before its hello: the 'no hello' timeout, a TCP connection closed before or
+            // after the upgrade, a copy not in charge. (A refused one is logged as refused.)
+            if !socket.refused {
+                Diagnostics.note("socket ended before its hello (\(socket.isOpen ? "after" : "before") the upgrade, \(Diagnostics.ms(since: socket.started))): \(why)")
+            }
+            return
+        }
+        guard links[link.key] === link else { return }
         links[link.key] = nil
         link.down()
         Diagnostics.note("link down (\(link.key)): \(why)")
@@ -440,7 +487,8 @@ final class SocketLink {
         stopped = true
         if let wakeObserver { DistributedNotificationCenter.default().removeObserver(wakeObserver) }
         wakeObserver = nil
-        for timer in [ticker, rotation, appUpTimer] { timer?.invalidate() }
+        for timer in [ticker, rotation, appUpTimer, listenWaitTimer] { timer?.invalidate() }
+        listenWaitTimer = nil
         ticker = nil
         listener?.cancel()
         listener = nil
@@ -482,6 +530,11 @@ fileprivate final class Socket {
     private var open = false
     private var ended = false
     private(set) var lastHeard = Diagnostics.now()
+    let started = Diagnostics.now()
+    // Turned away before the upgrade (logged as refused, not again as ended).
+    private(set) var refused = false
+    // Upgraded to a WebSocket.
+    var isOpen: Bool { open }
 
     init(_ tcp: NWConnection, link: SocketLink) {
         self.tcp = tcp
@@ -507,7 +560,11 @@ fileprivate final class Socket {
             MainActor.assumeIsolated {
                 guard let self, !self.ended else { return }
                 if let data, !data.isEmpty { self.got(data) }
-                if complete || error != nil { return self.end(error.map { "\($0)" } ?? "closed") }
+                if complete || error != nil {
+                    // No close frame came: a plain TCP end (a background torn down, a crash) or an error.
+                    let how = error.map { "connection failed: \($0)" } ?? (self.open ? "no close frame" : "TCP closed")
+                    return self.end(self.open ? "closed by the extension (1006, \(how))" : how)
+                }
                 if !self.ended { self.receive() }
             }
         }
@@ -538,7 +595,7 @@ fileprivate final class Socket {
                 switch message {
                 case .text(let text): link?.received(text, on: self)
                 case .ping(let payload): write(Frame.encode(.pong, payload))
-                case .close: close(1000, "closed by the extension")
+                case .close(let code, let reason): close(1000, "closed by the extension (\(FrameReader.describeClose(code, reason)))")
                 case .none: break
                 }
             }
@@ -548,6 +605,7 @@ fileprivate final class Socket {
     }
 
     private func refuse(_ status: String, _ why: String) {
+        refused = true
         Diagnostics.warn("socket refused: \(why)")
         tcp.send(content: Handshake.refusal(status), completion: .contentProcessed { [weak self] _ in
             MainActor.assumeIsolated { self?.tcp.cancel() }

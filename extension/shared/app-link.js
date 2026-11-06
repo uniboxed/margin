@@ -10,7 +10,10 @@
 //   any state (Margin 2 Phase 2 step 5). Either of the first two, a window
 //   the app said it draws nothing over (`drawn`) has no box.
 // - `why` (only while 'off'): 'no-link' when Margin.app is running but sent
-//   no link (the new-tab page says it isn't answering); absent otherwise.
+//   no link (the new-tab page says it isn't answering); 'sockets-off' when
+//   the copy's socket guard turned its link off (background/link.js), with
+//   `offAt` and, for a 24 h off, `offUntil` (the new-tab page says so, with
+//   Try again); absent otherwise.
 // - `layouts`: each window's page slot as the app's overlay measured it
 //   (setLayout): { [windowId]: { insets, radius, radii, container, mode,
 //   seq, epoch } }, insets in points from the window's edges.

@@ -105,7 +105,7 @@ struct Frame: Equatable {
 // Frames from the background, as its bytes come; then whole messages.
 struct FrameReader {
     enum Failure: Error, Equatable {
-        case unmasked, reserved, badOp, tooBig, badText
+        case unmasked, reserved, badOp, tooBig, badText, badClose
     }
 
     // The largest message taken (the first snapshot holds every site icon).
@@ -164,7 +164,8 @@ struct FrameReader {
     enum Message: Equatable {
         case text(String)
         case ping(Data)
-        case close
+        // The close frame's code (1005 when it carried none) and its reason (UTF-8, at most 123 bytes).
+        case close(code: UInt16, reason: String)
         // A pong, a binary message: nothing to do.
         case none
     }
@@ -174,7 +175,7 @@ struct FrameReader {
         while let frame = try next() {
             switch frame.op {
             case .ping: return .ping(frame.payload)
-            case .close: return .close
+            case .close: return try Self.close(frame.payload)
             case .pong: return Message.none
             case .text, .binary, .continuation:
                 if frame.op == .continuation {
@@ -195,5 +196,38 @@ struct FrameReader {
             }
         }
         return nil
+    }
+
+    // A close frame's payload (RFC 6455 5.5.1): empty, no status code (1005); else two bytes of
+    // code, then the reason. The reason is clipped to 123 bytes (a control frame's most) and taken
+    // only as UTF-8; control characters become spaces, for the log.
+    static func close(_ payload: Data) throws -> Message {
+        let bytes = [UInt8](payload)
+        guard !bytes.isEmpty else { return .close(code: 1005, reason: "") }
+        guard bytes.count >= 2 else { throw Failure.badClose }
+        let code = UInt16(bytes[0]) << 8 | UInt16(bytes[1])
+        let raw = Array(bytes.dropFirst(2).prefix(123))
+        // (Clipped in the middle of a character: up to 3 bytes less.)
+        let cuts = raw.count < bytes.count - 2 ? 0...min(3, raw.count) : 0...0
+        guard let text = cuts.lazy.compactMap({ String(bytes: raw.dropLast($0), encoding: .utf8) }).first else {
+            return .close(code: code, reason: "(a reason that isn't UTF-8)")
+        }
+        return .close(code: code, reason: String(text.unicodeScalars.map { $0.properties.generalCategory == .control ? " " : Character($0) }))
+    }
+
+    // How a close reads in the log: "1000 no word from the app for 12 s", "1001 going away",
+    // "1005, no status code", "1006, no close frame".
+    static func describeClose(_ code: UInt16, _ reason: String) -> String {
+        if !reason.isEmpty { return "\(code) \(reason)" }
+        switch code {
+        case 1000: return "1000 normal"
+        case 1001: return "1001 going away"
+        case 1002: return "1002 protocol error"
+        case 1005: return "1005, no status code"
+        case 1006: return "1006, no close frame"
+        case 1008: return "1008 policy"
+        case 1011: return "1011 unexpected condition"
+        default: return "\(code)"
+        }
     }
 }

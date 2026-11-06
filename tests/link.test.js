@@ -49,7 +49,13 @@ function browser({ app = null, appOpen = null, launching = false, local = {}, pr
       getManifest: () => ({ version: '2.0.0' }),
       connectNative() {
         const listeners = [];
-        const port = { posted: [], onMessage: { addListener: (cb) => listeners.push(cb) }, onDisconnect: { addListener() {} }, postMessage(m) { port.posted.push(m); }, disconnect() {}, deliver: (m) => listeners.forEach((cb) => cb(m)) };
+        const gone = [];
+        // `lose()`: the port disconnects (its listeners told; posting throws from then on).
+        const port = {
+          posted: [], dead: false, onMessage: { addListener: (cb) => listeners.push(cb) }, onDisconnect: { addListener: (cb) => gone.push(cb) },
+          postMessage(m) { if (port.dead) throw new Error('disconnected'); port.posted.push(m); }, disconnect() {}, deliver: (m) => listeners.forEach((cb) => cb(m)),
+          lose() { port.dead = true; gone.forEach((cb) => cb()); },
+        };
         ports.push(port);
         return port;
       },
@@ -716,35 +722,288 @@ test('link: data — data.need gets the converter\'s snapshot, the app\'s snapsh
   }
 });
 
-test('link: no socket from a worker, and none after a background that never got past opening one', async () => {
+test('link: no socket from a worker', async () => {
   const api = browser({ app: null, appOpen: () => true });
   const link = createLink({ api, isOwner: () => true, copy: () => ({ origin: 'o', since: 1 }), WebSocket: globalThis.WebSocket, enabled: () => true, canSocket: () => false, log: () => {}, timing: FAST });
   await link.start({ route: async () => ({ ok: true }) });
   assert.equal(api.native.length, 0, 'not even asked: the app would link to nothing');
   link.stop();
+});
+
+// The socket guard (DECISIONS.md "Margin 2: Safari reliability"): a note left by a background that
+// never got past opening a socket turns sockets off for that Safari session; found again in a later
+// session, for 24 h; never "until another version" (every build is 0.1.0). A new Safari session is
+// a browser() with the same storage.local and an empty storage.session.
+const nextSession = (api, app, change = {}) => browser({ app, local: { ...structuredClone(api.storage.local.data), ...change } });
+const logLines = (api) => api.ports.flatMap((p) => p.posted.filter((m) => m.type === 'log').map((m) => m.line));
+
+test('link: a left socket note in an empty session — off for this session only, said to the app\'s log and to pages; the next session links and says so in its hello', async () => {
   const app = await startFakeApp();
-  const api2 = browser({ app, local: { appLinkOpening: { at: 1, v: '2.0.0' } } });
+  const api = browser({ app, local: { ...STATE, appLinkOpening: { at: 1, v: '2.0.0' } } });
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(!link.linked());
+    assert.equal(app.received.length, 0, 'no socket');
+    assert.ok(api.storage.session.data.appLinkSessionOff?.at > 0, 'off for this Safari session');
+    assert.equal(api.storage.local.data.appLinkOff, undefined, 'nothing lasting');
+    assert.equal(api.storage.local.data.appLinkHung?.count, 1, 'seen once');
+    assert.equal(api.storage.local.data.appLinkOpening, undefined, 'the note taken');
+    assert.ok(logLines(api).some((l) => l.startsWith('the socket guard turned the link off') && l.includes('the rest of this Safari session')), 'said in Margin.app\'s log');
+    assert.ok(await until(() => api.storage.local.data[APP_LINK_KEY]?.why === 'sockets-off'));
+    const off = api.storage.local.data[APP_LINK_KEY];
+    assert.equal(off.state, 'off');
+    assert.ok(off.offAt > 0 && off.offUntil === undefined, 'when, and no end but the session\'s');
+    // The same session, another background (Safari unloaded the page): still off.
+    const again = makeLink(api).link;
+    await again.start({ route: async () => ({ ok: true }) });
+    assert.ok(!again.linked() && app.received.length === 0, 'the same session: off');
+    again.stop();
+  } finally {
+    link.stop();
+  }
+  const api2 = nextSession(api, app);
   const { link: l2 } = makeLink(api2);
   try {
     await l2.start({ route: async () => ({ ok: true }) });
-    assert.ok(!l2.linked());
-    assert.equal(api2.storage.local.data.appLinkOff?.v, '2.0.0', 'off for this version');
-    assert.equal(app.received.length, 0);
+    assert.ok(l2.linked(), 'the next session links');
+    const hello = await app.next('hello');
+    assert.match(hello.socketsOff ?? '', /unfinished socket in 1 Safari session, last at /, 'the app hears of it');
+    assert.ok(await until(() => api2.storage.local.data.appLinkHung === undefined), 'forgotten once a link opened');
   } finally {
     l2.stop();
     await app.close();
   }
-  // Another version of Margin: tried again.
-  const app3 = await startFakeApp();
-  const api3 = browser({ app: app3, local: { appLinkOff: { at: 1, v: '1.9.0', why: 'x' } } });
+});
+
+test('link: a left socket note in two Safari sessions — off until 24 h later, then it links; an old { v } off is removed, not kept', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: { ...STATE, appLinkOpening: { at: 1 }, appLinkHung: { count: 1, at: Date.now() - 3600_000 } } });
+  const t0 = Date.now();
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(!link.linked());
+    const off = api.storage.local.data.appLinkOff;
+    assert.equal(off?.count, 2);
+    assert.ok(off.until >= t0 + 24 * 3600_000 && off.until <= Date.now() + 24 * 3600_000, 'off for 24 h, no longer');
+    assert.ok(await until(() => api.storage.local.data[APP_LINK_KEY]?.offUntil === off.until), 'pages know until when');
+    assert.ok(logLines(api).some((l) => l.includes('in 2 Safari sessions; no link until')));
+  } finally {
+    link.stop();
+  }
+  // A later session within the 24 h: off.
+  const api2 = nextSession(api, app);
+  const { link: l2 } = makeLink(api2);
+  try {
+    await l2.start({ route: async () => ({ ok: true }) });
+    assert.ok(!l2.linked() && app.received.length === 0, 'still off');
+    assert.ok(logLines(api2).some((l) => l.startsWith('sockets off since ')));
+  } finally {
+    l2.stop();
+  }
+  // Past the 24 h: on again, the lasting off gone.
+  const api3 = nextSession(api, app, { appLinkOff: { ...api.storage.local.data.appLinkOff, until: Date.now() - 1 } });
   const { link: l3 } = makeLink(api3);
   try {
     await l3.start({ route: async () => ({ ok: true }) });
-    assert.ok(l3.linked(), 'a new version: linked');
-    assert.equal(api3.storage.local.data.appLinkOpening, undefined, 'the note removed once the constructor returned');
+    assert.ok(l3.linked(), 'linked once it ended');
+    assert.equal(api3.storage.local.data.appLinkOff, undefined);
   } finally {
     l3.stop();
-    await app3.close();
+  }
+  // The old shape, "until another version" (the same version as this one's): removed, and linked.
+  const api4 = browser({ app, local: { ...STATE, appLinkOff: { at: 1, v: '2.0.0', why: 'x' } } });
+  const { link: l4 } = makeLink(api4);
+  try {
+    await l4.start({ route: async () => ({ ok: true }) });
+    assert.ok(l4.linked(), 'an old { v } off is no reason to stay off');
+    assert.equal(api4.storage.local.data.appLinkOff, undefined, 'removed');
+  } finally {
+    l4.stop();
+    await app.close();
+  }
+});
+
+test('link: the socket\'s handlers are on before the note is removed — the welcome is taken when the removal resolves 50 ms late, and no note is left once open', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const remove = api.storage.local.remove.bind(api.storage.local);
+  api.storage.local.remove = async (keys) => {
+    if ([keys].flat().includes('appLinkOpening')) await wait(50);
+    return remove(keys);
+  };
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(link.linked(), 'linked');
+    assert.equal(api.storage.local.data.appLinkOpening, undefined, 'the note gone by the time the open returned');
+    assert.ok(await app.next('hello'));
+  } finally {
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: Try again (the new-tab page) ends the socket guard\'s off at once and links', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: { ...STATE, appLinkOpening: { at: 1 }, appLinkHung: { count: 1, at: 1 } } });
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(!link.linked() && api.storage.local.data.appLinkOff, 'off for 24 h');
+    assert.equal(await link.retrySockets(), true);
+    assert.ok(await until(() => link.linked()), 'linked');
+    assert.equal(api.storage.local.data.appLinkOff, undefined);
+    assert.equal(api.storage.local.data.appLinkHung, undefined, 'its count too');
+    assert.equal(api.storage.session.data.appLinkSessionOff, undefined);
+    assert.ok(logLines(api).some((l) => l.startsWith('sockets on again: Try again chosen')));
+    assert.ok(await until(() => api.storage.local.data[APP_LINK_KEY]?.state === 'linked' && !('why' in api.storage.local.data[APP_LINK_KEY])));
+  } finally {
+    link.stop();
+    await app.close();
+  }
+});
+
+// What Margin.app's log is told (DECISIONS.md "Margin 2: Safari reliability", link diagnostics).
+const clockOf = (/** @type {number} */ ms) => {
+  const d = new Date(ms);
+  const p = (n, w = 2) => String(n).padStart(w, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+};
+const ofDay = (/** @type {string} */ hms) => { const [h, m, rest] = hms.split(':'); return ((Number(h) * 60 + Number(m)) * 60 + Number(rest)) * 1000; };
+
+test('link: notes made while the native port is down arrive in order once it\'s back, each with the time it was made; the newest 20 kept', async () => {
+  const api = browser({ app: null, appOpen: () => false });
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    await wait(20);
+    api.ports[0].lose();
+    const made = Date.now();
+    link.note('first');
+    await wait(5);
+    link.note('second');
+    link.note('first'); // already waiting: once
+    assert.ok(await until(() => api.ports.length === 2, 1000), 'a new port at the next ping');
+    const lines = api.ports[1].posted.filter((m) => m.type === 'log').map((m) => m.line);
+    const held = lines.filter((l) => l.startsWith('(at '));
+    assert.match(held[0], /^\(at \d\d:\d\d:\d\d\.\d{3}\) the native port disconnected/, 'the loss itself, first');
+    const mine = held.filter((l) => / (first|second)$/.test(l));
+    assert.deepEqual(mine.map((l) => l.replace(/^\(at [^)]*\) /, '')), ['first', 'second'], 'in order, once each');
+    const at = mine[0].slice(4, 16);
+    assert.ok(Math.abs(ofDay(at) - ofDay(clockOf(made))) <= 5, `the time it was made (${at}, ${clockOf(made)})`);
+    assert.ok(lines.some((l) => /^the native port is back after \d+\.\d s \(1 disconnect since the last such note\)$/.test(l)), 'and the port back');
+    assert.ok(lines.indexOf(held.at(-1)) < lines.findIndex((l) => l.startsWith('the native port is back')), 'the held notes before what came after');
+    // Sent once: the same line within the minute isn't sent again.
+    link.note('second');
+    assert.equal(api.ports[1].posted.filter((m) => m.line?.endsWith(' second') || m.line === 'second').length, 1);
+    // 25 notes with no port: the newest 20, and how many were lost.
+    api.ports[1].lose();
+    for (let i = 0; i < 25; i++) link.note(`n${i}`);
+    assert.ok(await until(() => api.ports.length === 3, 1000));
+    const third = api.ports[2].posted.filter((m) => m.type === 'log').map((m) => m.line);
+    assert.equal(third[0], '(5 earlier notes lost while the native port was down)', 'n0–n4 lost (the port\'s own notes held back: one a minute)');
+    assert.deepEqual(third.slice(1, 21).map((l) => l.replace(/^\(at [^)]*\) /, '')), Array.from({ length: 20 }, (_, i) => `n${i + 5}`));
+  } finally {
+    link.stop();
+  }
+});
+
+test('link: the background\'s start and each try of the kept link are noted, with how the last link ended', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link } = makeLink(api, { timing: { ...FAST, dead: 10_000 } });
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    assert.ok(logLines(api).includes('background started (kept link: no, page state before: none, last stop: none noted this Safari session)'), `${logLines(api)}`);
+    await app.next('hello');
+    app.drop(); // no close frame
+    assert.ok(await until(() => logLines(api).some((l) => /^kept link try 1 of 3 \(port \d+\): open in \d+ ms$/.test(l)), 1500), `${logLines(api)}`);
+    assert.ok(logLines(api).includes('dropped: closed by the app (1006)'), 'why it dropped');
+  } finally {
+    // (no stop: the next background starts while this one was linked, as when Safari tears it down)
+  }
+  const second = makeLink(api, { timing: { ...FAST, dead: 10_000 } }).link;
+  try {
+    await second.start({ route: async () => ({ ok: true }) });
+    const started = logLines(api).filter((l) => l.startsWith('background started')).at(-1);
+    assert.match(started, /^background started \(kept link: yes, page state before: linked, last stop: none since linked at \d\d:\d\d:\d\d\.\d{3} \(the background before was torn down while linked\)\)$/);
+    assert.ok(logLines(api).some((l) => /^kept link at the background's start \(port \d+\): open in \d+ ms$/.test(l)));
+    second.stop('turned off');
+  } finally {
+    link.stop();
+  }
+  const third = makeLink(api, { timing: { ...FAST, dead: 10_000 } }).link;
+  try {
+    await third.start({ route: async () => ({ ok: true }) });
+    assert.match(logLines(api).filter((l) => l.startsWith('background started')).at(-1), /last stop: stopped at \d\d:\d\d:\d\d\.\d{3}: turned off\)$/);
+  } finally {
+    third.stop();
+    await app.close();
+  }
+  // A kept link nothing listens on any more: refused at once.
+  const api2 = browser({ app: null, appOpen: () => false });
+  api2.storage.session.data[SESSION_KEY] = { port: app.port, token: 't', key: 'k' };
+  const { link: l4 } = makeLink(api2);
+  try {
+    await l4.start({ route: async () => ({ ok: true }) });
+    assert.ok(logLines(api2).some((l) => new RegExp(`^kept link at the background's start \\(port ${app.port}\\): refused or closed at once \\(\\d+ ms, 1006\\)$`).test(l)), `${logLines(api2)}`);
+  } finally {
+    l4.stop();
+  }
+});
+
+// Busy for `ms`: the background paused (Safari suspending it, the Mac asleep), its timers and the
+// socket's messages queued meanwhile.
+const pause = (ms) => { const end = Date.now() + ms; while (Date.now() < end); };
+
+test('link: a check that runs late (the background paused) never drops a link the app is still on: it probes, and judges after what came in meanwhile', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link, changed } = makeLink(api);
+  const ticking = setInterval(() => app.send({ k: 'tick', at: Date.now() }), 100);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    await app.next('hello');
+    await wait(300);
+    app.send({ k: 'tick', at: Date.now() }); // (queued in the socket through the pause)
+    pause(700); // over DEAD (400 ms here) and 3 checks
+    await wait(600);
+    assert.ok(link.linked() && !changed.includes('reconnecting'), 'not dropped');
+    assert.ok(logLines(api).some((l) => /^paused 0\.\d s \(a link check ran late\); probing the app, judged from now$/.test(l)), `${logLines(api)}`);
+  } finally {
+    clearInterval(ticking);
+    link.stop();
+    await app.close();
+  }
+});
+
+test('link: a check that runs late with the app silent drops within DEAD of the probe, not at once', async () => {
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const { link, changed } = makeLink(api);
+  let ticking = setInterval(() => app.send({ k: 'tick', at: Date.now() }), 100);
+  try {
+    await link.start({ route: async () => ({ ok: true }) });
+    await app.next('hello');
+    await wait(300);
+    clearInterval(ticking);
+    ticking = null;
+    const from = app.received.length;
+    pause(700);
+    const resumed = Date.now();
+    await wait(200);
+    assert.ok(!changed.includes('reconnecting'), 'not at once: 0.2 s after the pause it\'s still linked');
+    assert.ok(await app.next('tock', { from, ms: 500 }), 'the app sent a tock (the probe)');
+    assert.ok(await until(() => changed.includes('reconnecting'), 1000), 'dropped');
+    const after = Date.now() - resumed;
+    assert.ok(after >= 380 && after <= 900, `within DEAD (400 ms) of the probe, not before: ${after} ms`);
+    assert.ok(logLines(api).includes('dropped: no word from the app for 12 s'));
+  } finally {
+    if (ticking) clearInterval(ticking);
+    link.stop();
+    await app.close();
   }
 });
 

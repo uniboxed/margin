@@ -42,9 +42,21 @@
 // never returns and hangs the background until Safari restarts
 // (feat/native-panel, DECISIONS.md 2026-10-30). So no socket is made unless
 // the background is a document (canSocket); and as there, a socket being
-// opened is noted first and the note removed once the constructor returns: a
-// background that finds the note left (it never got past a constructor)
-// makes no socket again until another version of Margin, or Safari restarts.
+// opened is noted first (storage.local appLinkOpening) and the note removed
+// once its handlers are on: a background that finds the note left (it never
+// got past a constructor, or Safari quit just then) makes no socket for the
+// rest of that Safari session; found again in a later session, for OFF_MS
+// (24 h). Never longer, and the new-tab page's Try again ends it at once
+// (every build is version 0.1.0, so the old "until another version" was
+// never). Each time it turns sockets off it says so in Margin.app's log, and
+// in the next hello.
+//
+// Margin.app's log gets the link's notes (note): the background starting
+// (with the kept link and how the one before ended), each try of the kept
+// link and how it went, the native port going and coming back, a check
+// that ran late (the background paused), and why each drop or close. Notes
+// made while the native port is down are kept (HELD_NOTES) and sent once
+// it's back, each with the time it was made.
 //
 // Data (DATA.md "Messages"): data.hello with the queue of changes made while
 // unlinked; data.need → data.snapshot from the converter; the app's
@@ -83,8 +95,20 @@ export const CHUNK_BYTES = 512 * 1024;
 export const SESSION_KEY = 'appLinkKept';
 export const LINK_META = 'dataMeta:link'; // { profile, acked, rev? }
 const OPENING_KEY = 'appLinkOpening';
+// A lasting off: { at, until, count, why }, only until `until` (an old { v } is removed).
 const OFF_KEY = 'appLinkOff';
+// Sockets off for this Safari session: { at, why } (storage.session).
 const SESSION_OFF_KEY = 'appLinkSessionOff';
+// How many Safari sessions found the opening note left, and when last: { count, at } (storage.local;
+// cleared once a link opens, or by Try again).
+const HUNG_KEY = 'appLinkHung';
+export const OFF_MS = 24 * 3600_000;
+// How the last link here ended, for the next background's start note: { what: 'linked' | 'dropped' |
+// 'stopped', why, at } (storage.session).
+const LAST_KEY = 'appLinkLast';
+export const HELD_NOTES = 20; // notes kept while the native port is down
+const PORT_NOTE_MS = 60_000; // the native port going and coming back: noted at most this often
+const FAST_CLOSE_MS = 100; // a kept link closed this soon: refused (nothing listens there now)
 // The stored values the app's UI draws from (as pages read them, before
 // shared/stored.js fromStorage). Not the theme package (sent as `theme`), the
 // data set's times, this link's own key, page zoom or user themes.
@@ -158,7 +182,8 @@ const webSha256 = async (/** @type {Uint8Array} */ bytes) => [...new Uint8Array(
  *   commandKeys?: () => Record<string, string>,
  *   log?: (...args: any[]) => void,
  *   sha256?: (bytes: Uint8Array) => Promise<string>,
- *   timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number }>,
+ *   now?: () => number,
+ *   timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number, noLinkAsk: number, noLinkAsks: number, offFor: number }>,
  * }} deps
  */
 export function createLink({
@@ -174,31 +199,62 @@ export function createLink({
   commandKeys = () => ({}),
   log = (...args) => console.info('[margin] link:', ...args),
   sha256 = webSha256,
+  // A monotonic clock (ms) for how long the app's been quiet and whether a check ran late.
+  now = () => performance.now(),
   timing = {},
 }) {
   const T = {
     ping: PING_MS, dead: DEAD_MS, check: CHECK_MS, linkWait: LINK_WAIT_MS, openWait: OPEN_WAIT_MS, keptWait: KEPT_WAIT_MS,
     reconnect: RECONNECT_MS, ask: ASK_MS, gone: GONE_MS, windows: WINDOWS_MS, layoutWrite: LAYOUT_WRITE_MS, launchAsk: LAUNCH_ASK_MS, launchAsks: LAUNCH_ASKS,
-    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, ...timing,
+    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, offFor: OFF_MS, ...timing,
   };
   // What the link does, in the background's console and, through the lasting
   // native port, in Margin.app's own log (the extension handler writes it to
   // the system log: subsystem io.tirth.margin, category extension), so a link
   // that fails can be read in one place. The same line again within a minute
-  // isn't sent again.
+  // of being sent isn't sent again. With no port (not yet, or it went), the
+  // newest HELD_NOTES are kept and sent once it's back, each with its time.
+  // Never a page's address or title.
   /** @type {Map<string, number>} */
   const sentLines = new Map();
+  /** @type {{ line: string, at: number }[]} */
+  let held = [];
+  let heldLost = 0;
+  const post = (/** @type {string} */ line) => {
+    const p = port;
+    if (!p) return false;
+    try {
+      p.postMessage({ type: 'log', line: line.slice(0, 300) });
+      return true;
+    } catch {
+      if (port === p) port = null; // gone: the next ping makes another
+      return false;
+    }
+  };
+  const sent = (/** @type {string} */ line) => {
+    sentLines.set(line, Date.now());
+    if (sentLines.size > 50) sentLines.delete(sentLines.keys().next().value);
+  };
+  function flushHeld() {
+    if (heldLost && post(`(${heldLost} earlier notes lost while the native port was down)`)) heldLost = 0;
+    while (held.length && !heldLost) {
+      const { line, at } = held[0];
+      if (!post(`(at ${clock(at)}) ${line}`)) return;
+      held.shift();
+      sent(line);
+    }
+  }
   const note = (/** @type {any[]} */ ...args) => {
     log(...args);
     const line = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ').slice(0, 300);
-    const now = Date.now();
-    if ((sentLines.get(line) ?? -Infinity) > now - 60_000) return;
-    sentLines.set(line, now);
-    if (sentLines.size > 50) sentLines.delete(sentLines.keys().next().value);
-    try {
-      port?.postMessage({ type: 'log', line });
-    } catch {
-      // no port (yet): the console has it
+    if ((sentLines.get(line) ?? -Infinity) > Date.now() - 60_000) return;
+    if (held.length && port) flushHeld();
+    if (!held.length && post(line)) return sent(line);
+    if (held.some((h) => h.line === line)) return;
+    held.push({ line, at: Date.now() });
+    if (held.length > HELD_NOTES) {
+      held.shift();
+      heldLost++;
     }
   };
   /** @type {(message: any, sender: any) => Promise<any>} */
@@ -214,6 +270,14 @@ export function createLink({
   let askMs = 0;
   let askTimer = null;
   let lastHeard = 0;
+  // When a late check (a pause) last probed the app: its quiet is counted from then at the earliest.
+  let resumedAt = -Infinity;
+  // How the last link here ended (LAST_KEY), written in order.
+  let lastWrite = Promise.resolve();
+  const setLast = (what, why) => {
+    const value = { what, why: String(why).slice(0, 120), at: Date.now() };
+    lastWrite = lastWrite.then(() => session()?.set({ [LAST_KEY]: value })).catch(() => {});
+  };
   let timers = [];
   let pingTimer = null;
   let pending = null;
@@ -224,7 +288,12 @@ export function createLink({
   let lastTheme = '';
   let snapshotting = null;
   let appUp = false;
-  let socketsOff = null;
+  // The socket guard, once read: { off: false } or { off: true, at, why, until (null: this Safari session) }.
+  /** @type {{ off: boolean, at?: number, why?: string, until?: number | null } | null} */
+  let guard = null;
+  // The guard's sightings (HUNG_KEY), said in the next hello and cleared once a link opens.
+  /** @type {{ count: number, at: number } | null} */
+  let hung = null;
   let toldWorker = false;
   // What pages see (storage.local appLink).
   let pageState = { state: 'off', epoch: null, at: 0, layouts: {}, drawn: {} };
@@ -265,7 +334,11 @@ export function createLink({
     const fresh = state === 'off' || (state === 'linked' && epoch !== pageState.epoch);
     const last = Object.keys(pageState.layouts ?? {}).length ? pageState.layouts : pageState.lastLayouts ?? {};
     pageState = { ...pageState, state, epoch, at: Date.now(), ...(fresh ? { layouts: ofEpoch(pageState.layouts, epoch), drawn: {}, lastLayouts: last } : {}) };
-    if (state !== 'off') delete pageState.why;
+    if (state !== 'off') {
+      delete pageState.why;
+      delete pageState.offAt;
+      delete pageState.offUntil;
+    }
     if (changed) for (const cb of [...listeners]) cb(state);
     writePageState(0);
   }
@@ -292,12 +365,18 @@ export function createLink({
     setPageState('off');
   }
   // Why there's no link, for the new-tab page: 'no-link' (Margin.app is
-  // running but sent none), or nothing said (it isn't running, or not known).
-  function setWhy(why) {
-    if (pageState.why === why) return;
+  // running but sent none), 'sockets-off' (the socket guard turned the link
+  // off: `offAt`, and `offUntil` unless it's for this Safari session), or
+  // nothing said (it isn't running, or not known).
+  function setWhy(why, { offAt = undefined, offUntil = undefined } = {}) {
+    if (pageState.why === why && pageState.offAt === offAt && pageState.offUntil === offUntil) return;
     pageState = { ...pageState };
+    delete pageState.why;
+    delete pageState.offAt;
+    delete pageState.offUntil;
     if (why) pageState.why = why;
-    else delete pageState.why;
+    if (offAt != null) pageState.offAt = offAt;
+    if (offUntil != null) pageState.offUntil = offUntil;
     writePageState(0);
   }
 
@@ -311,14 +390,43 @@ export function createLink({
     }
     const mine = port;
     port.onMessage?.addListener((m) => onNative(m));
-    port.onDisconnect?.addListener(() => { if (port === mine) port = null; });
+    port.onDisconnect?.addListener(() => { if (port === mine) { port = null; portLost(); } });
+    portBack();
+    flushHeld();
     return port;
   }
+  // The native port going and coming back, at most once a PORT_NOTE_MS each (counted between).
+  let portDownAt = null;
+  let portDrops = 0;
+  let portLostNoted = -Infinity;
+  let portBackNoted = -Infinity;
+  function portLost() {
+    portDownAt ??= Date.now();
+    portDrops++;
+    if (Date.now() - portLostNoted < PORT_NOTE_MS) return;
+    portLostNoted = Date.now();
+    let error = '';
+    try { error = String(api.runtime.lastError?.message ?? ''); } catch {}
+    note(`the native port disconnected${error ? ` (${error.slice(0, 80)})` : ''}; it's made again at the next ping`);
+  }
+  function portBack() {
+    if (portDownAt == null) return;
+    const down = Date.now() - portDownAt;
+    portDownAt = null;
+    if (Date.now() - portBackNoted < PORT_NOTE_MS) return;
+    portBackNoted = Date.now();
+    note(`the native port is back after ${(down / 1000).toFixed(1)} s (${portDrops} disconnect${portDrops === 1 ? '' : 's'} since the last such note)`);
+    portDrops = 0;
+  }
   function ping() {
+    const p = ensurePort();
     try {
-      ensurePort()?.postMessage({ type: 'ping', at: Date.now() });
+      p?.postMessage({ type: 'ping', at: Date.now() });
     } catch {
-      port = null;
+      if (port === p) {
+        port = null;
+        portLost();
+      }
     }
   }
   function onNative(message) {
@@ -355,7 +463,11 @@ export function createLink({
       try {
         if (kept && !appUp) {
           const k = await keptLink();
-          if (k && (await open(k, T.keptWait))) return true;
+          if (k) {
+            const tried = await open(k, T.keptWait);
+            note(`kept link at the background's start (port ${k.port}): ${tried.how}`);
+            if (tried.ok) return true;
+          }
         }
         return await ask();
       } finally {
@@ -365,7 +477,8 @@ export function createLink({
   }
   async function ask() {
     if (!on) return false;
-    if (noSocketHere() || (await noSockets())) return failed();
+    if (noSocketHere()) return failed();
+    if (await noSockets()) return failed({ socketsOff: true });
     appUp = false;
     nonce = random();
     const answer = new Promise((resolve) => {
@@ -400,18 +513,20 @@ export function createLink({
       if (on) note(`wantLink: Margin.app is running but sent no link within ${T.linkWait} ms`);
       return failed({ noLink: true });
     }
-    if (await open(got, T.openWait)) return true;
-    note(`the link on port ${got.port} didn't open within ${T.openWait} ms`);
-    return failed();
+    const tried = await open(got, T.openWait);
+    if (tried.ok) return true;
+    note(`the link on port ${got.port} didn't open: ${tried.how}`);
+    return failed(tried.how === 'sockets off' ? { socketsOff: true } : {});
   }
   // No app to link to: asked again later (and when a page starts, or the app
   // says it's up). Pages lose their box once it's clear.
   let launches = 0;
   let noLinks = 0;
-  function failed({ appGone = false, launching = false, noLink = false } = {}) {
-    if (appGone) gone();
+  function failed({ appGone = false, launching = false, noLink = false, socketsOff = false } = {}) {
+    if (appGone || socketsOff) gone();
     else if (pageState.state !== 'off' && !goneTimer) dropping();
-    if (noLink || appGone || launching) setWhy(noLink ? 'no-link' : undefined);
+    if (socketsOff) setWhy('sockets-off', { offAt: guard?.at ?? Date.now(), offUntil: guard?.until ?? undefined });
+    else if (noLink || appGone || launching) setWhy(noLink ? 'no-link' : undefined);
     if (!noLink) noLinks = 0;
     // Starting: every LAUNCH_ASK_MS for a while (its appUp may come first).
     if (launching && launches++ < T.launchAsks) askMs = T.launchAsk;
@@ -429,77 +544,117 @@ export function createLink({
     return true;
   }
   const version = () => api.runtime.getManifest?.().version ?? null;
-  // Whether sockets were given up on: a background before this one never got
-  // past opening one (the note was left): off until another version of
-  // Margin, or (the session's note) until Safari restarts.
+  // Whether sockets are off here (the socket guard): a background before this
+  // one never got past opening one (the note was left). The first Safari
+  // session to find it: off for the rest of that session. Found again in a
+  // later session (the count kept in storage.local): off for OFF_MS. Then
+  // tried again; Try again (retrySockets) ends it at once.
   async function noSockets() {
-    if (socketsOff !== null) return socketsOff;
+    if (guard && !(guard.off && guard.until != null && Date.now() >= guard.until)) return guard.off;
     const [kept, got] = await Promise.all([
-      Promise.resolve(local().get([OPENING_KEY, OFF_KEY])).catch(() => null),
+      Promise.resolve(local().get([OPENING_KEY, OFF_KEY, HUNG_KEY])).catch(() => null),
       Promise.resolve(session()?.get(SESSION_OFF_KEY)).catch(() => null),
     ]);
+    const h = kept?.[HUNG_KEY];
+    hung = Number.isInteger(h?.count) && h.count > 0 && Number.isFinite(h.at) ? { count: h.count, at: h.at } : null;
     const off = kept?.[OFF_KEY];
-    if (off && off.v === version()) {
-      note(`off since ${new Date(off.at).toISOString()}: a socket being opened never finished (${off.why})`);
-      return (socketsOff = true);
+    if (off && typeof off === 'object') {
+      if (Number.isFinite(off.until) && Date.now() < off.until) {
+        guard = { off: true, at: Number.isFinite(off.at) ? off.at : null, why: String(off.why ?? ''), until: off.until };
+        note(`sockets off since ${clock(guard.at ?? Date.now())} until ${new Date(off.until).toISOString()}: ${guard.why}`);
+        return true;
+      }
+      // Ended, or the old shape ({ v }: until another version of Margin, which never came).
+      await Promise.resolve(local().remove(OFF_KEY)).catch(() => {});
+      note(Number.isFinite(off.until) ? `the link's lasting off ended at ${new Date(off.until).toISOString()}: sockets on again` : 'an old lasting off (until another version) was left: removed, sockets on again');
     }
-    if (got?.[SESSION_OFF_KEY]) return (socketsOff = true);
+    const sessionOff = got?.[SESSION_OFF_KEY];
+    if (sessionOff) {
+      guard = { off: true, at: Number.isFinite(sessionOff.at) ? sessionOff.at : null, why: String(sessionOff.why ?? 'a socket being opened was never finished'), until: null };
+      note(`sockets off for this Safari session${guard.at ? ` since ${clock(guard.at)}` : ''}: ${guard.why}`);
+      return true;
+    }
     if (kept?.[OPENING_KEY]) {
-      const why = 'a socket being opened was never finished: the constructor hung, or Safari quit just then';
-      note(`${why}; no link until another version of Margin`);
-      await Promise.resolve(local().set({ [OFF_KEY]: { at: Date.now(), why, v: version() } })).catch(() => {});
+      const at = Date.now();
+      const count = (hung?.count ?? 0) + 1;
+      const why = 'a socket being opened was never finished (its constructor hung, or Safari quit just then)';
+      hung = { count, at };
       await Promise.resolve(local().remove(OPENING_KEY)).catch(() => {});
-      await Promise.resolve(session()?.set({ [SESSION_OFF_KEY]: true })).catch(() => {});
-      return (socketsOff = true);
+      if (count >= 2) {
+        const until = at + T.offFor;
+        await Promise.resolve(local().set({ [HUNG_KEY]: hung, [OFF_KEY]: { at, until, count, why } })).catch(() => {});
+        guard = { off: true, at, why, until };
+        note(`the socket guard turned the link off: ${why}, in ${count} Safari sessions; no link until ${new Date(until).toISOString()} (Try again on the new-tab page ends it)`);
+      } else {
+        await Promise.resolve(local().set({ [HUNG_KEY]: hung })).catch(() => {});
+        await Promise.resolve(session()?.set({ [SESSION_OFF_KEY]: { at, why } })).catch(() => {});
+        guard = { off: true, at, why, until: null };
+        note(`the socket guard turned the link off: ${why}; no link for the rest of this Safari session (Try again on the new-tab page ends it)`);
+      }
+      return true;
     }
-    return (socketsOff = false);
+    guard = { off: false };
+    return false;
   }
+  // A kept or given link opened: { ok, how } (`how` for the log: 'open in 12 ms', 'refused or closed
+  // at once (3 ms)', 'no welcome within 400 ms (slow)', …).
   async function open(kept, waitMs) {
-    if (noSocketHere() || (await noSockets())) return false;
-    await Promise.resolve(local().set({ [OPENING_KEY]: { at: Date.now(), v: version() } })).catch(() => {});
+    if (noSocketHere() || (await noSockets())) return { ok: false, how: 'sockets off' };
+    await Promise.resolve(local().set({ [OPENING_KEY]: { at: Date.now() } })).catch(() => {});
     let socket = null;
     try {
       socket = new Socket(`ws://127.0.0.1:${kept.port}/?t=${encodeURIComponent(kept.token)}`);
     } catch {
       socket = null;
     }
-    void Promise.resolve(local().remove(OPENING_KEY)).catch(() => {});
-    return socket ? follow(socket, kept, waitMs) : false;
+    // Its handlers on before anything is awaited (a welcome that came meanwhile would be lost), then the note goes.
+    const followed = socket ? follow(socket, kept, waitMs) : null;
+    await Promise.resolve(local().remove(OPENING_KEY)).catch(() => {});
+    return followed ? await followed : { ok: false, how: 'the WebSocket constructor threw' };
   }
+  // A socket closed with a code and why (a page's WebSocket may send only 1000 or 3000–4999, and up to 123 bytes).
+  const closeSocket = (socket, why) => { try { socket?.close(1000, String(why).slice(0, 100)); } catch {} };
   // Until it's open and the app has said who it is (or not, in `waitMs`).
   function follow(socket, kept, waitMs) {
+    const t0 = now();
+    const ms = () => Math.round(now() - t0);
     return new Promise((resolve) => {
       let welcomed = false;
-      const giveUp = () => {
+      let settled = false;
+      const done = (ok, how) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
-        try { socket.close(); } catch {}
-        resolve(false);
+        resolve({ ok, how });
       };
-      const timer = setTimeout(() => { if (!welcomed) giveUp(); }, waitMs);
-      socket.onopen = () => { if (!on || ws) giveUp(); };
+      const giveUp = (why, how = why) => {
+        closeSocket(socket, why);
+        done(false, how);
+      };
+      const timer = setTimeout(() => { if (!welcomed) giveUp(`no welcome within ${waitMs} ms`, `no welcome within ${waitMs} ms (slow)`); }, waitMs);
+      socket.onopen = () => { if (!on || ws) giveUp('not needed: linked already, or stopped'); };
       socket.onerror = () => {};
-      socket.onclose = () => {
-        clearTimeout(timer);
-        if (!welcomed) return resolve(false);
-        if (ws === socket) dropped('closed');
+      socket.onclose = (event) => {
+        const code = `${event?.code ?? '?'}${event?.reason ? ` ${String(event.reason).slice(0, 80)}` : ''}`;
+        if (!welcomed) return done(false, ms() < FAST_CLOSE_MS ? `refused or closed at once (${ms()} ms, ${code})` : `closed after ${ms()} ms before the welcome (${code})`);
+        if (ws === socket) dropped(`closed by the app (${code})`);
       };
       socket.onmessage = (event) => {
         if (welcomed) {
           if (ws === socket) onApp(event.data);
           return;
         }
-        if (!on || ws) return giveUp();
+        if (!on || ws) return giveUp('not needed: linked already, or stopped');
         let m = null;
         try { m = JSON.parse(String(event.data)); } catch {}
         if (m?.k !== 'welcome' || m.v !== VERSION || m.key !== kept.key) {
           note('what answered on', kept.port, 'isn\'t Margin.app; that link is forgotten');
           void forget(kept);
-          return giveUp();
+          return giveUp('not Margin.app\'s welcome', 'not Margin.app (wrong welcome)');
         }
         welcomed = true;
-        clearTimeout(timer);
         linked(socket, kept);
-        resolve(true);
+        done(true, `open in ${ms()} ms`);
       };
     });
   }
@@ -513,7 +668,8 @@ export function createLink({
     ws = socket;
     epoch = random();
     seq = 0;
-    lastHeard = Date.now();
+    lastHeard = now();
+    resumedAt = -Infinity;
     askMs = 0;
     launches = 0;
     noLinks = 0;
@@ -524,8 +680,15 @@ export function createLink({
     clearTimeout(goneTimer);
     goneTimer = null;
     void Promise.resolve(session()?.set({ [SESSION_KEY]: { port: at, token, key } })).catch(() => {});
+    setLast('linked', `on port ${at}`);
     const { origin, since } = copy();
-    send({ k: 'hello', v: VERSION, epoch, profile, browser: platform?.name === 'chrome' ? 'chrome' : 'safari', owner: isOwner(), ext: version(), instanceId, origin, since });
+    // The socket guard's sightings, said once to the app and then forgotten: sockets work here.
+    const offBefore = hung ? `the socket guard found an unfinished socket in ${hung.count} Safari session${hung.count === 1 ? '' : 's'}, last at ${new Date(hung.at).toISOString()}` : null;
+    send({ k: 'hello', v: VERSION, epoch, profile, browser: platform?.name === 'chrome' ? 'chrome' : 'safari', owner: isOwner(), ext: version(), instanceId, origin, since, ...(offBefore ? { socketsOff: offBefore } : {}) });
+    if (hung) {
+      hung = null;
+      void Promise.resolve(local().remove(HUNG_KEY)).catch(() => {});
+    }
     setPageState('linked');
     void (async () => {
       const at0 = epoch;
@@ -535,10 +698,29 @@ export function createLink({
       sendKeys();
       await dataHello();
     })();
+    // Every CHECK_MS: nothing heard from the app for DEAD_MS drops the link. A check that ran
+    // late (over 3 checks: the background was paused, or the Mac slept) judges nothing itself: it
+    // notes the pause, sends the app a tock (it hears this copy is back), and the link is judged
+    // after what came in meanwhile (a setTimeout of 0, after the socket's queued messages), the
+    // app's quiet counted from that probe, never from before the pause.
+    let lastCheck = now();
+    const judge = () => {
+      if (ws === socket && now() - Math.max(lastHeard, resumedAt) > T.dead) drop('no word from the app for 12 s');
+    };
     timers = [
       setInterval(() => {
         if (!isOwner()) return stop('a newer copy of Margin is running');
-        if (Date.now() - lastHeard > T.dead) drop('no word from the app for 12 s');
+        const t = now();
+        const gap = t - lastCheck;
+        lastCheck = t;
+        if (gap > 3 * T.check) {
+          resumedAt = t;
+          note(`paused ${(gap / 1000).toFixed(1)} s (a link check ran late); probing the app, judged from now`);
+          send({ k: 'tock', at: Date.now() });
+          setTimeout(judge, 0);
+          return;
+        }
+        judge();
       }, T.check),
       setInterval(() => void windowsNow(), T.windows),
     ];
@@ -548,7 +730,7 @@ export function createLink({
     const socket = ws;
     if (!socket) return;
     dropped(why);
-    try { socket.close(1000, why); } catch {}
+    closeSocket(socket, why);
   }
   // `bye`: the app said goodbye (it quit): pages lose their box at once, and
   // the app is asked for later. Else a drop: tried again.
@@ -563,6 +745,7 @@ export function createLink({
     pendingTimer = null;
     sentIcons = null;
     note('dropped:', why);
+    setLast('dropped', why);
     if (bye || !on) {
       gone();
       void Promise.resolve(session()?.remove(SESSION_KEY)).catch(() => {});
@@ -576,12 +759,19 @@ export function createLink({
     if (busy) return busy;
     busy = (async () => {
       try {
+        let n = 0;
         for (const ms of T.reconnect) {
           await new Promise((resolve) => setTimeout(resolve, ms));
           if (!on || ws) return !!ws;
           const kept = appUp ? null : await keptLink();
-          if (!kept) break;
-          if (await open(kept, T.openWait)) return true;
+          if (!kept) {
+            note(appUp ? 'the kept link not tried: the app said it started again' : 'no kept link to try: asking');
+            break;
+          }
+          const tried = await open(kept, T.openWait);
+          note(`kept link try ${++n} of ${T.reconnect.length} (port ${kept.port}): ${tried.how}`);
+          if (tried.ok) return true;
+          if (tried.how === 'sockets off') break;
         }
         return on && !ws ? await ask() : !!ws;
       } finally {
@@ -599,7 +789,7 @@ export function createLink({
     } catch {
       return;
     }
-    lastHeard = Date.now();
+    lastHeard = now();
     switch (message?.k) {
       case 'tick':
         return void send({ k: 'tock', at: Date.now() });
@@ -616,7 +806,7 @@ export function createLink({
         const socket = ws;
         note('the app said goodbye:', message.why);
         dropped(`bye (${message.why})`, { bye: true });
-        try { socket?.close(); } catch {}
+        closeSocket(socket, 'the app said goodbye');
         return;
       }
       case 'data.need':
@@ -958,6 +1148,7 @@ export function createLink({
   async function readPageState() {
     const got = await Promise.resolve(local().get(APP_LINK_KEY)).catch(() => null);
     const before = got?.[APP_LINK_KEY];
+    const was = before && typeof before === 'object' ? String(before.state ?? '?') + (before.why ? ` (${before.why})` : '') : 'none';
     if (before && typeof before === 'object') {
       const wins = await Promise.resolve(api.windows?.getAll?.()).catch(() => null);
       const ids = Array.isArray(wins) ? new Set(wins.map((w) => String(w?.id))) : null;
@@ -967,6 +1158,13 @@ export function createLink({
       pageState = { state: off ? 'off' : 'reconnecting', epoch: null, at: Date.now(), layouts: off ? {} : listed(before.layouts), drawn: off ? {} : listed(before.drawn), lastLayouts: last };
     }
     if (pageState.state !== 'off') writePageState(0);
+    return was;
+  }
+  // The last link's end, for the start note.
+  function lastStop(last) {
+    if (!last || typeof last !== 'object' || !Number.isFinite(last.at)) return 'none noted this Safari session';
+    if (last.what === 'linked') return `none since linked at ${clock(last.at)} (the background before was torn down while linked)`;
+    return `${last.what} at ${clock(last.at)}: ${String(last.why ?? '').slice(0, 120)}`;
   }
   /** @param {{ route: typeof route, settings?: any }} options */
   async function start(options) {
@@ -975,9 +1173,11 @@ export function createLink({
     if (on || !enabled() || !isOwner()) return;
     on = true;
     await readMeta();
-    await readPageState();
+    const before = await readPageState();
     data?.onChanges(dataChanged);
     ensurePort();
+    const [kept, last] = await Promise.all([keptLink(), Promise.resolve(session()?.get(LAST_KEY)).then((g) => g?.[LAST_KEY], () => null)]);
+    note(`background started (kept link: ${kept ? 'yes' : 'no'}, page state before: ${before}, last stop: ${lastStop(last)})`);
     // The pages in front say again whether they're shown (what they said before this background
     // started is gone with the one before).
     void Promise.resolve(api.tabs.query({ active: true })).then((tabs) => { for (const t of tabs ?? []) if (Number.isInteger(t?.id)) askVisibility(t.id); }, () => {});
@@ -992,6 +1192,7 @@ export function createLink({
       send({ k: 'bye', why });
       drop(why);
     }
+    setLast('stopped', why);
     gone();
     clearInterval(pingTimer);
     clearTimeout(askTimer);
@@ -1011,6 +1212,26 @@ export function createLink({
     // app if it isn't running). False where there's no link to ask for.
     askNow() {
       if (!on) return false;
+      if (ws) return true;
+      askMs = 0;
+      launches = 0;
+      noLinks = 0;
+      void link({ kept: false });
+      return true;
+    },
+    // The new-tab page's Try again with the socket guard's off (a person's choice): its notes
+    // cleared, sockets on, and the link asked for now.
+    async retrySockets() {
+      if (!on) return false;
+      await Promise.all([
+        Promise.resolve(local().remove([OFF_KEY, HUNG_KEY, OPENING_KEY])).catch(() => {}),
+        Promise.resolve(session()?.remove(SESSION_OFF_KEY)).catch(() => {}),
+      ]);
+      const was = guard;
+      guard = null;
+      hung = null;
+      note(`sockets on again: Try again chosen${was?.off ? ` (they were off since ${clock(was.at ?? Date.now())})` : ''}`);
+      if (pageState.why === 'sockets-off') setWhy(undefined);
       if (ws) return true;
       askMs = 0;
       launches = 0;

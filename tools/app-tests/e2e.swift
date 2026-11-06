@@ -507,11 +507,41 @@ func scenario() async {
   if let o9 = shell.overlays[k9] { check("the note shown", await waitJS(o9.webView, "return document.documentElement.hasAttribute('data-reconnecting') && !!document.getElementById('margin-reconnecting')")) }
   check("then closed, the copy not back", await until(3, { shell.overlays[k9] == nil && !shell.isReconnecting("safari:P2") }))
 
-  // ---- a dispatch Safari refuses, and the app replaced on disk under it (an update) ----
+  // ---- how a socket ended, in the log (DECISIONS.md "Margin 2: Safari reliability", link diagnostics) ----
   var said: [String] = []
   let echo = Diagnostics.echo
   Diagnostics.echo = { said.append($0); echo?($0) }
   func saidSince(_ from: Int) -> [String] { Array(said.dropFirst(from)) }
+  func ended(_ id: String, _ profile: String, _ end: JSONObject, _ line: String) async {
+    let at = said.count
+    fake.tell(["do": "rawConnect", "id": id, "profile": profile])
+    let up = await until(5, { shell.links["safari:\(profile)"] != nil })
+    fake.tell(end.merging(["id": id]) { a, _ in a })
+    let logged = await until(3, { saidSince(at).contains(line) })
+    check("\(id): \(line)", up && logged, "\(saidSince(at).filter { $0.contains("down") || $0.contains("socket") })")
+  }
+  // A close frame of 1001 and a reason: both in the log (a page's WebSocket sends 1001 only as Safari tears it down).
+  await ended("R1", "PR1", ["do": "rawClose", "payload": [3, 233, 0x78]], "link down (safari:PR1): closed by the extension (1001 x)")
+  await ended("R2", "PR2", ["do": "rawClose", "payload": [Int]()], "link down (safari:PR2): closed by the extension (1005, no status code)")
+  await ended("R3", "PR3", ["do": "rawClose", "payload": [3, 232] + Array("no word from the app for 12 s".utf8).map(Int.init)], "link down (safari:PR3): closed by the extension (1000 no word from the app for 12 s)")
+  await ended("R4", "PR4", ["do": "rawEnd"], "link down (safari:PR4): closed by the extension (1006, no close frame)")
+  // Sockets that end before their hello: after the upgrade, before it, and the app's own 'no hello' timeout.
+  var at = said.count
+  fake.tell(["do": "rawConnect", "id": "R5", "hello": false])
+  _ = await until(3, { fake.first("rawUpgraded") { $0["id"] as? String == "R5" } != nil })
+  fake.tell(["do": "rawEnd", "id": "R5"])
+  check("a socket ended after the upgrade, before its hello: logged", await until(3, { saidSince(at).contains { $0.hasPrefix("socket ended before its hello (after the upgrade, ") && $0.hasSuffix("): closed by the extension (1006, no close frame)") } }), "\(saidSince(at))")
+  at = said.count
+  fake.tell(["do": "rawConnect", "id": "R6", "upgrade": false])
+  try? await Task.sleep(nanoseconds: 100_000_000)
+  fake.tell(["do": "rawEnd", "id": "R6"])
+  check("a TCP connection ended before the upgrade: logged", await until(3, { saidSince(at).contains { $0.hasPrefix("socket ended before its hello (before the upgrade, ") && $0.hasSuffix("): TCP closed") } }), "\(saidSince(at))")
+  at = said.count
+  fake.tell(["do": "rawConnect", "id": "R7", "hello": false])
+  check("a socket that never says hello: closed after the limit, logged", await until(4, { saidSince(at).contains { $0.hasPrefix("socket ended before its hello (after the upgrade, ") && $0.hasSuffix("): no hello within 2 s") } }), "\(saidSince(at))")
+  check("and its end seen by the copy", await until(2, { fake.first("rawClosed") { $0["id"] as? String == "R7" } != nil }))
+
+  // ---- a dispatch Safari refuses, and the app replaced on disk under it (an update) ----
   check("a link is up for what follows", !link.connections.isEmpty)
   dispatcher.refuse = "SFErrorDomain 1"
   mark = fake.events.count

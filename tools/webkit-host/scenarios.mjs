@@ -1182,6 +1182,24 @@ Object.assign(SCENARIOS, {
     boxed('A'),
   ],
 
+  // The socket guard (Margin 2: Safari reliability): a background that finds the note of a socket
+  // being opened left behind (one before it never got past `new WebSocket`, or Safari quit just then)
+  // makes no socket for the rest of the Safari session. The new-tab page says Margin turned its link
+  // off and when, with Try again and no Start; Try again links at once, and the page is the app's.
+  'link-guard': [
+    appWith(260),
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install', sameId: true }, linked('A'),
+    { op: 'eval', in: 'A', js: `await browser.storage.local.set({ appLinkOpening: { at: Date.now() } }); return 'left'` },
+    { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
+    // (A's content world is the old copy's now: read in Margin's own page.)
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html', active: true },
+    checkPage('N', 'pages: off, why sockets-off, since when', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'off' && appLink?.why === 'sockets-off' && appLink.offAt > 0 && appLink.offUntil === undefined`, 9000),
+    checkPage('N', 'N: Margin turned its link off, when, Try again, no Start', `!document.getElementById('notice').hidden && document.getElementById('title').textContent === 'Margin turned its link off' && /^Margin turned its link off at .+ after a socket never opened\. It tries again when Safari next starts\.$/.test(document.getElementById('why').textContent) && !document.getElementById('retry').hidden && document.getElementById('start').hidden`, 5000),
+    { op: 'page', in: 'N', js: `document.getElementById('retry').click(); return 'clicked'` },
+    checkPage('N', 'N: Try again links: loaded again, drawn by the app', `document.getElementById('notice')?.hidden === true && (await browser.storage.local.get('appLink')).appLink?.state === 'linked'`, 9000),
+    checkPage('N', 'the guard\'s notes gone', `const got = await browser.storage.local.get(['appLinkOff', 'appLinkHung', 'appLinkOpening']); return Object.keys(got).length === 0`, 3000),
+  ],
+
   // Margin.app running but every link it dispatches refused (one an update
   // left running, before scripts/safari.sh quit it: SFErrorDomain 1): the
   // new-tab page says it isn't answering, with no start button (it's

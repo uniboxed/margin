@@ -7,7 +7,9 @@
 // a button that starts it and an address field, so a new tab still works; or,
 // when the app is running but sent no link (appLink.why 'no-link',
 // background/link.js), that it isn't answering, with no button (it's
-// running: starting it does nothing). Linked, but the app draws nothing over
+// running: starting it does nothing); or, when Margin turned its link off
+// itself (appLink.why 'sockets-off': a socket a background began never
+// opened), when and until when, with Try again (retryLink). Linked, but the app draws nothing over
 // this window (appLink.drawn false: not in full screen, or not found yet), it
 // says so, with the address field and no button. It's loaded again when what
 // it shows should change: told by storage events, and read again right after
@@ -111,7 +113,9 @@ function describe(appLink) {
   const title = document.getElementById('title');
   const why = document.getElementById('why');
   const start = /** @type {HTMLButtonElement | null} */ (document.getElementById('start'));
+  const retry = /** @type {HTMLButtonElement | null} */ (document.getElementById('retry'));
   if (!title || !why || !start) return;
+  if (retry) retry.hidden = true;
   if (mode === 'undrawn') {
     title.textContent = 'Margin.app hasn’t placed this window yet';
     why.textContent = 'Margin.app draws Margin’s sidebar and palette around full-screen windows. Put this window in full screen, or wait a moment while Margin.app finds it; this page changes once it has.';
@@ -119,12 +123,27 @@ function describe(appLink) {
     return;
   }
   if (!platform?.nativeApp) return;
+  if (appLink?.why === 'sockets-off') {
+    title.textContent = 'Margin turned its link off';
+    why.textContent = `Margin turned its link off at ${when(appLink.offAt)} after a socket never opened. `
+      + (Number.isFinite(appLink.offUntil) ? `It tries again at ${when(appLink.offUntil)}.` : 'It tries again when Safari next starts.');
+    start.hidden = true;
+    if (retry) retry.hidden = false;
+    return;
+  }
   const noLink = appLink?.why === 'no-link';
   title.textContent = noLink ? 'Margin.app isn’t answering' : 'Margin.app isn’t running';
   why.textContent = noLink
     ? 'Margin.app is running but didn’t link to Margin. Margin keeps asking; this page changes once it’s linked.'
     : 'Margin’s sidebar, palette and Settings are drawn by Margin.app.';
   start.hidden = noLink;
+}
+
+// A time as the person reads it: the time of day, and the day too if it isn't today.
+function when(/** @type {unknown} */ at) {
+  const d = new Date(Number.isFinite(at) ? /** @type {number} */ (at) : Date.now());
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? time : `${time} on ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
 }
 
 function showNotice() {
@@ -141,6 +160,15 @@ function showNotice() {
     start.hidden = false;
     describe(appLinkNow);
     let timer = null;
+    // Try again (Margin turned its link off): sockets on again; the page changes once it's linked.
+    document.getElementById('retry')?.addEventListener('click', async () => {
+      const retry = /** @type {HTMLButtonElement} */ (document.getElementById('retry'));
+      retry.disabled = true;
+      status.textContent = 'Trying again…';
+      const asked = await send('retryLink');
+      retry.disabled = false;
+      status.textContent = asked === false ? 'Margin can’t reach Margin.app from here.' : '';
+    });
     start.addEventListener('click', async () => {
       // Linked meanwhile (a word this page missed): loaded again, not started again.
       if (appDraws(await readLink())) return void location.reload();
