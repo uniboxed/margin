@@ -1197,6 +1197,30 @@ Object.assign(SCENARIOS, {
     linked('A'), boxed('A'),
   ],
 
+  // Which page is shown (Margin 2: Safari reliability). Each window's report carries its tab in front's
+  // word (background/link.js visibility), and the copy's line in Margin.app's log says it: a page says
+  // it's shown as it starts; another tab shown in the window, the window's word is forgotten and the new
+  // tab asked, and it says so; the new-tab page says too. (The host's tabs behind are hidden, the one in
+  // front shown: WebKit's own visibilityState. Whether a full-screen window on another Space is hidden is
+  // Safari's to say: TESTING.md.)
+  'visibility': [
+    appWith(260),
+    { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), shown('A'),
+    { op: 'appHeard', label: 'A, in front, says it\'s shown: its window\'s report carries it', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"', timeout: 8000 },
+    { op: 'appMark' },
+    { op: 'open', name: 'B', url: '/p/B', active: true }, shown('B'),
+    checkPage('A', 'A is hidden now', `document.hidden`),
+    { op: 'appHeard', label: 'B shown in the window: the window\'s word forgotten (not taken as hidden)', has: ['"ev":"extension log"', 'windows report at'], re: 'windows report at [0-9:.]+: [0-9]+( focused)?( \\(focus heard [0-9:.]+\\))?(; blur heard [0-9:.]+)?"' },
+    { op: 'appHeard', label: 'and B, asked, says it\'s shown', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"' },
+    { op: 'appHeard', label: 'never the hidden tab A\'s word as the window\'s', has: ['"ev":"extension log"', 'windows report at', 'hidden'], none: true },
+    { op: 'appMark' },
+    // (The start page: a fresh new tab would hand off to the tab before it.)
+    { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true }, shown('N'),
+    { op: 'appHeard', label: 'N shown: the window\'s word forgotten', has: ['"ev":"extension log"', 'windows report at'], re: 'windows report at [0-9:.]+: [0-9]+( focused)?( \\(focus heard [0-9:.]+\\))?(; blur heard [0-9:.]+)?"' },
+    { op: 'appHeard', label: 'and the new-tab page says it\'s shown, as web pages do', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"', timeout: 8000 },
+    checkPage('N', 'the new-tab page is still the tab in front', `!document.hidden && location.hash === '#launcher'`),
+  ],
+
   // ---- Margin 2 Phase 2 step 7: what pages said in their own UI, said by Margin.app's overlay ----
   // Through the app's real end of the link (link-server/): what it heard
   // (appHeard), and a request from its UI (appReq). The overlay drawing it is

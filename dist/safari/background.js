@@ -312,7 +312,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScroll', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp', 'pageLoading', 'gesture', 'viewport']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScroll', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp', 'pageLoading', 'gesture', 'viewport', 'visibility']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it
@@ -403,7 +403,12 @@ api.windows?.onCreated?.addListener((win) => appLink.windowCreated(win?.id));
 api.windows?.onRemoved?.addListener((windowId) => appLink.windowClosed(windowId));
 api.windows?.onFocusChanged?.addListener((windowId) => appLink.windowFocused(windowId));
 api.windows?.onBoundsChanged?.addListener(() => appLink.windowsChanged());
-api.tabs.onActivated.addListener(() => appLink.windowsChanged());
+api.tabs.onActivated.addListener((info) => appLink.tabActivated(info?.tabId, info?.windowId));
+// What a tab's page said of being shown is forgotten once it's another page, gone or elsewhere.
+api.tabs.onRemoved.addListener((tabId) => appLink.tabGone(tabId));
+api.tabs.onReplaced?.addListener((_added, removed) => appLink.tabGone(removed));
+api.tabs.onAttached.addListener((tabId) => appLink.tabGone(tabId));
+api.webNavigation?.onCommitted?.addListener(({ tabId, frameId, timeStamp }) => { if (frameId === 0) appLink.tabGone(tabId, Number.isFinite(timeStamp) ? timeStamp : Infinity); });
 // What's loading in each window, for its overlay (background/page-loads.js):
 // a tab gone or moved, and every window again when the link comes.
 api.tabs.onRemoved.addListener((tabId) => pageLoads.tabMoved(tabId));

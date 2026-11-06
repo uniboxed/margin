@@ -387,6 +387,15 @@ export const handlers = {
       ? { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height } : null;
     appLink.viewport(tab.windowId, tab.id, rect);
   },
+  // A page saying whether it's shown (content/core.js and the new-tab page: document.visibilityState,
+  // at a change, at its start and when asked), for Margin.app to tell same-bounds windows of different
+  // profiles apart (background/link.js visibility).
+  /** @param {{ visible?: boolean, at?: number }} message */
+  async visibility({ visible, at } = {}, sender) {
+    const tab = sender?.tab;
+    if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof visible !== 'boolean') return;
+    appLink.visibility(tab.windowId, tab.id, visible, Number.isFinite(at) ? /** @type {number} */ (at) : Date.now());
+  },
   async getZoom(_, sender) {
     if (!sender.tab) return null;
     const zoom = await api.tabs.getZoom(sender.tab.id);

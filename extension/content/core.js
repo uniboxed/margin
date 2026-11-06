@@ -398,6 +398,17 @@ export function startCore() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') shown(); });
   addEventListener('pageshow', (event) => event.persisted && shown());
 
+  // Whether this page is shown, said to the background at each change, once at the start and when
+  // it asks (Safari: Margin.app tells same-bounds full-screen windows of different profiles apart by
+  // which one's page in front is shown: background/link.js visibility). Its time is when it was seen.
+  function tellVisibility() {
+    if (!platform?.nativeApp || retired()) return;
+    void send('visibility', { visible: document.visibilityState === 'visible', at: Date.now() }, false);
+  }
+  document.addEventListener('visibilitychange', tellVisibility);
+  addEventListener('pageshow', (event) => event.persisted && tellVisibility());
+  tellVisibility();
+
   // The state taken: this page's tab and window (its box is its window's
   // layout), the gestures' settings.
   let firstRender = true; // until the page first takes the state
@@ -571,6 +582,7 @@ export function startCore() {
     // (background/newtab-hint.js: Margin.app's overlay says it).
     if (message?.type === 'newtab-hint') return sendResponse({ fromNothing: !document.referrer && history.length === 1 });
     if (message?.type === 'windowState') return setFullscreen(!!message.fullscreen);
+    if (message?.type === 'reportVisibility') return tellVisibility();
     // Margin.app's layout for this window, as it changes (background/link.js).
     if (message?.type === 'appLayout' && Number.isInteger(message.windowId)) {
       if (!appLink) return;

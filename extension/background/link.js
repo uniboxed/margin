@@ -102,6 +102,12 @@ export const APP_REQUESTS = new Set([
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
 ]);
 
+// A time as Margin.app's log shows its own (local, to the millisecond), for lines sent there.
+const clock = (/** @type {number} */ ms) => {
+  const d = new Date(ms);
+  const p = (/** @type {number} */ n, w = 2) => String(n).padStart(w, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+};
 const random = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${String(Math.random()).slice(2)}`;
 const PROFILE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
@@ -658,7 +664,9 @@ export function createLink({
       if (!raw || epoch !== at) return;
       sentIcons = iconsOf(raw.favicons);
       lastWindows = JSON.stringify(windows);
+      lastList = windows;
       send({ k: 'snapshot', epoch, seq: ++seq, state: raw, windows });
+      noteFlags(windows);
     })();
     snapshotting = run;
     await run.catch(() => {});
@@ -701,18 +709,25 @@ export function createLink({
       Promise.resolve(api.windows?.getAll?.()).catch(() => null),
       Promise.resolve(api.tabs.query({ active: true })).catch(() => []),
     ]);
-    return (wins ?? []).filter((w) => w?.id != null).map((w) => {
-      const activeTabId = (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null;
-      const vp = viewports.get(w.id);
-      return {
-        windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
-        state: w.state ?? 'normal', focused: !!w.focused, activeTabId,
-        ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
-        ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
-        // Only its tab in front's word: the inspector is a tab's (app/PROTOCOL.md `viewport`).
-        ...(vp && vp.tabId === activeTabId ? { viewport: vp.rect } : {}),
-      };
-    });
+    return (wins ?? []).filter((w) => w?.id != null).map((w) => known({
+      windowId: w.id, left: w.left ?? 0, top: w.top ?? 0, width: w.width ?? 0, height: w.height ?? 0,
+      state: w.state ?? 'normal', focused: !!w.focused, activeTabId: (fronts ?? []).find((t) => t.windowId === w.id)?.id ?? null,
+      ...(focusedAt.has(w.id) ? { focusedAt: focusedAt.get(w.id) } : {}),
+      ...(createdAt.has(w.id) ? { createdAt: createdAt.get(w.id) } : {}),
+    }));
+  }
+  // What only this copy knows, on a window's entry: its tab in front's word (the inspector, whether
+  // it's shown, are a tab's: app/PROTOCOL.md `viewport`, `visible`), and the last blur it heard.
+  function known(entry) {
+    const { viewport: _vp, visible: _v, visibleAt: _va, blurredAt: _b, ...rest } = entry;
+    const vp = viewports.get(rest.windowId);
+    const seen = rest.activeTabId != null ? visibility.get(rest.activeTabId) : null;
+    return {
+      ...rest,
+      ...(vp && vp.tabId === rest.activeTabId ? { viewport: vp.rect } : {}),
+      ...(seen && seen.windowId === rest.windowId ? { visible: seen.visible, visibleAt: seen.at } : {}),
+      ...(blurredAt != null ? { blurredAt } : {}),
+    };
   }
   // Where each window's tab in front says its page area sits in the window, when that's less than
   // all of it (content/core.js viewportNow: the docked Web Inspector): windowId → { tabId, rect }.
@@ -724,6 +739,30 @@ export function createLink({
   const focusedAt = new Map();
   /** @type {Map<number, number>} */
   const createdAt = new Map();
+  // When this copy last heard windows.onFocusChanged with WINDOW_ID_NONE (none of its windows
+  // focused: Safari left the front, or another profile's window took it). Null: not heard.
+  /** @type {number | null} */
+  let blurredAt = null;
+  // Whether each tab's page says it's shown (content/core.js, newtab.js: document.visibilityState),
+  // and when it last said so: tabId → { windowId, visible, at }. A window's is its tab in front's,
+  // and only that tab's. Missing is unknown (never hidden): a page Margin's script can't run in, one
+  // not loaded yet, one whose window just showed another tab (cleared, the new tab asked again).
+  // Margin.app tells same-bounds full-screen windows of different profiles apart by it
+  // (app/shell/WindowMatcher.swift, the visible rule). Not kept past the background.
+  /** @type {Map<number, { windowId: number, visible: boolean, at: number }>} */
+  const visibility = new Map();
+  // Each page in front asked to say again whether it's shown (the background starting, a tab shown).
+  const askVisibility = (/** @type {number} */ tabId) => { void Promise.resolve(api.tabs.sendMessage?.(tabId, { type: 'reportVisibility' })).catch(() => {}); };
+  // The focus flags and visibility of each windows report, in Margin.app's log when they change
+  // (ids and times only), so the log says what Safari's flags were when the app bound a window.
+  let lastFlags = '';
+  function noteFlags(list) {
+    const line = list.map((w) => `${w.windowId}${w.focused ? ' focused' : ''}${w.focusedAt ? ` (focus heard ${clock(w.focusedAt)})` : ''}${'visible' in w ? ` ${w.visible ? 'shown' : 'hidden'} ${clock(w.visibleAt)}` : ''}`).join('; ');
+    const all = `${line}${blurredAt != null ? `; blur heard ${clock(blurredAt)}` : ''}`;
+    if (all === lastFlags) return;
+    lastFlags = all;
+    note(`windows report at ${clock(Date.now())}: ${all || 'no windows'}`);
+  }
   // Sent when any of it changed; a closed window's layout goes too.
   async function windowsNow() {
     if (!ws || snapshotting) return;
@@ -743,23 +782,21 @@ export function createLink({
     lastWindows = json;
     lastList = list;
     send({ k: 'windows', epoch, seq: ++seq, list });
+    noteFlags(list);
   }
   // The last list sent, for a change only this copy knows (a page's area: the docked inspector),
   // sent at once without asking Safari again; windowsNow follows with Safari's own.
   /** @type {any[] | null} */
   let lastList = null;
-  function windowsWithViewports() {
+  function windowsFromKnown() {
     if (!ws || snapshotting || !lastList) return false;
-    const list = lastList.map((w) => {
-      const { viewport: _old, ...rest } = w;
-      const vp = viewports.get(w.windowId);
-      return vp && vp.tabId === w.activeTabId ? { ...rest, viewport: vp.rect } : rest;
-    });
+    const list = lastList.map(known);
     const json = JSON.stringify(list);
     if (json === lastWindows) return true;
     lastWindows = json;
     lastList = list;
     send({ k: 'windows', epoch, seq: ++seq, list });
+    noteFlags(list);
     return true;
   }
   async function sendTheme() {
@@ -903,6 +940,9 @@ export function createLink({
     await readPageState();
     data?.onChanges(dataChanged);
     ensurePort();
+    // The pages in front say again whether they're shown (what they said before this background
+    // started is gone with the one before).
+    void Promise.resolve(api.tabs.query({ active: true })).then((tabs) => { for (const t of tabs ?? []) if (Number.isInteger(t?.id)) askVisibility(t.id); }, () => {});
     pingTimer = setInterval(ping, T.ping);
     ping();
     await link();
@@ -964,9 +1004,13 @@ export function createLink({
     },
     // Windows opened, closed, focused, moved, a tab shown: looked at now.
     windowsChanged: () => void windowsNow(),
-    // windows.onFocusChanged (WINDOW_ID_NONE: the browser left the front, nothing noted) and onCreated, with their time.
+    // windows.onFocusChanged and onCreated, with their time. WINDOW_ID_NONE (none of this copy's
+    // windows focused) is kept as the copy's `blurredAt`. Each focus is a line in Margin.app's log.
     windowFocused(windowId, at = Date.now()) {
-      if (Number.isInteger(windowId) && windowId >= 0) focusedAt.set(windowId, at);
+      if (!Number.isInteger(windowId)) return;
+      if (windowId >= 0) focusedAt.set(windowId, at);
+      else blurredAt = at;
+      note(`focus heard: ${windowId >= 0 ? `window ${windowId}` : 'none (WINDOW_ID_NONE)'} at ${clock(at)}`);
       void windowsNow();
     },
     windowCreated(windowId, at = Date.now()) {
@@ -981,7 +1025,34 @@ export function createLink({
       if (rect) viewports.set(windowId, { tabId, rect });
       else if (viewports.get(windowId)?.tabId === tabId || rect === null) viewports.delete(windowId);
       if (JSON.stringify(viewports.get(windowId) ?? null) === had) return;
-      windowsWithViewports();
+      windowsFromKnown();
+      void windowsNow();
+    },
+    // A page saying whether it's shown (handlers.js visibility), at `at` (its Date.now()): its
+    // window's `visible` and `visibleAt` while it's that window's tab in front.
+    /** @param {number} windowId @param {number} tabId @param {boolean} visible @param {number} at */
+    visibility(windowId, tabId, visible, at) {
+      if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof visible !== 'boolean' || !Number.isFinite(at)) return;
+      const had = visibility.get(tabId);
+      if (had && had.windowId === windowId && had.at > at) return; // an older word than the one kept
+      visibility.set(tabId, { windowId, visible, at: Math.min(at, Date.now()) });
+      if (!windowsFromKnown()) void windowsNow();
+    },
+    // A tab shown in its window (tabs.onActivated): what its window's tabs said is forgotten (the
+    // window's is the new tab's now, and it's asked again).
+    /** @param {number} tabId @param {number} windowId */
+    tabActivated(tabId, windowId) {
+      for (const [id, v] of visibility) if (v.windowId === windowId || id === tabId) visibility.delete(id);
+      if (Number.isInteger(tabId)) askVisibility(tabId);
+      void windowsNow();
+    },
+    // A tab's page replaced (a navigation committed, webNavigation's `timeStamp`), the tab gone,
+    // replaced or moved to another window: what it said is forgotten (a new page says again).
+    /** @param {number} tabId @param {number} [before] only a word said before this */
+    tabGone(tabId, before = Infinity) {
+      const had = visibility.get(tabId);
+      if (!had || had.at > before) return;
+      visibility.delete(tabId);
       void windowsNow();
     },
     // A switch's timeline (background/switch-log.js) and other lines for Margin.app's log.
@@ -990,6 +1061,7 @@ export function createLink({
       focusedAt.delete(windowId);
       createdAt.delete(windowId);
       viewports.delete(windowId);
+      for (const [id, v] of visibility) if (v.windowId === windowId) visibility.delete(id);
       if (pageState.layouts[windowId]) {
         const layouts = { ...pageState.layouts };
         delete layouts[windowId];

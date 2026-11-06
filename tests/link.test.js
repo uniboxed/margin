@@ -463,6 +463,77 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
   }
 });
 
+test('link: which page is shown — each window\'s `visible` from its tab in front only, forgotten as another tab is shown; the copy\'s blur; focus and flags in Margin.app\'s log', async () => {
+  const T0 = Date.now() - 60_000; // the page's clock, before now
+  const app = await startFakeApp();
+  const api = browser({ app, local: STATE });
+  const asked = [];
+  api.tabs.sendMessage = async (tabId, message) => { asked.push([tabId, message.type]); };
+  const { link } = makeLink(api);
+  try {
+    await link.start({ route: async () => ({ ok: true, result: null }) });
+    await app.next('hello');
+    await app.next('data.hello');
+    assert.ok(await until(() => asked.some(([id, type]) => id === 13 && type === 'reportVisibility')), 'the page in front asked to say again at the start');
+    const logged = () => api.ports.flatMap((p) => p.posted).filter((m) => m.type === 'log').map((m) => m.line);
+    // A tab behind in window 7 says it's shown (it isn't the window's word), then the tab in front.
+    let from = app.received.length;
+    link.visibility(7, 99, true, T0 + 0);
+    await wait(120);
+    assert.ok(app.received.slice(from).filter((m) => m.k === 'windows').every((m) => !('visible' in m.list[0])), 'a tab behind: not the window\'s');
+    link.visibility(7, 13, false, T0 + 100);
+    let win = await app.next('windows', { from, test: (m) => 'visible' in m.list[0] });
+    assert.equal(win.list[0].visible, false);
+    assert.equal(win.list[0].visibleAt, T0 + 100);
+    from = app.received.length;
+    link.visibility(7, 13, true, T0 + 200);
+    win = await app.next('windows', { from, test: (m) => m.list[0].visible === true });
+    assert.equal(win.list[0].visibleAt, T0 + 200, 'its time is when the page said it');
+    from = app.received.length;
+    link.visibility(7, 13, false, T0 + 150); // an older word than the one kept: left
+    await wait(120);
+    assert.ok(app.received.slice(from).filter((m) => m.k === 'windows').every((m) => m.list[0].visible === true));
+    // Another tab shown in window 7: the window's word is forgotten until that tab says, and it's asked.
+    asked.length = 0;
+    api.tabs.query = async () => [{ id: 14, windowId: 7, active: true }];
+    from = app.received.length;
+    link.tabActivated(14, 7);
+    win = await app.next('windows', { from, test: (m) => m.list[0].activeTabId === 14 });
+    assert.ok(!('visible' in win.list[0]) && !('visibleAt' in win.list[0]), 'unknown, not hidden');
+    assert.deepEqual(asked, [[14, 'reportVisibility']]);
+    link.visibility(7, 13, true, T0 + 300); // the tab left behind: not the window's
+    link.visibility(7, 14, true, T0 + 400);
+    win = await app.next('windows', { from, test: (m) => m.list[0].visible === true });
+    assert.equal(win.list[0].visibleAt, T0 + 400);
+    // Its page replaced (a navigation committed after it spoke): forgotten; one committed before: kept.
+    from = app.received.length;
+    link.tabGone(14, T0 + 399);
+    await wait(120);
+    assert.ok(app.received.slice(from).filter((m) => m.k === 'windows').every((m) => m.list[0].visible === true), 'a commit before its word: kept');
+    link.tabGone(14, T0 + 500);
+    win = await app.next('windows', { from, test: (m) => !('visible' in m.list[0]) });
+    assert.ok(!('visibleAt' in win.list[0]));
+    // WINDOW_ID_NONE: the copy's blur, on each of its windows; both focus events in the log.
+    from = app.received.length;
+    link.windowFocused(-1, T0 + 600);
+    win = await app.next('windows', { from, test: (m) => m.list[0].blurredAt != null });
+    assert.equal(win.list[0].blurredAt, T0 + 600);
+    link.windowFocused(7, T0 + 700);
+    win = await app.next('windows', { from, test: (m) => m.list[0].focusedAt === T0 + 700 });
+    assert.equal(win.list[0].blurredAt, T0 + 600, 'kept: the last blur heard');
+    assert.ok(await until(() => logged().some((l) => /^focus heard: none \(WINDOW_ID_NONE\) at \d\d:\d\d:\d\d\.\d{3}$/.test(l)) && logged().some((l) => /^focus heard: window 7 at /.test(l))), `${logged()}`);
+    assert.ok(logged().some((l) => /^windows report at [\d:.]+: 7 focused \(focus heard [\d:.]+\); blur heard [\d:.]+$/.test(l)), `${logged().filter((l) => l.startsWith('windows report'))}`);
+    assert.ok(logged().some((l) => /^windows report at [\d:.]+: 7 focused shown [\d:.]+$/.test(l)), 'a report\'s shown page in the log');
+    assert.ok(!logged().some((l) => /https?:|example/.test(l)), 'ids and times only');
+    // A closed window's words go with it.
+    link.visibility(8, 20, true, T0 + 800);
+    link.windowClosed(8);
+  } finally {
+    link.stop();
+    await app.close();
+  }
+});
+
 test('link: a drop — reconnecting for pages, the kept link tried again, linked again; the app gone — pages lose their box', async () => {
   const app = await startFakeApp();
   const api = browser({ app, local: STATE });
