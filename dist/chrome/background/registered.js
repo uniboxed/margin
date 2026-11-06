@@ -211,12 +211,15 @@ async function syncPage() {
 }
 
 let registrations = Promise.resolve();
+let underWay = 0; // syncs queued and not done (layoutsChanged)
 export const queueRegistrations = () => {
+  underWay++;
   registrations = registrations
     .then(syncPage)
     .catch((err) => console.warn('[margin] first paint', err))
     .then(storeActiveTheme) // not a registration: the theme Margin.app is sent
-    .catch((err) => console.warn('[margin] theme', err));
+    .catch((err) => console.warn('[margin] theme', err))
+    .then(() => { underWay--; });
   return registrations;
 };
 // Settles once the registrations match the settings and the link (tests).
@@ -263,8 +266,17 @@ export function layoutsChanged() {
   // (Lone: a sync whatever registeredKey says now, as one under way may change it; it updates
   // nothing when the one to register is the one registered.)
   if (lone) return void queueRegistrations();
-  const chosen = chooseFor(cached()?.settings, layoutSource(), registeredKey);
-  if (registeredKey != null ? chosen === null : noBoxForLayout && chosen !== null) void queueRegistrations();
+  // In a burst, at once only for no box anywhere or a box back after none, judged against what
+  // the registration under way leaves (registeredKey, noBoxForLayout): judged before it's done, a
+  // box back while the lone change's zeros were being written left them for the 2 s. A sync
+  // queued meanwhile reads the layouts as they are then, so it decides instead.
+  const atOnce = () => {
+    const chosen = chooseFor(cached()?.settings, layoutSource(), registeredKey);
+    return registeredKey != null ? chosen === null : noBoxForLayout && chosen !== null;
+  };
+  if (!underWay) return void (atOnce() && queueRegistrations());
+  const at = registrations;
+  void at.then(() => { if (registrations === at && isOwner() && atOnce()) void queueRegistrations(); });
 }
 
 // Whether the app draws a window changed (background.js: the link's onDrawn): the registration

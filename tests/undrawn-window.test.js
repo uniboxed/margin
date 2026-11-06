@@ -446,4 +446,52 @@ test('windows at different layouts: the registered one is most windows\' (a tie 
   }
 });
 
+test('in a burst, a box gone everywhere registered at once, and a box back after none at once too (not left to the settle), judged once a registration under way is done: a box back while the no-box layout\'s registration is still being written doesn\'t leave zeros for the 2 s', async () => {
+  const { layoutsChanged, useLayoutClock } = await import('../extension/background/registered.js');
+  const { layoutOfFiles } = await import('../extension/shared/page-box.js');
+  const { fakeClock } = await import('./fake-clock.js');
+  const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
+  const at = (left, top = 8) => ({ 1: { insets: { left, top, right: top, bottom: top }, radius: 6.25, epoch: 'e1' } });
+  const ZEROS = { left: 0, top: 0, right: 0, bottom: 0, radius: 0 };
+  const clock = fakeClock(Date.now() + 240_000);
+  useLayoutClock(clock);
+  const change = async (layouts) => { linkSays({ drawn: { 1: true }, layouts }); layoutsChanged(); await settled(); };
+  await change(at(500));
+  assert.equal(registered()?.left, 500, 'lone: at once');
+  clock.tick(16);
+  await change(at(520));
+  assert.equal(registered()?.left, 500, 'in a burst: a box after another waits');
+  clock.tick(16);
+  await change(at(0, 0));
+  assert.deepEqual(registered(), ZEROS, 'in a burst: no box anywhere, at once');
+  clock.tick(16);
+  await change(at(520));
+  assert.equal(registered()?.left, 520, 'in a burst: a box back after none, at once');
+  clock.tick(3000);
+  await settled();
+
+  // The no-box layout's registration held in WebKit (a busy Mac), and the box back meanwhile.
+  const update = chrome.scripting.updateContentScripts;
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  chrome.scripting.updateContentScripts = async (list) => { await held; return update(list); };
+  try {
+    linkSays({ drawn: { 1: true }, layouts: at(0, 0) });
+    layoutsChanged(); // lone: its registration (zeros) starts, and is held
+    await sleep(30);
+    clock.tick(16);
+    linkSays({ drawn: { 1: true }, layouts: at(520) }); // Keep open again, in the same burst
+    layoutsChanged();
+    await sleep(30);
+    chrome.scripting.updateContentScripts = update;
+    release();
+    await settled();
+    await settled();
+    assert.equal(registered()?.left, 520, 'the box back, at once once the zeros are in (no tick of the clock: not the settle)');
+  } finally {
+    chrome.scripting.updateContentScripts = update;
+    release();
+  }
+});
+
 test.after(() => setTimeout(() => process.exit(0), 50));
