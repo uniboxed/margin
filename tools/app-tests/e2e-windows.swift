@@ -202,7 +202,9 @@ func windowsScenario(ownSpace: Bool = false) async {
   let saidWhy = { (prefix: String) in bindingLines.contains { line in line.hasPrefix(prefix) && why.contains { line.contains($0) } } }
   check("windows: every binding made in the log with why", saidWhy("safari:P2#1 is window \(wC.windowNumber): ")
         && saidWhy("safari:P1#2 is window \(wB.windowNumber): ")
-        && said.contains { $0.hasPrefix("safari:P1#2 is no longer window \(wB.windowNumber): closed in the browser") },
+        // Closed in both at once: whichever the binder hears first says why (the browser's
+        // window list, or the window server's), and either way the binding goes with a reason.
+        && said.contains { $0.hasPrefix("safari:P1#2 is no longer window \(wB.windowNumber): closed in the browser") || $0.hasPrefix("safari:P1#2 is no longer window \(wB.windowNumber): window \(wB.windowNumber) is gone from the window server") },
         "\(bindingLines.filter { $0.contains("P2#1") || $0.contains("P1#2") }.prefix(4))")
   var stopped = false
   shell.stop { stopped = true }
