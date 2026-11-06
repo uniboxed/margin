@@ -286,6 +286,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
         apps.start()
         burst("linked: \(connection.key)")
+        if connection.hello.browser == "safari" { safariCopyLinked() }
         acrossSoon()
         switcher.tick()
     }

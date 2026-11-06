@@ -19,6 +19,18 @@
 //                          SFExtensionProfileKey (made at random for each extension
 //                          in each profile, so nothing else names it).
 //
+// A profile can hold more than one entry of Margin's: Safari keeps a removed
+// extension's state (with a `RemovedDate`), and a build signed by another
+// team, or unsigned ("(UNSIGNED)"), is another key with its own id. Tirth's
+// named profiles have the unsigned build of 2026-10-24 (removed 10-30) next
+// to the signed one: the first key in sorted order was the removed one, so
+// each name went to a copy that never links ("Margin 2: Safari
+// reliability"). The entry used (chosenEntry): never a removed one; the one
+// keyed with Margin.app's own team (`ownTeam`, "UNSIGNED" when ad hoc); then
+// one whose copy Margin knows from a hello; then an enabled one, then the
+// newest. `Enabled` alone isn't trusted: Safari leaves it true on some
+// removed entries.
+//
 // So a copy (`s-<that uuid>`, SafariWebExtensionHandler.swift) is linked to its
 // Safari profile through Margin's own entry in that profile's Extensions.plist;
 // the default profile's copy (`s-default`) is always `DefaultProfile`.
@@ -31,6 +43,7 @@
 
 import AppKit
 import Foundation
+import Security
 import SQLite3
 
 nonisolated struct SafariProfile: Equatable, Sendable {
@@ -39,6 +52,8 @@ nonisolated struct SafariProfile: Equatable, Sendable {
     var name: String
     var symbol: String // an SF Symbol's name, "" if none
     var margin: String? // the Margin profile id of the copy that runs in it, once Margin has run there
+    var entries = 0 // Margin's entries in its Extensions.plist (live or removed)
+    var entryKey: String? // the one used: its key's team ("UNSIGNED", "" for the bundle id alone)
 }
 
 nonisolated enum SafariProfiles {
@@ -71,7 +86,9 @@ nonisolated enum SafariProfiles {
     }
 
     // The profiles as Safari has them now.
-    static func read(_ folder: URL = safariFolder, extensionId: String = marginExtension, busyTimeoutMs: Int32 = 200) -> Outcome {
+    // `team`: Margin.app's own (ownTeam; nil when ad hoc); `known`: the copies Margin knows from their hellos.
+    static func read(_ folder: URL = safariFolder, extensionId: String = marginExtension, team: String? = nil, known: Set<String> = [],
+                     busyTimeoutMs: Int32 = 200) -> Outcome {
         switch access(folder) {
         case .denied: return .noAccess
         case .noSafari: return .noSafari
@@ -104,7 +121,10 @@ nonisolated enum SafariProfiles {
             if server == defaultServerId || row.uuid == defaultServerId {
                 p.margin = defaultMargin
             } else {
-                p.margin = marginProfile(folder, folders: [row.server, row.uuid], extensionId: extensionId)
+                let found = marginEntries(folder, folders: [row.server, row.uuid], extensionId: extensionId, team: team, known: known)
+                p.margin = found.chosen
+                p.entries = found.count
+                p.entryKey = found.chosen == nil ? nil : found.suffix
             }
             return p
         }
@@ -153,33 +173,128 @@ nonisolated enum SafariProfiles {
         return name
     }
 
-    // Margin's profile id in that profile: Margin's own entry in the profile's
-    // Extensions.plist (`ProfileIdentifier`, what Safari sends as SFExtensionProfileKey).
-    static func marginProfile(_ folder: URL, folders: [String], extensionId: String) -> String? {
+    // Margin.app's own team, from its signature (public Security API); nil
+    // when it's signed ad hoc (npm run safari -- --unsigned) or unsigned. The
+    // extension inside it is signed by the same team, so its entries in
+    // Safari's plists are keyed "<bundle id> (<this>)", or "(UNSIGNED)".
+    static let ownTeam: String? = {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return nil }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dict = info as? [String: Any], let team = dict[kSecCodeInfoTeamIdentifier as String] as? String,
+              team.range(of: "^[A-Z0-9]{1,20}$", options: .regularExpression) != nil else { return nil }
+        return team
+    }()
+
+    // One of Margin's entries in a profile's Extensions.plist.
+    struct Entry: Equatable, Sendable {
+        var key: String
+        var suffix: String // the team in "<bundle id> (<team>)", "UNSIGNED", or "" for the bundle id alone
+        var margin: String? // s-<its ProfileIdentifier>, if that's a UUID
+        var enabled: Bool?
+        var added: Date?
+        var removed: Bool
+    }
+    struct Entries: Equatable, Sendable {
+        var all: [Entry] = []
+        var chosen: String? // the copy's id (s-<uuid>) of the entry used, if any
+        var suffix: String?
+        var count: Int { all.count }
+    }
+
+    // Removed: a RemovedDate later than when it was added (and than its last
+    // Enabled change, if it has one). An entry added again with an old
+    // RemovedDate left on it counts as there.
+    static func isRemoved(_ state: [String: Any]) -> Bool {
+        guard let removed = date(state["RemovedDate"]) else { return false }
+        if let added = date(state["AddedDate"]), added >= removed { return false }
+        if let changed = date(state["EnabledModificationDate"]), changed >= removed { return false }
+        return true
+    }
+
+    private static func date(_ v: Any?) -> Date? {
+        if let d = v as? Date { return d }
+        if let n = v as? NSNumber { return Date(timeIntervalSinceReferenceDate: n.doubleValue) }
+        return nil
+    }
+
+    // Margin's entries in one profile's plist (its states), and the one used:
+    // never a removed one; the own team's key ("UNSIGNED" with no team); one
+    // whose copy is `known`; then enabled, then the newest added, then by key.
+    // None live: none (the profile keeps Margin's typed name). Nothing here
+    // pairs a profile with a copy by elimination.
+    static func entries(_ states: [String: Any], extensionId: String, team: String?, known: Set<String> = []) -> Entries {
+        var out = Entries()
+        for key in states.keys.sorted() {
+            let suffix: String
+            if key == extensionId { suffix = "" } else if key.hasPrefix(extensionId + " ("), key.hasSuffix(")") {
+                suffix = String(key.dropFirst(extensionId.count + 2).dropLast())
+            } else { continue }
+            let state = states[key] as? [String: Any] ?? [:]
+            let margin = (state["ProfileIdentifier"] as? String).flatMap { UUID(uuidString: $0) }.map { "s-\($0.uuidString.lowercased())" }
+            out.all.append(Entry(key: key, suffix: suffix, margin: margin, enabled: state["Enabled"] as? Bool, added: date(state["AddedDate"]), removed: isRemoved(state)))
+        }
+        let live = out.all.filter { !$0.removed && $0.margin != nil }
+        let own = team ?? "UNSIGNED"
+        let pick = live.first { $0.suffix == own } ?? live.first { known.contains($0.margin!) }
+            ?? live.sorted { a, b in
+                let ea = a.enabled == true, eb = b.enabled == true
+                if ea != eb { return ea }
+                let da = a.added ?? .distantPast, db = b.added ?? .distantPast
+                if da != db { return da > db }
+                return a.key < b.key
+            }.first
+        out.chosen = pick?.margin
+        out.suffix = pick?.suffix
+        return out
+    }
+
+    // Margin's entries in that profile (its Extensions.plist under the first
+    // of `folders` that has any), and the copy's id from the one used.
+    static func marginEntries(_ folder: URL, folders: [String], extensionId: String, team: String?, known: Set<String> = []) -> Entries {
+        var found = Entries()
         for name in folders where name.range(of: "^[A-Za-z0-9-]{1,64}$", options: .regularExpression) != nil {
             let url = folder.appendingPathComponent("Profiles", isDirectory: true).appendingPathComponent(name, isDirectory: true)
                 .appendingPathComponent("WebExtensions", isDirectory: true).appendingPathComponent("Extensions.plist")
             guard let data = try? Data(contentsOf: url),
                   let states = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) as? [String: Any] else { continue }
-            // "<bundle id> (<team id>)", or "(UNSIGNED)"; the bundle id alone, in case.
-            guard let key = states.keys.sorted().first(where: { $0 == extensionId || $0.hasPrefix(extensionId + " (") }),
-                  let state = states[key] as? [String: Any], let id = state["ProfileIdentifier"] as? String,
-                  let uuid = UUID(uuidString: id) else { continue }
-            return "s-\(uuid.uuidString.lowercased())"
+            let here = entries(states, extensionId: extensionId, team: team, known: known)
+            if here.chosen != nil { return here }
+            if here.count > 0 { found = here }
         }
-        return nil
+        return found
+    }
+
+    // Margin's profile id in that profile: Margin's own entry in the profile's
+    // Extensions.plist (`ProfileIdentifier`, what Safari sends as SFExtensionProfileKey).
+    static func marginProfile(_ folder: URL, folders: [String], extensionId: String, team: String? = nil, known: Set<String> = []) -> String? {
+        marginEntries(folder, folders: folders, extensionId: extensionId, team: team, known: known).chosen
     }
 
     // What the log says of a read: names and ids, never anything else.
     static func describe(_ outcome: Outcome) -> String {
         switch outcome {
         case .read(let list):
-            return "\(list.count) profile\(list.count == 1 ? "" : "s"): " + list.map { "“\($0.name)” (\($0.serverId)\($0.symbol.isEmpty ? "" : ", \($0.symbol)")) → \($0.margin ?? "no copy yet")" }.joined(separator: "; ")
+            return "\(list.count) profile\(list.count == 1 ? "" : "s"): " + list.map { "“\($0.name)” (\($0.serverId)\($0.symbol.isEmpty ? "" : ", \($0.symbol)")) → \(copy($0))" }.joined(separator: "; ")
         case .noAccess: return "no Full Disk Access: the names typed in Margin are used"
         case .noSafari: return "no Safari data found"
         case .busy: return "the database was busy: trying again"
         case .failed(let why): return "not read: \(why)"
         }
+    }
+
+    // A profile's copy as the log says it: its id, and which of Margin's
+    // entries it came from (the key's team, "UNSIGNED" or "bundle id") and how
+    // many there are. Ids and team ids only.
+    private static func copy(_ p: SafariProfile) -> String {
+        let count = "\(p.entries) entr\(p.entries == 1 ? "y" : "ies")"
+        guard let margin = p.margin else { return p.entries == 0 ? "no copy yet" : "no copy yet (\(count), none live)" }
+        guard p.entries > 0 else { return margin } // the default profile's, always s-default
+        let key = p.entryKey.map { $0.isEmpty ? "bundle id" : $0 } ?? "?"
+        return "\(margin) (\(key), \(count))"
     }
 }
 
@@ -199,6 +314,7 @@ final class SafariProfileWatcher {
         var retry: TimeInterval = 10
         var busyRetry: TimeInterval = 2
         var extensionId = SafariProfiles.marginExtension
+        var team = SafariProfiles.ownTeam // which of Margin's entries in a profile is this build's
     }
 
     static let watchedFiles = ["SafariTabs.db", "SafariTabs.db-wal"]
@@ -206,6 +322,10 @@ final class SafariProfileWatcher {
     let folder: URL
     let options: Options
     var onChange: ((SafariProfiles.Outcome) -> Void)?
+    // After every read that isn't busy, changed or not (the shell's checks of the copies against it).
+    var onRead: ((SafariProfiles.Outcome) -> Void)?
+    // The copies Margin knows from their hellos, asked as each read starts (SafariProfiles.entries).
+    var known: () -> Set<String> = { [] }
     private(set) var last: SafariProfiles.Outcome?
     private(set) var reads = 0
     private var stream: FSEventStreamRef?
@@ -253,9 +373,9 @@ final class SafariProfileWatcher {
         guard !stopped else { return }
         if reading { again = true; return }
         reading = true
-        let folder = folder, id = options.extensionId
+        let folder = folder, id = options.extensionId, team = options.team, known = known()
         queue.async {
-            let outcome = SafariProfiles.read(folder, extensionId: id)
+            let outcome = SafariProfiles.read(folder, extensionId: id, team: team, known: known)
             DispatchQueue.main.async { MainActor.assumeIsolated { self.done(outcome) } }
         }
     }
@@ -271,6 +391,7 @@ final class SafariProfileWatcher {
             Diagnostics.note("safari profiles: " + SafariProfiles.describe(outcome))
             onChange?(outcome)
         }
+        if outcome != .busy { onRead?(outcome) }
         if again { again = false; soon(); return }
         switch outcome {
         case .busy: soon(after: options.busyRetry)

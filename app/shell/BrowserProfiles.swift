@@ -170,6 +170,8 @@ final class BrowserProfiles {
     // ---- the browser's own names ----
 
     private var browserList: [SafariProfile]? // the browser's profiles as last read
+    var browserRead: [SafariProfile]? { browserList }
+    private var unmappedSaid: Set<String> = []
 
     // What the browser has now (SafariProfiles.read): each of its profiles that
     // Margin's copy runs in gets the browser's name and symbol; one linked
@@ -182,6 +184,23 @@ final class BrowserProfiles {
         let before = browserNames
         if associate() { save() }
         return browserNames != before
+    }
+
+    // Linked copies with a browser's own id (`s-<uuid>`) that no profile in
+    // the last read maps to: said in the log once each (again only after a
+    // read has mapped it). Nothing before a read: no permission, a busy
+    // database or no read yet says nothing about them. The ids said.
+    @discardableResult func checkMapped(_ linked: Set<String>) -> [String] {
+        guard let list = browserList else { return [] }
+        let mapped = Set(list.compactMap(\.margin))
+        unmappedSaid.subtract(mapped)
+        var said: [String] = []
+        for id in linked.sorted() where id.hasPrefix("s-") && id != Self.defaultProfile && !mapped.contains(id) && !unmappedSaid.contains(id) {
+            unmappedSaid.insert(id)
+            said.append(id)
+            Diagnostics.note("\(browser): copy \(id) isn't any Safari profile's as read (\(list.count) profiles, copies \(mapped.sorted().joined(separator: ", ")))")
+        }
+        return said
     }
 
     // No names from the browser (no permission, or none readable): the typed ones again.

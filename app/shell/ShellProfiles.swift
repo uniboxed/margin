@@ -36,8 +36,23 @@ extension Shell: SwitchWorld {
             }
             if changed { self.acrossSoon() }
         }
+        // Each read (changed or not): the linked copies checked against it.
+        watcher.onRead = { [weak self] outcome in
+            guard let self, case .read = outcome else { return }
+            self.profilesOf("safari").checkMapped(self.linkedProfiles("safari"))
+        }
+        // The copies Margin knows (from their hellos): an entry of theirs is preferred over another live one.
+        watcher.known = { [weak self] in
+            guard let self else { return [] }
+            return Set(self.profilesOf("safari").profiles).union(self.linkedProfiles("safari"))
+        }
         safariNames = watcher
         watcher.start()
+    }
+
+    // A Safari copy said hello: Safari's profiles read again soon, and the copy checked against that read.
+    func safariCopyLinked() {
+        safariNames?.soon(after: 0.3)
     }
 
     // Each profile's spaces in its own order (its set's, or its copy's state while linked).
@@ -65,7 +80,7 @@ extension Shell: SwitchWorld {
         return (ids, values)
     }
 
-    private func linkedProfiles(_ browser: String) -> Set<String> {
+    func linkedProfiles(_ browser: String) -> Set<String> {
         Set(links.values.filter { $0.connection.hello.browser == browser && $0.connection.isUp }.map(\.connection.hello.profile))
     }
 

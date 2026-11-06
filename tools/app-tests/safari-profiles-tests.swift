@@ -100,6 +100,15 @@ final class FakeSafari {
         extensions(Self.testServer, ["com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999998"]])
     }
 
+    // Margin's entries as standard() has them again.
+    func standardExtensions() {
+        extensions(Self.personalServer, [
+            "io.tirth.margin.Extension (ABCDE12345)": ["Enabled": true, "ProfileIdentifier": Self.personalCopy],
+            "com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999999"],
+        ])
+        extensions(Self.testServer, ["com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999998"]])
+    }
+
     func remove() {
         close()
         try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: dbPath)
@@ -138,6 +147,84 @@ func safariProfilesTests() {
     check("safari: an id that isn't a UUID: no link", SafariProfiles.marginProfile(safari.folder, folders: [FakeSafari.testServer], extensionId: SafariProfiles.marginExtension) == nil)
     check("safari: a folder name that isn't an id: never read", SafariProfiles.marginProfile(safari.folder, folders: ["../Profiles"], extensionId: SafariProfiles.marginExtension) == nil)
     check("safari: a symbol that isn't a symbol's name: none", SafariProfiles.symbol(try? PropertyListSerialization.data(fromPropertyList: ["SymbolImageName": "../x y"], format: .binary, options: 0)) == "")
+
+    // ---- which of Margin's entries (Tirth's named profiles: the removed unsigned build beside the signed one) ----
+    let ext = SafariProfiles.marginExtension
+    let day = { (d: Int) in Date(timeIntervalSinceReferenceDate: 783_000_000 + Double(d) * 86_400) }
+    let idA = "5068E0E4-81AA-4EC4-A74A-BB4DA5A64A41", idB = FakeSafari.personalCopy
+    let sA = "s-" + idA.lowercased(), sB = personal
+    let removedUnsigned: [String: Any] = ["Enabled": false, "AddedDate": day(0), "RemovedDate": day(6), "ProfileIdentifier": idA]
+    let liveTeam: [String: Any] = ["Enabled": true, "AddedDate": day(5), "ProfileIdentifier": idB]
+    let tirths: [String: Any] = ["\(ext) (UNSIGNED)": removedUnsigned, "\(ext) (VSNN5UW99X)": liveTeam,
+                                 "io.tirth.margin-move-test.Extension (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(10), "RemovedDate": day(11), "ProfileIdentifier": "77777777-7777-4777-8777-777777777777"]]
+    let a = SafariProfiles.entries(tirths, extensionId: ext, team: "VSNN5UW99X")
+    check("entries: (UNSIGNED) removed and off beside the team's live one, this build the team's: the team's, though UNSIGNED sorts first", a.chosen == sB && a.suffix == "VSNN5UW99X" && a.count == 2, "\(a)")
+    let b = SafariProfiles.entries(tirths, extensionId: ext, team: nil)
+    check("entries: the same with an unsigned build: still the live one, never the removed", b.chosen == sB && b.suffix == "VSNN5UW99X", "\(b)")
+    let c = SafariProfiles.entries(["\(ext) (UNSIGNED)": removedUnsigned], extensionId: ext, team: nil)
+    check("entries: only a removed entry: none (the typed name is kept)", c.chosen == nil && c.count == 1, "\(c)")
+    let twoLive: [String: Any] = ["\(ext) (UNSIGNED)": ["Enabled": true, "AddedDate": day(0), "ProfileIdentifier": idA], "\(ext) (VSNN5UW99X)": liveTeam]
+    check("entries: two live, this build unsigned: the UNSIGNED one", SafariProfiles.entries(twoLive, extensionId: ext, team: nil).chosen == sA)
+    check("entries: two live, this build the team's: the team's", SafariProfiles.entries(twoLive, extensionId: ext, team: "VSNN5UW99X").chosen == sB)
+    let enabledRemoved: [String: Any] = ["\(ext) (ZZZZZ00000)": ["Enabled": true, "AddedDate": day(8), "RemovedDate": day(9), "ProfileIdentifier": idA], "\(ext) (VSNN5UW99X)": liveTeam]
+    check("entries: Enabled true with a RemovedDate beside a live one: the live one", SafariProfiles.entries(enabledRemoved, extensionId: ext, team: "OTHER00000").chosen == sB)
+    check("entries: Enabled true with a RemovedDate alone: none", SafariProfiles.entries(["\(ext) (ZZZZZ00000)": enabledRemoved["\(ext) (ZZZZZ00000)"]!], extensionId: ext, team: nil).chosen == nil)
+    let readded: [String: Any] = ["\(ext) (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(9), "RemovedDate": day(6), "ProfileIdentifier": idB]]
+    check("entries: added again after an old RemovedDate: taken", SafariProfiles.entries(readded, extensionId: ext, team: "VSNN5UW99X").chosen == sB)
+    let reenabled: [String: Any] = ["\(ext) (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(1), "RemovedDate": day(6), "EnabledModificationDate": day(7), "ProfileIdentifier": idB]]
+    check("entries: turned on again after its RemovedDate: taken", SafariProfiles.entries(reenabled, extensionId: ext, team: nil).chosen == sB)
+    let twoOthers: [String: Any] = ["\(ext) (AAAAA11111)": ["Enabled": true, "AddedDate": day(1), "ProfileIdentifier": idA], "\(ext) (BBBBB22222)": ["Enabled": true, "AddedDate": day(2), "ProfileIdentifier": idB]]
+    check("entries: neither the build's team: the copy Margin knows from a hello", SafariProfiles.entries(twoOthers, extensionId: ext, team: nil, known: [sA]).chosen == sA)
+    check("entries: neither known: the newest", SafariProfiles.entries(twoOthers, extensionId: ext, team: nil).chosen == sB)
+    let offNewer: [String: Any] = ["\(ext) (AAAAA11111)": ["Enabled": true, "AddedDate": day(1), "ProfileIdentifier": idA], "\(ext) (BBBBB22222)": ["Enabled": false, "AddedDate": day(2), "ProfileIdentifier": idB]]
+    check("entries: an enabled one over a newer one turned off", SafariProfiles.entries(offNewer, extensionId: ext, team: nil).chosen == sA)
+    check("entries: another bundle id that starts the same is never Margin's", SafariProfiles.entries(["\(ext)Other (X)": liveTeam, "\(ext)2 (VSNN5UW99X)": liveTeam], extensionId: ext, team: "VSNN5UW99X").count == 0)
+    // Through the files, as Tirth's Mac has them: both named profiles with the removed unsigned entry.
+    let idA2 = "BE3F2B99-F245-4869-B8C3-25B40B7A3316", idB2 = "4282EA5B-775B-400D-BE65-CB1B668E7367"
+    safari.extensions(FakeSafari.personalServer, tirths.merging(["com.example.other.Extension (ZZZZZ99999)": ["Enabled": true, "ProfileIdentifier": "99999999-9999-4999-8999-999999999999"]]) { a, _ in a })
+    safari.extensions(FakeSafari.testServer, ["\(ext) (UNSIGNED)": ["Enabled": false, "AddedDate": day(0), "RemovedDate": day(6), "ProfileIdentifier": idA2],
+                                              "\(ext) (VSNN5UW99X)": ["Enabled": true, "AddedDate": day(5), "ProfileIdentifier": idB2]])
+    if case .read(let l) = SafariProfiles.read(safari.folder, team: "VSNN5UW99X") {
+        check("read: Personal → the signed entry's copy, Test → its own", l.map { $0.margin ?? "-" } == ["s-default", sB, "s-" + idB2.lowercased()], "\(l.map { $0.margin ?? "-" })")
+        let line = SafariProfiles.describe(.read(l))
+        check("read: the log says the entry used and how many", line.contains("→ \(sB) (VSNN5UW99X, 2 entries)") && line.contains("→ s-default;") && !line.contains("example") && !line.contains("move-test") && !line.contains(sA), line)
+        // Safari's names given to the copies that link.
+        let named = tempFolder("names-signed")
+        defer { try? FileManager.default.removeItem(at: named) }
+        let np = BrowserProfiles(browser: "safari", root: named)
+        np.refresh(spaces: [sB: ["a"]], linked: [sB])
+        np.useBrowserNames(l)
+        check("names: the signed entry's copy gets “Personal”", np.name(sB) == "Personal" && BrowserProfiles(browser: "safari", root: named).info[sB]?.browserId == FakeSafari.personalServer, np.name(sB))
+    } else { check("read: Tirth's layout read", false) }
+    if case .read(let l) = SafariProfiles.read(safari.folder, team: nil) {
+        check("read, an unsigned build: still the live entries", l.dropFirst().map { $0.margin ?? "-" } == [sB, "s-" + idB2.lowercased()])
+    } else { check("read: unsigned", false) }
+    safari.extensions(FakeSafari.testServer, ["\(ext) (UNSIGNED)": ["Enabled": false, "AddedDate": day(0), "RemovedDate": day(6), "ProfileIdentifier": idA2]])
+    if case .read(let l) = SafariProfiles.read(safari.folder, team: "VSNN5UW99X") {
+        check("read: a profile with only a removed entry: no copy", l.last?.margin == nil && l.last?.entries == 1)
+        check("read: and the log says so", SafariProfiles.describe(.read(l)).contains("no copy yet (1 entry, none live)"), SafariProfiles.describe(.read(l)))
+    } else { check("read: removed only", false) }
+    safari.standardExtensions()
+
+    // Linked copies no profile maps to: said once each, and only after a read.
+    let said0 = Diagnostics.echo
+    var lines: [String] = []
+    Diagnostics.echo = { lines.append($0) }
+    let mp = BrowserProfiles(browser: "safari", root: nil)
+    check("mapped: no read yet: nothing said", mp.checkMapped([sA, sB, "s-default"]).isEmpty && lines.isEmpty)
+    let read1 = [SafariProfile(serverId: "DefaultProfile", uuid: "DefaultProfile", name: "Work", symbol: "", margin: "s-default"),
+                 SafariProfile(serverId: FakeSafari.personalServer, uuid: "A9", name: "Personal", symbol: "", margin: sB)]
+    mp.useBrowserNames(read1)
+    check("mapped: after a read, the copy no profile has: said", mp.checkMapped([sA, sB, "s-default", "p-own"]) == [sA] && lines.contains { $0.contains("copy \(sA) isn't any Safari profile's as read") })
+    check("mapped: once", mp.checkMapped([sA, sB]).isEmpty)
+    mp.dropBrowserNames()
+    check("mapped: no permission any more: nothing", mp.checkMapped(["s-" + idB2.lowercased()]).isEmpty)
+    mp.useBrowserNames(read1.map { var p = $0; if p.margin == sB { p.margin = sA }; return p })
+    check("mapped: a read that maps it: nothing said", mp.checkMapped([sA]).isEmpty)
+    mp.useBrowserNames(read1)
+    check("mapped: mapped by a read, then not again: said again", mp.checkMapped([sA]) == [sA])
+    check("mapped: the line has ids only", lines.allSatisfy { !$0.contains("Personal") && !$0.contains("Work") })
+    Diagnostics.echo = said0
 
     // A busy database: another connection holding it (exclusive locking, as no reader can get past).
     safari.close()

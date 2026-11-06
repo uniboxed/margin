@@ -2562,3 +2562,27 @@ On `fix/safari-reliability` (from `feat/margin-app` e3725be). Tirth's report fro
   - The old test pinning "off for this version" is replaced: that behaviour was the bug.
   - The WebKit host's new `link-guard` scenario: a left note (written by hand, then Margin reloaded) turns sockets off, pages say `sockets-off`, the new-tab page says so with Try again, and Try again links.
 - **Not tested:** the listener's `.waiting` restart. Network.framework can't be made to wait in a test here.
+
+### Safari's profile names go to the copies that link
+
+- **What happened.** Every `safari profiles:` line in every run (19:32, 19:57, 21:36, 21:51) mapped “Personal” to `s-5068e0e4-…` and “Test” to `s-be3f2b99-…`. The copies that said hello in those profiles were `s-8d454f81-…` and `s-4282ea5b-…`, the same ids in every run. So the two named profiles were shown as “Profile 2” and “Profile 3” with no Safari symbol, and the profile switch told Tirth to use “File › New Profile 2 Window”, which Safari doesn't have. Step 9's own check (the profile shown with `s-8d454f81-…` must be the one that copy runs in) failed from the start and nothing flagged it. This is only about names, symbols and that hint. Window binding and the link never use this mapping, so it does not explain the sidebar going away or "not connected".
+- **Why.** Each named profile's `Extensions.plist` has two entries of Margin's. `io.tirth.margin.Extension (UNSIGNED)` is the ad-hoc build of 2026-10-24: `RemovedDate` 2026-10-30, `Enabled` false, `ProfileIdentifier` 5068E0E4… (Personal) and BE3F2B99… (Test). `io.tirth.margin.Extension (VSNN5UW99X)` is the signed build, added 10-29, live, with 8D454F81… and 4282EA5B…. Safari keeps a removed extension's state. `marginProfile` took the first matching key in sorted order, and "(U" sorts before "(V", so it always took the removed one. Only the plists' structure and Margin's own entries were looked at, never another extension's settings.
+- **The fix** (`SafariProfiles.entries`). Every Margin entry in the profile is collected (the bundle id alone, or `<bundle id> (<team>)`), and the one used is chosen in this order:
+  1. never a removed one: a `RemovedDate` later than its `AddedDate` (and later than its `EnabledModificationDate`, if it has one). An entry added again with an old `RemovedDate` left on it counts as there.
+  2. the key with Margin.app's own team, `(<team>)`, or `(UNSIGNED)` for an ad-hoc build. The team is read once from Margin.app's own signature with public Security API (`SecCodeCopySelf`, `SecCodeCopyStaticCode`, `SecCodeCopySigningInformation` with `kSecCSSigningInformation`, `kSecCodeInfoTeamIdentifier`). The extension inside is signed by the same team. It's `SafariProfileWatcher.Options.team`, so tests set it.
+  3. one whose copy Margin knows from a hello (`browser.json`'s profiles and the linked copies, asked as each read starts).
+  4. an enabled one, then the newest `AddedDate`, then the key.
+  None live means no copy, and the profile keeps Margin's typed name. Nothing pairs a profile with a copy by elimination. `Enabled` alone decides nothing: Safari leaves it true on some removed entries (the `margin-move-test` entries on Tirth's Mac have `Enabled` true and a `RemovedDate`).
+- **Nothing wrong was stored.** `browser.json` has no `browserId` for `s-8d454f81-…` or `s-4282ea5b-…` (the wrong ids never linked, so they were never saved), so the right names show at the first read after the update.
+- **The log.** Each profile now says which entry it came from and how many Margin has there: `“Personal” (A8C3B0E9-…, person.lanyardcard.fill) → s-8d454f81-… (VSNN5UW99X, 2 entries)`. A profile with entries but none live says `no copy yet (1 entry, none live)`. Ids and team ids only, never another extension's key. After every read (not only a changed one), each linked Safari copy with an `s-<uuid>` that no profile in that read maps to is logged once: `safari: copy s-… isn't any Safari profile's as read (N profiles, copies …)`. It's said again only after a read has mapped it in between. Nothing is said before a read, nor without Full Disk Access, nor while the database is busy. A Safari copy's hello asks for a read 0.3 s later, so a new copy is checked within about a second.
+- **Tests** (`tools/app-tests/safari-profiles-tests.swift`, FakeSafari fixtures only):
+  - Tirth's layout: `(UNSIGNED)` removed and off with id A, `(VSNN5UW99X)` live with id B, and a `move-test` entry. With team VSNN5UW99X the result is B, and with no team it's still B. On the old code the read gave A (the sorted first).
+  - Only a removed entry gives none.
+  - Two live entries: no team gives UNSIGNED's, and the team gives the team's.
+  - `Enabled` true with a `RemovedDate` beside a live entry gives the live one, and alone gives none.
+  - An entry added again (or turned on again) after an old `RemovedDate` is taken.
+  - With neither of two live entries the build's team, the known copy wins, else the newest, and an enabled one beats a newer one that's off.
+  - A read of both named profiles laid out as on Tirth's Mac gives Personal → B and Test → its own live id. The log line says `(VSNN5UW99X, 2 entries)` and never names the removed id or another extension. `useBrowserNames` then gives `s-8d454f81-…` “Personal” and saves its `browserId`.
+  - The "isn't any profile's" line: nothing before a read, once after one, nothing without the permission, and again after a read mapped it in between.
+  - The UNSIGNED-only test stays as it was.
+
