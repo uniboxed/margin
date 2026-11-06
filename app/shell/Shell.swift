@@ -387,9 +387,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // at once (it's in every Space: Overlay.swift collectionBehavior), and one comes back only when
     // the window server says its window is on screen.
     private(set) var spaceChangedAt: TimeInterval = -.infinity
+    // The same, on the extension's clock (options.clock), for the binders (WindowMatcher.swift: which pages are shown).
+    private var spaceChangedWall: Double = -.infinity
     var spaceChanged: Bool { Diagnostics.now() - spaceChangedAt < options.burstFor }
     func spaceDidChange() {
         spaceChangedAt = Diagnostics.now()
+        spaceChangedWall = options.clock()
         let shown = overlays.values.filter(\.isShown).count
         Diagnostics.note("the active Space changed (\(shown) overlay\(shown == 1 ? "" : "s") shown, the browser \(browserIsFront ? "in front" : "not in front"))")
         burstUntil = Diagnostics.now() + options.burstFor
@@ -511,7 +514,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             let binder = binders[browser] ?? WindowBinder(browser: browser)
             binders[browser] = binder
             let bound = binder.update(now: wallNow, ext: windows.map(\.0), reporting: Set(entries.map(\.connection.key)), copies: copies, held: held,
-                                      server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, listed: read != nil)
+                                      server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, listed: read != nil, spaceChangedAt: spaceChangedWall)
             next.merge(bound) { a, _ in a }
             absent.formUnion(binder.absentNumbers)
         }
