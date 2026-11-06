@@ -6,7 +6,10 @@
 // that comes back normal, a create that fails or times out (and its late
 // window), a window that never comes to the front, the new or the old window
 // closed by the person, a switch asked mid-switch, Safari quitting, a profile
-// whose copy isn't running, and macOS dropping to the desktop.
+// whose copy isn't running, and macOS dropping to the desktop. This is the
+// machine's close-based switch: FakeWorld is no HandoffWorld, so every switch
+// here runs it exactly as before the handoff (no drafts asked, no freeze, the
+// same phases); the handoff itself is handoff-tests.swift's.
 import Foundation
 
 final class FakeClock: SwitchClock {
@@ -172,6 +175,8 @@ func switchTests() {
         check("switch: the old window closed once the new one is full screen and in front", w.requests.last?.type == "closeWindow" && w.requests.last?.profile == A && int(w.requests.last?.payload["windowId"]) == 10)
  c.advance(0.6)
         check("switch: done, the new window still in front half a second after", !s.busy && w.events == [.started(toB), .done(toB)] && w.wins[A]?.isEmpty == true, "\(w.events)")
+        check("switch: a world that can't hand off: the close-based switch, no drafts asked, no handoff run", s.run == nil && !w.types().contains("windowDrafts")
+              && w.types() == ["openSpaceWindow", "closeWindow"], "\(w.types())")
     }
     do { // a normal window: asked for full screen once
         let (w, c, s) = setup { $0.answerCreate = true; $0.createState = "normal" }

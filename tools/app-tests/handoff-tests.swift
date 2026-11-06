@@ -69,6 +69,7 @@ final class FreezeListener: FreezerDelegate {
 
 func handoffTests() {
     freezerTests()
+    handoffMachineTests() // the switch's machine (Handoff.swift), below
 }
 
 func freezerTests() {
@@ -289,4 +290,1142 @@ func freezerTests() {
         check("freezer: real: a freezer let go while live reveals at once", fakeFreezeCallsNow().last == "invoke 42 21 0.0", "\(fakeFreezeCallsNow())")
         fakeFreezeReset()
     }
+}
+
+// ---- the switch's machine (Handoff.swift) against a fake Safari ----
+//
+// FakeHandoffWorld plays Safari on the fake clock: each profile's copy (its windows with ids, states,
+// focus and spaces; requests answered after a round trip; windows calls one at a time per window,
+// `busy` and `refused: late` as the copy answers them, hung calls held until let go), the window
+// server and its Spaces (FakeSpaceWorld: the active Space, the full-screen Spaces a window enters
+// and leaves, the displays), the real parker and registry over it, FakeFreezer, the overlays (the
+// cover drawn, `framed` after a window enters full screen, ordered out) and the notices.
+
+final class FakeHandoffWorld: HandoffWorld {
+    struct Win {
+        var id: Int
+        var number: Int
+        var state: String
+        var focused = false
+        var focusedAt: Double?
+        var normal: CGRect
+        var space = "s1"
+    }
+    struct Req {
+        let link: String
+        let type: String
+        let payload: JSONObject
+        let at: Double
+        let frozen: Bool // the freeze was live when it was sent
+        var windowId: Int? { int(payload["windowId"]) }
+        var state: String? { payload["state"] as? String }
+    }
+
+    let clock = FakeClock()
+    let reads: FakeSpaceWorld
+    let freezer: FakeFreezer
+    let spaceParker: SpaceParker
+    let registry: ParkingRegistry
+    weak var switcher: ProfileSwitch?
+    var strands: [String] = []
+    let pid: pid_t = 500
+    let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    let desktop: UInt64 = 1
+    var fs: [UInt64] = [] // the full-screen Spaces, on the main display
+    var nextFs: UInt64 = 100
+    var displays = 1 { didSet { updateDisplays() } }
+    var linked: Set<String> = []
+    var wins: [String: [Win]] = [:]
+    var nextId = 50
+    var nextNumber = 5000
+    var unbound: Set<Int> = [] // numbers the binder hasn't bound
+    var noFreezer = false
+    var noReads = false
+    var parkingOnFlag = true
+    var closeWindows = false
+    var lag = 0.02 // each way
+    var enterLag: [String: Double] = [:] // per link; else 0.8 (STP: 790-951 ms)
+    var exitLag = 0.2
+    var slowExit: [WindowKey: Double] = [:]
+    var createLag = 0.25
+    var framedLag = 0.03
+    var coverLag = 0.03
+    var coverOn = true
+    var framedOn = true
+    var hung: Set<WindowKey> = [] // its windows calls held (a hung tab), until `unhang`
+    private var held: [WindowKey: () -> Void] = [:]
+    private(set) var calling: Set<WindowKey> = [] // windows calls the copy has under way
+    var drafts: [WindowKey: JSONObject] = [:]
+    var silentDrafts = false
+    var probeAnswer: JSONObject?
+    var noFullScreen: Set<WindowKey> = [] // asked for full screen, Safari never enters
+    var wrongBounds: Set<WindowKey> = [] // enters, but its bounds never fill the display
+    var noCreateAnswer = false
+    var closeFails = 0
+    var dialogs: [ServerWindow] = []
+    var outOverlays: [WindowKey] = []
+    var requests: [Req] = []
+    var events: [ProfileSwitch.Event] = []
+    var notices: [SwitchNotice] = []
+    var onRequest: ((Req) -> Void)?
+    var onEvent: ((ProfileSwitch.Event) -> Void)?
+
+    private func later(_ seconds: Double, _ fire: @escaping () -> Void) { _ = clock.after(seconds, fire) }
+
+    init() {
+        reads = FakeSpaceWorld(clock: clock)
+        reads.lag = 0.002
+        freezer = FakeFreezer(clock: clock)
+        spaceParker = SpaceParker(reads: reads, bridge: reads, clock: clock)
+        registry = ParkingRegistry(parker: spaceParker, reads: reads, clock: clock, marker: nil, build: nil)
+        registry.parkingOn = { [weak self] in self?.parkingOnFlag ?? false }
+        registry.strandCheck = { [weak self] in self?.strands.append($0) }
+        reads.active = desktop
+        updateDisplays()
+    }
+
+    // ---- set-up ----
+
+    @discardableResult
+    func add(_ link: String, id: Int, number: Int, state: String, space: String = "s1") -> WindowKey {
+        let normal = CGRect(x: 100, y: 80, width: 1200, height: 800)
+        if state == "fullscreen" {
+            reads.windows[number] = .init(pid: pid, bounds: display, spaces: [newFs()])
+        } else {
+            reads.windows[number] = .init(pid: pid, bounds: normal, spaces: state == "minimized" ? [] : [desktop])
+        }
+        wins[link, default: []].append(Win(id: id, number: number, state: state, normal: normal, space: space))
+        linked.insert(link)
+        return WindowKey(link: link, windowId: id)
+    }
+
+    // A normal window parked through the registry, as a switch would have.
+    func park(_ key: WindowKey, home: Bool = true) {
+        guard let w = win(key) else { return }
+        registry.park(number: w.number, link: key.link, windowId: key.windowId, pid: pid, bounds: w.normal, cause: .handoff)
+        clock.advance(0.05)
+        if home { registry.noteShown(link: key.link, number: w.number) }
+    }
+
+    func newFs() -> UInt64 {
+        let s = nextFs
+        nextFs += 1
+        fs.append(s)
+        updateDisplays()
+        return s
+    }
+
+    func updateDisplays() {
+        var list = [DisplaySpaces(display: "Main", current: reads.active, spaces: [ManagedSpace(id: desktop, type: 0)] + fs.map { ManagedSpace(id: $0, type: 4) })]
+        for i in 1..<max(displays, 1) { list.append(DisplaySpaces(display: "D\(i)", current: UInt64(900 + i), spaces: [ManagedSpace(id: UInt64(900 + i), type: 0)])) }
+        reads.displayList = list
+    }
+
+    func setActive(_ s: UInt64) {
+        reads.active = s
+        updateDisplays()
+    }
+
+    func unhang(_ key: WindowKey) {
+        hung.remove(key)
+        held.removeValue(forKey: key)?()
+    }
+
+    // ---- reading it ----
+
+    func win(_ key: WindowKey) -> Win? { wins[key.link]?.first { $0.id == key.windowId } }
+    func update(_ key: WindowKey, _ change: (inout Win) -> Void) {
+        guard let i = wins[key.link]?.firstIndex(where: { $0.id == key.windowId }) else { return }
+        change(&wins[key.link]![i])
+    }
+    func spacesOf(_ key: WindowKey) -> [UInt64] { win(key).flatMap { reads.spaces(of: $0.number) } ?? [] }
+    func inFrontNow(_ key: WindowKey) -> Bool { reads.active.map { spacesOf(key).contains($0) } ?? false }
+    func fullAndInFront(_ key: WindowKey) -> Bool { win(key)?.state == "fullscreen" && inFrontNow(key) && fs.contains(reads.active ?? 0) }
+    func types(_ link: String? = nil, _ type: String? = nil) -> [Req] { requests.filter { (link == nil || $0.link == link) && (type == nil || $0.type == type) } }
+
+    // ---- Safari ----
+
+    func focus(_ key: WindowKey) {
+        for l in wins.keys { for i in wins[l]!.indices { wins[l]![i].focused = false } }
+        update(key) { $0.focused = true; $0.focusedAt = clock.now() }
+        if let s = spacesOf(key).first(where: { $0 == desktop || fs.contains($0) }) { setActive(s) }
+    }
+
+    func enter(_ key: WindowKey, _ done: @escaping (Bool) -> Void) {
+        guard let w = win(key) else { return done(false) }
+        if w.state == "fullscreen", spacesOf(key).contains(where: { fs.contains($0) }) {
+            focus(key)
+            return done(true)
+        }
+        if noFullScreen.contains(key) { return }
+        later(enterLag[key.link] ?? 0.8) { [self] in
+            guard let w = self.win(key) else { return done(false) }
+            let s = self.newFs()
+            self.reads.windows[w.number]?.spaces = [s]
+            self.reads.windows[w.number]?.bounds = self.wrongBounds.contains(key) ? CGRect(x: 0, y: 40, width: 1512, height: 900) : self.display
+            self.update(key) { $0.state = "fullscreen" }
+            self.focus(key)
+            if self.framedOn { self.later(self.framedLag) { [weak self] in self?.switcher?.framed(key, mode: .fullscreen) } }
+            done(true)
+        }
+    }
+
+    func exit(_ key: WindowKey, after: Double, _ done: @escaping (Bool) -> Void) {
+        guard let w = win(key), w.state == "fullscreen" else { return done(win(key) != nil) }
+        later(after) { [self] in
+            guard let w = self.win(key) else { return done(false) }
+            let old = self.spacesOf(key).filter { self.fs.contains($0) }
+            self.fs.removeAll { old.contains($0) }
+            self.reads.windows[w.number]?.spaces = [self.desktop]
+            self.reads.windows[w.number]?.bounds = w.normal
+            self.update(key) { $0.state = "normal" }
+            if let a = self.reads.active, old.contains(a) { self.reads.active = self.desktop }
+            self.updateDisplays()
+            done(true)
+        }
+    }
+
+    func close(_ key: WindowKey) {
+        guard let w = win(key) else { return }
+        let old = spacesOf(key).filter { fs.contains($0) }
+        fs.removeAll { old.contains($0) }
+        reads.windows[w.number] = nil
+        wins[key.link]?.removeAll { $0.id == key.windowId }
+        if let a = reads.active, old.contains(a) { reads.active = desktop }
+        updateDisplays()
+    }
+
+    // ---- HandoffWorld ----
+
+    var handoffFreezer: Freezer? { noFreezer ? nil : freezer }
+    var spaceReads: SpaceReads? { noReads ? nil : reads }
+    var parker: BridgeParker? { spaceParker }
+    var parking: ParkingRegistry? { registry }
+    var parkingOn: Bool { parkingOnFlag }
+    func closesWindows(_ link: String) -> Bool { closeWindows }
+    func isLinked(_ profile: String) -> Bool { linked.contains(profile) }
+
+    func request(_ profile: String, _ type: String, _ payload: JSONObject, windowId: Int?, done: @escaping (JSONObject?, String?) -> Void) {
+        let r = Req(link: profile, type: type, payload: payload, at: clock.now(), frozen: freezer.isLive)
+        requests.append(r)
+        onRequest?(r)
+        let reply = { [self] (result: JSONObject?, error: String?) in self.later(self.lag) { done(result, error) } }
+        guard linked.contains(profile) else { return reply(nil, "not linked") }
+        later(lag) { [self] in self.arrive(r, windowId: windowId, reply) }
+    }
+
+    private func arrive(_ r: Req, windowId: Int?, _ reply: @escaping (JSONObject?, String?) -> Void) {
+        guard linked.contains(r.link) else { return } // its copy went away: no answer
+        let key = WindowKey(link: r.link, windowId: r.windowId ?? windowId ?? -1)
+        if ["setWindowState", "focusWindow", "closeWindow"].contains(r.type) {
+            if let notAfter = num(r.payload["notAfter"]), clock.now() * 1000 > notAfter {
+                return reply(["refused": "late", "pastMs": clock.now() * 1000 - notAfter], nil)
+            }
+            if calling.contains(key) { return reply(["busy": true], nil) }
+            calling.insert(key)
+            let carry = { [self] in self.windowsCall(r, key) { result, error in self.calling.remove(key); reply(result, error) } }
+            if hung.contains(key) { held[key] = carry; return }
+            return carry()
+        }
+        switch r.type {
+        case "openSpaceWindow":
+            if noCreateAnswer { return }
+            later(createLag) { [self] in
+                let id = self.nextId, number = self.nextNumber
+                self.nextId += 1
+                self.nextNumber += 1
+                let normal = CGRect(x: 120, y: 90, width: 1200, height: 800)
+                self.reads.windows[number] = .init(pid: self.pid, bounds: normal, spaces: [self.reads.active ?? self.desktop])
+                self.wins[r.link, default: []].append(Win(id: id, number: number, state: "normal", normal: normal, space: r.payload["spaceId"] as? String ?? "s1"))
+                reply(["windowId": id, "state": "normal", "bounds": ["left": 120, "top": 90, "width": 1200, "height": 800]], nil)
+                // macOS puts a window made beside a full-screen one in full screen by itself (bg-create).
+                self.enter(WindowKey(link: r.link, windowId: id)) { _ in }
+            }
+        case "setSpace":
+            update(key) { $0.space = r.payload["spaceId"] as? String ?? $0.space }
+            reply([:], nil)
+        case "windowDrafts":
+            if silentDrafts { return }
+            reply(drafts[key] ?? ["drafts": [], "unknown": []], nil)
+        case "frameProbe":
+            reply(probeAnswer ?? ["none": "no page"], nil)
+        default:
+            reply(nil, "unknown")
+        }
+    }
+
+    private func windowsCall(_ r: Req, _ key: WindowKey, _ done: @escaping (JSONObject?, String?) -> Void) {
+        guard win(key) != nil else { return done(nil, "no window") }
+        switch r.type {
+        case "setWindowState":
+            if r.state == "fullscreen" {
+                if noFullScreen.contains(key) {
+                    later(3) { done(["windowId": key.windowId, "state": "fullscreen", "timedOut": true], nil) }
+                    return
+                }
+                enter(key) { [self] ok in
+                    if ok, r.payload["focused"] as? Bool == true { self.focus(key) }
+                    done(ok ? ["windowId": key.windowId, "state": "fullscreen", "landedAt": self.clock.now() * 1000] : nil, ok ? nil : "gone")
+                }
+            } else {
+                let wait = slowExit[key] ?? exitLag
+                var answered = false
+                if wait > 3 { later(3) { answered = true; done(["windowId": key.windowId, "state": "normal", "timedOut": true], nil) } }
+                exit(key, after: wait) { [self] ok in
+                    guard !answered else { return }
+                    done(ok ? ["windowId": key.windowId, "state": "normal", "landedAt": self.clock.now() * 1000] : nil, ok ? nil : "gone")
+                }
+            }
+        case "focusWindow":
+            if r.payload["fullscreen"] as? Bool == true { enter(key) { _ in } }
+            focus(key)
+            done(["windowId": key.windowId, "state": win(key)?.state ?? "normal"], nil)
+        case "closeWindow":
+            if closeFails > 0 {
+                closeFails -= 1
+                return done(nil, "couldn't close")
+            }
+            close(key)
+            done([:], nil)
+        default:
+            done(nil, "unknown")
+        }
+    }
+
+    func windows(of profile: String) -> [(id: Int, state: String)] { copyWindows(profile).map { ($0.key.windowId, $0.state) } }
+    func inFront(_ profile: String, windowId: Int) -> Bool { inFrontNow(WindowKey(link: profile, windowId: windowId)) }
+    func switchChanged(_ event: ProfileSwitch.Event) {
+        events.append(event)
+        onEvent?(event)
+        if case .started = event, coverOn {
+            later(coverLag) { [weak self] in
+                guard let s = self?.switcher, let a = s.leaving else { return }
+                s.coverShown(in: a)
+            }
+        }
+    }
+    func copyWindows(_ link: String) -> [ExtWindow] {
+        guard linked.contains(link) else { return [] }
+        return (wins[link] ?? []).map { w in
+            ExtWindow(key: WindowKey(link: link, windowId: w.id), bounds: reads.windows[w.number]?.bounds, state: w.state, focused: w.focused, activeTabId: 1, focusedAt: w.focusedAt)
+        }
+    }
+    func number(of key: WindowKey) -> Int? { win(key).map(\.number).flatMap { unbound.contains($0) ? nil : $0 } }
+    func key(of number: Int) -> WindowKey? {
+        guard !unbound.contains(number) else { return nil }
+        for (link, list) in wins { if let w = list.first(where: { $0.number == number }) { return WindowKey(link: link, windowId: w.id) } }
+        return nil
+    }
+    func activeSpaceId(of key: WindowKey) -> String? { win(key)?.space }
+    func fillsDisplay(_ bounds: CGRect) -> Bool { bounds == display }
+    func browserWindows(of link: String) -> [ServerWindow] {
+        reads.windows.keys.sorted().compactMap { reads.window($0) } + dialogs
+    }
+    func orderOutOverlay(_ key: WindowKey) {
+        outOverlays.append(key)
+        requests.append(Req(link: key.link, type: "overlay out", payload: ["windowId": key.windowId], at: clock.now(), frozen: freezer.isLive))
+    }
+    func overlayOffScreen(_ key: WindowKey) -> Bool { outOverlays.contains(key) || !inFrontNow(key) }
+    func overlayAbove(_ key: WindowKey) -> Bool {
+        framedOn && inFrontNow(key) && win(key).flatMap { reads.windows[$0.number]?.bounds }.map(fillsDisplay) == true
+    }
+    func showSwitchNotice(_ notice: SwitchNotice) { notices.append(notice) }
+}
+
+let hA = "safari:A", hB = "safari:B", hC = "safari:C"
+let hKA = WindowKey(link: hA, windowId: 10), hKB = WindowKey(link: hB, windowId: 20)
+
+// A in full screen in front; B's window parked (its home window); C linked with no window.
+func handoffSetup(_ build: (FakeHandoffWorld) -> Void = { _ in }) -> (FakeHandoffWorld, ProfileSwitch) {
+    let w = FakeHandoffWorld()
+    w.add(hA, id: 10, number: 1010, state: "fullscreen", space: "a1")
+    w.focus(hKA)
+    w.add(hB, id: 20, number: 2020, state: "normal", space: "b0")
+    w.park(hKB)
+    w.registry.noteShown(link: hA, number: 1010)
+    w.linked.insert(hC)
+    build(w)
+    let s = ProfileSwitch(world: w, clock: w.clock)
+    w.switcher = s
+    return (w, s)
+}
+
+// Time passes in small steps (the fake clock's list of timers stays short).
+func handoffRun(_ w: FakeHandoffWorld, _ seconds: Double) {
+    var left = seconds
+    while left > 1e-9 {
+        let step = min(0.05, left)
+        w.clock.advance(step)
+        left -= step
+    }
+}
+
+// Until `until` holds (true) or `max` seconds pass (false), in 4 ms steps.
+@discardableResult
+func handoffUntil(_ w: FakeHandoffWorld, max: Double = 15, _ until: () -> Bool) -> Bool {
+    var t = 0.0
+    while t < max {
+        if until() { return true }
+        w.clock.advance(0.004)
+        t += 0.004
+    }
+    return until()
+}
+
+// HANDOFF.md §4.4's invariants, after a case has run out: the screen revealed, nothing busy, a window
+// of A's or B's profile in front, every window that's in no user Space still in the registry, and the
+// registry's hard rule never refused.
+func handoffInvariants(_ label: String, _ w: FakeHandoffWorld, _ s: ProfileSwitch, _ links: [String] = [hA, hB]) {
+    handoffRun(w, 12)
+    check("\(label): invariant, the screen revealed", !w.freezer.isLive)
+    check("\(label): invariant, the switch idle", !s.busy, "\(s.phase)")
+    let front = links.flatMap { l in (w.wins[l] ?? []).map { WindowKey(link: l, windowId: $0.id) } }.filter(w.inFrontNow)
+    check("\(label): invariant, a window of A's or B's in front", !front.isEmpty, "active \(w.reads.active ?? 0), \(w.wins)")
+    let minimized = Set(w.wins.values.flatMap { $0 }.filter { $0.state == "minimized" }.map(\.number))
+    let untracked = w.reads.windows.keys.filter { w.reads.spaces(of: $0)?.isEmpty == true && !minimized.contains($0) && !w.registry.isParked($0) }
+    check("\(label): invariant, every hidden window in the registry", untracked.isEmpty, "\(untracked)")
+    check("\(label): invariant, nothing stranded", w.strands.isEmpty, "\(w.strands)")
+}
+
+func handoffMachineTests() {
+    let echo = Diagnostics.echo
+    var said: [String] = []
+    Diagnostics.echo = { said.append($0) }
+    defer { Diagnostics.echo = echo }
+    let toB = ProfileSwitch.Target(profile: hB, space: "b1")
+    let toC = ProfileSwitch.Target(profile: hC, space: "c1")
+    func failed(_ e: ProfileSwitch.Event?) -> Bool { if case .failed? = e { return true }; return false }
+
+    // ---- §1.1: the two choices ----
+    typealias F = HandoffChoice.Facts
+    check("choice: the default is park+freeze", HandoffChoice.pick(F()) == HandoffChoice(freeze: true, old: .park))
+    check("choice: no freeze: park, seen", HandoffChoice.pick(F(freezeOn: false)).description == "park")
+    check("choice: the setting: close+freeze", HandoffChoice.pick(F(closeSetting: true)).description == "close+freeze")
+    check("choice: parking off: close", HandoffChoice.pick(F(parkOn: false)).old == .close)
+    check("choice: two displays: no freeze, the new A kept", { let c = HandoffChoice.pick(F(displays: 2)); return !c.freeze && c.old == .keep }())
+    check("choice: two displays with the setting: close, no freeze", { let c = HandoffChoice.pick(F(closeSetting: true, displays: 2)); return !c.freeze && c.old == .close }())
+    check("choice: A's copy gone: kept", HandoffChoice.pick(F(aLinked: false)).old == .keep)
+    check("choice: the person's own window: kept", HandoffChoice.pick(F(aExtra: true)).old == .keep)
+    check("choice: no A: the freeze, nothing left", { let c = HandoffChoice.pick(F(hasA: false)); return c.freeze && c.old == .keep }())
+
+    // ---- park+freeze, a parked target: the whole switch ----
+    do {
+        let (w, s) = handoffSetup()
+        var drawnAtFreeze = false
+        w.onRequest = { r in if r.type == "setWindowState", r.link == hB { drawnAtFreeze = s.phase == .frozen } }
+        s.start(toB, from: hA, windowId: 10)
+        check("handoff: preparing, the cover up, nothing frozen", s.phase == .preparing && !w.freezer.isLive && s.isTarget(hKB) && s.leaving == hKA)
+        handoffRun(w, 0.025)
+        check("handoff: B's space set while it's hidden, A's drafts asked", w.types(hB, "setSpace").first?.payload["spaceId"] as? String == "b1"
+              && w.types(hA, "windowDrafts").count == 1 && w.registry.isParked(2020), "\(w.requests.map(\.type))")
+        handoffUntil(w, max: 0.5) { s.phase == .frozen }
+        check("handoff: the freeze on the cover's word (before 250 ms)", w.freezer.calls == ["freeze 1.7 s: 0"] && w.clock.now() - 1000 < 0.25 + 0.2, "\(w.freezer.calls)")
+        handoffUntil(w, max: 1) { w.types(hB, "setWindowState").count == 1 }
+        let bAsk = w.types(hB, "setWindowState").first
+        check("handoff: B shown, then full screen and focused, once, under the freeze, with its notAfter",
+              drawnAtFreeze && bAsk?.state == "fullscreen" && bAsk?.payload["focused"] as? Bool == true && bAsk?.frozen == true
+              && num(bAsk?.payload["notAfter"]).map { abs($0 - ((bAsk!.at - 0.016) + 1.5) * 1000) < 40 } == true && !w.registry.isParked(2020), "\(String(describing: bAsk?.payload))")
+        handoffUntil(w, max: 2) { w.types(hA, "setWindowState").count == 1 }
+        let out = w.requests.firstIndex { $0.type == "overlay out" && $0.link == hA }
+        let aAsk = w.requests.firstIndex { $0.type == "setWindowState" && $0.link == hA }
+        check("handoff: A's overlay ordered out before A's normal", out != nil && aAsk != nil && out! < aAsk!)
+        check("handoff: A asked normal under the freeze, once B is in its Space", w.requests[aAsk!].frozen && w.requests[aAsk!].state == "normal" && w.fullAndInFront(hKB))
+        handoffUntil(w, max: 2) { s.phase == .after }
+        check("handoff: revealed once A is parked and settled", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"] && w.registry.isParked(1010), "\(w.freezer.calls)")
+        handoffUntil(w, max: 3) { !s.busy }
+        check("handoff: done, B in front in full screen, A parked", w.events == [.started(toB), .done(toB)] && w.fullAndInFront(hKB) && w.registry.isParked(1010), "\(w.events)")
+        check("handoff: the home windows", w.registry.lastShown[hB] == 2020 && w.registry.lastShown[hA] == 1010)
+        let line = s.session.lines.last ?? ""
+        check("handoff: one line: modes, numbers and milliseconds", line.hasPrefix("handoff: safari:A#10 → safari:B#20 (park+freeze, parked target), frozen ") && line.contains("A parked") && line.contains("focus ok"), line)
+        check("handoff: frozen less than the watchdog", w.freezer.reports.contains { if case .revealed(_, .ready, let ms) = $0 { return ms < 1700 }; return false })
+        handoffInvariants("handoff", w, s)
+    }
+    // ---- park without a freeze: the same steps, seen ----
+    do {
+        let (w, s) = handoffSetup { $0.noFreezer = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("park, no freeze: done, A parked, B in front, nothing frozen", w.events.last == .done(toB) && w.registry.isParked(1010) && w.fullAndInFront(hKB) && w.freezer.calls.isEmpty)
+        handoffInvariants("park, no freeze", w, s)
+    }
+    // ---- close+freeze: B under the freeze, A closed after the reveal ----
+    do {
+        let (w, s) = handoffSetup { $0.closeWindows = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { !w.types(hA, "closeWindow").isEmpty }
+        let close = w.types(hA, "closeWindow").first
+        check("close+freeze: A untouched under the freeze, closed after the reveal",
+              close?.frozen == false && w.types(hA, "setWindowState").isEmpty && w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"], "\(w.freezer.calls)")
+        handoffRun(w, 3)
+        check("close+freeze: done, A gone, nothing parked of A's", w.events.last == .done(toB) && w.win(hKA) == nil && !w.registry.isParked(1010) && w.fullAndInFront(hKB))
+        handoffInvariants("close+freeze", w, s)
+    }
+    // ---- close without a freeze and no parked target: today's switch, with the drafts check ----
+    do {
+        let (w, s) = handoffSetup { $0.noFreezer = true; $0.closeWindows = true }
+        s.start(toC, from: hA, windowId: 10)
+        check("close, no freeze: today's switch (creating), the drafts asked", s.phase == .creating && s.run == nil && w.types(hA, "windowDrafts").count == 1)
+        handoffRun(w, 5)
+        check("close, no freeze: done, A closed", w.events.last == .done(toC) && w.win(hKA) == nil && w.freezer.calls.isEmpty, "\(w.events) \(s.history.suffix(3))")
+        handoffInvariants("close, no freeze", w, s, [hA, hC])
+    }
+    do {
+        let (w, s) = handoffSetup { $0.noFreezer = true; $0.closeWindows = true; $0.drafts[hKA] = ["drafts": [3], "unknown": []] }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("close, no freeze, a draft: A kept, told after the switch's end", w.events.last == .done(toC) && w.win(hKA) != nil && w.types(hA, "closeWindow").isEmpty
+              && w.notices == [SwitchNotice(.windowKeptDraft, profile: hA, shownIn: WindowKey(link: hC, windowId: 50), kept: hKA)], "\(w.notices)")
+        handoffInvariants("close, no freeze, a draft", w, s, [hA, hC])
+    }
+    do {
+        // A world with no Space reads: today's switch, whatever the setting.
+        let (w, s) = handoffSetup { $0.noReads = true }
+        s.start(toC, from: hA, windowId: 10)
+        check("no Space reads: the close-based switch", s.phase == .creating && s.run == nil)
+        handoffRun(w, 5)
+        check("no Space reads: done as today", w.events.last == .done(toC) && w.win(hKA) == nil)
+        handoffInvariants("no Space reads", w, s, [hA, hC])
+    }
+    // ---- keep: two displays; and the next switch on one display freezes again ----
+    do {
+        let (w, s) = handoffSetup { $0.displays = 2 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("two displays: no freeze, A kept in its full-screen Space, B shown in front", w.events.last == .done(toB) && w.freezer.calls.isEmpty
+              && w.win(hKA)?.state == "fullscreen" && !w.registry.isParked(1010) && w.fullAndInFront(hKB) && w.outOverlays.contains(hKA) && w.types(hA, "setWindowState").isEmpty)
+        handoffInvariants("two displays", w, s)
+        w.displays = 1
+        s.start(.init(profile: hA, space: "a1"), from: hB, windowId: 20)
+        handoffRun(w, 4)
+        check("back to one display: the next switch freezes and parks (no lasting demotion)", w.events.last == .done(.init(profile: hA, space: "a1")) && w.freezer.calls.first == "freeze 1.7 s: 0"
+              && w.registry.isParked(2020) && w.fullAndInFront(hKA) && w.types(hA, "setWindowState").last?.payload["focused"] as? Bool == true, "\(w.freezer.calls)")
+        handoffInvariants("back to one display", w, s)
+    }
+    // ---- session demotions ----
+    do {
+        // Two failed freezes in a row turn it off; each switch still parks, seen.
+        let (w, s) = handoffSetup { $0.freezer.freezeResults = [7, 7] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("demotion: a failed freeze: this switch without one, still parked", w.events.last == .done(toB) && w.registry.isParked(1010) && s.session.rules.on)
+        s.start(.init(profile: hA, space: "a1"), from: hB, windowId: 20)
+        handoffRun(w, 4)
+        check("demotion: two in a row: the freeze off for the session", !s.session.rules.on && w.registry.isParked(2020) && w.freezer.calls == ["freeze 1.7 s: 7", "freeze 1.7 s: 7"], "\(w.freezer.calls)")
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("demotion: then no freeze asked at all", w.freezer.calls.count == 2 && w.events.last == .done(toB))
+        handoffInvariants("demotion, freeze", w, s)
+    }
+    do {
+        // A failed reveal: released, and the freeze off.
+        let (w, s) = handoffSetup { $0.freezer.revealResults = [3] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("demotion: a failed reveal released, the freeze off", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 3", "release 1: 0"] && !s.session.rules.on && w.events.last == .done(toB))
+        handoffInvariants("demotion, reveal", w, s)
+    }
+    do {
+        // A's park didn't land: parking off for the session, A closed (no drafts), the next switch closes.
+        let (w, s) = handoffSetup()
+        w.onRequest = { r in if r.link == hA, r.type == "setWindowState", r.state == "normal" { w.reads.dropNext = 2 } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("demotion: A's park didn't land: parking off, A closed, B in front", s.session.parkOff?.contains("1010's park didn't land") == true
+              && w.win(hKA) == nil && !w.registry.isParked(1010) && w.events.last == .done(toB) && w.fullAndInFront(hKB), "\(String(describing: s.session.parkOff)) \(s.history.suffix(4))")
+        handoffInvariants("demotion, park", w, s)
+    }
+    do {
+        // A's park didn't land, with a draft in A: kept on its Desktop, and told.
+        let (w, s) = handoffSetup { $0.drafts[hKA] = ["drafts": [], "unknown": [4]] }
+        w.onRequest = { r in if r.link == hA, r.type == "setWindowState", r.state == "normal" { w.reads.dropNext = 2 } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("demotion: A's park didn't land, a draft: kept as a normal window, told", w.win(hKA)?.state == "normal" && w.types(hA, "closeWindow").isEmpty
+              && w.notices.first?.kind == .windowKeptDraft && w.notices.first?.kept == hKA && w.notices.first?.shownIn == hKB && w.events.last == .done(toB), "\(w.notices)")
+        handoffInvariants("demotion, park, a draft", w, s)
+    }
+    do {
+        // B's show didn't land: parking off; B closed by its copy (no drafts) and the switch goes on as a create.
+        let (w, s) = handoffSetup()
+        w.onRequest = { r in if r.link == hB, r.type == "setSpace" { w.reads.dropNext = 4 } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("demotion: B's show didn't land: parking off, B closed, a new window made", s.session.parkOff?.contains("2020's show didn't land") == true
+              && w.types(hB, "closeWindow").count == 1 && w.types(hB, "openSpaceWindow").count == 1 && w.win(hKB) == nil, "\(s.history.suffix(6))")
+        check("demotion: … A closed rather than parked (parking off), the new window in front", w.events.last == .done(toB) && w.win(hKA) == nil
+              && w.fullAndInFront(WindowKey(link: hB, windowId: 50)), "\(w.events) \(s.history.suffix(4))")
+        handoffInvariants("demotion, show", w, s)
+    }
+    // ---- drafts before a close ----
+    do {
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.drafts[hKA] = ["drafts": [7], "unknown": []] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("drafts: close mode with a draft: A kept in its Space, told in B's overlay with its window", w.win(hKA)?.state == "fullscreen" && w.types(hA, "closeWindow").isEmpty
+              && w.notices == [SwitchNotice(.windowKeptDraft, profile: hA, shownIn: hKB, kept: hKA)] && w.events.last == .done(toB))
+        handoffInvariants("drafts", w, s)
+    }
+    do {
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.silentDrafts = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("drafts: no answer: kept too", w.win(hKA) != nil && w.types(hA, "closeWindow").isEmpty && w.notices.first?.kind == .windowKeptDraft)
+        handoffInvariants("drafts, no answer", w, s)
+    }
+    // ---- deadlines ----
+    do {
+        // A create never answered: given up at 8 s, A untouched; its late window closed.
+        let (w, s) = handoffSetup { $0.noCreateAnswer = true }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 7.5)
+        check("deadline: the create's answer waited for", s.busy && w.types(hC, "openSpaceWindow").count == 1 && w.freezer.calls.last == "reveal 1 watchdog: 0")
+        handoffRun(w, 1)
+        check("deadline: no answer in 8 s: failed, A untouched and in front", failed(w.events.last) && w.types(hA, "setWindowState").allSatisfy { $0.state == "fullscreen" }
+              && w.fullAndInFront(hKA), "\(w.events) \(s.history.suffix(3))")
+        handoffInvariants("deadline, create", w, s, [hA, hC])
+    }
+    do {
+        // B never in full screen: the watchdog at 1.7 s, recovery at the settle timeout; B parked again.
+        let (w, s) = handoffSetup { $0.noFullScreen = [hKB] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 2)
+        check("deadline: B not ready: the watchdog revealed, still going", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 watchdog: 0"] && s.phase == .frozen && s.run?.lateAt != nil)
+        handoffRun(w, 4.5)
+        check("deadline: B never full screen: recovered, A back in front, B set normal", failed(w.events.last) && w.fullAndInFront(hKA)
+              && w.types(hB, "setWindowState").last?.state == "normal" && w.types(hA, "setWindowState").isEmpty == false, "\(w.events) \(s.history.suffix(4))")
+        handoffRun(w, 1)
+        check("deadline: … and B parked again once normal", w.registry.isParked(2020))
+        handoffInvariants("deadline, settle", w, s)
+    }
+    do {
+        // Its copy not linked, with a parked window: waitingForLink (not "isn't open"), 3 s, then that
+        // window back on its Desktop and the person told.
+        let (w, s) = handoffSetup { $0.linked.remove(hB) }
+        s.start(toB, from: hA, windowId: 10)
+        check("waitingForLink: a parked window, its copy away: waiting, the cover up, no needsProfile", s.phase == .waitingForLink && w.events == [.started(toB)])
+        handoffRun(w, 3.1)
+        check("waitingForLink: 3 s: B returned to the Desktop by number, told", !s.busy && !w.registry.isParked(2020) && w.reads.spaces(of: 2020) == [w.desktop]
+              && w.notices == [SwitchNotice(.windowOnDesktop, profile: hB, shownIn: hKA)] && w.events.last == .cancelled(toB) && w.fullAndInFront(hKA), "\(w.notices) \(w.events)")
+        handoffInvariants("waitingForLink", w, s)
+    }
+    do {
+        let (w, s) = handoffSetup { $0.linked.remove(hB) }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 1)
+        w.linked.insert(hB)
+        handoffRun(w, 4)
+        check("waitingForLink: the copy back in time: on, done", w.events.last == .done(toB) && w.registry.isParked(1010) && w.fullAndInFront(hKB), "\(w.events)")
+        handoffInvariants("waitingForLink, back", w, s)
+    }
+    do {
+        // No parked window and no copy: needsProfile, as today; 90 s.
+        let (w, s) = handoffSetup { $0.linked.remove(hC) }
+        s.start(toC, from: hA, windowId: 10)
+        check("waitingForProfile: no parked window: the person asked to open one", s.phase == .waitingForProfile && w.events == [.started(toC), .needsProfile(toC)])
+        handoffRun(w, 91)
+        check("waitingForProfile: given up after 90 s, nothing done", !s.busy && failed(w.events.last) && w.fullAndInFront(hKA))
+        handoffInvariants("waitingForProfile", w, s, [hA])
+    }
+    do {
+        // The person opens one of its windows meanwhile: the switch goes on to it.
+        let (w, s) = handoffSetup { $0.linked.remove(hC) }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 2)
+        let kc = w.add(hC, id: 30, number: 3030, state: "normal")
+        handoffRun(w, 4)
+        check("waitingForProfile: its window opened: shown full screen, A parked", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010), "\(w.events) \(s.history.suffix(3))")
+        handoffInvariants("waitingForProfile, opened", w, s, [hA, hC])
+    }
+    // ---- the watchdog's three states, and step 5's latest start ----
+    do {
+        // B ready, A settling: revealed by the watchdog; the steps go on, A parked.
+        let (w, s) = handoffSetup { $0.slowExit[hKA] = 0.8 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 1.75)
+        check("watchdog: B ready, A leaving: revealed at 1.7 s", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 watchdog: 0"] && s.run?.lateAt != nil && s.run?.r2At != nil && s.run?.aAskedAt != nil)
+        handoffRun(w, 3)
+        check("watchdog: … then A parked unfrozen, done", w.events.last == .done(toB) && w.registry.isParked(1010) && s.session.lines.last?.contains("late (watchdog at 1700 ms)") == true, "\(s.session.lines)")
+        handoffInvariants("watchdog, settling", w, s)
+    }
+    do {
+        // B steady after 1.15 s: A not touched under the freeze; revealed, then A's exit and park.
+        let (w, s) = handoffSetup { $0.enterLag[hB] = 1.2 }
+        var aAskedFrozen: Bool?
+        w.onRequest = { r in if r.link == hA, r.type == "setWindowState" { aAskedFrozen = r.frozen } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("latest start: B steady past 1.15 s: A asked only after the reveal", aAskedFrozen == false && w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"]
+              && w.registry.isParked(1010) && w.events.last == .done(toB), "\(String(describing: aAskedFrozen)) \(w.freezer.calls)")
+        handoffInvariants("latest start", w, s)
+    }
+    do {
+        // B not ready at 1.7 s: revealed, and the rest seen.
+        let (w, s) = handoffSetup { $0.enterLag[hB] = 2.4 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("watchdog: B not ready: revealed at 1.7 s, then done seen", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 watchdog: 0"] && w.events.last == .done(toB) && w.registry.isParked(1010))
+        // The cooldown: the next freeze at least 1 s after a watchdog reveal.
+        s.start(.init(profile: hA, space: "a1"), from: hB, windowId: 20)
+        handoffUntil(w, max: 3) { w.freezer.isLive }
+        let gap = (w.clock.now() - (s.session.rules.lastWatchdogAt ?? 0))
+        check("cooldown: after a watchdog reveal, the next freeze waits a second", gap >= 1 - 1e-6, "\(gap)")
+        handoffInvariants("watchdog, B late", w, s)
+    }
+    // ---- §1.2: a foreign Space change aborts ----
+    do {
+        let (w, s) = handoffSetup()
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 1) { !w.types(hB, "setWindowState").isEmpty }
+        handoffRun(w, 0.2)
+        w.setActive(w.desktop) // a trackpad swipe to the Desktop under the freeze
+        handoffRun(w, 0.15)
+        check("abort: another Space active for 100 ms: revealed at once, recovering", w.freezer.calls.last == "reveal 1 aborted: 0" && s.phase != .frozen && s.phase != .after
+              && s.history.contains { $0.contains("aborted: the active Space moved to 1") }, "\(w.freezer.calls) \(s.history.suffix(3))")
+        handoffRun(w, 4)
+        check("abort: A back in front, B parked again once normal", failed(w.events.last) && w.fullAndInFront(hKA) && w.registry.isParked(2020), "\(w.events)")
+        handoffInvariants("abort", w, s)
+    }
+    // ---- §1.7: one switch at a time ----
+    do {
+        // Before the freeze a new target takes its place.
+        let (w, s) = handoffSetup { $0.coverOn = false }
+        s.start(toB, from: hA, windowId: 10)
+        s.start(toC, from: hA, windowId: 10)
+        check("queue: before the freeze, the new target in its place", s.target == toC && s.phase == .preparing && w.freezer.calls.isEmpty)
+        handoffRun(w, 4)
+        check("queue: … and only it runs", w.events.last == .done(toC) && w.registry.isParked(2020) && w.types(hB, "setWindowState").isEmpty, "\(w.events)")
+        handoffInvariants("queue, replaced", w, s, [hA, hC])
+    }
+    do {
+        // Back to A's own profile before the freeze: ended, its space set in A.
+        let (w, s) = handoffSetup { $0.coverOn = false }
+        s.start(toB, from: hA, windowId: 10)
+        s.start(.init(profile: hA, space: "a2"), from: hA, windowId: 10)
+        check("queue: back to A's profile before the freeze: nothing done, its space set", !s.busy && w.events.last == .cancelled(toB) && w.freezer.calls.isEmpty)
+        handoffRun(w, 0.1)
+        check("queue: … setSpace in A", w.types(hA, "setSpace").last?.payload["spaceId"] as? String == "a2")
+    }
+    do {
+        // From the freeze on, it waits; it starts only once this one is idle, from where it landed.
+        let (w, s) = handoffSetup { $0.enterLag[hB] = 1.2 } // A's park after the reveal
+        var parkedAtNext: Bool?
+        w.onEvent = { e in if e == .started(toC) { parkedAtNext = w.registry.isParked(1010) && !s.busy } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 1) { s.phase == .frozen }
+        s.start(toC, from: hA, windowId: 10)
+        check("queue: asked under the freeze: queued", s.queued == toC && s.target == toB)
+        handoffRun(w, 8)
+        check("queue: the next started only once idle, A's late park done", parkedAtNext == true && w.events.contains(.done(toB)) && w.events.last == .done(toC), "\(String(describing: parkedAtNext)) \(w.events)")
+        check("queue: … from B's window: B parked, C in front", w.registry.isParked(2020) && w.registry.isParked(1010))
+        handoffInvariants("queue, landed", w, s, [hB, hC])
+    }
+    do {
+        // Queued after a watchdog reveal with A's late park still to do.
+        let (w, s) = handoffSetup { $0.enterLag[hB] = 2.4 }
+        var parkedAtNext: Bool?
+        w.onEvent = { e in if e == .started(toC) { parkedAtNext = w.registry.isParked(1010) } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 1)
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 10)
+        check("queue: after a watchdog reveal, the next waits for A's late park and the landing", parkedAtNext == true && w.events.last == .done(toC), "\(String(describing: parkedAtNext)) \(w.events)")
+        handoffInvariants("queue, after the watchdog", w, s, [hB, hC])
+    }
+    // ---- §1.7: a window with a windows call still pending ----
+    do {
+        let (w, s) = handoffSetup { $0.hung = [hKA] }
+        s.windowCall(w, hKA, .focusWindow(windowId: 10)) { _, _ in }
+        handoffRun(w, 0.1)
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 0.5)
+        check("pending: A with a call pending: the switch waits", s.phase == .preparing && w.freezer.calls.isEmpty)
+        handoffRun(w, 0.7)
+        check("pending: … 1 s, then refused: Safari is busy in this window", !s.busy && w.events.last == .cancelled(toB) && w.notices == [SwitchNotice(.windowBusy, profile: hA, shownIn: hKA)]
+              && w.registry.isParked(2020), "\(w.notices) \(w.events)")
+        w.unhang(hKA)
+        handoffInvariants("pending A", w, s)
+    }
+    do {
+        // B's window has a call pending; another parked window of B's is taken instead.
+        let kb2 = WindowKey(link: hB, windowId: 21)
+        let (w, s) = handoffSetup { w in
+            w.add(hB, id: 21, number: 2121, state: "normal")
+            w.park(kb2, home: false)
+            w.hung = [hKB]
+        }
+        s.windowCall(w, hKB, .focusWindow(windowId: 20)) { _, _ in }
+        handoffRun(w, 0.1)
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("pending: B busy: another parked window of its profile after 1 s", w.events.last == .done(toB) && w.fullAndInFront(kb2) && w.registry.isParked(2020) && w.registry.isParked(1010), "\(w.events) \(s.history.suffix(4))")
+        w.unhang(hKB)
+        handoffInvariants("pending B", w, s)
+    }
+    // ---- §1.9: the aftercare ----
+    do {
+        // A late landing: B's full-screen call hung behind a tab, the switch gave up; it lands later
+        // with nothing done since: B adopted, A parked in the background, the person told.
+        let (w, s) = handoffSetup { $0.hung = [hKB] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 7)
+        check("late landing: the switch gave up, A back in front", failed(w.events.last) && w.fullAndInFront(hKA) && !s.session.watches.isEmpty, "\(w.events)")
+        handoffRun(w, 0.5)
+        w.unhang(hKB)
+        handoffRun(w, 1.5)
+        check("late landing: B in front, told, the home window B's", w.fullAndInFront(hKB) && w.notices.last == SwitchNotice(.lateLanding, profile: hB, shownIn: hKB) && w.registry.lastShown[hB] == 2020, "\(w.notices) \(s.history.suffix(4))")
+        handoffRun(w, 2)
+        check("late landing: … the window shown before set normal and parked", w.registry.isParked(1010) && !w.registry.isParked(2020))
+        handoffInvariants("late landing", w, s)
+    }
+    do {
+        // The same, but the person did something since: B set normal and parked again.
+        let (w, s) = handoffSetup { $0.hung = [hKB] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 7.5)
+        s.personActed()
+        w.unhang(hKB)
+        handoffRun(w, 4)
+        check("late landing, the person acted: no landing, A stays in front", w.fullAndInFront(hKA) && !w.notices.contains { $0.kind == .lateLanding } && !w.registry.isParked(1010), "\(s.history.suffix(4))")
+        let sweep = { _ = w.registry.sweep(SweepRead(pids: [w.pid], ext: w.copyWindows(hA) + w.copyWindows(hB), reporting: [hA, hB], moving: s.movingNumbers)) }
+        for _ in 0..<20 { sweep(); handoffRun(w, 0.1) }
+        check("late landing, the person acted: … B back in its private Space (a system return)", w.registry.isParked(2020) && w.reads.spaces(of: 2020) == [], "\(String(describing: w.reads.spaces(of: 2020)))")
+        handoffInvariants("late landing, acted", w, s)
+    }
+    do {
+        // A late normal: A's exit took longer than the switch; parked once it's normal.
+        let (w, s) = handoffSetup { $0.slowExit[hKA] = 8 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 8.2)
+        check("late normal: the switch landed on B with A still in full screen", w.events.last == .done(toB) && w.win(hKA)?.state == "fullscreen" && !w.registry.isParked(1010), "\(w.events) \(s.history.suffix(3))")
+        handoffRun(w, 2)
+        check("late normal: … parked by the aftercare as it lands", w.registry.isParked(1010) && w.fullAndInFront(hKB))
+        handoffInvariants("late normal", w, s)
+    }
+    do {
+        // A parked window back by itself with no focus on it: the registry parks it again; no handoff.
+        let (w, s) = handoffSetup()
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        w.reads.comeBack(1010, to: w.reads.active!)
+        let eventsBefore = w.events.count
+        let found = w.registry.sweep(SweepRead(pids: [w.pid], ext: w.copyWindows(hA) + w.copyWindows(hB), reporting: [hA, hB], moving: s.movingNumbers))
+        handoffRun(w, 0.5)
+        check("system return: parked again quietly, no handoff", found.contains { if case .system(1010, _, _, .parkAgain) = $0 { return true }; return false }
+              && w.registry.isParked(1010) && !s.busy && w.events.count == eventsBefore, "\(found)")
+        handoffInvariants("system return", w, s)
+    }
+    // ---- §4.4: recovery ----
+    do {
+        // B's copy gone before A was touched: revealed at once; B still floating normal parked again.
+        let (w, s) = handoffSetup { $0.noFullScreen = [hKB] } // its request never carried out
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 1) { !w.types(hB, "setWindowState").isEmpty }
+        handoffRun(w, 0.1)
+        w.linked.remove(hB)
+        handoffRun(w, 0.05)
+        check("recovery, B's copy gone: revealed at once", w.freezer.calls.last == "reveal 1 closed: 0" && s.phase != .frozen)
+        handoffRun(w, 3)
+        check("recovery, B's copy gone: A untouched and in front, B parked again by number", failed(w.events.last) && w.fullAndInFront(hKA) && w.registry.isParked(2020)
+              && w.types(hA, "setWindowState").allSatisfy { $0.state == "fullscreen" }, "\(w.events) \(s.history.suffix(4)) front \(w.fullAndInFront(hKA)) parked \(w.registry.isParked(2020)) \(w.registry.entries[2020].map { "\($0.phase)" } ?? "-") active \(w.reads.active ?? 0) A \(w.spacesOf(hKA)) \(w.win(hKA).map(\.state) ?? "-")")
+        handoffInvariants("recovery, B's copy", w, s)
+    }
+    do {
+        // B closed by the person after A went normal, before A was parked: A back full screen.
+        let (w, s) = handoffSetup { $0.slowExit[hKA] = 0.4 }
+        w.onRequest = { r in if r.link == hA, r.type == "setWindowState", r.state == "normal" { _ = w.clock.after(0.1) { w.close(hKB) } } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("recovery, after A's normal: A back full screen and focused, cancelled", w.events.last == .cancelled(toB) && w.fullAndInFront(hKA) && !w.registry.isParked(1010)
+              && w.types(hA, "setWindowState").last?.state == "fullscreen", "\(w.events) \(w.types(hA).map { $0.state ?? $0.type })")
+        handoffInvariants("recovery, A normal", w, s, [hA])
+    }
+    do {
+        // B closed after A was parked: A shown again, then full screen.
+        let (w, s) = handoffSetup { $0.framedOn = false }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { w.registry.isParked(1010) }
+        w.close(hKB)
+        handoffRun(w, 5)
+        check("recovery, after A's park: A shown, full screen, in front", w.events.last == .cancelled(toB) && w.fullAndInFront(hKA) && !w.registry.isParked(1010), "\(w.events) \(s.history.suffix(4))")
+        handoffInvariants("recovery, A parked", w, s, [hA])
+    }
+    do {
+        // B entered full screen but never filled the display: recovered at the settle timeout, B set
+        // normal, and parked again only once it is.
+        let (w, s) = handoffSetup { $0.wrongBounds = [hKB] }
+        var parkedWhileFull = false
+        s.start(toB, from: hA, windowId: 10)
+        for _ in 0..<200 {
+            handoffRun(w, 0.05)
+            if w.registry.isParked(2020), w.win(hKB)?.state == "fullscreen" { parkedWhileFull = true }
+        }
+        check("recovery: B parked again only once normal", !parkedWhileFull && w.registry.isParked(2020) && failed(w.events.last) && w.fullAndInFront(hKA), "\(w.events) \(s.history.suffix(4))")
+        handoffInvariants("recovery, normal first", w, s)
+    }
+    do {
+        // A failed close is tried once more after 0.5 s.
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.closeFails = 1 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        let closes = w.types(hA, "closeWindow")
+        check("recovery: a failed close tried again after 0.5 s, then closed", closes.count == 2 && abs((closes[1].at - closes[0].at) - 0.54) < 0.05 && w.win(hKA) == nil, "\(closes.map(\.at))")
+        let (w2, s2) = handoffSetup { $0.closeWindows = true; $0.closeFails = 2 }
+        s2.start(toB, from: hA, windowId: 10)
+        handoffRun(w2, 4)
+        check("recovery: failed twice: A stays where it is, the switch done", w2.types(hA, "closeWindow").count == 2 && w2.win(hKA) != nil && w2.events.last == .done(toB))
+        handoffInvariants("recovery, close", w2, s2)
+    }
+    // ---- §1.5: targets ----
+    do {
+        // The window that asked comes first; then the home window; then the most recent parked one.
+        let kb2 = WindowKey(link: hB, windowId: 21), kb3 = WindowKey(link: hB, windowId: 22)
+        let (w, s) = handoffSetup { w in
+            w.add(hB, id: 21, number: 2121, state: "normal")
+            w.add(hB, id: 22, number: 2222, state: "normal")
+            w.park(kb2, home: false)
+            w.park(kb3, home: false)
+        }
+        s.start(toB, from: hA, windowId: 10, asked: kb2)
+        check("target: the window that asked", s.run?.b == kb2 && s.run?.way == .parked)
+        handoffRun(w, 4)
+        check("target: … shown", w.fullAndInFront(kb2) && w.events.last == .done(toB))
+        handoffInvariants("target, asked", w, s)
+        let (w2, s2) = handoffSetup { w in
+            w.add(hB, id: 22, number: 2222, state: "normal")
+            w.park(kb3, home: false)
+        }
+        s2.start(toB, from: hA, windowId: 10)
+        check("target: the home window over a more recent one", s2.run?.b == hKB)
+        w2.registry.noteShown(link: hB, number: 999)
+        s2.start(toC, from: hA, windowId: 10) // in its place, then back
+        s2.start(toB, from: hA, windowId: 10)
+        check("target: no home window parked: the most recently parked", s2.run?.b == kb3, "\(String(describing: s2.run?.b))")
+        handoffRun(w2, 5)
+        check("target: … shown", w2.events.last == .done(toB) && w2.fullAndInFront(kb3))
+        handoffInvariants("target, recent", w2, s2)
+    }
+    do {
+        // Its own window in full screen elsewhere: the focus variant, no show.
+        let (w, s) = handoffSetup { w in
+            w.registry.noteShown(link: hC, number: 3030)
+            w.add(hC, id: 30, number: 3030, state: "fullscreen")
+            w.focus(hKA)
+        }
+        let kc = WindowKey(link: hC, windowId: 30)
+        s.start(toC, from: hA, windowId: 10)
+        check("target: a full-screen window of its own: the focus variant", s.run?.way == .focus && s.run?.b == kc)
+        handoffRun(w, 4)
+        check("target: … focused full screen, nothing shown by the bridge, done", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.types(hC, "setWindowState").count == 1
+              && !w.reads.calls.contains("add 3030 → \(w.desktop)") && w.registry.isParked(1010), "\(w.reads.calls.suffix(6))")
+        handoffInvariants("target, focus", w, s, [hA, hC])
+    }
+    do {
+        // A normal window of its own on the Desktop: shown by the bridge (one op), then full screen.
+        let (w, s) = handoffSetup { $0.add(hC, id: 30, number: 3030, state: "normal") }
+        let kc = WindowKey(link: hC, windowId: 30)
+        s.start(toC, from: hA, windowId: 10)
+        check("target: a normal window: the show variant", s.run?.way == .show)
+        handoffRun(w, 4)
+        check("target: … added to the active Space, then full screen", w.reads.calls.contains { $0.hasPrefix("add 3030 → ") } && w.fullAndInFront(kc) && w.events.last == .done(toC))
+        handoffInvariants("target, show", w, s, [hA, hC])
+    }
+    do {
+        // Minimized only: not a target (the genie under a freeze): a new window.
+        let (w, s) = handoffSetup { $0.add(hC, id: 30, number: 3030, state: "minimized") }
+        s.start(toC, from: hA, windowId: 10)
+        check("target: only minimized: a new window", s.run?.way == .create)
+        handoffRun(w, 4)
+        check("target: … the minimized one left as it is", w.win(WindowKey(link: hC, windowId: 30))?.state == "minimized" && w.events.last == .done(toC))
+        handoffInvariants("target, minimized", w, s, [hA, hC])
+    }
+    do {
+        // §13.11: its home window there, and a window the person opened: never the target.
+        let (w, s) = handoffSetup { w in
+            w.add(hB, id: 23, number: 2323, state: "fullscreen") // the person's ⌘N window
+            w.focus(hKA)
+        }
+        s.start(toB, from: hA, windowId: 10)
+        check("target: the person's own extra window passed over for the home window", s.run?.b == hKB)
+        handoffRun(w, 4)
+        check("target: … which stays in its own Space", w.win(WindowKey(link: hB, windowId: 23))?.state == "fullscreen" && !w.registry.isParked(2323))
+        handoffInvariants("target, extra", w, s)
+    }
+    do {
+        // Its parked window mid-step as the switch starts (here, on its way back to the Desktop): waited
+        // for, then picked again, never a second window.
+        let (w, s) = handoffSetup()
+        w.registry.returnToDesktop(number: 2020, cause: .system("a test"))
+        s.start(toB, from: hA, windowId: 10)
+        check("target: a parked window mid-step: still the target", s.run?.way == .parked && s.run?.bNumber == 2020)
+        handoffRun(w, 4)
+        check("target: … picked again once its step is over, shown, no window made", w.events.last == .done(toB) && w.fullAndInFront(hKB)
+              && w.types(hB, "openSpaceWindow").isEmpty && s.session.parkOff == nil, "\(w.events) \(s.history.suffix(4))")
+        handoffInvariants("target, mid-step", w, s)
+    }
+    // ---- §1.6: the create variant ----
+    do {
+        let (w, s) = handoffSetup()
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        let kc = WindowKey(link: hC, windowId: 50)
+        check("create: one openSpaceWindow under the freeze, no full-screen request of its own", w.types(hC, "openSpaceWindow").count == 1 && w.types(hC, "openSpaceWindow")[0].frozen
+              && w.types(hC, "setWindowState").isEmpty && w.types(hC, "focusWindow").isEmpty, "\(w.types(hC).map(\.type))")
+        check("create: done, the new window in front, A parked, its home window", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010) && w.registry.lastShown[hC] == 5000)
+        handoffInvariants("create", w, s, [hA, hC])
+    }
+    do {
+        // §3.4: a second full-screen request only behind fullScreenRetry, on evidence it never took.
+        let (w, s) = handoffSetup { $0.noFullScreen = [hKB] }
+        s.options.handoff.fullScreenRetry = true
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 1.5)
+        check("retry: on (gate G4 passed), still normal and unmoved 400 ms on: asked once more", w.types(hB, "setWindowState").filter { $0.state == "fullscreen" }.count == 2)
+        handoffRun(w, 6)
+        let (w2, s2) = handoffSetup { $0.noFullScreen = [hKB] }
+        s2.start(toB, from: hA, windowId: 10)
+        handoffRun(w2, 1.5)
+        check("retry: off (the first build): one request only", w2.types(hB, "setWindowState").filter { $0.state == "fullscreen" }.count == 1)
+        handoffInvariants("retry", w2, s2)
+        _ = s
+    }
+    // ---- §1.10: blockers ----
+    do {
+        let (w, s) = handoffSetup { $0.dialogs = [ServerWindow(number: 7777, pid: 500, bounds: CGRect(x: 500, y: 300, width: 400, height: 200), onScreen: true)] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 0.1)
+        check("blocker: a dialog over A: no handoff, the person told", !s.busy && w.events.last == .cancelled(toB) && w.notices == [SwitchNotice(.dialogOpen, profile: hA, shownIn: hKA)]
+              && w.freezer.calls.isEmpty && w.registry.isParked(2020), "\(w.notices)")
+        handoffInvariants("blocker", w, s)
+    }
+    do {
+        // A's own full-screen toolbar isn't a dialog.
+        let (w, s) = handoffSetup { $0.dialogs = [ServerWindow(number: 7778, pid: 500, bounds: CGRect(x: 0, y: 0, width: 1512, height: 40), onScreen: true, order: -1)] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("blocker: A's toolbar isn't one", w.events.last == .done(toB))
+        w.dialogs = []
+        handoffInvariants("blocker, toolbar", w, s)
+    }
+    // ---- §13.11: one window per profile ----
+    do {
+        let (w, s) = handoffSetup()
+        s.start(.init(profile: hA, space: "a2"), from: hA, windowId: 10)
+        handoffRun(w, 0.1)
+        check("same profile: its space in its window, no switch", !s.busy && w.events.isEmpty && w.types(hA, "setSpace").last?.payload["spaceId"] as? String == "a2")
+        handoffInvariants("same profile", w, s, [hA])
+    }
+    do {
+        // The window left is one the person opened (its profile's home window is another, parked): kept.
+        let ka2 = WindowKey(link: hA, windowId: 11)
+        let (w, s) = handoffSetup { w in
+            w.add(hA, id: 11, number: 1111, state: "normal")
+            w.park(ka2) // A's home window is 1111 now
+            w.focus(hKA)
+        }
+        s.start(toB, from: hA, windowId: 10)
+        check("extra window: the window left is the person's own: kept", s.run?.choice.old == .keep)
+        handoffRun(w, 4)
+        check("extra window: … never parked, B in front", !w.registry.isParked(1010) && w.win(hKA)?.state == "fullscreen" && w.fullAndInFront(hKB) && w.events.last == .done(toB))
+        handoffInvariants("extra window", w, s)
+    }
+    // ---- §1.5: a parked target its copy hasn't named yet ----
+    do {
+        let kb5 = WindowKey(link: hB, windowId: 25)
+        let (w, s) = handoffSetup { w in
+            // A new copy of Margin in B's profile: its window has a new id, the binder hasn't bound it.
+            w.update(hKB) { $0.id = 25 }
+            w.unbound = [2020]
+            _ = w.registry.sweep(SweepRead(pids: [w.pid], ext: w.copyWindows(hA) + w.copyWindows(hB), reporting: [hA, hB]))
+        }
+        check("unbound target: the registry's entry has no window id", w.registry.entries[2020] != nil && w.registry.entries[2020]?.windowId == nil)
+        s.start(toB, from: hA, windowId: 10)
+        check("unbound target: picked by number, with no key", s.run?.way == .parked && s.run?.b == nil && s.run?.bNumber == 2020)
+        handoffRun(w, 0.4)
+        check("unbound target: no freeze, shown by number, waiting for the binder", w.freezer.calls.isEmpty && !w.registry.isParked(2020) && w.types(hB, "setWindowState").isEmpty
+              && s.history.contains { $0.contains("no copy id yet: no freeze") })
+        w.unbound = []
+        handoffRun(w, 4)
+        check("unbound target: bound, then full screen: done", w.events.last == .done(toB) && w.fullAndInFront(kb5) && w.types(hB, "setWindowState").count == 1 && w.registry.isParked(1010))
+        handoffInvariants("unbound", w, s)
+    }
+    do {
+        // Never bound: recovered, the window parked again.
+        let (w, s) = handoffSetup { w in
+            w.update(hKB) { $0.id = 25 }
+            w.unbound = [2020]
+            _ = w.registry.sweep(SweepRead(pids: [w.pid], ext: w.copyWindows(hA) + w.copyWindows(hB), reporting: [hA, hB]))
+        }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("unbound target, never bound: given up, A in front, the window parked again", failed(w.events.last) && w.fullAndInFront(hKA) && w.registry.isParked(2020), "\(w.events) \(s.history.suffix(3))")
+        handoffInvariants("unbound, never", w, s)
+    }
+    // ---- the person's focus in a parked window asks for a handoff to it (§6.1) ----
+    do {
+        let (w, s) = handoffSetup()
+        s.start(.init(profile: hB, space: "b0"), from: hA, windowId: 10, asked: hKB)
+        handoffRun(w, 4)
+        check("asked: a parked window's own activity: handed off to it", w.events.last == .done(.init(profile: hB, space: "b0")) && w.fullAndInFront(hKB) && w.types(hB, "setSpace").isEmpty)
+        handoffInvariants("asked", w, s)
+    }
+    // ---- §6.2: no A ----
+    do {
+        let (w, s) = handoffSetup { w in w.close(hKA) }
+        s.start(toB, from: hA, windowId: nil)
+        handoffRun(w, 4)
+        check("no A: B shown from the Desktop, frozen, done", w.events.last == .done(toB) && w.fullAndInFront(hKB) && w.freezer.calls.first == "freeze 1.7 s: 0")
+        handoffInvariants("no A", w, s, [hB])
+    }
+    // ---- the watchdog with B ready and A not started (B steady past 1.15 s, its overlay not framed) ----
+    do {
+        let (w, s) = handoffSetup { $0.enterLag[hB] = 1.55; $0.framedOn = false }
+        var aAskedFrozen: Bool?
+        w.onRequest = { r in if r.link == hA, r.type == "setWindowState" { aAskedFrozen = r.frozen } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 1.75)
+        check("watchdog: B ready, A not started: revealed at 1.7 s, A untouched", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 watchdog: 0"] && aAskedFrozen == nil && s.run?.r2At != nil, "\(w.freezer.calls)")
+        handoffRun(w, 3)
+        check("watchdog: … A's exit and park after it, unfrozen", aAskedFrozen == false && w.registry.isParked(1010) && w.events.last == .done(toB))
+        handoffInvariants("watchdog, A not started", w, s)
+    }
+    // ---- R3 behind Options.frameProbe ----
+    do {
+        let (w, s) = handoffSetup { $0.probeAnswer = ["tabId": 44, "frames": 6, "firstAt": 1, "lastAt": 80, "width": 1512, "height": 982, "hasFocus": true, "visible": true] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("R3 off (the first build): no probe sent", w.types(hB, "frameProbe").isEmpty && w.events.last == .done(toB))
+        let (w2, s2) = handoffSetup { $0.probeAnswer = ["tabId": 44, "frames": 6, "firstAt": 1, "lastAt": 80, "width": 1512, "height": 982, "hasFocus": true, "visible": true] }
+        s2.options.handoff.frameProbe = true
+        s2.start(toB, from: hA, windowId: 10)
+        handoffRun(w2, 4)
+        let probe = w2.types(hB, "frameProbe").first
+        check("R3 on: one probe at R1, at the full-screen size, under the freeze", w2.types(hB, "frameProbe").count == 1 && probe?.frozen == true
+              && num(probe?.payload["width"]) == 1512 && num(probe?.payload["height"]) == 982 && int(probe?.payload["frames"]) == 6)
+        check("R3 on: its frames in the switch's line", w2.events.last == .done(toB) && s2.session.lines.last?.contains("page frames") == true
+              && s2.history.contains { $0.contains("(6, tab 44)") }, "\(s2.session.lines)")
+        let (w3, s3) = handoffSetup()
+        s3.options.handoff.frameProbe = true
+        s3.start(toB, from: hA, windowId: 10)
+        handoffRun(w3, 4)
+        check("R3 on, no page: on anyway", w3.events.last == .done(toB) && s3.history.contains { $0.contains("no page frames") })
+        handoffInvariants("R3", w3, s3)
+    }
+    // ---- landed: the Spaces still for 150 ms, or 2 s at most ----
+    do {
+        let (w, s) = handoffSetup()
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 4) { s.phase == .landed }
+        let at = w.clock.now()
+        var made: [UInt64] = []
+        handoffUntil(w, max: 3) {
+            made.append(w.newFs()) // a full-screen Space after another
+            return !s.busy
+        }
+        check("landed: Spaces that keep moving: idle after 2 s anyway", !s.busy && abs(w.clock.now() - at - 2) < 0.05, "\(w.clock.now() - at)")
+        w.fs.removeAll { made.contains($0) }
+        w.updateDisplays()
+        handoffInvariants("landed", w, s)
+    }
+    // ---- nothing logged but ids and numbers ----
+    check("log: no addresses or titles in the machine's lines", !said.contains { $0.contains("http") || $0.contains("title") }, "\(said.filter { $0.contains("http") })")
 }

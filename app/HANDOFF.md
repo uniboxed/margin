@@ -216,6 +216,22 @@ Before the freeze, in `preparing`:
 
 ---
 
+### 1.11 Built (WP8)
+
+`app/shell/Handoff.swift` (`HandoffWorld`, `HandoffOptions`, `HandoffChoice`, `HandoffRun`, `AftercareWatch`, `HandoffSession`, and the machine as an extension of `ProfileSwitch`), with `app/shell/ProfileSwitch.swift` as its face; tests in `tools/app-tests/handoff-tests.swift` (`FakeHandoffWorld`: Safari, its Spaces, the real parker and registry over `FakeSpaceWorld`, `FakeFreezer`). Settled on the way:
+
+- **One machine, two ways.** `ProfileSwitch` keeps today's close-based switch, its phases (`creating`, `settling`, `closing`, `checking`) and its words, and runs it when the world isn't a `HandoffWorld`, has no Space reads, or the display list doesn't read (never a guess). It also runs it for `close` without a freeze when the target has no parked window. In a `HandoffWorld` it asks A's drafts first: a draft or no answer keeps A, with `window-kept-draft`.
+- **`HandoffWorld` extends `SwitchWorld`.** Four of its members are the shell's own already (`spaceReads`, `parker`, `parking`, `parkingOn`, and `showSwitchNotice`); the rest are WP9's. Until the shell conforms, every switch is today's.
+- **The phase `frozen` means "the steps"**, under the freeze when there is one and seen when there isn't. The cover shows in it either way.
+- **The choice is picked at the start,** from the facts then. Two changes can come later in the same switch: parking turned off mid-switch (B's show didn't land) makes A's part a close, drafts permitting; and a parked target with no copy id runs without a freeze.
+- **A's drafts are asked in `preparing` and never waited for.** At the close, an answer not there yet counts as unknown: A is kept.
+- **Notices come after the switch's end event.** The shell's words for an event replace any notice that was up.
+- **Recovery waits for A's own pending call** before asking it back to full screen (a second call would only be `busy`), and for a park still under way.
+- **The aftercare's watches:** `parkWhenNormal` (a recovered B, an A whose normal timed out) and `leaveFullScreen` (an A whose copy was gone). A recovered B whose full-screen request was sent is watched after it's parked again: going full screen later is a late landing. It counts only if it was seen not in full screen since, or its normal never reached Safari (`busy`, `late`). A Space swipe that aborts a switch is the person's act, so what lands after it isn't adopted. A late landing that isn't adopted puts the shown window back in front. Both mark the window's focus as Margin's (`noteCall`), so the sweep doesn't take it for the person's.
+- **Parking off only after ops went out and didn't land.** A show refused before any op (`busy`, `gone`) fails this switch only. A parked target mid-step is waited for (as a pending call, 1 s), and picked again if its step let it go.
+- **For WP9:** call `switcher.tick()` (the aftercare) before `parking.sweep`, and pass `switcher.movingNumbers` as the sweep's `moving`. Wire `coverShown(in:)`, `framed(_:mode:)`, `personActed()`, `revealNow(.sleep/.safariQuit/.quit)`, and `start(…, asked:)` for `parkedActivity`. `isTarget` and `leaving` serve §2.3 and §2.4.
+- **For WP11:** close mode is freeze 1 with A untouched, then `closeOrKeepA` after the reveal. That's where the second freeze goes. A failed close is already tried once more after 0.5 s.
+
 ## 2. Parking
 
 ### 2.1 The registry: keyed by window number
