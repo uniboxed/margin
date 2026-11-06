@@ -319,6 +319,20 @@ Today a window that leaves full screen is `wanted: false`, so after 1.5 s (`Grac
 4. `SLSSpaceDestroy(B's private Space)`.
 5. B appears as a floating window in A's full-screen Space, hidden by the freeze, then enters its own Space (`S/handoff/RESULTS-park.md`: the same on 12 returns).
 
+Built (WP3): `app/shell/SpaceReads.swift` and `app/shell/BridgeParker.swift`. Settled on the way:
+
+- **The reads** are `SpaceReads`: `activeSpace`, `spaces(of:)` (one window per call: `SLSCopySpacesForWindows` answers the union of the windows it's given), `displays()` (each display's Desktops and type-4 Spaces), `window(_:)` (the per-number window server read) and `display(at:)`. Derived from them: `fullScreenSpaces`, `managedDisplayCount`, `desktop(for:)` and `readsParked`. Every read is optional: nil is unknown.
+- **A display list with any odd entry is unknown as a whole.** The count decides whether a switch freezes, so a half-read list isn't trusted.
+- **A window's Desktop:** its display comes from its bounds (`CGGetDisplaysWithPoint`, then the display's UUID against `Display Identifier`). With one display entry, that display's Desktop. Otherwise the display showing the active Space. The Desktop is the display's current Space if that's a Desktop, else its first Desktop.
+- **Parked reads as off screen when the window server doesn't list the window** (as the labs read it). Whether a parked window is listed is gate G6's question. So `gone` is checked only when a park starts.
+- **The parker** is `BridgeParker`. `SpaceParker` is the real one, on `SkyLightSpaces` (reads and bridge), and the same logic runs in the tests on `FakeSpaceWorld`. It polls every 4 ms. Each op gets 300 ms and one resend. A show resends both ops.
+- **`show` also handles a window with no private Space** (§1.5 rule 5's show variant): it sends only the first op.
+- **A park or show that didn't land keeps its private Space on record,** because the window may still be in it. A later show or return takes the window out and destroys that Space. `destroySpace(of:)` is §4.4's "destroy B's own private Space only".
+- **One step per window at a time.** A second step is `busy`.
+- **The parker logs only retries and failures,** with numbers, Space ids and milliseconds. The registry (WP4) logs each success line in §8.1.
+- **`FakeParker` and `FakeSpaceWorld` live in the shell's files,** as `FakeFreezer` does, so WP8's machine tests and WP9's end-to-end run can inject them.
+- **The shell holds them:** `Shell.spaceReads` and `Shell.parker` are made by `checkPrivateCalls` from what the check passed. `Shell.parkingOn` is true only once the self-test (§4.2) has passed.
+
 ### 3.2 Readiness: R1-R5, polled every 8 ms during the freeze
 
 The freeze has its own poll timer (8 ms), apart from `track`'s burst (33 ms, `Shell.swift:155-160`). Each poll reads `SLSGetActiveSpace`, `SLSCopySpacesForWindows([B, A])`, the type-4 Spaces from `SLSCopyManagedDisplaySpaces`, and B's, A's and A's overlay's bounds and on-screen state (`CGWindowListCopyWindowInfo(.optionIncludingWindow, n)`). Each read takes about 0.1-0.3 ms.
@@ -411,6 +425,14 @@ New `app/shell/PrivateCalls.swift`:
 - **Missing anything falls back silently:** no notice to the person, one log line.
 - **Tests never call the real functions.** The real resolver and wrappers are made only in `Shell.forApp()` (`Shell.swift:277-286`). The real freezer and parker refuse to run when `MARGIN_APP_TESTS` is set.
 - Built (WP1): `PrivateCalls.check(resolver:defaults:)` returns `Availability { freeze, spaces, park, enumerator, missing, mismatched }`, plus each off part's reason and the counts for the launch line. `Shell.checkPrivateCalls()` runs it from `AppDelegate.startShell`, before `shell.start()`. The real resolver goes in `Shell.Options.privateResolver`, set only in `forApp()`. With none (every test, the harness), nothing is checked and every part stays off. `RealPrivateResolver` and `SkyLight` both refuse under `MARGIN_APP_TESTS`, which `tools/app-tests/run.sh` now sets. The self-test is WP3's.
+- Built (WP3): the self-test (`ParkSelfTest`, `ParkProbe` and `ProcessProbeChild` in `BridgeParker.swift`). Settled on the way:
+  - **It runs right after `shell.start()`, not before** (`Shell.selfTestParking`, from `AppDelegate.startShell`). Starting the child takes a few hundred ms, and the link shouldn't wait for it. Parking stays off (`Shell.parkingOn` false) until the test passes, so a switch in that moment uses the fallback.
+  - **Four steps, not three:** park, show, park again, then return. The second park makes the return start from a private Space, as every real return does (quit, `waitingForLink`). Each step is the real parker's own step, with its verify and retry.
+  - **The child is caught in `AppDelegate.main()`.** It's a static `main` that runs `ParkProbe.runChild()` for `--park-probe` and otherwise calls `NSApplicationMain`, as AppKit's own `main` does. So the child never loads the storyboard, the shell, the set-up window or `endOthers`.
+  - **The child's window:** borderless, 1×1, alpha 0, at (-3000, -3000), `.managed` and `.ignoresCycle`, in an accessory app that never activates. It prints `park-probe window N` and ends when its stdin closes (the parent's `end()`, or the parent gone), or after 10 s. The parent ends it with a `terminate` if it's still running 1 s after its stdin closed.
+  - **Limits:** 3 s for the child's number, then 300 ms for its window to be in a Space. On any failure the leftover private Space is destroyed and the child is ended.
+  - **The log line comes after the launch line, as its own line:** `private calls: cross-process self-test park 4 ms, show 14 ms, park again 4 ms, return 13 ms (the child's window in a Space in 2 ms, pid N)`, or `private calls: park off: the cross-process self-test failed: …`.
+  - **Under `MARGIN_APP_TESTS`** the real child spawns nothing, and `SkyLightSpaces` refuses every read and op (its window read too, though it's public), so no test reads the real window server. The tests drive `ParkSelfTest` with a stand-in child.
 - Under the hardened runtime, `dlopen` of Apple's own frameworks passes library validation. No entitlement is added. **Gate G1** confirms that the freeze and cross-process bridge work from a Developer-ID, hardened Margin.app with Screen Recording and Accessibility denied. All the labs so far ran as children of an app that had Screen Recording.
 
 ### 4.3 Every real call verified

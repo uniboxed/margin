@@ -14,12 +14,22 @@
 // (startedForLink). With no copy linked for 10 minutes (and no set-up
 // window), it quits by itself. Replaced on disk some other way, it notices and
 // quits (BundleWatch.swift), and starting, it ends any other instance of its
-// bundle first. Copied over the converter's by scripts/make-xcode.sh.
+// bundle first. Started with --park-probe, it's only the parking self-test's
+// hidden child for a moment (BridgeParker.swift, app/HANDOFF.md §4.2), which
+// the shell starts at launch. Copied over the converter's by scripts/make-xcode.sh.
 
 import Cocoa
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
+
+    // Started as `Margin --park-probe`, it's the parking self-test's child (BridgeParker.swift):
+    // one hidden window, no shell, no set-up window, gone in a moment. Otherwise the app, as
+    // AppKit's own main would start it (the storyboard makes this delegate).
+    static func main() {
+        if ParkProbe.isChild(CommandLine.arguments) { ParkProbe.runChild() }
+        _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)
+    }
 
     private let shell = Shell.forApp()
     private var setup: NSWindowController?
@@ -106,6 +116,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // missing or changed turns that part off, with one log line (PrivateCalls.swift).
         shell.checkPrivateCalls()
         shell.start()
+        // Then the self-test (about 50 ms once its child is up): parking stays off until it passes.
+        shell.selfTestParking()
         idleCheck = Timer.scheduledTimer(withTimeInterval: Self.idleCheckEvery, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkIdle() }
         }

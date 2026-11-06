@@ -258,6 +258,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // ---- private calls (PrivateCalls.swift, app/HANDOFF.md §4.2) ----
     var privateCalls = PrivateCalls.Availability.off // what the launch check found
     var skyLight: SkyLight? // the functions it passed, behind their wrappers; nil until checked
+    // The Space reads and the parker (SpaceReads.swift, BridgeParker.swift), made from what the
+    // check passed. Parking is used only once the cross-process self-test passed: parkingOn.
+    var spaceReads: SpaceReads?
+    var parker: BridgeParker?
+    var parkSelfTest = ParkSelfTest.Outcome.notRun
+    var parkSelfTestRun: ParkSelfTest?
+    var parkingOn: Bool { privateCalls.park && parker?.isAvailable == true && parkSelfTest.passed }
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
@@ -300,7 +307,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     func checkPrivateCalls() {
         guard let resolver = options.privateResolver else { return }
         privateCalls = PrivateCalls.check(resolver: resolver, defaults: options.privateCallsDefaults)
-        skyLight = SkyLight(resolver: resolver, availability: privateCalls)
+        let sky = SkyLight(resolver: resolver, availability: privateCalls)
+        skyLight = sky
+        guard privateCalls.spaces else { return }
+        let spaces = SkyLightSpaces(sky: sky, availability: privateCalls)
+        spaceReads = spaces
+        if privateCalls.park { parker = SpaceParker(reads: spaces, bridge: spaces, clock: options.switchClock) }
     }
 
     func start() {
