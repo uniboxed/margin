@@ -169,6 +169,9 @@ async function handOff(tab) {
   // Not linked to Margin.app: no palette to hand off to (pages draw none of
   // Margin's UI); the new-tab page stays, with its notice and address field.
   if (!appLink.linked()) return log('kept', 'Margin.app isn\'t linked: no palette'), false;
+  // Linked, but the app draws nothing over this window (`drawn`: not in full screen, or not found
+  // among the window server's yet): no palette to hand off to there either.
+  if (!appLink.drawsWindow(tab.windowId)) return log('kept', 'Margin.app draws nothing over this window: no palette there'), false;
   handingOff.add(tab.id);
   // The app's palette opens over the page the user was on, in the window's
   // overlay.
@@ -789,12 +792,14 @@ export const handlers = {
     if (!sender.tab) return { app: false };
     if (await newTabHandOff(sender.tab)) return { handled: true };
     // Margin.app linked: the new-tab page draws nothing, the app's overlay
-    // draws its launcher there and opens the palette over it. Not linked,
-    // the page shows its notice (newtab/newtab.js).
-    if (appLink.linked()) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
+    // draws its launcher there and opens the palette over it. Not linked, or
+    // in a window the app draws nothing over, the page shows its notice and
+    // address field (newtab/newtab.js).
+    if (appLink.linked() && appLink.drawsWindow(sender.tab.windowId)) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
     return { app: false };
   },
-  // ⌘T reaching a page while Margin.app isn't linked (content/core.js): Margin's new-tab page.
+  // ⌘T reaching a page while Margin.app isn't linked, or in a window it draws nothing over
+  // (content/core.js): Margin's new-tab page.
   async newTabKey(_, sender) {
     await newTabKey(sender?.tab ?? null);
   },

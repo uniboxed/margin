@@ -330,6 +330,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         case .push(_, let windowId, let msg):
             entry.held.offer(windowId: windowId, msg)
             let json = jsonString(["type": "push", "msg": msg]) ?? ""
+            switch msg["type"] as? String {
+            case "keyHeard": return keyHeard(entry, windowId, msg)
+            case "palette" where windowId != nil: return palettePush(entry, windowId!, json)
+            default: break
+            }
             for overlay in overlays(of: entry) where windowId == nil || overlay.key.windowId == windowId { overlay.push(raw: json) }
         case .keys(let epoch, let bindings):
             guard epoch == connection.epoch else { return }
@@ -378,6 +383,59 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             open = []
         }
         return data.marginTabs(of: p, space: space).filter { !open.contains($0.id) }
+    }
+
+    // ---- what a copy pushed that the shell weighs first ----
+
+    // A palette for one window (Safari's New Tab handed off, Margin's new-tab page): to its overlay if
+    // that's shown. Not shown yet (being made, or its window not bound yet): held up to `paletteHold`
+    // and given to it as it shows; dropped after that, so a palette never opens in an overlay that
+    // isn't on screen (where it took the keyboard unseen: "took the keyboard, but it isn't shown").
+    static let paletteHold: TimeInterval = 1.5
+    private var heldPalette: [WindowKey: (json: String, until: TimeInterval)] = [:]
+    private func palettePush(_ entry: Link, _ windowId: Int, _ json: String) {
+        let key = WindowKey(link: entry.connection.key, windowId: windowId)
+        if let overlay = overlays[key], overlay.isShown, matches[key] != nil { return overlay.push(raw: json) }
+        let why = overlays[key] == nil ? "no overlay drawn there" : matches[key] == nil ? "no overlay drawn there (its window isn't bound)" : "its overlay isn't shown yet"
+        Diagnostics.note("palette push for window \(windowId) (\(key)): \(why): held \(Shell.paletteHold) s for it to show")
+        heldPalette[key] = (json, Diagnostics.now() + Shell.paletteHold)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Shell.paletteHold + 0.05) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let held = self.heldPalette[key], Diagnostics.now() >= held.until else { return }
+                self.heldPalette[key] = nil
+                Diagnostics.note("palette push for window \(windowId) (\(key)) dropped: no overlay was shown there within \(Shell.paletteHold) s")
+            }
+        }
+    }
+    // An overlay just shown: a palette held for it, if it's still fresh.
+    private func deliverHeldPalette(_ overlay: OverlayController) {
+        guard let held = heldPalette.removeValue(forKey: overlay.key), Diagnostics.now() <= held.until else { return }
+        Diagnostics.note("palette push for \(overlay.key): given to its overlay as it showed")
+        overlay.push(raw: held.json)
+    }
+    // Whether a palette is held for a window (tests read it).
+    func holdsPalette(_ key: WindowKey) -> Bool { heldPalette[key] != nil }
+
+    // A key the app holds heard by the copy anyway (its command, or a page): logged here, with
+    // whether the app's hot keys were on then and, if not, why.
+    private func keyHeard(_ entry: Link, _ windowId: Int?, _ msg: JSONObject) {
+        let command = msg["command"] as? String ?? "a key"
+        let from = msg["from"] as? String ?? "the copy"
+        let at = windowId.map { "\(WindowKey(link: entry.connection.key, windowId: $0))" } ?? entry.connection.key
+        let front = frontOverlay()
+        let state: String
+        if shortcuts.isActive {
+            state = "the app's hot keys were on (the front overlay: \(front.map { "\($0.key)" } ?? "none")): another combination, or Safari's own command"
+        } else if apps.frontPid == nil {
+            state = "the app's hot keys were off: no app in front"
+        } else if !linkedPids().values.contains(where: { $0.contains(apps.frontPid!) }) {
+            state = "the app's hot keys were off: the front app isn't a linked browser"
+        } else if front == nil {
+            state = "the app's hot keys were off: the front window has no overlay shown"
+        } else {
+            state = "the app's hot keys were off"
+        }
+        Diagnostics.note("\(at): \(command) reached the extension (\(from)): \(state)")
     }
 
     // The copy didn't come back in time: its overlays go.
@@ -630,10 +688,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlay.size(to: frame)
             // Below the window's full-screen toolbar (its own window), so it slides over Margin too.
             let toolbar = WindowMatcher.fullScreenToolbar(list, browser: server)?.number
-            if overlay.show(over: number, frame: frame, toolbar: toolbar, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen"), wasShown,
-               !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar) {
+            let showed = overlay.show(over: number, frame: frame, toolbar: toolbar, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen")
+            if showed, wasShown, !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar) {
                 overlay.reorder()
             }
+            if showed { deliverHeldPalette(overlay) }
             if !wasShown, overlay.ownSpace { checkOwnSpace(overlay, browser: number) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }

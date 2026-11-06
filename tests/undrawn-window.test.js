@@ -3,7 +3,11 @@
 // side against a fake of the browser's API, with the link's word played on
 // the background's own link object: a page committing there gets no box from
 // its first paint (`--margin-fp: off`), while one in a window not said of yet
-// (a new full-screen window before its first layout) keeps the registered box.
+// (a new full-screen window before its first layout) keeps the registered box;
+// and Margin's keys there go the unlinked way: ⌘T and the palette's key open
+// Margin's new-tab page, a new tab Safari made stays (no palette pushed for
+// it), the new-tab page is told the app doesn't draw there, and the sidebar's
+// key is logged; in a window the app draws, they're left to the app.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -103,7 +107,9 @@ const settled = async () => { await sleep(30); await whenRegistered(); await sle
 
 
 // The link's word, as the background's link object would have it (background/link.js view, drawn, drawsWindow).
+const pushes = [];
 function linkSays({ drawn = {}, layouts = {}, linked = true } = {}) {
+  appLink.push = (windowId, msg) => { pushes.push([windowId, msg]); return linked; };
   appLink.view = () => ({ epoch: 'e1', layouts, drawn });
   appLink.drawn = (w) => drawn[w];
   appLink.drawsWindow = (w) => linked && drawn[w] !== false;
@@ -129,6 +135,54 @@ test('a page committing in a window Margin.app draws nothing over: no box from i
   await sleep(20);
   assert.equal(fake.inserted.length, 1);
   assert.match(fake.inserted[0].css, /--margin-at-left: 300px/, 'drawn again: its own layout');
+});
+
+test('⌘T, the palette\'s key and the sidebar\'s in a window Margin.app draws nothing over: Margin\'s new-tab page, the sidebar\'s logged; in one it draws: left to the app', async () => {
+  linkSays({ drawn: { 1: false, 2: true } });
+  fake.tabs.set(1, { ...fake.tabs.get(1), active: true });
+  fake.tabs.set(20, { ...fake.tabs.get(20), active: true });
+  fake.created.length = 0;
+  pushes.length = 0;
+  await fire('onCommand', 'new-tab', { id: 1, windowId: 1 });
+  await sleep(30);
+  assert.deepEqual(fake.created, [NEW_TAB], 'undrawn: Margin\'s new-tab page');
+  assert.deepEqual(pushes, [], 'nothing pushed for the app');
+  await fire('onCommand', 'new-tab', { id: 20, windowId: 2 });
+  await sleep(30);
+  assert.equal(fake.created.length, 1, 'drawn: no tab');
+  assert.deepEqual(pushes, [[2, { type: 'keyHeard', command: 'new-tab', from: 'command' }]], 'left to the app, which is told');
+  pushes.length = 0;
+  await sleep(650);
+  await fire('onCommand', 'toggle-sidebar', { id: 1, windowId: 1 });
+  await sleep(30);
+  assert.equal(fake.created.length, 1, 'the sidebar\'s key: no tab');
+  assert.deepEqual(pushes, [], 'and nothing for an app that draws nothing there');
+  await sleep(650);
+  await ask('newTabKey', {}, 1); // ⌘T heard by the page in the undrawn window (content/core.js drawsWindow)
+  await sleep(30);
+  assert.deepEqual(fake.created, [NEW_TAB, NEW_TAB], 'the page\'s ⌘T: the same');
+});
+
+test('a new tab Safari made in a window Margin.app draws nothing over stays, with no palette pushed, and its page is told the app isn\'t there; in a window it draws, handed to the app\'s palette', async () => {
+  linkSays({ drawn: { 1: false, 2: true } });
+  fake.tabs.set(9, { id: 9, windowId: 1, url: NEW_TAB, title: 'New Tab', index: 1, active: true, status: 'complete' });
+  fake.tabs.get(1).active = false;
+  await fire('onCreated', { ...fake.tabs.get(9) });
+  await sleep(50);
+  fake.removed.length = 0;
+  pushes.length = 0;
+  assert.deepEqual(await ask('newTabPage', {}, 9), { ok: true, result: { app: false } }, 'undrawn: the page shows its own');
+  assert.deepEqual(fake.removed, [], 'the new tab stays');
+  assert.deepEqual(pushes, [], 'no palette pushed');
+  await fire('onCreated', { ...fake.tabs.get(20) }); // (the web page in window 2, as Margin's state has it)
+  await sleep(50);
+  fake.tabs.set(29, { id: 29, windowId: 2, url: NEW_TAB, title: 'New Tab', index: 1, active: true, status: 'complete' });
+  fake.tabs.get(20).active = false;
+  await fire('onCreated', { ...fake.tabs.get(29) });
+  await sleep(50);
+  // (Handed off as Safari made it: background.js onCreated.)
+  assert.deepEqual(pushes.find(([w]) => w === 2), [2, { type: 'palette', newTab: true }]);
+  assert.ok(fake.removed.includes(29), 'the new tab closed');
 });
 
 test.after(() => setTimeout(() => process.exit(0), 50));

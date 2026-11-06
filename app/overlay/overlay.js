@@ -276,8 +276,9 @@ function onMessage(msg) {
         // Safari's own New Tab made a tab the copy closed again (background/handlers.js
         // newTabHandOff), or Margin's new-tab page came up: the palette, here.
         case 'palette': openPaletteTimed({ newTab: msg.msg.newTab === true }, 'the copy'); return;
-        // A key the app holds, heard by the copy anyway (its command, or a page): noted.
-        case 'keyHeard': log('note', `${msg.msg.command} reached the extension (${msg.msg.from}) while the app holds it`); return;
+        // A key the app holds, heard by the copy anyway (its command, or a page): noted. (The shell
+        // says whether its hot key was on then, and why not: Shell.swift keyHeard.)
+        case 'keyHeard': log('note', `${msg.msg.command} reached the extension (${msg.msg.from})`); return;
         default: return;
       }
     default:

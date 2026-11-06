@@ -1357,13 +1357,21 @@ Object.assign(SCENARIOS, {
   // open there loses its box (no empty sidebar beside it), a fresh page has none from its first frame
   // (its window's pages get `--margin-fp: off` as they commit, then a registration of zeros once that
   // has settled), and drawn again, the open page is back in its box with no frame in between at
-  // another place, and fresh pages are boxed from their first frame again.
+  // another place, and fresh pages are boxed from their first frame again. ⌘T in the undrawn window
+  // opens Margin's new-tab page, which stays.
   'undrawn': [
     appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
     { op: 'appDrawn', on: false },
     bare('A'),
     check('A', 'A: the copy keeps the window\'s layout apart (only drawn changed)', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.drawn && Object.values(appLink.drawn).includes(false) && Object.keys(appLink.layouts ?? {}).length === 1`, 2000),
     fresh('U0'), firstUnboxed('U0', 'U0 (fresh, in the undrawn window, before the registration follows): no box from its first frame'), firstLog('U0'),
+    // ⌘T there (the app's hot key isn't on over a window it doesn't draw): the unlinked way, Margin's
+    // new-tab page, and it stays (no palette to hand it to).
+    { op: 'show', name: 'A' }, shown('A'),
+    { op: 'key', in: 'A', keyCode: 17, chars: 't', mods: ['command'] },
+    checkPage('new1', 'new1: ⌘T in the page of the undrawn window: Margin\'s new-tab page', `location.pathname === '/newtab/newtab.html'`, 4000),
+    wait(1000),
+    check('A', 'A: one new tab for the press, kept (not closed for a palette that isn\'t drawn)', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).filter((t) => t.url.includes('/newtab/newtab.html')).length === 1`, 2000),
     settledLayout,
     fresh('U1'), firstBare('U1', 'U1 (fresh, once the registration followed): no box from its first frame'),
     { op: 'show', name: 'A' }, shown('A'),

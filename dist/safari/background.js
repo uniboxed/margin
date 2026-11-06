@@ -477,7 +477,10 @@ globalThis.margin = { archiveNow: archiveStale, sleepNow: (/** @type {number | u
 // app's (Carbon hot keys following the Settings shortcuts: the `keys`
 // message): a UI command that reaches the extension anyway (⌘T, the
 // palette's, the sidebar's) does nothing visible here, and the app is told,
-// for its diagnostics. Not linked, there's no palette or sidebar to show
+// for its diagnostics. In a window the app said it draws nothing over
+// (`drawn`), its hot keys aren't on: ⌘T and the palette's key go the
+// unlinked way, and the sidebar's is logged (there's no sidebar there).
+// Not linked, there's no palette or sidebar to show
 // (pages draw none of Margin's UI): ⌘T and the palette's key open Margin's
 // new-tab page (its notice that the app isn't running, and an address
 // field), the sidebar's does nothing. Navigation works either way: it draws
@@ -485,9 +488,17 @@ globalThis.margin = { archiveNow: archiveStale, sleepNow: (/** @type {number | u
 const APP_KEYS = new Set(['new-tab', 'open-palette', 'toggle-sidebar']);
 api.commands?.onCommand.addListener(owned(async (command, tabArg) => {
   if (APP_KEYS.has(command) && appLink.pageState() !== 'off') {
-    console.info(`[margin] ${command} heard while Margin.app draws the UI: left to the app`);
-    appLink.push(tabArg?.windowId ?? null, { type: 'keyHeard', command, from: 'command' });
-    return;
+    const windowId = tabArg?.windowId ?? (await Promise.resolve(api.windows?.getLastFocused?.()).catch(() => null))?.id ?? null;
+    if (appLink.drawsWindow(windowId)) {
+      console.info(`[margin] ${command} heard while Margin.app draws the UI: left to the app`);
+      appLink.push(windowId, { type: 'keyHeard', command, from: 'command' });
+      return;
+    }
+    if (command === 'toggle-sidebar') {
+      appLink.note(`toggle-sidebar heard in window ${windowId}: Margin.app draws nothing over it, so there's no sidebar to show`);
+      return;
+    }
+    console.info(`[margin] ${command} in window ${windowId}: Margin.app draws nothing over it: Margin's new-tab page`);
   }
   await untilSynced();
   if (command === 'new-tab' || command === 'open-palette') return newTabKey(tabArg);

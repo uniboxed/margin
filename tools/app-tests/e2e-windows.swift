@@ -132,6 +132,17 @@ func windowsScenario(ownSpace: Bool = false) async {
   check("windows: and not before 1.5 s", [("A", 1), ("A", 2), ("B", 1), ("B", 5)].allSatisfy { (drawnSaid($0.0, $0.1).first?.at ?? 0) - frontAt >= 1.4 },
         "\(fake.all("drawn").map { ($0["_at"] as? Double ?? 0) - frontAt })")
   check("windows: no layout sent for a window that isn't bound", fake.all("setLayout").isEmpty, "\(fake.all("setLayout").map { ($0["msg"] as? JSONObject)?["windowId"] ?? "" })")
+  // A palette pushed for a window with nothing drawn over it (a copy that hadn't heard yet): held a moment
+  // for its overlay to show, then dropped; never opened in the hidden overlay (which took the keyboard unseen).
+  // And a key the copy heard there: the log says the app's hot keys were off, and why.
+  fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 1, "msg": ["type": "palette", "newTab": true]]])
+  fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 1, "msg": ["type": "keyHeard", "command": "palette", "from": "page"]]])
+  check("windows: a palette for an unbound window: held, and the log says so", await until(3, { shell.holdsPalette(a1) && said.contains { $0.hasPrefix("palette push for window 1 (safari:P1#1): no overlay drawn there (its window isn't bound): held") } }))
+  check("windows: a key heard in a page there: the log says the app's hot keys were off, and why",
+        await until(3, { said.contains { $0 == "safari:P1#1: palette reached the extension (page): the app's hot keys were off: the front window has no overlay shown" } }),
+        "\(said.filter { $0.contains("reached the extension") })")
+  check("windows: the palette dropped after 1.5 s, never given to the hidden overlay", await until(3, { !shell.holdsPalette(a1) && said.contains { $0.hasPrefix("palette push for window 1 (safari:P1#1) dropped") } })
+        && shell.overlays[a1]?.hasKeyboard != true)
 
   // A Space switch to P2's full-screen window: the slide (both on screen), P2's copy hears the focus and says so
   // 0.3 s late; P1's copy still calls its window focused for 0.6 s more.
@@ -146,10 +157,11 @@ func windowsScenario(ownSpace: Bool = false) async {
   check("windows: a focus change with the front window changing then: P2's window bound, its overlay shown over it",
         await until(15, { shell.matches[b1] == wC.windowNumber && shell.overlays[b1]?.isShown == true && shell.overlays[b1]?.aboveWindow == wC.windowNumber }), "\(shell.matches)")
   check("windows: P1's two still can't be told apart: nothing shown over them", shell.matches[a1] == nil && shell.matches[a2] == nil && shell.overlays[a1]?.isShown != true)
+  // (The stand-in's lines come over a pipe: what the shell sent may be heard here a moment later.)
   check("windows: P2's copy told its window is drawn as it's bound, before the window's layout went",
-        drawnSaid("B", 1).map(\.on) == [false, true] && (index("drawn", "B", 1) { $0["on"] as? Bool == true }).map { on in index("setLayout", "B", 1).map { on < $0 } ?? true } == true,
+        await until(3, { drawnSaid("B", 1).map(\.on) == [false, true] }) && (index("drawn", "B", 1) { $0["on"] as? Bool == true }).map { on in index("setLayout", "B", 1).map { on < $0 } ?? true } == true,
         "\(drawnSaid("B", 1)) \(String(describing: index("setLayout", "B", 1)))")
-  check("windows: and its layout sent once it's drawn", await until(5, { index("setLayout", "B", 1) != nil }))
+  check("windows: and its layout sent once it's drawn", await until(10, { index("setLayout", "B", 1) != nil }))
 
   // Back to P1's first window: the same lag the other way. Then P1's other one is the only free window left.
   space(wA, also: wC)
@@ -262,6 +274,15 @@ func windowsScenario(ownSpace: Bool = false) async {
   p1List = [a1, a3]
   report1(focused: nil)
   check("windows: a new full-screen window bound to its own window", await until(4, { shell.matches[a3] == wE.windowNumber }), "\(shell.matches)")
+
+  // A palette for a bound window whose overlay isn't shown (its window in a Space not showing): given to
+  // it as it shows.
+  fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 3, "msg": ["type": "palette", "newTab": false]]])
+  check("windows: a palette for a bound window not shown yet: held", await until(3, { shell.holdsPalette(a3) }) && shell.overlays[a3]?.isShown != true)
+  space(wE)
+  check("windows: and given to its overlay as it shows", await until(3, { shell.overlays[a3]?.isShown == true && !shell.holdsPalette(a3) && said.contains { $0 == "palette push for safari:P1#3: given to its overlay as it showed" } }),
+        "\(said.filter { $0.contains("palette") }.suffix(3))")
+  check("windows: the palette opens there (its field takes the keyboard)", await until(5, { shell.overlays[a3]?.hasKeyboard == true }))
 
   watch.on = false
   _ = await watcher.value

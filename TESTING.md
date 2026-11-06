@@ -646,6 +646,10 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Put that window in full screen: once its sidebar shows, its pages are in their box beside it (the log says `told drawn: bound, and in full screen`). Take it out of full screen: about 1.5 s after the animation its pages fill the window again.
 - [ ] Three profiles in full screen on one display, as above. If a window ever shows no sidebar for more than 2 s, its page fills the window (no empty grey gutter beside it), and the log has `told not drawn` for it. When its sidebar comes back, the page goes back in its box without first jumping somewhere else.
 - [ ] Swipe between the three Spaces for a while: no page loses its box or jumps as its Space slides in, and the log has no `told not drawn` line for a window that kept its sidebar.
+- [ ] In a normal window (or one showing no sidebar), press ⌘T: Margin's new-tab page opens there with its address field (not nothing, as before). Use File › New Tab or the + button too: the new tab stays. In a full-screen window with its sidebar, ⌘T still opens the palette.
+- [ ] Press the sidebar's key (⌥S, or yours) in a normal window: nothing happens, and the log says `toggle-sidebar heard in window N: Margin.app draws nothing over it`.
+- [ ] Open a new full-screen window (⌘N in full screen) and wait: Margin's launcher and palette show as soon as its sidebar does. The log may say `palette push for window N (…): … held 1.5 s for it to show` then `given to its overlay as it showed`. Send me any `dropped: no overlay was shown there within 1.5 s` line with the time.
+- [ ] Any `… reached the extension (page): the app's hot keys were …` line in the log: send it with the time. It says why the app didn't take the key.
 
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 

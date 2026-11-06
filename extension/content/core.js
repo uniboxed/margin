@@ -20,7 +20,7 @@ import { SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { startLoads } from './loads.js';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.js';
-import { APP_LINK_KEY, appDraws, boxFromLayout, layoutFor } from '../shared/app-link.js';
+import { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor } from '../shared/app-link.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 // Starts Margin in this page; false when it shouldn't (or already did).
@@ -322,17 +322,18 @@ export function startCore() {
   Margin.content.appDraws = () => appUi();
   addEventListener('resize', applyApp);
   // ⌘T reaching the page (Safari's File › New Tab given another shortcut).
-  // Linked, it's the app's (its hot key, PLAN.md §6): nothing visible here,
-  // and the app is told. Not linked, a new tab: Margin's new-tab page, which
-  // says Margin.app isn't running and has an address field
-  // (background/handlers.js newTabKey; Safari's own `new-tab` command for
-  // the same press counts once).
+  // Linked, in a window the app draws over, it's the app's (its hot key,
+  // PLAN.md §6): nothing visible here, and the app is told. Not linked, or in
+  // a window the app said it draws nothing over (`drawn`: not in full screen,
+  // not found yet; its hot key isn't on there), a new tab: Margin's new-tab
+  // page, which has an address field (background/handlers.js newTabKey;
+  // Safari's own `new-tab` command for the same press counts once).
   addEventListener('keydown', (e) => {
     if (!e.isTrusted || e.code !== 'KeyT' || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || retired() || appLink === undefined) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.repeat) return;
-    if (appUi()) void send('appKeyHeard', { command: 'palette' }, false);
+    if (drawsWindow(appLink, windowId ?? helloWindowId)) void send('appKeyHeard', { command: 'palette' }, false);
     else void send('newTabKey', {}, false);
   }, true);
 

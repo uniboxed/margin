@@ -17,7 +17,8 @@
 // - `drawn`: whether the app draws over each window (`drawn` messages, this
 //   link's epoch only): { [windowId]: boolean }. False: Margin.app draws
 //   nothing over that window (not in full screen, or not found among the
-//   window server's yet), so its pages get no box. Missing: not said (yet, or an older app): as drawn.
+//   window server's yet), so its pages get no box, and Margin's keys there
+//   go the unlinked way (the app's hot keys aren't on there). Missing: not said (yet, or an older app): as drawn.
 //
 // A page gives its own box from its window's layout, less where its viewport
 // sits in the window (boxFromLayout). Pure: content scripts, the new-tab page
