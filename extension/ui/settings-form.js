@@ -74,7 +74,7 @@ function field(f) {
 
 /**
  * The form's fields for the stored settings, the browser's features
- * (`features`: shared/platform.js's sleepTabs, blockGestures,
+ * (`features`: shared/platform.js's sleepTabs ('close', 'discard' or false), blockGestures,
  * marginFullscreen, newTabHint, search) and the form's own state (`ui`: the
  * shortcut being recorded, the statuses).
  * @param {any} settings
@@ -95,7 +95,9 @@ export function settingsFields(settings, features = {}, ui = {}) {
   if (f.sleepTabs) {
     list.push(field({ id: 'sleepAfterHours', kind: 'number', label: 'Put tabs to sleep after not using them for (hours, 0 = never). A sleeping tab frees its memory and loads again when you go back to it', value: String(s.sleepAfterHours ?? 4), min: 0, max: 720, step: 'any' }));
     list.push(field({ id: 'neverSleepSites', kind: 'list', label: 'Never put these sites to sleep (one per line; each includes its subdomains)', value: siteList(s.neverSleepSites ?? []).join('\n'), placeholder: 'mail.example.com' }));
-    list.push(field({ id: 'wakeAll', kind: 'button', label: 'Wake all sleeping tabs', status: status.wakeAll?.text ?? '', error: !!status.wakeAll?.error }));
+    // Only where a sleeping tab stays open, discarded (Chrome, Edge): Safari
+    // closes it (each opens again as it's clicked), so there's none to wake.
+    if (f.sleepTabs === 'discard') list.push(field({ id: 'wakeAll', kind: 'button', label: 'Wake all sleeping tabs', status: status.wakeAll?.text ?? '', error: !!status.wakeAll?.error }));
   }
   if (f.blockGestures) {
     const gestures = s.blockGestures !== false;

@@ -15,7 +15,7 @@ globalThis.chrome = /** @type {any} */ ({
     session: { get: async () => ({}), set: async () => {} },
   },
 });
-const { learnSearchEngine, ownSearchUrls, ownSearchTabs } = await import('../extension/background/search-engine.js');
+const { learnSearchEngine, noteReopened, ownSearchUrls, ownSearchTabs } = await import('../extension/background/search-engine.js');
 const S = await import('../extension/shared/search.js');
 const { load } = await import('../extension/background/store.js');
 
@@ -34,4 +34,17 @@ test('own search: Safari\'s own search (another address) still is', async () => 
   await learnSearchEngine([url], { tabId: 43 });
   assert.equal((await learned())?.template, S.detectSafariSearch(url).template);
   assert.equal(ownSearchTabs.size, 0);
+});
+
+// Margin 2 Phase 3 (the sleep page's wake had this rule; a sleeping tab is
+// closed and kept now, and opens again from its record).
+test('a Margin tab opened again from its record (one put to sleep, one lost with its window): a search page there was made before, maybe with another engine, and isn\'t learned from', async () => {
+  const before = await learned();
+  const url = 'https://duckduckgo.com/?q=asleep&t=osx';
+  noteReopened(url);
+  await learnSearchEngine([url], { tabId: 44 });
+  assert.deepEqual(await learned(), before, 'not learned');
+  const fresh = 'https://duckduckgo.com/?q=typed+now&t=osx';
+  await learnSearchEngine([fresh], { tabId: 44 });
+  assert.equal((await learned())?.template, S.detectSafariSearch(fresh)?.template, 'another search in that tab is');
 });

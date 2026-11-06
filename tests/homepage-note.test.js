@@ -340,35 +340,13 @@ const told = (type) => fake.messages.filter((m) => m.message?.type === type);
 const front = () => [...fake.tabs.values()].find((t) => t.active)?.id;
 
 
+// A tab an earlier build left on Margin's sleep page (its address carries its
+// page's): Margin knows it by its page (state/model.js seenTab) until the
+// open-tab repair handles it (tests/cut-off.test.js).
+const oldSleepAt = (base, url) => `${base}sleep/sleep.html?${new URLSearchParams({ u: url, t: '', k: 'k' })}`;
 
-
-
-
-
-
-
-
-
-
-
-
-const { sleepAddress, isSleepPage } = await import('../extension/shared/sleep.js');
-const { ensureCurrent, forgetCurrent } = await import('../extension/background/tabs.js');
-
-
-
-
-test('asleep: a page that names a sleeping tab by its address (before this copy\'s ids are its own) finds it at its sleep page', async () => {
-  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 64, url: sleepAddress('safari-web-extension://test/', { url: 'https://named.test/a', key: 'k' }) }]);
+test('asleep: a page that names a tab on an earlier build\'s sleep page by its address (before this copy\'s ids are its own) finds it there', async () => {
+  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 64, url: oldSleepAt('safari-web-extension://test/', 'https://named.test/a') }]);
   const found = await resolveTab(999, { url: 'https://named.test/a', index: 1, from: { origin: 'safari-web-extension://elsewhere/' } }, 1);
   assert.equal(found?.id, 64);
-});
-
-test('asleep: a tab asleep on an earlier copy\'s sleep page (an update, a relaunch) is moved to this copy\'s, its page\'s address kept, still asleep', async () => {
-  const old = sleepAddress('safari-web-extension://old-copy/', { url: 'https://moved.test/?q=1', title: 'Moved', key: 'k' });
-  reset([{ id: 1, url: 'https://a.test/', active: true }, { id: 65, url: old }]);
-  forgetCurrent(65);
-  await ensureCurrent(65);
-  assert.deepEqual(fake.updates.map((u) => [u.id, u.change.url]), [[65, old.replace('safari-web-extension://old-copy/', 'safari-web-extension://test/')]]);
-  assert.ok(!fake.updates.some((u) => u.change.active), 'not brought to the front');
 });

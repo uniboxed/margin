@@ -5,7 +5,7 @@
 import { platform, PROFILES } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
 import { PACKAGE_THEMES } from '../themes/packages.js';
-import { neverSleeps, readSleepAddress, siteList } from '../shared/sleep.js';
+import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.js';
 /** @import { State } from '../../types/margin' */
 
 const ARCHIVE_CAP = 200;
@@ -540,18 +540,18 @@ function pinForUrl(state, url, spaceId) {
 
 // ---- tabs -----------------------------------------------------------------
 
-// A tab as Margin keeps it: one Margin put to sleep (background/sleep.js) is
-// the page it was, its address and title read from its sleep page's address
-// (shared/sleep.js), whichever copy of Margin's sleep page it is, so the
-// sidebar, search, pins, spaces, the archive and the matching after a relaunch
-// (matchTabs) all go by the page, never by the sleep page. `asleep`: how
-// ('page'). One whose sleep page has no web address to go back to stays as it
-// is. A tab the browser discarded (Chrome's tabs.discard, Margin's or its
-// own) keeps its address and says `discarded` ('discarded').
+// A tab as Margin keeps it: one an earlier build left on Margin's sleep page
+// (shared/sleep.js oldSleepPage) is the page it was, its address and title
+// read from the sleep page's address, whichever copy's it is, so the matching
+// after the update (matchTabs) and everything else go by the page until
+// Margin handles it (background/tabs.js leftOnSleepPage). `asleep`: how
+// ('page'). One whose sleep page has no web address stays as it is. A tab the
+// browser discarded (Chrome's tabs.discard, Margin's or its own) keeps its
+// address and says `discarded` ('discarded').
 /** @param {any} tab */
 function seenTab(tab) {
   if (!tab || tab.asleep) return tab;
-  const sleep = readSleepAddress(tab.url || tab.pendingUrl);
+  const sleep = oldSleepPage(tab.url || tab.pendingUrl);
   if (sleep?.url) return { ...tab, url: sleep.url, pendingUrl: undefined, title: sleep.title || tab.title, asleep: 'page' };
   return tab.discarded === true ? { ...tab, asleep: 'discarded' } : tab;
 }

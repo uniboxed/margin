@@ -20,7 +20,7 @@ import * as newTabHint from './background/newtab-hint.js';
 import { recordCreated } from './background/diagnostics.js';
 import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
-import { sleepChanged, sleepIdle, sleepIdleThrottled, wokeToAddress } from './background/sleep.js';
+import { sleepChanged, sleepIdle, sleepIdleThrottled } from './background/sleep.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
 import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
@@ -169,10 +169,10 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   if (change.status) pageLoads.statusChanged(tab, change.status);
   if (change.url || change.status === 'complete') restore.tabChanged(tab); // its address may have come with the load
   // The URL when it changes, and again once loaded (in case Safari reported
-  // the change without it, or it redirected). Not a tab woken back to its own
-  // page: no search was made now (background/sleep.js wokeToAddress).
+  // the change without it, or it redirected). Not a Margin tab opened again
+  // from its record: no search was made now (search-engine.js noteReopened).
   const url = change.url ?? (change.status === 'complete' ? tab.url : null);
-  if (url && !wokeToAddress(tabId, url)) learnSearchEngine([url], { tabId });
+  if (url) learnSearchEngine([url], { tabId });
   if (change.url) void newTabHint.tabAddress(tabId, change.url);
   if (change.status === 'complete') newTabHint.tabLoaded(tabId);
   // Safari reloading a tab as it's shown: it had unloaded it (diagnostics).

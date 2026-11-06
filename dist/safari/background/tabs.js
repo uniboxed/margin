@@ -17,8 +17,10 @@ import { commandKeys } from '../shared/shortcuts.js';
 import { appLink } from './app-link.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
 import { tellNotice } from './notices.js';
-import { isSleepPage, readSleepAddress, wokeKey } from '../shared/sleep.js';
+import { oldSleepPage } from '../shared/sleep.js';
+import { noteClosing, takeClosing } from './closing.js';
 import { switchLog } from './switch-log.js';
+import { noteReopened } from './search-engine.js';
 
 // When each tab was last shown (a diagnostic in tabs.onUpdated).
 export const shownAt = new Map(); // tabId → when it was last activated
@@ -405,6 +407,7 @@ export async function openTab({ windowId, url, spaceId, deadline, index, keptId 
   // window could stay on the other one).
   if (spaceId && windowId != null) await mutate((s) => M.setActiveSpace(s, windowId, spaceId));
   tooLate(deadline);
+  if (keptId) noteReopened(url); // (an old search there isn't one made now)
   const tab = await api.tabs.create({ windowId, url, active: true, ...(Number.isInteger(index) && index >= 0 ? { index } : {}) });
   if (spaceId || keptId) {
     await mutate((s) => {
@@ -523,7 +526,7 @@ async function untilLoaded(tabId, until, left, fromId) {
       if (from.status === 'complete') fromLoaded = true;
     }
     if (tab.status === 'loading') sawLoading = true;
-    if (tab.status === 'complete' && ((tab.url && tab.url !== 'about:blank' && !isSleepPage(tab.url)) || (!tab.url && sawLoading))) return 'loaded';
+    if (tab.status === 'complete' && ((tab.url && tab.url !== 'about:blank') || (!tab.url && sawLoading))) return 'loaded';
     if (Date.now() >= until()) return 'timeout';
     await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_MS, Math.max(0, until() - Date.now()))));
   }
@@ -707,34 +710,40 @@ function reloadBehind(tabId) {
   }, RELOAD_BEHIND_MS);
 }
 // A tab showing Margin's new-tab page from a copy that's gone (background/
-// cut-off.js oldOwnPageAddress): sent to this copy's. Whether it was. A tab
-// asleep is too (it'd load the old address, which no longer exists), and so
-// is a tab Margin put to sleep, to this copy's sleep page.
+// cut-off.js oldOwnPageAddress): sent to this copy's. Whether it was. Also a
+// tab an earlier build left on Margin's sleep page (leftOnSleepPage).
 async function repairOldOwnPage(tab) {
+  if (await leftOnSleepPage(tab)) return true;
   const to = oldOwnPageAddress(tab?.url, ownAddress);
   if (tab?.id == null || !to || Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) < CUT_OFF_COOLDOWN_MS) return false;
   cutOffLoadedAt.set(tab.id, Date.now());
   const ok = await api.tabs.update(tab.id, { url: to }).then(() => true, () => false);
-  if (ok) console.info(isSleepPage(tab.url) ? `[margin] tab ${tab.id} is asleep on the sleep page of Margin from before it was reloaded: moved to this copy's, still asleep` : `[margin] tab ${tab.id} still had the new-tab page of Margin from before it was reloaded: loaded again`);
+  if (ok) console.info(`[margin] tab ${tab.id} still had the new-tab page of Margin from before it was reloaded: loaded again`);
   return ok;
 }
-// ---- sleeping tabs (background/sleep.js) --------------------------------------
-// A tab Margin put to sleep shows Margin's sleep page (shared/sleep.js), this
-// copy's or an earlier one's. Woken where it is, hidden: sent to its page's
-// address ('address': tabs.update; WebKit lets no extension page navigate
-// itself to a web page). Null if that failed: a switch selects it for an
-// instant then ('flip', restoreTab), and its sleep page sends it back as it's
-// shown.
-/** @typedef {'address' | 'flip'} Woken how a sleeping tab was woken: sent to its page's address, or shown for an instant */
-/** @param {any} tab @returns {Promise<'address' | null>} */
-export async function wakeAsleep(tab) {
-  const sleep = readSleepAddress(tab?.url);
-  if (tab?.id == null || !sleep?.url) return null;
-  if (!(await Promise.resolve().then(() => api.tabs.update(tab.id, { url: sleep.url })).then(() => true, () => false))) return null;
-  // Its sleep page, reached again through the tab's history, isn't woken
-  // again (shared/sleep.js startSleepPage).
-  if (sleep.key) void Promise.resolve().then(() => api.storage.session?.set({ [wokeKey(sleep.key)]: Date.now() })).catch(() => {});
-  return 'address';
+// A tab on Margin's sleep page, where builds before Margin 2 Phase 2 step 1 put sleeping tabs
+// (shared/sleep.js oldSleepPage). That page is gone (Phase 3), so its address
+// opens nothing: found as Margin starts after the update (the open-tab
+// repair) or as the tab comes to the front, it's handled once. Hidden, it's
+// what sleep is now: its browser tab closed, its Margin tab kept, not open,
+// in its space (closing.js 'keep', as a tab put to sleep: state/model.js
+// keeps it by its page's address, seenTab). In front, it's loaded at its
+// page's address. One whose sleep page names no web address is left as it
+// is. Whether it was handled.
+async function leftOnSleepPage(tab) {
+  const page = oldSleepPage(tab?.url);
+  if (tab?.id == null || !page?.url || Date.now() - (cutOffLoadedAt.get(tab.id) ?? 0) < CUT_OFF_COOLDOWN_MS) return false;
+  cutOffLoadedAt.set(tab.id, Date.now());
+  if (tab.active || isFocusing(tab.id)) {
+    const ok = await Promise.resolve(api.tabs.update(tab.id, { url: page.url })).then(() => true, () => false);
+    if (ok) console.info(`[margin] tab ${tab.id} was on the sleep page of an earlier Margin, in front: loaded at its address`);
+    return ok;
+  }
+  noteClosing([tab.id], 'keep', 'sleep');
+  const ok = await Promise.resolve(api.tabs.remove(tab.id)).then(() => true, () => false);
+  if (!ok) takeClosing(tab.id);
+  else console.info(`[margin] tab ${tab.id} was on the sleep page of an earlier Margin: closed, kept as its Margin tab (asleep)`);
+  return ok;
 }
 
 // Executed in this install's isolated world before its content bundle is put

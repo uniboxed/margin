@@ -11,14 +11,16 @@ import { buildViewModel } from '../extension/ui/view-model.js';
 import { smallState, W } from './ui/fixtures.js';
 import { wrap } from './theme/payloads.js';
 
-const SAFARI = { sleepTabs: 'page', blockGestures: true, newTabHint: true, search: 'learn', marginFullscreen: false };
+const SAFARI = { sleepTabs: 'close', blockGestures: true, newTabHint: true, search: 'learn', marginFullscreen: false };
+// A browser whose sleeping tabs stay open, discarded (Chrome, Edge: Phase 5's), with Safari's other features.
+const DISCARDS = { ...SAFARI, sleepTabs: 'discard' };
 const CHROME = { sleepTabs: false, blockGestures: false, newTabHint: false, search: 'browser', marginFullscreen: true };
 const byId = (fields) => Object.fromEntries(fields.map((f) => [f.id, f]));
 
-test('Settings covers today\'s form: theme, search engine, archive, sleep, never-sleep sites, Wake all, gestures, frame, the ⌘T hint, shortcuts', () => {
+test('Settings covers today\'s form: theme, search engine, archive, sleep, never-sleep sites, gestures, frame, the ⌘T hint, shortcuts; Wake all where sleeping tabs are discarded', () => {
   const fields = settingsFields({ theme: 'arcadia', archiveAfterHours: 12, sleepAfterHours: 4, neverSleepSites: ['mail.example.com'] }, SAFARI);
   assert.deepEqual(fields.map((f) => `${f.id}:${f.kind}`), [
-    'theme:choice', 'engine:info', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list', 'wakeAll:button',
+    'theme:choice', 'engine:info', 'archiveAfterHours:number', 'sleepAfterHours:number', 'neverSleepSites:list',
     'blockGestures:toggle', 'swipeNavigation:toggle', 'pullToRefresh:toggle', 'frameWhenHidden:toggle', 'newTabHint:toggle',
     'shortcuts:group', 'sidebarShortcut:shortcut', 'nextTab:shortcut', 'prevTab:shortcut', 'nextSpace:shortcut', 'prevSpace:shortcut', 'resetShortcuts:button',
   ]);
@@ -28,7 +30,11 @@ test('Settings covers today\'s form: theme, search engine, archive, sleep, never
   assert.equal(f.archiveAfterHours.value, '12');
   assert.match(f.engine.label, /Safari’s default search engine/);
   assert.equal(f.resetShortcuts.status, SHORTCUT_HELP);
-  assert.ok(f.blockGestures.isToggle && f.theme.isChoice && f.neverSleepSites.isList && f.nextTab.isShortcut && f.wakeAll.isButton && f.shortcuts.isGroup);
+  assert.ok(f.blockGestures.isToggle && f.theme.isChoice && f.neverSleepSites.isList && f.nextTab.isShortcut && f.shortcuts.isGroup);
+  // Safari closes a sleeping tab (each opens as it's clicked): nothing to wake.
+  assert.ok(!('wakeAll' in f));
+  const discards = byId(settingsFields({}, DISCARDS));
+  assert.ok(discards.wakeAll?.isButton, 'Wake all where they\'re discarded');
   // Gone from the form: keep-ready, the warm-up, the switch log.
   for (const id of ['keepLeftTabReadyMinutes', 'warmUpTabs', 'switchLog']) assert.ok(!(id in f), id);
   // Chrome: its full-screen pair; no sleeping tabs, gestures or ⌘T hint.
@@ -68,7 +74,7 @@ test('Settings: what a field saves is checked against the field, never taken fro
   assert.match(shortcutTaken('nextTab', 'Alt+KeyS', {}), /already used for “Show or hide the sidebar”/);
   assert.equal(shortcutTaken('sidebarShortcut', 'Alt+KeyS', {}), null, 'its own');
   assert.match(shortcutTaken('nextTab', 'Meta+KeyT', {}), /New tab/);
-  assert.deepEqual(runField(f.wakeAll), { type: 'wakeSleeping', payload: {} });
+  assert.deepEqual(runField(byId(settingsFields({}, DISCARDS)).wakeAll), { type: 'wakeSleeping', payload: {} });
   assert.equal(runField(f.resetShortcuts).payload.patch.sidebarShortcut, 'Alt+KeyS');
   assert.equal(runField(f.theme), null);
   assert.deepEqual([wokeText(2), wokeText(1), wokeText(0), wokeText(undefined)], ['Woke 2 tabs.', 'Woke 1 tab.', 'No tabs are asleep.', 'Couldn’t reach Margin.']);
@@ -95,7 +101,7 @@ test('Settings inputs: each of Margin\'s on its own element, their options and t
 
 test('Settings in the view model: on Margin\'s own pages, while open; its buttons are the only settings.run arguments', () => {
   const state = { ...smallState(), settings: { ...smallState().settings, theme: 'arcadia' } };
-  const vm = (ui) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac', features: SAFARI } });
+  const vm = (ui) => buildViewModel({ state, ui: { windowId: W, ...ui }, platform: { browser: 'safari', os: 'mac', features: DISCARDS } });
   assert.equal(vm({}).settingsForm, null, 'a web page');
   assert.equal(vm({ launcherPage: true }).settingsForm, null, 'closed');
   assert.equal(vm({ launcherPage: true }).launcher.settingsOpen, false);

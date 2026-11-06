@@ -140,7 +140,7 @@ for (const [name, engine] of ENGINES) {
       });
 
       await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {
-        const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'page', blockGestures: true, newTabHint: true, search: 'learn' } };
+        const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn' } };
         await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);
         await page.evaluate(() => T.rtSetUi({ settingsOpen: true }));
         const form = () => page.evaluate(() => {

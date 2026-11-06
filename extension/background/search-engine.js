@@ -21,6 +21,22 @@ const sameAddress = (a, b) => {
     return false;
   }
 };
+// Addresses Margin opens again from its own records: a Margin tab that wasn't
+// open (one put to sleep, one lost with its window) opened as it's clicked, or
+// with a space's window. A search page among them is a search made before,
+// maybe with an engine since changed, not one Safari makes now (the sleep
+// page's wake had the same rule: DECISIONS.md, "Sleeping tabs: the review's
+// fixes"). Known by the address, for OWN_SEARCH_MS.
+const reopenedUrls = new Map(); // address → when
+/** @param {unknown} url */
+export function noteReopened(url) {
+  if (typeof url !== 'string' || !url) return;
+  const at = now();
+  for (const [u, t] of reopenedUrls) if (at - t >= OWN_SEARCH_MS) reopenedUrls.delete(u);
+  reopenedUrls.set(url, at);
+}
+/** @param {string[]} urls */
+const reopened = (urls) => [...reopenedUrls].some(([url, at]) => now() - at < OWN_SEARCH_MS && urls.some((u) => sameAddress(u, url)));
 function isOwnSearch(tabId, found, urls) {
   const fresh = (own) => !!own && now() - own.at < OWN_SEARCH_MS && own.template === found.template;
   if (tabId != null && fresh(ownSearchTabs.get(tabId))) return true;
@@ -38,7 +54,7 @@ export function learnSearchEngine(urls, { tabId } = {}) {
     if (engine) console.debug(`[margin] ${engine} search not from Safari's address bar (no Safari parameters), not learned:`, urls.find(S.searchEngineOf));
     return;
   }
-  if (isOwnSearch(tabId, found, urls)) return;
+  if (isOwnSearch(tabId, found, urls) || reopened(urls)) return;
   return mutate((s) => (s.settings.safariSearch?.template === found.template
     ? s
     : { ...s, settings: { ...s.settings, safariSearch: { ...found, at: now() } } }));

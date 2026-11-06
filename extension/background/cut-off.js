@@ -1,5 +1,3 @@
-import { SLEEP_PATH } from '../shared/sleep.js';
-
 // Pages cut off from Margin: their content-script world is still bound to a
 // copy of Margin that's gone. Safari reloads Margin whenever it's updated
 // (`npm run safari`) and whenever the system registers Margin.app again, which
@@ -141,12 +139,7 @@ export function cutOffAction(probe) {
 // tab (⌘T's hand-off would close it: newtab/newtab.js). The address for it,
 // or null when the tab isn't one. `own`: this copy's address
 // (runtime.getURL('')).
-// A sleeping tab's sleep page (shared/sleep.js) from such a copy (after an
-// update, and after every Safari relaunch: each copy's address is new) is
-// sent to this copy's, with the same address after it, still asleep: the old
-// address no longer opens, so shown as it is (Safari's tab bar) it would be
-// an error page, and once on this copy's page Margin can wake it.
-const OWN_PAGES = new Set(['newtab/newtab.html', SLEEP_PATH]);
+const OWN_PAGES = new Set(['newtab/newtab.html']);
 /** @param {string | undefined} url @param {string} own @returns {string | null} */
 export function oldOwnPageAddress(url, own) {
   let at, mine;
@@ -159,7 +152,6 @@ export function oldOwnPageAddress(url, own) {
   if (at.protocol !== mine.protocol || at.host === mine.host || !/-extension:$/.test(at.protocol)) return null;
   const path = at.pathname.replace(/^\//, '');
   if (!OWN_PAGES.has(path)) return null;
-  if (path === SLEEP_PATH) return new URL(`${path}${at.search}`, own).href;
   const search = new URLSearchParams(at.search);
   search.set('again', '');
   return new URL(`${path}?${search.toString().replace(/=(?=&|$)/g, '')}${at.hash}`, own).href;

@@ -136,7 +136,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   // page gave them when Settings were drawn there.
   const platform = {
     browser: String(hello?.platform?.browser ?? hello?.browser ?? 'safari'), os: 'mac', app: true,
-    features: { sleepTabs: !!profile?.sleepTabs, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search },
+    features: { sleepTabs: profile?.sleepTabs ?? false, blockGestures: !!profile?.blockGestures, marginFullscreen: false, newTabHint: !!profile?.newTabHint, search: profile?.search },
   };
   // The window's tabs loading, as the copy last said (`push` `loading`).
   /** @type {Set<number>} */

@@ -170,7 +170,7 @@ test('cut off: the old copy\'s word that this document\'s tab was proven to have
 
 // The background's side (background/tabs.js repairCutOff), against a fake
 // Safari: tabs, their pages' answer to the probe, the loads it asks for.
-const fake = { tabs: new Map(), updates: [], scripts: [], session: {}, local: {}, probe: () => ({ cutOff: false }) };
+const fake = { tabs: new Map(), updates: [], removed: [], scripts: [], session: {}, local: {}, probe: () => ({ cutOff: false }) };
 async function background() {
   globalThis.chrome = {
     runtime: { id: 'x', getURL: (path) => `${OWN}${path}`, getManifest: () => ({ version: '0', content_scripts: [{ js: ['content/main.js'] }] }) },
@@ -181,6 +181,7 @@ async function background() {
       query: async ({ active, windowId } = {}) => [...fake.tabs.values()].filter((t) => (active == null || t.active === active) && (windowId == null || t.windowId === windowId)).map((t) => ({ ...t })),
       update: async (id, change) => { fake.updates.push({ id, change, at: Date.now() }); return { ...fake.tabs.get(id) }; },
       reload: async (id) => { fake.updates.push({ id, change: { reload: true }, at: Date.now() }); },
+      remove: async (id) => { fake.removed.push(id); fake.tabs.delete(id); },
       sendMessage: async () => null,
     },
     scripting: {
@@ -253,4 +254,22 @@ test('cut off, with a switch to it under way (behind still): put out of sight in
   tabs.tabLeft(7);
   await sleepMs(700);
   assert.equal(loadsOf(7).length, 1);
+});
+
+// Margin 2 Phase 3: Margin's sleep page is gone. A tab an earlier build left
+// there (its address no longer opens) is handled once, as Margin starts after
+// the update (the open-tab repair) or as the tab comes to the front.
+test('a tab an earlier build left on Margin\'s sleep page: hidden, closed as Margin\'s own close and kept, asleep; in front, loaded at its page\'s address; one naming no web page left as it is', async () => {
+  const tabs = await background();
+  const { takeClosing } = await import('../extension/background/closing.js');
+  fake.updates = [];
+  fake.removed = [];
+  const asleep = (u) => `${OLD}sleep/sleep.html?${new URLSearchParams({ u, t: 'Title', k: 'k1' })}`;
+  const tab = (id, url, active = false) => [id, { id, windowId: 4, url, active, status: 'complete' }];
+  fake.tabs = new Map([tab(11, asleep('https://hidden.test/a')), tab(12, asleep('https://front.test/x?y=1'), true), tab(13, asleep('javascript:alert(1)')), tab(14, 'https://awake.test/')]);
+  for (const id of [11, 12, 13, 14]) await tabs.ensureCurrent(id);
+  assert.deepEqual(fake.removed, [11], 'the hidden one closed');
+  assert.deepEqual(takeClosing(11), { how: 'keep', why: 'sleep' }, 'to be kept as its Margin tab, asleep (state/model.js closedTab)');
+  assert.deepEqual(loadsOf(12).map((u) => u.change.url), ['https://front.test/x?y=1'], 'the one in front at its page\'s address');
+  assert.deepEqual([loadsOf(13), loadsOf(14)], [[], []], 'no web address: left; a web page: not this');
 });

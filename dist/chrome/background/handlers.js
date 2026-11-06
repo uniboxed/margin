@@ -11,7 +11,7 @@ import { focusTab, reloadCutOff, handingOff, inPage, instanceId, isFocusing, kee
 import { clearLog, readLog } from './diagnostics.js';
 import { sleepIdle, wakeAll } from './sleep.js';
 import { newTabPageSeen } from './newtab-hint.js';
-import { ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
+import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
 import { queueRegistrations, whenRegistered } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
@@ -237,6 +237,7 @@ async function openKeptBehind(windowId, spaceId, keptIds) {
     const win = await api.windows.get(windowId).catch(() => null);
     if (!win) return; // the window closed meanwhile
     markMarginOpening();
+    noteReopened(kept.url);
     const tab = await api.tabs.create({ windowId, url: kept.url, active: false }).catch(() => null);
     if (!tab) continue;
     await mutate((st) => {
@@ -742,6 +743,7 @@ export const handlers = {
     if (!s.spaces.some((sp) => sp.id === spaceId)) throw new Error('no such space');
     const { front, rest } = M.spaceWindowTabs(s, spaceId);
     markMarginOpening();
+    if (front) noteReopened(front.url);
     const props = { focused: true, ...(front ? { url: front.url } : {}) };
     let win;
     try {

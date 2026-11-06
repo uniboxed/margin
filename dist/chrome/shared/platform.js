@@ -14,8 +14,7 @@ const PROFILES = {
     // How a tab not used for a while is put to sleep (background/sleep.js):
     // Safari has no tabs.discard, so Margin closes its browser tab and keeps
     // the Margin tab, not open, in its space (Margin 2: PLAN.md §6); a click
-    // opens it again. ('page', the sleep page of shared/sleep.js, is no
-    // longer used: Phase 3 removes it.)
+    // opens it again.
     sleepTabs: 'close',
     // Each write of the state is numbered (background/store.js stateRev), so
     // a page knows whether its own copy of the state is the last written

@@ -104,11 +104,6 @@ const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return 
 // Sleeping tabs (background/sleep.js): a pass asked for now, for tabs unused
 // for a millisecond (the setting is hours), and what it did.
 const sleepNow = (tab, label = 'a pass of sleeping tabs') => ({ op: 'eval', in: tab, js: `return JSON.stringify(await Margin.content.send('sleepNow', { afterMs: 1 }))`, label });
-// A tab's page is Margin's sleep page, hidden, its record still the page's own.
-const asleepAt = (tab, name) => [
-  checkPage(tab, `${tab}: on Margin's sleep page, hidden`, `location.pathname === '/sleep/sleep.html' && document.hidden && new URLSearchParams(location.search).get('u').endsWith('/p/${name}')`, 3000),
-  check('A', `${tab}: Margin keeps it as its page (its address and title), asleep`, `const { tabs } = await ${STATE}('tabs'); const t = Object.values(tabs).find((x) => x.url.endsWith('/p/${name}')); return !!t && !!t.sleeping && t.title === '${name}'`, 3000),
-];
 // Back at its page, one history entry (no sleep page in its Back list), its content there.
 const awakeAt = (tab, name, label) => checkPage(tab, `${tab}: ${label}`, `location.pathname === '/p/${name}' && history.length === 1 && document.title === '${name}' && !!document.body?.textContent.includes('${name}')`, 4000);
 
@@ -122,7 +117,8 @@ const keepMid = (tab, name) => ({ op: 'eval', in: tab, js: `const { tabs } = awa
 // The page server's address (run.sh's MARGIN_HOST_PORT), for addresses Margin's own pages carry.
 import { firstReadKeys } from '../../extension/shared/stored.js';
 const SERVER = `http://127.0.0.1:${process.env.MARGIN_HOST_PORT ?? 47811}`;
-// Margin's sleep page as an earlier build left a tab on it (Safari closes sleeping tabs now).
+// Margin's sleep page as an earlier build left a tab on it (Safari closes sleeping tabs now, and
+// the page is gone since Phase 3: its address opens nothing).
 const OLD_SLEEP = (name) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${SERVER}/p/${name}`, t: name, k: `old-${name}` })}`;
 
 export const SCENARIOS = {
@@ -1018,20 +1014,21 @@ Object.assign(SCENARIOS, {
     checkPage('K', 'K: still its page', `location.pathname === '/p/K1'`),
     check('A', 'J: closed and kept, not open (put to sleep)', `${KEPT('J1')} return k?.why === 'sleep'`, 3000),
   ],
-  // Margin updated while a tab is on Margin's sleep page (one an earlier
-  // build sent there: Safari closes sleeping tabs now): its sleep page is the
-  // old copy's, whose address no longer opens. It's moved to this copy's
-  // sleep page, still asleep (hidden), and Safari's show wakes it there.
-  'sleep-copy': [
+  // Margin updated while tabs are on Margin's sleep page, where an earlier
+  // build put sleeping tabs (gone since Phase 3: its address opens nothing).
+  // Until then Margin knows them by their pages. Found as the new copy
+  // starts, hidden: closed, kept as their Margin tabs (the same ones),
+  // asleep, not archived. One on it in front: loaded at its page's address.
+  'sleep-leftover': [
     { op: 'open', name: 'A', url: '/p/A', active: true },
     wait(800), { op: 'install', sameId: true }, ready('A'),
-    { op: 'open', name: 'B', url: OLD_SLEEP('B') },
-    checkPage('B', "B: on Margin's sleep page", `location.pathname === '/sleep/sleep.html' && document.hidden`, 3000),
-    { op: 'page', in: 'B', js: 'window.__old = location.origin; return location.origin' },
-    { op: 'uninstall', keepWorld: true }, wait(100), { op: 'install', sameId: true },
-    checkPage('B', "B: on this copy's sleep page now, still asleep", `!window.__old && location.pathname === '/sleep/sleep.html' && document.hidden && new URLSearchParams(location.search).get('u').endsWith('/p/B')`, 6000),
-    { op: 'show', name: 'B' },
-    checkPage('B', "B: Safari's show woke it, back at its page", `location.pathname === '/p/B' && document.title === 'B'`, 4000),
+    { op: 'open', name: 'B', url: OLD_SLEEP('B'), asleep: true }, { op: 'open', name: 'C', url: OLD_SLEEP('C'), asleep: true },
+    check('A', 'B and C: known by their pages, asleep', `const { tabs } = await ${STATE}('tabs'); return ['B', 'C'].every((n) => Object.values(tabs).some((t) => t.url.endsWith('/p/' + n) && t.title === n && t.sleeping?.how === 'page'))`, 3000),
+    { op: 'eval', in: 'A', js: `const { tabs } = await ${STATE}('tabs'); const m = Object.values(tabs).find((t) => t.url.endsWith('/p/B'))?.mid; sessionStorage.setItem('__midB', m); return m ?? 'none'` },
+    { op: 'uninstall' }, wait(800), { op: 'install', sameId: true }, ready('A'),
+    check('A', 'B and C (hidden): closed, kept as their Margin tabs (B the same one), asleep, not archived', `const s = await ${STATE}(['tabs', 'keptTabs', 'archive']); const k = (n) => Object.values(s.keptTabs).find((x) => x.url.endsWith('/p/' + n)); return k('B')?.why === 'sleep' && k('B').id === sessionStorage.getItem('__midB') && k('C')?.why === 'sleep' && !Object.values(s.tabs).some((t) => /[/]p[/][BC]$/.test(t.url) || t.url.includes('sleep.html')) && !s.archive.some((a) => /[/]p[/][BC]$/.test(a.url))`, 8000),
+    { op: 'open', name: 'D', url: OLD_SLEEP('D'), active: true },
+    checkPage('D', "D (in front): loaded at its page's address", `location.pathname === '/p/D' && document.title === 'D'`, 6000),
   ],
   // Margin's tabs (Margin 2, PLAN.md §6). A tab lost with its window
   // (tabs.onRemoved's isWindowClosing) stays in its space, not open, the same
