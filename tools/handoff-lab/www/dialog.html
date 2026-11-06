@@ -1,0 +1,22 @@
+<!doctype html><meta charset="utf-8"><title>Dialogs</title>
+<!-- Gate G8: Safari's prompts opened in the shown window at switch time. The lab asks through
+     the server (`/cmd?for=<id>`); the page answers what it did, never anything else. -->
+<style>body{margin:0;height:100vh;background:#7c2d12;color:#fff;font:600 40px -apple-system;display:flex;align-items:center;justify-content:center}</style>
+<body>DIALOG TEST
+<script>
+const id = new URLSearchParams(location.search).get('id') || 'd';
+const said = (what) => fetch('/r?id=' + id, { method: 'POST', body: JSON.stringify({ what, at: Date.now() }) }).catch(() => {});
+let leave = false;
+addEventListener('beforeunload', (e) => { if (leave) { e.preventDefault(); e.returnValue = ''; } });
+setInterval(async () => {
+  try {
+    const r = await fetch('/cmd?for=' + id, { cache: 'no-store' }); if (r.status !== 200) return; const c = await r.json();
+    if (c.op === 'alert') { said('alert'); setTimeout(() => { alert('Handoff lab: alert'); said('alert closed'); }, 0); }
+    if (c.op === 'confirm') { said('confirm'); setTimeout(() => { const ok = confirm('Handoff lab: confirm'); said('confirm closed ' + ok); }, 0); }
+    if (c.op === 'geo') { said('geolocation asked'); navigator.geolocation.getCurrentPosition(() => said('geolocation yes'), (e) => said('geolocation ' + e.code)); }
+    if (c.op === 'notify') { said('notification asked'); try { said('notification ' + await Notification.requestPermission()); } catch (e) { said('notification ' + e.name); } }
+    if (c.op === 'leave') { leave = true; said('leave armed'); }
+    if (c.op === 'stay') { leave = false; said('leave off'); }
+  } catch (e) {}
+}, 100);
+</script>

@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>STP park test</title>
+<body style="margin:0;height:100vh;background:#c000ff;color:#fff;font:bold 64px -apple-system;display:flex;align-items:center;justify-content:center">PARK TEST
+<script>
+const id = new URLSearchParams(location.search).get('id') || 'p';
+let ticks = 0, raf = 0; const ev = [];
+setInterval(() => ticks++, 100);
+(function f() { raf++; requestAnimationFrame(f); })();
+addEventListener('focus', () => ev.push('focus')); addEventListener('blur', () => ev.push('blur'));
+document.addEventListener('visibilitychange', () => ev.push('vis:' + document.visibilityState));
+setInterval(() => fetch('/r?id=' + id, { method: 'POST', body: JSON.stringify({ t: Date.now(), vis: document.visibilityState, focus: document.hasFocus(), ticks, raf, ev: ev.slice(-8) }), keepalive: true }).catch(() => {}), 250);
+</script>

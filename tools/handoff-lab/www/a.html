@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><title>Profile A</title>
+<style>
+body{margin:0;height:100vh;background:#5b21b6;color:#fff;font:600 28px -apple-system;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+h1{font-size:120px;margin:0} video{width:560px;border-radius:12px;background:#000}
+button{font:700 30px -apple-system;padding:18px 36px;border-radius:14px;border:0;background:#fde047;color:#111;cursor:pointer}
+#s{font:500 22px ui-monospace,monospace;opacity:.9}
+#dot{width:22px;height:22px;border-radius:50%;background:#fff;animation:m 1.6s ease-in-out infinite alternate}
+@keyframes m{from{transform:translateX(-200px)}to{transform:translateX(200px)}}
+</style>
+<h1>PROFILE A</h1>
+<video id="v" src="video.mp4" loop playsinline></video>
+<button id="go">▶ Play with sound + PiP</button>
+<div id="dot"></div><div id="s"></div>
+<script>
+const v = document.getElementById('v'), s = document.getElementById('s'); v.volume = 0.25;
+const me = new URLSearchParams(location.search).get('id') || 'a';
+let raf = 0; (function f() { raf++; requestAnimationFrame(f); })();
+const ev = []; document.addEventListener('visibilitychange', () => ev.push('vis:' + document.visibilityState));
+document.getElementById('go').onclick = async () => {
+  try { await v.play(); ev.push('play ok'); } catch (e) { ev.push('play ' + e.name); }
+  try { await v.requestPictureInPicture(); ev.push('pip ok'); } catch (e) { ev.push('pip ' + e.name); }
+};
+const st = () => ({ t: v.currentTime, paused: v.paused, muted: v.muted, volume: v.volume, pip: document.pictureInPictureElement === v, vis: document.visibilityState, focus: document.hasFocus(), raf, ev: ev.slice(-8) });
+setInterval(() => { const x = st(); s.textContent = `video ${x.t.toFixed(1)} s · ${x.paused ? 'paused' : 'playing'} · PiP ${x.pip ? 'on' : 'off'}`; fetch('/r?id=' + me, { method: 'POST', body: JSON.stringify(x) }).catch(() => {}); }, 200);
+// page commands from the lab (no click needed to leave PiP)
+setInterval(async () => { try { const r = await fetch('/cmd?for=' + me, { cache: 'no-store' }); if (r.status !== 200) return; const c = await r.json();
+  if (c.op === 'exitPip' && document.pictureInPictureElement) { await document.exitPictureInPicture(); ev.push('pip exited'); }
+  if (c.op === 'play') { try { await v.play(); ev.push('replay ok'); } catch (e) { ev.push('replay ' + e.name); } }
+  if (c.op === 'pause') { v.pause(); ev.push('paused'); }
+} catch (e) {} }, 100);
+</script>

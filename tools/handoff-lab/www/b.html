@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Profile B</title>
+<style>
+body{margin:0;height:100vh;background:#0f766e;color:#fff;font:600 28px -apple-system;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;overflow:hidden}
+h1{font-size:120px;margin:0} #dot{width:26px;height:26px;border-radius:50%;background:#fff;animation:m 1.6s ease-in-out infinite alternate}
+@keyframes m{from{transform:translateX(-220px)}to{transform:translateX(220px)}}
+</style>
+<h1>PROFILE B</h1><div id="dot"></div><div id="s">no video here</div>
+<script>
+let raf = 0; (function f() { raf++; requestAnimationFrame(f); })();
+setInterval(() => fetch('/r?id=b', { method: 'POST', body: JSON.stringify({ vis: document.visibilityState, focus: document.hasFocus(), raf }) }).catch(() => {}), 200);
+</script>

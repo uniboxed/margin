@@ -482,6 +482,7 @@ Built (WP2): `app/shell/Freezer.swift`. Settled on the way:
 - **The session rules are `FreezeRules`,** a struct the delegate keeps (WP8's machine), fed by `FreezeReport`s: two failed freezes in a row, or one failed reveal, turn it off. A success resets the count. A watchdog reveal is counted, not a failure. `FreezeRules(availability:)` starts off when the launch check didn't pass the freeze. It also keeps `lastRevealAt` and `lastWatchdogAt` for §1.5's cooldown. The freezer itself never decides whether to freeze.
 - **The lock is held through `SLSInvokeTransition` and `SLSReleaseTransition`,** not just while the handle is taken. So a reveal and the next freeze never overlap in SkyLight, and only one caller ever reveals a handle.
 - **The watchdog reveals off the main thread.** The labs only ever revealed on the main thread (`S/handoff/lab.swift:66`). Revealing from another thread on the main connection hasn't been tried on screen yet. It should be part of G1's run (WP13).
+  - Tried (WP13, 2026-11-06, 26B123): the handoff lab's `holds` and G1 let `RealFreezer`'s watchdog reveal a 0.5 s freeze from its own queue. It answered 0, nothing changed on screen while frozen, and the screen moved again at once after (`tools/handoff-lab/results/26B123-2026-11-06.md`).
 - **A watchdog reveal reaches the delegate a moment later,** on the main actor. By then `isLive` is already false. Every report carries its handle, so a late one is never taken for a later freeze.
 - **A freezer that goes away while live reveals** (the labs released instead). A freeze asked while one is live is `.unavailable` and isn't counted.
 - **`FreezerOptions`:** `watchdog` 1.7 s and `closeWatchdog` 1.0 s. §4.5's caller passes `closeWatchdog` to `freeze(watchdog:)`.
@@ -777,6 +778,25 @@ Each gate is a mode of the lab tool. Until it passes, the part named stays off o
 | G16 | at least 30 handoffs in release Safari (Test A/Test B) with Margin's extension, real sites, and R3/R4 on: the reveal-time distribution and the late-reveal rate | the honest numbers, `Options.watchdog`, the step-5 limit. **Acceptance for the build, with Tirth's go-ahead** |
 | G17 | a watchdog reveal during A's exit, and during the settle | §1.4's claim that nothing shows |
 | G18 | the bridge on a minimized window | §1.5 rule 6 |
+
+Built (WP13): `tools/handoff-lab/` (`lab.swift`, `build.sh`, `ext/`, `www/`, `server.py`, `results/`, and `README.md`, the runbook). One mode per gate, plus `holds`, the freeze-holds check. Settled on the way:
+
+- **It compiles what ships.** `build.sh` builds the lab with the app's own `PrivateCalls.swift`, `Freezer.swift`, `SpaceReads.swift` and `BridgeParker.swift`, and what they need, with the app target's settings. So every freeze is `RealFreezer`'s, every park, show and return is `SpaceParker`'s, and G1 runs the real `ParkSelfTest` with the lab as its child. `BridgeParker.swift`'s `extension Shell` is left out of a copy, because the lab has no shell.
+- **The lab drives only STP's windows, never release Safari's** (this changes §10.3's "or release Safari in Test A/Test B"). The lab can't tell which profile a Safari window belongs to, so it can't promise to stay in Test A and Test B. Release Safari is reached only through Margin.app: G1's second half and G16 post WP12's dev hook, which refuses any other profile, and they read Margin's own log lines.
+- **Nothing runs on screen without `--go`.** `--dry-run`, or no `--go`, prints the plan and read-only checks. The first failure stops the run. At the end, and on ⌃C, every window the lab parked is returned and its own windows are closed.
+- **G1 has two halves.** The lab's half (launch check, cross-process self-test, `holds`) runs hardened, but under the terminal's grants. The half without permissions is Margin.app's: its signature, its own launch and self-test lines, and with `--dev-hook` one switch. Whether Margin has Screen Recording or Accessibility can't be read, so that's checked by hand.
+- **Where each gate runs:**
+  - G6, G10, G12, G14, G17 and G18 use the lab's own windows (as `S/handoff/park.swift` did). G5, G6 and G13 use hidden windows of a child process. The window server treats these as it treats Safari's.
+  - G7 and G15 also run in STP with `--stp`. Every STP handoff also logs G6's liveness read of the window it parked.
+  - G8, G9 and G15's swipe are guided steps (`--person`), because the lab has no Accessibility to press keys or dismiss prompts.
+- **G2's probe is the lab's `ext/probe.js`,** in §3.2's shape, until WP6's content script exists.
+- **Reports are one file per macOS build and day** (`results/<build>-<date>.md`), with a section per run, so two runs on a day don't overwrite each other.
+- **First runs** (own and child windows only, 26B123):
+  - `holds` passed, including the watchdog's off-thread reveal.
+  - G1's lab half was partial: the self-test passed (park 5 ms, show 5 ms), but Margin.app wasn't installed.
+  - G5 passed: 20 empty Spaces made and destroyed with nothing disturbed, and a Space per window. Reads that list a private Space's window exist: `SLSCopySpacesForWindows` with mask 0xF and up, and `SLSCopyWindowsWithOptionsAndTags`. `enumeratorPassedG5` stays false until that's reviewed.
+  - G6: the liveness read lists a parked window, with its bounds unchanged, so §2.1's rule can count on it.
+  - G15 passed on the lab's own windows: two handoffs, about 1.33 s held, no other Space.
 
 ### 10.5 The live checklist (TESTING.md, in Test A and Test B only)
 

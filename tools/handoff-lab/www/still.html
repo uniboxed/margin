@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Still</title>
+<!-- A page that draws nothing after it loads (gate G2): no animation, no timers that paint.
+     ?id= names it for the lab; ?bg= is its colour (hex, no #), which the lab's frame recorder
+     tells apart. The frame probe (ext/probe.js) runs in it like in any lab page. -->
+<style>body{margin:0;height:100vh;color:#fff;font:600 64px -apple-system;display:flex;align-items:center;justify-content:center}</style>
+<body><div id="n"></div>
+<script>
+const q = new URLSearchParams(location.search);
+document.body.style.background = '#' + (q.get('bg') || '1e3a8a').replace(/[^0-9a-f]/gi, '').slice(0, 6);
+document.getElementById('n').textContent = 'STILL ' + (q.get('id') || '').toUpperCase().slice(0, 4);
+</script>

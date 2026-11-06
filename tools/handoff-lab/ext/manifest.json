@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "Handoff Lab Helper",
+  "version": "2.0",
+  "description": "Test only (tools/handoff-lab): lets the lab ask for windows.update, windows.create and tabs calls as Margin's extension would, and measures frames in the lab's own pages. Load it as a temporary extension in Safari Technology Preview only.",
+  "background": { "scripts": ["bg.js"], "persistent": true },
+  "content_scripts": [{ "matches": ["http://127.0.0.1/*"], "js": ["probe.js"], "run_at": "document_start" }],
+  "permissions": ["tabs", "http://127.0.0.1/*"]
+}
