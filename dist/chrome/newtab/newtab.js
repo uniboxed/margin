@@ -1,17 +1,24 @@
 // Margin's new-tab page (the browser's new-tab override) and its start page
-// (#launcher; #settings: with its Settings open). While Margin.app is linked,
-// the app's overlay draws the theme's launcher and Settings over this page's
-// place (ui/host-app.js), and the page draws nothing of its own. Not linked
-// (Margin 2: nothing of Margin's UI is drawn in pages, this one included), it
-// says Margin.app isn't running, with a button that starts it and an address
-// field, so a new tab still works; or, when the app is running but sent no
-// link (appLink.why 'no-link', background/link.js), that it isn't answering,
-// with no button (it's running: starting it does nothing). It's loaded again
-// when the link comes or goes. (Phase 7 makes the prompt to install the app.)
+// (#launcher; #settings: with its Settings open). While Margin.app is linked
+// and draws over this page's window, the app's overlay draws the theme's
+// launcher and Settings over this page's place (ui/host-app.js), and the page
+// draws nothing of its own. Not linked (Margin 2: nothing of Margin's UI is
+// drawn in pages, this one included), it says Margin.app isn't running, with
+// a button that starts it and an address field, so a new tab still works; or,
+// when the app is running but sent no link (appLink.why 'no-link',
+// background/link.js), that it isn't answering, with no button (it's
+// running: starting it does nothing). Linked, but the app draws nothing over
+// this window (appLink.drawn false: not in full screen, or not found yet), it
+// says so, with the address field and no button. It's loaded again when what
+// it shows should change: told by storage events, and read again right after
+// it starts listening (a write between its first read and its listener would
+// be missed), whenever it's shown or focused, and back from the back/forward
+// cache (a suspended page misses storage events). (Phase 7 makes the prompt
+// to install the app.)
 import { platform } from '../shared/platform.js';
 import { resolveInput } from '../shared/search.js';
 import * as shortcuts from '../shared/shortcuts.js';
-import { APP_LINK_KEY, appDraws } from '../shared/app-link.js';
+import { APP_LINK_KEY, appDraws, undrawn } from '../shared/app-link.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -47,15 +54,35 @@ const isLauncher = location.hash === '#launcher' || location.hash === '#settings
 const fresh = history.length <= 1 && (!nav || nav.type === 'navigate') && !isLauncher && !/[?&]again\b/.test(location.search);
 if (fresh) void send('newTabPage');
 
-const { [APP_LINK_KEY]: appLinkNow } = await api.storage.local.get(APP_LINK_KEY);
-const drawnByApp = appDraws(appLinkNow);
+const self = await Promise.resolve(api.tabs.getCurrent()).catch(() => null);
+const windowId = self?.windowId ?? null;
+// What this page shows: 'app' (nothing: the app's overlay draws over it), 'undrawn' (linked, but
+// the app draws nothing over this window), 'off' (not linked).
+/** @param {any} link */
+const modeOf = (link) => (!appDraws(link) ? 'off' : undrawn(link, windowId) ? 'undrawn' : 'app');
+/** @type {'app' | 'undrawn' | 'off' | null} */
+let mode = null; // decided by the first read
+let appLinkNow = /** @type {any} */ (null);
+// What the link is now: loaded again if this page should show something else; else its words.
+const take = (/** @type {any} */ link) => {
+  if (mode == null) return;
+  if (modeOf(link) !== mode) return void location.reload();
+  appLinkNow = link;
+  if (mode !== 'app') describe(link);
+};
+const readLink = async () => (await Promise.resolve(api.storage.local.get(APP_LINK_KEY)).catch(() => null))?.[APP_LINK_KEY];
+const checkLink = () => void readLink().then(take, () => {});
+// Listening first, then the first read, then a second read (Safari may hand the listener over
+// after a write the first read missed).
 api.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'local' || !(APP_LINK_KEY in changes)) return;
-  const now = changes[APP_LINK_KEY].newValue;
-  if (appDraws(now) !== drawnByApp) location.reload();
-  else if (!drawnByApp) describe(now);
+  if (area === 'local' && APP_LINK_KEY in changes) take(changes[APP_LINK_KEY].newValue);
 });
-const self = await api.tabs.getCurrent();
+appLinkNow = await readLink();
+mode = modeOf(appLinkNow);
+checkLink();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkLink(); });
+addEventListener('pageshow', (event) => { if (event.persisted) checkLink(); });
+addEventListener('focus', checkLink);
 // Next/previous tab and space from Settings' shortcuts, as on web pages.
 let settingsNow = (await api.storage.local.get('settings')).settings ?? null;
 api.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.settings) settingsNow = changes.settings.newValue ?? null; });
@@ -70,20 +97,28 @@ tellVisibility();
 api.runtime.onMessage.addListener((message, _, sendResponse) => {
   if (message?.type === 'switching' && message.from === self?.id) sendResponse(false);
   if (message?.type === 'reportVisibility') tellVisibility();
-  // ⌘T or the palette's key with this page in front, not linked: its address field.
-  if (message?.type === 'command' && message.tabId === self?.id && !drawnByApp) address()?.focus();
+  // ⌘T or the palette's key with this page in front, not the app's: its address field.
+  if (message?.type === 'command' && message.tabId === self?.id && mode !== 'app') address()?.focus();
 });
 const address = () => /** @type {HTMLInputElement | null} */ (document.getElementById('address'));
 
-if (!drawnByApp) showNotice();
+if (mode !== 'app') showNotice();
 
-// Not running, or running and not answering (it sent no link): said in the
-// notice; the start button only for the first.
+// Not running, running and not answering (it sent no link), or linked with
+// nothing drawn over this window: said in the notice; the start button only
+// for the first.
 function describe(appLink) {
   const title = document.getElementById('title');
   const why = document.getElementById('why');
   const start = /** @type {HTMLButtonElement | null} */ (document.getElementById('start'));
-  if (!title || !why || !start || !platform?.nativeApp) return;
+  if (!title || !why || !start) return;
+  if (mode === 'undrawn') {
+    title.textContent = 'Margin.app hasn’t placed this window yet';
+    why.textContent = 'Margin.app draws Margin’s sidebar and palette around full-screen windows. Put this window in full screen, or wait a moment while Margin.app finds it; this page changes once it has.';
+    start.hidden = true;
+    return;
+  }
+  if (!platform?.nativeApp) return;
   const noLink = appLink?.why === 'no-link';
   title.textContent = noLink ? 'Margin.app isn’t answering' : 'Margin.app isn’t running';
   why.textContent = noLink
@@ -107,6 +142,8 @@ function showNotice() {
     describe(appLinkNow);
     let timer = null;
     start.addEventListener('click', async () => {
+      // Linked meanwhile (a word this page missed): loaded again, not started again.
+      if (appDraws(await readLink())) return void location.reload();
       start.disabled = true;
       status.textContent = 'Starting Margin.app…';
       clearTimeout(timer);

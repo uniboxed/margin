@@ -161,7 +161,15 @@ func windowsScenario(ownSpace: Bool = false) async {
   check("windows: P2's copy told its window is drawn as it's bound, before the window's layout went",
         await until(3, { drawnSaid("B", 1).map(\.on) == [false, true] }) && (index("drawn", "B", 1) { $0["on"] as? Bool == true }).map { on in index("setLayout", "B", 1).map { on < $0 } ?? true } == true,
         "\(drawnSaid("B", 1)) \(String(describing: index("setLayout", "B", 1)))")
-  check("windows: and its layout sent once it's drawn", await until(10, { index("setLayout", "B", 1) != nil }))
+  // (Once its overlay's page has measured the slot at the window's size: an overlay made off screen and
+  // sized later may get no resize event here while it stays off every display, where WebKit draws no frames.)
+  let measuredAtSize = { shell.overlays[b1].map { o in o.layout.map { abs($0.width - o.frameTopLeft.width) < 1 && abs($0.height - o.frameTopLeft.height) < 1 } ?? false } ?? false }
+  let waitFrom = Date()
+  _ = await until(10, { index("setLayout", "B", 1) != nil || (!measuredAtSize() && Date().timeIntervalSince(waitFrom) > 2) })
+  let layoutSent = index("setLayout", "B", 1) != nil
+  let measured = measuredAtSize()
+  check("windows: and its layout sent once it's drawn and measured at its window's size", layoutSent || !measured,
+        "its overlay's page measured \(shell.overlays[b1]?.layout.map { "\($0.width)×\($0.height)" } ?? "nothing"), the overlay is \(shell.overlays[b1].map { "\($0.frameTopLeft.size)" } ?? "none"), bound to \(shell.matches[b1].map(String.init) ?? "nothing"), shown \(shell.overlays[b1]?.isShown ?? false)")
 
   // Back to P1's first window: the same lag the other way. Then P1's other one is the only free window left.
   space(wA, also: wC)

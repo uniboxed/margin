@@ -1358,7 +1358,8 @@ Object.assign(SCENARIOS, {
   // (its window's pages get `--margin-fp: off` as they commit, then a registration of zeros once that
   // has settled), and drawn again, the open page is back in its box with no frame in between at
   // another place, and fresh pages are boxed from their first frame again. ⌘T in the undrawn window
-  // opens Margin's new-tab page, which stays.
+  // opens Margin's new-tab page, which stays, and says Margin.app hasn't placed the window (its
+  // address field, no Start).
   'undrawn': [
     appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
     { op: 'appDrawn', on: false },
@@ -1370,6 +1371,7 @@ Object.assign(SCENARIOS, {
     { op: 'show', name: 'A' }, shown('A'),
     { op: 'key', in: 'A', keyCode: 17, chars: 't', mods: ['command'] },
     checkPage('new1', 'new1: ⌘T in the page of the undrawn window: Margin\'s new-tab page', `location.pathname === '/newtab/newtab.html'`, 4000),
+    checkPage('new1', 'new1: it says Margin.app hasn\'t placed this window, with the address field, no Start, nothing about the app not running', `!document.getElementById('notice').hidden && document.getElementById('title').textContent === 'Margin.app hasn’t placed this window yet' && document.getElementById('start').hidden && !!document.getElementById('address') && !document.body.textContent.includes('isn’t running')`, 4000),
     wait(1000),
     check('A', 'A: one new tab for the press, kept (not closed for a palette that isn\'t drawn)', `const { tabs } = await ${STATE}('tabs'); return Object.values(tabs).filter((t) => t.url.includes('/newtab/newtab.html')).length === 1`, 2000),
     settledLayout,

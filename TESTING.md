@@ -651,6 +651,12 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Open a new full-screen window (⌘N in full screen) and wait: Margin's launcher and palette show as soon as its sidebar does. The log may say `palette push for window N (…): … held 1.5 s for it to show` then `given to its overlay as it showed`. Send me any `dropped: no overlay was shown there within 1.5 s` line with the time.
 - [ ] Any `… reached the extension (page): the app's hot keys were …` line in the log: send it with the time. It says why the app didn't take the key.
 
+**The new-tab page** (the "Margin isn't connected" in another profile).
+- [ ] If you see "isn't running", "isn't connected" or anything like it again, note the exact words and the time, and which window (full screen or not, which profile). "Margin.app isn't running" is the new-tab page; "<Profile> isn't open in Safari" comes from switching to another profile's space.
+- [ ] With Margin linked, open a new tab in a normal window: it says "Margin.app hasn't placed this window yet", with the address field and no Start button. Type an address: it opens there.
+- [ ] Quit Margin.app with a new tab open in each profile's window, then open Margin.app again: each of those new-tab pages stops saying "Margin.app isn't running" within a few seconds of the link, including ones in Spaces you weren't looking at (check each when you switch to it).
+- [ ] With a new tab saying "Margin.app isn't running", start Margin.app from Applications, then press Start on that tab: the page reloads as Margin's (no second app, no "didn't answer" text).
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.

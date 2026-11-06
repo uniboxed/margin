@@ -95,6 +95,8 @@ While linked, the app owns Margin's keys (Tirth, 2026-11-05): ⌘T and the other
 
 ### Settings and the new-tab page
 
+The new-tab page shows nothing of its own while the app draws over its window (linked or reconnecting, and its window not `drawn` false). Not linked, it says Margin.app isn't running (Start, and the address field) or, with `why: 'no-link'`, that it isn't answering; linked with its window `drawn` false, that Margin.app hasn't placed the window yet (the address field, no Start). It listens for `appLink` changes before its first read, reads again right after, and again whenever it's shown, focused or back from the back/forward cache, and loads again when what it should show changes; its Start reads `appLink` first and loads again instead if it's linked by then.
+
 While linked, Margin's new-tab page (and its start page and Settings, `#launcher`, `#settings`) draws nothing of its own: the overlay of its window draws the theme's launcher, with its Settings, in the page slot over it, while that page is the window's tab in front (`ui/host-app.js`). An address chosen there opens in that tab (`openHere`); an archived tab restored takes its place. Settings opened from anywhere (`openLauncher { settings: true }`) open that page, so they draw in the overlay too.
 
 ### Sizes
