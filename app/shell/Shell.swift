@@ -265,6 +265,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var parkSelfTest = ParkSelfTest.Outcome.notRun
     var parkSelfTestRun: ParkSelfTest?
     var parkingOn: Bool { privateCalls.park && parker?.isAvailable == true && parkSelfTest.passed }
+    // The parked windows (Parking.swift), made with the parker. Nil: nothing can be parked.
+    var parking: ParkingRegistry?
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
@@ -312,7 +314,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard privateCalls.spaces else { return }
         let spaces = SkyLightSpaces(sky: sky, availability: privateCalls)
         spaceReads = spaces
-        if privateCalls.park { parker = SpaceParker(reads: spaces, bridge: spaces, clock: options.switchClock) }
+        if privateCalls.park {
+            let parker = SpaceParker(reads: spaces, bridge: spaces, clock: options.switchClock)
+            self.parker = parker
+            parking = ParkingRegistry(parker: parker, reads: spaces, clock: options.switchClock, marker: parkingMarkerURL, build: resolver.build,
+                                      parkingOn: { [weak self] in self?.parkingOn == true })
+        }
     }
 
     func start() {

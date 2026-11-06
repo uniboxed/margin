@@ -252,6 +252,19 @@ final class ParkingRegistry {
 - **Hard rule:** the registry never drops an entry that's still alive. Every path that stops tracking a window calls `returnToDesktop` first and verifies it. A debug assertion and a unit test cover it.
 - **Memory only**, except the crash marker (§6.4).
 
+Built (WP4): `app/shell/Parking.swift`, `ParkingRegistry` (made with the parker in `Shell.checkPrivateCalls`, as `Shell.parking`). Settled on the way:
+
+- **`ParkedWindow`** also keeps `copy` (the copy instance its window id belongs to, so "the same copy stops listing it" can be told from a new copy) and `cause` (the call under way). `space` is optional: nil once destroyed after a show that didn't land.
+- **A copy never seen with the window's id counts as a new copy** when it doesn't list that id. This covers a park before any read named the copy. "Closed in Safari" needs the same copy's word, so the window is rebound, never forgotten.
+- **Phases:** `parking`, `parked`, `showing`, `returning`, `closing`, and `out`: still tracked but not in its private Space (a step that didn't land). An `out` window found in a user Space is an ordinary window again and is let go (verified by that read).
+- **The liveness read counts only once it has listed the window since its park.** Whether the window server lists a parked window at all is gate G6's question. Without this, a G6 "no" would forget every parked window after 3 s and strand it. Until a read has listed it, only a pid gone or the copy's word forgets it. A number listed under another process is gone at once.
+- **The hard rule** is `forget(_:_:)`, the only way out. It allows the four gone reasons, or `shown`/`returned` after a verified step, or a park that sent nothing. Anything else calls `strandCheck` (an `assertionFailure`; a test records it) and keeps the entry.
+- **A park that didn't land is returned** to its Desktop by the registry itself (the window may be in its private Space), then let go. A park that sent nothing isn't tracked.
+- **`sweep(_:)` acts on what it finds:** a system return is parked again (cause `.system(why)`), or returned when `parkingOn()` is false. One try only: the entry goes `out` first, so a step that doesn't land never loops. A window back but not `normal` waits (§4.4). A person's focus is reported once per `focusedAt`, and nothing is moved: the handoff is WP9's.
+- **Quit follows §13.1, not §6.4:** `quit(close:)` asks each window's copy to close it (WP9 passes the closer that sends `closeWindow`). Windows whose copy can't be asked, or didn't close them, are returned. 300 ms in all, then the marker goes. A window not done by then stays tracked and comes back by itself as Margin exits. `endAll` is the same without the marker, for §13.8's shown-window close. `returnAll` returns everything.
+- **The crash marker follows §13.2:** `{ pid, build, at, count, windows: [{ number, link, windowId, copy, pid, bounds }], shown: [{ link, number }] }`. `pid` is Margin's, `build` the macOS build. It's rewritten on every change after the first park. At launch, `Shell.recoverParked()` runs once the self-test has answered. It takes the marker (the file is removed, so a second crash never replays it), unless that Margin is still running. It parks again each window of a Safari pid that still runs, still listed with the bounds it had (within 2 pt). The rest are left, and logged as of an earlier Safari, gone or moved. With parking off, all are left.
+- **Not wired yet (WP9):** `sweep` from `Shell.track`, `systemEvent` from `WorkspaceApps`, `quit` from `Shell.stop`, `noteCall` for the machine's windows calls, and `rebind` into the binder's `expectParked` (WP5).
+
 ### 2.2 The window binder (`app/shell/WindowMatcher.swift`)
 
 Today, a bound window missing from reads keeps its binding for `Timing.absent` (3 s), then the binding goes (`WindowMatcher.swift:211-213`, `:529-534`). A new copy drops all its bindings (`:514-519`).

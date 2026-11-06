@@ -608,6 +608,8 @@ extension Shell {
             self.parkSelfTest = outcome
             self.parkSelfTestRun = nil
             Diagnostics.note(ParkSelfTest.line(outcome, pid: test.childPid))
+            // A crash's parked windows parked again, now that it's known whether parking works (§13.2).
+            self.recoverParked()
         }
     }
 }

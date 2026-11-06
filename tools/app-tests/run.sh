@@ -10,7 +10,8 @@
 #         launch check and wrappers against a fake resolver (private-calls-tests.swift);
 #         the handoff's freezer on a fake clock and fake functions (handoff-tests.swift);
 #         the Space reads, the parker and its cross-process self-test against a fake
-#         world and a stand-in child, nothing spawned (parking-tests.swift)
+#         world and a stand-in child, nothing spawned, and the parking registry with its crash
+#         marker in a temporary folder (parking-tests.swift)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
 #         extension (fake-extension.mjs, Node), and a picture of the overlay

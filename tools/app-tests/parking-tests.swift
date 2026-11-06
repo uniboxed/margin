@@ -13,6 +13,18 @@
 // --park-probe argument and the child's line parsed, and ParkSelfTest's run
 // against a stand-in child. SkyLightSpaces and the real child refusing under
 // MARGIN_APP_TESTS, and the shell's wiring.
+//
+// The registry (Parking.swift), over SpaceParker and FakeSpaceWorld: keyed by
+// number and never forgotten for a link down, held or a new copy; forgotten by
+// liveness (only once the read has listed it), a pid gone, the same copy
+// closing it, or a number taken by another process; the hard rule's assertion;
+// rebinding by elimination, by bounds, and left unbound; who caused a return
+// (the system's re-parked or returned, never the person's; focus after Margin's
+// own call is Margin's); a failed show destroying only its window's Space; a
+// park that didn't land returned; returnAll and quit (closed by copies, the
+// rest returned, 300 ms in all); and the crash marker in a test folder:
+// written, kept up to date, taken at launch, adopted after a crash, removed at
+// quit.
 import AppKit
 import Foundation
 
@@ -377,5 +389,427 @@ func parkingTests() {
               shell.parkSelfTest == .failed("parking is off") && !shell.parkingOn && said.last == "private calls: park off: the cross-process self-test failed: parking is off", "\(said)")
         shell.selfTestParking(child: FakeProbeChild(world: world, clock: clock))
         check("parking: the self-test runs once", said.filter { $0.contains("self-test") }.count == 1)
+        check("parking: the registry made with the parker", shell.parking != nil && bare.parking == nil)
+        check("parking: a harness's crash marker in its own data folder, never Application Support",
+              shell.parkingMarkerURL == shell.data.store.root.appendingPathComponent("parked.json")
+              && !shell.parkingMarkerURL.path.contains("Library/Application Support"), shell.parkingMarkerURL.path)
+    }
+
+    parkingRegistryTests()
+}
+
+// ---- the registry ----
+
+func parkingRegistryTests() {
+    let echo = Diagnostics.echo
+    var said: [String] = []
+    Diagnostics.echo = { said.append($0) }
+    defer { Diagnostics.echo = echo }
+
+    let safari: pid_t = 501
+    let boundsA = CGRect(x: 100, y: 100, width: 1200, height: 800)
+    let boundsB = CGRect(x: 200, y: 150, width: 1000, height: 700)
+    let boundsC = CGRect(x: 40, y: 60, width: 900, height: 600)
+    final class Setup {
+        let clock = FakeClock()
+        let world: FakeSpaceWorld
+        let registry: ParkingRegistry
+        let root: URL
+        var strands: [String] = []
+        var marker: URL { root.appendingPathComponent(ParkingMarker.fileName) }
+        init(_ windows: [Int: CGRect], pid: pid_t) {
+            world = FakeSpaceWorld(clock: clock)
+            world.active = 5
+            world.displayList = [DisplaySpaces(display: "Main", current: 5, spaces: [ManagedSpace(id: 1, type: 0), ManagedSpace(id: 5, type: 4)])]
+            for (n, b) in windows { world.windows[n] = .init(pid: pid, bounds: b, spaces: [1]) }
+            root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-parking-\(UUID().uuidString)", isDirectory: true)
+            registry = ParkingRegistry(parker: SpaceParker(reads: world, bridge: world, clock: clock), reads: world, clock: clock,
+                                       marker: root.appendingPathComponent(ParkingMarker.fileName), build: "26B123")
+            registry.strandCheck = { [unowned self] in self.strands.append($0) }
+        }
+        deinit { try? FileManager.default.removeItem(at: root) }
+        @discardableResult func park(_ n: Int, _ link: String, _ id: Int?, bounds: CGRect) -> ParkingRegistry.ParkResult? {
+            var got: ParkingRegistry.ParkResult?
+            registry.park(number: n, link: link, windowId: id, pid: world.windows[n]?.pid ?? 501, bounds: bounds, cause: .handoff) { got = $0 }
+            clock.advance(1)
+            return got
+        }
+    }
+    func win(_ link: String, _ id: Int, _ bounds: CGRect?, state: String = "normal", focused: Bool = false, focusedAt: Double? = nil) -> ExtWindow {
+        ExtWindow(key: WindowKey(link: link, windowId: id), bounds: bounds, state: state, focused: focused, activeTabId: nil, focusedAt: focusedAt)
+    }
+    func read(_ ext: [ExtWindow], reporting: Set<String>? = nil, copies: [String: String]? = nil, held: Set<String> = [], pids: Set<pid_t> = [501],
+              moving: Set<Int> = []) -> SweepRead {
+        let links = reporting ?? Set(ext.map(\.key.link))
+        return SweepRead(pids: pids, ext: ext, reporting: links, copies: copies ?? Dictionary(uniqueKeysWithValues: links.map { ($0, "copy-1") }),
+                         held: held, moving: moving)
+    }
+
+    // ---- park, and the marker it starts ----
+    do {
+        let s = Setup([11: boundsA, 12: boundsB], pid: safari)
+        check("registry: nothing parked, no crash marker", !FileManager.default.fileExists(atPath: s.marker.path))
+        _ = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        let r = s.park(11, "safari:a", 3, bounds: boundsA)
+        check("registry: a park: its own private Space, verified, tracked by number",
+              r?.park.ok == true && s.registry.entries[11]?.space == 2431 && s.registry.entries[11]?.phase == .parked && s.registry.isParked(11)
+              && s.registry.entries[11]?.copy == "copy-1" && s.world.readsParked(11) == true, "\(String(describing: s.registry.entries[11]))")
+        check("registry: its line: number, link and id, Space, ms and cause",
+              said.last == "handoff: parked window 11 (safari:a#3) in its Space 2431 in 4 ms (a handoff)", "\(said)")
+        let m = ParkingMarker.read(s.marker)
+        check("registry: the crash marker written at the first park, in the given folder",
+              m?.count == 1 && m?.build == "26B123" && m?.pid == ProcessInfo.processInfo.processIdentifier && m?.at == 1000004
+              && m?.windows == [ParkingMarker.Window(number: 11, link: "safari:a", windowId: 3, copy: "copy-1", pid: 501, bounds: [100, 100, 1200, 800])],
+              "\(String(describing: m))")
+        let text = (try? String(contentsOf: s.marker, encoding: .utf8)) ?? ""
+        check("registry: the marker holds numbers, links, ids and bounds only", text.contains("\"windows\"") && !text.contains("http") && !text.contains("title"), text)
+        s.park(12, "safari:b", 7, bounds: boundsB)
+        check("registry: … and kept up to date", ParkingMarker.read(s.marker)?.windows.map(\.number) == [11, 12] && s.registry.entries[12]?.space == 2432)
+        let again = s.park(11, "safari:a", 3, bounds: boundsA)
+        check("registry: parking a parked window: answered at once, nothing sent", again?.park.ok == true && again?.park.tries == 0
+              && s.world.calls.filter { $0.hasPrefix("add 11") }.count == 1, "\(s.world.calls)")
+        said = []
+        let gone = s.park(99, "safari:a", 4, bounds: boundsA)
+        check("registry: a park of a window that isn't listed: not tracked, and no strand", gone?.park.failure == .gone && !s.registry.isParked(99) && s.strands.isEmpty)
+        check("registry: the registry's line for it", said.last == "handoff: window 99 (safari:a#4) not parked: found no such window", "\(said)")
+        said = []
+    }
+
+    // ---- never forgotten by a link down, a link held, or a new copy ----
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        var f = s.registry.sweep(read([], reporting: []))
+        check("registry: its link down: nothing changes", f == [.held(number: 11, link: "safari:a")] && s.registry.entries[11]?.windowId == 3)
+        s.clock.advance(30)
+        f = s.registry.sweep(read([], reporting: [], held: ["safari:a"]))
+        check("registry: … reconnecting (held), 30 s on: still parked, still bound", f == [.held(number: 11, link: "safari:a")] && s.registry.entries[11]?.phase == .parked
+              && s.registry.entries[11]?.windowId == 3)
+        f = s.registry.sweep(read([win("safari:a", 21, boundsA)], copies: ["safari:a": "copy-2"]))
+        check("registry: a new copy: kept by number, its window id nil until rebound",
+              f == [.newCopy(number: 11, link: "safari:a")] && s.registry.entries[11]?.windowId == nil && s.registry.entries[11]?.phase == .parked
+              && ParkingMarker.read(s.marker)?.windows.first?.windowId == nil, "\(f)")
+        check("registry: … logged", said.last == "handoff: window 11 (safari:a#3): a new copy of Margin in its profile, rebinding", "\(said)")
+        f = s.registry.sweep(read([win("safari:a", 21, boundsA)], copies: ["safari:a": "copy-2"]))
+        check("registry: … and a new copy not listing the old id doesn't forget it", f.isEmpty && s.registry.isParked(11), "\(f)")
+        check("registry: no strand on the way", s.strands.isEmpty)
+        said = []
+    }
+
+    // ---- forgotten only when the window is gone ----
+    do {
+        let s = Setup([11: boundsA, 12: boundsB, 13: boundsC], pid: safari)
+        let ext = [win("safari:a", 3, boundsA), win("safari:a", 4, boundsB), win("safari:b", 9, boundsC)]
+        _ = s.registry.sweep(read(ext))
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:a", 4, bounds: boundsB)
+        s.park(13, "safari:b", 9, bounds: boundsC)
+        _ = s.registry.sweep(read(ext)) // the liveness read lists each one parked
+        s.world.windows[11] = nil
+        var f = s.registry.sweep(read(ext))
+        check("registry: missing from one read: kept", f.isEmpty && s.registry.isParked(11), "\(f)")
+        s.clock.advance(2.9)
+        f = s.registry.sweep(read(ext))
+        check("registry: … 2.9 s: kept", f.isEmpty && s.registry.isParked(11))
+        s.clock.advance(0.1)
+        f = s.registry.sweep(read(ext))
+        check("registry: not listed for 3 s with Safari running: forgotten, its Space destroyed",
+              f == [.gone(number: 11, link: "safari:a", why: .notListed)] && !s.registry.isParked(11) && s.world.destroyed == [2431], "\(f) \(s.world.destroyed)")
+        check("registry: … logged", said.last == "handoff: forgot parked window 11 (safari:a#3): the window server hasn't listed it for 3 s", "\(said)")
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA), win("safari:b", 9, boundsC)]))
+        check("registry: the same copy no longer listing its id: closed, forgotten", f == [.gone(number: 12, link: "safari:a", why: .closedInCopy)] && !s.registry.isParked(12), "\(f)")
+        s.world.windows[13]?.pid = 777
+        f = s.registry.sweep(read(ext))
+        check("registry: its number now another process's: gone at once", f == [.gone(number: 13, link: "safari:b", why: .notListed)], "\(f)")
+        check("registry: the marker follows", ParkingMarker.read(s.marker)?.count == 0)
+        check("registry: none of it a strand", s.strands.isEmpty)
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.world.windows[11] = nil // never listed while parked (gate G6's question)
+        _ = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        s.clock.advance(10)
+        let f = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        check("registry: a read that never listed it parked proves nothing: kept", f.isEmpty && s.registry.isParked(11), "\(f)")
+        let p = s.registry.sweep(read([win("safari:a", 3, boundsA)], pids: [502]))
+        check("registry: Safari's process gone: forgotten", p == [.gone(number: 11, link: "safari:a", why: .pidGone)] && s.registry.entries.isEmpty, "\(p)")
+        said = []
+    }
+
+    // ---- the hard rule ----
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.registry.forget(11, .returned)
+        s.registry.forget(11, .shown)
+        s.registry.forget(11, .neverParked, sent: false)
+        check("registry: forgetting a parked window that wasn't returned or shown: refused, asserted, still tracked",
+              s.strands.count == 3 && s.registry.isParked(11) && s.strands[0] == "handoff: window 11 (safari:a#3) would stop being tracked (returned to a user Space) while it's still alive and parked",
+              "\(s.strands)")
+        s.strands = []
+        var back: ParkOutcome?
+        s.registry.returnToDesktop(number: 11, cause: .aftercare) { back = $0 }
+        s.clock.advance(1)
+        check("registry: a return verified, then let go: no strand", back?.ok == true && !s.registry.isParked(11) && s.strands.isEmpty
+              && s.world.spaces(of: 11) == [1] && s.world.destroyed == [2431])
+        check("registry: the return's line", said.last == "handoff: returned window 11 (safari:a#3) to the Desktop 1 in 4 ms (the aftercare)", "\(said)")
+        said = []
+    }
+
+    // ---- rebinding after a new copy ----
+    do {
+        let s = Setup([11: boundsA, 12: boundsB], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        _ = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        _ = s.registry.sweep(read([win("safari:a", 30, nil)], copies: ["safari:a": "copy-2"]))
+        let bound = s.registry.rebind(link: "safari:a", unbound: [win("safari:a", 30, nil), win("safari:a", 31, boundsA, state: "fullscreen"), win("safari:b", 8, boundsA)])
+        check("registry: rebound by elimination: one normal window, one number without an id",
+              bound == [WindowKey(link: "safari:a", windowId: 30): 11] && s.registry.entries[11]?.windowId == 30 && s.registry.entries[11]?.copy == "copy-2", "\(bound)")
+        check("registry: … logged as §8.1 says", said.last == "handoff: window 11 rebound to safari:a#30 (a new copy; by elimination)", "\(said)")
+        check("registry: … and kept in the marker", ParkingMarker.read(s.marker)?.windows.first?.windowId == 30)
+        check("registry: nothing to rebind: nothing", s.registry.rebind(link: "safari:a", unbound: [win("safari:a", 40, boundsA)]).isEmpty)
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA, 12: boundsB, 13: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:a", 4, bounds: boundsB)
+        _ = s.registry.sweep(read([win("safari:a", 3, boundsA), win("safari:a", 4, boundsB)]))
+        _ = s.registry.sweep(read([], reporting: ["safari:a"], copies: ["safari:a": "copy-2"]))
+        let near = CGRect(x: 101.5, y: 98.5, width: 1200, height: 801)
+        let bound = s.registry.rebind(link: "safari:a", unbound: [win("safari:a", 31, near), win("safari:a", 32, boundsB), win("safari:a", 33, boundsC, state: "minimized")])
+        check("registry: rebound by bounds within 2 pt",
+              bound == [WindowKey(link: "safari:a", windowId: 31): 11, WindowKey(link: "safari:a", windowId: 32): 12]
+              && said.suffix(2) == ["handoff: window 11 rebound to safari:a#31 (a new copy; by bounds)", "handoff: window 12 rebound to safari:a#32 (a new copy; by bounds)"], "\(bound) \(said)")
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA, 12: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:a", 4, bounds: boundsA)
+        _ = s.registry.sweep(read([win("safari:a", 3, boundsA), win("safari:a", 4, boundsA)]))
+        _ = s.registry.sweep(read([], reporting: ["safari:a"], copies: ["safari:a": "copy-2"]))
+        said = []
+        let same = s.registry.rebind(link: "safari:a", unbound: [win("safari:a", 31, boundsA), win("safari:a", 32, boundsA)])
+        check("registry: two windows with the same bounds for two numbers: ambiguous, left unbound",
+              same.isEmpty && s.registry.entries[11]?.windowId == nil && s.registry.entries[12]?.windowId == nil
+              && said == ["handoff: window 11 (safari:a) left unbound: 2 of the copy's windows fit", "handoff: window 12 (safari:a) left unbound: 2 of the copy's windows fit"], "\(said)")
+        _ = s.registry.rebind(link: "safari:a", unbound: [win("safari:a", 31, boundsA), win("safari:a", 32, boundsA)])
+        check("registry: … said once", said.count == 2)
+        let one = s.registry.rebind(link: "safari:a", unbound: [win("safari:a", 31, boundsA)])
+        check("registry: one window fitting two numbers: still unbound", one.isEmpty)
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        _ = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        _ = s.registry.sweep(read([], reporting: ["safari:a"], copies: ["safari:a": "copy-2"]))
+        said = []
+        let none = s.registry.rebind(link: "safari:a", unbound: [win("safari:a", 31, boundsB), win("safari:a", 32, boundsC)])
+        check("registry: one number, two normal windows, neither fitting: unbound", none.isEmpty && said == ["handoff: window 11 (safari:a) left unbound: 0 of the copy's windows fit"], "\(said)")
+        said = []
+    }
+
+    // ---- who caused a return (§2.6) ----
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        let since = s.registry.entries[11]!.since
+        s.world.comeBack(11, to: 5)
+        var f = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        check("registry: back with no focus on it: the system's, parked again, never the person's",
+              f == [.system(number: 11, link: "safari:a", why: "no focus on it", then: .parkAgain)], "\(f)")
+        check("registry: … logged", said.last == "handoff: window 11 (safari:a#3) back with no focus on it: parked again", "\(said)")
+        s.clock.advance(1)
+        check("registry: … parked again in its Space, quietly", s.registry.entries[11]?.phase == .parked && s.world.readsParked(11) == true
+              && said.last == "handoff: parked window 11 (safari:a#3) in its Space 2431 in 4 ms (no focus on it)", "\(said)")
+        s.registry.systemEvent("a wake")
+        s.world.comeBack(11, to: 5)
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: true, focusedAt: s.clock.now())]))
+        check("registry: within 3 s of a wake, even with focus on it: the system's", f == [.system(number: 11, link: "safari:a", why: "a wake", then: .parkAgain)]
+              && said.last == "handoff: window 11 (safari:a#3) back after a wake: parked again", "\(f) \(said)")
+        s.clock.advance(3)
+        s.world.comeBack(11, to: 5)
+        let focusedAt = s.clock.now()
+        let before = s.world.calls.count
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: true, focusedAt: focusedAt)]))
+        check("registry: back with the person's focus on it: theirs, and nothing moved", f == [.person(number: 11, key: WindowKey(link: "safari:a", windowId: 3))]
+              && s.registry.entries[11]?.phase == .parked && s.world.calls.count == before
+              && said.last == "handoff: window 11 (safari:a#3) back with focus on it: the person's", "\(f) \(said)")
+        let calls = s.world.calls.count
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: true, focusedAt: focusedAt)]))
+        check("registry: … said once", f.isEmpty && s.world.calls.count == calls, "\(f)")
+        check("registry: focus from before the park isn't the person's", focusedAt > since)
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.clock.advance(5)
+        s.registry.noteCall(11, cause: .handoff)
+        s.world.comeBack(11, to: 5)
+        let f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: true, focusedAt: s.clock.now() + 0.4)]))
+        check("registry: focus within a second of Margin's own call: Margin's, not the person's", f == [.system(number: 11, link: "safari:a", why: "no focus on it", then: .parkAgain)], "\(f)")
+        s.clock.advance(1)
+        s.world.comeBack(11, to: 5)
+        let moving = s.registry.sweep(read([win("safari:a", 3, boundsA)], moving: [11]))
+        check("registry: a window a switch is moving: not judged", moving.isEmpty, "\(moving)")
+        let full = s.registry.sweep(read([win("safari:a", 3, boundsA, state: "fullscreen")]))
+        check("registry: back but full screen: not parked until normal (§4.4)", full == [.system(number: 11, link: "safari:a", why: "no focus on it", then: .wait("it's fullscreen"))]
+              && s.registry.entries[11]?.phase == .parked, "\(full)")
+        s.registry.parkingOn = { false }
+        let off = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        s.clock.advance(1)
+        check("registry: back with parking off: returned to its Desktop, then let go",
+              off == [.system(number: 11, link: "safari:a", why: "no focus on it", then: .returnToDesktop)] && !s.registry.isParked(11) && s.world.spaces(of: 11) == [1]
+              && s.strands.isEmpty, "\(off) \(String(describing: s.world.spaces(of: 11)))")
+        said = []
+    }
+
+    // ---- show, and a show that didn't land ----
+    do {
+        let s = Setup([11: boundsA, 12: boundsB], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:b", 7, bounds: boundsB)
+        var shown: ParkOutcome?
+        s.registry.show(number: 12, cause: .handoff) { shown = $0 }
+        s.clock.advance(1)
+        check("registry: a show verified: let go, its Space destroyed, the profile's home window",
+              shown?.ok == true && !s.registry.isParked(12) && s.registry.lastShown["safari:b"] == 12 && s.world.destroyed == [2432] && s.world.spaces(of: 12) == [5])
+        check("registry: … its line", said.last == "handoff: shown window 12 (safari:b#7) in 4 ms (a handoff)", "\(said)")
+        check("registry: the marker has the shown window", ParkingMarker.read(s.marker)?.shown == [ParkingMarker.Shown(link: "safari:b", number: 12)])
+        s.world.dropNext = 4
+        var failed: ParkOutcome?, busy: ParkOutcome?
+        s.registry.show(number: 11, cause: .handoff) { failed = $0 }
+        s.registry.show(number: 11, cause: .handoff) { busy = $0 }
+        check("registry: a second step while one runs: busy", busy?.failure == .busy && failed == nil)
+        s.clock.advance(1)
+        check("registry: a show that didn't land: that window's Space destroyed, and only that one",
+              failed?.failure == .notLanded(spaces: [], onScreen: false) && s.world.destroyed == [2432, 2431] && s.registry.entries[11]?.space == nil
+              && s.registry.entries[11]?.phase == .out && s.registry.isParked(11), "\(String(describing: failed)) \(s.world.destroyed)")
+        check("registry: … logged", said.last == "handoff: window 11 (safari:a#3) wasn't shown: its own Space 2431 destroyed, the others left", "\(said)")
+        s.world.comeBack(11, to: 5)
+        let f = s.registry.sweep(read([win("safari:a", 3, boundsA), win("safari:b", 7, boundsB)]))
+        check("registry: found in a user Space afterwards: an ordinary window again, let go", f == [.returned(number: 11, link: "safari:a")]
+              && !s.registry.isParked(11) && s.strands.isEmpty, "\(f)")
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.world.dropNext = 2
+        let r = s.park(11, "safari:a", 3, bounds: boundsA)
+        check("registry: a park that didn't land: returned to its Desktop, verified, then let go (§4.4)",
+              r?.park.failure == .notLanded(spaces: [1], onScreen: false) && r?.returned?.ok == true && !s.registry.isParked(11) && s.world.spaces(of: 11) == [1]
+              && s.world.privateSpaces.isEmpty && s.strands.isEmpty, "\(String(describing: r)) \(s.world.calls)")
+        said = []
+    }
+
+    // ---- returnAll and quit ----
+    do {
+        let s = Setup([11: boundsA, 12: boundsB], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:b", 7, bounds: boundsB)
+        var end: ParkingEnd?
+        s.registry.returnAll { end = $0 }
+        s.clock.advance(1)
+        check("registry: returnAll: every window on its Desktop, every private Space destroyed",
+              end == ParkingEnd(closed: 0, returned: 2, left: 0, ms: 4) && s.registry.entries.isEmpty && s.world.privateSpaces.isEmpty
+              && s.world.spaces(of: 11) == [1] && s.world.spaces(of: 12) == [1] && s.strands.isEmpty, "\(String(describing: end))")
+        var none: ParkingEnd?
+        s.registry.returnAll { none = $0 }
+        check("registry: nothing parked: done at once", none == ParkingEnd())
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA, 12: boundsB, 13: boundsC], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:b", 7, bounds: boundsB)
+        s.park(13, "safari:c", 9, bounds: boundsC)
+        check("registry: the marker there before quit", FileManager.default.fileExists(atPath: s.marker.path))
+        var asked: [Int] = []
+        var end: ParkingEnd?
+        s.registry.quit(close: { e, closed in
+            asked.append(e.number)
+            switch e.link {
+            case "safari:a": // its copy closes it
+                _ = s.clock.after(0.02) { s.world.windows[e.number] = nil; closed(true) }
+                return true
+            case "safari:c": // its copy couldn't
+                _ = s.clock.after(0.01) { closed(false) }
+                return true
+            default: return false // not linked
+            }
+        }) { end = $0 }
+        s.clock.advance(1)
+        check("registry: quit: each window closed by its own copy, the rest returned to their Desktops",
+              asked == [11, 12, 13] && end?.closed == 1 && end?.returned == 2 && end?.left == 0 && s.registry.entries.isEmpty && s.world.privateSpaces.isEmpty
+              && s.world.spaces(of: 12) == [1] && s.world.spaces(of: 13) == [1], "\(String(describing: end))")
+        check("registry: … within 300 ms", (end?.ms ?? 999) <= 300)
+        check("registry: … the crash marker removed at a clean quit", !FileManager.default.fileExists(atPath: s.marker.path))
+        check("registry: … one line", said.last == "handoff: closed 1 parked window, returned 2 parked windows to the Desktop at quit (\(end?.ms ?? 0) ms)", "\(said)")
+        check("registry: … no strand", s.strands.isEmpty)
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA, 12: boundsB], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:b", 7, bounds: boundsB)
+        var end: ParkingEnd?
+        s.registry.quit(close: { e, _ in e.number == 11 }) { end = $0 } // 11's copy never answers
+        s.clock.advance(0.29)
+        check("registry: quit waits for a slow close…", end == nil)
+        s.clock.advance(0.02)
+        check("registry: … 300 ms in all, then done, the window left to come back by itself",
+              end == ParkingEnd(closed: 0, returned: 1, left: 1, ms: 300) && s.registry.isParked(11) && !FileManager.default.fileExists(atPath: s.marker.path)
+              && said.last == "handoff: returned 1 parked window to the Desktop, left 1 to come back by itself at quit (300 ms)", "\(String(describing: end)) \(said)")
+        said = []
+    }
+
+    // ---- the crash marker at the next launch (§13.2) ----
+    do {
+        let s = Setup([11: boundsA, 12: boundsB, 14: boundsC, 15: boundsA], pid: safari)
+        s.world.windows[12]?.pid = 400
+        s.world.windows[14]?.bounds = boundsB // moved since
+        let window = { (n: Int, link: String, id: Int?, pid: Int32, b: CGRect) in
+            ParkingMarker.Window(number: n, link: link, windowId: id, copy: "copy-1", pid: pid, bounds: [b.minX, b.minY, b.width, b.height].map(Double.init))
+        }
+        let crashed = ParkingMarker(pid: 99999, build: "26B123", at: 1, count: 4,
+                                    windows: [window(11, "safari:a", 3, 501, boundsA), window(12, "safari:b", 7, 400, boundsB),
+                                              window(13, "safari:c", 9, 501, boundsC), window(14, "safari:d", 2, 501, boundsC)],
+                                    shown: [ParkingMarker.Shown(link: "safari:e", number: 15)])
+        try? FileManager.default.createDirectory(at: s.root, withIntermediateDirectories: true)
+        try? JSONEncoder().encode(crashed).write(to: s.marker)
+        check("registry: a marker of a Margin still running: left alone", s.registry.takeMarker(running: { $0 == 99999 }) == nil
+              && FileManager.default.fileExists(atPath: s.marker.path))
+        let taken = s.registry.takeMarker(running: { _ in false })
+        check("registry: a crash's marker: taken, the file removed (a second crash never reads it)", taken == crashed && !FileManager.default.fileExists(atPath: s.marker.path))
+        var parked: Int?
+        s.registry.adoptAfterCrash(crashed, safariPids: [501, 400 + 1]) { parked = $0 }
+        check("registry: … its line", said.last == "handoff: Margin.app didn't quit cleanly with 4 parked windows: 1 parked again, left as normal windows: 1 of an earlier Safari, 1 gone, 1 moved", "\(said)")
+        s.clock.advance(1)
+        check("registry: the same Safari's window, still there with its bounds: parked again, with its link, id and copy",
+              parked == 1 && s.registry.numbers == [11] && s.registry.entries[11]?.windowId == 3 && s.registry.entries[11]?.copy == "copy-1"
+              && s.world.readsParked(11) == true && said.last == "handoff: parked window 11 (safari:a#3) in its Space 2431 in 4 ms (a recovery)", "\(said)")
+        check("registry: … the shown window stays the profile's home window", s.registry.lastShown == ["safari:e": 15])
+        check("registry: … a new marker for the windows parked now", ParkingMarker.read(s.marker)?.windows.map(\.number) == [11])
+        let f = s.registry.sweep(read([win("safari:a", 3, boundsA)], copies: ["safari:a": "copy-1"]))
+        check("registry: … the same copy reporting: still bound", f.isEmpty && s.registry.entries[11]?.windowId == 3, "\(f)")
+        said = []
+    }
+    do {
+        let s = Setup([11: boundsA], pid: safari)
+        s.registry.parkingOn = { false }
+        let crashed = ParkingMarker(pid: 99999, build: nil, at: 1, count: 1,
+                                    windows: [ParkingMarker.Window(number: 11, link: "safari:a", windowId: 3, copy: nil, pid: 501, bounds: [100, 100, 1200, 800])], shown: [])
+        var parked: Int?
+        s.registry.adoptAfterCrash(crashed, safariPids: [501]) { parked = $0 }
+        check("registry: after a crash with parking off: every window left as it is",
+              parked == 0 && s.registry.entries.isEmpty && s.world.calls.isEmpty
+              && said.last == "handoff: Margin.app didn't quit cleanly with 1 parked window: 0 parked again, left as normal windows: 1 with parking off", "\(said)")
+        check("registry: no marker read: nothing", s.registry.takeMarker(running: { _ in false }) == nil)
+        said = []
     }
 }
