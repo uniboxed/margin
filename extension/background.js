@@ -15,7 +15,7 @@ import * as onboarding from './background/onboarding.js';
 import { ensureCurrent, focusTab, forgetCurrent, handingOff, injectIntoOpenTabs, keepHandedOff, pageChanged, resolveTab, setActivationHook, shownAt, switchAsked, tabClosed, tabLeft, tabShown, userSwitched } from './background/tabs.js';
 import { switchLog, switchLogTo } from './background/switch-log.js';
 import { learnSearchEngine } from './background/search-engine.js';
-import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
+import { drawnChanged, handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
 import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
@@ -432,6 +432,7 @@ appLink.onLayout((windowId, layout) => {
 // where it draws nothing (and get it back from the window's layout when it draws there again),
 // and new pages there get none from their first paint (registered.js fixUp).
 appLink.onDrawn((windowId, drawn) => {
+  drawnChanged(windowId, drawn);
   void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout: appLink.layout(windowId), drawn }).catch(() => {}), () => {});
   layoutsChanged();
 });

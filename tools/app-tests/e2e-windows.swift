@@ -133,8 +133,10 @@ func windowsScenario(ownSpace: Bool = false) async {
         "\(fake.all("drawn").map { ($0["_at"] as? Double ?? 0) - frontAt })")
   check("windows: no layout sent for a window that isn't bound", fake.all("setLayout").isEmpty, "\(fake.all("setLayout").map { ($0["msg"] as? JSONObject)?["windowId"] ?? "" })")
   // A palette pushed for a window with nothing drawn over it (a copy that hadn't heard yet): held a moment
-  // for its overlay to show, then dropped; never opened in the hidden overlay (which took the keyboard unseen).
+  // for its overlay to show, then dropped; never opened in the hidden overlay (which took the keyboard unseen),
+  // and the copy told, so ⌘T still opens something (it closed Safari's new tab as it handed off).
   // And a key the copy heard there: the log says the app's hot keys were off, and why.
+  let paletteMark = fake.events.count
   fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 1, "msg": ["type": "palette", "newTab": true]]])
   fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 1, "msg": ["type": "keyHeard", "command": "palette", "from": "page"]]])
   check("windows: a palette for an unbound window: held, and the log says so", await until(3, { shell.holdsPalette(a1) && said.contains { $0.hasPrefix("palette push for window 1 (safari:P1#1): no overlay drawn there (its window isn't bound): held") } }))
@@ -143,6 +145,13 @@ func windowsScenario(ownSpace: Bool = false) async {
         "\(said.filter { $0.contains("reached the extension") })")
   check("windows: the palette dropped after 1.5 s, never given to the hidden overlay", await until(3, { !shell.holdsPalette(a1) && said.contains { $0.hasPrefix("palette push for window 1 (safari:P1#1) dropped") } })
         && shell.overlays[a1]?.hasKeyboard != true)
+  let dropped = { fake.first("req", since: paletteMark) { req in
+    let m = req["msg"] as? JSONObject
+    return req["id"] as? String == "A" && m?["type"] as? String == "paletteDropped" && m?["windowId"] as? Int == 1 && (m?["payload"] as? JSONObject)?["newTab"] as? Bool == true
+  } }
+  check("windows: and its copy asked to open Margin's new-tab page there (⌘T's new tab was closed as it was handed off)", await until(3, { dropped() != nil })
+        && said.contains { $0.hasPrefix("palette push for window 1 (safari:P1#1) dropped") && $0.hasSuffix("its copy asked to open Margin's new-tab page there") },
+        "\(fake.all("req", since: paletteMark).map { ($0["msg"] as? JSONObject)?["type"] ?? "" })")
 
   // A Space switch to P2's full-screen window: the slide (both on screen), P2's copy hears the focus and says so
   // 0.3 s late; P1's copy still calls its window focused for 0.6 s more.

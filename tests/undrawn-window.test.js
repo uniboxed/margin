@@ -185,4 +185,70 @@ test('a new tab Safari made in a window Margin.app draws nothing over stays, wit
   assert.ok(fake.removed.includes(29), 'the new tab closed');
 });
 
+test('⌘T handed off while the copy still thinks the app draws there, and the app couldn\'t show the palette (no overlay shown: its binding just gone): Margin\'s new-tab page opens there, and the next ⌘T keeps Safari\'s new tab', async () => {
+  linkSays({ drawn: { 3: true } }); // the copy hasn't heard yet: the app's grace before "not drawn"
+  fake.tabs.set(30, { ...fake.tabs.get(30), windowId: 3, active: false });
+  await fire('onCreated', { ...fake.tabs.get(30) });
+  await sleep(50);
+  fake.tabs.set(39, { id: 39, windowId: 3, url: NEW_TAB, title: 'New Tab', index: 1, active: true, status: 'complete' });
+  pushes.length = 0;
+  fake.removed.length = 0;
+  fake.created.length = 0;
+  await fire('onCreated', { ...fake.tabs.get(39) });
+  await sleep(50);
+  assert.deepEqual(pushes.find(([w]) => w === 3), [3, { type: 'palette', newTab: true }], 'handed off to the app');
+  assert.ok(fake.removed.includes(39), 'Safari\'s new tab closed');
+  fake.tabs.get(30).active = true;
+  // The app (Shell.paletteDropped) says it couldn't show it, as a request of its UI's.
+  const notes = [];
+  const note = appLink.note;
+  appLink.note = (line) => { notes.push(String(line)); };
+  let done;
+  try {
+    done = await new Promise((resolve) => listeners.onMessage[0]({ type: 'paletteDropped', windowId: 3, newTab: true }, { app: true, tab: { windowId: 3 } }, resolve));
+  } finally {
+    appLink.note = note;
+  }
+  assert.deepEqual(done, { ok: true, result: true });
+  assert.deepEqual(fake.created, [NEW_TAB], 'Margin\'s new-tab page opened in the window: ⌘T still opens something');
+  assert.ok(notes.some((l) => l === 'the app couldn\'t show the palette over window 3: Margin\'s new-tab page opened there'), `${notes}`);
+  // That page, and Safari's next new tab there: kept as the copy's own (no palette pushed).
+  const page = fake.nextId - 1;
+  fake.tabs.get(30).active = false;
+  fake.tabs.set(page, { ...fake.tabs.get(page), url: NEW_TAB, active: true, status: 'complete' });
+  pushes.length = 0;
+  assert.deepEqual(await ask('newTabPage', {}, page), { ok: true, result: { app: false } }, 'the new-tab page shows its own');
+  fake.tabs.set(49, { id: 49, windowId: 3, url: NEW_TAB, title: 'New Tab', index: 3, active: true, status: 'complete' });
+  fake.removed.length = 0;
+  await fire('onCreated', { ...fake.tabs.get(49) });
+  await sleep(50);
+  assert.deepEqual(pushes, [], 'no palette pushed');
+  assert.ok(!fake.removed.includes(49), 'the next ⌘T\'s tab stays');
+  // The app saying it draws there again: at once after the drop (its binding holds, its overlay not
+  // shown yet), still kept; a second later, ⌘T goes to the app's palette again.
+  const { drawnChanged } = await import('../extension/background/handlers.js');
+  const backToPage = async () => {
+    for (const [id, t] of fake.tabs) if (t.windowId === 3 && id !== 30) { fake.tabs.delete(id); await fire('onRemoved', id, { windowId: 3, isWindowClosing: false }); }
+    fake.tabs.get(30).active = true;
+    await fire('onActivated', { tabId: 30, windowId: 3 });
+    await sleep(50);
+  };
+  const newTab = async (id) => {
+    fake.tabs.get(30).active = false;
+    fake.tabs.set(id, { id, windowId: 3, url: NEW_TAB, title: 'New Tab', index: 1, active: true, status: 'complete' });
+    pushes.length = 0;
+    await fire('onCreated', { ...fake.tabs.get(id) });
+    await sleep(50);
+  };
+  drawnChanged(3, true);
+  await backToPage();
+  await newTab(59);
+  assert.deepEqual(pushes, [], 'drawn at once after the drop: still kept');
+  await sleep(1000);
+  drawnChanged(3, true);
+  await backToPage();
+  await newTab(69);
+  assert.deepEqual(pushes.find(([w]) => w === 3), [3, { type: 'palette', newTab: true }], 'drawn again later: handed to the app\'s palette');
+});
+
 test.after(() => setTimeout(() => process.exit(0), 50));

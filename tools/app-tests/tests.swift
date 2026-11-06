@@ -341,6 +341,12 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("drawn: back in full screen: on", d.offer(windowId: 1, now: 12, bound: true, wanted: true).send == true)
     check("drawn: closed while on: off", d.closed(windowId: 1) == false && !d.windows.contains(1))
     check("drawn: closed while off: nothing", d.closed(windowId: 3) == nil)
+    // A palette the app couldn't show over a window (Shell.paletteDropped): off at once, not after the grace.
+    check("drawn: set up, on", d.offer(windowId: 4, now: 20, bound: true, wanted: true).send == true)
+    check("drawn: its binding just gone: nothing yet", d.offer(windowId: 4, now: 20.5, bound: false, wanted: true).send == nil)
+    check("drawn: a palette for it couldn't be shown: off now", d.notShown(windowId: 4, now: 21))
+    check("drawn: and nothing more to say, nor again", d.offer(windowId: 4, now: 23.6, bound: false, wanted: true).send == nil && !d.notShown(windowId: 4, now: 24))
+    check("drawn: bound again: on", d.offer(windowId: 4, now: 25, bound: true, wanted: true).send == true)
   }
 
   static func stacking() {

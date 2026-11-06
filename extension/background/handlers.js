@@ -66,6 +66,18 @@ async function updatePackageThemeSettings(themeId, patch) {
 // not linked): the new-tab page stays (linked, the app's palette opens over
 // it; not linked, it says the app isn't running: newtab/newtab.js).
 const handOffs = new Map(); // tab id → Promise<boolean>, once per tab
+// Windows where Margin.app couldn't show the palette ⌘T was handed off to (no overlay shown there:
+// its window not bound yet, or its binding just gone, before the app said it draws nothing there):
+// window id → when the app said so. ⌘T there keeps Safari's new tab for PALETTE_DROPPED_MS.
+const paletteDroppedAt = new Map();
+const PALETTE_DROPPED_MS = 10_000;
+const paletteDroppedRecently = (/** @type {number} */ windowId) => Date.now() - (paletteDroppedAt.get(windowId) ?? -Infinity) < PALETTE_DROPPED_MS;
+// The app saying it draws over the window again (its `drawn`, background.js): ⌘T goes to its palette
+// again, unless that came within a second of the drop (a binding that holds while its overlay can't
+// show yet says drawn at once: it mustn't start the hand-off and its drop over again).
+export function drawnChanged(/** @type {number} */ windowId, /** @type {boolean} */ on) {
+  if (on && Date.now() - (paletteDroppedAt.get(windowId) ?? Infinity) >= 1000) paletteDroppedAt.delete(windowId);
+}
 
 // The zoom each site was last seen at, so its pages place their box at its
 // size before they've asked (content/core.js); Safari
@@ -172,6 +184,7 @@ async function handOff(tab) {
   // Linked, but the app draws nothing over this window (`drawn`: not in full screen, or not found
   // among the window server's yet): no palette to hand off to there either.
   if (!appLink.drawsWindow(tab.windowId)) return log('kept', 'Margin.app draws nothing over this window: no palette there'), false;
+  if (paletteDroppedRecently(tab.windowId)) return log('kept', 'Margin.app couldn\'t show its palette over this window a moment ago'), false;
   handingOff.add(tab.id);
   // The app's palette opens over the page the user was on, in the window's
   // overlay.
@@ -798,8 +811,21 @@ export const handlers = {
     // draws its launcher there and opens the palette over it. Not linked, or
     // in a window the app draws nothing over, the page shows its notice and
     // address field (newtab/newtab.js).
-    if (appLink.linked() && appLink.drawsWindow(sender.tab.windowId)) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
+    if (appLink.linked() && appLink.drawsWindow(sender.tab.windowId) && !paletteDroppedRecently(sender.tab.windowId)) return { app: true, openPalette: appLink.push(sender.tab.windowId, { type: 'palette', newTab: false }) };
     return { app: false };
+  },
+  // Margin.app couldn't show the palette pushed for a window (no overlay shown there within its hold):
+  // for ⌘T's hand-off (`newTab`: Safari's new tab already closed), Margin's new-tab page opens there
+  // instead, so the key still opens something; and ⌘T there keeps Safari's new tab for a while.
+  /** @param {{ windowId?: number, newTab?: boolean }} message */
+  async paletteDropped({ windowId, newTab }, sender) {
+    if (!sender?.app) return false; // the app's word only
+    const id = Number.isInteger(windowId) ? /** @type {number} */ (windowId) : sender?.tab?.windowId;
+    if (!Number.isInteger(id)) return false;
+    paletteDroppedAt.set(id, Date.now());
+    appLink.note(`the app couldn't show the palette over window ${id}${newTab ? ': Margin\'s new-tab page opened there' : ''}`);
+    if (newTab) await newTabKey({ windowId: id });
+    return true;
   },
   // ⌘T reaching a page while Margin.app isn't linked, or in a window it draws nothing over
   // (content/core.js): Margin's new-tab page.

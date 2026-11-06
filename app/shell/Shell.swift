@@ -104,6 +104,16 @@ struct DrawnOutbox {
         return (false, "\(why) for \(String(format: "%.1f", now - since)) s", nil)
     }
 
+    // A palette the app couldn't show over the window (no overlay shown there in `Shell.paletteHold`): off
+    // now, whatever the grace (the copy's ⌘T and new-tab page then do without the app's palette there).
+    // True if that's a change to send.
+    mutating func notShown(windowId id: Int, now: TimeInterval) -> Bool {
+        guard sent[id] != false else { return false }
+        sent[id] = false
+        offSince[id] = offSince[id] ?? now
+        return true
+    }
+
     // The window closed (its copy no longer reports it): off, if it was on; forgotten.
     mutating func closed(windowId id: Int) -> Bool? {
         defer { sent[id] = nil; everBound.remove(id); offSince[id] = nil }
@@ -350,7 +360,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             let json = jsonString(["type": "push", "msg": msg]) ?? ""
             switch msg["type"] as? String {
             case "keyHeard": return keyHeard(entry, windowId, msg)
-            case "palette" where windowId != nil: return palettePush(entry, windowId!, json)
+            case "palette" where windowId != nil: return palettePush(entry, windowId!, json, newTab: msg["newTab"] as? Bool == true)
             default: break
             }
             for overlay in overlays(of: entry) where windowId == nil || overlay.key.windowId == windowId { overlay.push(raw: json) }
@@ -418,21 +428,32 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // that's shown. Not shown yet (being made, or its window not bound yet): held up to `paletteHold`
     // and given to it as it shows; dropped after that, so a palette never opens in an overlay that
     // isn't on screen (where it took the keyboard unseen: "took the keyboard, but it isn't shown").
+    // Dropped, the copy is told at once that the app doesn't draw over the window (`drawn` off, without
+    // the grace: its new-tab page shows its own notice and address field) and, for Safari's New Tab
+    // it handed off (`newTab`, the new tab already closed), asked to open Margin's new-tab page there
+    // (`paletteDropped`), so ⌘T still opens something in the moments before the copy would have heard.
     static let paletteHold: TimeInterval = 1.5
-    private var heldPalette: [WindowKey: (json: String, until: TimeInterval)] = [:]
-    private func palettePush(_ entry: Link, _ windowId: Int, _ json: String) {
+    private var heldPalette: [WindowKey: (json: String, until: TimeInterval, newTab: Bool)] = [:]
+    private func palettePush(_ entry: Link, _ windowId: Int, _ json: String, newTab: Bool) {
         let key = WindowKey(link: entry.connection.key, windowId: windowId)
         if let overlay = overlays[key], overlay.isShown, matches[key] != nil { return overlay.push(raw: json) }
         let why = overlays[key] == nil ? "no overlay drawn there" : matches[key] == nil ? "no overlay drawn there (its window isn't bound)" : "its overlay isn't shown yet"
         Diagnostics.note("palette push for window \(windowId) (\(key)): \(why): held \(Shell.paletteHold) s for it to show")
-        heldPalette[key] = (json, Diagnostics.now() + Shell.paletteHold)
+        heldPalette[key] = (json, Diagnostics.now() + Shell.paletteHold, newTab || heldPalette[key]?.newTab == true)
         DispatchQueue.main.asyncAfter(deadline: .now() + Shell.paletteHold + 0.05) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, let held = self.heldPalette[key], Diagnostics.now() >= held.until else { return }
                 self.heldPalette[key] = nil
-                Diagnostics.note("palette push for window \(windowId) (\(key)) dropped: no overlay was shown there within \(Shell.paletteHold) s")
+                self.paletteDropped(key, newTab: held.newTab)
             }
         }
+    }
+    private func paletteDropped(_ key: WindowKey, newTab: Bool) {
+        Diagnostics.note("palette push for window \(key.windowId) (\(key)) dropped: no overlay was shown there within \(Shell.paletteHold) s\(newTab ? "; its copy asked to open Margin's new-tab page there" : "")")
+        guard let entry = links[key.link] else { return }
+        if entry.drawn.notShown(windowId: key.windowId, now: Diagnostics.now()) { sendDrawn(entry, key, false, "a palette for it couldn't be shown") }
+        guard newTab else { return }
+        Task { _ = try? await entry.connection.request(type: "paletteDropped", payload: ["windowId": key.windowId, "newTab": true], windowId: key.windowId) }
     }
     // An overlay just shown: a palette held for it, if it's still fresh.
     private func deliverHeldPalette(_ overlay: OverlayController) {

@@ -125,6 +125,8 @@ export const APP_REQUESTS = new Set([
   'noticeAction',
   // Margin.app's switch to another profile's space (app/shell/ProfileSwitch.swift) and its order across profiles.
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
+  // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
+  'paletteDropped',
 ]);
 
 // A time as Margin.app's log shows its own (local, to the millisecond), for lines sent there.
