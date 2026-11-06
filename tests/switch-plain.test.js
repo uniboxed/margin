@@ -323,6 +323,37 @@ test('fast presses: the overlay told at each press, Safari only the newest waiti
     [{ targets: 12, landed: true, back: 0, elsewhere: 0, failed: false }], 'one chain: all 12 targets, ended on the last, never back');
 });
 
+test('fast presses with Safari slower than PASSED_MS (350-600 ms a switch, one of 1 s): the highlight never goes back, and ends on the last press\'s tab', async () => {
+  await inFront(1);
+  await sleep(NAV_SETTLE_MS);
+  const o = overlay();
+  pushed.length = 0;
+  fake.updates = [];
+  let n = 0;
+  fake.updateMs = () => (++n === 3 ? 1000 : 350 + Math.random() * 250);
+  const targets = nextTabs(1, 12);
+  const last = targets.at(-1);
+  try {
+    for (let i = 0; i < 12; i++) {
+      await press(APP);
+      await sleep(83);
+    }
+    for (let i = 0; i < 500 && storedFront() !== last; i++) await sleep(10);
+    await sleep(700);
+  } finally {
+    fake.updateMs = null;
+    o.stop();
+  }
+  const switching = pushed.filter((p) => p.msg.type === 'switching');
+  assert.deepEqual(switching.map((p) => p.msg.tabId), targets, 'one target per press, each the next');
+  assert.equal(storedFront(), last);
+  const order = [1, ...targets];
+  const at = o.drawn.map((id) => order.indexOf(id));
+  assert.ok(at.every((x, i) => x >= 0 && (i === 0 || x > at[i - 1])), `the highlight went back: ${JSON.stringify(o.drawn)}`);
+  assert.equal(o.drawn.at(-1), last);
+  assert.deepEqual(o.runs.map(({ targets: t, landed, back }) => ({ targets: t, landed, back })), [{ targets: 12, landed: true, back: 0 }], 'one chain, ended on the last, never back');
+});
+
 test('fast presses: a press after the switches are done is never skipped, and goes at once', async () => {
   await inFront(1);
   await sleep(NAV_SETTLE_MS);

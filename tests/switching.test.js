@@ -370,6 +370,40 @@ test('switching, on screen: the chain\'s target closes and Safari shows a passed
   assert.equal(s.switching.target(), null);
 });
 
+test('switching, on screen: Safari slower than PASSED_MS with the newest target: a passed tab in front holds as the chain\'s echo until the answer, then PASSED_MS', async () => {
+  const { PASSED_MS, SETTLE_MS } = await import('../extension/shared/switching.js');
+  const s = onScreen();
+  s.key(2, 'nav-1');
+  s.key(3, 'nav-2'); // Safari still carrying out 2
+  s.state(2); // 2 lands and stays in front while Safari takes its time with 3 (a 450 ms switch)
+  await sleep(PASSED_MS + 150);
+  assert.deepEqual(s.drawn, [1, 2, 3], 'held on the newest target: its request isn\'t answered yet');
+  assert.equal(s.switching.target(), 3);
+  s.done(3, 'nav-2'); // answered, but the state still says 2 (its change late)
+  await sleep(0);
+  await sleep(PASSED_MS - 100);
+  assert.deepEqual(s.drawn, [1, 2, 3], 'still held for PASSED_MS after the answer');
+  s.state(3);
+  assert.deepEqual(s.drawn, [1, 2, 3]);
+  assert.equal(s.switching.target(), null, 'landed');
+  // A passed tab in front past PASSED_MS after the answer: a real switch (the target closed), followed.
+  const t = onScreen();
+  t.key(2, 'nav-1');
+  t.key(3, 'nav-2');
+  t.state(2);
+  await sleep(50);
+  t.done(3, 'nav-2');
+  await sleep(PASSED_MS + 50);
+  assert.deepEqual(t.drawn, [1, 2, 3, 2], 'followed PASSED_MS after the answer');
+  // No answer ever: not held past SETTLE_MS.
+  const u = onScreen();
+  u.key(2, 'nav-1');
+  u.key(3, 'nav-2');
+  u.state(2);
+  await sleep(SETTLE_MS + 50);
+  assert.deepEqual(u.drawn, [1, 2, 3, 2], 'a request with no answer holds it SETTLE_MS at most');
+});
+
 test('switching, on screen: a tab outside the chain coming to the front ends it at once', () => {
   const s = onScreen();
   s.key(2, 'nav-1');

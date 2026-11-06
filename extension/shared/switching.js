@@ -50,7 +50,11 @@ export const SETTLE_MS = 2000;
 // and never goes back. A passed tab is taken as an echo for PASSED_MS after
 // the state first has it in front: past that, it's a real switch the chain
 // didn't make (Safari showing a neighbour after the target closed), and the
-// highlight follows it. A target the state had in front as it was asked for
+// highlight follows it. The PASSED_MS only start once the newest target's
+// request is answered: while Safari is still carrying it out (a slow switch
+// takes 450 ms and more), a passed tab in front is the chain's own echo for up
+// to SETTLE_MS (a request whose answer never comes doesn't hold the highlight
+// past that). A target the state had in front as it was asked for
 // (back to the chain's start, or to a passed tab already shown) has landed
 // only once the state has had another tab in front since: until then the
 // state's front is stale, and an earlier target's late change would show it.
@@ -100,7 +104,8 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
    * had this target in front as it was asked for; `other`, it has had
    * another tab in front since.
    * `targets`, `lastAt`: how many it had and when the last was asked, for `onRun`.
-   * @type {{ from: number | null, passed: Map<number, number | null>, stale: boolean, other: boolean, targets: number, lastAt: number } | null}
+   * `answeredAt`: when the newest target's request was answered (null: not yet).
+   * @type {{ from: number | null, passed: Map<number, number | null>, stale: boolean, other: boolean, targets: number, lastAt: number, answeredAt: number | null } | null}
    */
   let chain = null;
   function end(didFail = false) {
@@ -132,7 +137,8 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     if (f != null && chain.passed.has(f)) {
       const at = chain.passed.get(f) ?? Date.now();
       if (chain.passed.get(f) == null) chain.passed.set(f, at);
-      const left = at + PASSED_MS - Date.now();
+      // From when it's in front and the newest target's request is answered; unanswered, up to SETTLE_MS.
+      const left = chain.answeredAt == null ? at + SETTLE_MS - Date.now() : Math.max(at, chain.answeredAt) + PASSED_MS - Date.now();
       if (left <= 0) return false;
       if (passedTimer) clearTimeout(passedTimer);
       passedTimer = setTimeout(() => { passedTimer = null; settle(); }, left + 1);
@@ -152,13 +158,14 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
     if (front) {
       const f = front();
       // A new chain only with no switch under way; else this one goes on, past its last target.
-      if (target == null || !chain) chain = { from: f, passed: new Map(), stale: false, other: false, targets: 0, lastAt: 0 };
+      if (target == null || !chain) chain = { from: f, passed: new Map(), stale: false, other: false, targets: 0, lastAt: 0, answeredAt: null };
       else if (target !== tabId && target !== chain.from && !chain.passed.has(target)) chain.passed.set(target, null);
       chain.targets++;
       chain.lastAt = Date.now();
       chain.passed.delete(tabId);
       chain.stale = f === tabId;
       chain.other = false;
+      chain.answeredAt = request ? null : Date.now();
     }
     const token = {};
     current = token;
@@ -185,6 +192,7 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
         clearTimers();
         stopPill();
         if (front) {
+          if (chain) chain.answeredAt = Date.now();
           if (landed() != null) return end();
           timers.push(setTimeout(() => mine() && end(), SETTLE_MS));
           return;
