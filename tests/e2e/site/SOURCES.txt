@@ -1,0 +1,24 @@
+Where the test site's pictures, sounds and fonts come from.
+
+Nothing is downloaded, hotlinked or copied from another site. Every name,
+story, product and person is made up.
+
+Pictures (art.js)
+  SVG drawn from code with a seeded random source: landscapes, a city, a
+  coast, abstract work, products, avatars, a map. Served at
+  /media/art/<kind>.svg on every site. Inline SVG icons: sites/common.js.
+
+Icons, the tune (make-media.mjs)
+  PNG and ICO icons are drawn into pixels by the script and encoded by it
+  (zlib only). The podcast's tune (WAV) is synthesised by it. All made in
+  memory when the server starts; none of it is committed.
+
+Fonts
+  System fonts (-apple-system, system-ui, ui-serif, ui-monospace,
+  ui-rounded) everywhere but the portfolio.
+  noir.test uses Archivo Black and Space Grotesk, SIL Open Font License 1.1,
+  served straight from extension/themes/neo-brutalism/fonts/ (their
+  SOURCES.txt and OFL files are there). Not copied.
+
+Licence
+  Everything here was made for this repository and is under its licence.
