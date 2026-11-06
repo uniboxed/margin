@@ -139,6 +139,30 @@ for (const [name, engine] of ENGINES) {
         await page.evaluate(() => T.unmountRuntime());
       });
 
+      await t.test('the launcher in Margin.app\'s overlay: not focused as it first draws, focused at the app\'s word or when it comes later', async () => {
+        // (Its overlay isn't on screen as it first draws: Margin.app starting, a link back, a page reloaded.)
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'fullscreen', inNewTab: true, focusLauncherAtMount: false }));
+        assert.equal(await page.evaluate(() => T.rtCount('.launcher')), 1);
+        assert.notEqual(await page.evaluate(() => T.rtActive()), 'launcher', 'nothing focused at the mount');
+        await page.evaluate(() => __rt.runtime.render());
+        assert.notEqual(await page.evaluate(() => T.rtActive()), 'launcher', 'nor at a later drawing of the same launcher');
+        // The app showed it over a new window in front (its `shown` push with `focus`).
+        assert.equal(await page.evaluate(() => __rt.runtime.focusLauncher()), true);
+        assert.equal(await page.evaluate(() => T.rtActive()), 'launcher');
+        // With the palette open, the palette keeps the focus.
+        await page.evaluate(() => T.rtDispatch('palette.open'));
+        assert.equal(await page.evaluate(() => __rt.runtime.focusLauncher()), false);
+        assert.equal(await page.evaluate(() => T.rtActive()), 'palette');
+        await page.evaluate(() => T.rtDispatch('palette.close'));
+        // A launcher that comes after the first drawing (a new tab in the window): focused as it shows.
+        await page.evaluate(() => T.mountRuntime({ width: 1280, height: 800, mode: 'fullscreen', inNewTab: false, focusLauncherAtMount: false }));
+        assert.equal(await page.evaluate(() => T.rtCount('.launcher')), 0);
+        assert.equal(await page.evaluate(() => __rt.runtime.focusLauncher()), false, 'no launcher: nothing to focus');
+        await page.evaluate(() => { __rt.host.inNewTab = true; __rt.runtime.render(); });
+        assert.equal(await page.evaluate(() => T.rtCount('.launcher')), 1);
+        assert.equal(await page.evaluate(() => T.rtActive()), 'launcher');
+      });
+
       await t.test('the launcher\'s Settings: Margin\'s inputs in the theme\'s settings part, each saving through its field', async () => {
         const platform = { browser: 'safari', os: 'mac', features: { sleepTabs: 'discard', blockGestures: true, newTabHint: true, search: 'learn' } };
         await page.evaluate((p) => T.mountRuntime({ container: 'document', mode: 'inpage', inNewTab: true, platform: p, replies: { wakeSleeping: 0 } }), platform);

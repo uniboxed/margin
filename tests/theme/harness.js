@@ -314,12 +314,12 @@ Object.assign(T, {
 
   // `replies`: what the host answers a request of each type with (values);
   // `settings`: the stored settings changed first.
-  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, warnings = null } = {}) {
+  mountRuntime({ width = 1440, height = 900, container = 'shadow', closed = true, platform = { browser: 'chrome', os: 'linux', marginFullscreen: true }, replies = {}, settings = null, mode = 'fullscreen', inNewTab = false, focusLauncherAtMount = undefined, warnings = null } = {}) {
     T.unmountRuntime();
     const mock = new MockState();
     if (settings) mock.state = { ...mock.state, settings: { ...mock.state.settings, ...settings } };
     const answers = { createSpace: () => ({ spaceId: 'studio' }), ...Object.fromEntries(Object.entries(replies).map(([k, v]) => [k, () => v])) };
-    const host = createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, replies: answers });
+    const host = createMockHost({ state: mock.state, windowId: 1, platform, mode, inNewTab, focusLauncherAtMount, replies: answers });
     let target;
     let el = null;
     if (container === 'document') {

@@ -17,6 +17,8 @@
 //     true), sends the state (tests/ui/fixtures.js smallState, Keep open on)
 //     with `windows`, then the theme (`theme`: a built-in theme's id, sent in
 //     pieces of `chunkBytes`, default 512 KB) → { ev: 'sent', id, what };
+//     `newTabPage`: that tab of the fixture's is Margin's new-tab page (the
+//     overlay over a window with it in front draws the launcher);
 //   { do: 'delta', id, changes, favicons?, skip? } → a delta numbered next
 //     (`skip`: one number missed, as a lost message would);
 //   { do: 'windows', id, list } → a window list numbered next;
@@ -208,7 +210,7 @@ function setSpace(s, windowId, spaceId) {
   s.send({ k: 'delta', seq: ++s.seq, changes: { openTabs: { newValue: open } } });
 }
 
-function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null }) {
+function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, windows = [], theme = 'arcadia', chunkBytes, kept: old = false, data = null, spaces = null, newWindow = null, newTabPage = null }) {
   const to = old ? kept : link;
   const ws = new WebSocket(`ws://127.0.0.1:${to.port}/?t=${encodeURIComponent(token ?? to.token)}`, { headers: { Origin: origin } });
   const raw = data?.wiped ? {} : storedState();
@@ -218,6 +220,10 @@ function connect({ id, profile = 'P1', token, origin = ORIGIN, owner = true, win
     open.tabSpace = Object.fromEntries(Object.keys(open.tabSpace ?? {}).map((t) => [t, spaces[0].id]));
     open.activeSpaceByWindow = Object.fromEntries(Object.keys(open.activeSpaceByWindow ?? {}).map((w) => [w, spaces[0].id]));
     raw.openTabs = open;
+  }
+  if (newTabPage != null && raw.openTabs?.tabs?.[newTabPage]) {
+    raw.openTabs = structuredClone(raw.openTabs);
+    Object.assign(raw.openTabs.tabs[newTabPage], { url: `${ORIGIN}/newtab/newtab.html`, title: 'New Tab' });
   }
   for (let i = 0; i < (data?.icons ?? 0); i++) (raw.favicons ??= {})[`https://icon${i}.test`] = { data: 'data:image/png;base64,' + 'A'.repeat(60_000), href: `https://icon${i}.test/favicon.ico`, at: 1 };
   const s = { id, ws, profile, epoch: randomUUID(), seq: 0, muted: false, welcomed: false, raw, windows, data, acked: data?.acked ?? 0, rev: data?.rev ?? null, cache: null, incoming: null, newWindow, nextWindow: 90 };

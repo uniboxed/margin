@@ -11,7 +11,11 @@
 // the keyboard from the browser; a text field of Margin's in it does (the
 // palette, an input: the page says `focus`), as a key panel that doesn't make
 // Margin the active app (the browser stays in front and doesn't dim), and
-// gives it back as it's left or on Escape.
+// gives it back as it's left or on Escape. Only while it's shown: a field
+// focused while it isn't waits for the show, and gets the keyboard then only
+// over the front window and if it's fresh (`appeared`); a put-away overlay
+// hands the keyboard back and tells its page to let go (`blur`), so a field
+// never shows focused while the keys go to the browser.
 //
 // In the tests (`harness`) nothing is ever shown on screen: a frame on any
 // display is refused, the panel is never made key and nothing is activated.
@@ -96,11 +100,22 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     private(set) var belowWindow: Int? // the browser window's full-screen toolbar, when it has one
     private(set) var ignoring = false
     private(set) var hasKeyboard = false
+    // What its page last said of its focus (`focus` on or off), apart from whether it has the keyboard:
+    // a field focused while the overlay isn't shown is wanted here until the page or the app says
+    // otherwise (handBack and a put-away of an overlay not shown leave it), and `appeared` decides.
+    private(set) var pageWantsKeyboard = false
+    private(set) var pageFocusAt: TimeInterval?
+    // A field focused at most this long before the overlay shows takes the keyboard as it shows.
+    static let focusFresh: TimeInterval = 2
     // Which pointer positions its page wants (PointerWant): all, until it says.
     private(set) var pointerWant = PointerWant.all
     // For the tests: each time the keyboard went back to the browser, and each re-order.
     private(set) var handedBack = 0
     private(set) var reorders = 0
+    // For the tests (the harness never makes a panel key): shows that gave the keyboard to a field
+    // focused while hidden, and each time the page was told to let go of its focus (`blur`).
+    private(set) var keyOnShow = 0
+    private(set) var blurs = 0
 
     init(pages: OverlayPages, key: WindowKey, options: Options = Options()) {
         self.pages = pages
@@ -154,6 +169,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     func load() {
         isReady = false
         asked = false
+        pageWantsKeyboard = false // a new page: nothing of it focused yet
+        pageFocusAt = nil
         pages.ready { [weak self] in
             guard let self else { return }
             self.webView.load(URLRequest(url: OverlaySchemeHandler.page))
@@ -282,7 +299,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
 
     // `why`: for the log (only a shown overlay put away is logged).
     func hide(_ why: String) {
-        if hasKeyboard { handBack() }
+        // (Not the page of one that wasn't shown: what it focused waits for the show, `appeared`.)
+        if isShown, pageWantsKeyboard { letGo("put away: \(why)") } else if hasKeyboard { handBack("put away: \(why)") }
         if isShown { Diagnostics.note("overlay put away (\(key)): \(why)") }
         panel.orderOut(nil)
         reveal()
@@ -350,7 +368,12 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             placeEdge()
             delegate?.overlayChanged(self, "hits")
         case "focus":
-            if body["on"] as? Bool == true { takeKeyboard() } else { handBack() }
+            let on = body["on"] as? Bool == true
+            pageWantsKeyboard = on
+            pageFocusAt = on ? Diagnostics.now() : nil
+            if !on { handBack("its field let go of the focus") } else if isShown { takeKeyboard() } else {
+                Diagnostics.note("\(key): a field of its page has the focus, but the overlay isn't shown: the keyboard waits for it to show")
+            }
         case "pointerWant":
             pointerWant = PointerWant(body)
         case "perform":
@@ -370,27 +393,62 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     // The web view is made the panel's first responder too: a panel made key with nothing in it as its
     // first responder keeps the keys itself, so a palette opened by the app's key, with no click in the
     // overlay before, showed its field focused while what was typed went nowhere.
+    // Only while it's shown (`focus` while it isn't waits for `appeared`).
     func takeKeyboard() {
+        guard isShown else { return }
         let had = hasKeyboard
         panel.allowKey = true
         hasKeyboard = true
         if panel.firstResponder !== webView { panel.makeFirstResponder(webView) }
         if !had {
             let after = paletteKeyAt.map { " \(Diagnostics.ms(since: $0)) after the palette's key" } ?? ""
-            Diagnostics.note("\(key) took the keyboard\(after)\(isShown ? "" : ", but it isn't shown")")
+            Diagnostics.note("\(key) took the keyboard\(after)")
         }
         paletteKeyAt = nil
-        guard !options.harness, isShown else { return }
+        guard !options.harness else { return }
         panel.makeKey()
     }
 
-    // Left, or Escape: the keyboard goes back to the browser's window.
-    func handBack() {
+    /// Shown just now (it wasn't). A field its page focused while it was hidden takes the keyboard
+    /// only if this is the overlay over the front app's front window (`front`, Shell.frontOverlay)
+    /// and the focus is at most `focusFresh` old; otherwise the page lets go of it (`blur`), so no
+    /// field shows focused while the keys go to the browser. Then the page hears it's shown:
+    /// `focusLauncher`, its window is new and in front (⌘N, New Window): the new-tab launcher takes
+    /// the focus (palette.js focuses it only then, never as the page first draws).
+    func appeared(front: Bool, focusLauncher: Bool) {
+        if pageWantsKeyboard, !hasKeyboard {
+            let age = pageFocusAt.map { Diagnostics.now() - $0 }
+            if front, let age, age <= Self.focusFresh {
+                keyOnShow += 1
+                Diagnostics.note("\(key): shown \(Int(age * 1000)) ms after a field of its page took the focus: the keyboard is the overlay's")
+                takeKeyboard()
+            } else {
+                letGo(front ? "shown \(age.map { "\(Int($0 * 1000)) ms" } ?? "long") after its field took the focus" : "shown, but not over the front window")
+            }
+        }
+        pushJSON(#"{"type":"shown","focus":"# + (focusLauncher && !pageWantsKeyboard ? "true" : "false") + "}")
+    }
+
+    /// The page told to let go of its focus (`blur`: the palette closes, the field blurs, it says
+    /// `focus` off), and the keyboard given back if it had it. `why`: for the log.
+    func letGo(_ why: String) {
+        let had = hasKeyboard
+        handBack(why)
+        if !had, pageWantsKeyboard { Diagnostics.note("\(key): its page told to let go of the focus: \(why)") }
+        pageWantsKeyboard = false // (the page says so too, a moment later)
+        pageFocusAt = nil
+        blurs += 1
+        pushJSON(#"{"type":"blur"}"#)
+    }
+
+    // Left, or Escape: the keyboard goes back to the browser's window. `why`: for the log.
+    func handBack(_ why: String) {
         let had = hasKeyboard
         panel.allowKey = false
         hasKeyboard = false
         guard had else { return }
         handedBack += 1
+        Diagnostics.note("\(key) gave the keyboard back: \(why)")
         if panel.isKeyWindow { panel.resignKey() }
         guard !options.harness, let browser = NSRunningApplication(processIdentifier: browserPid) else { return }
         NSApp.yieldActivation(to: browser)
@@ -412,6 +470,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         let now = Diagnostics.now()
         crashes = crashes.filter { now - $0 < options.crashWindow } + [now]
+        pageWantsKeyboard = false // (nothing to tell a page that's gone)
         hide("its page stopped")
         guard crashes.count <= options.crashLimit else {
             Diagnostics.warn("an overlay's page stopped \(crashes.count) times in \(Int(options.crashWindow / 60)) minutes: put away until Margin.app opens again")

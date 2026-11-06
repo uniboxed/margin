@@ -685,6 +685,14 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] One profile with several spaces: hold ⌃⌘→. The spaces go by one at a time and it stops where you let go.
 - [ ] The page itself may still blink as Safari swaps tabs: that's Safari's own drawing, and this doesn't change it. Tell me if the page shows a tab that the highlight isn't on, after you let go.
 
+**The keyboard and the launcher** (a focused field in Margin's sidebar while typing went to Safari). `npm run log:app -- --stream` open.
+- [ ] In a full-screen window with Margin's sidebar, choose New Window from the palette: the new window's launcher takes what you type at once, with no click. The log has `overlay shown over …#N` and then `…#N took the keyboard`, in that order.
+- [ ] ⌘N in full screen: the same. The new window's launcher takes typing without a click as soon as its sidebar shows.
+- [ ] Quit Margin.app with a window showing Margin's new-tab page in full screen, then open Margin.app again: the launcher is not focused, and typing goes to Safari as before. The log has no `took the keyboard` line for it.
+- [ ] Open the palette (⌥K), then take the window out of full screen (or swipe to another Space with the palette open): the palette closes, and when the sidebar is back nothing in it looks focused. Typing goes to Safari until you click a field or open the palette again. The log says `… gave the keyboard back: put away: …`.
+- [ ] Open the palette and type in it, then click the page: the palette closes and typing goes to the page (the log says `gave the keyboard back: a press on the page or another app`).
+- [ ] If you ever see a field in Margin's sidebar or launcher that looks focused while what you type goes to Safari, note the time and send me the lines around it with `keyboard`, `focus` or `let go` in them.
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.

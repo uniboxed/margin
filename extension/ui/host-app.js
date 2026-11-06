@@ -105,7 +105,7 @@ export function hitRects(root, slot, { limit = 64, getStyle = (el) => /** @type 
  * window list (`windows`) and the theme package (`theme`). `post(op, body)`:
  * a message to the app, resolving with its reply (webkit.messageHandlers
  * .margin.postMessage). `onMessage(msg)`: what the app sends that isn't the
- * state (theme, command, pointer, pressOutside, push), for the page.
+ * state (theme, command, pointer, pressOutside, blur, shown, push), for the page.
  * `onNotice({ id, action })`: a button of a notice the overlay put up.
  *
  * @param {{
@@ -210,6 +210,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     windowId,
     // The overlay stays on screen through a switch (ui/runtime.js: the highlight waits for the state).
     staysOnScreen: true,
+    // Not on screen as it first draws: its launcher takes the focus only when the app says (the `shown` push's `focus`).
+    focusLauncherAtMount: false,
     get tabId() { return frontPage()?.id ?? null; },
     get mode() { return /** @type {'fullscreen' | 'windowed'} */ (mode); },
     // Margin's start page (#launcher, #settings) chooses a new tab; a new-tab page opens it there.

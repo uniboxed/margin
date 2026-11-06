@@ -10,7 +10,8 @@
 // then on tells the app where the page slot is (`layout`, through the host),
 // what the theme draws over it that takes the pointer (`hits`), and when a
 // text field of Margin's has the keyboard (`focus`: the overlay becomes a
-// key panel without making Margin the active app). It says what the copy
+// key panel without making Margin the active app, once it's shown; the app
+// says `shown` as it shows and `blur` when the field must let go). It says what the copy
 // tells it about the window's pages (ui/app-feedback.js): Margin's notices,
 // in the theme's guarded notice part, their buttons going back to the copy;
 // the trackpad gestures' feedback; which tabs are loading (through the host).
@@ -257,6 +258,20 @@ function onMessage(msg) {
       // A press on the page or another app: the palette goes, the field lets go of the keyboard.
       runtime?.closePalette();
       /** @type {any} */ (document.activeElement)?.blur?.();
+      return;
+    case 'blur':
+      // The app put the overlay away, or showed it without the keyboard (not over the front window,
+      // or a field focused too long before): nothing of Margin's keeps the focus, and the app hears so
+      // (`focus` off), so no field shows focused while the keys go to the browser.
+      // (The palette's close gives the focus back to what had it before: that lets go too.)
+      runtime?.closePalette();
+      /** @type {any} */ (document.activeElement)?.blur?.();
+      setKeys(false);
+      return;
+    case 'shown':
+      // The app showed this overlay (it wasn't): `focus`, over a new window in front (⌘N, New
+      // Window): the new-tab launcher's field takes the focus (never as the page first draws).
+      if (msg.focus === true) runtime?.focusLauncher();
       return;
     case 'push':
       switch (msg.msg?.type) {

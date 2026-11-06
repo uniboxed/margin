@@ -9,6 +9,9 @@
 // Closed, the focus goes back where it was, unless what was chosen opens a
 // new tab (what's typed meanwhile would go into the page left).
 // Also the new-tab launcher's field (`m-input="launcher"`): Enter runs it.
+// It has the focus as the launcher shows, except at the runtime's first
+// drawing in a host that says not to (`focusLauncherAtMount` false: Margin.app's
+// overlay, not on screen yet then); that host says when (`focusLauncher`).
 
 /** @param {any} rt */
 export function installPalette(rt) {
@@ -20,6 +23,8 @@ export function installPalette(rt) {
   let restoreFocus = null;
   let reveal = false; // the selection moved by a key: keep it in view
   let launcherShown = false;
+  let drawn = false; // the runtime's first drawing is past
+  const editable = (el) => !!el && (el.localName === 'input' || el.localName === 'textarea' || el.localName === 'select' || el.isContentEditable);
 
   const isField = (el) => !!el && view.inputs.get(el) === 'palette';
   const active = () => {
@@ -74,9 +79,14 @@ export function installPalette(rt) {
     },
     afterRender(vm) {
       // The launcher's field has the focus as the new-tab page shows it
-      // (Arcadia's newtab.js; Safari focuses its address bar instead).
-      if (vm.launcher && !launcherShown && !vm.palette.open) view.input('launcher')?.focus({ preventScroll: true });
+      // (Arcadia's newtab.js; Safari focuses its address bar instead). Not as
+      // the app's overlay first draws (Margin.app starting, a link back, a page
+      // reloaded: the overlay isn't on screen, and the window may not be the
+      // one the person is in); a launcher that comes later (a new tab) does.
+      const atMount = !drawn && rt.host.focusLauncherAtMount === false;
+      if (vm.launcher && !launcherShown && !vm.palette.open && !atMount) view.input('launcher')?.focus({ preventScroll: true });
       launcherShown = !!vm.launcher;
+      drawn = true;
       const open = !!vm.palette.open;
       if (open) {
         const input = view.input('palette');
@@ -106,6 +116,13 @@ export function installPalette(rt) {
       restoreFocus = null;
       if (!opensNewTab && back?.isConnected) back.focus?.({ preventScroll: true });
       else if (field && active() === field) field.blur();
+    },
+    /** The host's word (the app showed a new window's overlay): the launcher's field takes the focus, if it shows and nothing else of Margin's has it. */
+    focusLauncher() {
+      if (!rt.vm?.launcher || rt.ui.palette.open || editable(active())) return false;
+      const input = view.input('launcher');
+      input?.focus({ preventScroll: true });
+      return !!input;
     },
     busy: () => false,
   };

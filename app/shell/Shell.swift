@@ -680,6 +680,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             overlay.browserPid = server.pid
             let wasShown = overlay.isShown && overlay.aboveWindow == number
+            let wasShownAnywhere = overlay.isShown
             // Over the part of the window that's the page's and Margin's: not the docked Web Inspector.
             let frame = Shell.overlayFrame(window: server.bounds, viewport: w.state == "fullscreen" ? w.viewport : nil)
             if frame != server.bounds, overlay.windowFrame != server.bounds || overlay.frameTopLeft != frame {
@@ -693,6 +694,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if showed, wasShown, !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar) {
                 overlay.reorder()
             }
+            if showed, !wasShownAnywhere { appeared(overlay, w, list: list) }
             if showed { deliverHeldPalette(overlay) }
             if !wasShown, overlay.ownSpace { checkOwnSpace(overlay, browser: number) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
@@ -776,6 +778,18 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         binders[browser] = binder
         binder.expect(WindowKey(link: link, windowId: windowId), since: asked, now: options.clock(), why: "made by Margin's openSpaceWindow")
         burst("window made")
+    }
+
+    // An overlay just shown (it wasn't): whether it's the front window's (a field its page focused
+    // while hidden gets the keyboard only then, OverlayController.appeared), and whether its new-tab
+    // launcher takes the focus: only over the front window, and only for a window its copy heard made
+    // within `launcherFocusWithin` (⌘N, New Window). Not at Margin.app's start, a relink or a page
+    // reloaded over a window that was already there: the keys stay where they were.
+    static let launcherFocusWithin: TimeInterval = 10
+    private func appeared(_ overlay: OverlayController, _ w: ExtWindow, list: [ServerWindow]) {
+        let front = frontOverlay(list: list) === overlay
+        let new = w.createdAt.map { options.clock() - $0 <= Shell.launcherFocusWithin } ?? false
+        overlay.appeared(front: front, focusLauncher: front && new)
     }
 
     private func makeOverlay(_ key: WindowKey) -> OverlayController {
@@ -873,10 +887,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     // A press anywhere: the browser may have been raised above an overlay; a press on the page
     // (or another app) takes the keyboard back from an overlay that had it.
+    // A field focused in an overlay not shown yet lets go too (it would take the keyboard as it shows).
     func pressed(_ at: CGPoint) {
         for overlay in overlays.values where overlay.hasKeyboard && (!overlay.frameTopLeft.contains(at) || PassThrough.pageGets(at, overlay.slot)) {
             overlay.push(raw: #"{"type":"pressOutside"}"#)
-            overlay.handBack()
+            overlay.handBack("a press on the page or another app")
+        }
+        for overlay in overlays.values where overlay.pageWantsKeyboard && !overlay.isShown {
+            overlay.letGo("a press while it wasn't shown")
         }
         burst("press")
     }

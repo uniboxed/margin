@@ -620,6 +620,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     openPalette: ({ newTab = false } = {}) => local('palette.open', { newTab }, null),
     closePalette: () => { if (ui.palette.open) local('palette.close', undefined, null); },
     get paletteOpen() { return !!ui.palette.open; },
+    /** The new-tab launcher's field focused, by the host's word (its overlay shown over a new window: behaviors/palette.js). */
+    focusLauncher: () => !!behaviors.palette?.focusLauncher(),
     /** The tab list's scroll: saved now (before a switch), or set (a page prepared for a show). */
     flushScroll: () => behaviors.scroll?.flush(),
     restoreScroll: () => behaviors.scroll?.restore(),

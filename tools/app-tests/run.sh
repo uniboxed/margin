@@ -14,7 +14,8 @@
 #         two profiles' copies and the app driving a switch between them with
 #         stand-in windows; and e2e-windows.swift, which window is which with
 #         two profiles and several same-bounds windows, Spaces played by
-#         on-screen flags and the copies' focus flags lagging
+#         on-screen flags and the copies' focus flags lagging; and e2e-keyboard.swift,
+#         the overlay's keyboard and its page's focus through shows, put-aways and relinks
 # window-tests.swift's randomized runs take WINDOW_RUNS (default 300),
 # WINDOW_LAG (the flags' lag, default 1.2 s) and WINDOW_SEED (one run, printed).
 # Built with swiftc as the app target builds it (Swift 5, main actor by
@@ -63,7 +64,7 @@ if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift fake-safari.swift "${SHELL_SOURCES[@]}"
+  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift fake-safari.swift "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mjs" MARGIN_NODE="$NODE" \
     MARGIN_APP_SHOT="${MARGIN_APP_SHOT:-$BUILD/overlay.png}" "$BUILD/e2e" || status=1
 fi

@@ -624,6 +624,7 @@ final class Runner: NSObject, NSApplicationDelegate {
       await profilesScenario()
       await windowsScenario()
       await windowsScenario(ownSpace: true)
+      await keyboardScenario() // e2e-keyboard.swift
       print(failures == 0 ? "all \(passed) end-to-end checks passed" : "\(failures) of \(passed + failures) end-to-end checks failed")
       exit(failures == 0 ? 0 : 1)
     }

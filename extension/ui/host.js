@@ -51,7 +51,10 @@ import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '.
  * - `launcher`: drawn in Margin's new-tab page or its start page
  *   (#launcher): the launcher shows;
  * - `perform(name, arg)`: what only the host can do (the page's history in
- *   pages, the window's buttons in the app); false when it can't.
+ *   pages, the window's buttons in the app); false when it can't;
+ * - `focusLauncherAtMount`: false: the launcher's field isn't focused as the
+ *   runtime first draws (Margin.app's overlay isn't on screen then; the app
+ *   says when: runtime.focusLauncher); left out, it is.
  *
  * @typedef {{
  *   getState(): (Partial<State> & Record<string, any>) | null,
@@ -64,6 +67,7 @@ import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '.
  *   readonly mode?: 'fullscreen' | 'windowed' | 'inpage',
  *   readonly inNewTab?: boolean,
  *   readonly launcher?: boolean,
+ *   readonly focusLauncherAtMount?: boolean,
  *   perform?(name: string, arg?: any): boolean,
  * }} Host
  */
@@ -77,10 +81,11 @@ import { fromStorage, onlyMark, readForPage, takesChanges, withChanges } from '.
  *   state?: any, windowId?: number | null, tabId?: number | null,
  *   platform?: { browser: string, os: string, marginFullscreen?: boolean },
  *   mode?: 'fullscreen' | 'windowed' | 'inpage', inNewTab?: boolean,
+ *   focusLauncherAtMount?: boolean,
  *   replies?: Record<string, (payload: any) => any>,
  * }} [options] `replies`: what a request of each type answers
  */
-export function createMockHost({ state = null, windowId = 1, tabId = null, platform = { browser: 'chrome', os: 'linux' }, mode = 'inpage', inNewTab = false, replies = {} } = {}) {
+export function createMockHost({ state = null, windowId = 1, tabId = null, platform = { browser: 'chrome', os: 'linux' }, mode = 'inpage', inNewTab = false, focusLauncherAtMount = undefined, replies = {} } = {}) {
   let current = state;
   const listeners = new Set();
   const host = {
@@ -95,6 +100,7 @@ export function createMockHost({ state = null, windowId = 1, tabId = null, platf
     tabId,
     mode,
     inNewTab,
+    focusLauncherAtMount,
     getState: () => current,
     /** @param {(state: any) => void} cb */
     onState(cb) { listeners.add(cb); return () => listeners.delete(cb); },
