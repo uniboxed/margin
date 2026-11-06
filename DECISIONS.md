@@ -2838,3 +2838,21 @@ On `feat/pixel-user-themes`. The plan is `docs/phase6-themes.md`; the boards, a 
 - **A space's number** (`number`, from 1) joins the view model, for Pixel's "WORLD 2-1" and numbered chips; templates have no arithmetic.
 - **Bundled SVG images stay unsanitized:** they're only ever drawn as images (an `img` or a CSS image), where WebKit runs no script and loads nothing. A payload test keeps that true.
 - **`npm run test:security`** gathers the sanitizer, guard, package and import payloads, every built-in theme, and any packages named in `MARGIN_THEMES`. No CI is added; the plan says how a macOS runner would run it later.
+
+## Margin 2, Phase 6: Neo-brutalism to its board (2026-11-06)
+
+Work item 5 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`. Compared with the board (`docs/phase6/boards/Main.dc.html`) side by side, in WebKit and Chromium.
+
+- **Folder heads show no count,** as the board's (the plan's open question, answered as proposed). iCloud Tabs keeps its count: it's a live folder, and the count says how much is there.
+- **The palette shows eight rows at most,** then the list scrolls (`m-scroll="palette"`); the selected row stays in view. The box stays in the window: it sits at 150 px (17 % in a short window) and never runs past the bottom. With 200 tabs it used to.
+- **Palette tags in the board's style:** the space's colour (the board's `TAB` tag takes the space's colour too), a 2 px ink border, capitals. They hold Margin's badge (the space, the folder, Archived, iCloud, Search, Open); the board's `TAB` and `ASK` aren't data Margin has.
+- **Palette rows have their icon box** after the tag: the site's icon, its letter, or the row's emoji. The board has none; every other theme has one, and it tells rows apart.
+- **Rows get Arcadia's parts:** a close button on hover (an ink × in a 20 px bordered box; tabs, and pins open in a tab), a speaker after the title while a tab plays sound (gone under the ×), and a dashed outline on the tab shown while a new tab is on its way (`behind`).
+- **Rows are links (`a`) that hold their close button,** as Arcadia's and Pixel's: a button can't hold a button. A wrapper around a button row and its close was tried and dropped: the dragged copy goes into the row's parent, so it landed inside the wrapper, and the wrapper's `content-visibility` moved and clipped it.
+- **Loose pins** (outside folders) sit in a borderless white card (`loose-card`), the board's folder rows without the head; pins side by side share one card. Their open state is bound.
+- **"With the sidebar hidden, keep the frame around pages"** is honoured: off, with the sidebar hidden or peeking, the page fills the window, square, with no border and no ground; the loading stripe runs along the page's top edge.
+- **Notices, prompts and the space editor no longer narrow the page.** Their slots were flex items of the root and took a 16 px gap while shown; now they're `display: contents`, as Pixel's.
+- **The first paint draws the card's border and shadow outside the box.** The border was an inset shadow, 3 px over the page's edge until Margin's content script took over.
+- **One look in light and dark system modes** (`color-scheme: light`, so Margin's selects, fields and scrollbars stay light too). Settings' toggles are Neo switches (a bordered pill, the knob right on yellow when on); buttons stay on one line.
+- **Differs from the board, on purpose:** no favorites, Ask or mini player (`PLAN.md` §9); the palette label says "SEARCH OR TYPE A URL" until Ask exists; the selected palette row keeps an 8 % ink fill for the keyboard; real site icons in square boxes rather than the board's letter tiles (round tiles aren't data Margin has).
+- **Tests:** `tests/theme/neo-brutalism.test.js` (WebKit and Chromium: nothing removed, folder heads, close, speaker and behind, loose pins, the palette's cap, tags and icons with 200 tabs and in a 600 px window, the page's box with and without the frame, notices moving nothing, nothing painted over the page's box on screen, both system modes, the first paint on screen).
