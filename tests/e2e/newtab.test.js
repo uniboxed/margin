@@ -1,6 +1,9 @@
+// The new-tab page's address field: an address opens in the tab, other text is searched with
+// Chrome's engine; both skipped (they drive the launcher removed in Margin 2 Phase 2 step 5).
+// Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
+import { launch, startServer, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -23,7 +26,7 @@ async function newTab() {
   return page;
 }
 
-test('launcher: a host:port entry navigates this tab', async () => {
+test('launcher: a host:port entry navigates this tab', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await newTab();
   await page.fill('.launcher-query', `${new URL(server.base).host}/typed`);
   await page.press('.launcher-query', 'Enter');
@@ -35,7 +38,7 @@ test('launcher: a host:port entry navigates this tab', async () => {
 // Does `url` carry `text` as a query parameter (any engine's name for it)?
 const searchesFor = (url, text) => [...new URL(url).searchParams.values()].includes(text);
 
-test('launcher: other text searches with Chrome\'s own search engine (chrome.search), not one of Margin\'s', async () => {
+test('launcher: other text searches with Chrome\'s own search engine (chrome.search), not one of Margin\'s', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await newTab();
   assert.equal(await page.locator('#engine').count(), 0, 'no engine picker');
   await page.click('#settings summary');
@@ -44,26 +47,4 @@ test('launcher: other text searches with Chrome\'s own search engine (chrome.sea
   await page.press('.launcher-query', 'Enter');
   await page.waitForURL((url) => url.protocol === 'https:' && searchesFor(url.href, 'hello world'));
   await page.close();
-});
-
-test('launcher: pins of the active space show as tiles; a tile focuses or opens its page', async () => {
-  const site = await ctx.context.newPage();
-  await site.goto(`${server.base}/tile`);
-  const tabId = await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'tile')?.id);
-  await waitFor(async () => (await readState(ctx.worker, 'tabs'))?.[tabId]?.title === 'tile');
-
-  const nt = await newTab();
-  assert.equal(await nt.isHidden('.pins-tiles'), true);
-  await nt.evaluate((id) => chrome.runtime.sendMessage({ type: 'pinTab', tabId: id }), tabId);
-  await nt.waitForSelector('#pin-tiles .tile');
-  assert.equal(await nt.textContent('#pin-tiles .tile .title'), 'tile');
-
-  await nt.click('#pin-tiles .tile');
-  await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((t) => t.id === tabId)?.active);
-
-  await site.close();
-  await nt.bringToFront();
-  await nt.click('#pin-tiles .tile');
-  await nt.waitForURL(`${server.base}/tile`);
-  await nt.close();
 });

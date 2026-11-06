@@ -1,6 +1,8 @@
+// Smoke checks left since Margin 2 Phase 2 step 5 (no UI in pages): the background starts, and
+// the new-tab override is Margin's page. Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, evalInShadow } from './helpers.js';
+import { launch, startServer } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -14,16 +16,6 @@ after(async () => {
 
 test('background service worker starts', () => {
   assert.match(ctx.worker.url(), /^chrome-extension:\/\/[a-p]{32}\/background\.bundle\.js$/);
-});
-
-test('content script injects a closed shadow host on a web page', async () => {
-  const page = await ctx.context.newPage();
-  await page.goto(`${server.base}/page`);
-  await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
-  // Closed: the page cannot reach the shadow root.
-  assert.equal(await page.evaluate(() => document.querySelector('margin-sidebar-host').shadowRoot), null);
-  assert.equal(await evalInShadow(page, 'margin-sidebar-host', function () { return this.mode; }), 'closed');
-  await page.close();
 });
 
 test('opening a new tab shows newtab.html', async () => {

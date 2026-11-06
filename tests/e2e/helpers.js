@@ -57,6 +57,10 @@ export async function startServer() {
   return { base, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
+// The in-page UI helpers below (evalInShadow, sidebarSnapshot, clickInShadow, paletteSnapshot,
+// gotoLauncher) read UI that Margin 2 Phase 2 step 5 removed (no `margin-sidebar-host`, no
+// launcher); only skipped tests still use them.
+
 // Closed shadow roots are invisible to page JS and Playwright locators, but
 // the DevTools protocol can pierce them. Runs `fn` with `this` = shadow root.
 export async function evalInShadow(page, hostTag, fn, ...args) {

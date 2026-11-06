@@ -1,9 +1,12 @@
+// The stamped platform profiles (Chrome, Safari): shortcut defaults and their upgrade, icon
+// fetching, gesture blocking; all skipped (they wait for the in-page UI or open the launcher,
+// both removed in Margin 2 Phase 2 step 5). Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { launch, sidebarSnapshot, tabsInBrowser, waitFor, buildSafariProfile, clickInShadow, gotoLauncher, readState } from './helpers.js';
+import { launch, waitFor, buildSafariProfile, gotoLauncher, readState } from './helpers.js';
 
 const PNG = readFileSync(new URL('../../extension/icons/icon-48.png', import.meta.url));
 let server, base;
@@ -20,17 +23,6 @@ before(async () => {
 after(() => new Promise((r) => server.close(r)));
 
 const storage = (ctx, key) => readState(ctx.worker, key);
-const switchLog = (ctx, clear = false) => ctx.worker.evaluate((shouldClear) => new Promise((resolve, reject) => {
-  const request = indexedDB.open('margin-diagnostics', 1);
-  request.onerror = () => reject(request.error);
-  request.onsuccess = () => {
-    const db = request.result;
-    const tx = db.transaction('switches', shouldClear ? 'readwrite' : 'readonly');
-    const action = shouldClear ? tx.objectStore('switches').clear() : tx.objectStore('switches').getAll();
-    action.onerror = () => reject(action.error);
-    action.onsuccess = () => resolve(shouldClear ? [] : action.result);
-  };
-}), clear);
 async function openPage(ctx, name) {
   const page = await ctx.context.newPage();
   await page.goto(`${base}/${name}`);
@@ -38,7 +30,7 @@ async function openPage(ctx, name) {
   return page;
 }
 
-test('Chrome build: Chrome profile, ⌃⌘ shortcuts, and no icon fetching (Chrome provides favIconUrl)', async () => {
+test('Chrome build: Chrome profile, ⌃⌘ shortcuts, and no icon fetching (Chrome provides favIconUrl)', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const ctx = await launch();
   try {
     assert.equal(await ctx.worker.evaluate(() => globalThis.Margin.platform.name), 'chrome');
@@ -53,64 +45,7 @@ test('Chrome build: Chrome profile, ⌃⌘ shortcuts, and no icon fetching (Chro
   }
 });
 
-test('Safari profile: shortcuts, icons, and the destination sidebar is prepared before activation', async () => {
-  const dir = buildSafariProfile();
-  const ctx = await launch({ extensionPath: dir });
-  try {
-    assert.equal(await ctx.worker.evaluate(() => globalThis.Margin.platform.name), 'safari');
-    const a = await openPage(ctx, 'safari-a');
-    const b = await openPage(ctx, 'safari-b');
-    await ctx.worker.evaluate(() => chrome.tabs.query({}).then((tabs) => chrome.tabs.remove(tabs.filter((tab) => !['safari-a', 'safari-b'].includes(tab.title)).map((tab) => tab.id))));
-    await waitFor(async () => (await storage(ctx, 'settings'))?.shortcuts);
-    const { shortcuts } = await storage(ctx, 'settings');
-    assert.equal(shortcuts.nextTab, 'Alt+Meta+ArrowDown');
-    assert.equal(shortcuts.prevTab, 'Alt+Meta+ArrowUp');
-    assert.equal(shortcuts.nextSpace, 'Ctrl+Meta+ArrowRight');
-    await waitFor(async () => (await storage(ctx, 'favicons'))?.[base]);
-
-    const activeTitle = async () => (await tabsInBrowser(ctx.worker)).find((t) => t.active)?.title;
-    const id = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'safari-a').id;
-    await a.bringToFront();
-    await ctx.worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), id);
-    await waitFor(async () => (await activeTitle()) === 'safari-a');
-    await waitFor(async () => (await sidebarSnapshot(a)).tabs.includes('safari-b'));
-    await a.mouse.move(400, 200);
-    await a.mouse.move(3, 200);
-    await waitFor(async () => (await sidebarSnapshot(a)).open);
-    await switchLog(ctx, true);
-    await clickInShadow(a, '.tab', 'safari-b');
-    await waitFor(async () => (await activeTitle()) === 'safari-b');
-    assert.equal((await sidebarSnapshot(b)).open, true, 'the open sidebar is already present on the destination frame');
-    const clickLog = await waitFor(async () => {
-      const entry = (await switchLog(ctx)).findLast((item) => item.kind === 'switch' && item.source === 'activateTab');
-      return entry?.preparation && entry;
-    });
-    assert.equal(clickLog.preparation.outcome, 'ready', JSON.stringify(clickLog));
-
-    await ctx.worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), id);
-    await waitFor(async () => (await activeTitle()) === 'safari-a');
-    await switchLog(ctx, true);
-    const order = (await sidebarSnapshot(a)).tabs;
-    await a.keyboard.press('Alt+Meta+ArrowDown');
-    const destination = order[(order.indexOf('safari-a') + 1) % order.length];
-    await waitFor(async () => (await activeTitle()) === destination);
-    const shown = destination === 'safari-b' ? b : a;
-    await waitFor(async () => (await sidebarSnapshot(shown)).tabs.includes(destination));
-    const log = await waitFor(async () => {
-      const entry = (await switchLog(ctx)).findLast((item) => item.kind === 'switch' && item.source === 'next-tab');
-      return entry?.preparation && entry;
-    });
-    assert.equal(log.preparation.outcome, 'ready', JSON.stringify(log));
-    assert.ok(log.preparation.ms < 300, JSON.stringify(log));
-    await b.close();
-    await a.close();
-  } finally {
-    await ctx.context.close();
-    rmSync(dirname(dir), { recursive: true, force: true });
-  }
-});
-
-test('upgrading to the Safari build: saved ⌃⌘ defaults move to ⌥⌘↓/↑, customized shortcuts stay', async () => {
+test('upgrading to the Safari build: saved ⌃⌘ defaults move to ⌥⌘↓/↑, customized shortcuts stay', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const dir = buildSafariProfile();
   const ctx = await launch({ extensionPath: dir });
   try {
@@ -145,7 +80,7 @@ test('upgrading to the Safari build: saved ⌃⌘ defaults move to ⌥⌘↓/↑
   }
 });
 
-test('Safari: sideways swipes are blocked, scrolling is not; the setting turns it off (pinch: tests/gestures.test.js)', async () => {
+test('Safari: sideways swipes are blocked, scrolling is not; the setting turns it off (pinch: tests/gestures.test.js)', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const dir = buildSafariProfile();
   const ctx = await launch({ extensionPath: dir });
   try {
@@ -191,7 +126,7 @@ test('Safari: sideways swipes are blocked, scrolling is not; the setting turns i
   }
 });
 
-test('Chrome build: no gesture blocking and no setting for it', async () => {
+test('Chrome build: no gesture blocking and no setting for it', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const ctx = await launch();
   try {
     const page = await ctx.context.newPage();

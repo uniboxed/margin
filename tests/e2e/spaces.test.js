@@ -1,3 +1,6 @@
+// Spaces: deleting one moves its tabs to the first, moving a tab, the active space per window;
+// all skipped (driven through the new-tab sidebar removed in Margin 2 Phase 2 step 5).
+// Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, startServer, sidebarSnapshot, waitFor, gotoLauncher, readState } from './helpers.js';
@@ -18,25 +21,7 @@ after(async () => {
 const storage = (key) => readState(ctx.worker, key);
 const chips = () => nt.$$eval('#sidebar .chip[data-space-id]', (cs) => cs.map((c) => ({ id: c.dataset.spaceId, emoji: c.textContent, active: c.classList.contains('active') })));
 
-test('create a space with "+" → New Space, then rename, re-emoji and recolor it', async () => {
-  await nt.click('#sidebar .bar .add'); // "+": New Folder / New Space
-  await nt.click('#sidebar .tab-menu .menu-item >> text=New Space');
-  await nt.waitForSelector('#sidebar .editor:not([hidden])');
-  assert.equal(await nt.evaluate(() => document.activeElement?.className), 'name');
-  const created = await waitFor(async () => (await chips()).find((c) => c.active && c.id !== 'personal'));
-
-  await nt.fill('#sidebar .editor .name', 'Work');
-  await nt.fill('#sidebar .editor .emoji', '💼');
-  await nt.click('#sidebar .swatch[data-color="#e17055"]');
-  await nt.click('#sidebar .editor .primary');
-  assert.equal(await nt.isHidden('#sidebar .editor'), true);
-  await waitFor(async () => {
-    const space = (await storage('spaces')).find((s) => s.id === created.id);
-    return space.name === 'Work' && space.emoji === '💼' && space.color === '#e17055';
-  });
-});
-
-test('right-click opens the editor; delete needs two clicks and moves tabs to the first space', async () => {
+test('right-click opens the editor; delete needs two clicks and moves tabs to the first space', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const work = (await chips()).find((c) => c.emoji === '💼');
   const page = await ctx.context.newPage();
   await page.goto(`${server.base}/in-work`); // active space in this window is Work
@@ -64,7 +49,7 @@ test('right-click opens the editor; delete needs two clicks and moves tabs to th
   await page.close();
 });
 
-test('a tab moved to another space with its menu leaves this one; the sidebar follows', async () => {
+test('a tab moved to another space with its menu leaves this one; the sidebar follows', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const res = await nt.evaluate(() => chrome.runtime.sendMessage({ type: 'createSpace', name: 'Fun', emoji: '🎈' }));
   const fun = res.result.spaceId;
   const page = await ctx.context.newPage();
@@ -88,7 +73,7 @@ test('a tab moved to another space with its menu leaves this one; the sidebar fo
   await page.close();
 });
 
-test('active space is per window', async () => {
+test('active space is per window', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
   const other = await ctx.worker.evaluate(() => chrome.windows.create({ url: 'about:blank' }).then((w) => w.id));
   const fun = (await storage('spaces')).find((s) => s.name === 'Fun').id;
@@ -98,23 +83,4 @@ test('active space is per window', async () => {
   assert.equal((await storage('activeSpaceByWindow'))[other], fun);
   await ctx.worker.evaluate((id) => chrome.windows.remove(id), other);
   await waitFor(async () => !((other) in (await storage('activeSpaceByWindow'))));
-});
-
-test('"+" opens the editor even when the new space arrives before the reply', async () => {
-  // Force the race: hold the createSpace reply until storage has already
-  // delivered the new space to the page.
-  await nt.evaluate(() => {
-    const original = chrome.runtime.sendMessage.bind(chrome.runtime);
-    chrome.runtime.sendMessage = async (msg) => {
-      const res = await original(msg);
-      if (msg?.type === 'createSpace') await new Promise((r) => setTimeout(r, 400));
-      return res;
-    };
-  });
-  const before = (await storage('spaces')).length;
-  await nt.click('#sidebar .bar .add'); // "+": New Folder / New Space
-  await nt.click('#sidebar .tab-menu .menu-item >> text=New Space');
-  await waitFor(async () => (await storage('spaces')).length === before + 1);
-  await nt.waitForSelector('#sidebar .editor:not([hidden])', { timeout: 3000 });
-  await nt.click('#sidebar .editor [data-editor="cancel"]');
 });

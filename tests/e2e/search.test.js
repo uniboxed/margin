@@ -6,6 +6,8 @@ import { launch, startServer, paletteSnapshot, waitFor, buildSafariProfile, goto
 
 // Safari build: no search API, so Margin follows the engine Safari itself
 // searches with, learned from Safari's address-bar search URLs (shared/search.js).
+// All skipped (they search from the launcher and the in-page palette, removed in Margin 2
+// Phase 2 step 5). Not run for now (no E2E runs for now).
 let ctx, dir, server;
 before(async () => {
   dir = buildSafariProfile();
@@ -29,14 +31,14 @@ async function launcherSearch(text) {
   return page;
 }
 
-test('before Safari has searched: Safari\'s default engine (Google, with Safari\'s parameters)', async () => {
+test('before Safari has searched: Safari\'s default engine (Google, with Safari\'s parameters)', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   assert.equal((await waitFor(settings)).safariSearch, null); // saved by the background on first run
   const page = await launcherSearch('hello world');
   await page.waitForURL('https://www.google.com/search?client=safari&rls=en&q=hello%20world&ie=UTF-8&oe=UTF-8');
   await page.close();
 });
 
-test('a search on an engine\'s own site doesn\'t change it; Safari\'s own search does, and Margin follows', async () => {
+test('a search on an engine\'s own site doesn\'t change it; Safari\'s own search does, and Margin follows', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const site = await ctx.context.newPage();
   await site.goto('https://duckduckgo.com/?q=typed+on+the+site');
   await site.waitForTimeout(500);
@@ -79,7 +81,7 @@ test('a search on an engine\'s own site doesn\'t change it; Safari\'s own search
   await nt.close();
 });
 
-test('switching engines in Safari right after a Margin search in the same tab is still learned', async () => {
+test('switching engines in Safari right after a Margin search in the same tab is still learned', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   // Margin searches (with the engine it knows) in this tab...
   const page = await launcherSearch('first');
   await page.waitForURL(/duckduckgo\.com\/\?q=first/);

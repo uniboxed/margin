@@ -1,6 +1,9 @@
+// What the sidebar did that the background still does (activate, close, pin, spaces, the
+// current tab); all skipped: driven through the in-page sidebar removed in Margin 2 Phase 2
+// step 5. Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
+import { launch, startServer, sidebarSnapshot, clickInShadow, evalInShadow, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -19,36 +22,7 @@ async function openPage(name) {
   return page;
 }
 
-test('sidebar is hidden by default, reveals at the left edge, hides 300ms after leaving', async () => {
-  const page = await openPage('hover');
-  await waitFor(async () => (await sidebarSnapshot(page)).tabs.includes('hover'));
-  assert.equal((await sidebarSnapshot(page)).open, false);
-  await page.mouse.move(400, 200);
-  await page.mouse.move(3, 200);
-  assert.equal((await sidebarSnapshot(page)).open, true);
-  await page.mouse.move(120, 200); // inside the 260px panel: stays open
-  await page.waitForTimeout(450);
-  assert.equal((await sidebarSnapshot(page)).open, true);
-  await page.mouse.move(600, 200);
-  await page.waitForTimeout(150);
-  assert.equal((await sidebarSnapshot(page)).open, true, 'still within the 300ms grace period');
-  await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 1000 });
-  await page.close();
-});
-
-test('overlay never changes the page layout', async () => {
-  const page = await openPage('layout');
-  const styles = () => page.evaluate(() => {
-    const pick = (el) => { const cs = getComputedStyle(el); return [cs.marginLeft, cs.paddingLeft, cs.transform]; };
-    return [pick(document.documentElement), pick(document.body)];
-  });
-  const before = await styles();
-  await page.mouse.move(3, 200);
-  assert.deepEqual(await styles(), before);
-  await page.close();
-});
-
-test('lists tabs; clicking a row activates it; the close button closes it', async () => {
+test('lists tabs; clicking a row activates it; the close button closes it', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const a = await openPage('alpha');
   const b = await openPage('beta');
   await waitFor(async () => {
@@ -74,9 +48,8 @@ async function openMenu(page, selector, text) {
     return menu.hidden ? null : [...menu.querySelectorAll('.menu-item')].map((b) => b.textContent);
   }, selector, text);
 }
-const menuOpen = (page) => evalInShadow(page, 'margin-sidebar-host', function () { return !this.querySelector('.tab-menu').hidden; });
 
-test('pin a tab; clicking the pin focuses the existing tab, or opens it if closed', async () => {
+test('pin a tab; clicking the pin focuses the existing tab, or opens it if closed', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const p = await openPage('pinme');
   const other = await openPage('other');
   await waitFor(async () => (await sidebarSnapshot(other)).tabs.includes('pinme'));
@@ -108,7 +81,7 @@ test('pin a tab; clicking the pin focuses the existing tab, or opens it if close
   await other.close();
 });
 
-test('switching space filters tabs; new tabs join the active space', async () => {
+test('switching space filters tabs; new tabs join the active space', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await openPage('space-a');
   const nt = await ctx.context.newPage();
   await gotoLauncher(nt, ctx);
@@ -128,206 +101,7 @@ test('switching space filters tabs; new tabs join the active space', async () =>
   for (const p of [page, nt, fresh]) await p.close();
 });
 
-test('one sidebar color: the same gray on every site, in every space, in Light and Dark Mode', async () => {
-  const bg = (page) => evalInShadow(page, 'margin-sidebar-host', function () {
-    const aside = this.querySelector('.margin-sidebar');
-    return { theme: aside.dataset.theme, bg: getComputedStyle(aside).backgroundColor };
-  });
-  const darkSite = await openPage('dark');
-  const lightSite = await openPage('light');
-  await darkSite.emulateMedia({ colorScheme: 'light' });
-  await lightSite.emulateMedia({ colorScheme: 'light' });
-  const a = await bg(darkSite);
-  const b = await bg(lightSite);
-  assert.deepEqual(a, b, 'same color on a dark site and a light site');
-  assert.equal(a.theme, 'light');
-  assert.equal(a.bg, 'rgb(156, 157, 161)');
-
-  // A space with a different color doesn't tint it.
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
-  await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'createSpace', windowId: w, name: 'Red', color: '#d63031' }), windowId);
-  await waitFor(async () => (await sidebarSnapshot(lightSite)).chips.length >= 2);
-  assert.equal((await bg(lightSite)).bg, 'rgb(156, 157, 161)');
-  await nt.evaluate((w) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: 'personal', bringTab: false }), windowId);
-  await nt.close();
-
-  // Dark Mode keeps the same gray.
-  await darkSite.emulateMedia({ colorScheme: 'dark' });
-  await lightSite.emulateMedia({ colorScheme: 'dark' });
-  await waitFor(async () => (await bg(lightSite)).theme === 'dark');
-  assert.deepEqual(await bg(darkSite), await bg(lightSite));
-  assert.equal((await bg(lightSite)).bg, 'rgb(156, 157, 161)');
-  await darkSite.close();
-  await lightSite.close();
-});
-
-test('new-tab page renders the sidebar itself and gets no injected overlay', async () => {
-  await openPage('nt-check');
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  await nt.waitForSelector('#sidebar .margin-sidebar.newtab .tab');
-  assert.equal(await nt.locator('margin-sidebar-host').count(), 0);
-  // "+ New Tab" (the first row of the tab list) opens the command palette (Arc-style), here and on web pages.
-  const tabsBefore = (await tabsInBrowser(ctx.worker)).length;
-  await nt.locator('.margin-sidebar .new-tab-row').click();
-  await waitFor(async () => (await paletteSnapshot(nt))?.open);
-  const web = await openPage('nt-plus');
-  await web.mouse.move(400, 200);
-  await web.mouse.move(5, 200);
-  await waitFor(async () => (await sidebarSnapshot(web)).open);
-  await clickInShadow(web, '.new-tab-row');
-  await waitFor(async () => (await paletteSnapshot(web))?.open);
-  assert.equal((await tabsInBrowser(ctx.worker)).length, tabsBefore + 1, 'only the page opened above, no extra tab');
-  await web.close();
-  await nt.close();
-});
-
-test('toggle shortcut: opens and closes; with "Keep open" on it switches back to auto-hide', async () => {
-  const page = await openPage('toggle');
-  const tabId = await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'toggle')?.id);
-  const toggle = () => ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
-  const pinned = () => ctx.worker.evaluate(() => chrome.storage.local.get('settings').then((s) => s.settings.sidebarPinnedOpen));
-
-  await toggle();
-  await waitFor(async () => (await sidebarSnapshot(page)).open);
-  await toggle();
-  await waitFor(async () => !(await sidebarSnapshot(page)).open);
-
-  await page.mouse.move(3, 200);
-  await clickInShadow(page, '.keep-open');
-  await waitFor(pinned);
-  await page.mouse.move(600, 200);
-  await page.waitForTimeout(400);
-  assert.equal((await sidebarSnapshot(page)).open, true, 'kept open');
-
-  await toggle();
-  await waitFor(async () => !(await pinned()));
-  await page.waitForTimeout(100);
-  assert.equal((await sidebarSnapshot(page)).open, false);
-  await page.close();
-});
-
-const frameState = (page) =>
-  evalInShadow(page, 'margin-sidebar-host', function () {
-    const frame = this.querySelector('.page');
-    const r = this.querySelector('.page').getBoundingClientRect();
-    return { open: frame.classList.contains('open'), hole: [r.left, r.top, innerWidth - r.right, innerHeight - r.bottom] };
-  });
-const htmlMargins = (page) =>
-  page.evaluate(() => {
-    // Where the page's box starts in the window (shared/page-box.js).
-    const left = new DOMMatrix(getComputedStyle(document.documentElement).transform).e;
-    return { left: `${left}px`, styleAttr: document.documentElement.getAttribute('style'), styleTags: document.querySelectorAll('style').length };
-  });
-const setKeepOpen = (on) =>
-  ctx.worker.evaluate((v) => chrome.storage.local.get('settings').then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, sidebarPinnedOpen: v } })), on);
-
-const panelRect = (page) =>
-  evalInShadow(page, 'margin-sidebar-host', function () {
-    const r = this.querySelector('.margin-sidebar').getBoundingClientRect();
-    return [Math.round(r.left), Math.round(r.top), Math.round(innerHeight - r.bottom)];
-  });
-
-test('hover: a floating sidebar over the page, no frame, page never moves', async () => {
-  const page = await openPage('frame');
-  await page.mouse.move(400, 200);
-  await page.mouse.move(8, 200); // within the 10px reveal zone
-  await waitFor(async () => (await sidebarSnapshot(page)).open);
-  await page.waitForTimeout(250); // slide-in transition
-  assert.deepEqual(await panelRect(page), [8, 8, 8], 'inset 8px from the edges');
-  assert.equal((await frameState(page)).open, false, 'frame only with Keep open');
-  assert.equal((await htmlMargins(page)).left, '0px');
-  await page.mouse.move(264, 200); // over the card's right part: stays open
-  await page.waitForTimeout(450);
-  assert.equal((await sidebarSnapshot(page)).open, true);
-  await page.mouse.move(700, 200);
-  await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 1500 });
-  await page.close();
-});
-
-test('Keep open puts the page in its box at the sidebar edge, without touching page markup; off goes back to the frame', async () => {
-  const page = await openPage('box');
-  const before = await htmlMargins(page);
-  await setKeepOpen(true);
-  await waitFor(async () => (await htmlMargins(page)).left === '260px');
-  const pushed = await htmlMargins(page);
-  assert.equal(pushed.styleAttr, before.styleAttr, 'no inline style on <html>');
-  assert.equal(pushed.styleTags, before.styleTags, 'no <style> injected into the page');
-  const h1Left = await page.evaluate(() => document.querySelector('h1').getBoundingClientRect().left);
-  assert.ok(h1Left >= 0 && h1Left < 40, `the page's own coordinates start at its box (h1 at ${h1Left})`);
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll');
-  assert.equal((await frameState(page)).open, true);
-  assert.deepEqual((await frameState(page)).hole, [260, 8, 8, 8], 'frame wraps the page's box');
-  await page.waitForTimeout(250);
-  assert.deepEqual(await panelRect(page), [0, 0, 0], 'docked flush to the window');
-
-  await page.emulateMedia({ media: 'print' });
-  assert.equal((await htmlMargins(page)).left, '0px', 'print is unaffected');
-  await page.emulateMedia({ media: 'screen' });
-
-  await setKeepOpen(false);
-  await waitFor(async () => (await htmlMargins(page)).left === '8px');
-  assert.equal((await sidebarSnapshot(page)).open, false);
-  await page.close();
-});
-
-test('Keep open: sidebar and box are in place while the page is still loading', async () => {
-  const { createServer } = await import('node:http');
-  const slow = createServer((req, res) => {
-    if (req.url === '/slow.png') return setTimeout(() => res.end(), 3000); // holds the load event
-    res.setHeader('content-type', 'text/html; charset=utf-8');
-    res.end('<!doctype html><title>slow</title><body style="margin:0"><h1>slow</h1><img src="/slow.png"></body>');
-  });
-  await new Promise((r) => slow.listen(0, '127.0.0.1', r));
-  await setKeepOpen(true);
-  const page = await ctx.context.newPage();
-  try {
-    await page.goto(`http://127.0.0.1:${slow.address().port}/`, { waitUntil: 'commit' });
-    await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
-    await waitFor(async () => (await sidebarSnapshot(page))?.open, { timeout: 1500 });
-    assert.equal((await htmlMargins(page)).left, '260px');
-    assert.notEqual(await page.evaluate(() => document.readyState), 'complete', 'page has not finished loading');
-  } finally {
-    await setKeepOpen(false);
-    await page.close();
-    await new Promise((r) => { slow.closeAllConnections(); slow.close(r); });
-  }
-});
-
-test('Keep open registers the first-paint placeholder for the current width; Margin takes over on the page', async () => {
-  const registered = () =>
-    ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r[0]?.css?.[0] ?? null));
-  const placeholder = (page) =>
-    page.evaluate(() => ({
-      content: getComputedStyle(document.documentElement, '::after').content,
-      left: `${new DOMMatrix(getComputedStyle(document.documentElement).transform).e}px`,
-      attr: document.documentElement.dataset.marginDocked ?? null,
-    }));
-
-  await setKeepOpen(true);
-  await waitFor(async () => (await registered())?.endsWith('themes/arcadia/docked/w-260.css'));
-  const page = await openPage('placeholder');
-  // The placeholder placed the first paint; the page's own box now holds the
-  // same width and the placeholder is switched off on this page.
-  await waitFor(async () => (await placeholder(page)).attr === 'off');
-  assert.deepEqual(await placeholder(page), { content: 'none', left: '260px', attr: 'off' });
-
-  const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'placeholder').id;
-  await ctx.worker.evaluate((id) => chrome.tabs.sendMessage(id, { type: 'command', command: 'toggle-sidebar' }), tabId);
-  await waitFor(async () => (await registered())?.endsWith('closed.css'));
-  await waitFor(async () => (await placeholder(page)).left === '8px');
-
-  await setKeepOpen(true);
-  await waitFor(async () => (await placeholder(page)).left === '260px');
-  await waitFor(async () => (await registered())?.endsWith('w-260.css'));
-  await setKeepOpen(false);
-  await waitFor(async () => (await registered())?.endsWith('closed.css'));
-  await page.close();
-});
-
-test('exactly one highlighted tab, the current one, after opening and switching pages', async () => {
+test('exactly one highlighted tab, the current one, after opening and switching pages', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const highlighted = (page) =>
     evalInShadow(page, 'margin-sidebar-host', function () {
       return [...this.querySelectorAll('.tab.active .title, .pin.active .title')].map((n) => n.textContent);
@@ -341,45 +115,4 @@ test('exactly one highlighted tab, the current one, after opening and switching 
     await waitFor(async () => JSON.stringify(await highlighted(page)) === JSON.stringify([`hl-${['one', 'two', 'three'][i]}`]));
   }
   for (const p of pages) await p.close();
-});
-
-test('right-click menu on tabs: pin, move to another space, close; no hover pin button', async () => {
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  const send = (message) => nt.evaluate((m) => chrome.runtime.sendMessage(m).then((r) => r?.result), message);
-  const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
-  const { spaceId: work } = await send({ type: 'createSpace', name: 'Menu test', emoji: '🧪', color: '#e17055' }); // windowId omitted: stays on the current space
-  const a = await openPage('menu-a');
-  const b = await openPage('menu-b');
-  await b.bringToFront();
-  await waitFor(async () => { const { tabs } = await sidebarSnapshot(b); return tabs.includes('menu-a') && tabs.includes('menu-b'); });
-  assert.equal(await evalInShadow(b, 'margin-sidebar-host', function () { return this.querySelectorAll('.pin-tab').length; }), 0, 'no hover pin button');
-
-  const items = await openMenu(b, '.tab', 'menu-a');
-  assert.equal(items[0], 'Pin Tab');
-  assert.ok(items.includes('Move to 🧪 Menu test'), JSON.stringify(items));
-  assert.equal(items.at(-1), 'Close Tab');
-  await evalInShadow(b, 'margin-sidebar-host', function () {
-    this.querySelector('.tab-menu .menu-item').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
-  });
-  assert.equal(await menuOpen(b), false, 'Escape closes it');
-  await openMenu(b, '.tab', 'menu-a');
-  await b.mouse.click(700, 300);
-  assert.equal(await menuOpen(b), false, 'a click on the page closes it');
-
-  await openMenu(b, '.tab', 'menu-a');
-  await clickInShadow(b, '.tab-menu .menu-item', 'Move to 🧪 Menu test');
-  await waitFor(async () => !(await sidebarSnapshot(b)).tabs.includes('menu-a'));
-  const tabId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'menu-a').id;
-  assert.equal((await readState(ctx.worker, 'tabSpace'))[tabId], work);
-
-  await openMenu(b, '.tab', 'menu-b');
-  const closed = b.waitForEvent('close');
-  await clickInShadow(b, '.tab-menu .menu-item', 'Close Tab').catch(() => {}); // the tab may close before the helper detaches
-  await closed;
-
-  await a.close();
-  await send({ type: 'deleteSpace', spaceId: work });
-  assert.ok(windowId != null);
-  await nt.close();
 });

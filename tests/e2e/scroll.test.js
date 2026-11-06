@@ -5,9 +5,10 @@ import { rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { launch, evalInShadow, waitFor, buildSafariProfile, gotoLauncher } from './helpers.js';
 
-// Margin's scrolling rules in the Safari build (shared/gestures.js, shared/pull.js):
-// no page bounce (and so no Safari pull-to-refresh), Margin's own pull-to-refresh,
-// and scrolling over the sidebar never moves the page.
+// Margin's scrolling rules in the Safari build (shared/gestures.js, shared/pull.js): no page
+// bounce (Chrome: left alone), Margin's own pull-to-refresh and swipe back/forward; all skipped
+// (they wait for, or read, the in-page UI removed in Margin 2 Phase 2 step 5). Not run for now
+// (no E2E runs for now).
 let ctx, dir, server, base, control;
 before(async () => {
   dir = buildSafariProfile();
@@ -47,7 +48,7 @@ async function pullDown(page, n = 18, step = -12) {
   }
 }
 
-test('no page bounce while blocking is on (so no Safari pull-to-refresh); the setting puts it back', async () => {
+test('no page bounce while blocking is on (so no Safari pull-to-refresh); the setting puts it back', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await open('bounce');
   await waitFor(async () => (await overscroll(page)) === 'none');
   await setSettings({ blockGestures: false });
@@ -58,7 +59,7 @@ test('no page bounce while blocking is on (so no Safari pull-to-refresh); the se
   await page.close();
 });
 
-test('pulling down at the top shows Margin\'s indicator and reloads the page', async () => {
+test('pulling down at the top shows Margin\'s indicator and reloads the page', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await open('pull');
   await page.evaluate(() => { window.__before = true; });
   const reloaded = page.waitForEvent('load', { timeout: 5000 });
@@ -73,7 +74,7 @@ test('pulling down at the top shows Margin\'s indicator and reloads the page', a
   await page.close();
 });
 
-test('the same pull while scrolled down (or a small one) does nothing', async () => {
+test('the same pull while scrolled down (or a small one) does nothing', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await open('no-pull');
   await page.evaluate(() => { window.__before = true; window.scrollTo(0, 400); });
   await waitFor(() => page.evaluate(() => window.scrollY === 400));
@@ -96,34 +97,7 @@ test('the same pull while scrolled down (or a small one) does nothing', async ()
   await page.close();
 });
 
-test('scrolling over the sidebar never scrolls the page; its tab list scrolls when it has more than fits', async () => {
-  await setSettings({ sidebarPinnedOpen: true });
-  const extra = [];
-  for (let i = 0; i < 8; i++) extra.push(await open(`filler-${i}`));
-  const page = await open('sidebar-scroll', { height: 320 });
-  await page.waitForTimeout(500);
-  await page.evaluate(() => window.scrollTo(0, 200));
-  await page.mouse.move(100, 200); // over the sidebar's tab list
-  const list = () => evalInShadow(page, 'margin-sidebar-host', function () {
-    const s = this.querySelector('.tabs-section');
-    return { top: s.scrollTop, overflows: s.scrollHeight > s.clientHeight };
-  });
-  assert.equal((await list()).overflows, true, 'more tabs than fit');
-  for (let i = 0; i < 5; i++) await page.mouse.wheel(0, 40);
-  await waitFor(async () => (await list()).top > 0);
-  for (let i = 0; i < 20; i++) await page.mouse.wheel(0, 80); // past the list's end
-  await page.mouse.move(100, 30); // over the top row (nothing scrolls there)
-  for (let i = 0; i < 5; i++) await page.mouse.wheel(0, -60);
-  await page.waitForTimeout(300);
-  assert.equal(await page.evaluate(() => window.scrollY), 200, 'the page never moved');
-  await page.mouse.move(600, 200); // over the page: it scrolls as usual
-  await page.mouse.wheel(0, 100);
-  await waitFor(() => page.evaluate(() => window.scrollY > 200));
-  for (const p of [...extra, page]) await p.close();
-  await setSettings({ sidebarPinnedOpen: false });
-});
-
-test('Chrome build: page bounce is left alone', async () => {
+test('Chrome build: page bounce is left alone', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const chrome = await launch();
   try {
     const page = await chrome.context.newPage();
@@ -149,7 +123,7 @@ const swipeBadge = (page) => evalInShadow(page, 'margin-sidebar-host', function 
   return { active: b.classList.contains('active'), forward: b.classList.contains('forward'), opacity: Number(getComputedStyle(b).opacity) };
 });
 
-test('two-finger swipe: Arc\'s edge badge, then back (fingers moving right) and forward', async () => {
+test('two-finger swipe: Arc\'s edge badge, then back (fingers moving right) and forward', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await open('swipe-a');
   await page.goto(`${base}/swipe-b`);
   await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
@@ -172,7 +146,7 @@ test('two-finger swipe: Arc\'s edge badge, then back (fingers moving right) and 
   await page.close();
 });
 
-test('no swipe navigation over something that scrolls sideways, for a small swipe, or with the setting off', async () => {
+test('no swipe navigation over something that scrolls sideways, for a small swipe, or with the setting off', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await open('swipe-c');
   await page.goto(`${base}/swipe-d`);
   await page.waitForSelector('margin-sidebar-host', { state: 'attached' });

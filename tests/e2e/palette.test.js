@@ -1,6 +1,9 @@
+// What's left of the palette: a search opens a new tab with Chrome's own engine (background
+// `search`); skipped, as it drives the in-page palette removed in Margin 2 Phase 2 step 5.
+// Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, paletteSnapshot, sidebarSnapshot, tabsInBrowser, waitFor, gotoLauncher } from './helpers.js';
+import { launch, startServer, paletteSnapshot, sidebarSnapshot, waitFor } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -22,54 +25,7 @@ async function openPage(name) {
   return page;
 }
 
-test('⌘T opens the palette with focus in the field; Esc closes it', async () => {
-  const page = await openPage('palette-home');
-  await page.keyboard.press('Meta+KeyT');
-  const snap = await waitFor(async () => {
-    const s = await paletteSnapshot(page);
-    return s?.open && s;
-  });
-  assert.equal(snap.focused, true);
-  assert.ok(snap.ids.includes('action:toggle-sidebar'));
-  await page.keyboard.press('Escape');
-  assert.equal((await paletteSnapshot(page)).open, false);
-  await page.close();
-});
-
-test('fuzzy search finds a tab; Enter activates it', async () => {
-  const target = await openPage('zebra-stripes');
-  const page = await openPage('palette-search');
-  await page.keyboard.press('Meta+KeyT');
-  await page.keyboard.type('zbr strp');
-  const snap = await waitFor(async () => {
-    const s = await paletteSnapshot(page);
-    return s.ids[0] === `tab:${(await tabsInBrowser(ctx.worker)).find((t) => t.title === 'zebra-stripes').id}` && s;
-  });
-  assert.equal(snap.selected, snap.ids[0]);
-  await page.keyboard.press('Enter');
-  await waitFor(async () => (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'zebra-stripes')?.active);
-  assert.equal((await paletteSnapshot(page)).open, false);
-  await target.close();
-  await page.close();
-});
-
-test('arrow keys move the selection; actions run (Toggle sidebar)', async () => {
-  const page = await openPage('palette-keys');
-  await page.keyboard.press('Meta+KeyT');
-  await page.keyboard.type('toggle sidebar');
-  await waitFor(async () => (await paletteSnapshot(page)).ids[0] === 'action:toggle-sidebar');
-  const before = await paletteSnapshot(page);
-  await page.keyboard.press('ArrowDown');
-  const after = await paletteSnapshot(page);
-  assert.equal(after.selected, before.ids[1 % before.ids.length]);
-  await page.keyboard.press('ArrowUp');
-  assert.equal((await paletteSnapshot(page)).selected, 'action:toggle-sidebar');
-  await page.keyboard.press('Enter');
-  await waitFor(async () => (await sidebarSnapshot(page)).open);
-  await page.close();
-});
-
-test('"Search for" opens a new tab, searching with Chrome\'s own search engine', async () => {
+test('"Search for" opens a new tab, searching with Chrome\'s own search engine', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await openPage('palette-go');
   await page.keyboard.press('Meta+KeyT');
   await page.keyboard.type('margin browser');
@@ -85,24 +41,4 @@ test('"Search for" opens a new tab, searching with Chrome\'s own search engine',
   await tab.waitForURL((url) => url.protocol === 'https:' && [...url.searchParams.values()].includes('margin browser'));
   await tab.close();
   await page.close();
-});
-
-test('commands fallback: a background "open-palette" command toggles the palette', async () => {
-  const page = await openPage('palette-command');
-  const id = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'palette-command').id;
-  await ctx.worker.evaluate((tabId) => chrome.tabs.sendMessage(tabId, { type: 'command', command: 'open-palette' }), id);
-  await waitFor(async () => (await paletteSnapshot(page))?.open);
-  await page.close();
-});
-
-test('⌘T opens the palette on the start page too; the old ⌥K setting is gone', async () => {
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  await nt.waitForSelector('#sidebar .margin-sidebar');
-  await nt.click('#settings summary');
-  assert.equal(await nt.locator('[data-shortcut="paletteShortcut"]').count(), 0);
-  await nt.locator('.launcher-query').click();
-  await nt.keyboard.press('Meta+KeyT');
-  await waitFor(async () => (await paletteSnapshot(nt))?.open);
-  await nt.close();
 });

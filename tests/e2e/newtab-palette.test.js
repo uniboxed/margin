@@ -1,6 +1,9 @@
+// New windows and new-tab pages: a new window keeps its space, the start page (#launcher) is
+// never handed off; all skipped (they read the in-page palette or the launcher, removed in
+// Margin 2 Phase 2 step 5). Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, evalInShadow, readState } from './helpers.js';
+import { launch, startServer, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
 
 let ctx, server;
 before(async () => {
@@ -22,51 +25,7 @@ async function openPage(name) {
   return page;
 }
 
-test('⌘T: the new tab closes and the palette opens over the page you were on, "+ New Tab" highlighted', async () => {
-  const page = await openPage('cmd-t-origin');
-  await page.bringToFront();
-  const before = (await tabsInBrowser(ctx.worker)).length;
-
-  // What Safari does on ⌘T: a new tab showing Margin's new-tab page (created
-  // directly, like ⌘T; Playwright's newPage would start at about:blank).
-  const newTabId = await ctx.worker.evaluate(() => chrome.tabs.create({}).then((t) => t.id));
-
-  await waitFor(async () => (await paletteSnapshot(page))?.open);
-  await waitFor(async () => !(await tabsInBrowser(ctx.worker)).some((t) => t.id === newTabId));
-  assert.equal((await tabsInBrowser(ctx.worker)).length, before, 'no extra tab left behind');
-  assert.equal((await tabsInBrowser(ctx.worker)).find((t) => t.active)?.title, 'cmd-t-origin');
-  const highlighted = () => evalInShadow(page, 'margin-sidebar-host', function () {
-    return { newTab: !!this.querySelector('.new-tab-row.active'), tab: !!this.querySelector('.tab.active'), behind: !!this.querySelector('.tab.behind') };
-  });
-  assert.deepEqual(await highlighted(), { newTab: true, tab: false, behind: true }, '"+ New Tab" highlighted, the page\'s tab only softly');
-
-  // Typing a URL opens it in a new tab.
-  await page.keyboard.type(`${new URL(server.base).host}/from-cmd-t`);
-  const opened = ctx.context.waitForEvent('page');
-  await page.keyboard.press('Enter');
-  const tab = await opened;
-  await tab.waitForURL(`${server.base}/from-cmd-t`);
-  await tab.close();
-  await page.close();
-});
-
-test('⌘T then Escape: back to the page, its tab highlighted again', async () => {
-  const page = await openPage('cmd-t-escape');
-  await page.bringToFront();
-  const before = (await tabsInBrowser(ctx.worker)).length;
-  await ctx.worker.evaluate(() => chrome.tabs.create({}));
-  await waitFor(async () => (await paletteSnapshot(page))?.open);
-  await page.keyboard.press('Escape');
-  await waitFor(async () => !(await paletteSnapshot(page))?.open);
-  assert.equal((await tabsInBrowser(ctx.worker)).length, before, 'no tab opened');
-  const highlighted = await evalInShadow(page, 'margin-sidebar-host', function () {
-    return { newTab: !!this.querySelector('.new-tab-row.active'), tab: !!this.querySelector('.tab.active'), behind: !!this.querySelector('.tab.behind') };
-  });
-  assert.deepEqual(highlighted, { newTab: false, tab: true, behind: false });
-  await page.close();
-});
-
-test('⌘N: a new window starts in the same space, with the palette open on the new-tab page', async () => {
+test('⌘N: a new window starts in the same space, with the palette open on the new-tab page', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await openPage('cmd-n-origin');
   const launcher = await ctx.context.newPage();
   await gotoLauncher(launcher, ctx);
@@ -88,7 +47,7 @@ test('⌘N: a new window starts in the same space, with the palette open on the 
   await page.close();
 });
 
-test('the launcher page opened on purpose (#launcher) stays', async () => {
+test('the launcher page opened on purpose (#launcher) stays', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await openPage('launcher-stays');
   const launcher = await ctx.context.newPage();
   await gotoLauncher(launcher, ctx);
@@ -100,23 +59,7 @@ test('the launcher page opened on purpose (#launcher) stays', async () => {
   await page.close();
 });
 
-test('the palette can open the start page (with Settings) on purpose', async () => {
-  const page = await openPage('to-launcher');
-  await page.bringToFront();
-  await page.keyboard.press('Meta+KeyT');
-  await page.keyboard.type('margin start page');
-  await waitFor(async () => (await paletteSnapshot(page))?.ids[0] === 'action:launcher');
-  const opened = ctx.context.waitForEvent('page');
-  await page.keyboard.press('Enter');
-  const launcher = await opened;
-  await launcher.waitForSelector('.settings');
-  await launcher.waitForTimeout(800);
-  assert.equal(launcher.isClosed(), false, 'not handed off to the palette');
-  await launcher.close();
-  await page.close();
-});
-
-test('palette "New window" opens a real window in the same space, with the palette ready', async () => {
+test('palette "New window" opens a real window in the same space, with the palette ready', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await openPage('new-window-origin');
   await page.bringToFront();
   const fromWindow = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));

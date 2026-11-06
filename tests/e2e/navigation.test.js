@@ -1,3 +1,6 @@
+// Next/previous tab and space (keys on pages and the new-tab page, background.navigate); all
+// skipped: they read the order from, or wait for, the in-page UI removed in Margin 2 Phase 2
+// step 5. Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, startServer, sidebarSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
@@ -31,7 +34,7 @@ async function focus(page, title) {
   await waitFor(async () => (await sidebarSnapshot(page)).tabs.includes(title));
 }
 
-test('⌃⌘↓ / ⌃⌘↑ move through the sidebar tabs in order, wrapping', async () => {
+test('⌃⌘↓ / ⌃⌘↑ move through the sidebar tabs in order, wrapping', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const pages = {};
   for (const name of ['nav-a', 'nav-b', 'nav-c']) pages[name] = await openPage(name);
   await focus(pages['nav-a'], 'nav-a');
@@ -56,7 +59,7 @@ test('⌃⌘↓ / ⌃⌘↑ move through the sidebar tabs in order, wrapping', a
   for (const p of Object.values(pages)) await p.close();
 });
 
-test('⌃⌘→ / ⌃⌘← switch the space and peek the sidebar; the page itself does not get the keys', async () => {
+test('⌃⌘→ / ⌃⌘← switch the space and peek the sidebar; the page itself does not get the keys', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await openPage('nav-space');
   await focus(page, 'nav-space');
   const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
@@ -86,7 +89,7 @@ test('⌃⌘→ / ⌃⌘← switch the space and peek the sidebar; the page itse
   await page.close();
 });
 
-test('the new-tab page handles the same shortcuts', async () => {
+test('the new-tab page handles the same shortcuts', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const nt = await ctx.context.newPage();
   await gotoLauncher(nt, ctx);
   await nt.waitForSelector('#sidebar .chip[data-space-id]');
@@ -98,49 +101,12 @@ test('the new-tab page handles the same shortcuts', async () => {
   await nt.close();
 });
 
-test('shortcuts are settings: record a new one, duplicates are refused, reset restores defaults', async () => {
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  await nt.click('#settings summary');
-  const field = (name) => nt.locator(`.shortcut-input[data-shortcut="${name}"]`);
-  assert.equal(await field('nextTab').inputValue(), '⌃⌘↓');
-  assert.equal(await field('nextSpace').inputValue(), '⌃⌘→');
-
-  // Record ⌥⇧L for "Next space".
-  await field('nextSpace').click();
-  await nt.keyboard.press('Alt+Shift+KeyL');
-  await waitFor(async () => (await storage('settings')).shortcuts?.nextSpace === 'Alt+Shift+KeyL');
-  assert.equal(await field('nextSpace').inputValue(), '⌥⇧L');
-  assert.equal((await storage('settings')).shortcuts.nextTab, 'Ctrl+Meta+ArrowDown', 'others unchanged');
-
-  // A combination already in use is refused.
-  await field('prevSpace').click();
-  await nt.keyboard.press('Control+Meta+ArrowDown');
-  assert.match(await nt.textContent('.settings-form .actions .help'), /already used for “Next tab”/);
-  assert.equal((await storage('settings')).shortcuts.prevSpace, 'Control+Meta+ArrowLeft'.replace('Control', 'Ctrl'));
-  await nt.keyboard.press('Escape');
-
-  // The new shortcut works on web pages right away.
-  const page = await openPage('custom-key');
-  await focus(page, 'custom-key');
-  const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
-  const before = (await storage('activeSpaceByWindow'))[windowId] ?? 'personal';
-  await page.keyboard.press('Alt+Shift+KeyL');
-  await waitFor(async () => ((await storage('activeSpaceByWindow'))[windowId] ?? 'personal') !== before);
-
-  await nt.bringToFront();
-  await nt.click('button:has-text("Reset shortcuts")');
-  await waitFor(async () => (await storage('settings')).shortcuts.nextSpace === 'Ctrl+Meta+ArrowRight');
-  await page.close();
-  await nt.close();
-});
-
 // The manifest-command path (Safari matches ⌃⌘ + arrows in the app) can't be
 // pressed in headless Chromium, so these drive background.navigate directly.
 const nav = (action, source, windowId) =>
   ctx.worker.evaluate(([a, s, w]) => globalThis.margin.navigate(a, s, w), [action, source, windowId]);
 
-test('fast presses all count: each continues from the tab the previous one chose', async () => {
+test('fast presses all count: each continues from the tab the previous one chose', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const pages = [];
   for (const name of ['fast-1', 'fast-2', 'fast-3', 'fast-4']) pages.push(await openPage(name));
   await focus(pages[0], 'fast-1');
@@ -153,7 +119,7 @@ test('fast presses all count: each continues from the tab the previous one chose
   for (const p of pages) await p.close();
 });
 
-test('one press arriving through both paths (command + page) moves once', async () => {
+test('one press arriving through both paths (command + page) moves once', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const pages = [];
   for (const name of ['dup-1', 'dup-2', 'dup-3']) pages.push(await openPage(name));
   await focus(pages[0], 'dup-1');
@@ -168,7 +134,7 @@ test('one press arriving through both paths (command + page) moves once', async 
   for (const p of pages) await p.close();
 });
 
-test('switching tabs by hand restarts the chain from that tab', async () => {
+test('switching tabs by hand restarts the chain from that tab', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const pages = [];
   for (const name of ['hand-1', 'hand-2', 'hand-3', 'hand-4']) pages.push(await openPage(name));
   await focus(pages[0], 'hand-1');

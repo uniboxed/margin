@@ -1,3 +1,5 @@
+// A page's own loads (content/loads.js rules: leaving, a reload, a page that stays); all skipped
+// (they read the in-page pill removed in Margin 2 Phase 2 step 5). Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -50,47 +52,6 @@ async function load(path) {
   return page;
 }
 
-test('auto-hide: the pill shows centered at the top while the page loads, then goes away', async () => {
-  await setSettings({ sidebarPinnedOpen: false });
-  const page = await load('slow-hover');
-  const s = await waitFor(async () => {
-    const v = await loaderState(page);
-    return v?.on && v;
-  });
-  assert.equal(await page.evaluate(() => document.readyState !== 'complete'), true, 'still loading');
-  assert.equal(s.inFrame, false);
-  assert.ok(Math.abs(s.centerX - s.vw / 2) <= 1, `centered on the window (${s.centerX} vs ${s.vw / 2})`);
-  assert.equal(s.top, 2);
-  await page.waitForLoadState('load');
-  await waitFor(async () => !(await loaderState(page)).on, { timeout: 2000 });
-  await page.close();
-});
-
-test('Keep open: the pill sits in the frame strip, centered over the page', async () => {
-  await setSettings({ sidebarPinnedOpen: true, sidebarWidth: 300 });
-  const page = await load('slow-docked');
-  const s = await waitFor(async () => {
-    const v = await loaderState(page);
-    return v?.on && v?.inFrame && v;
-  });
-  const pageCenter = 300 + (s.vw - 300 - 8) / 2;
-  assert.ok(Math.abs(s.centerX - pageCenter) <= 1, `centered over the page area (${s.centerX} vs ${pageCenter})`);
-  assert.ok(s.top >= 0 && s.top + 4 <= 8, 'inside the 8px top strip');
-  await page.waitForLoadState('load');
-  await waitFor(async () => !(await loaderState(page)).on, { timeout: 2000 });
-  await setSettings({ sidebarPinnedOpen: false, sidebarWidth: 260 });
-  await page.close();
-});
-
-test('a page that finishes quickly never leaves the pill showing', async () => {
-  const page = await load('fast');
-  await page.waitForLoadState('load');
-  await waitFor(async () => (await loaderState(page))?.on === false, { timeout: 2000 });
-  await page.waitForTimeout(700);
-  assert.equal((await loaderState(page)).on, false);
-  await page.close();
-});
-
 // While a navigation is pending, Playwright can't look at the old page (it
 // waits for the new one), so the old page reports its own pill state to the
 // server every 50ms: `loading` is the sidebar host's test hook, set with the
@@ -104,7 +65,7 @@ function reportWhileLeaving(page, navigate) {
   }, navigate ?? null);
 }
 
-test('leaving a page shows the pill on it right away, before the next page arrives', async () => {
+test('leaving a page shows the pill on it right away, before the next page arrives', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   await setSettings({ sidebarPinnedOpen: true, sidebarWidth: 260 });
   const page = await load('leave-from');
   await page.waitForLoadState('load');
@@ -119,7 +80,7 @@ test('leaving a page shows the pill on it right away, before the next page arriv
   await page.close();
 });
 
-test('the same for a reload (⌘R)', async () => {
+test('the same for a reload (⌘R)', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await load('slow-response?reload');
   await page.waitForLoadState('load');
   await waitFor(async () => (await loaderState(page))?.on === false, { timeout: 2000 });
@@ -132,7 +93,7 @@ test('the same for a reload (⌘R)', async () => {
   await page.close();
 });
 
-test('if the page stays after all (no navigation happens), the pill goes away once the user does something', async () => {
+test('if the page stays after all (no navigation happens), the pill goes away once the user does something', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await load('stays');
   await page.waitForLoadState('load');
   await waitFor(async () => (await loaderState(page))?.on === false, { timeout: 2000 });
@@ -144,16 +105,5 @@ test('if the page stays after all (no navigation happens), the pill goes away on
   assert.equal(await loading(), 'true', 'nothing tells Margin the navigation was dropped');
   await page.mouse.click(600, 300);
   await waitFor(async () => (await loading()) === 'false', { timeout: 2000 });
-  await page.close();
-});
-
-test('Keep open: a fast page still shows the pill briefly (taking over from the first-paint one), then it goes', async () => {
-  await setSettings({ sidebarPinnedOpen: true, sidebarWidth: 260 });
-  await waitFor(() => ctx.worker.evaluate(() => chrome.scripting.getRegisteredContentScripts({ ids: ['margin-docked'] }).then((r) => r.length > 0)));
-  const page = await load('fast-docked');
-  await waitFor(async () => (await loaderState(page))?.on === true, { timeout: 2000 });
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.marginDocked), 'off', 'placeholder (and its pill) handed over');
-  await waitFor(async () => (await loaderState(page))?.on === false, { timeout: 2000 });
-  await setSettings({ sidebarPinnedOpen: false });
   await page.close();
 });

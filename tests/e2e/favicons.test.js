@@ -7,8 +7,9 @@ import { dirname } from 'node:path';
 import { launch, evalInShadow, waitFor, buildSafariProfile, gotoLauncher, readState } from './helpers.js';
 
 const PNG = readFileSync(new URL('../../extension/icons/icon-48.png', import.meta.url));
-// Icon fetching is Safari's (Chrome provides tab.favIconUrl), so these run
-// the Safari profile.
+// Icon fetching is Safari's (Chrome provides tab.favIconUrl), so these run the Safari profile;
+// all skipped (they wait for, or read, the in-page UI removed in Margin 2 Phase 2 step 5).
+// Not run for now (no E2E runs for now).
 let ctx, safariBuild;
 const servers = [];
 
@@ -47,7 +48,7 @@ const pngSize = (dataUrl) => {
   return [b.readUInt32BE(16), b.readUInt32BE(20)];
 };
 
-test('a page’s own icon is fetched once, shrunk to 32×32 and stored per site', async () => {
+test('a page’s own icon is fetched once, shrunk to 32×32 and stored per site', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const origin = await site({ '/': page('with-icon', '<link rel="icon" href="/icon.png" sizes="48x48">'), '/icon.png': { type: 'image/png', body: PNG } });
   const p = await visit(`${origin}/`);
   const entry = await waitFor(async () => (await favicons())[origin]);
@@ -57,7 +58,7 @@ test('a page’s own icon is fetched once, shrunk to 32×32 and stored per site'
   await p.close();
 });
 
-test('no icon link: falls back to /favicon.ico', async () => {
+test('no icon link: falls back to /favicon.ico', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const origin = await site({ '/': page('no-link'), '/favicon.ico': { type: 'image/x-icon', body: PNG } });
   const p = await visit(`${origin}/`);
   const entry = await waitFor(async () => (await favicons())[origin]);
@@ -65,7 +66,7 @@ test('no icon link: falls back to /favicon.ico', async () => {
   await p.close();
 });
 
-test('not an image (HTML served as the icon) is rejected; letter avatar stays', async () => {
+test('not an image (HTML served as the icon) is rejected; letter avatar stays', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const origin = await site({ '/': page('fake-icon', '<link rel="icon" href="/fake.png">'), '/fake.png': { type: 'image/png', body: '<!doctype html>oops' } });
   const p = await visit(`${origin}/`);
   await p.waitForTimeout(1500);
@@ -73,7 +74,7 @@ test('not an image (HTML served as the icon) is rejected; letter avatar stays', 
   await p.close();
 });
 
-test('another host’s icon over plain http on a local address is refused', async () => {
+test('another host’s icon over plain http on a local address is refused', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const iconHost = await site({ '/x.png': { type: 'image/png', body: PNG } });
   const port = new URL(iconHost).port;
   const origin = await site({ '/': page('foreign-icon', `<link rel="icon" href="http://localhost:${port}/x.png">`) });
@@ -83,7 +84,7 @@ test('another host’s icon over plain http on a local address is refused', asyn
   await p.close();
 });
 
-test('closed pins show the stored icon (as Safari would, without favIconUrl)', async () => {
+test('closed pins show the stored icon (as Safari would, without favIconUrl)', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const origin = await site({ '/': page('pinned-icon', '<link rel="icon" href="/i.png">'), '/i.png': { type: 'image/png', body: PNG } });
   const p = await visit(`${origin}/`);
   await waitFor(async () => (await favicons())[origin]);

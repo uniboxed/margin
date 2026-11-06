@@ -1,3 +1,5 @@
+// Auto-archive: the background's alarm (runs), and archiving and restoring (skipped: they went
+// through the in-page UI that Margin 2 Phase 2 step 5 removed). Not run for now (no E2E runs for now).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, startServer, clickInShadow, sidebarSnapshot, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
@@ -28,7 +30,7 @@ test('the background schedules the archive check with browser.alarms (Chromium)'
   assert.equal(alarm.periodInMinutes, 15);
 });
 
-test('stale, unpinned, inactive tabs are closed and archived; pinned and active ones stay', async () => {
+test('stale, unpinned, inactive tabs are closed and archived; pinned and active ones stay', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const stale = await openPage('stale');
   const pinned = await openPage('pinned-stale');
   const active = await openPage('active');
@@ -57,7 +59,7 @@ test('stale, unpinned, inactive tabs are closed and archived; pinned and active 
   for (const p of [pinned, active, nt]) await p.close();
 });
 
-test('closing from the sidebar archives; the new-tab archive list restores in place', async () => {
+test('closing from the sidebar archives; the new-tab archive list restores in place', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const keep = await openPage('keeper');
   await openPage('closeme');
   await clickInShadow(keep, '.tab .close', 'closeme');
@@ -74,7 +76,7 @@ test('closing from the sidebar archives; the new-tab archive list restores in pl
   await keep.close();
 });
 
-test('archived tabs are restorable from the palette, into their space', async () => {
+test('archived tabs are restorable from the palette, into their space', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
   const page = await openPage('palette-archive');
   const nt = await ctx.context.newPage();
   await gotoLauncher(nt, ctx);
@@ -100,16 +102,4 @@ test('archived tabs are restorable from the palette, into their space', async ()
   assert.equal((await storage('tabSpace'))[restoredId], result.spaceId);
   await restored.close();
   await page.close();
-});
-
-test('archive-after setting is editable on the new tab', async () => {
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  await nt.waitForSelector('#sidebar .margin-sidebar');
-  await nt.click('#settings summary');
-  assert.equal(await nt.inputValue('label:has-text("Archive tabs") input'), '12');
-  await nt.fill('label:has-text("Archive tabs") input', '3');
-  await nt.press('label:has-text("Archive tabs") input', 'Tab');
-  await waitFor(async () => (await storage('settings')).archiveAfterHours === 3);
-  await nt.close();
 });
