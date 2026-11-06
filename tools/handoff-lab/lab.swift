@@ -595,6 +595,8 @@ final class Stp {
     let port: Int
     let labDir: URL
     private var server: Process?
+    // The lab's own calls to its server carry this, made per run: no other page can (server.py).
+    private let token = UUID().uuidString + UUID().uuidString
     private(set) var created: [StpWin] = []
     private var commands = 0
     var base: String { "http://127.0.0.1:\(port)" }
@@ -613,6 +615,7 @@ final class Stp {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         p.arguments = ["-I", labDir.appendingPathComponent("server.py").path, labDir.appendingPathComponent("www").path, state, String(port)]
+        p.environment = (ProcessInfo.processInfo.environment).merging(["LAB_TOKEN": token]) { $1 }
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         try p.run()
@@ -646,6 +649,7 @@ final class Stp {
         r.httpMethod = method
         r.cachePolicy = .reloadIgnoringLocalCacheData
         r.timeoutInterval = 3
+        r.setValue(token, forHTTPHeaderField: "X-Lab-Token")
         if let body { r.httpBody = try? JSONSerialization.data(withJSONObject: body) }
         guard let (data, resp) = try? await URLSession.shared.data(for: r) else { return (0, nil) }
         return ((resp as? HTTPURLResponse)?.statusCode ?? 0, try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]))

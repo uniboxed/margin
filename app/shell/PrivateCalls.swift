@@ -300,7 +300,8 @@ nonisolated struct SkyLight: @unchecked Sendable {
     private var performAddRemove: Perform?
     private var performRemove: Perform?
     // The bridge's operations are asynchronous (SLSAsynchronousBridgedWindowManagementOperation):
-    // the last few are kept alive a while, as the labs (which never released them) did.
+    // each is kept alive long after its step is verified or given up, as the labs (which never
+    // released them) did. Never by count: a burst (quit's returns) mustn't release one in flight.
     private let kept = KeptOperations()
 
     // refusing: always true under MARGIN_APP_TESTS, except in the test that checks the wrappers
@@ -426,14 +427,32 @@ nonisolated struct SkyLight: @unchecked Sendable {
     }
 }
 
+// Each op held for `keepFor` after it was sent: far past its step's end (two tries of 300 ms), so
+// none is released while SkyLight may still carry it out, however many are sent at once. Older
+// ones go as new ones come; what releasing one mid-flight would do was never tried.
 nonisolated final class KeptOperations: @unchecked Sendable {
-    static let count = 16
+    static let keepFor: TimeInterval = 10
     private let lock = NSLock()
-    private var operations: [AnyObject] = []
-    func keep(_ op: AnyObject) {
+    private let keepFor: TimeInterval
+    private let now: @Sendable () -> TimeInterval
+    private var operations: [(op: AnyObject, at: TimeInterval)] = []
+
+    init(keepFor: TimeInterval = KeptOperations.keepFor, now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.keepFor = keepFor
+        self.now = now
+    }
+
+    var count: Int {
         lock.lock()
-        operations.append(op)
-        if operations.count > Self.count { operations.removeFirst(operations.count - Self.count) }
+        defer { lock.unlock() }
+        return operations.count
+    }
+
+    func keep(_ op: AnyObject) {
+        let at = now()
+        lock.lock()
+        operations.removeAll { at - $0.at >= keepFor }
+        operations.append((op, at))
         lock.unlock()
     }
 }

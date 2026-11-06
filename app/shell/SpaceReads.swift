@@ -213,6 +213,7 @@ final class FakeSpaceWorld: SpaceReads, SpaceBridge {
     var displayOf: [String: CGRect] = [:] // display identifier → its frame (top left), for display(at:)
     var lag: Double = 0.004
     var dropNext = 0 // the next ops sent don't land at all (counted down per op)
+    var refuseAdds: [Bool] = [] // each add takes the next: true, its op couldn't be made (nothing sent)
     var unknown = false // every Space read answers nil
     var nextSpace: UInt64 = 2431
     var createFails = false
@@ -270,6 +271,10 @@ final class FakeSpaceWorld: SpaceReads, SpaceBridge {
 
     func add(_ window: Int, to space: UInt64) -> Bool {
         guard canPark else { return false }
+        if !refuseAdds.isEmpty, refuseAdds.removeFirst() {
+            calls.append("add \(window) → \(space) refused")
+            return false
+        }
         calls.append("add \(window) → \(space)")
         land { w in w.spaces = [space] } (window)
         return true

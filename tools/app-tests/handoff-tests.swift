@@ -2,7 +2,8 @@
 // private function is called here and nothing freezes the screen.
 //
 // The freezer (Freezer.swift): FakeFreezer on the fake clock (the watchdog at
-// 1.7 s, and the close handoff's 1.0 s; a reveal once only; a release after a
+// 1.7 s, and the close handoff's 1.0 s; its report heard a moment after its
+// reveal, as the real one's is; a reveal once only; a release after a
 // failed reveal, the watchdog's too; a later freeze's handle never revealed by
 // an earlier timer), the session rules (two failed freezes in a row, one
 // failed reveal, off at launch; the watchdog counted, not a failure), and
@@ -86,8 +87,14 @@ func freezerTests() {
         clock.advance(1.69)
         check("freezer: still live at 1.69 s", fake.isLive && fake.calls == ["freeze 1.7 s: 0"], "\(fake.calls)")
         clock.advance(0.01)
-        check("freezer: the watchdog reveals at 1.7 s", !fake.isLive && fake.calls.last == "reveal 1 watchdog: 0"
-              && heard.reports.last == .revealed(handle: 1, why: .watchdog, heldMs: 1700), "\(heard.reports)")
+        check("freezer: the watchdog reveals at 1.7 s", !fake.isLive && fake.calls.last == "reveal 1 watchdog: 0", "\(fake.calls)")
+        // As the real one's: revealed on its own queue, heard on the main actor a moment later.
+        check("freezer: … its report not heard yet, as the real one's isn't", heard.reports == [.froze(handle: 1)], "\(heard.reports)")
+        check("freezer: … a reveal in that gap: not live, nothing called or reported",
+              fake.reveal(.ready) == .notLive && fake.calls.count == 2 && heard.reports.count == 1, "\(fake.calls)")
+        clock.advance(fake.watchdogReportLag)
+        check("freezer: then the watchdog's report, with the time it was revealed at",
+              heard.reports.last == .revealed(handle: 1, why: .watchdog, heldMs: 1700) && heard.reports.count == 2, "\(heard.reports)")
         check("freezer: the watchdog counted, not a failure", heard.rules.on && heard.rules.watchdogs == 1 && heard.rules.lastWatchdogAt == clock.now() && heard.rules.lastRevealAt == clock.now())
         check("freezer: the watchdog's line: handle and milliseconds", heard.lines == ["handoff: watchdog revealed freeze 1 at 1700 ms (1 this session)"], "\(heard.lines)")
         check("freezer: a reveal after the watchdog's: nothing to reveal, nothing called", fake.reveal(.ready) == .notLive && fake.calls.count == 2 && heard.reports.count == 2)
@@ -152,7 +159,7 @@ func freezerTests() {
         fake.revealResults = [7]
         fake.releaseResults = [3]
         _ = fake.freeze()
-        clock.advance(1.7)
+        clock.advance(1.7 + fake.watchdogReportLag)
         check("freezer: a failed watchdog reveal: released", fake.calls == ["freeze 1.7 s: 0", "reveal 1 watchdog: 7", "release 1: 3"]
               && heard.reports.last == .revealFailed(handle: 1, why: .watchdog, result: 7, released: 3, heldMs: 1700), "\(fake.calls)")
         check("freezer: and off for the session, the watchdog still counted", !heard.rules.on && heard.rules.watchdogs == 1 && (heard.rules.off ?? "").contains("answered 7; released, result 3"))

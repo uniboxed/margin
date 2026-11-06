@@ -243,10 +243,13 @@ final class RealFreezer: Freezer {
 // ---- the stand-in ----
 
 // The tests' and the harness's: no private call, results scripted per call, and the watchdog on
-// a SwitchClock. Handles count up from 1.
+// a SwitchClock. Handles count up from 1. Its watchdog keeps the real one's order: the reveal at
+// once (`isLive` false, a reveal then `notLive`), its report `watchdogReportLag` later, as the real
+// one's reaches the main actor after it was made on the freezer's queue.
 final class FakeFreezer: Freezer {
     weak var delegate: FreezerDelegate?
     var options: FreezerOptions
+    var watchdogReportLag: Double = 0.001
     var unavailable: String? // set: every freeze is `unavailable` with this reason
     // Each call takes the next result; an empty list answers 0.
     var freezeResults: [Int32] = []
@@ -279,8 +282,8 @@ final class FakeFreezer: Freezer {
         let handle = nextHandle
         nextHandle += 1
         let timer = clock.after(seconds) { [weak self] in
-            guard let self, self.live?.handle == handle else { return }
-            self.reveal(.watchdog)
+            guard let self, self.live?.handle == handle, let report = self.take(.watchdog).1 else { return }
+            _ = self.clock.after(self.watchdogReportLag) { [weak self] in self?.tell(report) }
         }
         live = (handle, clock.now(), timer)
         tell(.froze(handle: handle))
@@ -288,20 +291,23 @@ final class FakeFreezer: Freezer {
     }
 
     @discardableResult func reveal(_ why: RevealWhy) -> RevealResult {
-        guard let held = live else { return .notLive }
+        let (result, report) = take(why)
+        if let report { tell(report) }
+        return result
+    }
+
+    // The live freeze revealed (released after a nonzero answer), and what to report; nothing told.
+    private func take(_ why: RevealWhy) -> (RevealResult, FreezeReport?) {
+        guard let held = live else { return (.notLive, nil) }
         live = nil
         held.timer.cancel()
         let heldMs = Int(((clock.now() - held.at) * 1000).rounded())
         let result = revealResults.isEmpty ? 0 : revealResults.removeFirst()
         calls.append("reveal \(held.handle) \(why.rawValue): \(result)")
-        guard result != 0 else {
-            tell(.revealed(handle: held.handle, why: why, heldMs: heldMs))
-            return .revealed
-        }
+        guard result != 0 else { return (.revealed, .revealed(handle: held.handle, why: why, heldMs: heldMs)) }
         let released = releaseResults.isEmpty ? 0 : releaseResults.removeFirst()
         calls.append("release \(held.handle): \(released)")
-        tell(.revealFailed(handle: held.handle, why: why, result: result, released: released, heldMs: heldMs))
-        return .failed(result, released: released)
+        return (.failed(result, released: released), .revealFailed(handle: held.handle, why: why, result: result, released: released, heldMs: heldMs))
     }
 
     private func tell(_ report: FreezeReport) {

@@ -145,7 +145,9 @@ G8 and G9 need `--person`: someone dismisses each prompt and does each step, the
   - `a.html`, `b.html`, `n.html` and `video.mp4` are the earlier STP lab's pages with sound and PiP.
   - `p.html` is the park lab's page.
   - `s.html` gives the setup steps.
-- `server.py`: the local server, a command queue for the extension and each page, and the pages' reports. Run with `python3 -I`.
+- `server.py`: the local server, a command queue for the extension and each page, and the pages' reports. Run with `python3 -I`, by the lab only.
+  - Any web page on the Mac can reach 127.0.0.1, so the lab's own calls carry a token made per run (`LAB_TOKEN`, sent as `X-Lab-Token`). Requests from other origins or host names are refused, and no answer allows every origin.
+  - `bg.js` runs only what the lab sends: its windows calls, windows of the lab's own pages, and `tabs.update` to a lab page. No answer holds an address, a title or an icon.
 - `results/`: one report per macOS build and day.
 
 ## Limits

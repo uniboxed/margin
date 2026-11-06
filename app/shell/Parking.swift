@@ -15,10 +15,11 @@
 //   isn't gone and wasn't shown or returned first.
 // - Every call Margin makes for a window carries a Cause, marked before the
 //   call. Only the person's own focus on a parked window that came back is
-//   reported as theirs; a return the system caused (a wake, a display change,
-//   the Dock restarting, or a window back with no focus on it) is parked again
-//   quietly, or returned to the Desktop when parking is off. It never starts a
-//   handoff.
+//   reported as theirs, on every read until a handoff shows it, a park hides it
+//   or `release` lets it go; a return the system caused (a wake, a display
+//   change, the Dock restarting, or a window back with no focus on it) is
+//   parked again quietly, or returned to the Desktop when parking is off. It
+//   never starts a handoff.
 // - Quit (§13.1): every parked window is closed by its own copy, with no
 //   drafts check; one whose copy can't be asked is returned to its Desktop.
 //   300 ms in all; a window still parked after that comes back by itself as
@@ -78,6 +79,9 @@ struct ParkedWindow: Equatable {
     var since: Double // when it was last parked
     var phase: Phase
     var cause: Cause? // the call Margin is making for it, marked before it's made
+    // The person's focus brought it back (its focusedAt): theirs from then on, never judged the
+    // system's, until a handoff shows it, a park hides it again, or `release` lets it go.
+    var claimed: Double?
 
     var key: WindowKey? { windowId.map { WindowKey(link: link, windowId: $0) } }
     var label: String { "\(link)#\(windowId.map(String.init) ?? "?")" }
@@ -120,7 +124,7 @@ enum SweepFinding: Equatable {
     case newCopy(number: Int, link: String) // its window id is nil until rebound
     case returned(number: Int, link: String) // found in a user Space after a step that didn't land: forgotten
     case system(number: Int, link: String, why: String, then: SystemStep) // back by the system: never a handoff
-    case person(number: Int, key: WindowKey) // back with the person's focus on it: theirs
+    case person(number: Int, key: WindowKey) // back with the person's focus on it: theirs, said on every read until acted on
 }
 
 nonisolated struct ParkingOptions: Sendable {
@@ -128,6 +132,9 @@ nonisolated struct ParkingOptions: Sendable {
     var systemWindow: Double = 3 // §2.6: after a wake, a display change or the Dock restarting
     var marginCallGrace: Double = 1 // §2.6: focus this close to Margin's own call for the window is Margin's
     var rebindWithin: CGFloat = 2 // §2.2: bounds that fit the stored ones within this (points)
+    // §2.3: a copy's list lags by up to WINDOWS_MS (1 s). A copy that hasn't listed a window since
+    // its park must miss it this long (the binder's alone + reportLag) before it counts as closed.
+    var copyLag: Double = 2
     var quitWithin: Double = 0.3 // §6.4: every parked window closed or returned within this, in all
 }
 
@@ -196,7 +203,10 @@ final class ParkingRegistry {
     private var lastCall: [Int: (cause: Cause, at: Double)] = [:]
     private var systemUntil: Double = -.infinity
     private var systemWhy = ""
-    private var personSaid: [Int: Double] = [:] // the focus already reported as the person's
+    // Numbers their own copy has listed since they were parked. Until it has, a list without the
+    // window may only lag (a window made a moment before its park): it must miss it for copyLag.
+    private var copyListed: Set<Int> = []
+    private var copyMissingSince: [Int: Double] = [:]
     private var copyOf: [String: String] = [:] // each link's copy, last seen
     private var unboundSaid: [Int: Int] = [:] // how many fit, as last said, for a window left unbound
 
@@ -247,7 +257,8 @@ final class ParkingRegistry {
     // crash's marker).
     func park(number: Int, link: String, windowId: Int?, copy: String? = nil, pid: pid_t, bounds: CGRect, cause: Cause,
               done: @escaping (ParkResult) -> Void = { _ in }) {
-        if let e = entries[number], e.stepping || e.phase == .parked {
+        // Parked and not the person's: nothing to do. One the person brought back is parked for real.
+        if let e = entries[number], e.stepping || (e.phase == .parked && e.claimed == nil) {
             let failure: ParkFailure? = e.phase == .parked ? nil : .busy
             return done(ParkResult(park: ParkOutcome(number: number, step: .park, failure: failure, ms: 0, tries: 0, space: e.space)))
         }
@@ -257,9 +268,13 @@ final class ParkingRegistry {
         if before != nil {
             // Back by itself, or out after a step: the copy's word may have moved on.
             e.bounds = bounds
-            if let windowId, e.windowId != windowId { (e.windowId, e.copy) = (windowId, copy ?? copyOf[link]) }
+            if let windowId, e.windowId != windowId {
+                (e.windowId, e.copy) = (windowId, copy ?? copyOf[link])
+                forgetCopyListing(number)
+            }
         }
         e.phase = .parking
+        e.claimed = nil
         mark(&e, cause)
         entries[number] = e
         parker.park(number) { [weak self] o in
@@ -272,16 +287,16 @@ final class ParkingRegistry {
                 self.entries[number] = e
                 self.missingSince[number] = nil
                 self.listedParked.remove(number)
+                self.forgetCopyListing(number)
                 Diagnostics.note("handoff: parked window \(number) (\(e.label)) in its Space \(o.space.map(String.init) ?? "?") in \(o.ms) ms (\(cause))")
                 self.markerOn = true
                 self.saveMarker()
                 return done(ParkResult(park: o))
             }
-            let landedNowhere = if case .notLanded = o.failure { true } else { false }
-            guard landedNowhere else {
+            guard Self.mayHaveMoved(o) else {
                 // Nothing reached the window: a new entry isn't tracked; one that was out stays out.
                 if before == nil {
-                    self.forget(number, .neverParked, sent: false)
+                    self.forget(number, .neverParked, sent: o.tries > 0)
                 } else {
                     e.phase = .out
                     self.entries[number] = e
@@ -294,6 +309,13 @@ final class ParkingRegistry {
             self.entries[number] = e
             self.returnToDesktop(number: number, cause: .recovery) { r in done(ParkResult(park: o, returned: r)) }
         }
+    }
+
+    // A step whose op went out may have moved the window, landed or not: a failure after an op was
+    // sent is never "nothing reached it".
+    static func mayHaveMoved(_ o: ParkOutcome) -> Bool {
+        if case .notLanded = o.failure { return true }
+        return !o.ok && o.tries > 0
     }
 
     // Into the active Space, out of its private Space, verified; then that Space destroyed and the
@@ -317,7 +339,7 @@ final class ParkingRegistry {
                 self.forget(number, .shown)
                 return done(o)
             }
-            if case .notLanded = o.failure {
+            if Self.mayHaveMoved(o) {
                 let space = e.space
                 self.parker.destroySpace(of: number)
                 e.space = nil
@@ -364,15 +386,25 @@ final class ParkingRegistry {
     typealias Closer = (ParkedWindow, @escaping (Bool) -> Void) -> Bool
 
     // Every parked window closed by its copy (or returned to its Desktop when its copy can't close
-    // it), all at once, for `within` in all. A window not done by then stays tracked.
+    // it), all at once, for `within` in all. A window not done by then stays tracked, as it was
+    // before it was asked: §13.8 runs this while Margin keeps running, and a copy that never
+    // answers mustn't leave the window busy for good. A late "closed" still forgets it.
     func endAll(cause: Cause, within: Double, close: Closer?, done: @escaping (ParkingEnd) -> Void) {
         let began = clock.now()
         var end = ParkingEnd()
         var waiting = Set(entries.keys)
+        var asked: [Int: ParkedWindow.Phase] = [:] // asked to close: the phase each had before
         var finished = false
         func finish() {
             guard !finished else { return }
             finished = true
+            for (number, was) in asked.sorted(by: { $0.key < $1.key }) {
+                guard var e = entries[number], e.phase == .closing else { continue }
+                e.phase = was
+                e.cause = nil
+                entries[number] = e
+                Diagnostics.note("handoff: window \(number) (\(e.label)): its copy didn't answer the close in \(Int((within * 1000).rounded())) ms, still tracked")
+            }
             end.left = waiting.count
             end.ms = Int(((clock.now() - began) * 1000).rounded())
             done(end)
@@ -395,25 +427,30 @@ final class ParkingRegistry {
             asking.phase = .closing
             mark(&asking, cause)
             entries[number] = asking
-            let asked = close(e) { [weak self] closed in
-                guard let self, var e = self.entries[number], e.phase == .closing else { return }
-                e.cause = nil
+            asked[number] = e.phase
+            let sent = close(e) { [weak self] closed in
+                guard let self, var e = self.entries[number] else { return }
                 if closed {
+                    // In time or late: its copy closed it, so it's gone.
                     self.parker.destroySpace(of: number)
                     self.forget(number, .closedByCopy)
                     settled(number, \.closed)
-                } else {
-                    e.phase = .parked
-                    self.entries[number] = e
-                    back()
+                    return
                 }
+                // It couldn't: returned, while this end still runs. Late, it stays as it is.
+                guard e.phase == .closing else { return }
+                e.phase = asked[number] ?? .parked
+                e.cause = nil
+                self.entries[number] = e
+                back()
             }
-            if !asked {
+            if !sent {
                 if var e = entries[number], e.phase == .closing {
-                    e.phase = .parked
+                    e.phase = asked[number] ?? .parked
                     e.cause = nil
                     entries[number] = e
                 }
+                asked[number] = nil
                 back()
             }
         }
@@ -471,7 +508,8 @@ final class ParkingRegistry {
                 }
             }
             // Its copy: held or down changes nothing; a new copy unbinds it; the same copy no longer
-            // listing it closed it.
+            // listing it closed it (once it has listed it since the park, or after copyLag: its list
+            // may lag behind a window made a moment before).
             guard read.reporting.contains(e.link) else {
                 found.append(.held(number: number, link: e.link))
                 continue
@@ -486,15 +524,23 @@ final class ParkingRegistry {
                     e.windowId = nil
                     e.copy = nil
                     entries[number] = e
+                    forgetCopyListing(number)
                     Diagnostics.note("handoff: window \(number) (\(e.link)#\(id)): a new copy of Margin in its profile, rebinding")
                     found.append(.newCopy(number: number, link: e.link))
                     saveMarker()
                 } else {
                     if e.copy == nil, let copy { e.copy = copy; entries[number] = e }
-                    if !listed, !e.stepping {
-                        forget(number, .closedInCopy)
-                        found.append(.gone(number: number, link: e.link, why: .closedInCopy))
-                        continue
+                    if listed {
+                        copyListed.insert(number)
+                        copyMissingSince[number] = nil
+                    } else if !e.stepping {
+                        let since = copyMissingSince[number] ?? now
+                        copyMissingSince[number] = since
+                        if copyListed.contains(number) || now - since >= options.copyLag - 1e-9 {
+                            forget(number, .closedInCopy)
+                            found.append(.gone(number: number, link: e.link, why: .closedInCopy))
+                            continue
+                        }
                     }
                 }
             }
@@ -514,19 +560,20 @@ final class ParkingRegistry {
                 continue
             }
             let mine = e.key.flatMap { ext[$0] }
-            let why: String
-            if now < systemUntil {
-                why = systemWhy
-            } else if let mine, let key = e.key, personFocused(mine, e) {
-                if personSaid[number] != mine.focusedAt {
-                    personSaid[number] = mine.focusedAt
-                    Diagnostics.note("handoff: window \(number) (\(e.label)) back with focus on it: the person's")
-                    found.append(.person(number: number, key: key))
-                }
-                continue
-            } else {
-                why = Self.noFocus
+            // The person's focus brought it back: theirs from then on. It's said on every read
+            // (logged once), so a handoff the caller couldn't start yet (a switch busy, §6.1) can
+            // start later; focus lost since never makes it the system's, and it's never parked
+            // again here. A handoff's show, a park, or `release` ends it.
+            if e.claimed == nil, now >= systemUntil, let mine, personFocused(mine, e) {
+                e.claimed = mine.focusedAt
+                entries[number] = e
+                Diagnostics.note("handoff: window \(number) (\(e.label)) back with focus on it: the person's")
             }
+            if e.claimed != nil {
+                if let key = e.key { found.append(.person(number: number, key: key)) }
+                continue
+            }
+            let why = now < systemUntil ? systemWhy : Self.noFocus
             if let mine, mine.state != "normal" {
                 found.append(.system(number: number, link: e.link, why: why, then: .wait("it's \(mine.state)")))
                 continue
@@ -554,6 +601,20 @@ final class ParkingRegistry {
     private func personFocused(_ w: ExtWindow, _ e: ParkedWindow) -> Bool {
         guard w.focused, let at = w.focusedAt, at > e.since else { return false }
         if let call = lastCall[e.number], call.cause.isMargin, abs(at - call.at) < options.marginCallGrace { return false }
+        return true
+    }
+
+    // The person brought this window back (a `.person` finding) and no handoff will show it (WP9):
+    // let go as the ordinary window it is now, once a read finds it in a user Space. Its private
+    // Space is destroyed and the entry forgotten. False when it isn't the person's, a step is under
+    // way, or it isn't in a user Space.
+    @discardableResult
+    func release(_ number: Int) -> Bool {
+        guard let e = entries[number], e.claimed != nil, !e.stepping, reads.spaces(of: number)?.isEmpty == false else { return false }
+        parker.destroySpace(of: number)
+        verifiedOut.insert(number)
+        Diagnostics.note("handoff: window \(number) (\(e.label)) let go: the person brought it back")
+        forget(number, .returned)
         return true
     }
 
@@ -594,6 +655,7 @@ final class ParkingRegistry {
         e.windowId = key.windowId
         e.copy = copyOf[key.link]
         entries[number] = e
+        forgetCopyListing(number)
         unboundSaid[number] = nil
         Diagnostics.note("handoff: window \(number) rebound to \(key) (a new copy; \(how))")
         saveMarker()
@@ -620,7 +682,7 @@ final class ParkingRegistry {
         verifiedOut.remove(number)
         missingSince[number] = nil
         listedParked.remove(number)
-        personSaid[number] = nil
+        forgetCopyListing(number)
         unboundSaid[number] = nil
         lastCall[number] = nil
         if why.gone {
@@ -630,6 +692,12 @@ final class ParkingRegistry {
             Diagnostics.note("handoff: forgot parked window \(number) (\(e.label)): \(why.rawValue)")
         }
         saveMarker()
+    }
+
+    // Its copy's listing starts again: a new park, a new copy or a new window id.
+    private func forgetCopyListing(_ number: Int) {
+        copyListed.remove(number)
+        copyMissingSince[number] = nil
     }
 
     private func mark(_ e: inout ParkedWindow, _ cause: Cause) {

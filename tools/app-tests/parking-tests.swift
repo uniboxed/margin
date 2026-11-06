@@ -17,12 +17,15 @@
 // The registry (Parking.swift), over SpaceParker and FakeSpaceWorld: keyed by
 // number and never forgotten for a link down, held or a new copy; forgotten by
 // liveness (only once the read has listed it), a pid gone, the same copy
-// closing it, or a number taken by another process; the hard rule's assertion;
-// rebinding by elimination, by bounds, and left unbound; who caused a return
-// (the system's re-parked or returned, never the person's; focus after Margin's
-// own call is Margin's); a failed show destroying only its window's Space; a
-// park that didn't land returned; returnAll and quit (closed by copies, the
-// rest returned, 300 ms in all); and the crash marker in a test folder:
+// closing it (once it has listed it, or after its list's lag), or a number
+// taken by another process; the hard rule's assertion; rebinding by
+// elimination, by bounds, and left unbound; who caused a return (the system's
+// re-parked or returned, never the person's; focus after Margin's own call or
+// from before the park isn't theirs; the person's kept theirs until released);
+// a failed show destroying only its window's Space; a park that didn't land,
+// or whose retry couldn't be sent, returned; returnAll, quit and an end with
+// no answers (closed by copies, the rest returned, 300 ms in all, nothing left
+// closing); the bridge's ops kept by age; and the crash marker in a test folder:
 // written, kept up to date, taken at launch, adopted after a crash, removed at
 // quit.
 import AppKit
@@ -214,6 +217,24 @@ func parkingTests() {
         said = []
     }
     do {
+        // The retry's op can't be made, after the first was sent: that one may still land.
+        let clock = FakeClock()
+        let world = twoDisplays(clock)
+        let p = parker(clock, world)
+        world.dropNext = 1
+        world.refuseAdds = [false, true]
+        let o = run(clock) { p.park(11, done: $0) }
+        check("parking: a retry that couldn't be sent after the first op went out: not landed, never 'not sent'",
+              o?.failure == .notLanded(spaces: [5], onScreen: true) && o?.tries == 1 && o?.space == 2431, "\(String(describing: o))")
+        check("parking: … its Space kept (the first op may still land)", p.privateSpaces == [11: 2431] && world.destroyed.isEmpty && !p.isBusy(11), "\(world.calls)")
+        check("parking: … the line says so", said.last?.hasPrefix("handoff: window 11's park retry couldn't be sent, after 30") == true, "\(said)")
+        world.refuseAdds = [true]
+        let none = run(clock) { p.park(12, done: $0) }
+        check("parking: the first op not made: not sent, nothing sent, the Space made for it destroyed",
+              none?.failure == .notSent && none?.tries == 0 && p.privateSpaces[12] == nil && world.destroyed == [2432], "\(String(describing: none)) \(world.calls)")
+        said = []
+    }
+    do {
         // Unknown reads, a window that's gone, no Space, busy, parking off.
         let clock = FakeClock()
         let world = twoDisplays(clock)
@@ -362,6 +383,25 @@ func parkingTests() {
         check("parking: SkyLightSpaces with parking off: reads, but no Space and no op", !noPark.canPark && noPark.createSpace() == nil && !noPark.add(3, to: 1) && noPark.activeSpace() == 7
               && !fakeSkyCalls.contains { $0.hasPrefix("create") || $0.hasPrefix("init") }, "\(fakeSkyCalls)")
 
+        // The bridge's ops kept by age, never by count: a burst never releases one in flight.
+        final class Op {}
+        let now = FakeUptime()
+        let kept = KeptOperations(now: { now.t })
+        var watched: [() -> AnyObject?] = []
+        for _ in 0..<40 {
+            let op = Op()
+            weak let w = op
+            watched.append { w }
+            kept.keep(op)
+        }
+        check("parking: 40 ops sent at once (quit's returns): every one still held", kept.count == 40 && watched.allSatisfy { $0() != nil }, "\(kept.count)")
+        now.t += KeptOperations.keepFor - 0.5
+        kept.keep(Op())
+        check("parking: … still held well past their steps' end", kept.count == 41 && watched.allSatisfy { $0() != nil })
+        now.t += 0.5
+        kept.keep(Op())
+        check("parking: … released once older than \(Int(KeptOperations.keepFor)) s, as new ones come", kept.count == 2 && watched.allSatisfy { $0() == nil }, "\(kept.count)")
+
         let real = ProcessProbeChild()
         var heard: Int?? = .none
         real.start { heard = .some($0) }
@@ -396,6 +436,11 @@ func parkingTests() {
     }
 
     parkingRegistryTests()
+}
+
+// A stand-in for the system's uptime, read from KeptOperations' lock.
+nonisolated final class FakeUptime: @unchecked Sendable {
+    var t: TimeInterval = 100
 }
 
 // ---- the registry ----
@@ -538,6 +583,28 @@ func parkingRegistryTests() {
         said = []
     }
 
+    do {
+        // A window made a moment ago (openSpaceWindow), parked before its copy's list names it.
+        let s = Setup([11: boundsA, 12: boundsB, 13: boundsC], pid: safari)
+        _ = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        s.park(12, "safari:a", 8, bounds: boundsB)
+        s.park(13, "safari:a", 9, bounds: boundsC)
+        check("registry: a made window parked: its copy known from the last read", s.registry.entries[12]?.copy == "copy-1")
+        var f = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        check("registry: its copy's next list lags and doesn't name it: kept, its Space left alone",
+              f.isEmpty && s.registry.isParked(12) && s.registry.isParked(13) && s.world.destroyed.isEmpty && s.world.readsParked(12) == true, "\(f) \(s.world.destroyed)")
+        s.clock.advance(1.5)
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA), win("safari:a", 8, boundsB)]))
+        check("registry: … 1.5 s on, still not named (13), or named now (12): both kept", f.isEmpty && s.registry.isParked(12) && s.registry.isParked(13), "\(f)")
+        s.clock.advance(0.5)
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA), win("safari:a", 8, boundsB)]))
+        check("registry: never named by its copy for 2 s: closed in Safari, forgotten", f == [.gone(number: 13, link: "safari:a", why: .closedInCopy)] && s.registry.isParked(12), "\(f)")
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        check("registry: named since its park, then not: closed, forgotten at once", f == [.gone(number: 12, link: "safari:a", why: .closedInCopy)], "\(f)")
+        check("registry: … no strand", s.strands.isEmpty)
+        said = []
+    }
+
     // ---- the hard rule ----
     do {
         let s = Setup([11: boundsA], pid: safari)
@@ -617,7 +684,6 @@ func parkingRegistryTests() {
     do {
         let s = Setup([11: boundsA], pid: safari)
         s.park(11, "safari:a", 3, bounds: boundsA)
-        let since = s.registry.entries[11]!.since
         s.world.comeBack(11, to: 5)
         var f = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
         check("registry: back with no focus on it: the system's, parked again, never the person's",
@@ -640,9 +706,50 @@ func parkingRegistryTests() {
               && s.registry.entries[11]?.phase == .parked && s.world.calls.count == before
               && said.last == "handoff: window 11 (safari:a#3) back with focus on it: the person's", "\(f) \(said)")
         let calls = s.world.calls.count
+        let lines = said.count
         f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: true, focusedAt: focusedAt)]))
-        check("registry: … said once", f.isEmpty && s.world.calls.count == calls, "\(f)")
-        check("registry: focus from before the park isn't the person's", focusedAt > since)
+        check("registry: … said again on the next read (a switch may have been busy), logged once",
+              f == [.person(number: 11, key: WindowKey(link: "safari:a", windowId: 3))] && s.world.calls.count == calls && said.count == lines, "\(f) \(said)")
+        // The person clicks the shown window: focus leaves the one they brought back.
+        s.clock.advance(1)
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: false, focusedAt: focusedAt)]))
+        check("registry: … focus lost since: still the person's, never parked again",
+              f == [.person(number: 11, key: WindowKey(link: "safari:a", windowId: 3))] && s.world.calls.count == calls && s.registry.entries[11]?.claimed == focusedAt
+              && said.count == lines, "\(f) \(said)")
+        s.registry.systemEvent("a display change")
+        f = s.registry.sweep(read([win("safari:a", 3, boundsA)]))
+        check("registry: … a system event after the person's return: still theirs", f == [.person(number: 11, key: WindowKey(link: "safari:a", windowId: 3))]
+              && s.world.calls.count == calls, "\(f)")
+        check("registry: release: refused for a window that isn't the person's, or that isn't back", !s.registry.release(99))
+        check("registry: release: the person's window let go, its Space destroyed, no strand",
+              s.registry.release(11) && !s.registry.isParked(11) && s.world.destroyed.last == 2431 && s.world.spaces(of: 11) == [5] && s.strands.isEmpty
+              && said.last == "handoff: window 11 (safari:a#3) let go: the person brought it back", "\(said)")
+        check("registry: … and nothing found for it after", s.registry.sweep(read([win("safari:a", 3, boundsA)])).isEmpty)
+        said = []
+    }
+    do {
+        // Focus its copy heard before the park, still on it when it's found back: not the person's.
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        let since = s.registry.entries[11]!.since
+        s.clock.advance(5) // well past Margin's own call (the park) and any system event
+        s.world.comeBack(11, to: 5)
+        let f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: true, focusedAt: since - 5)]))
+        check("registry: focus from before the park isn't the person's: the system's, parked again",
+              f == [.system(number: 11, link: "safari:a", why: "no focus on it", then: .parkAgain)] && s.registry.entries[11]?.claimed == nil, "\(f)")
+        said = []
+    }
+    do {
+        // A park of the person's window parks it for real (a handoff refused, say).
+        let s = Setup([11: boundsA], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.clock.advance(5)
+        s.world.comeBack(11, to: 5)
+        let f = s.registry.sweep(read([win("safari:a", 3, boundsA, focused: true, focusedAt: s.clock.now())]))
+        let r = s.park(11, "safari:a", 3, bounds: boundsA)
+        check("registry: parking the person's window: sent, verified, theirs no more",
+              f.count == 1 && r?.park.ok == true && r?.park.tries == 1 && s.world.readsParked(11) == true && s.registry.entries[11]?.claimed == nil
+              && s.registry.entries[11]?.phase == .parked, "\(String(describing: r)) \(s.world.calls)")
         said = []
     }
     do {
@@ -707,6 +814,30 @@ func parkingRegistryTests() {
         said = []
     }
 
+    do {
+        // The first op went out and didn't verify; the retry's couldn't be made.
+        let s = Setup([11: boundsA], pid: safari)
+        s.world.dropNext = 1
+        s.world.refuseAdds = [false, true]
+        var r: ParkingRegistry.ParkResult?
+        s.registry.park(number: 11, link: "safari:a", windowId: 3, pid: safari, bounds: boundsA, cause: .handoff) { r = $0 }
+        s.clock.advance(1)
+        check("registry: a park whose retry couldn't be sent: its Space kept and the window taken out of it before it's let go (the first op may land)",
+              s.world.calls == ["create 2431", "add 11 → 2431", "add 11 → 2431 refused", "add 11 → 1", "remove 11 from 2431", "destroy 2431"], "\(s.world.calls)")
+        check("registry: … returned to its Desktop, verified, its Space destroyed, then let go",
+              r?.park.failure == .notLanded(spaces: [1], onScreen: false) && r?.returned?.ok == true && !s.registry.isParked(11)
+              && s.world.spaces(of: 11) == [1] && s.world.privateSpaces.isEmpty && s.strands.isEmpty, "\(String(describing: r)) \(s.world.calls)")
+        said = []
+    }
+    do {
+        // A failure after an op went out, whatever its kind, isn't "nothing sent".
+        check("registry: an outcome with an op sent may have moved the window",
+              ParkingRegistry.mayHaveMoved(ParkOutcome(number: 1, step: .park, failure: .notSent, ms: 300, tries: 1, space: 5))
+              && ParkingRegistry.mayHaveMoved(ParkOutcome(number: 1, step: .park, failure: .notLanded(spaces: nil, onScreen: nil), ms: 600, tries: 2, space: 5))
+              && !ParkingRegistry.mayHaveMoved(ParkOutcome(number: 1, step: .park, failure: .notSent, ms: 0, tries: 0, space: nil))
+              && !ParkingRegistry.mayHaveMoved(ParkOutcome(number: 1, step: .park, failure: nil, ms: 4, tries: 1, space: 5)))
+    }
+
     // ---- returnAll and quit ----
     do {
         let s = Setup([11: boundsA, 12: boundsB], pid: safari)
@@ -765,6 +896,35 @@ func parkingRegistryTests() {
         check("registry: … 300 ms in all, then done, the window left to come back by itself",
               end == ParkingEnd(closed: 0, returned: 1, left: 1, ms: 300) && s.registry.isParked(11) && !FileManager.default.fileExists(atPath: s.marker.path)
               && said.last == "handoff: returned 1 parked window to the Desktop, left 1 to come back by itself at quit (300 ms)", "\(String(describing: end)) \(said)")
+        check("registry: … the window left parked as it was, not closing", s.registry.entries[11]?.phase == .parked && s.registry.entries[11]?.cause == nil)
+        said = []
+    }
+    do {
+        // §13.8: the shown window closed, every parked window closed, and Margin keeps running.
+        let s = Setup([11: boundsA, 12: boundsB], pid: safari)
+        s.park(11, "safari:a", 3, bounds: boundsA)
+        s.park(12, "safari:b", 7, bounds: boundsB)
+        var answers: [Int: (Bool) -> Void] = [:]
+        var end: ParkingEnd?
+        s.registry.endAll(cause: .aftercare, within: 0.3, close: { e, closed in answers[e.number] = closed; return true }) { end = $0 } // neither copy answers
+        s.clock.advance(0.31)
+        check("registry: an end whose copies never answer: done at 300 ms, both left",
+              end == ParkingEnd(closed: 0, returned: 0, left: 2, ms: 300) && s.registry.isParked(11) && s.registry.isParked(12), "\(String(describing: end))")
+        check("registry: … both parked again as they were, not closing for good",
+              s.registry.entries[11]?.phase == .parked && s.registry.entries[12]?.phase == .parked && s.registry.entries[11]?.cause == nil
+              && said.contains("handoff: window 11 (safari:a#3): its copy didn't answer the close in 300 ms, still tracked"), "\(said)")
+        var shown: ParkOutcome?
+        s.registry.show(number: 11, cause: .handoff) { shown = $0 }
+        s.clock.advance(1)
+        check("registry: … a handoff to it afterwards isn't busy: shown", shown?.ok == true && !s.registry.isParked(11) && s.world.spaces(of: 11) == [5], "\(String(describing: shown))")
+        let f = s.registry.sweep(read([win("safari:b", 7, boundsB)]))
+        check("registry: … the other judged by each read again", f.isEmpty && s.registry.isParked(12), "\(f)")
+        s.world.windows[12] = nil
+        answers[12]?(true)
+        check("registry: … its copy's late 'closed': forgotten, its Space destroyed, no strand",
+              !s.registry.isParked(12) && s.world.privateSpaces.isEmpty && s.strands.isEmpty, "\(s.world.privateSpaces)")
+        answers[11]?(false)
+        check("registry: … a late 'couldn't' for a window already gone: nothing", s.registry.entries.isEmpty && s.strands.isEmpty)
         said = []
     }
 

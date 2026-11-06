@@ -188,8 +188,17 @@ final class SpaceParker: BridgeParker {
         func ms() -> Int { Int(((clock.now() - began) * 1000).rounded()) }
         func attempt(_ tries: Int) {
             guard send() else {
-                notSent()
-                return start.finish(.notSent, ms: ms(), tries: tries - 1)
+                guard tries > 1 else {
+                    notSent()
+                    return start.finish(.notSent, ms: ms(), tries: 0)
+                }
+                // The retry couldn't be made, but the first op went out: the bridge's ops are
+                // asynchronous, so it may still land. Not landed, never "nothing sent": its Space is
+                // kept, and the caller takes the window out of it (§4.4).
+                let spaces = reads.spaces(of: start.number)
+                let onScreen = reads.window(start.number)?.onScreen
+                Diagnostics.note("handoff: window \(start.number)'s \(start.step.rawValue) retry couldn't be sent, after \(ms()) ms")
+                return start.finish(.notLanded(spaces: spaces, onScreen: onScreen), ms: ms(), tries: tries - 1, space: space)
             }
             let sent = clock.now()
             poll(tries: tries, sent: sent)

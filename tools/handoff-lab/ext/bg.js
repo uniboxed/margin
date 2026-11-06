@@ -2,18 +2,34 @@
 // server for commands and runs them with the windows and tabs APIs, as Margin's copy does. It
 // also reports focus changes and new tabs (gate G9), as ids and times only.
 const base = 'http://127.0.0.1:47944';
+const lab = url => typeof url === 'string' && url.startsWith(base + '/');
+
+// Never an address, a title or an icon in an answer: ids, states and numbers only.
+function plain(r) {
+  if (Array.isArray(r)) return r.map(plain);
+  if (!r || typeof r !== 'object') return r;
+  const out = {};
+  for (const [k, v] of Object.entries(r)) if (!['url', 'pendingUrl', 'title', 'favIconUrl'].includes(k)) out[k] = plain(v);
+  return out;
+}
 
 async function run(c) {
   try {
     if (c.op === 'getAll') return (await browser.windows.getAll({})).map(w => ({ id: w.id, state: w.state, focused: w.focused, left: w.left, top: w.top, width: w.width, height: w.height }));
     if (c.op === 'get') { const w = await browser.windows.get(c.id); return { id: w.id, state: w.state, focused: w.focused, left: w.left, top: w.top, width: w.width, height: w.height }; }
     if (c.op === 'update') { const t = Date.now(); const w = await browser.windows.update(c.id, c.props); return { id: w.id, state: w.state, focused: w.focused, calledAt: t, answeredAt: Date.now() }; }
-    if (c.op === 'create') { const w = await browser.windows.create(c.props); return { id: w.id, state: w.state, tabId: w.tabs && w.tabs[0] ? w.tabs[0].id : null }; }
+    if (c.op === 'create') {
+      // Only the lab's own pages.
+      if (!c.props || !lab(c.props.url)) return { error: 'not a lab page' };
+      const w = await browser.windows.create(c.props); return { id: w.id, state: w.state, tabId: w.tabs && w.tabs[0] ? w.tabs[0].id : null }; }
     if (c.op === 'remove') { await browser.windows.remove(c.id); return { removed: c.id }; }
-    // any windows or tabs function: { op: 'call', api: 'tabs', fn: 'query', args: [{ windowId: 3 }] }
-    if (c.op === 'call' && ['windows', 'tabs'].includes(c.api)) {
-      const r = await browser[c.api][c.fn](...(c.args || []));
-      return JSON.parse(JSON.stringify(r === undefined ? null : r));
+    // The one other call the lab makes: a tab of its own sent to one of its pages,
+    // { op: 'call', api: 'tabs', fn: 'update', args: [tabId, { url }] }. Nothing else, so a
+    // command can't read or close what the lab didn't open.
+    if (c.op === 'call') {
+      const [tabId, props] = c.args || [];
+      if (c.api !== 'tabs' || c.fn !== 'update' || typeof tabId !== 'number' || !props || Object.keys(props).join() !== 'url' || !lab(props.url)) return { error: 'not allowed' };
+      return plain(JSON.parse(JSON.stringify(await browser.tabs.update(tabId, { url: props.url }) || null)));
     }
     if (c.op === 'ping') return 'pong';
     return { error: 'unknown op' };
