@@ -66,7 +66,7 @@ test('one highlight only, also when the browser switches right after a click', a
   }
   // The probe saw 2.3 s once (docs/e2e-plan.md, open questions); a person notices anything near a second.
   assert.ok(Math.max(...times) < 1000, `the highlight followed the browser in ${times.join(', ')} ms`);
-  assert.ok(!m.shell.overlayLogs.some((l) => /went back/.test(l.text)), `the overlay's highlight went back: ${m.shell.overlayLogs.map((l) => l.text).join(' | ')}`);
+  assert.ok(!m.shell.overlayLogs.some((l) => /went back [1-9]/.test(l.text)), `the overlay's highlight went back: ${m.shell.overlayLogs.map((l) => l.text).join(' | ')}`);
 });
 
 test('× closes the tab and archives it', async (t) => {

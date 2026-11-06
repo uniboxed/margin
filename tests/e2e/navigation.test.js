@@ -1,148 +1,167 @@
-// Next/previous tab and space (keys on pages and the new-tab page, background.navigate); all
-// skipped: they read the order from, or wait for, the in-page UI removed in Margin 2 Phase 2
-// step 5. Not run for now (no E2E runs for now).
+// Navigation: the app's next/previous tab and space keys (the copy's
+// `navigate`, as Shortcuts.swift sends it), in the sidebar's order and
+// wrapping, fast presses chained, a switch by hand starting a new chain;
+// linked, the page's own keys and the extension's commands do nothing but
+// say so; Back, Forward and Reload from the overlay's buttons; addresses a
+// site changes itself (pushState, a hash) stored at once; and a slow
+// same-page navigation (the Navigation API) drawn as loading.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
+import { startMargin } from './harness/margin.js';
+import { SPACES } from './harness/seed.js';
+import { sidebar, tabRow, chip } from './harness/ui.js';
 
-let ctx, server;
+let m;
+let ui;
+let windowId;
+
+const view = () => sidebar(ui);
+const frontId = async () => (await m.front())?.id;
+const order = async () => (await view()).tabs.map((r) => r.id);
+// A window not switched yet shows the first space.
+const spaceOfWindow = async () => (await m.state()).activeSpaceByWindow?.[windowId] ?? 'sp-home';
+async function show(id) {
+  await ui.click(tabRow(id));
+  await m.until(async () => (await frontId()) === id && (await view()).tabs.find((r) => r.active)?.id === id, { what: `tab ${id} in front` });
+  // A press after a switch by hand starts a new chain (background/navigation.js): let the last one end.
+  await new Promise((r) => setTimeout(r, 1600));
+}
+const pushes = (type, from = 0) => m.shell.received.slice(from).filter((x) => x.k === 'push' && x.msg?.type === type).map((x) => x.msg);
+
 before(async () => {
-  ctx = await launch();
-  server = await startServer();
+  m = await startMargin({ name: 'navigation', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
+  windowId = m.shell.frontWindowId();
+  for (const [host, path] of [['dispatch.test', '/2026/11/the-quiet-city'], ['shop.test', '/'], ['docs.test', '/guide/getting-started'], ['radio.test', '/']]) await m.open(host, path);
+  ui = await m.ui();
+  await m.until(async () => (await order()).length === 5, { what: 'five rows' });
 });
-after(async () => {
-  await ctx?.context.close();
-  await server?.close();
+after(async () => { await m?.close(); });
+
+test('next and previous tab follow the sidebar\'s order and wrap', async (t) => {
+  const rows = await order();
+  await show(rows[1]);
+  await m.shell.navigate('next-tab');
+  await m.until(async () => (await frontId()) === rows[2], { what: 'the next row' });
+  await m.until(async () => (await view()).tabs.find((r) => r.active)?.id === rows[2], { what: 'its highlight' });
+  await m.shell.navigate('prev-tab');
+  await m.until(async () => (await frontId()) === rows[1], { what: 'back up' });
+  await show(rows.at(-1));
+  await m.shell.navigate('next-tab');
+  await m.until(async () => (await frontId()) === rows[0], { what: 'from the last row to the first' });
+  await m.shell.navigate('prev-tab');
+  await m.until(async () => (await frontId()) === rows.at(-1), { what: 'from the first to the last' });
+  await m.shoot(t, 'wrapped');
 });
 
-const storage = (key) => readState(ctx.worker, key);
-const activeTitle = async () => (await tabsInBrowser(ctx.worker)).find((t) => t.active)?.title;
+test('fast presses all count: each goes on from the one before, told to the overlay as one chain', async () => {
+  const rows = await order();
+  await show(rows[0]);
+  const from = m.shell.received.length;
+  await Promise.all([m.shell.navigate('next-tab'), m.shell.navigate('next-tab'), m.shell.navigate('next-tab')]);
+  await m.until(async () => (await frontId()) === rows[3], { what: 'three rows down' });
+  await m.until(async () => (await view()).tabs.find((r) => r.active)?.id === rows[3], { what: 'the highlight there' });
+  const switching = pushes('switching', from);
+  assert.equal(switching.length, 3, 'each press told at once');
+  assert.equal(new Set(switching.map((s) => s.chain)).size, 1, 'one chain');
+  assert.deepEqual(switching.map((s) => s.tabId), [rows[1], rows[2], rows[3]]);
+  await m.until(() => pushes('switch-done', from).length === 3, { what: 'each one settled' });
+  assert.deepEqual(pushes('switch-failed', from), []);
+  const back = m.shell.overlayLogs.filter((l) => /went back [1-9]/.test(l.text)).map((l) => l.text);
+  assert.deepEqual(back, [], 'the highlight never went back');
+});
 
-async function openPage(name) {
-  const page = await ctx.context.newPage();
-  await page.goto(`${server.base}/${name}`);
-  await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
-  return page;
-}
+test('a switch by hand starts a new chain', async () => {
+  const rows = await order();
+  await m.shell.navigate('next-tab');
+  await ui.click(tabRow(rows[0]));
+  await m.until(async () => (await frontId()) === rows[0], { what: 'the clicked row in front' });
+  await new Promise((r) => setTimeout(r, 1600));
+  await m.shell.navigate('next-tab');
+  await m.until(async () => (await frontId()) === rows[1], { what: 'one down from the clicked row' });
+});
 
-// Focus a tab the way a user would, then wait until its sidebar knows its tab.
-async function focus(page, title) {
+test('next and previous space, wrapping', async (t) => {
+  assert.equal(await spaceOfWindow(), 'sp-home');
+  await m.shell.navigate('next-space');
+  await m.until(async () => (await spaceOfWindow()) === 'sp-work', { what: 'Work' });
+  await m.until(async () => (await view()).space === 'Work', { what: 'Work drawn' });
+  await m.shell.navigate('prev-space');
+  await m.until(async () => (await spaceOfWindow()) === 'sp-home', { what: 'Home' });
+  await m.shell.navigate('prev-space');
+  await m.until(async () => (await spaceOfWindow()) === 'sp-trips', { what: 'from the first space to the last' });
+  await m.shoot(t, 'trips');
+  await ui.click(chip('sp-home'));
+  await m.until(async () => (await view()).space === 'Home', { what: 'Home again' });
+});
+
+test('linked, the page\'s own keys: its next-tab key moves one tab; ⌘T only tells the app it was heard', async () => {
+  const rows = await order();
+  await show(rows[1]);
+  const page = await m.pageOf(rows[1]);
+  const key = (await m.stored('settings')).settings.shortcuts.nextTab;
   await page.bringToFront();
-  const id = (await tabsInBrowser(ctx.worker)).find((t) => t.title === title).id;
-  await ctx.worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), id);
-  await waitFor(async () => (await activeTitle()) === title);
-  await waitFor(async () => (await sidebarSnapshot(page)).tabs.includes(title));
-}
-
-test('⌃⌘↓ / ⌃⌘↑ move through the sidebar tabs in order, wrapping', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const pages = {};
-  for (const name of ['nav-a', 'nav-b', 'nav-c']) pages[name] = await openPage(name);
-  await focus(pages['nav-a'], 'nav-a');
-  const order = (await sidebarSnapshot(pages['nav-a'])).tabs;
-  const at = order.indexOf('nav-a');
-
-  await pages['nav-a'].keyboard.press('Control+Meta+ArrowDown');
-  await waitFor(async () => (await activeTitle()) === order[(at + 1) % order.length]);
-
-  const back = order[(at + 1) % order.length];
-  await focus(pages[back] ?? pages['nav-a'], back);
-  await (pages[back] ?? pages['nav-a']).keyboard.press('Control+Meta+ArrowUp');
-  await waitFor(async () => (await activeTitle()) === 'nav-a');
-
-  // Wrap: from the last row, ↓ goes to the first.
-  const last = order.at(-1);
-  if (pages[last]) {
-    await focus(pages[last], last);
-    await pages[last].keyboard.press('Control+Meta+ArrowDown');
-    await waitFor(async () => (await activeTitle()) === order[0]);
-  }
-  for (const p of Object.values(pages)) await p.close();
-});
-
-test('⌃⌘→ / ⌃⌘← switch the space and peek the sidebar; the page itself does not get the keys', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const page = await openPage('nav-space');
-  await focus(page, 'nav-space');
-  const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
-  // Create the second space through the background, like the "+" button does.
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  const { result } = await nt.evaluate(() => chrome.runtime.sendMessage({ type: 'createSpace', name: 'Work', emoji: '💼' }));
-  const work = result.spaceId;
-  await nt.close();
-  await focus(page, 'nav-space');
-  await waitFor(async () => (await sidebarSnapshot(page)).chips.length >= 2);
-  await page.evaluate(() => {
-    window.__pageKeys = 0;
-    // Count the arrow presses only: the ⌘/⌥ presses themselves always reach the page.
-    addEventListener('keydown', (e) => e.key.startsWith('Arrow') && window.__pageKeys++);
-  });
-
-  await page.keyboard.press('Control+Meta+ArrowRight');
-  await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === work);
-  await waitFor(async () => (await sidebarSnapshot(page)).open, { timeout: 1000 });
-  assert.equal((await sidebarSnapshot(page)).chips.find((c) => c.active).id, work);
-  await waitFor(async () => !(await sidebarSnapshot(page)).open, { timeout: 2500 }); // peek ends
-
-  await page.keyboard.press('Control+Meta+ArrowLeft');
-  await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === 'personal');
-  assert.equal(await page.evaluate(() => window.__pageKeys), 0, 'the arrow keys of the shortcuts are not passed on to the page');
-  await page.close();
-});
-
-test('the new-tab page handles the same shortcuts', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  await nt.waitForSelector('#sidebar .chip[data-space-id]');
-  const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
-  const before = (await storage('activeSpaceByWindow'))[windowId] ?? 'personal';
-  await nt.locator('body').click({ position: { x: 600, y: 600 } });
-  await nt.keyboard.press('Control+Meta+ArrowRight');
-  await waitFor(async () => ((await storage('activeSpaceByWindow'))[windowId] ?? 'personal') !== before);
-  await nt.close();
-});
-
-// The manifest-command path (Safari matches ⌃⌘ + arrows in the app) can't be
-// pressed in headless Chromium, so these drive background.navigate directly.
-const nav = (action, source, windowId) =>
-  ctx.worker.evaluate(([a, s, w]) => globalThis.margin.navigate(a, s, w), [action, source, windowId]);
-
-test('fast presses all count: each continues from the tab the previous one chose', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const pages = [];
-  for (const name of ['fast-1', 'fast-2', 'fast-3', 'fast-4']) pages.push(await openPage(name));
-  await focus(pages[0], 'fast-1');
-  const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
-  const order = (await sidebarSnapshot(pages[0])).tabs;
-  const at = order.indexOf('fast-1');
-  // Three presses fired back to back, before Safari/Chrome finishes switching.
-  await Promise.all([nav('next-tab', 'command', windowId), nav('next-tab', 'command', windowId), nav('next-tab', 'command', windowId)]);
-  await waitFor(async () => (await activeTitle()) === order[(at + 3) % order.length]);
-  for (const p of pages) await p.close();
-});
-
-test('one press arriving through both paths (command + page) moves once', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const pages = [];
-  for (const name of ['dup-1', 'dup-2', 'dup-3']) pages.push(await openPage(name));
-  await focus(pages[0], 'dup-1');
-  await new Promise((r) => setTimeout(r, 1600)); // let earlier chaining expire
-  const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
-  const order = (await sidebarSnapshot(pages[0])).tabs;
-  const at = order.indexOf('dup-1');
-  await Promise.all([nav('next-tab', 'command', windowId), nav('next-tab', 'page', windowId)]);
-  await waitFor(async () => (await activeTitle()) === order[(at + 1) % order.length]);
+  await page.keyboard.press(key.replace(/\bCtrl\b/, 'Control'));
+  await m.until(async () => (await frontId()) === rows[2], { what: 'one row down' });
   await new Promise((r) => setTimeout(r, 300));
-  assert.equal(await activeTitle(), order[(at + 1) % order.length], 'moved exactly one tab');
-  for (const p of pages) await p.close();
+  assert.equal(await frontId(), rows[2], 'exactly one');
+
+  // ⌘T is the app's hot key while it draws: a page that hears it anyway does nothing but say so.
+  const next = await m.pageOf(rows[2]);
+  const tabs = (await m.tabs()).length;
+  const from = m.shell.received.length;
+  await next.keyboard.press('Meta+KeyT');
+  const heard = await m.until(() => pushes('keyHeard', from)[0], { what: 'keyHeard' });
+  assert.deepEqual({ command: heard.command, from: heard.from }, { command: 'palette', from: 'page' });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal((await m.tabs()).length, tabs, 'no new tab');
+  assert.equal((await view()).palette, false, 'no palette: the app\'s key opens it, not the page');
 });
 
-test('switching tabs by hand restarts the chain from that tab', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const pages = [];
-  for (const name of ['hand-1', 'hand-2', 'hand-3', 'hand-4']) pages.push(await openPage(name));
-  await focus(pages[0], 'hand-1');
-  const windowId = await ctx.worker.evaluate(() => chrome.windows.getLastFocused().then((w) => w.id));
-  const order = (await sidebarSnapshot(pages[0])).tabs;
-  await nav('next-tab', 'command', windowId);
-  await focus(pages[3], 'hand-4'); // the user clicks another tab
-  await nav('next-tab', 'command', windowId);
-  await waitFor(async () => (await activeTitle()) === order[(order.indexOf('hand-4') + 1) % order.length]);
-  for (const p of pages) await p.close();
+test('a site\'s own address changes are stored at once: pushState and a hash', async () => {
+  const appPage = await m.open('app.test', '/');
+  const tab = await frontId();
+  await appPage.click('a[href="/projects"][data-link]');
+  await m.until(async () => (await m.state()).tabs[tab]?.url === m.url('app.test', '/projects'), { timeout: 2000, what: 'the pushState address stored' });
+  const docs = await m.open('docs.test', '/guide/getting-started');
+  const docsTab = await frontId();
+  await docs.click('h2 a.anchor');
+  const hash = await docs.evaluate(() => location.hash);
+  assert.ok(hash.length > 1);
+  await m.until(async () => (await m.state()).tabs[docsTab]?.url === m.url('docs.test', `/guide/getting-started${hash}`), { timeout: 2000, what: 'the hash stored' });
+});
+
+test('a slow same-page navigation (the Navigation API) shows as loading on its row', async (t) => {
+  const appPage = await m.open('app.test', '/');
+  const tab = await frontId();
+  const from = m.shell.received.length;
+  await appPage.click('a[href="/reports"]');
+  await m.until(async () => (await view()).tabs.find((r) => r.id === tab)?.busy, { timeout: 2000, what: 'the row busy' });
+  await m.shoot(t, 'loading');
+  assert.ok(pushes('loading', from).some((p) => p.tabIds.includes(tab)), 'the copy said it\'s loading');
+  await appPage.waitForSelector('.report-ready');
+  await m.until(async () => !(await view()).tabs.find((r) => r.id === tab)?.busy, { what: 'not busy once drawn' });
+});
+
+test('Back, Forward and Reload from the overlay\'s buttons (Neo-brutalism draws them)', async (t) => {
+  assert.equal((await m.shell.request('updateSettings', { patch: { theme: 'neo-brutalism' } }, windowId)).ok, true);
+  await m.until(() => m.shell.themeId === 'neo-brutalism', { what: 'the theme sent' });
+  await m.until(() => ui.isVisible('[m-action="nav.back"], button[aria-label="Back"]'), { what: 'the Back button' });
+  try {
+    const docs = await m.open('docs.test', '/guide/getting-started');
+    const tab = await frontId();
+    await docs.click('nav.pager a.nx');
+    await docs.waitForURL(m.url('docs.test', '/guide/installation'));
+    await m.shoot(t, 'neo-docs');
+    await ui.click('button[aria-label="Back"]');
+    await m.until(async () => (await m.tabs()).find((x) => x.id === tab)?.url === m.url('docs.test', '/guide/getting-started'), { what: 'back' });
+    await ui.click('button[aria-label="Forward"]');
+    await m.until(async () => (await m.tabs()).find((x) => x.id === tab)?.url === m.url('docs.test', '/guide/installation'), { what: 'forward' });
+    const page = await m.pageOf(tab);
+    await page.evaluate(() => { window.__before = true; });
+    await ui.click('button[aria-label="Reload"]');
+    await m.until(() => page.evaluate(() => !window.__before).catch(() => false), { what: 'the page loaded again' });
+  } finally {
+    await m.shell.request('updateSettings', { patch: { theme: 'arcadia' } }, windowId);
+    await m.until(() => m.shell.themeId === 'arcadia', { what: 'Arcadia again' });
+  }
 });

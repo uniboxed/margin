@@ -44,10 +44,12 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
     socket.on('error', () => {});
     socket.write(frame(JSON.stringify(welcome(key))));
     let buf = Buffer.alloc(0);
+    let pieces = null; // a text message sent in fragments, until its last (FIN)
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
       for (;;) {
         if (buf.length < 2) return;
+        const fin = (buf[0] & 128) !== 0;
         const opcode = buf[0] & 15;
         let len = buf[1] & 127;
         let at = 2;
@@ -62,8 +64,12 @@ export async function startFakeApp({ token = randomUUID(), key = randomUUID(), w
         buf = buf.subarray(at + len);
         if (opcode === 8) { socket.end(frame('', 8)); sockets.delete(socket); return; }
         if (opcode === 9) { socket.write(frame(body.toString('utf8'), 10)); continue; }
-        if (opcode !== 1) continue;
-        const message = JSON.parse(body.toString('utf8'));
+        if (opcode === 1 && !fin) { pieces = [body]; continue; }
+        if (opcode === 0 && pieces) { pieces.push(body); if (!fin) continue; }
+        else if (opcode !== 1) continue;
+        const text = (opcode === 0 ? Buffer.concat(pieces) : body).toString('utf8');
+        if (opcode === 0) pieces = null;
+        const message = JSON.parse(text);
         received.push(message);
         onMessage(message);
         for (const w of [...waiters]) w();
