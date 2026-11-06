@@ -613,6 +613,18 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2: Safari reliability (2026-11-05)
+
+`npm run safari` from `fix/safari-reliability`, then `npm run log:app` (or `scripts/margin-log.sh 5`) in a terminal to watch Margin.app's log.
+
+**Bindings through blips** (the overlay that disappeared from the third profile's window).
+- [ ] Three profiles, each with one window in full screen on the same display (each in its own Space), Margin's sidebar over each. Swipe between their Spaces quickly, back and forth, for a minute, and use ⌃⌘ arrows (or Mission Control) between them too. Every window keeps its sidebar the whole time; none goes away and stays away.
+- [ ] The log may show `…: window N missing from one read (kept for 3 s)` and `safari: a read of the window server without the browser's windows (…)` or `the window server gave no list (…)` during the swipes. It should never show `is no longer window N` for a window that's still open. Send me those lines with the times: they say what the window server did.
+- [ ] Leave all three alone for 5 minutes, then come back to each: the sidebar is there over each one.
+- [ ] Close one of the three windows (⌘W): its sidebar goes with it, and the log says `is no longer window N: closed in the browser`. Nothing is drawn over the desktop or another window.
+- [ ] Quit Safari with the three windows open, then open it again: the sidebars come back as before. The log's drops say `its copy isn't linked` or `closed in the browser`, not 3 s later.
+- [ ] Type in the palette (⌥K) while swiping to another Space and back: the keys still go to the palette or to Safari, and nothing is typed into an unseen field.
+
 ## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
 
 What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.

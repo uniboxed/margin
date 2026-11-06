@@ -19,6 +19,11 @@ final class World {
   var binder: WindowBinder!
   var truth: [WindowKey: Int] = [:]
   var wrong: [String] = []
+  // Blips of the window server's list (Tirth's log, 2026-11-05): these numbers left out of a read;
+  // `collapse`, every one of the browser's left out; `noList`, no list at all.
+  var blipped: Set<Int> = []
+  var collapse = false
+  var noList = false
 
   init(timing: WindowBinder.Timing = .init()) {
     binder = WindowBinder(browser: "safari", timing: timing, log: { [unowned self] in self.lines.append($0) })
@@ -26,8 +31,9 @@ final class World {
 
   @discardableResult func read(_ dt: Double = 0.25) -> [WindowKey: Int] {
     t += dt
+    let listed = noList ? [] : collapse ? server.filter { !pids.contains($0.pid) } : server.filter { !blipped.contains($0.number) }
     let out = binder.update(now: t, ext: ext.keys.sorted().flatMap { ext[$0]! }, reporting: Set(ext.keys), copies: copies, held: held,
-                            server: server, pids: pids, browserInFront: inFront)
+                            server: listed, pids: pids, browserInFront: inFront, listed: !noList)
     for (k, n) in out where truth[k] != nil && truth[k] != n { wrong.append("\(k) bound to \(n), is \(truth[k]!) (t+\(String(format: "%.2f", t - 1_800_000_000)))") }
     return out
   }
@@ -400,11 +406,203 @@ extension Tests {
       check("switch: the log says it was Margin's own window", w.said.contains("safari:B#90 is window 400: made by Margin's openSpaceWindow at"), w.said)
     }
 
+    // ---- the window server's list blips (Tirth's log, 2026-11-05 21:53:39) ----
+    // Three profiles, one full-screen window each, all with the same bounds; the third's bound by a
+    // focus change. Its window missing from one read and listed again 42 ms later, then every one of
+    // the browser's windows missing from a read: the binding holds, with no number free for another.
+    let C = "safari:C"
+    func three() -> World {
+      let w = World()
+      w.add(18278, screen); w.add(18285, screen); w.add(18342, screen); w.show(18278)
+      w.put(A, 155, screen, focused: true); w.put(B, 153, screen, focused: true); w.put(C, 795, screen, focused: true) // each copy calls its own focused
+      w.truth = [k(A, 155): 18278, k(B, 153): 18285, k(C, 795): 18342]
+      w.run(2)
+      w.show(18342); w.read(0.05); w.focus(k(C, 795), at: w.t - 0.02); w.run(2.4, every: 0.1)
+      return w
+    }
+    do {
+      let w = three()
+      check("blips: the third profile's window bound by its focus change (the others can't be told)", w.binder.numbers == [k(C, 795): 18342], "\(w.binder.numbers)\n\(w.said)")
+      let before = w.lines.count
+      w.blipped = [18342]; w.read(0.25)
+      check("blips: its window missing from one read: the binding kept, counted as missing", w.binder.numbers == [k(C, 795): 18342] && w.binder.absentNumbers == [18342], "\(w.binder.numbers)")
+      check("blips: and the log says so once, kept for 3 s", w.lines.suffix(from: before).filter { $0.contains("missing from one read") }.count == 1
+            && w.said.contains("safari:C#795: window 18342 missing from one read (kept for 3 s)"), w.said)
+      w.blipped = []; w.read(0.042)
+      check("blips: listed again 42 ms later: the same binding, nothing missing", w.binder.numbers == [k(C, 795): 18342] && w.binder.absentNumbers.isEmpty)
+      w.collapse = true; w.read(0.25)
+      check("blips: a read without any of the browser's windows: the binding kept", w.binder.numbers == [k(C, 795): 18342] && w.binder.lastReadCollapsed && w.binder.absentNumbers == [18342])
+      w.read(0.033); w.read(0.033)
+      w.collapse = false; w.read(0.033)
+      check("blips: back: not counted as missing, and the read told something again", w.binder.absentNumbers.isEmpty && !w.binder.lastReadCollapsed)
+      let collapsedLines = w.lines.suffix(from: before).filter { $0.contains("without the browser's windows") }
+      // (The first blip too: a read without every bound window tells nothing either.)
+      check("blips: each read without them said once, with the counts and where the bound window was", collapsedLines.count == 2
+            && collapsedLines[0].hasPrefix("safari: a read of the window server without the browser's windows (2 entries, 2 the browser's, 2 at layer 0; window 18342 not listed): bindings kept")
+            && collapsedLines[1].hasPrefix("safari: a read of the window server without the browser's windows (0 entries, 0 the browser's, 0 at layer 0; window 18342 not listed): bindings kept"), "\(collapsedLines)")
+      w.run(20)
+      check("blips: 20 s on, still bound; never 'no longer', nothing wrong", w.binder.numbers == [k(C, 795): 18342] && !w.said.contains("is no longer") && w.wrong.isEmpty, w.said)
+      check("blips: no 'can't be told' lines churned by the blips", w.lines.suffix(from: before).filter { $0.contains("isn't bound") }.isEmpty, w.lines.suffix(from: before).joined(separator: "\n"))
+    }
+    do {
+      // Every same-bounds window missing for 0.4 s (reads in a burst), with no list at all for some.
+      let w = World()
+      w.add(100, screen); w.add(200, screen); w.add(300, screen); w.add(900, screen) // 900: a profile with no linked copy
+      w.show(100)
+      w.put(A, 1, screen, focused: true); w.put(B, 2, screen); w.put(C, 3, screen)
+      w.truth = [k(A, 1): 100, k(B, 2): 200, k(C, 3): 300]
+      w.run(2)
+      w.show(200); w.read(0.05); w.focus(k(B, 2), at: w.t - 0.02); w.run(2.4, every: 0.1)
+      w.show(100); w.read(0.05); w.focus(k(A, 1), at: w.t - 0.02); w.run(2.4, every: 0.1)
+      check("collapse: two bound by focus changes, the third can't be told (two free windows with its bounds)", w.binder.numbers == [k(A, 1): 100, k(B, 2): 200], "\(w.binder.numbers)")
+      let changes = w.binder.frontChanges.count, lines = w.lines.count
+      w.collapse = true
+      for i in 0..<12 { w.noList = i % 4 == 3; w.read(0.033) }
+      w.noList = false
+      check("collapse: 0.4 s without the browser's windows: every binding kept", w.binder.numbers == [k(A, 1): 100, k(B, 2): 200] && w.binder.absentNumbers == [100, 200])
+      check("collapse: no front change noted", w.binder.frontChanges.count == changes, "\(w.binder.frontChanges)")
+      w.collapse = false; w.run(3)
+      check("collapse: back: nothing new bound, nothing dropped, nothing wrong", w.binder.numbers == [k(A, 1): 100, k(B, 2): 200] && w.wrong.isEmpty && !w.said.contains("no longer"), w.said)
+      check("collapse: and the front change count still the same (no change through nil and back)", w.binder.frontChanges.count == changes)
+      check("collapse: one line for the episode", w.lines.suffix(from: lines).filter { $0.contains("without the browser's windows") || $0.contains("gave no list") }.count == 1, w.lines.suffix(from: lines).joined(separator: "\n"))
+      w.noList = true; w.read(0.25); w.noList = false; w.read(0.25)
+      check("collapse: no list at all: said as such", w.said.contains("safari: the window server gave no list (0 entries"), w.said)
+    }
+    do {
+      // The front window alone missing for a few reads, nothing else in front: no front change noted.
+      let w = World()
+      w.add(100, screen); w.add(200, screen); w.show(100)
+      w.put(A, 1, screen, focused: true); w.put(B, 2, screen)
+      w.truth = [k(A, 1): 100, k(B, 2): 200]
+      w.run(6)
+      let changes = w.binder.frontChanges.count
+      w.blipped = [100]; w.run(0.3, every: 0.1); w.blipped = []; w.read(0.1)
+      check("the front window missing for 0.3 s: no front change noted, bindings held", w.binder.frontChanges.count == changes && w.binder.numbers == w.truth, "\(w.binder.frontChanges)")
+    }
+    do {
+      // Missing past the grace: gone, dropped once, with why.
+      let w = World()
+      w.add(100, screen); w.add(200, screen); w.show(100)
+      w.put(A, 1, screen, focused: true); w.put(B, 2, screen)
+      w.truth = [k(A, 1): 100, k(B, 2): 200]
+      w.run(6)
+      w.remove(200); w.run(2.9, every: 0.1)
+      check("absent: 2.9 s missing: still bound", w.binder.numbers == w.truth)
+      w.run(0.3, every: 0.1)
+      check("absent: past 3 s: dropped, once, with why", w.binder.numbers == [k(A, 1): 100] && w.lines.filter { $0.contains("is no longer window 200") }.count == 1
+            && w.said.contains("safari:B#2 is no longer window 200: window 200 is gone from the window server (not listed for 3 s)"), w.said)
+      w.run(5)
+      check("absent: and nothing else bound to it after", w.binder.numbers == [k(A, 1): 100] && w.wrong.isEmpty)
+    }
+    do {
+      // Closed in the browser while missing: dropped at once, its number retired (listed again, never bound).
+      let w = World()
+      w.add(100, screen); w.add(200, screen); w.show(100)
+      w.put(A, 1, screen, focused: true); w.put(A, 2, screen)
+      w.truth = [k(A, 1): 100, k(A, 2): 200]
+      w.run(6)
+      w.blipped = [200]; w.read(0.05)
+      w.close(A, 2); w.read(0.05)
+      check("absent, then closed in the browser: dropped at once, with why", w.binder.numbers == [k(A, 1): 100] && w.said.contains("safari:A#2 is no longer window 200: closed in the browser"), w.said)
+      w.blipped = []
+      w.put(A, 3, screen); w.truth[k(A, 3)] = 300
+      w.run(2)
+      check("absent, then closed: its number listed again isn't bound to another window", w.binder.numbers[k(A, 3)] == nil && w.wrong.isEmpty, "\(w.binder.numbers)")
+      w.remove(200); w.add(300, screen); w.run(1)
+      check("absent, then closed: the new window's own bound once it's listed", w.binder.numbers[k(A, 3)] == 300 && w.wrong.isEmpty, "\(w.binder.numbers)")
+    }
+    do {
+      // A closed window's number that blips stays closed.
+      let w = World()
+      w.add(100, screen); w.add(200, screen); w.show(100)
+      w.put(A, 1, screen, focused: true); w.put(A, 2, screen)
+      w.truth = [k(A, 1): 100, k(A, 2): 200]
+      w.run(6)
+      w.close(A, 2); w.read() // its window lingers a moment
+      w.blipped = [200]; w.read(0.033); w.blipped = []; w.read(0.033)
+      w.put(A, 3, screen); w.truth[k(A, 3)] = 300
+      w.run(1.5)
+      check("a retired number that blips stays retired: a new window isn't bound to it", w.binder.numbers[k(A, 3)] == nil && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      w.remove(200); w.add(300, screen); w.run(0.5)
+      check("and its own window is bound once listed", w.binder.numbers[k(A, 3)] == 300 && w.wrong.isEmpty, "\(w.binder.numbers)")
+    }
+    do {
+      // A blip as a new window is created: the window back from the blip isn't the new one.
+      let w = World()
+      w.add(100, screen); w.add(200, screen); w.add(900, screen); w.add(901, screen); w.show(100) // 900, 901: profiles with no linked copy
+      w.put(A, 1, screen, focused: true); w.put(B, 2, screen)
+      w.truth = [k(A, 1): 100, k(B, 2): 200, k(B, 3): 300]
+      w.run(2)
+      w.show(200); w.read(0.05); w.focus(k(B, 2), at: w.t - 0.02); w.run(2.4, every: 0.1)
+      w.show(100); w.read(0.05); w.focus(k(A, 1), at: w.t - 0.02); w.run(2.4, every: 0.1)
+      check("created in a blip: set up (two bound, 900 and 901 not theirs)", w.binder.numbers == [k(A, 1): 100, k(B, 2): 200], "\(w.binder.numbers)")
+      w.blipped = [900]; w.read(0.1)
+      w.put(B, 3, screen, createdAt: w.t); w.read(0.1)
+      w.blipped = []; w.read(0.05)
+      w.run(2.4, every: 0.1) // its own window slow to come (a full-screen opening)
+      w.add(300, screen); w.run(3)
+      check("created in a blip: never bound to the window back from the blip", w.wrong.isEmpty, "\(w.wrong)\n\(w.said)")
+    }
+    do {
+      // A blip during the profile switch's openSpaceWindow: the window back from it isn't Margin's new one.
+      let w = World()
+      w.add(100, screen); w.add(900, screen); w.show(100); w.put(A, 7, screen, focused: true)
+      w.truth = [k(A, 7): 100, k(B, 90): 400]
+      w.run(2)
+      let asked = w.t
+      w.blipped = [900]; w.read(0.05)
+      w.binder.expect(k(B, 90), since: asked, now: w.t, why: "made by Margin's openSpaceWindow")
+      w.blipped = []; w.read(0.05)
+      w.put(B, 90, screen, createdAt: asked + 0.02); w.run(0.5, every: 0.05) // its copy already says full screen
+      check("switch in a blip: not bound to the window back from the blip", w.binder.numbers[k(B, 90)] == nil && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      w.add(400, CGRect(x: 0, y: 0, width: 1100, height: 760)); w.read(0.05)
+      w.move(400, screen); w.run(0.5, every: 0.05)
+      check("switch in a blip: bound to its own new window", w.binder.numbers[k(B, 90)] == 400 && w.wrong.isEmpty && w.said.contains("safari:B#90 is window 400: made by Margin's openSpaceWindow"), "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      // Real goings, as in the logs (19:30:51, 19:33:58, 19:37:19): the window gone, the link down a moment
+      // later, then a new copy with a new window number: re-bound as soon as it's listed.
+      let w = World()
+      w.add(14375, screen, on: true); w.put(A, 1, screen, focused: true)
+      w.truth = [k(A, 1): 14375]
+      w.run(1)
+      w.remove(14375); w.read(0.25)
+      check("real going: the window gone, kept a moment", w.binder.numbers == [k(A, 1): 14375])
+      w.ext[A] = nil; w.read(0.003)
+      check("real going: the link down: dropped at once (its copy isn't linked)", w.binder.numbers.isEmpty && w.said.contains("safari:A#1 is no longer window 14375: its copy isn't linked"), w.said)
+      w.run(0.5)
+      w.copies[A] = "copy-A-2"; w.put(A, 1, screen, focused: true); w.truth = [k(A, 1): 15910]
+      w.add(15910, screen, on: true); w.read(0.1)
+      check("real going: the new copy's window bound at the first read that lists it", w.binder.numbers == [k(A, 1): 15910] && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      // A window replaced in one read (gone, a new number, the copy's id the same): bound to the new one at once.
+      let w = World()
+      w.add(15875, screen, on: true); w.put(A, 1, screen, focused: true)
+      w.truth = [k(A, 1): 15875]
+      w.run(1)
+      w.remove(15875); w.add(15910, screen, on: true); w.close(A, 1); w.put(A, 2, screen, focused: true); w.truth = [k(A, 2): 15910]
+      w.read(0.25)
+      check("a window replaced in one read: the old dropped, the new bound at once", w.binder.numbers == [k(A, 2): 15910] && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      // The browser quitting with its links held (reconnecting): its bindings go after the grace.
+      let w = World()
+      w.add(100, screen, on: true); w.put(A, 1, screen, focused: true)
+      w.run(1)
+      let a = w.ext.removeValue(forKey: A); _ = a
+      w.held = [A]; w.server = []; w.run(2.5)
+      check("held, its window gone: kept for the grace", w.binder.numbers == [k(A, 1): 100])
+      w.run(1)
+      check("held, its window gone 3 s: dropped", w.binder.numbers.isEmpty && w.said.contains("safari:A#1 is no longer window 100: window 100 is gone from the window server (not listed for 3 s)"), w.said)
+    }
+
     // ---- randomized: Space switches among several windows, flags lagging and disagreeing ----
-    var wrongRuns = 0, unboundRuns = 0, firstWrong = ""
     let only = ProcessInfo.processInfo.environment["WINDOW_SEED"].flatMap { Int($0) }
     let lag = ProcessInfo.processInfo.environment["WINDOW_LAG"].flatMap { Double($0) } ?? 1.2
     let runs = ProcessInfo.processInfo.environment["WINDOW_RUNS"].flatMap { Int($0) } ?? 300
+    for blips in [false, true] {
+    var wrongRuns = 0, unboundRuns = 0, firstWrong = "", blipDrops = 0
     for seed in only.map({ $0...$0 }) ?? 1...runs {
       var r = Seeded(state: UInt64(seed))
       let w = World()
@@ -430,10 +628,16 @@ extension Tests {
         lastReport[link] = when
         later(when, f)
       }
+      // The window server's blips (Tirth's log, 2026-11-05): a window missing from 1-15 reads, and every
+      // one of the browser's missing (sometimes no list at all) for 0.2-1.1 s about a switch.
+      var blipReads: [Int: (after: Int, reads: Int)] = [:]
+      var collapse: (from: Double, until: Double)?
       for _ in 0..<12 {
         let next = r.pick(fs.filter { $0.0 != current.0 })
         let swipe = r.range(0, 0.5)
         let start = w.t
+        if blips, r.chance(0.5) { blipReads[r.pick(fs.map(\.1) + [desk.1])] = (Int(r.next() % 6), 1 + Int(r.next() % 15)) }
+        if blips, r.chance(0.5) { let from = start + r.range(-0.1, 0.4); collapse = (from, from + r.range(0.2, 1.1)) }
         w.show(next.1, also: swipe > 0.05 ? [current.1] : [])
         let heard = start + r.range(0, 0.35)
         let lagTarget = r.range(0, lag), lagOthers = r.range(0, lag)
@@ -452,7 +656,11 @@ extension Tests {
           let at = w.t + dt
           due.sort { ($0.0, $0.1) < ($1.0, $1.1) }
           while let first = due.first, first.0 <= at { due.removeFirst(); first.2() }
+          w.blipped = Set(blipReads.filter { $0.value.after == 0 && $0.value.reads > 0 }.keys)
+          w.collapse = collapse.map { at >= $0.from && at < $0.until } ?? false
+          w.noList = w.collapse && r.chance(0.25)
           w.read(dt)
+          blipReads = blipReads.mapValues { $0.after > 0 ? ($0.after - 1, $0.reads) : (0, $0.reads - 1) }.filter { $0.value.reads > 0 }
           if only != nil {
             let flags = (w.ext[A]! + w.ext[B]!).map { "\($0.key)\($0.focused ? "*" : "")@\($0.focusedAt.map { String(format: "%.3f", $0 - 1_800_000_000) } ?? "-")" }
             print(String(format: "t+%.3f", w.t - 1_800_000_000), "front", w.front ?? -1, "inFront", w.inFront, flags.joined(separator: " "))
@@ -462,16 +670,22 @@ extension Tests {
       }
       for (_, _, f) in due.sorted(by: { ($0.0, $0.1) < ($1.0, $1.1) }) { f() }
       w.inFront = true
+      w.blipped = []; w.collapse = false; w.noList = false
       // Then each full-screen window shown in turn, cleanly: every one should end up bound.
       for (key, n) in fs {
         w.show(n); w.read(0.05); w.focus(key, at: w.t - 0.03)
         if !perProfile { for link in [A, B] where link != key.link { w.flags(link, focused: nil) } }
         w.run(2.4, every: 0.1)
       }
-      if !w.wrong.isEmpty { wrongRuns += 1; if firstWrong.isEmpty { firstWrong = "seed \(seed): \(w.wrong[0])\n" + w.lines.suffix(12).joined(separator: "\n") } }
+      if !w.wrong.isEmpty { wrongRuns += 1; if firstWrong.isEmpty { firstWrong = "seed \(seed): \(w.wrong[0])\n" + w.lines.suffix(only != nil ? 200 : 12).joined(separator: "\n") } }
       if w.binder.numbers != w.truth { unboundRuns += 1 }
+      // A binding goes for the window server only after 3 s without its window (every window here stays open).
+      if w.lines.contains(where: { $0.contains("is gone from the window server") && !$0.contains("(not listed for 3 s)") }) { blipDrops += 1 }
     }
-    check("randomized (\(runs) runs of 12 Space switches, flags lagging up to \(lag) s and disagreeing): never bound wrong", wrongRuns == 0, "\(wrongRuns) runs; \(firstWrong)")
-    check("and every window bound once each was shown cleanly", unboundRuns == 0, "\(unboundRuns) runs")
+    let with = blips ? ", the window server's list blipping" : ""
+    check("randomized (\(runs) runs of 12 Space switches, flags lagging up to \(lag) s and disagreeing\(with)): never bound wrong", wrongRuns == 0, "\(wrongRuns) runs; \(firstWrong)")
+    check("and every window bound once each was shown cleanly\(with)", unboundRuns == 0, "\(unboundRuns) runs")
+    check("and no binding dropped for a window missing less than 3 s\(with)", blipDrops == 0, "\(blipDrops) runs")
+    }
   }
 }

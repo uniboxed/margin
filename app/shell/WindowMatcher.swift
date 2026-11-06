@@ -30,6 +30,16 @@
 //    and as many browser windows with those bounds as the copies report).
 //  - A window it can't tell yet gets no binding, so no overlay is drawn over
 //    it (it says so in the log, once per reason) rather than the wrong one.
+//  - The window server's list blips (Tirth's log, 2026-11-05: a bound window
+//    missing from one read and listed again 42 ms later, and reads without any
+//    of Safari's windows next to Space changes). A window server number is the
+//    same window for the whole login session, so a bound window missing from a
+//    read keeps its binding (`absentNumbers`, still counted as bound) for
+//    `Timing.absent`; it goes at once only when the extension's window closes,
+//    the copy goes or the browser isn't running. A read that lost every window
+//    the last one had (or every bound one), or that has no list at all, tells
+//    nothing: nothing is learned or forgotten from it. And no binding is made
+//    by elimination on a read where a window listed just before is missing.
 //
 // Every binding made, moved or dropped is one log line with why.
 
@@ -155,6 +165,9 @@ final class WindowBinder {
         var alone: Double = 1.0
         // A change seen across a longer gap between reads says too little about when it happened.
         var maxGap: Double = 1.0
+        // Across reads that told nothing (or that missed the front window), a shorter one: others may have
+        // come and gone unseen in it.
+        var blind: Double = 0.3
         // A copy's report may come this late (a busy background): an event is weighed only once this has passed
         // after `alone`, so the others near it have come.
         var reportLag: Double = 1.0
@@ -170,6 +183,9 @@ final class WindowBinder {
         var conflict: Double = 120
         // Events kept this long.
         var history: Double = 20
+        // A window missing from the window server's list this long is gone (a bound one's binding goes, a
+        // closed one's number may be bound again); shorter, it's a blip: the same window when it's back.
+        var absent: Double = 3.0
     }
 
     struct Binding: Equatable {
@@ -184,7 +200,8 @@ final class WindowBinder {
     private(set) var bindings: [WindowKey: Binding] = [:]
 
     private struct Seen { let at: Double; let after: Double; let before: Bool } // first listed between `after` and `at`; `before`: there at the first read
-    private struct Change { let at: Double; let after: Double; let number: Int? }
+    // `timed`: false for one seen across reads that told nothing (or with the front window missing) for longer than `blind`.
+    private struct Change { let at: Double; let after: Double; let number: Int?; var timed = true }
     // `contradicted`: the copy's report that carried it called another of its windows focused.
     private struct Event { let key: WindowKey; let at: Double; var contradicted = false; var decided = false }
     private struct Pending { let key: WindowKey; let number: Int; let until: Double; let why: String }
@@ -210,6 +227,21 @@ final class WindowBinder {
     private var made: [Made] = [] // windows Margin's own request made (the profile switch's openSpaceWindow)
     private var copyOf: [String: String] = [:] // each link's copy (instanceId), last seen
     private var waitingSaid: [WindowKey: String] = [:]
+    // Blips. A number listed before and missing since this read (bound, closed or only seen); the
+    // browser-sized windows of the last read and of the last read that told something; when that was.
+    private var unlisted: [Int: Double] = [:]
+    private var absentSaid: Set<Int> = []
+    private var lastBig: Set<Int> = []
+    private var reliableBig: Set<Int> = []
+    private var lastReliable: Double = 0
+    private var collapsedSince: Double?
+    private var freshAt: Double = -.infinity // a browser-sized window never listed before was last first listed
+    // The front window missing (and nothing else in front) since the read after `frontMissingAfter`.
+    private var frontMissingAfter: Double?
+    /// Bound windows the last read didn't list (kept, for `Timing.absent`): the shell keeps their overlays where they are, unseen.
+    private(set) var absentNumbers: Set<Int> = []
+    /// The last read told nothing (no list, or none of the browser's windows in it): bindings kept as they were.
+    private(set) var lastReadCollapsed = false
 
     init(browser: String, timing: Timing = Timing(), log: @escaping (String) -> Void = { Diagnostics.note($0) }) {
         self.browser = browser
@@ -218,6 +250,8 @@ final class WindowBinder {
     }
 
     var numbers: [WindowKey: Int] { bindings.mapValues(\.number) }
+    // The front window's changes it has noted (for the tests).
+    var frontChanges: [Int?] { changes.map(\.number) }
 
     /// The app's own request made this window (asked at `since`, answered `now` with its id): it's bound
     /// to the one new window the window server lists from about then, once their bounds agree.
@@ -234,13 +268,12 @@ final class WindowBinder {
     /// - held: links whose bindings stay as they are though they say nothing
     ///   now (dropped a moment ago, or linked again without their state yet).
     /// - server: the window server's list; `pids`: the browser's processes;
-    ///   `browserInFront`: it's the active app.
+    ///   `browserInFront`: it's the active app; `listed`: false when the
+    ///   window server gave no list at all (`server` is then empty).
     @discardableResult
     func update(now: Double, ext: [ExtWindow], reporting: Set<String>, copies: [String: String] = [:], held: Set<String> = [],
-                server: [ServerWindow], pids: Set<pid_t>, browserInFront: Bool) -> [WindowKey: Int] {
-        let first = reads == 0
-        let after = first ? now : lastRead
-        reads += 1
+                server: [ServerWindow], pids: Set<pid_t>, browserInFront: Bool, listed: Bool = true) -> [WindowKey: Int] {
+        let first = reads == 0 // the first read that told something
         defer { lastRead = now }
         let T = timing
 
@@ -249,23 +282,80 @@ final class WindowBinder {
         var present: [Int: ServerWindow] = [:]
         for w in mine where present[w.number] == nil { present[w.number] = w }
         let candidates = WindowMatcher.candidates(server, pids: pids)
-        for w in mine where seen[w.number] == nil { seen[w.number] = Seen(at: now, after: after, before: first) }
-        seen = seen.filter { present[$0.key] != nil }
-        retired = retired.filter { present[$0] != nil }
-        for w in mine where serverMoved[w.number]?.bounds != w.bounds { serverMoved[w.number] = (w.bounds, now) }
-        serverMoved = serverMoved.filter { present[$0.key] != nil }
+        let big = Set(mine.filter { $0.bounds.width >= WindowMatcher.minSize && $0.bounds.height >= WindowMatcher.minSize }.map(\.number))
+        let boundBefore = Set(bindings.values.map(\.number))
+
+        // A read that tells nothing (Tirth's log, 2026-11-05: reads without any of Safari's windows, next
+        // to Space changes, each back a read later): no list at all, or none of the browser-sized windows
+        // the last read that told something had, or none of the bound ones, or none at all, and no new
+        // one, while the browser runs and its copies still have windows. Nothing is learned or forgotten
+        // from it, for `absent` at most.
+        let reported = Set(ext.filter { reporting.contains($0.key.link) }.map(\.key))
+        let extHas = !held.isEmpty || ext.contains { reporting.contains($0.key.link) && $0.state != "minimized" }
+        let liveBound = Set(bindings.filter { !reporting.contains($0.key.link) || reported.contains($0.key) }.map(\.value.number))
+        let fresh = big.contains { seen[$0] == nil }
+        let lostAll = big.isEmpty || (!reliableBig.isEmpty && reliableBig.isDisjoint(with: big)) || (!liveBound.isEmpty && liveBound.allSatisfy { present[$0] == nil })
+        var collapsed = !pids.isEmpty && extHas && (!listed || (lostAll && !fresh))
+        if collapsed {
+            if let since = collapsedSince {
+                if now - since >= T.absent {
+                    if lastReadCollapsed { log("\(browser): the window server's list has been without the browser's windows for \(Int(T.absent)) s: taken as it is") }
+                    collapsed = false
+                }
+            } else {
+                collapsedSince = now
+                let theirs = server.filter { pids.contains($0.pid) }.count
+                let each = boundBefore.sorted().map { n -> String in
+                    guard let w = server.first(where: { $0.number == n }) else { return "window \(n) not listed" }
+                    return "window \(n) at layer \(w.layer), alpha \(String(format: "%.2f", w.alpha)), \(w.onScreen ? "on" : "off") screen"
+                }
+                log("\(browser): \(listed ? "a read of the window server without the browser's windows" : "the window server gave no list") (\(server.count) entries, \(theirs) the browser's, \(mine.count) at layer 0\(each.isEmpty ? "" : "; " + each.joined(separator: ", "))): bindings kept, nothing learned from it")
+            }
+        } else {
+            collapsedSince = nil
+        }
+        lastReadCollapsed = collapsed
+        if !collapsed { reads += 1 }
+        // Since when something may have changed: the last read that told something.
+        let after = first ? now : lastReliable
+        // A window listed before and missing now: since when. Back, it's the same window (its number is
+        // the window's for the login session); missing `absent`, it's gone.
+        for n in Set(seen.keys).union(retired).union(boundBefore) where present[n] == nil && unlisted[n] == nil { unlisted[n] = now }
+        for n in present.keys where unlisted[n] != nil { unlisted[n] = nil; absentSaid.remove(n) }
+        func missing(_ n: Int) -> Bool { present[n] == nil && (unlisted[n].map { now - $0 < T.absent } ?? false) }
+        if !collapsed {
+            func keep(_ n: Int) -> Bool { present[n] != nil || missing(n) }
+            for w in mine where seen[w.number] == nil { seen[w.number] = Seen(at: now, after: after, before: first) }
+            seen = seen.filter { keep($0.key) }
+            retired = retired.filter(keep)
+            for w in mine where serverMoved[w.number]?.bounds != w.bounds { serverMoved[w.number] = (w.bounds, now) }
+            serverMoved = serverMoved.filter { keep($0.key) }
+        }
 
         let nowFront = browserInFront ? candidates.filter(\.onScreen).min(by: { $0.order < $1.order })?.number : nil
-        if first {
+        if collapsed {
+            // Nothing learned.
+        } else if first {
             // In front since before the first read: when isn't known, so taken as now (settled focus waits `quiet`).
             front = nowFront
             frontSince = now
             // When it came to the front isn't known: a change at some time before, which no focus can be told against.
             if nowFront != nil { changes.append(Change(at: now, after: now - T.history, number: nowFront)) }
         } else if nowFront != front {
-            changes.append(Change(at: now, after: after, number: nowFront))
-            front = nowFront
-            frontSince = now
+            if nowFront == nil, let f = front, missing(f) {
+                // The front window missing from this read and nothing else in front: not a change until it's
+                // back (none) or gone (a change some time since it was last listed).
+                if frontMissingAfter == nil { frontMissingAfter = after }
+            } else {
+                let since = frontMissingAfter ?? after
+                let unseen = frontMissingAfter != nil || lastReliable < lastRead
+                changes.append(Change(at: now, after: since, number: nowFront, timed: !unseen || now - since <= T.blind))
+                front = nowFront
+                frontSince = now
+                frontMissingAfter = nil
+            }
+        } else {
+            frontMissingAfter = nil
         }
 
         // ---- the extension's side ----
@@ -290,6 +380,7 @@ final class WindowBinder {
         createEvents.removeAll { $0.at < now - T.history }
 
         // ---- bindings that no longer hold ----
+        // (The extension's own word holds on any read: a window closed, a copy gone or new.)
         for (link, copy) in copies where reporting.contains(link) {
             if let before = copyOf[link], before != copy {
                 for key in bindings.keys.sorted() where key.link == link { drop(key, "a new copy of Margin started in its profile (its window ids may be new)") }
@@ -303,23 +394,48 @@ final class WindowBinder {
                 retired.insert(b.number)
                 drop(key, "closed in the browser")
             } else if present[b.number] == nil {
-                drop(key, "window \(b.number) is gone from the window server")
+                if pids.isEmpty {
+                    drop(key, "window \(b.number) is gone from the window server (the browser isn't running)")
+                } else if !collapsed, !missing(b.number) {
+                    drop(key, "window \(b.number) is gone from the window server (not listed for \(Int(T.absent)) s)")
+                } else if !absentSaid.contains(b.number) {
+                    absentSaid.insert(b.number)
+                    log("\(key): window \(b.number) missing from one read (kept for \(Int(T.absent)) s)")
+                }
             }
         }
         conflicts = conflicts.filter { byKey[$0.key] != nil && now - $0.value.at < T.conflict }
+        if !collapsed {
+            unlisted = unlisted.filter { now - $0.value < T.absent }
+            absentSaid = absentSaid.filter { unlisted[$0] != nil }
+        }
+        absentNumbers = Set(bindings.values.map(\.number).filter { present[$0] == nil })
+        if collapsed { return numbers }
+        // A browser-sized window the last read listed is missing: no binding by elimination this read
+        // (unless a new one came with it: a window replaced, a real change).
+        let lostSome = !reliableBig.subtracting(big).isEmpty && !fresh
+        if fresh { freshAt = now }
+        reliableBig = big
+        lastReliable = now
 
-        // Free: not bound, not a closed window's.
+        // Free: not bound (a missing bound window is still bound), not a closed window's.
         var bound: Set<Int> { Set(bindings.values.map(\.number)) }
         func freeServer() -> [ServerWindow] { let b = bound; return candidates.filter { !b.contains($0.number) && !retired.contains($0.number) } }
         func freeExt() -> [ExtWindow] { byKey.values.filter { bindings[$0.key] == nil && $0.state != "minimized" && $0.bounds != nil }.sorted { $0.key < $1.key } }
         func fits(_ e: ExtWindow, _ w: ServerWindow) -> Bool { e.bounds.map { WindowMatcher.close($0, w.bounds) } ?? false }
+        // Free windows missing from this read, by the bounds they were last listed with: any of them could
+        // be the one with those bounds. (Not one gone before a new window came: that's a window replaced.)
+        func missingFree(_ r: CGRect) -> Int {
+            let b = bound
+            return unlisted.filter { n, since in since > freshAt && missing(n) && !b.contains(n) && !retired.contains(n) && (serverMoved[n].map { WindowMatcher.close($0.bounds, r) } ?? false) }.count
+        }
 
         // ---- moved: a bound window whose bounds match one other free window alone, steadily ----
         for (key, b) in bindings.sorted(by: { $0.key < $1.key }) {
             guard let e = byKey[key], e.state != "minimized", let eb = e.bounds, let own = present[b.number] else { drift[key] = nil; continue }
             if WindowMatcher.close(eb, own.bounds) { drift[key] = nil; continue }
             let others = freeServer().filter { WindowMatcher.close(eb, $0.bounds) }
-            guard others.count == 1, let other = others.first, freeExt().allSatisfy({ !fits($0, other) }) else { drift[key] = nil; continue }
+            guard others.count == 1, missingFree(eb) == 0, let other = others.first, freeExt().allSatisfy({ !fits($0, other) }) else { drift[key] = nil; continue }
             guard let d = drift[key], d.number == other.number else { drift[key] = (other.number, now); continue }
             let still = now - (extMoved[key]?.at ?? now) >= T.moved && now - (serverMoved[other.number]?.at ?? now) >= T.moved
             guard now - d.since >= T.moved, still else { continue }
@@ -368,18 +484,20 @@ final class WindowBinder {
                 log("\(p.key): created with window \(p.number), but their bounds never agreed (\(e.bounds.map(WindowMatcher.describe) ?? "none") and \(WindowMatcher.describe(w.bounds))): not bound")
             }
         }
-        pending.removeAll { p in bindings[p.key] != nil || bound.contains(p.number) || byKey[p.key] == nil || present[p.number] == nil || retired.contains(p.number) || now >= p.until }
+        pending.removeAll { p in bindings[p.key] != nil || bound.contains(p.number) || byKey[p.key] == nil || (present[p.number] == nil && !missing(p.number)) || retired.contains(p.number) || now >= p.until }
 
         // ---- focus moved ----
         for i in focusEvents.indices where !focusEvents[i].decided && now >= focusEvents[i].at + T.alone + T.reportLag {
             focusEvents[i].decided = true
             let ev = focusEvents[i]
             guard let e = byKey[ev.key], e.state != "minimized", !ev.contradicted else { continue }
-            let usable = changes.filter { $0.at - $0.after <= T.maxGap }
+            let usable = changes.filter { $0.timed && $0.at - $0.after <= T.maxGap }
             let near = changes.filter { ev.at >= $0.after - T.alone && ev.at <= $0.at + T.alone }
             let at = usable.filter { $0.number != nil && ev.at >= $0.after - T.slack && ev.at <= $0.at + T.slack }
             let others = focusEvents.filter { $0.key != ev.key && abs($0.at - ev.at) <= T.alone }
-            guard at.count == 1, near.count == 1, others.isEmpty, let change = at.first, let number = change.number, let w = present[number], !retired.contains(number) else { continue }
+            guard at.count == 1, near.count == 1, others.isEmpty, let change = at.first, let number = change.number, !retired.contains(number) else { continue }
+            // Its window missing from this read: weighed again when it's back (or gone).
+            guard let w = present[number] else { if missing(number) { focusEvents[i].decided = false }; continue }
             guard fits(e, w) else { continue }
             let why = "focus moved to it at \(WindowMatcher.clock(ev.at)) and window \(number) came to the front by \(WindowMatcher.clock(change.at)), each alone then"
             let holder = bindings.first { $0.value.number == number && $0.key != ev.key }?.key
@@ -401,14 +519,16 @@ final class WindowBinder {
         }
 
         // ---- the only free window with its bounds ----
+        // (Not on a read that lost a window the last one listed: the window it'd pick may be standing in for that one.)
         func eliminate() {
+            guard !lostSome else { return }
             var changed = true
             while changed {
                 changed = false
                 let server = freeServer(), free = freeExt()
                 for e in free {
                     let windows = server.filter { fits(e, $0) }
-                    guard windows.count == 1, let w = windows.first, free.filter({ fits($0, w) }).count == 1 else { continue }
+                    guard windows.count == 1, let w = windows.first, free.filter({ fits($0, w) }).count == 1, missingFree(e.bounds!) == 0 else { continue }
                     let others = bindings.values.filter { n in present[n.number].map { WindowMatcher.close($0.bounds, w.bounds) } ?? false }.count
                     bind(e.key, w.number, now, "the only free window with its bounds (\(WindowMatcher.describe(w.bounds)))" + (others > 0 ? "; \(others) other(s) with them already bound" : ""))
                     changed = true
@@ -422,7 +542,7 @@ final class WindowBinder {
         let focused = byKey.values.filter { $0.focused && $0.state != "minimized" }
         if browserInFront, held.isEmpty, let f = front, let fw = present[f], !bound.contains(f), !retired.contains(f),
            focused.count == 1, let x = focused.first, bindings[x.key] == nil, fits(x, fw) {
-            let sameServer = candidates.filter { WindowMatcher.close($0.bounds, fw.bounds) }.count
+            let sameServer = candidates.filter { WindowMatcher.close($0.bounds, fw.bounds) }.count + missingFree(fw.bounds)
             let sameExt = byKey.values.filter { $0.state != "minimized" && fits($0, fw) }.count
             let recent = frontSince.map { now - $0 < T.quiet } ?? false
             // A flag a newer focus (any copy's) contradicts is stale.
@@ -446,18 +566,22 @@ final class WindowBinder {
         eliminate()
 
         // ---- what can't be told yet ----
-        let server = freeServer()
-        for e in freeExt() {
-            let windows = server.filter { fits(e, $0) }.map(\.number).sorted()
-            let reason = windows.isEmpty ? "no free window of the browser has its bounds"
-                : windows.count == 1 ? "window \(windows[0]) has its bounds, but so does another of the extension's windows"
-                : "\(windows.count) windows have its bounds (\(windows.map(String.init).joined(separator: ", "))): waiting for a focus change or a creation to tell them apart"
-            if waitingSaid[e.key] != reason {
-                waitingSaid[e.key] = reason
-                log("\(e.key) (\(e.state), \(WindowMatcher.describe(e.bounds!))) isn't bound: \(reason); nothing drawn over it")
+        // (Not said while a window is missing: it's said, if it still holds, when the list is whole again.)
+        if !lostSome, !unlisted.keys.contains(where: { missing($0) && !retired.contains($0) }) {
+            let server = freeServer()
+            for e in freeExt() {
+                let windows = server.filter { fits(e, $0) }.map(\.number).sorted()
+                let reason = windows.isEmpty ? "no free window of the browser has its bounds"
+                    : windows.count == 1 ? "window \(windows[0]) has its bounds, but so does another of the extension's windows"
+                    : "\(windows.count) windows have its bounds (\(windows.map(String.init).joined(separator: ", "))): waiting for a focus change or a creation to tell them apart"
+                if waitingSaid[e.key] != reason {
+                    waitingSaid[e.key] = reason
+                    log("\(e.key) (\(e.state), \(WindowMatcher.describe(e.bounds!))) isn't bound: \(reason); nothing drawn over it")
+                }
             }
         }
         waitingSaid = waitingSaid.filter { byKey[$0.key] != nil && bindings[$0.key] == nil }
+        absentNumbers = Set(bindings.values.map(\.number).filter { present[$0] == nil })
         return numbers
     }
 
@@ -472,6 +596,7 @@ final class WindowBinder {
 
     private func drop(_ key: WindowKey, _ why: String) {
         guard let b = bindings.removeValue(forKey: key) else { return }
+        absentSaid.remove(b.number)
         conflicts[key] = nil
         drift[key] = nil
         log("\(key) is no longer window \(b.number): \(why)")

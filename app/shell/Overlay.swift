@@ -231,6 +231,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             CATransaction.commit()
             frameTopLeft = frame
         }
+        reveal() // (at its frame already, if its window came back elsewhere)
         let ordered = !isShown || aboveWindow != number || belowWindow != toolbar
         aboveWindow = number
         belowWindow = toolbar
@@ -256,11 +257,35 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         reorders += 1
     }
 
+    // Unseen where it is: its window is missing from a read of the window server (a blip: WindowBinder
+    // keeps the binding, `absentNumbers`). Still ordered in its Space, above its window, with the
+    // keyboard if it had it; drawn at alpha 0, and the mouse passes through. `reveal` (or the next
+    // `show`) brings it back; `hide` puts it away if the binding goes.
+    private(set) var isConcealed = false
+    func conceal() {
+        guard isShown, !isConcealed else { return }
+        isConcealed = true
+        panel.alphaValue = 0
+        panel.ignoresMouseEvents = true
+        edgePanel?.alphaValue = 0
+        edgePanel?.ignoresMouseEvents = true
+    }
+
+    func reveal() {
+        guard isConcealed else { return }
+        isConcealed = false
+        panel.alphaValue = 1
+        panel.ignoresMouseEvents = ignoring
+        edgePanel?.alphaValue = 1
+        edgePanel?.ignoresMouseEvents = false
+    }
+
     // `why`: for the log (only a shown overlay put away is logged).
     func hide(_ why: String) {
         if hasKeyboard { handBack() }
         if isShown { Diagnostics.note("overlay put away (\(key)): \(why)") }
         panel.orderOut(nil)
+        reveal()
         isShown = false
         aboveWindow = nil
         belowWindow = nil
@@ -279,7 +304,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     func setIgnoring(_ on: Bool) {
         guard on != ignoring else { return }
         ignoring = on
-        panel.ignoresMouseEvents = on
+        panel.ignoresMouseEvents = on || isConcealed
     }
 
     // ---- the page ----

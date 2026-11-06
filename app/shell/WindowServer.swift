@@ -31,11 +31,20 @@ protocol WindowSource {
     // Every window of these processes (on every Space), plus the on-screen windows above them
     // (all processes), in the window server's order. Overlays' own windows included.
     func windows(of pids: Set<pid_t>) -> [ServerWindow]
+    // The same, or nil when the window server gave no list at all (not the same as an empty one:
+    // the binder takes such a read as telling nothing, WindowMatcher.swift).
+    func read(of pids: Set<pid_t>) -> [ServerWindow]?
+}
+
+extension WindowSource {
+    func read(of pids: Set<pid_t>) -> [ServerWindow]? { windows(of: pids) }
 }
 
 struct CGWindowSource: WindowSource {
-    func windows(of pids: Set<pid_t>) -> [ServerWindow] {
-        guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+    func windows(of pids: Set<pid_t>) -> [ServerWindow] { read(of: pids) ?? [] }
+
+    func read(of pids: Set<pid_t>) -> [ServerWindow]? {
+        guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
         var out: [ServerWindow] = []
         out.reserveCapacity(64)
         for (i, w) in list.enumerated() {

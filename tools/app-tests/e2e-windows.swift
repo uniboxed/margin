@@ -171,6 +171,49 @@ func windowsScenario(ownSpace: Bool = false) async {
       && shell.overlays.values.filter(\.isShown).count == 1 }))
   }
 
+  // The window server's list blipping (Tirth's log, 2026-11-05 21:53:39): the front window missing for
+  // 40 ms, then every one of the browser's, then no list at all. The overlay stays over its window
+  // (unseen while it's missing), with no line saying it was put away or shown again.
+  do {
+    let front = windows.browser.first { $0.onScreen }!.number
+    let key = truth.first { $0.value == front }!.key
+    let lines = said.count
+    final class Look { var on = true; var bad: [String] = []; var concealed = 0 }
+    let look = Look()
+    let looking = Task { @MainActor in
+      while look.on {
+        if let o = shell.overlays[key] {
+          if !o.isShown || o.aboveWindow != front { look.bad.append("shown \(o.isShown), over \(o.aboveWindow.map(String.init) ?? "nothing")") }
+          if o.isConcealed { look.concealed += 1 }
+        }
+        if shell.matches[key] != front { look.bad.append("bound to \(shell.matches[key].map(String.init) ?? "nothing")") }
+        try? await Task.sleep(nanoseconds: 3_000_000)
+      }
+    }
+    let all = windows.browser
+    for blip in ["one", "all", "none"] {
+      switch blip {
+      case "one": windows.browser.removeAll { $0.number == front }
+      case "all": windows.browser = []
+      default: windows.noList = true
+      }
+      shell.burst("test: a blip")
+      try? await Task.sleep(nanoseconds: 40_000_000)
+      windows.browser = all
+      windows.noList = false
+      shell.burst("test: back")
+      try? await Task.sleep(nanoseconds: 300_000_000)
+    }
+    look.on = false
+    _ = await looking.value
+    let since = said.suffix(from: lines)
+    check("windows: the front window missing for 40 ms, then all of them, then no list: bound and over its window all along", look.bad.isEmpty, "\(look.bad.prefix(5))")
+    check("windows: unseen while missing, seen again after", look.concealed > 0 && shell.overlays[key]?.isConcealed == false, "\(look.concealed)")
+    check("windows: no overlay put away or shown again, no binding dropped", !since.contains { $0.contains("overlay put away") || $0.contains("overlay shown") || $0.contains("is no longer") }, "\(since.filter { $0.contains("overlay") || $0.contains("no longer") }.prefix(4))")
+    check("windows: the log says the window was missing, and the reads that told nothing", since.contains { $0.contains("window \(front) missing from one read (kept for 3 s)") }
+          && since.contains { $0.contains("without the browser's windows") } && since.contains { $0.contains("the window server gave no list") }, "\(since.prefix(6))")
+  }
+
   // P1's second window closed: its binding and overlay go. A new full-screen window: bound to its own window.
   p1List = [a1]
   report1(focused: nil)

@@ -489,11 +489,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         tracks += 1
         var own = allPids
         own.insert(ProcessInfo.processInfo.processIdentifier)
-        let list = windowSource.windows(of: own)
+        let read = windowSource.read(of: own)
+        let list = read ?? []
         let byNumber = Dictionary(list.map { ($0.number, $0) }, uniquingKeysWith: { a, _ in a })
 
         // Each browser's windows, bound (WindowBinder: it logs every binding made, moved or dropped, and why).
         var next: [WindowKey: Int] = [:]
+        // Bound windows this read didn't list (a blip: their overlays are kept where they are, unseen).
+        var absent: Set<Int> = []
         var ext: [WindowKey: (ExtWindow, Link)] = [:]
         let wallNow = options.clock()
         for (browser, pids) in byBrowser {
@@ -508,8 +511,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             let binder = binders[browser] ?? WindowBinder(browser: browser)
             binders[browser] = binder
             let bound = binder.update(now: wallNow, ext: windows.map(\.0), reporting: Set(entries.map(\.connection.key)), copies: copies, held: held,
-                                      server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false)
+                                      server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, listed: read != nil)
             next.merge(bound) { a, _ in a }
+            absent.formUnion(binder.absentNumbers)
         }
         matches = next
 
@@ -526,11 +530,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // Never shown over a window that isn't bound, isn't on screen, or doesn't fill its display yet.
             guard wanted else { overlay.hide("its window is still being made"); continue }
             guard let number = next[key] else { overlay.hide("its window isn't bound to one of the window server's"); continue }
+            // Bound, but missing from this read (WindowBinder keeps it for a moment): kept where it is, unseen.
+            if absent.contains(number) { overlay.conceal(); continue }
             guard let server = byNumber[number] else { overlay.hide("its window is gone from the window server"); continue }
             if !server.onScreen {
                 // In its window's own Space, which isn't showing: left there, so it slides back in with
                 // the window, already drawn (nothing to show again when the Space returns).
                 if overlay.ownSpace, overlay.isShown, overlay.aboveWindow == number, overlay.windowFrame == server.bounds {
+                    overlay.reveal()
                     // But on screen itself while its window isn't (macOS kept it in the Space showing): back to every Space.
                     // (Not in the test harness: its stand-in windows have no Spaces, so an overlay always reads as on screen.)
                     if !options.harness, !spaceChanged, byNumber[overlay.windowNumber]?.onScreen == true {
@@ -615,15 +622,22 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // The overlay over the front app's frontmost window, if it's a linked browser's.
+    private var lastFrontWindow: Int?
     func frontOverlay(list: [ServerWindow]? = nil) -> OverlayController? {
         guard let front = apps.frontPid else { return nil }
         let windows = list ?? windowSource.windows(of: [front])
-        guard let top = WindowMatcher.candidates(windows, pids: [front]).filter(\.onScreen).min(by: { $0.order < $1.order }) else { return nil }
+        guard let top = WindowMatcher.candidates(windows, pids: [front]).filter(\.onScreen).min(by: { $0.order < $1.order }) else {
+            // None of its windows on screen: the one in front may be missing from this read (a blip),
+            // its overlay kept unseen over it.
+            return overlays.values.first { $0.isShown && $0.isConcealed && $0.browserPid == front && $0.aboveWindow == lastFrontWindow }
+        }
+        lastFrontWindow = top.number
         return overlays.values.first { $0.isShown && $0.aboveWindow == top.number }
     }
 
     private func updateKeys(list: [ServerWindow], allPids: Set<pid_t>) {
-        let front = list.isEmpty ? nil : frontOverlay(list: list)
+        // (A read missing the front window: its overlay kept unseen over it still has the keys, frontOverlay.)
+        let front = frontOverlay(list: list)
         let has = front != nil
         // The front window's copy's combinations (each profile's Settings may differ).
         if let front, let keys = links[front.key.link]?.keys { shortcuts.rebind(ShortcutSet.bindings(from: keys)) }

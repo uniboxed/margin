@@ -97,6 +97,8 @@ final class ScriptedWindows: WindowSource {
   var browser: [ServerWindow] = []
   weak var shell: Shell?
   var somethingBetween = false
+  var noList = false // the window server giving no list at all (CGWindowListCopyWindowInfo's nil)
+  func read(of pids: Set<pid_t>) -> [ServerWindow]? { noList ? nil : windows(of: pids) }
   func windows(of pids: Set<pid_t>) -> [ServerWindow] {
     var out: [ServerWindow] = []
     var order = 0
