@@ -64,6 +64,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     mirror()
     layouts()
     windowBinding() // window-tests.swift
+    parkedWindowBinding() // window-tests.swift
     stacking()
     passThrough()
     shortcuts()

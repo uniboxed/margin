@@ -1028,12 +1028,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // A window the app's own request made (the profile switch's openSpaceWindow, asked at `asked`):
-    // its binder binds it to the one new window the window server lists from then (WindowMatcher.swift).
-    func windowMade(_ link: String, windowId: Int, asked: Double) {
+    // its binder binds it to the one new window the window server lists from then (WindowMatcher.swift),
+    // by the bounds the answer gave until the copy's list has it (HANDOFF.md §1.6; an older copy gives none).
+    func windowMade(_ link: String, windowId: Int, asked: Double, bounds: CGRect? = nil) {
         guard let browser = links[link]?.connection.hello.browser else { return }
         let binder = binders[browser] ?? WindowBinder(browser: browser)
         binders[browser] = binder
-        binder.expect(WindowKey(link: link, windowId: windowId), since: asked, now: options.clock(), why: "made by Margin's openSpaceWindow")
+        binder.expect(WindowKey(link: link, windowId: windowId), since: asked, now: options.clock(), why: "made by Margin's openSpaceWindow", bounds: bounds)
         burst("window made")
     }
 

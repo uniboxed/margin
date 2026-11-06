@@ -32,6 +32,8 @@ final class World {
   var pageLag: (WindowKey, Bool) -> Double = { _, _ in 0 }
   var silent: Set<WindowKey> = []
   var spaceAt: Double = -.infinity
+  // The parking registry's numbers (HANDOFF.md §2.2), passed as they are.
+  var parked: Set<Int> = []
   private var pageTarget: [WindowKey: Bool] = [:]
   private var pageDue: [(at: Double, key: WindowKey, visible: Bool)] = []
   private var pageLast: [WindowKey: Double] = [:]
@@ -68,7 +70,7 @@ final class World {
     let listed = noList ? [] : collapse ? server.filter { !pids.contains($0.pid) } : server.filter { !blipped.contains($0.number) }
     let said = lines.count
     let out = binder.update(now: t, ext: ext.keys.sorted().flatMap { ext[$0]! }, reporting: Set(ext.keys), copies: copies, held: held,
-                            server: listed, pids: pids, browserInFront: inFront, listed: !noList, spaceChangedAt: spaceAt)
+                            server: listed, pids: pids, browserInFront: inFront, listed: !noList, spaceChangedAt: spaceAt, parked: parked)
     // Measured, not read from the line's words: how long the window had been out of the reads.
     for line in lines[said...] where line.contains(" is gone from the window server") {
       guard let n = line.range(of: "is no longer window ").flatMap({ Int(line[$0.upperBound...].prefix { $0.isNumber }) }), !pids.isEmpty else { continue }
@@ -1198,6 +1200,225 @@ extension Tests {
     check("randomized (\(runs) runs of 12 Space switches, flags lagging up to \(lag) s and disagreeing\(with)): never bound wrong", wrongRuns == 0, "\(wrongRuns) runs; \(firstWrong)")
     check("and every window bound once each was shown cleanly\(with)", unboundRuns == 0, "\(unboundRuns) runs")
     check("and no binding dropped for a window missing less than 3 s\(with)", blipDrops == 0, "\(blipDrops) runs; \(firstDrop)")
+    }
+  }
+}
+
+// Parked windows (HANDOFF.md §2.2): the parking registry's numbers given to every read, kept bound
+// while missing or off screen, dropped only for the copy's word, the browser gone and a new copy,
+// left out of every rule, and bound again by expectParked; and the made-by-Margin rule with the
+// bounds openSpaceWindow's answer gives (§1.6).
+extension Tests {
+  static func parkedWindowBinding() {
+    let A = "safari:A", B = "safari:B", C = "safari:C"
+    let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    let left = CGRect(x: 40, y: 60, width: 900, height: 700), right = CGRect(x: 600, y: 120, width: 820, height: 640)
+    func k(_ link: String, _ id: Int) -> WindowKey { WindowKey(link: link, windowId: id) }
+    func count(_ w: World, _ text: String) -> Int { w.lines.filter { $0.contains(text) }.count }
+
+    // A's window shown in full screen (100), B's normal window (200) bound, then parked: out of the reads.
+    func parkedWorld() -> World {
+      let w = World()
+      w.add(100, screen, on: true); w.add(200, left)
+      w.put(A, 1, screen, focused: true); w.put(B, 2, left, state: "normal")
+      w.truth = [k(A, 1): 100, k(B, 2): 200]
+      w.run(1)
+      w.parked = [200]
+      w.remove(200)
+      return w
+    }
+
+    // ---- kept while missing or off screen ----
+    do {
+      let w = parkedWorld()
+      check("parked: both bound before the park", w.binder.numbers == w.truth, "\(w.binder.numbers)\n\(w.said)")
+      w.run(10)
+      check("parked: missing from the reads for 10 s, its binding kept", w.binder.numbers == w.truth && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      check("parked: not counted as a blip kept for 3 s (absentNumbers)", w.binder.absentNumbers.isEmpty, "\(w.binder.absentNumbers)")
+      check("parked: the log says it's kept and why, once", count(w, "kept while parked") == 1 && w.said.contains("safari:B#2: window 200 kept while parked: not listed by the window server")
+            && !w.said.contains("missing from one read"), w.said)
+      w.add(200, left); w.run(5)
+      check("parked: listed again off screen, kept, and the log says so once", w.binder.numbers == w.truth && count(w, "window 200 kept while parked: off screen") == 1, w.said)
+      let b = w.ext.removeValue(forKey: B); w.run(3)
+      check("parked: its copy not linked for 3 s (not held), kept", w.binder.numbers == w.truth && w.said.contains("safari:B#2: window 200 kept while parked: its copy isn't linked"), w.said)
+      w.ext[B] = b; w.run(1)
+      check("parked: back, the same copy: still bound, nothing dropped", w.binder.numbers == w.truth && !w.said.contains("no longer"), w.said)
+    }
+    do {
+      // The same window not parked, for contrast: dropped after 3 s missing.
+      let w = parkedWorld()
+      w.parked = []
+      w.run(4)
+      check("not parked: missing for 3 s, dropped as before", w.binder.numbers == [k(A, 1): 100] && w.said.contains("safari:B#2 is no longer window 200: window 200 is gone from the window server (not listed for 3 s)"), w.said)
+    }
+
+    // ---- dropped: closed in the browser, the browser gone, a new copy ----
+    do {
+      let w = parkedWorld(); w.run(1)
+      w.close(B, 2); w.read()
+      check("parked: closed in the browser (its copy stopped listing it): dropped at once, and why", w.binder.numbers == [k(A, 1): 100]
+            && w.said.contains("safari:B#2 is no longer window 200: closed in the browser (window 200 was parked)"), w.said)
+    }
+    do {
+      let w = parkedWorld(); w.run(1)
+      w.server = []; w.pids = []; w.read()
+      check("parked: the browser quitting: dropped, and why", w.binder.numbers.isEmpty && w.said.contains("safari:B#2 is no longer window 200: window 200, parked, is gone (the browser isn't running)"), w.said)
+    }
+    do {
+      let w = parkedWorld(); w.run(1)
+      w.copies[B] = "copy-B-2"; w.close(B, 2); w.put(B, 5, left, state: "normal"); w.truth[k(B, 5)] = 200; w.truth[k(B, 2)] = nil
+      w.read()
+      check("parked: a new copy in its profile: dropped, and why", w.binder.numbers == [k(A, 1): 100] && w.said.contains("safari:B#2 is no longer window 200: a new copy of Margin started"), w.said)
+      w.add(200, left, on: true); w.show(200, also: [100]); w.pages = true
+      w.set(k(B, 5), focused: true, focusedAt: w.t)
+      w.run(8)
+      check("parked: the new copy's id bound by no rule while the registry hasn't said (elimination, visible, focus, settled focus)", w.binder.numbers == [k(A, 1): 100] && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      check("parked: its window never taken as the front window", !w.binder.frontChanges.contains(200), "\(w.binder.frontChanges)")
+      w.binder.expectParked([k(B, 5): 200], why: "the parking registry rebound it after a new copy")
+      let at = w.t
+      w.read()
+      check("expectParked: bound at the next read, and why", w.binder.numbers == [k(A, 1): 100, k(B, 5): 200] && w.wrong.isEmpty
+            && w.said.contains("safari:B#5 is window 200: parked: the parking registry rebound it after a new copy"), w.said)
+      check("expectParked: at that read", w.binder.bindings[k(B, 5)]?.at == w.t && w.t > at)
+      w.remove(200); w.run(5)
+      check("expectParked: then kept as any parked binding", w.binder.numbers[k(B, 5)] == 200, "\(w.binder.numbers)")
+    }
+    do {
+      // expectParked's refusals: the copy doesn't list the key; a closed window's number; a number another key keeps.
+      let w = parkedWorld(); w.run(1)
+      w.binder.expectParked(k(B, 9), number: 200, why: "test"); w.read()
+      check("expectParked: a key its copy doesn't list: not bound, and why", w.binder.numbers[k(B, 9)] == nil && w.said.contains("safari:B#9: parked window 200 (test) not bound: its copy doesn't list it"), w.said)
+      w.put(B, 6, right, state: "normal")
+      w.binder.expectParked(k(B, 6), number: 200, why: "test"); w.run(6)
+      check("expectParked: a number another key keeps: not bound, and why after 5 s", w.binder.numbers[k(B, 6)] == nil && w.binder.numbers[k(B, 2)] == 200
+            && w.said.contains("safari:B#6: parked window 200 (test) not bound in 5 s: window 200 is safari:B#2's"), w.said)
+      w.close(B, 2); w.read()
+      w.binder.expectParked(k(B, 6), number: 200, why: "test"); w.read()
+      check("expectParked: a closed window's number: not bound", w.binder.numbers[k(B, 6)] == nil && w.said.contains("safari:B#6: parked window 200 (test) not bound: it's a closed window's"), w.said)
+    }
+
+    // ---- left out of the read that tells nothing ----
+    do {
+      let w = parkedWorld(); w.add(200, left); w.run(1)
+      // A read with only the parked window of the browser's: it tells nothing (100 missing is a blip, not a change).
+      w.blipped = [100]; w.read()
+      check("parked: a read listing only the parked window tells nothing", w.binder.lastReadCollapsed && w.said.contains("a read of the window server without the browser's windows"), w.said)
+      w.blipped = []; w.read()
+      check("and the next whole read is taken", !w.binder.lastReadCollapsed && w.binder.numbers == w.truth)
+      // The parked window leaving the reads: no window lost (elimination goes on in that read).
+      w.add(300, right); w.run(1)
+      w.remove(200); w.put(A, 3, right, state: "normal"); w.truth[k(A, 3)] = 300; w.read()
+      check("parked: its window leaving the reads isn't a lost window: a window bound by elimination in that read", w.binder.numbers[k(A, 3)] == 300 && !w.binder.lastReadCollapsed, "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      // Every one of the browser's windows parked and none listed: not a read that tells nothing.
+      let w = World()
+      w.add(200, left); w.put(B, 2, left, state: "normal"); w.truth = [k(B, 2): 200]
+      w.run(1)
+      w.parked = [200]; w.remove(200); w.read()
+      check("parked: the only window, unlisted: the read is taken as it is, the binding kept", !w.binder.lastReadCollapsed && w.binder.numbers == w.truth && !w.said.contains("without the browser's windows"), w.said)
+    }
+
+    // ---- left out of the rules ----
+    do {
+      // Elimination: a parked window not bound yet (parked again from the crash marker, its copy not linked
+      // yet) has the bounds of A's other window, the only free one with them.
+      let w = World()
+      w.add(100, screen, on: true); w.add(200, left); w.add(300, left, on: true)
+      w.put(A, 1, screen, focused: true); w.put(A, 3, left, state: "normal")
+      w.parked = [200]
+      w.truth = [k(A, 1): 100, k(A, 3): 300]
+      w.read()
+      check("parked: never an elimination rival (another window with its bounds bound at once)", w.binder.numbers == w.truth && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      // Moved: the parked window's copy moves it (bounds onto another display, §6.7) to a free window's bounds.
+      let w = parkedWorld(); w.add(200, left); w.add(300, right); w.run(1)
+      w.set(k(B, 2), bounds: right); w.run(6)
+      check("parked: never moved to a free window with its new bounds", w.binder.numbers[k(B, 2)] == 200 && !w.said.contains("(was 200)"), "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      // Focus moved: a parked window focused (⌘`) while another window comes to the front.
+      let w = parkedWorld(); w.add(200, left); w.add(300, screen); w.put(A, 4, screen); w.truth[k(A, 4)] = 300
+      w.run(1)
+      for _ in 0..<2 {
+        w.show(300); w.read(0.05); w.focus(k(B, 2), at: w.t - 0.02); w.run(2.4, every: 0.1)
+        w.show(100); w.read(0.05); w.run(2.4, every: 0.1)
+      }
+      check("parked: its focus moves nothing, twice", w.binder.numbers[k(B, 2)] == 200 && w.wrong.isEmpty && w.said.contains("safari:B#2: focus heard at") && w.said.contains("not used: its window is parked"), "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      // Visible and the front window: a parked window back on screen and in front (a system return), its page shown.
+      let w = parkedWorld(); w.add(200, left, on: true); w.show(200, also: [100]); w.pages = true
+      w.run(4)
+      check("parked: on screen in front, never the front window, never a rule's", !w.binder.frontChanges.contains(200) && w.binder.numbers == w.truth && w.wrong.isEmpty, "\(w.binder.frontChanges)\n\(w.said)")
+    }
+
+    // ---- made by Margin: openSpaceWindow's answered bounds ----
+    let made = CGRect(x: 0, y: 0, width: 1100, height: 760)
+    func creating() -> (World, Double) {
+      let w = World()
+      w.add(100, screen, on: true); w.put(A, 7, screen, focused: true)
+      w.ext[B] = []; w.copies[B] = "copy-B" // B's copy linked, no window yet
+      w.truth = [k(A, 7): 100, k(B, 90): 400]
+      w.run(1)
+      let asked = w.t
+      w.add(400, made); w.read(0.05)
+      return (w, asked)
+    }
+    do {
+      let (w, asked) = creating()
+      w.binder.expect(k(B, 90), since: asked, now: w.t, why: "made by Margin's openSpaceWindow", bounds: made)
+      w.read(0.05)
+      check("made by Margin with the answer's bounds: bound at the next read, before its copy lists it", w.binder.numbers[k(B, 90)] == 400
+            && w.said.contains("safari:B#90 is window 400: made by Margin's openSpaceWindow at") && w.said.contains("(by the bounds its answer gave, 0,0 1100×760, before its copy listed it)"), w.said)
+      w.run(1.5, every: 0.05)
+      check("and kept while its copy's list lags (not closed in the browser)", w.binder.numbers[k(B, 90)] == 400 && !w.said.contains("no longer"), w.said)
+      w.put(B, 90, made, state: "normal", createdAt: asked + 0.02); w.read(0.05)
+      w.move(400, screen); w.set(k(B, 90), bounds: screen, state: "fullscreen"); w.run(3)
+      check("and once listed, an ordinary binding through full screen", w.binder.numbers == w.truth && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+    }
+    do {
+      let (w, asked) = creating()
+      w.binder.expect(k(B, 90), since: asked, now: w.t, why: "made by Margin's openSpaceWindow", bounds: made)
+      w.read(0.05)
+      w.run(2.5, every: 0.05)
+      check("made by Margin, its copy never listing it in 2 s: closed in the browser after all", w.binder.numbers[k(B, 90)] == nil && w.said.contains("safari:B#90 is no longer window 400: closed in the browser"), w.said)
+    }
+    do {
+      // An older copy: no bounds in the answer. Not bound until its list has the window (as before).
+      let (w, asked) = creating()
+      w.binder.expect(k(B, 90), since: asked, now: w.t, why: "made by Margin's openSpaceWindow")
+      w.run(0.5, every: 0.05)
+      check("made by Margin, no bounds answered: waits for its copy's list", w.binder.numbers[k(B, 90)] == nil)
+      w.put(B, 90, made, state: "normal", createdAt: asked + 0.02); w.read(0.05)
+      check("then bound by its list's bounds", w.binder.numbers[k(B, 90)] == 400 && !w.said.contains("by the bounds its answer gave"), w.said)
+    }
+    do {
+      // The answer's bounds don't fit the new window, and its list's do: bound by the list.
+      let (w, asked) = creating()
+      w.binder.expect(k(B, 90), since: asked, now: w.t, why: "made by Margin's openSpaceWindow", bounds: right)
+      w.run(0.5, every: 0.05)
+      check("made by Margin, the answer's bounds not the new window's: not bound by them", w.binder.numbers[k(B, 90)] == nil, w.said)
+      w.put(B, 90, made, state: "normal", createdAt: asked + 0.02); w.read(0.05)
+      check("then bound by its list's", w.binder.numbers[k(B, 90)] == 400 && w.wrong.isEmpty, w.said)
+    }
+    do {
+      // A parked window shown during the create (listed again, never listed since Margin.app started: parked
+      // again from the crash marker, its copy not linked yet) is never taken for the new one.
+      let w = World()
+      w.add(100, screen, on: true); w.put(A, 7, screen, focused: true)
+      w.ext[C] = []; w.copies[C] = "copy-C"
+      w.parked = [200]
+      w.truth = [k(A, 7): 100, k(C, 90): 400]
+      w.run(1)
+      let asked = w.t
+      w.add(200, left); w.read(0.05) // the parked window listed again
+      w.binder.expect(k(C, 90), since: asked, now: w.t, why: "made by Margin's openSpaceWindow", bounds: left)
+      w.run(0.5, every: 0.05)
+      check("made by Margin: a parked window listed again isn't the new window", w.binder.numbers[k(C, 90)] == nil && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      w.add(400, left); w.read(0.05)
+      check("and the real new one is", w.binder.numbers[k(C, 90)] == 400 && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
     }
   }
 }

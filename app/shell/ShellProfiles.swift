@@ -337,7 +337,7 @@ extension Shell: SwitchWorld {
                 let reply = try await entry.connection.request(type: type, payload: payload, windowId: windowId)
                 if reply["ok"] as? Bool == true {
                     let result = reply["result"] as? JSONObject ?? [:]
-                    if type == "openSpaceWindow", let id = int(result["windowId"]) { self.windowMade(profile, windowId: id, asked: asked) }
+                    if type == "openSpaceWindow", let made = SpaceWindowAnswer(result) { self.windowMade(profile, windowId: made.windowId, asked: asked, bounds: made.bounds) }
                     done(result, nil)
                 } else { done(nil, reply["error"] as? String ?? "refused") }
             } catch {

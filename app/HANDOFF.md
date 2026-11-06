@@ -279,6 +279,18 @@ Changes:
   Several matches leave it unbound (§1.5 covers that), and the log says so.
 - Parked numbers are left out of the "read that tells nothing" test (`liveBound`, `reliableBig`: `WindowMatcher.swift:398-404`, `:546-548`), and they're never front-window candidates, elimination rivals, or subjects of the moved or visible rules.
 
+Built (WP5): `WindowBinder.update(…, parked:)`, `expectParked(_:number:why:)` (and a form that takes `rebind`'s map), and `expect(…, bounds:)` in `app/shell/WindowMatcher.swift`; tests in `tools/app-tests/window-tests.swift` (`parkedWindowBinding`). Settled on the way:
+
+- **A parked binding is also kept while its copy isn't linked.** That isn't one of the three drop reasons above. A copy that comes back new still drops it, because the binder remembers each link's copy.
+- **Each keep is one log line**, said again only when its reason changes: not listed by the window server, off screen, or its copy not linked.
+- **Left out on both sides.** Parked numbers are never candidates and never count as browser-sized windows. Keys bound to a parked number, or waiting on `expectParked`, are left out of the reported side: free windows, the bounds groups and the "copies still have windows" test. So a read with only parked windows tells nothing, and a read whose only windows are parked ones is taken as it is.
+- **More rules leave them out** than the list above: created together, focus moved (a parked window's focus is logged "not used"), the hidden-page drop and settled focus. A focused parked window stays unseen (§2.6), so its focus says nothing about the front window.
+- **A parked window is never "new".** Its number stays in the binder's seen list however long it's missing. A number never listed (parked again from the crash marker) is taken as there before. Shown again, it can't pass for a create's new window.
+- **Parked numbers aren't in `absentNumbers`.** That list means a blip kept for 3 s.
+- **`expectParked` binds at the next read**, after the drop rules, so a new copy's old bindings go first. It binds on the registry's record, even on a read that tells nothing. It needs the key in its copy's list. It refuses a closed window's number and a key already bound elsewhere. It waits up to `Timing.created` (5 s) when another key holds the number or the copy hasn't reported. Each outcome is one line.
+- **Made by Margin with answered bounds:** either the copy's listed bounds or the answer's bounds may fit the one new window. A window bound from the answer before its copy lists it isn't taken as closed for 2 s (`alone` + `reportLag`) after the answer. `Shell.windowMade` passes `SpaceWindowAnswer.bounds` from `ShellProfiles.request`. Those two lines are WP9's files, wired here so the rule works now.
+- **Not wired yet (WP9):** `Shell.track` passing `parking.numbers` as `parked`, and `parking.rebind`'s map into `expectParked`.
+
 ### 2.3 The overlays (`app/shell/Overlay.swift`, `Shell.track`)
 
 - **Hidden while parked, never closed.** In `Shell.track`'s loop (`Shell.swift:788-850`), a parked key gets `overlay.hide("its window is parked")` and is skipped. The overlay's web view keeps its page, theme and state.
