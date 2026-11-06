@@ -23,7 +23,7 @@ import { rankPalette } from '../shared/search.js';
 import { checkIconUrl } from './sanitize.js';
 import { CONFIRM_LABEL, SPACE_COLORS, menuItems } from './behaviors/menu-items.js';
 import { settingsFields } from './settings-form.js';
-import { isMultiProfile, orderedSpaces, profileOf } from '../shared/across.js';
+import { isMultiProfile, orderedSpaces } from '../shared/across.js';
 
 /** The view model's version: a theme reads what this version documents. */
 export const VM_VERSION = 1;

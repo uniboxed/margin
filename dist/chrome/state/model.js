@@ -34,7 +34,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   blockGestures: true, // Safari: no swipe back/forward, pinch for all tabs, or page bounce (shared/gestures.js)
   pullToRefresh: true, // Safari: Margin's pull down at the top to reload (shared/pull.js)
   swipeNavigation: true, // Safari: Margin's two-finger swipe back/forward (shared/pull.js)
-  sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (content/core.js page listener)
+  sidebarShortcut: 'Alt+KeyS', // show/hide the sidebar (Margin.app's key: background/link.js keys)
   // Safari: a note when ⌘T seems to open Safari's homepage instead of Margin
   // (background/newtab-hint.js); turned off from the note.
   newTabHint: true,
@@ -465,13 +465,11 @@ function placeKept(state, keptId, nextTo, side, spaceId) {
 // choice, replaced by the browser's); `sidebarWidth` (now Arcadia's own,
 // settings.themes.arcadia; normalizeThemes moves a saved one there);
 // `paletteShortcut` (⌥K: ⌘T opens the same palette).
-// Not `keepTabsReadyMinutes` (up to six tabs of the space in front, until
-// that long after Safari was last used: most of Tirth's battery; replaced by
-// keepLeftTabReadyMinutes, the tab just left only, whose default it doesn't
-// change, even turned off: shared/view.js keepReadyMinutes): unread here, but
-// kept as saved, so a build from before (main, a branch being checked) still
-// finds the 0 Tirth set there, and doesn't turn the old keep-ready back on
-// with its default of 30.
+// Not `keepTabsReadyMinutes`, `keepLeftTabReadyMinutes` or `warmUpTabs`
+// (keep-ready and the warm-up, gone in Margin 2 Phase 2 step 8): unread here,
+// but kept as saved, so a build from before (main, a branch being checked)
+// still finds the 0 Tirth set there, and doesn't turn the old keep-ready back
+// on with its default of 30.
 const REMOVED_SETTINGS = ['searchEngine', 'sidebarWidth', 'paletteShortcut'];
 const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).filter(([k]) => !keys.includes(k)));
 

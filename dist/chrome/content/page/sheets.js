@@ -12,7 +12,6 @@ export function startSheets(box) {
   const { insertRule, deleteRule, replace, replaceSync } = sheetProto;
   const { addRule, removeRule } = sheetProto;
   const { matches } = Element.prototype;
-  const disabled = Object.getOwnPropertyDescriptor(StyleSheet.prototype, 'disabled');
   const mediaText = Object.getOwnPropertyDescriptor(MediaList.prototype, 'mediaText');
   const ruleStyle = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'style');
   const selectorText = Object.getOwnPropertyDescriptor(CSSStyleRule.prototype, 'selectorText');
@@ -438,7 +437,7 @@ export function startSheets(box) {
     pass();
     box.bodyMayHaveChanged(); // another origin's sheet can't be read, but it applies
   }, true);
-  // Always, hidden or not: a tab prepared behind the page is ready when it's shown.
+  // Always, hidden or not: a tab loaded behind the page is ready when it's shown.
   document.addEventListener('DOMContentLoaded', () => {
     pass();
     box.loaded();
@@ -448,19 +447,6 @@ export function startSheets(box) {
     box.loaded(); // a site's own reset, late
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && waiting) pass(); });
-  // Before a hidden tab is shown, rather than after (box.js catchUp): what
-  // changed in this very turn, then the pass and the `:has()` answers a hidden
-  // tab puts off, or a frame it never got to.
-  box.onCatchUp.push(() => {
-    const told = watch.takeRecords();
-    if (told.length) observed(told);
-    if (frame) cancelAnimationFrame(frame);
-    if (frame || waiting) pass();
-    if (hasWatch.takeRecords().length || hasFrame) {
-      cancelAnimationFrame(hasFrame);
-      hasCheck();
-    }
-  });
   box.onMove.push(() => { if (box.on) soon(); });
   addedRoots.add(document.documentElement); // injected late: what's there already
   document.addEventListener('margin:sheets', pass); // content/page-link.js

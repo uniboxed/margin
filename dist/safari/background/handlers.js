@@ -12,7 +12,6 @@ import { sleepIdle, wakeAll } from './sleep.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
 import { iconInflight, iconUrlAllowed, learnIcon, styleUrlAllowed } from './site-icons.js';
-import { queueRegistrations } from './registered.js';
 import { navigate, NAV_ACTIONS, showSpace } from './navigation.js';
 import { THEMES } from '../themes/index.js';
 import { isFullscreen, toggleMarginFullscreen } from './fullscreen.js';
@@ -845,8 +844,8 @@ export const handlers = {
     });
   },
   // The page's script in the page's world, for a page that didn't get it from
-  // its registration (content/page-link.js): `left`, then the script, as
-  // content/page/at-<L>.js and the registration do it.
+  // its registration (content/page-link.js): `left` (where its box starts
+  // until it's told: content/page/main.js), then the script.
   /** @param {{ left?: number }} message */
   async injectPage({ left }, sender) {
     const tabId = sender.tab?.id;

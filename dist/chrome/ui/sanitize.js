@@ -348,7 +348,6 @@ const ELEMENT_ATTRS = {
 // Attributes a binding may set (`{{}}` in the value, or `m-attr:`).
 const BINDABLE = (name, element) => /^aria-[a-z]+$/.test(name) || /^data-[a-z][a-z0-9-]*$/.test(name)
   || ['title', 'alt', 'hidden', 'disabled', 'lang', 'dir'].includes(name) || (name === 'placeholder' && element === 'input');
-const BOOLEAN_ATTRS = new Set(['hidden', 'disabled', 'reversed']);
 
 // Margin's behaviors (PLAN.md §3), by attribute: the values each takes
 // (ui/behaviors/ implements them; they stay on the element, so a theme's CSS

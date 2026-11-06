@@ -19,10 +19,6 @@ function fakeDocument() {
       doc.hidden = false;
       listeners.visibilitychange.forEach((fn) => fn());
     },
-    // An event that runs after the page was hidden and shown again (WebKit queues them).
-    late() {
-      listeners.visibilitychange.forEach((fn) => fn());
-    },
   };
   return doc;
 }
@@ -36,7 +32,6 @@ function setup() {
     onSlow: (slow) => events.push(['slow', slow]),
     failed: (result) => result === 'failed',
     onFailed: (id) => events.push(['failed', id]),
-    onBlink: (times) => events.push(['blink', times.shownAt - times.hiddenAt]),
   });
   return { doc, events, switching };
 }
@@ -192,31 +187,6 @@ test('switching from the background: done isn\'t taken for a failure (it resolve
   await sleep(10);
   assert.equal(events.some(([kind]) => kind === 'failed'), false);
   assert.deepEqual(await request, { shown: 7 });
-});
-
-test('switching: hidden for an instant, then shown again: a blink (when, said), with a switch under way or not (a kick goes out before a switch from a key to a space has told this page anything: the background takes only a blink during one of its flips); not a page shown again later', async () => {
-  const { doc, events, switching } = setup();
-  const blinks = () => events.filter(([kind]) => kind === 'blink');
-  switching.start(7, new Promise(() => {}));
-  doc.hide();
-  doc.show();
-  assert.equal(blinks().length, 1);
-  assert.ok(blinks()[0][1] >= 0 && blinks()[0][1] < 100);
-  doc.hide();
-  doc.show();
-  assert.equal(blinks().length, 2, 'no switch this page knows of: one all the same');
-  switching.start(8, new Promise(() => {}));
-  doc.hide();
-  await sleep(150);
-  doc.show();
-  assert.equal(blinks().length, 2, 'away for a while: a switch and back');
-  switching.start(9, new Promise(() => {}));
-  doc.late(); // its event finds it visible: hidden and shown before it ran
-  assert.equal(blinks().length, 3);
-  assert.equal(switching.target(), 9, 'still switching (the page never looked hidden)');
-  switching.end();
-  doc.late();
-  assert.equal(blinks().length, 4, 'nor with no switch under way');
 });
 
 // Margin.app's overlay stays on screen through a switch (Phase 2 step 8): the

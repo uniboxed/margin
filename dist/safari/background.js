@@ -448,11 +448,6 @@ if (api.alarms) {
     await archiveStale();
     await sleepIdle();
   }));
-  // The alarm an old keep-ready renewed its holds by, if a copy still has it:
-  // cleared, in every copy and profile (keep-ready is gone: Phase 2 step 8).
-  api.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'margin-keep-ready') void Promise.resolve(api.alarms.clear('margin-keep-ready')).catch(() => {});
-  });
   api.alarms.get(ARCHIVE_ALARM).then((alarm) => alarm || api.alarms.create(ARCHIVE_ALARM, { periodInMinutes: 15 }));
   console.log('[margin] auto-archive via browser.alarms');
 } else {

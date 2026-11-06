@@ -30,14 +30,6 @@ export const SWITCH_GRACE_MS = 3000;
 const MAX_MS = 7000 + SWITCH_GRACE_MS + 500; // a switch request's 7 s, and its grace for a late answer
 const UNASKED_MAX_MS = 2500;
 
-// Hidden for less than this, then shown again: a blink (background/tabs.js
-// forwardAndBack, an introduction, restore or kick, should never cause one:
-// pageBlinked). Said whether or not this page knows of a switch: a kick goes
-// out before a switch whose page doesn't cover itself (a key to a space) has
-// told it anything (from 150 ms), and the background takes only a blink
-// during one of its flips in the window.
-const BLINK_MS = 100;
-
 // A UI that stays on screen through the switch (Margin.app's overlay) can't
 // end on being hidden: with `landed`, a switch that went through ends once
 // the state it draws from says the tab is in front (`settle()`, called as the
@@ -49,17 +41,16 @@ const BLINK_MS = 100;
 export const SETTLE_MS = 2000;
 
 /**
- * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, onBlink?: (times: { hiddenAt: number, shownAt: number }) => void, doc?: Document, landed?: ((tabId: number, from: number | null) => boolean | null) | null, front?: (() => number | null) | null }} options
+ * @param {{ onChange: (tabId: number | null) => void, onSlow: (slow: boolean) => void, failed?: (result: unknown) => boolean, onFailed?: (tabId: number) => void, doc?: Document, landed?: ((tabId: number, from: number | null) => boolean | null) | null, front?: (() => number | null) | null }} options
  * `onChange`: redraw the sidebar with this target (null: none); `onSlow`: the pill on or off;
  * `failed`: whether a request's result means it didn't switch (default: never);
- * `onBlink`: the page was hidden for an instant as it switched, then shown
- * again (when, by the clock Date.now() reads); `front`: the tab in front as
+ * `front`: the tab in front as
  * the state has it, and `landed(tabId, from)`: true once the state has the
  * tab in front, null while it still has `from` (the tab in front at the
  * start), false once another tab came to the front (the switch is over
  * either way).
  */
-export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, onBlink = () => {}, doc = document, landed = null, front = null }) {
+export function createSwitching({ onChange, onSlow, failed = () => false, onFailed = () => {}, doc = document, landed = null, front = null }) {
   /** @type {number | null} */
   let target = null;
   let current = null; // this start's token: an older start's request can't end a newer one
@@ -126,24 +117,8 @@ export function createSwitching({ onChange, onSlow, failed = () => false, onFail
       didFail,
     );
   }
-  // When the page got to each event (WebKit queues them, and in Safari 26 and
-  // later makes the event as it runs it: late on a busy page; one can run
-  // after the page was hidden and shown again, and find it visible: a blink too).
-  const when = (/** @type {Event | undefined} */ event) => (event?.timeStamp && globalThis.performance ? performance.timeOrigin + event.timeStamp : Date.now());
-  let wasHidden = doc.hidden;
-  let hiddenAt = 0; // when it was last hidden
-  doc.addEventListener('visibilitychange', (event) => {
-    const changed = doc.hidden !== wasHidden;
-    wasHidden = doc.hidden;
-    if (doc.hidden) {
-      hiddenAt = when(event);
-      return end();
-    }
-    const at = when(event);
-    if (!changed) onBlink({ hiddenAt: at, shownAt: at });
-    else if (hiddenAt && at - hiddenAt < BLINK_MS) onBlink({ hiddenAt, shownAt: at });
-    hiddenAt = 0;
-  });
+  // Hidden (another tab came to the front): over.
+  doc.addEventListener('visibilitychange', () => { if (doc.hidden) end(); });
   doc.defaultView?.addEventListener('pagehide', end);
   return { start, end, settle, target: () => target };
 }

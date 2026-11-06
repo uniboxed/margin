@@ -88,8 +88,6 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     onToggle: [],
     /** Runs when a <body> arrives, the first or one the page swapped in. @type {(() => void)[]} */
     onBody: [],
-    /** Runs first when a hidden tab catches up before it's shown (catchUp). @type {(() => void)[]} */
-    onCatchUp: [],
     /** The page's styles changed: what it says about <body> is read again. */
     bodyMayHaveChanged,
     /** A rule was edited, whether or not it reaches <body> now: it might once a class changes. */
@@ -685,7 +683,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   // a hidden tab catches up as it's shown.
   let restTimer = 0;
   let restFrom = null;
-  function rest(resizeLater = false) {
+  function rest() {
     clearTimeout(restTimer);
     restTimer = 0;
     if (!restFrom) return;
@@ -694,30 +692,10 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     for (const fn of box.onRest) fn(before);
     stale();
     measureBody(sized); // a media query moved, and a body with auto margins is centred in the new width
-    if (resizeLater) tellResizeSoon();
-    else tellResize();
+    tellResize();
   }
-  // The page's own resize listeners, told the box moved. From a hidden tab's
-  // catch-up (below), in a task of their own: the background waits for that
-  // preparation, and a page slow to answer (1.2 s in the WebKit host) made it
-  // late, cancelled, the switch 4 s long. A message to itself, which WebKit
-  // doesn't hold back in a hidden page as it may a timer: before the show, or
-  // at the latest as it's shown.
-  /** @type {MessageChannel | null} */
-  let resizeOwed = null;
-  function tellResize() {
-    if (resizeOwed) {
-      resizeOwed.port1.close();
-      resizeOwed = null;
-    }
-    dispatchEvent(new Event('resize'));
-  }
-  function tellResizeSoon() {
-    if (resizeOwed) return;
-    resizeOwed = new MessageChannel();
-    resizeOwed.port1.onmessage = tellResize;
-    resizeOwed.port2.postMessage(0);
-  }
+  // The page's own resize listeners, told the box moved.
+  const tellResize = () => dispatchEvent(new Event('resize'));
   function restSoon(before, live) {
     restFrom ??= before;
     clearTimeout(restTimer);
@@ -728,41 +706,8 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     rest();
-    if (resizeOwed) tellResize();
     if (measureDue) measureSoon();
   });
-  // A hidden tab about to be shown (content/core.js prepareForShow): what
-  // waits for it to come into sight is done now, out of sight, so its first
-  // frame has it, rather than a frame or more after, and its first rendering
-  // update has none of it to do: changes made in this very turn and not yet
-  // told (the preparation's own, a cover's style on <body>), new sheets
-  // rewritten for the box and `:has()` asked (sheets.js), the first children
-  // looked at, a move rested (its media queries and a read; the page's resize
-  // event right after), a resize's read, a read the page's styles asked for,
-  // its locks. A frame a hidden page put off doesn't come till it's shown
-  // (WebKit).
-  const runNow = (frame, run) => {
-    if (!frame) return;
-    cancelAnimationFrame(frame);
-    run();
-  };
-  function catchUp() {
-    if (!document.hidden) return;
-    const told = [locks, children, chainWatch].map((observer) => observer.takeRecords());
-    if (told[1].length) childrenAdded(told[1]);
-    if (told[2].length) chainTouched();
-    if (told[0].length) lockChanged();
-    for (const fn of box.onCatchUp) fn();
-    runNow(chainFrame, chainCheck);
-    rest(true);
-    runNow(resizeFrame, resized);
-    if (measureDue) {
-      clearTimeout(measureTimer);
-      cancelAnimationFrame(measureFrame);
-      runMeasure();
-    }
-    runNow(lockFrame, locksCheck);
-  }
   // In and out of full screen, what the page's world is told changes with no
   // move of the box: its media queries and lists follow now, not after a delay.
   document.addEventListener('fullscreenchange', () => {
@@ -834,13 +779,12 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
 
   // ---- the bridge ---------------------------------------------------------------
   // Margin's isolated world (content/page-link.js), synchronously: a string in
-  // `detail`, "off", or "catch-up" (a copy of this script from before it
-  // ignores that). Cancelled to say this world heard it. Kept as it is: an
+  // `detail`, or "off" (anything else is ignored: an earlier build's
+  // "catch-up"). Cancelled to say this world heard it. Kept as it is: an
   // updated Margin talks to a copy of this script still in open pages. A page
   // sending these only moves its own layout.
   function set(message) {
     if (message === 'off') return void off();
-    if (message === 'catch-up') return void catchUp();
     let next;
     try {
       next = JSON.parse(message);

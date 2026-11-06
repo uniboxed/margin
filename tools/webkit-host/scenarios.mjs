@@ -64,7 +64,7 @@ const wait = (ms) => ({ op: 'wait', ms });
 // Margin's core runs in this page and has the state. It draws nothing there,
 // linked to Margin.app or not (Margin 2 Phase 2 step 5: the app draws Margin's UI).
 const ready = (tab) => check(tab, `${tab}: Margin runs here, with the state`, `!!Margin.content?.getState?.().state?.spaces?.length`, 5000);
-// No element of Margin's in the page, and no frame painted on it (the first-paint placeholder off, or never there).
+// No element of Margin's in the page, and no frame painted on it (the first paint handed over, or never there).
 const NOTHING_DRAWN = `[...document.querySelectorAll('*')].every((el) => !el.localName.startsWith('margin-')) && getComputedStyle(document.documentElement, '::after').content === 'none'`;
 const nothingDrawn = (tab, label = `${tab}: no element of Margin's in the page, no frame`) => checkPage(tab, label, NOTHING_DRAWN, 3000);
 // Linked to Margin.app's real end of the link (the link server, started by appStart).
@@ -104,7 +104,7 @@ const pressIn = (tab, at) => [{ op: 'mouse', in: tab, type: 'down', at: `return 
 // Sleeping tabs (background/sleep.js): a pass asked for now, for tabs unused
 // for a millisecond (the setting is hours), and what it did.
 const sleepNow = (tab, label = 'a pass of sleeping tabs') => ({ op: 'eval', in: tab, js: `return JSON.stringify(await Margin.content.send('sleepNow', { afterMs: 1 }))`, label });
-// Back at its page, one history entry (no sleep page in its Back list), its content there.
+// A Margin tab opened again: its page, one history entry, its content there.
 const awakeAt = (tab, name, label) => checkPage(tab, `${tab}: ${label}`, `location.pathname === '/p/${name}' && history.length === 1 && document.title === '${name}' && !!document.body?.textContent.includes('${name}')`, 4000);
 
 // Margin's tabs (Margin 2: state/model.js keptTabs). The kept (not open)
@@ -993,8 +993,6 @@ Object.assign(SCENARIOS, {
   'sleep-kept': [
     { op: 'open', name: 'A', url: '/p/A', active: true }, { op: 'open', name: 'F', url: '/p/F1' }, { op: 'open', name: 'N', url: '/p/N' },
     wait(800), { op: 'install' }, ready('A'), ready('F'),
-    // (Keep-ready off: the tab just left is held, and a tab held isn't put to sleep.)
-    { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { keepLeftTabReadyMinutes: 0 } }))' },
     { op: 'show', name: 'F' }, wait(150),
     { op: 'page', in: 'F', js: `document.querySelector('textarea').focus(); return 'focused'` },
     key('F', 0, 0x61), key('F', 11, 0x62),
