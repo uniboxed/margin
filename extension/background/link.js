@@ -1003,13 +1003,30 @@ export function createLink({
   }
   // The focus flags and visibility of each windows report, in Margin.app's log when they change
   // (ids and times only), so the log says what Safari's flags were when the app bound a window.
+  // A line when the flags change (the times in it aren't a change: each focus and each window's shown
+  // or hidden has its own line), at most one each FLAGS_NOTE_MS: a change within it is said once it's
+  // over, as it is then (a run of tab switches changes the shown word twice a switch).
+  const FLAGS_NOTE_MS = 1000;
   let lastFlags = '';
+  let flagsAt = -Infinity;
+  /** @type {any} */
+  let flagsTimer = null;
+  /** @type {any[]} */
+  let flagsList = [];
   function noteFlags(list) {
-    const line = list.map((w) => `${w.windowId}${w.focused ? ' focused' : ''}${w.focusedAt ? ` (focus heard ${clock(w.focusedAt)})` : ''}${'visible' in w ? ` ${w.visible ? 'shown' : 'hidden'} ${clock(w.visibleAt)}` : ''}`).join('; ');
-    const all = `${line}${blurredAt != null ? `; blur heard ${clock(blurredAt)}` : ''}`;
-    if (all === lastFlags) return;
-    lastFlags = all;
-    note(`windows report at ${clock(Date.now())}: ${all || 'no windows'}`);
+    flagsList = list;
+    if (flagsTimer) return;
+    const flags = (/** @type {boolean} */ times) => {
+      const at = (/** @type {number} */ t) => (times ? ` ${clock(t)}` : '');
+      const line = flagsList.map((w) => `${w.windowId}${w.focused ? ' focused' : ''}${w.focusedAt ? ` (focus heard${at(w.focusedAt)})` : ''}${'visible' in w ? ` ${w.visible ? 'shown' : 'hidden'}${at(w.visibleAt)}` : ''}`).join('; ');
+      return `${line}${blurredAt != null ? `; blur heard${at(blurredAt)}` : ''}`;
+    };
+    if (flags(false) === lastFlags) return;
+    const wait = flagsAt + FLAGS_NOTE_MS - Date.now();
+    if (wait > 0) { flagsTimer = setTimeout(() => { flagsTimer = null; noteFlags(flagsList); }, wait); return; }
+    lastFlags = flags(false);
+    flagsAt = Date.now();
+    note(`windows report at ${clock(Date.now())}: ${flags(true) || 'no windows'}`);
   }
   // Sent when any of it changed; a closed window's layout goes too.
   async function windowsNow() {
@@ -1221,6 +1238,8 @@ export function createLink({
     clearTimeout(askTimer);
     for (const timer of visibleNoting.values()) clearTimeout(timer);
     visibleNoting.clear();
+    clearTimeout(flagsTimer);
+    flagsTimer = null;
     try { port?.disconnect(); } catch {}
     port = null;
   }
@@ -1320,6 +1339,9 @@ export function createLink({
       if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof visible !== 'boolean' || !Number.isFinite(at)) return;
       const had = visibility.get(tabId);
       if (had && had.windowId === windowId && had.at > at) return; // an older word than the one kept
+      // The same word again (the page's visibilitychange, then its answer to reportVisibility): it has
+      // said so since the first; nothing new to send.
+      if (had && had.windowId === windowId && had.visible === visible) return;
       visibility.set(tabId, { windowId, visible, at: Math.min(at, Date.now()), source, heard: Date.now() });
       noteVisibility(windowId, tabId);
       if (!windowsFromKnown()) void windowsNow();
@@ -1329,6 +1351,9 @@ export function createLink({
     /** @param {number} tabId @param {number} windowId */
     tabActivated(tabId, windowId) {
       for (const [id, v] of visibility) if (v.windowId === windowId || id === tabId) visibility.delete(id);
+      // The window's tab in front is this one now, before Safari's list says so: the tab left behind
+      // saying it's hidden isn't taken for the window (nor sent as its word).
+      if (lastList && Number.isInteger(tabId)) lastList = lastList.map((w) => (w.windowId === windowId ? { ...w, activeTabId: tabId } : w));
       if (Number.isInteger(tabId)) askVisibility(tabId);
       void windowsNow();
     },

@@ -284,6 +284,17 @@ final class FakeRegistrar: HotKeyRegistrar {
     m.begin(LinkMessage.Hello(epoch: "e2", profile: "P1", browser: "safari", ext: nil, owner: true, instanceId: nil, origin: "o2", since: 6, pid: nil))
     check("a new connection: nothing kept", !m.hasState && m.keys.isEmpty && m.seq == 0 && m.windows.isEmpty && m.origin == "o2")
     check("the old epoch's snapshot: left", m.apply(.snapshot(epoch: "e1", seq: 1, state: ["a": 1], windows: [])) == .ignored)
+    // A windows message that changes only the pages' words of being shown (a tab switch: hidden, then
+    // shown): not pushed to the overlays, no burst of reads (Shell.forward).
+    let w1: [JSONObject] = [["windowId": 1, "activeTabId": 3, "focused": true, "visible": true, "visibleAt": 100], ["windowId": 2, "activeTabId": 9]]
+    var w2 = w1; w2[0]["visibleAt"] = 200
+    var w3 = w1; w3[0]["visible"] = false
+    var w4 = w1; w4[0]["activeTabId"] = 4
+    var w5 = w1; w5[1]["visible"] = true; w5[1]["visibleAt"] = 300
+    var w6 = w1; w6[0]["focused"] = false
+    check("windows: only the pages' words changed", Shell.onlyVisibilityChanged(w1, w2) && Shell.onlyVisibilityChanged(w1, w3) && Shell.onlyVisibilityChanged(w1, w5))
+    check("windows: another tab in front, a focus flag, a window more or less, the first list: more than that", !Shell.onlyVisibilityChanged(w1, w4) && !Shell.onlyVisibilityChanged(w1, w6)
+          && !Shell.onlyVisibilityChanged(w1, Array(w1.prefix(1))) && !Shell.onlyVisibilityChanged([], w1))
   }
 
   static func layouts() {

@@ -595,13 +595,18 @@ test('link: which page is shown — each window\'s `visible` from its tab in fro
     api.tabs.query = async () => [{ id: 14, windowId: 7, active: true }];
     from = app.received.length;
     link.tabActivated(14, 7);
+    link.visibility(7, 13, false, T0 + 250); // the tab left behind says hidden before Safari's list has the new tab in front
     win = await app.next('windows', { from, test: (m) => m.list[0].activeTabId === 14 });
     assert.ok(!('visible' in win.list[0]) && !('visibleAt' in win.list[0]), 'unknown, not hidden');
+    await wait(50);
+    assert.ok(!app.received.slice(from).some((m) => m.k === 'windows' && m.list[0].visible === false), 'the tab left behind\'s hidden never sent as the window\'s');
     assert.deepEqual(asked, [[14, 'reportVisibility']]);
     link.visibility(7, 13, true, T0 + 300); // the tab left behind: not the window's
     link.visibility(7, 14, true, T0 + 400);
     win = await app.next('windows', { from, test: (m) => m.list[0].visible === true });
     assert.equal(win.list[0].visibleAt, T0 + 400);
+    // (The flags' line at most once a second, as they are once it's over.)
+    assert.ok(await until(() => logged().some((l) => /^windows report at [\d:.]+: 7 focused shown [\d:.]+$/.test(l)), 1500), 'a report\'s shown page in the log');
     // Its page replaced (a navigation committed after it spoke): forgotten; one committed before: kept.
     from = app.received.length;
     link.tabGone(14, T0 + 399);
@@ -619,8 +624,9 @@ test('link: which page is shown — each window\'s `visible` from its tab in fro
     win = await app.next('windows', { from, test: (m) => m.list[0].focusedAt === T0 + 700 });
     assert.equal(win.list[0].blurredAt, T0 + 600, 'kept: the last blur heard');
     assert.ok(await until(() => logged().some((l) => /^focus heard: none \(WINDOW_ID_NONE\) at \d\d:\d\d:\d\d\.\d{3}$/.test(l)) && logged().some((l) => /^focus heard: window 7 at /.test(l))), `${logged()}`);
-    assert.ok(logged().some((l) => /^windows report at [\d:.]+: 7 focused \(focus heard [\d:.]+\); blur heard [\d:.]+$/.test(l)), `${logged().filter((l) => l.startsWith('windows report'))}`);
-    assert.ok(logged().some((l) => /^windows report at [\d:.]+: 7 focused shown [\d:.]+$/.test(l)), 'a report\'s shown page in the log');
+    assert.ok(await until(() => logged().some((l) => /^windows report at [\d:.]+: 7 focused \(focus heard [\d:.]+\); blur heard [\d:.]+$/.test(l)), 1500), `${logged().filter((l) => l.startsWith('windows report'))}`);
+    const reports = logged().filter((l) => l.startsWith('windows report')).map((l) => Number(/at (\d\d):(\d\d):(\d\d)\.(\d{3})/.exec(l)?.slice(1).reduce((a, x, i) => a + Number(x) * [3600e3, 60e3, 1e3, 1][i], 0)));
+    assert.ok(reports.every((t, i) => i === 0 || t - reports[i - 1] >= 990), `the flags' line at most once a second: ${logged().filter((l) => l.startsWith('windows report'))}`);
     assert.ok(!logged().some((l) => /https?:|example/.test(l)), 'ids and times only');
     // Each change of a window's word one line: shown or hidden, when the page saw it, what said it, how late it was heard.
     const seen = () => logged().filter((l) => l.startsWith('window 7 '));
@@ -632,6 +638,19 @@ test('link: which page is shown — each window\'s `visible` from its tab in fro
     link.visibility(7, 14, false, Date.now(), 'content script');
     assert.ok(await until(() => seen().length === 3));
     assert.match(seen()[2], /^window 7 hidden at [\d:.]+ \(content script, tab 14, heard \d+ ms later\)$/);
+    // The same word again (the page's answer to reportVisibility after its visibilitychange): nothing sent,
+    // its first time kept; a change is sent with its own time.
+    win = await app.next('windows', { from, test: (m) => m.list[0].visible === false });
+    const hiddenAt = win.list[0].visibleAt;
+    from = app.received.length;
+    link.visibility(7, 14, false, Date.now(), 'content script');
+    await wait(120);
+    assert.ok(!app.received.slice(from).some((m) => m.k === 'windows'), 'the same word again: nothing sent');
+    const shownAt = Date.now();
+    link.visibility(7, 14, true, shownAt, 'content script');
+    win = await app.next('windows', { from, test: (m) => m.list[0].visible === true });
+    assert.equal(win.list[0].visibleAt, shownAt);
+    assert.ok(hiddenAt < shownAt);
     // A closed window's words go with it.
     link.visibility(8, 20, true, T0 + 800);
     link.windowClosed(8);

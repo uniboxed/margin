@@ -1260,15 +1260,17 @@ Object.assign(SCENARIOS, {
     { op: 'appMark' },
     { op: 'open', name: 'B', url: '/p/B', active: true }, shown('B'),
     checkPage('A', 'A is hidden now', `document.hidden`),
-    { op: 'appHeard', label: 'B shown in the window: the window\'s word forgotten (not taken as hidden)', has: ['"ev":"extension log"', 'windows report at'], re: 'windows report at [0-9:.]+: [0-9]+( focused)?( \\(focus heard [0-9:.]+\\))?(; blur heard [0-9:.]+)?"' },
-    { op: 'appHeard', label: 'and B, asked, says it\'s shown', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"' },
-    { op: 'appHeard', label: 'never the hidden tab A\'s word as the window\'s', has: ['"ev":"extension log"', 'windows report at', 'hidden'], none: true },
+    // (The window reports themselves, as the app's end heard them: the copy's flags line in the log comes at most once a second.)
+    { op: 'appHeard', label: 'B shown in the window: the window\'s word forgotten (not taken as hidden)', has: ['"ev":"windows"', '"visible":"unknown"'] },
+    { op: 'appHeard', label: 'and B, asked, says it\'s shown', has: ['"ev":"windows"', '"visible":true'] },
+    { op: 'appHeard', label: 'never the hidden tab A\'s word as the window\'s', has: ['"ev":"windows"', '"visible":false'], none: true },
+    { op: 'appHeard', label: 'nor in the copy\'s flags line', has: ['"ev":"extension log"', 'windows report at', 'hidden'], none: true },
     { op: 'appHeard', label: 'nor in the copy\'s line: A, left behind, saying hidden isn\'t the window hidden', has: ['"ev":"extension log"', ' hidden at '], none: true },
     { op: 'appMark' },
     // (The start page: a fresh new tab would hand off to the tab before it.)
     { op: 'open', name: 'N', url: 'ext:newtab/newtab.html#launcher', active: true }, shown('N'),
-    { op: 'appHeard', label: 'N shown: the window\'s word forgotten', has: ['"ev":"extension log"', 'windows report at'], re: 'windows report at [0-9:.]+: [0-9]+( focused)?( \\(focus heard [0-9:.]+\\))?(; blur heard [0-9:.]+)?"' },
-    { op: 'appHeard', label: 'and the new-tab page says it\'s shown, as web pages do', has: ['"ev":"extension log"', 'windows report at'], re: 'shown [0-9:.]+"', timeout: 8000 },
+    { op: 'appHeard', label: 'N shown: the window\'s word forgotten', has: ['"ev":"windows"', '"visible":"unknown"'] },
+    { op: 'appHeard', label: 'and the new-tab page says it\'s shown, as web pages do', has: ['"ev":"windows"', '"visible":true'], timeout: 8000 },
     checkPage('N', 'the new-tab page is still the tab in front', `!document.hidden && location.hash === '#launcher'`),
   ],
 

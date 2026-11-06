@@ -311,10 +311,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         guard let entry = links[connection.key], entry.connection === connection else { return }
         switch message {
         case .snapshot, .delta, .windows:
+            let windowsBefore = entry.mirror.windows
             switch entry.mirror.apply(message) {
             case .applied:
                 entry.resyncTimer?.invalidate()
-                forward(message, of: entry)
+                forward(message, of: entry, windowsBefore: windowsBefore)
                 if case .windows = message { switcher.tick() }
                 if case .snapshot = message { acrossSoon() }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { acrossSoon() }
@@ -494,7 +495,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // What came, to each of the copy's overlays (each page keeps its own copy of the state).
-    private func forward(_ message: LinkMessage, of entry: Link) {
+    // `windowsBefore`: the copy's window list before a `windows` message.
+    private func forward(_ message: LinkMessage, of entry: Link, windowsBefore: [JSONObject] = []) {
         let shown = overlays(of: entry)
         switch message {
         case .snapshot:
@@ -515,12 +517,28 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             guard let json = jsonString(message) else { return }
             for overlay in shown { overlay.push(raw: json) }
         case .windows(_, _, let list):
+            // Only the pages' words of being shown changed (a tab switch says hidden, then shown): nothing an
+            // overlay draws from, and nothing to follow at once unless one of the copy's windows isn't bound
+            // yet (the visible rule binds from them; one read then, not a burst). A fast run of tab switches
+            // brings several of these each, on the main thread with the keys and the highlight.
+            if Shell.onlyVisibilityChanged(windowsBefore, list) {
+                if list.contains(where: { w in int(w["windowId"] ?? w["id"]).map { matches[WindowKey(link: entry.connection.key, windowId: $0)] == nil } ?? false }) { soon() }
+                return
+            }
             let json = jsonString(["type": "windows", "list": list]) ?? ""
             for overlay in shown { overlay.push(raw: json) }
             burst("windows")
         default:
             break
         }
+    }
+
+    // Whether two window lists of a copy differ only in their pages' words of being shown (`visible`,
+    // `visibleAt`: app/PROTOCOL.md `windows`).
+    static func onlyVisibilityChanged(_ before: [JSONObject], _ after: [JSONObject]) -> Bool {
+        guard before.count == after.count, !after.isEmpty else { return false }
+        let strip = { (list: [JSONObject]) -> [JSONObject] in list.map { $0.filter { $0.key != "visible" && $0.key != "visibleAt" } } }
+        return zip(strip(before), strip(after)).allSatisfy { NSDictionary(dictionary: $0).isEqual(to: $1) }
     }
 
     private func overlays(of entry: Link) -> [OverlayController] {
