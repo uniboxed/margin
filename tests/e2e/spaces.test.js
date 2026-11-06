@@ -1,86 +1,147 @@
-// Spaces: deleting one moves its tabs to the first, moving a tab, the active space per window;
-// all skipped (driven through the new-tab sidebar removed in Margin 2 Phase 2 step 5).
-// Not run for now (no E2E runs for now).
+// Spaces in the overlay: chips switch the window's space and its tabs, new
+// tabs join the space in front, the menus and the editor make, rename,
+// colour and delete spaces, a tab moves to another space, each window has
+// its own space, and another profile's chip asks the app. (The old
+// spaces.test.js drove the in-page sidebar.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, sidebarSnapshot, waitFor, gotoLauncher, readState } from './helpers.js';
+import { startMargin } from './harness/margin.js';
+import { SPACES } from './harness/seed.js';
+import { sidebar, chip, tabRow, menuItem } from './harness/ui.js';
+import { foreignKey } from '../../extension/shared/across.js';
 
-let ctx, server, nt;
+let m;
+let ui;
+
+const view = () => sidebar(ui);
+const frontId = async () => (await m.front())?.id;
+const spaceOfWindow = async (windowId) => (await m.state()).activeSpaceByWindow?.[windowId];
+
 before(async () => {
-  ctx = await launch();
-  server = await startServer();
-  nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  await nt.waitForSelector('#sidebar .chip[data-space-id]');
+  m = await startMargin({ name: 'spaces', seed: { spaces: SPACES, settings: { sidebarPinnedOpen: true } } });
+  await m.open('dispatch.test', '/2026/11/the-quiet-city');
+  ui = await m.ui();
+  await m.until(async () => (await view()).tabs.length >= 2, { what: 'the home space\'s rows' });
 });
-after(async () => {
-  await ctx?.context.close();
-  await server?.close();
+after(async () => { await m?.close(); });
+
+test('chips switch the space; its tabs come with it, and a new tab joins the space in front', async (t) => {
+  const windowId = m.shell.frontWindowId();
+  const home = (await view()).tabs.map((r) => r.id);
+  await ui.click(chip('sp-work'));
+  await m.until(async () => (await view()).space === 'Work', { what: 'the Work space shown' });
+  assert.equal(await spaceOfWindow(windowId), 'sp-work');
+  assert.ok(!(await view()).tabs.some((r) => home.includes(r.id)), 'Home\'s tabs aren\'t listed in Work');
+  // A new page opened now is Work's.
+  await m.open('metrics.test', '/');
+  const dash = await frontId();
+  await m.until(async () => (await view()).tabs.some((r) => r.id === dash && r.active), { what: 'the dashboard in Work, highlighted' });
+  assert.equal((await m.state()).tabSpace[dash], 'sp-work');
+  await m.shoot(t, 'work');
+
+  await ui.click(chip('sp-home'));
+  await m.until(async () => (await view()).space === 'Home', { what: 'Home again' });
+  const rows = (await view()).tabs.map((r) => r.id);
+  assert.ok(home.every((id) => rows.includes(id)) && !rows.includes(dash), 'Home\'s tabs again, not the dashboard');
+  // The browser shows a tab of the space switched to.
+  assert.equal((await m.state()).tabSpace[await frontId()], 'sp-home');
 });
 
-const storage = (key) => readState(ctx.worker, key);
-const chips = () => nt.$$eval('#sidebar .chip[data-space-id]', (cs) => cs.map((c) => ({ id: c.dataset.spaceId, emoji: c.textContent, active: c.classList.contains('active') })));
+test('a tab moved to another space with its menu', async (t) => {
+  await m.open('noir.test', '/');
+  const noir = await frontId();
+  await m.until(async () => (await view()).tabs.some((r) => r.id === noir), { what: 'the portfolio\'s row' });
+  await ui.click(tabRow(noir), { button: 'right' });
+  await m.until(async () => (await view()).menu.length, { what: 'the tab\'s menu' });
+  assert.deepEqual((await view()).menu, ['Pin Tab', 'New Folder with Tab', 'Move to 💼 Work', 'Move to 🧭 Trips', 'Close Tab']);
+  await m.shoot(t, 'menu');
+  await menuItem(ui, 'Move to 🧭 Trips');
+  await m.until(async () => (await m.state()).tabSpace[noir] === 'sp-trips', { what: 'the tab in Trips' });
+  await m.until(async () => !(await view()).tabs.some((r) => r.id === noir), { what: 'its row gone from Home' });
+  await ui.click(chip('sp-trips'));
+  await m.until(async () => (await view()).tabs.some((r) => r.id === noir), { what: 'its row in Trips' });
+  await ui.click(chip('sp-home'));
+  await m.until(async () => (await view()).space === 'Home', { what: 'Home again' });
+});
 
-test('right-click opens the editor; delete needs two clicks and moves tabs to the first space', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const work = (await chips()).find((c) => c.emoji === '💼');
-  const page = await ctx.context.newPage();
-  await page.goto(`${server.base}/in-work`); // active space in this window is Work
-  const tabId = await waitFor(async () => {
-    const tabs = await storage('tabs');
-    return Object.values(tabs).find((t) => t.title === 'in-work')?.id;
+test('a space made from +, renamed in place, coloured in the editor, and deleted with two presses', async (t) => {
+  await ui.click('.bar-button.add');
+  await m.until(async () => (await view()).menu.includes('New Space'), { what: 'the + menu' });
+  await menuItem(ui, 'New Space');
+  // A new space opens its editor.
+  await m.until(async () => (await view()).editor, { what: 'the space editor' });
+  const made = await m.until(async () => (await m.state()).spaces.find((s) => !SPACES.some((x) => x.id === s.id)), { what: 'the new space stored' });
+  const name = ui.locator('.editor input.name');
+  await name.fill('Reading list');
+  await ui.locator('.editor .swatch').nth(3).click();
+  const color = await ui.locator('.editor .swatch').nth(3).getAttribute('title');
+  await m.shoot(t, 'editor');
+  await ui.click('.editor .primary');
+  await m.until(async () => (await m.state()).spaces.find((s) => s.id === made.id)?.name === 'Reading list', { what: 'the name saved' });
+  assert.equal((await m.state()).spaces.find((s) => s.id === made.id).color, color);
+
+  // Renamed in place: a double-click on the space's name.
+  await m.until(async () => (await view()).space === 'Reading list', { what: 'the new space shown' });
+  await ui.dblclick('.space-title .title');
+  await ui.keyboard.press('Meta+A');
+  await ui.keyboard.type('Weekend reads');
+  await ui.keyboard.press('Enter');
+  await m.until(async () => (await m.state()).spaces.find((s) => s.id === made.id)?.name === 'Weekend reads', { what: 'renamed in place' });
+  await m.shoot(t, 'renamed');
+
+  // Delete: the first press asks, the second deletes.
+  await ui.click(chip(made.id), { button: 'right' });
+  await m.until(async () => (await view()).menu.includes('Delete Space'), { what: 'the space\'s menu' });
+  await menuItem(ui, 'Delete Space');
+  await m.until(async () => (await view()).menu.includes('Really delete?'), { what: 'asked again' });
+  assert.ok((await m.state()).spaces.some((s) => s.id === made.id), 'not deleted by the first press');
+  await menuItem(ui, 'Really delete?');
+  await m.until(async () => !(await m.state()).spaces.some((s) => s.id === made.id), { what: 'deleted' });
+  await m.until(async () => (await view()).chips.length === 3, { what: 'three chips again' });
+});
+
+test('each window has its own space', async (t) => {
+  const first = m.shell.frontWindowId();
+  const res = await m.shell.request('newWindow', {}, first);
+  assert.equal(res.ok, true);
+  // macOS puts a new window of a full-screen app in full screen too (the harness does it for the shell).
+  const second = await m.until(() => m.shell.windows.find((w) => w.windowId !== first && w.state === 'fullscreen')?.windowId, { timeout: 8000, what: 'a second full-screen window' });
+  const ui2 = await m.ui(second);
+  // Its new tab hands off to the palette, open in the new window's overlay (as ⌘N).
+  await m.until(async () => (await sidebar(ui2)).palette, { what: 'the palette in the new window' });
+  await ui2.keyboard.press('Escape');
+  await m.until(async () => !(await sidebar(ui2)).palette, { what: 'the palette closed' });
+  await ui2.click(chip('sp-work'));
+  await m.until(async () => (await spaceOfWindow(second)) === 'sp-work', { what: 'Work in the second window' });
+  assert.equal(await spaceOfWindow(first), 'sp-home', 'the first window keeps Home');
+  assert.equal((await sidebar(ui2)).space, 'Work');
+  assert.equal((await view()).space, 'Home');
+  await m.shoot(t, 'second-window', { windowId: second });
+  await m.bg((id) => chrome.windows.remove(id), second);
+  await m.until(() => !m.shell.overlays.has(second), { what: 'its overlay closed' });
+});
+
+test('another profile\'s chip asks the app to switch', async (t) => {
+  const here = m.shell.hello.profile;
+  m.shell.setAcross({
+    profile: here,
+    profiles: [
+      { id: here, name: 'Personal', emoji: '🙂', color: '#7c9cff', linked: true, spaces: 3 },
+      { id: 'p-work0000000000000000', name: 'Studio', emoji: '🎨', color: '#e86f68', linked: false, spaces: 1 },
+    ],
+    spaces: [
+      ...SPACES.map((s) => ({ profile: here, id: s.id, name: s.name, emoji: s.emoji, color: s.color, tabCount: 1 })),
+      { profile: 'p-work0000000000000000', id: 'sp-clients', name: 'Clients', emoji: '📐', color: '#e86f68', tabCount: 4 },
+    ],
+    switching: null,
   });
-  assert.equal((await storage('tabSpace'))[tabId], work.id);
-
-  await nt.bringToFront();
-  await nt.click(`#sidebar .chip[data-space-id="${work.id}"]`, { button: 'right' });
-  await nt.waitForSelector('#sidebar .editor:not([hidden])');
-  assert.equal(await nt.inputValue('#sidebar .editor .name'), 'Work');
-  await nt.click('#sidebar .editor .delete');
-  assert.equal(await nt.textContent('#sidebar .editor .delete'), 'Really delete?');
-  assert.equal((await storage('spaces')).length, 2, 'first click only arms');
-  await nt.click('#sidebar .editor .delete');
-  await waitFor(async () => (await storage('spaces')).length === 1);
-  assert.equal((await storage('tabSpace'))[tabId], 'personal');
-
-  // Only one space left: delete is disabled.
-  await nt.dblclick('#sidebar .chip[data-space-id="personal"]');
-  assert.equal(await nt.isDisabled('#sidebar .editor .delete'), true);
-  await nt.click('#sidebar .editor [data-editor="cancel"]');
-  await page.close();
-});
-
-test('a tab moved to another space with its menu leaves this one; the sidebar follows', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const res = await nt.evaluate(() => chrome.runtime.sendMessage({ type: 'createSpace', name: 'Fun', emoji: '🎈' }));
-  const fun = res.result.spaceId;
-  const page = await ctx.context.newPage();
-  await page.goto(`${server.base}/drag-me`);
-  await nt.bringToFront();
-  const row = nt.locator('#sidebar .tab', { hasText: 'drag-me' });
-  await row.waitFor();
-  // Dragging a tab (sidebar.js, pointer events) needs the tab in front: its
-  // own page's sidebar, a closed shadow root here; the WebKit host's
-  // `dragtab` scenario covers the drag itself.
-  await row.click({ button: 'right' });
-  await nt.locator('#sidebar .tab-menu .menu-item', { hasText: 'Fun' }).click();
-  await waitFor(async () => (await nt.locator('#sidebar .tab', { hasText: 'drag-me' }).count()) === 0);
-  const tabs = await storage('tabs');
-  const id = Object.values(tabs).find((t) => t.title === 'drag-me').id;
-  assert.equal((await storage('tabSpace'))[id], fun);
-
-  // The overlay on that page shows the same thing once Fun is active in the window.
-  await nt.click(`#sidebar .chip[data-space-id="${fun}"]`);
-  await waitFor(async () => (await sidebarSnapshot(page)).tabs.includes('drag-me'));
-  await page.close();
-});
-
-test('active space is per window', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
-  const other = await ctx.worker.evaluate(() => chrome.windows.create({ url: 'about:blank' }).then((w) => w.id));
-  const fun = (await storage('spaces')).find((s) => s.name === 'Fun').id;
-  await nt.evaluate(([w, s]) => chrome.runtime.sendMessage({ type: 'setSpace', windowId: w, spaceId: s, bringTab: false }), [other, fun]);
-  await nt.click('#sidebar .chip[data-space-id="personal"]');
-  await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === 'personal');
-  assert.equal((await storage('activeSpaceByWindow'))[other], fun);
-  await ctx.worker.evaluate((id) => chrome.windows.remove(id), other);
-  await waitFor(async () => !((other) in (await storage('activeSpaceByWindow'))));
+  const chipId = foreignKey('p-work0000000000000000', 'sp-clients');
+  await m.until(async () => (await view()).chips.some((c) => c.id === chipId), { what: 'the other profile\'s chip' });
+  await m.shoot(t, 'across');
+  const before = m.shell.performs.length;
+  await ui.click(chip(chipId));
+  const asked = await m.until(() => m.shell.performs.slice(before).find((p) => p.name === 'profile.switch'), { what: 'profile.switch asked of the app' });
+  assert.deepEqual(asked.arg, { profile: 'p-work0000000000000000', space: 'sp-clients' });
+  assert.ok(!m.shell.requests.some((r) => r.type === 'setSpace' && r.payload.spaceId === chipId), 'nothing went to this copy for it');
+  m.shell.setAcross(null);
 });
