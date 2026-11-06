@@ -8,7 +8,6 @@ import * as S from '../shared/search.js';
 import { api, load, mutate, newId, now, thisCopy } from './store.js';
 import * as onboarding from './onboarding.js';
 import { focusTab, reloadCutOff, handingOff, inPage, instanceId, isFocusing, keepHandedOff, markMarginOpening, openBehind, openTab, openedByMargin, resolveTab, shownAt } from './tabs.js';
-import { clearLog, readLog } from './diagnostics.js';
 import { sleepIdle, wakeAll } from './sleep.js';
 import { newTabPageSeen } from './newtab-hint.js';
 import { noteReopened, ownSearchTabs, ownSearchUrls, OWN_SEARCH_MS } from './search-engine.js';
@@ -328,13 +327,6 @@ export const handlers = {
   /** @param {{ afterMs?: number, max?: number }} message */
   async sleepNow({ afterMs, max } = {}) {
     return sleepIdle({ ...(Number.isFinite(afterMs) && afterMs >= 0 ? { afterMs } : {}), ...(Number.isInteger(max) && max > 0 ? { max } : {}) });
-  },
-  // DEVELOPMENT DIAGNOSTICS (background/diagnostics.js): the log itself, for the
-  // start page's "Switch log" button.
-  /** @param {{ clear?: boolean }} message */
-  async switchLog({ clear } = {}) {
-    if (clear) return void (await clearLog());
-    return readLog();
   },
   // The sidebar's scroll position in this page's window (background/scroll.js).
   /** @param {{ windowId?: number }} message */

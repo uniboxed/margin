@@ -80,7 +80,7 @@ const SESSION_OFF_KEY = 'appLinkSessionOff';
 // The stored values the app's UI draws from (as pages read them, before
 // shared/stored.js fromStorage). Not the theme package (sent as `theme`), the
 // data set's times, this link's own key, page zoom or user themes.
-export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'favicons', 'owner', 'stateRev'];
+export const STATE_KEYS = ['openTabs', 'spaces', 'pins', 'folders', 'archive', 'settings', 'favicons', 'owner'];
 // What the app's UI may ask (ui/actions.js, shared/search.js rows,
 // app/shell/Shell.swift's keys), and nothing else.
 export const APP_REQUESTS = new Set([

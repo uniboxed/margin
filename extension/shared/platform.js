@@ -16,11 +16,6 @@ const PROFILES = {
     // the Margin tab, not open, in its space (Margin 2: PLAN.md §6); a click
     // opens it again.
     sleepTabs: 'close',
-    // Each write of the state is numbered (background/store.js stateRev), so
-    // a page knows whether its own copy of the state is the last written
-    // (content/core.js knownRev) and needn't read storage again as it's
-    // shown. (Its name is from when pages prepared their own sidebar.)
-    prepareSidebar: true,
     // Wheel deltas are in screen points whatever the page's zoom (WebKit's
     // WheelEvent passes the platform's deltas on as they are).
     zoomedWheel: false,
@@ -53,7 +48,6 @@ const PROFILES = {
     // Chrome always gives ⌘T to the extension's new-tab page.
     newTabHint: false,
     sleepTabs: 'discard', // tabs.discard: Chrome loads the tab again as it's shown
-    prepareSidebar: false,
     // Wheel deltas are in the page's zoomed pixels (Chromium divides them by
     // the page's zoom).
     zoomedWheel: true,

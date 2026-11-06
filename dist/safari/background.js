@@ -17,10 +17,9 @@ import { switchLog, switchLogTo } from './background/switch-log.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
-import { recordCreated } from './background/diagnostics.js';
 import { queueRegistrations } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
-import { sleepChanged, sleepIdle, sleepIdleThrottled } from './background/sleep.js';
+import { sleepIdle, sleepIdleThrottled } from './background/sleep.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
 import { followFullscreen } from './background/fullscreen.js';
 import { tabGone, tabUpdated } from './background/tab-updates.js';
@@ -138,7 +137,6 @@ api.tabs.onCreated.addListener(owned(async (tab) => {
   // ⌘T (a new tab showing the new-tab page, in front): handed back to the
   // page the user was on at once (handlers.js newTabHandOff); a new tab
   // that stays is tracked as usual.
-  recordCreated(tab);
   if (tab.active && V.isNewTabPage(tab.pendingUrl || tab.url)) {
     void newTabHint.newTabPageSeen(tab); // ⌘T reaches Margin: the setting is Margin
     if (await newTabHandOff(tab)) return;
@@ -161,8 +159,6 @@ api.tabs.onUpdated.addListener(owned((tabId, change, tab) => {
   }
   // A tab a script found no page in may have one now (background/tabs.js noPageFound).
   if (change.status || change.url) pageChanged(tabId);
-  // A tab Margin put to sleep, awake again (background/sleep.js; the switch log).
-  if (change.url != null || change.discarded === false) sleepChanged(tabId, change);
   // Into the state; a hidden tab's written a moment later (background/tab-updates.js).
   tabUpdated(tabId, change, tab);
   // Loading or done, for Margin.app's sidebar (background/page-loads.js: not stored).
@@ -316,7 +312,7 @@ async function withTab(message, sender) {
 // A copy that doesn't own the state answers `stale`: its pages then stay out
 // of the way (content/core.js). Requests that name no tab (a page starting,
 // its zoom, scroll and icon) don't wait for the first sync.
-const BEFORE_SYNC = new Set(['hello', 'owner', 'switchLog', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp', 'pageLoading', 'gesture', 'viewport']);
+const BEFORE_SYNC = new Set(['hello', 'owner', 'sidebarScroll', 'setSidebarScroll', 'reloadForUpdate', 'getZoom', 'pageIcon', 'windowState', 'injectPage', 'fetchStyle', 'appKeyHeard', 'newTabKey', 'startApp', 'pageLoading', 'gesture', 'viewport']);
 // Requests whose page stops waiting at their `deadline` (content/core.js
 // TIMED_REQUESTS) are answered before it, whatever is still under way: by
 // REPLY_GUARD_MS before it, an answer that the switch didn't happen (it

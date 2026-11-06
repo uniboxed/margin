@@ -18,12 +18,21 @@
 //   DONE_MS is left out, and the line says what it waited for.
 // No titles or addresses: tab and window ids only.
 
+// The same log has a line for each pass of sleeping tabs that found tabs due
+// (background/sleep.js), each pass of the open-tab repair (background/tabs.js
+// injectIntoOpenTabs) and a start that found storage empty (store.js): appLog.
+
 const DONE_MS = 3000;
 /** @type {((line: string) => void) | null} */
 let sink = null;
 /** Where the lines go (background.js: the link's note). @param {(line: string) => void} fn */
 export function switchLogTo(fn) {
   sink = fn;
+}
+/** One line in Margin.app's log, and the background's console. @param {string} line */
+export function appLog(line) {
+  console.info(`[margin] ${line}`);
+  try { sink?.(line); } catch {}
 }
 
 /** @typedef {{ tabId: number, source: string, windowId: number | null, at: number, steps: [string, number][], activations: number, failed: string | null, timer: any, done: boolean }} Entry */

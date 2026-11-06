@@ -86,7 +86,7 @@ const { oldOwnPageAddress } = await import('../extension/background/cut-off.js')
 const { sleepIdle, sleepInPage, setSleepTiming, wakeAll } = await import('../extension/background/sleep.js');
 const { takeClosing } = await import('../extension/background/closing.js');
 const { decided, mutate, load } = await import('../extension/background/store.js');
-const { tapLog } = await import('../extension/background/diagnostics.js');
+const { switchLogTo } = await import('../extension/background/switch-log.js');
 setSleepTiming({ gapMs: 5, askMs: 150, wakeGapMs: 1 });
 
 // ---- a tab an earlier build left on Margin's sleep page (shared/sleep.js) --------------
@@ -256,18 +256,18 @@ const slept = () => fake.removed.map((id) => {
 
 test('a pass: each tab long unused asked in its page, then closed as Margin\'s own close, to be kept (its Margin tab, not open), at most a few per pass, one at a time', async () => {
   await setUp([{ id: 1, url: 'https://front.test/', active: true }, ...[2, 3, 4, 5, 6, 7, 8].map((id) => ({ id, url: `https://s${id}.test/p`, idleHours: 4 + id }))]);
-  const entries = [];
-  tapLog((e) => entries.push(e));
+  const lines = [];
+  switchLogTo((line) => lines.push(line));
   const pass = await sleepIdle();
-  tapLog(null);
+  switchLogTo(null);
   assert.deepEqual(pass, { due: 7, slept: 5, skipped: { 'next pass': 2 }, stopped: null });
   assert.deepEqual(slept(), [8, 7, 6, 5, 4], 'the longest unused first');
   const asked = fake.scripts.filter((x) => x.func === 'sleepInPage');
   assert.deepEqual(asked.map((x) => x.tabId), [8, 7, 6, 5, 4]);
   assert.equal(asked[0].args[0], 'https://s8.test/p', 'asked whether it\'s still that page');
   assert.deepEqual(fake.updates, [], 'none sent anywhere, none brought to the front');
-  assert.deepEqual(entries.filter((e) => e.kind === 'sleep').map((e) => e.step), ['slept', 'slept', 'slept', 'slept', 'slept', 'run']);
-  assert.deepEqual(entries.find((e) => e.step === 'run').skipped, { 'next pass': 2 });
+  assert.equal(lines.length, 1, 'one line in Margin.app\'s log for the pass');
+  assert.match(lines[0], /^sleep: 7 due, 5 put to sleep \(tab 8 closed, kept, unused 7\d\d min, its page judged by margin; tab 7 .*\); skipped: next pass 2 \(\d+ ms\)$/);
   // The state as onRemoved brings it in (Margin's close, to keep: background.js closedTab).
   await mutate((s) => [8, 7, 6, 5, 4].reduce((st, id) => M.closedTab(st, id, { by: { how: 'keep', why: 'sleep' }, now: Date.now(), archiveId: `a${id}` }), s));
   const s = await load();

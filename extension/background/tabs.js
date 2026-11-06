@@ -12,14 +12,13 @@
 // timeline is one line in Margin.app's log (background/switch-log.js).
 import * as M from '../state/model.js';
 import { api, cached, isOwner, isSynced, mutate, now, openTabsAsked, thisCopy } from './store.js';
-import { recordRepair } from './diagnostics.js';
 import { commandKeys } from '../shared/shortcuts.js';
 import { appLink } from './app-link.js';
 import { cutOffAction, cutOffInPage, oldOwnPageAddress } from './cut-off.js';
 import { tellNotice } from './notices.js';
 import { oldSleepPage } from '../shared/sleep.js';
 import { noteClosing, takeClosing } from './closing.js';
-import { switchLog } from './switch-log.js';
+import { appLog, switchLog } from './switch-log.js';
 import { noteReopened } from './search-engine.js';
 
 // When each tab was last shown (a diagnostic in tabs.onUpdated).
@@ -818,7 +817,7 @@ async function runOpenTabRepair(retry) {
     await yielded();
     const tabs = await api.tabs.query({}).catch(() => []);
     const left = tabs.filter((tab) => !checkedCurrent.has(tab.id) && !noPageFound.has(tab.id)).sort((a, b) => Number(!!b.active) - Number(!!a.active));
-    // DEVELOPMENT DIAGNOSTICS: the tabs this pass asked, and found with no page.
+    // The tabs this pass asked, and found with no page (its line in Margin.app's log).
     const counts = { asked: 0, noPage: 0 };
     const one = async (/** @type {any} */ tab) => {
       if (await repairOldOwnPage(tab)) return void checkedCurrent.add(tab.id);
@@ -847,7 +846,7 @@ async function runOpenTabRepair(retry) {
         await one(tab);
       }
     }));
-    recordRepair({ pass, tabs: tabs.length, ...counts, gaveWayMs: gaveWay, ms: Date.now() - passStart });
+    appLog(`the open-tab repair, pass ${pass}: ${tabs.length} tabs, ${counts.asked} asked, ${counts.noPage} with no page, ${Date.now() - passStart} ms (${gaveWay} ms giving way to switches)`);
     // (A tab with no page keeps the passes going: it may load meanwhile, the
     // tab in front at a relaunch most of all, and is then asked again.)
     if (tabs.every(done)) return;

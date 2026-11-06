@@ -50,7 +50,6 @@ globalThis.chrome = /** @type {any} */ ({
   },
 });
 const { openBehind } = await import('../extension/background/tabs.js');
-const { mutate, stateRev } = await import('../extension/background/store.js');
 
 test('openBehind in Chrome: the new tab comes to the front once loaded; its page isn\'t asked whether it has painted', async () => {
   const asked = Date.now();
@@ -63,11 +62,4 @@ test('openBehind in Chrome: the new tab comes to the front once loaded; its page
   const front = updates.find((u) => u.id === id && u.change.active);
   assert.ok(front && front.at - asked >= 290, `to the front once loaded (${front && front.at - asked}ms)`);
   assert.deepEqual(scripts.filter((s) => s.name === 'readyInPage'), []);
-});
-
-test('Chrome: writes of the state carry no stamp (Chrome\'s pages aren\'t prepared for a show: shared/stored.js STATE_REV)', async () => {
-  await mutate((s) => ({ ...s, pins: [{ id: 'p', url: 'https://p.test/', title: 'P' }] }));
-  assert.ok(local.pins?.length, 'written');
-  assert.equal('stateRev' in local, false);
-  assert.equal(stateRev(), null);
 });

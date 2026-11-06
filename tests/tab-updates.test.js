@@ -35,7 +35,7 @@ globalThis.chrome = /** @type {any} */ ({
     session: { get: async () => ({}), set: async () => {} },
   },
 });
-const { decided, load, mutate, stateRev } = await import('../extension/background/store.js');
+const { decided, load, mutate } = await import('../extension/background/store.js');
 const { GATHER_MS, TITLE_EVERY_MS, tabGone, tabUpdated } = await import('../extension/background/tab-updates.js');
 const M = await import('../extension/state/model.js');
 
@@ -209,46 +209,4 @@ test('a change with nothing new doesn\'t write the waiting ones early', async ()
   await until(() => writes().length);
   assert.equal(writes().length, 1);
   assert.equal(stored(3).favIconUrl, icon);
-});
-
-// A page prepared for a show draws from what it has if it knows the last
-// write (store.js stateRev). A change that waits isn't on its way: storage has
-// the write before it, as the page does.
-test('stateRev: the last write while only changes that can wait wait; none while one is on its way or failed', async () => {
-  await reset();
-  const icon = (id, name) => ({ favIconUrl: `https://t${id}.test/${name}.png` });
-  assert.equal(stateRev(), local.stateRev.id);
-  await tabUpdated(3, icon(3, 'c'), tab(3, { title: 'just left', ...icon(3, 'c') }));
-  assert.equal(stateRev(), local.stateRev.id, 'a change waiting: storage has the write before it');
-  // An immediate change to the same key: on its way, from before its set()
-  // (the owner check: store.js flush).
-  let open;
-  const shut = new Promise((resolve) => { open = resolve; });
-  const { get } = chrome.storage.local;
-  chrome.storage.local.get = async (keys) => {
-    chrome.storage.local.get = get;
-    await shut;
-    return get(keys);
-  };
-  const pin = mutate((s) => ({ ...s, tabs: { ...s.tabs, 3: { ...s.tabs[3], title: 'now' } } }));
-  await sleep(10);
-  assert.equal(stateRev(), null, 'waiting for the owner check');
-  open();
-  await pin;
-  assert.equal(stored(3).favIconUrl, icon(3, 'c').favIconUrl);
-  assert.equal(stateRev(), local.stateRev.id, 'through');
-  // The timer firing: on its way from then.
-  await tabUpdated(3, icon(3, 'd'), tab(3, { title: 'now', ...icon(3, 'd') }));
-  failNext = true;
-  await until(() => !failNext);
-  await sleep(10);
-  assert.equal(stateRev(), null, 'its write failed: none known');
-  // Waiting behind a failed write: still none known (the retry is on its way).
-  await tabUpdated(2, icon(2, 'e'), tab(2, { title: 'd', ...icon(2, 'e') }));
-  assert.equal(stateRev(), null);
-  // The retry (250 ms), and the gathered one.
-  await until(() => stored(3).favIconUrl === icon(3, 'd').favIconUrl && stored(2).favIconUrl === icon(2, 'e').favIconUrl && stateRev() != null);
-  assert.equal(stored(3).favIconUrl, icon(3, 'd').favIconUrl);
-  assert.equal(stored(2).favIconUrl, icon(2, 'e').favIconUrl);
-  assert.equal(stateRev(), local.stateRev.id);
 });

@@ -97,19 +97,8 @@ export const queueRegistrations = () => {
     .then(syncPage)
     .catch((err) => console.warn('[margin] page box', err))
     .then(storeActiveTheme) // not a registration: the theme Margin.app is sent
-    .catch((err) => console.warn('[margin] theme', err))
-    .then(dropOld);
+    .catch((err) => console.warn('[margin] theme', err));
   return registrations;
 };
 // Settles once the registrations match the settings (reloadForUpdate).
 export const whenRegistered = () => registrations;
-
-// Left registered by earlier versions: the injection probe, the fitted layout,
-// the frameless test build, the narrow rail and the theme's script (before
-// Margin 2). Their files stay as empty stubs (scripts/build.js). Tried on
-// every sync, because Safari loads stored registrations asynchronously after
-// the background starts; it fails harmlessly once they're gone.
-const OLD_IDS = ['margin-probe', 'margin-shell', 'margin-frameless', 'margin-docked-rail', 'margin-theme'];
-async function dropOld() {
-  for (const id of OLD_IDS) await api.scripting?.unregisterContentScripts?.({ ids: [id] }).catch(() => {});
-}

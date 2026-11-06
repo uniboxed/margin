@@ -130,7 +130,7 @@ test('link: helpers — the keys from Settings, the theme in checked pieces, wha
   assert.deepEqual(boxFromLayout(a, { outerWidth: 1280, outerHeight: 800, innerWidth: 1060, innerHeight: 800, x: 9999 }), { left: 40, top: 8, right: 8, bottom: 8 }, 'a corner past the room there is: held to it');
   assert.ok(STATE_KEYS.includes('openTabs') && !STATE_KEYS.includes('uiTheme'));
   for (const type of ['activateTab', 'navigate', 'openHere', 'search']) assert.ok(APP_REQUESTS.has(type), type);
-  for (const type of ['hello', 'reloadForUpdate', 'getZoom', 'injectPage', 'fetchStyle', 'switchLog']) assert.ok(!APP_REQUESTS.has(type), type);
+  for (const type of ['hello', 'reloadForUpdate', 'getZoom', 'injectPage', 'fetchStyle']) assert.ok(!APP_REQUESTS.has(type), type);
 });
 
 test('link: linked — the port kept used, wantLink, the key checked, hello, snapshot, theme, keys, data.hello', async () => {

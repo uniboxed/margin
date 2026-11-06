@@ -123,7 +123,6 @@ await import('../extension/background.js');
 const firstSwitch = ask('activateTab', { tabId: 2 });
 const store = await import('../extension/background/store.js');
 const { injectIntoOpenTabs, tabShown } = await import('../extension/background/tabs.js');
-const { tapLog } = await import('../extension/background/diagnostics.js');
 
 const scripts = (id, name = null) => fake.calls.filter((c) => c.what === 'script' && c.tabId === id && (name == null || c.name === name));
 async function settledOn(id) {
@@ -218,15 +217,13 @@ test('a row naming a tab just closed (Safari says it\'s gone, Margin\'s state do
   await settledOn(1);
   const closed = fake.tabs.get(42);
   fake.tabs.delete(42); // onRemoved not handled yet
-  const entries = [];
-  tapLog((e) => entries.push(e));
+  const updates = fake.updates.length;
   try {
     const { reply } = await ask('activateTab', { tabId: 42, hint: { url: closed.url, index: closed.index, title: closed.title } });
     assert.equal(reply.ok, false);
     assert.match(reply.error, /no longer open/);
-    assert.deepEqual(entries.filter((e) => e.kind === 'switch' && e.tabId === 42), [], 'no switch to it');
+    assert.deepEqual(fake.updates.slice(updates).filter((u) => u.id === 42), [], 'no switch to it');
   } finally {
-    tapLog(null);
     fake.tabs.set(42, closed);
   }
 });

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DOCKED_WIDTHS } from '../scripts/build-styles.js';
-import { LEGACY_LAYOUT_FILES, LEGACY_THEME_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
+import { TARGETS, buildTo, manifestFor } from '../scripts/build.js';
 import { PACKAGE_THEMES } from '../extension/themes/packages.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -54,10 +54,8 @@ test('each build loads one bundled script per context', () => {
     assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), /left: 8 /);
     for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width} `));
     // Each built-in theme ships as its package (read by the background for
-    // Margin.app); no theme script is registered, and the one earlier
-    // versions registered is dropped (background/registered.js).
+    // Margin.app); no theme script is registered.
     for (const id of PACKAGE_THEMES) for (const f of ['theme.json', 'theme.html', 'theme.css']) assert.ok(statSync(join(dir, `themes/${id}/${f}`)).size > 0, `${target}/themes/${id}/${f}`);
-    assert.match(background, /margin-theme/, `${target}: the old registration is dropped`);
     // Pages draw none of Margin's UI (Margin 2 Phase 2 step 5): the UI
     // runtime, the theme loader and the in-page host aren't in the content
     // script or the new-tab page.
@@ -65,11 +63,6 @@ test('each build loads one bundled script per context', () => {
       const text = readFileSync(join(dir, file), 'utf8');
       for (const word of ['createRuntime', 'createInPageHost', 'loadTheme', 'sanitizeCss', 'attachShadow']) assert.ok(!text.includes(word), `${target}/${file}: no ${word}`);
     }
-    // Safari drops every registered script if a file one lists is missing, so
-    // the sources an earlier version registered must still be there.
-    // Safari loads none of its registrations if a path one names is missing.
-    for (const file of LEGACY_LAYOUT_FILES) assert.equal(statSync(join(dir, file)).size, 0, `${target}/${file}: an empty stub`);
-    for (const file of LEGACY_THEME_FILES) assert.equal(statSync(join(dir, file)).size, 0, `${target}/${file}: an empty stub`);
   }
 });
 
@@ -80,8 +73,6 @@ test('each build is stamped with its own profile', () => {
   }
   assert.equal(PROFILES.safari.fetchFavicons, true, 'Safari gives no tab.favIconUrl');
   assert.equal(PROFILES.chrome.fetchFavicons, false, 'Chrome provides tab.favIconUrl');
-  assert.equal(PROFILES.safari.prepareSidebar, true, 'Safari prepares a hidden destination before its web view is swapped in');
-  assert.equal(PROFILES.chrome.prepareSidebar, false, 'Chrome keeps its hidden tab frame without the extra handoff');
 });
 
 // The rules of WebKit's parseCommandShortcut (Safari's command loading): 2–3

@@ -20,7 +20,7 @@ import { startPinch } from './pinch.js';
 import { SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { startLoads } from './loads.js';
-import { STATE_REV, fromStorage, knowsState, onlyMark, openTabsCurrent, readForPage, revAfter, revOf, takesChanges, withChanges } from '../shared/stored.js';
+import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.js';
 import { APP_LINK_KEY, appDraws, boxFromLayout, layoutFor } from '../shared/app-link.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
 
@@ -441,19 +441,6 @@ export function startCore() {
 
   // Storage reads can resolve out of order; only the latest one renders.
   let version = 0;
-  // Before a programmatic switch, the destination's storage still names the
-  // source tab/space as active: its own tab's space is made the window's.
-  /** @param {any} next @param {{ tabId: number, windowId: number } | null} show */
-  function stateForShow(next, show) {
-    const targetId = show?.tabId;
-    const targetWindow = show?.windowId;
-    const spaceId = targetId != null ? next.tabSpace?.[targetId] : null;
-    if (targetWindow == null || !spaceId || !next.spaces?.some((space) => space.id === spaceId)) return next;
-    if (next.activeSpaceByWindow?.[targetWindow] === spaceId) return next;
-    return { ...next, activeSpaceByWindow: { ...next.activeSpaceByWindow, [targetWindow]: spaceId } };
-  }
-
-  /** @param {{ tabId: number, windowId: number } | null} [show] */
   let reading = 0; // reads of storage under way
   // A change taken (hidden) while a read was under way: that read may be
   // older than it and put the old value back, so the page reads again before
@@ -463,20 +450,10 @@ export function startCore() {
   // Storage keys this page has seen, in reads and change events: read again
   // with the rest (shared/stored.js pageKeys).
   const seenKeys = new Set();
-  // The last write of the state this page's `state` has (shared/stored.js
-  // STATE_REV): from its last read and every change event since. Null when
-  // not known: a preparation then reads.
-  /** @type {string | null} */
-  let knownRev = null;
-  // DEVELOPMENT DIAGNOSTICS: the last refresh's read and render, in ms (the
-  // switch log's preparation timings: prepareForShow).
-  let refreshTimes = { readMs: 0, renderMs: 0 };
-  const msSince = (/** @type {number} */ since) => Math.round((performance.now() - since) * 10) / 10;
-  async function refresh(show = null) {
+  async function refresh() {
     const mine = ++version;
     reading++;
     const missedBefore = changedDuringRead;
-    const readFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     let raw;
     try {
       // All of storage the first time; then all but the site icons, unless
@@ -485,7 +462,6 @@ export function startCore() {
     } finally {
       reading--;
     }
-    const readMs = msSince(readFrom), renderFrom = performance.now(); // DEVELOPMENT DIAGNOSTICS
     for (const key of Object.keys(raw)) seenKeys.add(key);
     seenKeys.add(APP_LINK_KEY); // read every time from now on
     if (mine === version || appLink === undefined) setAppLink(raw[APP_LINK_KEY]);
@@ -496,11 +472,9 @@ export function startCore() {
     timing.storage ??= Math.round(performance.now());
     if (mine !== version || !next.spaces?.length) return false; // stale, or background not initialized yet
     if (!missed) staleRead = false; // what's taken now is storage as read, newer than any change taken before
-    knownRev = missed ? null : revOf(raw);
-    state = stateForShow(next, show);
+    state = next;
     if (!zoomAnswered) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1)); // its size from the start
     render();
-    refreshTimes = { readMs, renderMs: msSince(renderFrom) }; // DEVELOPMENT DIAGNOSTICS
     return true;
   }
   Margin.content.getState = () => ({ state, tabId, windowId });
@@ -532,13 +506,7 @@ export function startCore() {
     if (Object.keys(changes).every((key) => key.startsWith('dataMeta:'))) return;
     for (const key of Object.keys(changes)) seenKeys.add(key);
     if (!firstRender && onlyShowing(changes)) return;
-    // The write this brings, if the state takes it (one read instead: the
-    // read says).
-    const rev = STATE_REV in changes ? revAfter(knownRev, changes[STATE_REV]) : knownRev;
-    const read = () => {
-      knownRev = null;
-      void refresh();
-    };
+    const read = () => void refresh();
     if (firstRender || !state) return read();
     if (!document.hidden) {
       if (tabId == null || staleRead || !takesChanges(changes, { reading, openTabsBy: /** @type {any} */ (state).openTabsBy })) return read();
@@ -546,7 +514,6 @@ export function startCore() {
       if (!next.spaces?.length) return read();
       version++; // newer than any read started before it
       state = next;
-      knownRev = rev;
       if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
       if (onlyMark(changes)) return;
       if (!zoomAnswered && 'pageZoom' in changes) applyZoom(Number((next.pageZoom?.[location.origin] ?? next.pageZoom?.['*'])?.[0] ?? 1));
@@ -556,7 +523,6 @@ export function startCore() {
     if (reading) changedDuringRead++;
     const next = withChanges(state, changes);
     state = next;
-    knownRev = rev;
     changedWhileHidden = true;
     if ('owner' in changes || 'openTabs' in changes) ownerSeen(next.owner, next.openTabsBy);
     // The trackpad's listeners follow the settings now: a swipe right after
@@ -645,7 +611,6 @@ export function startCore() {
   addEventListener('pagehide', () => {
     if (!listening) return;
     listening = false;
-    knownRev = null; // the changes made meanwhile won't reach it
     api.storage.onChanged.removeListener(onStorageChanged);
     api.runtime.onMessage.removeListener(onMessage);
   });

@@ -10,7 +10,6 @@ import { join } from 'node:path';
 import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { dirname } from 'node:path';
 import { DOCKED_WIDTHS } from './build-styles.js';
 
 const root = new URL('../', import.meta.url);
@@ -62,34 +61,9 @@ const BUNDLES = {
   page: 'content/page.bundle.js',
   newtab: 'newtab/newtab.bundle.js',
 };
-// Safari keeps script registrations across launches and drops all of them if a
-// file one lists is missing (DECISIONS.md, 2026-10-25). Every path an earlier
-// version registered stays, empty, until no one has those registrations
-// (background/registered.js drops them): the fitted layout, the frameless test
-// build, and early placeholders.
-export const LEGACY_LAYOUT_FILES = [
-  'shared/shell-logic.js',
-  'content/shell.js',
-  'content/shell.bundle.js',
-  'content/shell-fullscreen-only.js',
-  'content/docked.css',
-  ...['a', 'c', 'd', 'e'].map((part) => `content/frameless/${part}.js`),
-  ...DOCKED_WIDTHS.map((width) => `content/frameless/w-${width}.js`),
-  ...DOCKED_WIDTHS.map((width) => `content/docked/w-${width}.css`),
-  'themes/arcadia/docked/rail.css',
-];
-// Where earlier versions registered Arcadia's script (its JS theme before
-// Margin 2, and under its earlier name): empty, so Safari's stored
-// registrations stay valid until the background drops them
-// (background/registered.js OLD_IDS).
+// Where the page's box starts in the first-paint registration (background/
+// registered.js pagePlan): one file per left edge.
 const PAGE_LEFTS = [8, ...DOCKED_WIDTHS];
-export const LEGACY_THEME_FILES = [
-  'themes/arcadia/content.bundle.js',
-  'themes/arcadium/content.bundle.js',
-  'themes/arcadium/docked/closed.css',
-  'themes/arcadium/docked/rail.css',
-  ...DOCKED_WIDTHS.map((width) => `themes/arcadium/docked/w-${width}.css`),
-];
 
 function bundle(out, manifest) {
   const write = (file, entries, { format = 'iife' } = {}) => buildSync({
@@ -109,10 +83,6 @@ function bundle(out, manifest) {
   // Where the page's box starts (background/registered.js pagePlan): read by
   // the page's script, and gone again.
   for (const left of PAGE_LEFTS) writeFileSync(`${out}/content/page/at-${left}.js`, `window[Symbol.for('margin.page.start')] = { left: ${left} };\n`);
-  for (const file of [...LEGACY_LAYOUT_FILES, ...LEGACY_THEME_FILES]) {
-    mkdirSync(dirname(`${out}/${file}`), { recursive: true });
-    writeFileSync(`${out}/${file}`, '');
-  }
 
   // Margin's content script (its core on web pages, with the UI runtime).
   const [sidebar] = manifest.content_scripts;

@@ -23,14 +23,14 @@
 // Pinned tabs sleep too. A few per pass (PER_RUN), one at a time, none while
 // a switch is asked for or under way. A pass runs
 // with the auto-archive's (every 15
-// minutes: background.js). Each pass, each tab put to sleep and each wake is
-// in the switch log (`kind: 'sleep'`: diagnostics.js recordSleep).
+// minutes: background.js). A pass that found tabs due is a line in Margin.app's
+// log (switch-log.js appLog): how many, which slept, why the others didn't.
 import * as M from '../state/model.js';
 import { api, cached, isOwner, load, now } from './store.js';
 import { platform } from '../shared/platform.js';
 import { neverSleeps } from '../shared/sleep.js';
 import { foundWithNoPage, isFocusing, mayAccess, switchBusy } from './tabs.js';
-import { recordSleep } from './diagnostics.js';
+import { appLog } from './switch-log.js';
 import { noteClosing, takeClosing } from './closing.js';
 
 // Times (tests shorten them: setSleepTiming).
@@ -154,6 +154,8 @@ async function run({ afterMs = null, max = TIMING.perRun }) {
   const skipped = {};
   const skip = (/** @type {string} */ why) => { skipped[why] = (skipped[why] ?? 0) + 1; };
   let slept = 0;
+  /** @type {string[]} the tabs put to sleep, for the log */
+  const sleptLines = [];
   /** @type {string | null} */
   let stopped = null;
   for (const [i, record] of due.entries()) {
@@ -168,16 +170,19 @@ async function run({ afterMs = null, max = TIMING.perRun }) {
     stopped = !isOwner() ? 'not in charge' : switchBusy() ? 'switch' : null;
     if (stopped) break;
     const outcome = await sleepTab(record, afterMs);
-    if (outcome !== true) {
+    if (typeof outcome === 'string') {
       skip(outcome);
       continue;
     }
+    sleptLines.push(outcome.line);
     slept++;
     if (slept < max && i < due.length - 1) await pause(TIMING.gapMs);
   }
   if (refusalsChanged) writeRefusals();
-  if (due.length) recordSleep({ step: 'run', due: due.length, slept, skipped, ...(stopped ? { stopped } : {}), ms: Date.now() - startedAt });
-  if (slept) console.info(`[margin] put ${slept} tab(s) to sleep`);
+  if (due.length) {
+    const skips = Object.entries(skipped).map(([why, n]) => `${why} ${n}`).join(', ');
+    appLog(`sleep: ${due.length} due, ${slept} put to sleep${sleptLines.length ? ` (${sleptLines.join('; ')})` : ''}${skips ? `; skipped: ${skips}` : ''}${stopped ? `; stopped: ${stopped}` : ''} (${Date.now() - startedAt} ms)`);
+  }
   return { due: due.length, slept, skipped, stopped };
 }
 
@@ -192,8 +197,8 @@ function stillDue(tabId, afterMs) {
   return !!s && M.sleepyTabs(s, now(), { afterMs }).some((t) => t.id === tabId);
 }
 
-// One tab: true once it's asleep, else why not.
-/** @param {import('../../types/margin').TabRecord} record @param {number | null} afterMs @returns {Promise<true | string>} */
+// One tab: once it's asleep, its line for the log; else why not.
+/** @param {import('../../types/margin').TabRecord} record @param {number | null} afterMs @returns {Promise<{ line: string } | string>} */
 async function sleepTab(record, afterMs) {
   if (!stillDue(record.id, afterMs)) return 'used';
   const tab = await api.tabs.get(record.id).catch(() => null);
@@ -240,8 +245,7 @@ async function sleepTab(record, afterMs) {
     }
   }
   forgetRefusal(record.id);
-  recordSleep({ step: 'slept', tabId: tab.id, how, idleMin: Math.round((now() - lastUseOf(record)) / 60_000), judged: answer.judged ?? null });
-  return true;
+  return { line: `tab ${tab.id} ${how === 'discard' ? 'discarded' : 'closed, kept'}, unused ${Math.round((now() - lastUseOf(record)) / 60_000)} min, its page judged by ${answer.judged ?? 'nothing'}` };
 }
 
 // sleepInPage's answer for the page, 'no page' (no script runs there), or
@@ -348,38 +352,16 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // (Chrome, Edge): each tab discarded loaded again, one after another (a tab in
 // front wakes itself). How many it woke. Safari closes sleeping tabs: none
 // open to wake (each opens as it's clicked).
-/** @type {Set<number>} */
-const wakingAll = new Set();
 export async function wakeAll() {
   if (platform?.sleepTabs !== 'discard') return 0;
   const open = await api.tabs.query({}).catch(() => []);
   let woke = 0;
   for (const tab of open) {
     if (tab.active || tab.discarded !== true) continue;
-    wakingAll.add(tab.id);
-    if (await Promise.resolve(api.tabs.reload(tab.id)).then(() => true, () => false)) {
-      woke++;
-      recordSleep({ step: 'woke', tabId: tab.id, by: 'all', how: 'reload' });
-    } else wakingAll.delete(tab.id);
+    if (await Promise.resolve(api.tabs.reload(tab.id)).then(() => true, () => false)) woke++;
     await pause(TIMING.wakeGapMs);
   }
-  setTimeout(() => wakingAll.clear(), 10_000);
   return woke;
-}
-
-// tabs.onUpdated (background.js): a tab the browser had discarded is loaded
-// again (Chrome, Edge): woken. In the switch log, unless Margin woke it
-// itself (a switch: background/tabs.js; "Wake all": above). Before the change
-// is in the state. `change`: the event's.
-/** @param {number} tabId @param {{ url?: string, discarded?: boolean }} change */
-export function sleepChanged(tabId, change) {
-  const record = cached()?.tabs?.[tabId];
-  // (Not a tab Safari unloaded itself, should it say `discarded`.)
-  if (!record?.sleeping || platform?.sleepTabs !== 'discard') return;
-  const woke = change.url != null || change.discarded === false;
-  if (!woke) return;
-  if (wakingAll.has(tabId) || isFocusing(tabId)) return;
-  recordSleep({ step: 'woke', tabId, by: 'shown' });
 }
 
 // For tests.
