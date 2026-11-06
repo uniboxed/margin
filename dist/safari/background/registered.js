@@ -227,10 +227,23 @@ export function layoutsChanged() {
 export const OFF_CSS = 'html:root { --margin-fp: off; }';
 /** What fixUp did, the last few (tests). @type {{ tabId: number, css: string, ok: boolean | string }[]} */
 export const fixUps = [];
+// Each tab's window as Safari last said it (tabs.onCreated, onAttached,
+// onActivated; the tabs open as this background started: watchCommits), so
+// fixUp knows a committing page's window with nothing to wait for. Between
+// the commit and the page's first rendering update there are 17 to 21 ms
+// (the host, 2026-11-06), and asking Safari (tabs.get) took 8 to 48 ms
+// there: a page whose tab Margin's state didn't have yet got its own sheet
+// only after its first frames, drawn at the registered layout.
+/** @type {Map<number, number>} */
+const windowOfTab = new Map();
+/** @param {number} tabId */
+const windowOf = (tabId) => windowOfTab.get(tabId) ?? cached()?.tabs?.[tabId]?.windowId;
 /** @param {number} tabId @param {string | undefined} documentId */
 async function fixUp(tabId, documentId) {
   if (registeredKey == null || !isOwner() || !api.scripting?.insertCSS) return;
-  const windowId = cached()?.tabs?.[tabId]?.windowId ?? (await api.tabs.get(tabId).catch(() => null))?.windowId;
+  const known = windowOf(tabId);
+  // (Not known: a tab from before this background's listeners, not in Margin's state.)
+  const windowId = known ?? (await api.tabs.get(tabId).catch(() => null))?.windowId;
   const view = layoutSource();
   const off = windowId != null && view?.drawn?.[windowId] === false;
   const own = off ? null : windowId != null ? layoutOf(view?.layouts?.[windowId]) : null;
@@ -242,6 +255,18 @@ async function fixUp(tabId, documentId) {
   if (fixUps.length > 20) fixUps.shift();
 }
 export function watchCommits() {
+  api.tabs.onCreated.addListener((tab) => { if (Number.isInteger(tab?.id) && Number.isInteger(tab.windowId)) windowOfTab.set(tab.id, tab.windowId); });
+  api.tabs.onAttached.addListener((tabId, info) => { if (Number.isInteger(info?.newWindowId)) windowOfTab.set(tabId, info.newWindowId); });
+  api.tabs.onActivated.addListener((info) => { if (Number.isInteger(info?.tabId) && Number.isInteger(info.windowId)) windowOfTab.set(info.tabId, info.windowId); });
+  api.tabs.onRemoved.addListener((tabId) => windowOfTab.delete(tabId));
+  // A move seen another way (a tab's own update carries its window), and a tab out of its window: no stale window kept.
+  api.tabs.onUpdated?.addListener((tabId, _change, tab) => { if (Number.isInteger(tab?.windowId) && tab.windowId >= 0) windowOfTab.set(tabId, tab.windowId); });
+  api.tabs.onDetached?.addListener((tabId) => windowOfTab.delete(tabId));
+  api.tabs.onReplaced?.addListener((_added, removed) => windowOfTab.delete(removed));
+  // The tabs open now; what an event said since stands (it's newer).
+  void Promise.resolve(api.tabs.query({})).then((tabs) => {
+    for (const tab of tabs ?? []) if (Number.isInteger(tab?.id) && Number.isInteger(tab.windowId) && !windowOfTab.has(tab.id)) windowOfTab.set(tab.id, tab.windowId);
+  }, () => {});
   api.webNavigation?.onCommitted?.addListener(({ tabId, frameId, documentId, url }) => {
     if (frameId === 0 && /^(https?|file):/i.test(url ?? '')) void fixUp(tabId, documentId).catch(() => {});
   });

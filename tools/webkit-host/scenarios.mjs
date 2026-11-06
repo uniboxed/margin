@@ -142,6 +142,11 @@ const firstUnboxed = (tab, label) => checkPage(tab, `${tab}: ${label}`, `const f
 const firstLog = (tab) => ({ op: 'page', in: tab, js: `const fp = window.__fp; return '${tab} first frame ' + JSON.stringify(fp.frames[0]) + ', ' + fp.frames.filter((f) => f.t < ${LATE}).length + ' frames before Margin spoke (' + fp.held + ' word(s) held back)'` });
 // Margin.app's layout settled, and registered (background/registered.js LAYOUT_SETTLE_MS, then a sync).
 const settledLayout = wait(3000);
+// A layout the app sent has reached the copy (its appLink, written a moment after the background
+// had it): the link server's `setLayout` takes up to 200 ms to get there (the host's background
+// page runs its socket's messages in turns about 200 ms apart), and a page opened at once could
+// commit before the background knows it. What a page that commits once it does gets is the test.
+const layoutLanded = (tab, [l, t, r, b]) => check(tab, `${tab}: the copy has the app's layout ${l}/${t}/${r}/${b}`, `const { appLink } = await browser.storage.local.get('appLink'); return Object.values(appLink?.layouts ?? {}).some(({ insets: i } = {}) => i?.left === ${l} && i?.top === ${t} && i?.right === ${r} && i?.bottom === ${b})`, 3000);
 const pages = (prefix, n, layout, options) => Array.from({ length: n }, (_, i) => [fresh(`${prefix}${i}`), firstFrame(`${prefix}${i}`, layout, options), firstLog(`${prefix}${i}`)]).flat();
 
 export const SCENARIOS = {
@@ -1373,7 +1378,7 @@ Object.assign(SCENARIOS, {
   'first-paint': [
     appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
     ...pages('K', 3, [260, 8, 8, 8]),
-    { op: 'appLayout', layout: [300, 12, 16, 20] },
+    { op: 'appLayout', layout: [300, 12, 16, 20] }, layoutLanded('A', [300, 12, 16, 20]),
     ...pages('W', 2, [300, 12, 16, 20], { how: 'own' }),
     settledLayout,
     ...pages('R', 3, [300, 12, 16, 20]),
