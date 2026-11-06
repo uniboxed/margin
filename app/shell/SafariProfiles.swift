@@ -49,7 +49,7 @@ nonisolated enum SafariProfiles {
         case busy // the database was locked for longer than the busy timeout: try again soon
         case failed(String) // not what Safari 27.2 writes: nothing used
     }
-    enum Access: Equatable, Sendable { case granted, denied, noSafari }
+    typealias Access = SafariFiles.Access
 
     static let defaultServerId = "DefaultProfile"
     static let defaultMargin = "s-default" // BrowserProfiles.defaultProfile: the default profile's copy
@@ -60,14 +60,7 @@ nonisolated enum SafariProfiles {
 
     // Can Margin.app read Safari's data: a read attempt, nothing more (no private calls).
     static func access(_ folder: URL = safariFolder) -> Access {
-        let db = folder.appendingPathComponent("SafariTabs.db").path
-        let fd = open(db, O_RDONLY)
-        if fd >= 0 { close(fd); return .granted }
-        let err = errno
-        if err == EPERM || err == EACCES { return .denied }
-        // No database: Margin may still be shut out of the folder.
-        if opendir(folder.path).map({ closedir($0); return true }) == true { return .granted }
-        return errno == EPERM || errno == EACCES ? .denied : .noSafari
+        SafariFiles.access(folder, file: "SafariTabs.db")
     }
 
     // The profiles as Safari has them now.
@@ -79,18 +72,14 @@ nonisolated enum SafariProfiles {
         }
         let db = folder.appendingPathComponent("SafariTabs.db")
         guard FileManager.default.fileExists(atPath: db.path) else { return .noSafari }
-        // Safari open: its log is there and read through. Safari closed: the file alone, nothing made beside it.
-        let live = FileManager.default.fileExists(atPath: db.path + "-wal")
-        let uri = db.absoluteString + (live ? "?mode=ro" : "?mode=ro&immutable=1")
-        var handle: OpaquePointer?
-        let opened = sqlite3_open_v2(uri, &handle, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
-        defer { sqlite3_close_v2(handle) }
-        guard opened == SQLITE_OK, let handle else {
-            if opened == SQLITE_BUSY || opened == SQLITE_LOCKED { return .busy }
-            if opened == SQLITE_PERM || opened == SQLITE_AUTH { return .noAccess }
-            return .failed("the database didn't open (\(opened))")
+        let handle: OpaquePointer
+        switch SafariFiles.openReadOnly(db, busyTimeoutMs: busyTimeoutMs) {
+        case .ok(let h): handle = h
+        case .busy: return .busy
+        case .noAccess: return .noAccess
+        case .failed(let code): return .failed("the database didn't open (\(code))")
         }
-        sqlite3_busy_timeout(handle, busyTimeoutMs)
+        defer { sqlite3_close_v2(handle) }
         var rows: [(title: String, uuid: String, server: String, extra: Data?)] = []
         switch profileRows(handle, into: &rows) {
         case SQLITE_OK: break
@@ -114,17 +103,9 @@ nonisolated enum SafariProfiles {
     // The profile rows (their name, uuid, Safari id and settings): SQLITE_OK,
     // SQLite's code, or -1 when the table isn't as Safari 27.2 has it.
     private static func profileRows(_ db: OpaquePointer, into rows: inout [(title: String, uuid: String, server: String, extra: Data?)]) -> Int32 {
-        var info: OpaquePointer?
-        var code = sqlite3_prepare_v2(db, "PRAGMA table_info(bookmarks)", -1, &info, nil)
-        guard code == SQLITE_OK, let info else { return code }
-        var cols = Set<String>()
-        while true {
-            code = sqlite3_step(info)
-            guard code == SQLITE_ROW else { break }
-            if let name = sqlite3_column_text(info, 1) { cols.insert(String(cString: name)) }
-        }
-        sqlite3_finalize(info)
-        guard code == SQLITE_DONE else { return code }
+        let (cols, read) = SafariFiles.columns(db, "bookmarks")
+        guard read == SQLITE_OK else { return read }
+        var code: Int32
         guard ["type", "subtype", "parent", "title", "external_uuid", "server_id", "deleted"].allSatisfy(cols.contains) else { return -1 }
         let extra = cols.contains("extra_attributes") ? "extra_attributes" : "NULL"
         let order = cols.contains("order_index") ? "order_index, id" : "id"
@@ -183,16 +164,16 @@ nonisolated enum SafariProfiles {
     }
 }
 
-// The reads kept going: a read at most once per `debounce` while Safari's
-// files change, and the outcome handed on only when it changed. Watched:
-// the tab database and its write-ahead log with kqueue (each write: Safari
-// keeps them open, and FSEvents only says a file changed once it's closed),
-// and Safari's folder with FSEvents (a profile's Extensions.plist, written
-// whole; profiles' folders made or removed; the log made again). Without
-// access (or with no Safari data) it tries again every `retry`, so Full Disk
-// Access given while Margin.app runs is picked up; a busy database, after
-// `busyRetry`.
-final class SafariProfileWatcher {
+// The reads kept going (SafariFiles.swift SafariFileWatcher): a read at most
+// once per `debounce` while Safari's files change, and the outcome handed on
+// only when it changed. Watched: the tab database and its write-ahead log
+// with kqueue (each write: Safari keeps them open, and FSEvents only says a
+// file changed once it's closed), and Safari's folder with FSEvents (a
+// profile's Extensions.plist, written whole; profiles' folders made or
+// removed; the log made again). Without access (or with no Safari data) it
+// tries again every `retry`, so Full Disk Access given while Margin.app runs
+// is picked up; a busy database, after `busyRetry`.
+final class SafariProfileWatcher: SafariFileWatcher<SafariProfiles.Outcome> {
     struct Options {
         var debounce: TimeInterval = 1
         var latency: TimeInterval = 0.3 // FSEvents' own coalescing
@@ -203,80 +184,23 @@ final class SafariProfileWatcher {
 
     static let watchedFiles = ["SafariTabs.db", "SafariTabs.db-wal"]
 
-    let folder: URL
     let options: Options
-    var onChange: ((SafariProfiles.Outcome) -> Void)?
-    private(set) var last: SafariProfiles.Outcome?
-    private(set) var reads = 0
-    private var stream: FSEventStreamRef?
-    private var files: [String: DispatchSourceFileSystemObject] = [:]
-    private var pending: Timer?
-    private var reading = false
-    private var again = false
-    private var stopped = true
-    private let queue = DispatchQueue(label: "io.tirth.margin.safari-profiles", qos: .utility)
 
     init(folder: URL = SafariProfiles.safariFolder, options: Options = Options()) {
-        self.folder = folder
         self.options = options
-    }
-
-    func start() {
-        guard stopped else { return }
-        stopped = false
-        watch()
-        readNow()
-    }
-
-    func stop() {
-        stopped = true
-        pending?.invalidate()
-        pending = nil
-        if let stream { FSEventStreamStop(stream); FSEventStreamInvalidate(stream); FSEventStreamRelease(stream) }
-        stream = nil
-        for source in files.values { source.cancel() }
-        files = [:]
-    }
-
-    // Something changed (or may have): one read, `after` from now, unless one is already coming.
-    func soon(after: TimeInterval? = nil) {
-        guard !stopped, pending == nil else { return }
-        pending = Timer.scheduledTimer(withTimeInterval: after ?? options.debounce, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.pending = nil
-                self?.readNow()
-            }
-        }
-    }
-
-    func readNow() {
-        guard !stopped else { return }
-        if reading { again = true; return }
-        reading = true
-        let folder = folder, id = options.extensionId
-        queue.async {
-            let outcome = SafariProfiles.read(folder, extensionId: id)
-            DispatchQueue.main.async { MainActor.assumeIsolated { self.done(outcome) } }
-        }
-    }
-
-    private func done(_ outcome: SafariProfiles.Outcome) {
-        reading = false
-        reads += 1
-        guard !stopped else { return }
-        watch() // what wasn't there (or readable) before
-        // A busy database says nothing new: what was read before stands.
-        if outcome != .busy, outcome != last {
-            last = outcome
-            Diagnostics.note("safari profiles: " + SafariProfiles.describe(outcome))
-            onChange?(outcome)
-        }
-        if again { again = false; soon(); return }
-        switch outcome {
-        case .busy: soon(after: options.busyRetry)
-        case .noAccess, .noSafari, .failed: soon(after: options.retry)
-        case .read: break
-        }
+        let id = options.extensionId
+        super.init(folder: folder, files: Self.watchedFiles,
+                   timing: Timing(debounce: options.debounce, latency: options.latency, retry: options.retry, busyRetry: options.busyRetry),
+                   label: "safari profiles",
+                   read: { SafariProfiles.read($0, extensionId: id) },
+                   next: { outcome in
+                       switch outcome {
+                       case .busy: return .busy
+                       case .noAccess, .noSafari, .failed: return .retry
+                       case .read: return .good
+                       }
+                   },
+                   describe: SafariProfiles.describe, matters: Self.matters)
     }
 
     // What FSEvents reports that a read depends on: never the -shm (a reader
@@ -286,62 +210,6 @@ final class SafariProfileWatcher {
         if name == "SafariTabs.db" || name == "SafariTabs.db-wal" || name == "Extensions.plist" { return true }
         let parent = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
         return parent == "Profiles" || name == "Profiles" || name == "WebExtensions"
-    }
-
-    fileprivate func changed(_ paths: [String], rescan: Bool) {
-        if rescan || paths.contains(where: Self.matters) { soon() }
-    }
-
-    private func watch() {
-        startStream()
-        for name in Self.watchedFiles where files[name] == nil { watchFile(name) }
-    }
-
-    // kqueue on one of the database's files: each write; deleted or replaced, watched again after the next read.
-    private func watchFile(_ name: String) {
-        let fd = open(folder.appendingPathComponent(name).path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename, .revoke, .attrib], queue: .main)
-        source.setEventHandler { [weak self, weak source] in
-            MainActor.assumeIsolated {
-                guard let self, let source else { return }
-                if !source.data.isDisjoint(with: [.delete, .rename, .revoke]) {
-                    source.cancel()
-                    if self.files[name] === source { self.files[name] = nil }
-                }
-                self.soon()
-            }
-        }
-        source.setCancelHandler { close(fd) }
-        files[name] = source
-        source.resume()
-    }
-
-    private func startStream() {
-        // FSEvents needs a folder that's there (and, for Safari's, readable).
-        guard stream == nil, FileManager.default.fileExists(atPath: folder.path) else { return }
-        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
-        let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagNoDefer)
-        guard let made = FSEventStreamCreate(nil, safariProfilesEvents, &context, [folder.path] as CFArray,
-                                             FSEventStreamEventId(kFSEventStreamEventIdSinceNow), options.latency, flags) else { return }
-        FSEventStreamSetDispatchQueue(made, .main)
-        guard FSEventStreamStart(made) else { FSEventStreamInvalidate(made); FSEventStreamRelease(made); return }
-        stream = made
-    }
-}
-
-// FSEvents' callback (on the main queue, FSEventStreamSetDispatchQueue).
-private nonisolated func safariProfilesEvents(_ stream: ConstFSEventStreamRef, _ info: UnsafeMutableRawPointer?, _ count: Int,
-                                              _ paths: UnsafeMutableRawPointer, _ flags: UnsafePointer<FSEventStreamEventFlags>,
-                                              _ ids: UnsafePointer<FSEventStreamEventId>) {
-    guard let info else { return }
-    let list = (Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue() as NSArray) as? [String] ?? []
-    let rescanFlags = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagRootChanged)
-    let rescan = (0..<count).contains { flags[$0] & rescanFlags != 0 }
-    let pointer = UInt(bitPattern: info)
-    MainActor.assumeIsolated {
-        guard let raw = UnsafeMutableRawPointer(bitPattern: pointer) else { return }
-        Unmanaged<SafariProfileWatcher>.fromOpaque(raw).takeUnretainedValue().changed(list, rescan: rescan)
     }
 }
 

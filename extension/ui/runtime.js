@@ -49,7 +49,9 @@ const NEW_TAB_HOLD_MS = 1500;
 const SHOWS_ANOTHER_TAB = new Set(['activateTab', 'newTab', 'openPin', 'restoreArchive', 'search', 'openLauncher']);
 const SWITCH_REQUESTS = new Set(['activateTab', 'openPin', 'setSpace']);
 // Rows a ⌃-click opens the menu on rather than runs (the Mac's right-click).
-const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle']);
+const ROW_ACTIONS = new Set(['tab.activate', 'pin.open', 'folder.toggle', 'cloud.open']);
+// While iCloud Tabs are drawn, the model is made again this often ("updated 5 min ago").
+const CLOUD_TICK_MS = 60_000;
 
 /**
  * @param {{
@@ -127,7 +129,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     let state = raw;
     const p = pending;
     if (p.settings) {
-      const agrees = Object.entries(p.settings.patch).every(([k, v]) => raw.settings?.[k] === v);
+      const same = (a, b) => a === b || (typeof a === 'object' && a !== null && JSON.stringify(a) === JSON.stringify(b));
+      const agrees = Object.entries(p.settings.patch).every(([k, v]) => same(v, raw.settings?.[k]));
       if (agrees || now > p.settings.until) p.settings = null;
       else state = { ...state, settings: { ...state.settings, ...p.settings.patch } };
     }
@@ -225,8 +228,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (vm.ready) firstRender = false;
     for (const b of list) b.afterRender?.(vm, prev);
     expireLater();
+    if (vm.cloudTabs?.hasDevices && !cloudTick) cloudTick = setTimeout(() => { cloudTick = null; render(); }, CLOUD_TICK_MS);
     return vm;
   }
+  let cloudTick = null;
 
   /** @param {Partial<UiState> & Record<string, any>} patch */
   function setUi(patch) {
@@ -342,6 +347,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       case 'local': return local(request.name, request.arg, info);
       case 'host': {
         if (host.perform?.(request.name, request.arg)) return true;
+        // An address copied where the host has no pasteboard of its own (pages: the clipboard).
+        if (request.name === 'copyText' && win.navigator?.clipboard) { void win.navigator.clipboard.writeText(request.arg.text).catch(() => {}); return true; }
         if (request.fallback) { void host.send(request.fallback.type, request.fallback.payload); return true; }
         return refuse(name, arg, `${request.name}: this host can't`);
       }
@@ -382,6 +389,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
         break;
       case 'folder.toggle':
         lastToggle = { folderId: arg, wasOpen: !payload.open, at: Date.now() };
+        break;
+      case 'cloud.toggle': case 'cloud.toggleDevice':
+        // iCloud Tabs' folder or a device opened or closed: shown at once, not when storage comes back.
+        pending.settings = { patch: { ...(pending.settings?.patch ?? {}), ...payload.patch }, until: Date.now() + PENDING_MS };
         break;
       default: break;
     }
@@ -631,6 +642,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       destroyed = true;
       switching.end();
       clearTimeout(expiryTimer);
+      clearTimeout(cloudTick);
       clearTimeout(newTabTimer);
       for (const id of timers) clearTimeout(id);
       for (const fn of offs.splice(0)) fn();

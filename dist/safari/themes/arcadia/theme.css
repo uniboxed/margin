@@ -308,6 +308,90 @@
 .margin-sidebar :is(.tab, .pin):hover .icon { visibility: visible; }
 .margin-sidebar .icon:hover { background: var(--press); }
 
+/* iCloud Tabs (Margin's <m-cloud-tabs>): the tabs open on the person's other
+   devices, above "+ New Tab". It reads as one of Arc's folders (the same
+   row, its icon in the folder's place) but plainly live: a sky-blue cloud
+   instead of the golden folder, a count and a turning chevron, nothing to
+   drag in or out. Under it each device is a quiet heading (its icon, name
+   and when it was last used); its tabs are two lines, the title over the
+   site, so they never pass for this window's own. A device not used for a
+   week is dimmed. */
+.margin-sidebar .cloud { display: flex; flex-direction: column; gap: 2px; }
+.margin-sidebar .cloud-head { padding-right: 10px; }
+.margin-sidebar .cloud-icon { flex: none; position: relative; top: 1px; width: 22.5px; height: 16.5px; overflow: visible; }
+.margin-sidebar .cloud-icon .cloud-back { fill: #cde5ff; stroke: #1d5a96; stroke-width: 1.2; stroke-linejoin: round; }
+.margin-sidebar .cloud-icon .cloud-shine { fill: none; stroke: #fff; stroke-width: 1.4; stroke-linecap: round; }
+.margin-sidebar .cloud-count { flex: none; color: var(--muted); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.margin-sidebar .cloud-chevron { flex: none; width: 10px; height: 10px; fill: none; stroke: var(--icon); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms ease; }
+.margin-sidebar .cloud-head.open .cloud-chevron { transform: rotate(90deg); }
+.margin-sidebar .cloud-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 2px 4px 4px 16px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.margin-sidebar .cloud-fix { padding: 4px 10px; border-radius: 7px; background: rgba(0, 0, 0, 0.07); color: var(--fg); font-size: 12px; font-weight: 600; }
+.margin-sidebar .cloud-fix:hover { background: rgba(0, 0, 0, 0.11); }
+.margin-sidebar .cloud-fix:focus-visible { outline: 2px solid var(--drop); outline-offset: 1px; }
+.margin-sidebar .cloud-device {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  margin: 5px 0 0 16px;
+  padding: 0 8px 0 7px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+  outline: none;
+}
+.margin-sidebar .cloud-device:hover { background: var(--hover); }
+.margin-sidebar .cloud-device:focus-visible { box-shadow: inset 0 0 0 2px var(--drop); }
+.margin-sidebar .device-icon { flex: none; display: grid; place-items: center; width: 16px; height: 16px; }
+.margin-sidebar .device-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+/* The name keeps its room; "updated …" gives way first. */
+.margin-sidebar .device-name { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.margin-sidebar .device-when { flex: 1 100 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: right; font-size: 11px; font-weight: 400; opacity: 0.85; }
+.margin-sidebar .cloud-device:not(.open) .device-icon { opacity: 0.7; }
+.margin-sidebar .cloud-tab {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  margin-left: 16px;
+  padding: 0 8px 0 10px;
+  border-radius: 12px;
+  cursor: default;
+  outline: none;
+}
+.margin-sidebar .cloud-tab:hover { background: var(--hover); }
+.margin-sidebar .cloud-tab:active { background: var(--press); }
+.margin-sidebar .cloud-tab:focus-visible { box-shadow: inset 0 0 0 2px var(--drop); }
+.margin-sidebar .cloud-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.margin-sidebar .cloud-text .title { flex: none; font-size: 13px; line-height: 16px; }
+.margin-sidebar .cloud-host { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 11px; line-height: 13px; }
+.margin-sidebar .pinned-mark { flex: none; display: grid; place-items: center; width: 14px; height: 14px; color: var(--icon); }
+.margin-sidebar .pinned-mark svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; }
+.margin-sidebar :is(.cloud-device, .cloud-tab).stale { opacity: 0.5; }
+.margin-sidebar .cloud-divider { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .margin-sidebar .cloud-chevron { transition: none; }
+}
+
 /* Drag and drop (Arc, Margin's m-drag and m-drop): a copy of the row
    follows the pointer (the row stays), and glides into its new place once
    dropped. Where it goes: a line in the space's color, a ring at its start,
@@ -645,6 +729,8 @@
   cursor: default;
 }
 .palette .result + .result { margin-top: 4px; }
+/* The heading of a run of rows from one place (iCloud Tabs: "On Tirth's iPhone"). */
+.palette .result-section { padding: 12px 10px 5px; color: var(--muted); font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .palette .result:hover { background: var(--row-hover); }
 .palette .result[aria-selected="true"] { background: color-mix(in srgb, var(--space-color) 82%, #000); }
 .palette .result.empty { color: var(--muted); justify-content: center; }

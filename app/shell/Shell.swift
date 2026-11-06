@@ -100,6 +100,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Safari's data folder, for its profiles' names (SafariProfiles.swift); nil: not read (the harness, the tests).
         var safariData: URL?
         var safariWatch = SafariProfileWatcher.Options()
+        // Safari's data folder, for iCloud Tabs (CloudTabs.swift); nil: not read (the harness, unless a test gives a stand-in).
+        var cloudTabsData: URL?
+        var cloudWatch = CloudTabsWatcher.Options()
     }
 
     final class Link {
@@ -158,6 +161,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var switchNotice: JSONObject?
     var safariNames: SafariProfileWatcher? // Safari's profile names (ShellProfiles.swift startSafariNames)
 
+    // ---- iCloud Tabs (ShellCloudTabs.swift) ----
+    var cloudWatcher: CloudTabsWatcher? // while a Safari copy shows them
+    var cloudJSON: String? // what was read last, as the overlays get it
+    var cloudSent: [WindowKey: String] = [:]
+    var opened: [URL] = [] // a test's: what the overlays asked to open
+    var copied: [String] = [] // a test's: what they asked to copy
+
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
         self.windowSource = windows
@@ -183,6 +193,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     static func forApp() -> Shell {
         var options = Options()
         options.safariData = SafariProfiles.safariFolder
+        options.cloudTabsData = SafariProfiles.safariFolder
         // The overlays in their window's Space only (Overlay.swift ownSpaceBehavior), so each is already
         // drawn when its window's Space comes back; on unless MarginOverlayOwnSpace is set to NO.
         options.overlay.ownSpace = UserDefaults.standard.object(forKey: "MarginOverlayOwnSpace") as? Bool ?? true
@@ -205,6 +216,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pointer.stop()
         apps.stop()
         safariNames?.stop()
+        cloudWatcher?.stop()
+        cloudWatcher = nil
         for overlay in overlays.values { overlay.close() }
         overlays = [:]
         link.stop(why: "Margin.app quit", then: then)
@@ -226,6 +239,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         apps.start()
         burst("linked: \(connection.key)")
         acrossSoon()
+        cloudTabsCheck()
         switcher.tick()
     }
 
@@ -238,8 +252,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 entry.resyncTimer?.invalidate()
                 forward(message, of: entry)
                 if case .windows = message { switcher.tick() }
-                if case .snapshot = message { acrossSoon() }
+                if case .snapshot = message { acrossSoon(); cloudTabsCheck() }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { acrossSoon() }
+                if case .delta(_, _, let changes, _) = message, changes["settings"] != nil { cloudTabsCheck() }
             case .gap(let expected, let got):
                 Diagnostics.warn("\(connection.key): number \(got) came, \(expected) was next: the state asked for again")
                 resync(entry)
@@ -304,6 +319,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         if links.isEmpty { started = false }
         burst("link down: \(connection.key)")
         acrossSoon()
+        cloudTabsCheck()
         switcher.tick()
     }
 
@@ -735,6 +751,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         json += #","state":"# + (entry.mirror.stateJSON().map { String(decoding: $0, as: UTF8.self) } ?? "null")
         json += #","windows":"# + (jsonString(entry.mirror.windows) ?? "[]")
         json += #","across":"# + (acrossJSON(for: overlay) ?? "null")
+        json += #","cloudTabs":"# + cloudTabsJSON(for: overlay)
         json += #","held":"# + (jsonString(entry.held.messages(for: overlay.key.windowId)) ?? "[]")
         json += #","theme":"# + (entry.theme ?? "null") + "}"
         return json
@@ -768,6 +785,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             Task { _ = try? await entry.connection.request(type: "toggleFullscreen", payload: ["windowId": overlay.key.windowId], windowId: overlay.key.windowId) }
         case _ where name.hasPrefix("profile.") || name == "space.move":
             performAcross(from: overlay, name, arg as? JSONObject ?? [:])
+        case "cloud.access", "copyText":
+            performCloud(name, arg)
         default:
             Diagnostics.note("\(overlay.key): \(name) isn't the app's yet")
         }

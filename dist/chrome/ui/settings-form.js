@@ -75,7 +75,7 @@ function field(f) {
 /**
  * The form's fields for the stored settings, the browser's features
  * (`features`: shared/platform.js's sleepTabs ('close', 'discard' or false), blockGestures,
- * marginFullscreen, newTabHint, search) and the form's own state (`ui`: the
+ * marginFullscreen, newTabHint, search; cloudTabs, Margin.app's Safari windows) and the form's own state (`ui`: the
  * shortcut being recorded, the statuses).
  * @param {any} settings
  * @param {any} features
@@ -111,6 +111,8 @@ export function settingsFields(settings, features = {}, ui = {}) {
     list.push(field({ id: 'fullscreenOnly', kind: 'toggle', label: 'Use Margin only in full screen (in a window, it offers full screen instead)', checked: s.fullscreenOnly !== false }));
   }
   list.push(field({ id: 'frameWhenHidden', kind: 'toggle', label: 'With the sidebar hidden, keep the frame around pages', checked: s.frameWhenHidden !== false }));
+  // iCloud Tabs (Margin.app with Safari): the sidebar's live folder and the palette's section.
+  if (f.cloudTabs) list.push(field({ id: 'showCloudTabs', kind: 'toggle', label: 'Show iCloud Tabs: the tabs open on your other devices, in the sidebar and the command palette', checked: s.showCloudTabs !== false }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
   // Keyboard shortcuts: recorded by pressing them.
   list.push(field({ id: 'shortcuts', kind: 'group', label: 'Keyboard shortcuts' }));

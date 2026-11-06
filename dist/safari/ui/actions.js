@@ -7,6 +7,7 @@
 // action: the runtime does, once it's checked against the state. An unknown
 // action or a bad argument is ignored and logged.
 import { foreignKey, foreignSpace, isMultiProfile } from '../shared/across.js';
+import { cloudShown } from '../shared/cloud-tabs.js';
 
 
 // What each action's argument must be:
@@ -23,6 +24,8 @@ import { foreignKey, foreignSpace, isMultiProfile } from '../shared/across.js';
 //            profiles; a space of another profile is a `space` too, by its
 //            chip's id: shared/across.js);
 //   menu   — a menu a button opens (MENUS);
+//   cloud-tab, cloud-device — a tab or a device of iCloud Tabs as shown
+//            (Margin.app with Safari: state.cloudTabs, while Settings show them);
 //   { field: kind, … } — an object with exactly those fields. Only behaviors
 //     and menus make one, never `m-arg`, which carries one value. A field's
 //     kind is one of the above, `kind?` (that or null), `pin-or-folder?` (the
@@ -94,6 +97,14 @@ export const ACTIONS = Object.freeze({
   'prompt.close': 'none',
   'launcher.more': 'none',
   'settings.run': 'setting-item',
+  // iCloud Tabs (the `cloud-tabs` part): the folder and a device's tabs shown
+  // or hidden, a tab opened here or its address copied, and System Settings
+  // at Full Disk Access when Margin can't read them.
+  'cloud.toggle': 'none',
+  'cloud.toggleDevice': 'cloud-device',
+  'cloud.open': 'cloud-tab',
+  'cloud.copy': 'cloud-tab',
+  'cloud.access': 'none',
 });
 
 export const ACTION_NAMES = Object.freeze(Object.keys(ACTIONS));
@@ -130,6 +141,7 @@ const isId = (value) => (typeof value === 'number' && Number.isSafeInteger(value
  *   hasMenuItem?(id: any): boolean, hasColor?(id: any): boolean,
  *   hasNoticeItem?(id: any): boolean, hasPromptItem?(id: any): boolean,
  *   hasSettingItem?(id: any): boolean,
+ *   hasCloudTab?(id: any): boolean, hasCloudDevice?(id: any): boolean,
  * }} ActionContext
  */
 
@@ -182,6 +194,7 @@ export function checkAction(name, arg, ctx) {
     'notice-item': ctx.hasNoticeItem ?? (() => false), 'prompt-item': ctx.hasPromptItem ?? (() => false),
     'setting-item': ctx.hasSettingItem ?? (() => false),
     profile: ctx.hasProfile ?? (() => false),
+    'cloud-tab': ctx.hasCloudTab ?? (() => false), 'cloud-device': ctx.hasCloudDevice ?? (() => false),
   };
   switch (kind) {
     case 'none':
@@ -244,6 +257,10 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
   const notices = new Set(noticeIds);
   const prompts = new Set(promptIds);
   const settingButtons = new Set(settingIds);
+  // iCloud Tabs, while they're shown (shared/cloud-tabs.js).
+  const cloud = cloudShown(state);
+  const cloudDevices = new Set((cloud?.devices ?? []).map((d) => d.id));
+  const cloudTabs = new Set((cloud?.devices ?? []).flatMap((d) => d.tabs.map((t) => t.id)));
   return {
     // An open tab by its browser tab's id, or a Margin tab that isn't open
     // by its own (state/model.js keptTabs).
@@ -260,6 +277,8 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
     hasNoticeItem: (id) => notices.has(id),
     hasPromptItem: (id) => prompts.has(id),
     hasSettingItem: (id) => settingButtons.has(id),
+    hasCloudTab: (id) => cloudTabs.has(id),
+    hasCloudDevice: (id) => cloudDevices.has(id),
   };
 }
 
@@ -327,6 +346,12 @@ export function contextFromState(state, paletteIds = [], { menuIds = [], colorId
 // | prompt.run         | prompt item id    | local: the host's (the prompt's button), then it closes |              |
 // | prompt.close       | none              | local                         |                                         |
 // | launcher.more      | none              | local: all archived tabs, or the first 12 |                             |
+// | cloud.toggle       | none              | updateSettings                | { patch: { cloudTabsOpen: !now } }      |
+// | cloud.toggleDevice | cloud device id   | updateSettings                | { patch: { cloudTabsClosed: [...] } }   |
+// | cloud.open         | cloud tab id      | local: as an address typed in | (Margin's new-tab page: there; else     |
+// |                    |                   | the palette                   | newTab { windowId, url })               |
+// | cloud.copy         | cloud tab id      | host: copyText                | { text: url }                           |
+// | cloud.access       | none              | host: cloud.access            | (System Settings, Full Disk Access)     |
 //
 // `show`: while the sidebar is open over the page (peek), a switch keeps it
 // open on the page that comes to the front (Arcadia's openOverPage, the
@@ -392,6 +417,11 @@ export const ACTION_MAP = Object.freeze({
   'prompt.close': 'local',
   'launcher.more': 'local',
   'settings.run': 'local',
+  'cloud.toggle': 'updateSettings',
+  'cloud.toggleDevice': 'updateSettings',
+  'cloud.open': 'local',
+  'cloud.copy': 'host',
+  'cloud.access': 'host',
 });
 
 const LOCAL = new Set(['space.edit', 'space.rename', 'profile.edit', 'folder.rename', 'palette.open', 'palette.close', 'menu.open', 'menu.run', 'menu.close', 'editor.save', 'editor.cancel', 'editor.delete', 'editor.color',
@@ -484,6 +514,21 @@ export function requestFor(name, arg, { state, ui, platform, row }) {
     // pages toggle the form: ui/runtime.js).
     case 'settings.open': return send('openLauncher', { windowId, settings: true });
     case 'archive.restore': return send('restoreArchive', { archiveId: arg, windowId });
+    case 'cloud.toggle': return send('updateSettings', { patch: { cloudTabsOpen: state?.settings?.cloudTabsOpen === false } });
+    case 'cloud.toggleDevice': {
+      // The devices whose tabs are hidden: this one in or out, and none that's gone.
+      const cloud = cloudShown(state);
+      const known = new Set((cloud?.devices ?? []).map((d) => d.id));
+      const before = (Array.isArray(state?.settings?.cloudTabsClosed) ? state.settings.cloudTabsClosed : []).filter((id) => cloud?.status !== 'ready' || known.has(id));
+      const closed = before.includes(arg) ? before.filter((id) => id !== arg) : [...before, arg].slice(-50);
+      return send('updateSettings', { patch: { cloudTabsClosed: closed } });
+    }
+    case 'cloud.open': case 'cloud.copy': {
+      const tab = cloudShown(state)?.devices.flatMap((d) => d.tabs).find((t) => t.id === arg);
+      if (!tab) return { kind: 'none', reason: `${name}: no such tab` };
+      return name === 'cloud.open' ? { kind: 'local', name: 'palette.navigate', arg: { url: tab.url } } : { kind: 'host', name: 'copyText', arg: { text: tab.url } };
+    }
+    case 'cloud.access': return { kind: 'host', name: 'cloud.access' };
     default: return { kind: 'none', reason: `${name}: no mapping` };
   }
 }

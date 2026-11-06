@@ -4,7 +4,9 @@
 #         window, no link), the lasting data's merge (tests/fixtures/data-merge/),
 #         its files (in a temporary folder) and its messages; spaces across
 #         profiles (profiles-tests.swift: the order, the names' file, the
-#         cross-profile switch against a fake world and clock)
+#         cross-profile switch against a fake world and clock); Safari's profile
+#         names and iCloud Tabs read from stand-ins for Safari's files
+#         (safari-profiles-tests.swift, cloud-tabs-tests.swift)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
 #         extension (fake-extension.mjs, Node), and a picture of the overlay
@@ -14,7 +16,8 @@
 #         two profiles' copies and the app driving a switch between them with
 #         stand-in windows; and e2e-windows.swift, which window is which with
 #         two profiles and several same-bounds windows, Spaces played by
-#         on-screen flags and the copies' focus flags lagging
+#         on-screen flags and the copies' focus flags lagging; and e2e-cloud.swift,
+#         iCloud Tabs from a stand-in for Safari's file drawn live in the overlay
 # window-tests.swift's randomized runs take WINDOW_RUNS (default 300),
 # WINDOW_LAG (the flags' lag, default 1.2 s) and WINDOW_SEED (one run, printed).
 # Built with swiftc as the app target builds it (Swift 5, main actor by
@@ -58,12 +61,12 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/safari/AppDelegate.swift ../../app/safari/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/safari/SafariWebExtensionHandler.swift
-  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift window-tests.swift "${SHELL_SOURCES[@]}"
+  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift window-tests.swift "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift "${SHELL_SOURCES[@]}"
+  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-cloud.swift "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mjs" MARGIN_NODE="$NODE" \
     MARGIN_APP_SHOT="${MARGIN_APP_SHOT:-$BUILD/overlay.png}" "$BUILD/e2e" || status=1
 fi

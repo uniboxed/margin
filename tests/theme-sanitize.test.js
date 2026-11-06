@@ -267,7 +267,8 @@ test('the action list is PLAN.md §3\'s, plus palette.run and the behaviors\' an
   const step3 = ['notice.run', 'notice.close', 'prompt.run', 'prompt.close', 'launcher.more'];
   const step4 = ['settings.run'];
   const profiles = ['space.move', 'space.newIn', 'profile.edit', 'profile.forget']; // Margin 2 Phase 2 step 4: spaces across profiles
-  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...profiles].sort());
+  const cloud = ['cloud.toggle', 'cloud.toggleDevice', 'cloud.open', 'cloud.copy', 'cloud.access']; // Margin 2: iCloud Tabs
+  assert.deepEqual(Object.keys(ACTIONS).sort(), [...plan, 'palette.run', ...step2, ...step3, ...step4, ...profiles, ...cloud].sort());
   assert.ok(isAction('tab.activate'));
   assert.equal(isAction('toString'), false);
   assert.equal(isAction('__proto__'), false);

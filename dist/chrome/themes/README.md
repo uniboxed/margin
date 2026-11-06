@@ -68,11 +68,12 @@ Margin's slots:
 | `<m-prompt>` | the `prompt` part | `prompt` |
 | `<m-launcher>` | the `launcher` part (Margin's new-tab page) | `launcher` |
 | `<m-settings>` | the `settings` part (put it in your launcher) | `settingsForm` (Settings open) |
+| `<m-cloud-tabs>` | the `cloud-tabs` part: iCloud Tabs, a live folder (put it above your new-tab row, outside any `m-drop`) | `cloudTabs` (Margin.app with Safari, "Show iCloud Tabs" on) |
 | `<m-window-controls>`, `<m-drag-region>` | the window's buttons and where a drag moves it (windowed mode) | always |
 
 Parts are `<template m-part="name">` anywhere in the template: `menu`,
 `menu-item`, `space-editor`, `palette`, `palette-row`, `notice`, `prompt`,
-`launcher`, `settings`, `window-controls`. What a theme puts inside a slot
+`launcher`, `settings`, `cloud-tabs`, `window-controls`. What a theme puts inside a slot
 is used when it has no part for it.
 
 **Never paint under `<m-page>`.** The browser's page shows through it: in a
@@ -100,6 +101,38 @@ value, type, options and bounds, and saves them by its own rules:
   <m-if test="f.isButton"><button m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button></m-if>
 </m-for>
 ```
+
+**iCloud Tabs.** The tabs open in Safari on the person's other devices
+(Margin.app reads them; Chrome and Edge get none yet). The `cloud-tabs`
+part draws the whole folder from `cloudTabs`, so it stands on its own: put
+`<m-cloud-tabs>` where it belongs in your layout (Arcadia and Neo-brutalism:
+above the new-tab row), and Margin may later show the same part elsewhere
+(a button beside the sidebar's toggle, say). Make it read as a folder that's
+plainly live, not one of the person's: it's read only, so never put `m-drag`
+or `m-drop` in it or the slot inside a drop zone. A sketch:
+
+```html
+<template m-part="cloud-tabs">
+  <div class="cloud" m-attr:aria-label="{{cloudTabs.labels.title}}">
+    <button m-attr:aria-expanded="{{cloudTabs.open}}" m-action="cloud.toggle">{{cloudTabs.labels.title}} {{cloudTabs.count}}</button>
+    <m-if test="cloudTabs.open">
+      <m-if test="cloudTabs.hasMessage">
+        <p>{{cloudTabs.message}}</p>
+        <m-if test="cloudTabs.canFix"><button m-action="cloud.access">{{cloudTabs.labels.fix}}</button></m-if>
+      </m-if>
+      <m-for each="cloudTabs.devices" as="d">
+        <button m-class:stale="{{d.stale}}" m-attr:aria-expanded="{{d.open}}" m-attr:aria-label="{{d.describe}}" m-action="cloud.toggleDevice" m-arg="{{d.id}}">{{d.name}} {{d.updated}}</button>
+        <m-for each="d.shown" as="t">
+          <a m-attr:aria-label="{{t.label}}" title="{{t.url}}" m-action="cloud.open" m-arg="{{t.id}}">{{t.title}} {{t.host}}</a>
+        </m-for>
+      </m-for>
+    </m-if>
+  </div>
+</template>
+```
+
+It's a guarded part (below): every word in it is Margin's, since its one
+button asks for a permission.
 
 Modes: style `[data-mode="fullscreen|windowed|inpage"]` by binding
 `m-attr:data-mode="{{window.mode}}"` on your root.
@@ -172,6 +205,26 @@ host. Immutable: rows that didn't change are the same objects.
   over the page (icons only: it's outside the guarded parts but has no words
   of its own), `pointer-events: none`, and let it come in with `progress`
   (Arcadia and Neo-brutalism: `m-style:--gesture="{{gesture.progress}}"`).
+- `palette.rows[]` also have `section` and `sectionStart`: rows from one
+  place come as a run with a heading ("On Tirth’s iPhone": iCloud Tabs,
+  after Margin's own rows). Draw `{{r.section}}` before a row whose
+  `sectionStart` is true, inside the rows' `<m-for>`; Margin's own rows
+  have `''` and false.
+- `cloudTabs` (null unless Margin.app draws a Safari window with "Show
+  iCloud Tabs" on): `open` (the folder expanded), one of `ready`, `empty`
+  (no other device has tabs), `noAccess` (no Full Disk Access; `canFix`:
+  its button runs `cloud.access`), `noData` (iCloud Tabs off or not
+  synced), `failed`; `message` and `hasMessage` (Margin's words for the
+  state), `count` and `hasCount` (tabs on all devices), `labels` (`title`,
+  `toggle`, `fix`, `pinned`), and `devices[]`: `id`, `name` (told apart
+  from another with the same name), `label` ("On …"), `updated` ("updated
+  5 min ago", to the day when that's all Safari keeps), `describe` (both),
+  one of `isPhone`, `isPad`, `isMac`, `isVision`, `isOther` (its icon),
+  `open`, `stale` (not used for a week: dim it), `count`, `tabs` and
+  `shown` (its tabs while it's open). Each tab: `id`, `title`, `url`,
+  `host`, `icon` (Margin's stored icon for the site, else `letter` on
+  `color`), `pinned` (pinned on that device), `label` (for screen
+  readers).
 
 ## Actions
 
@@ -192,6 +245,11 @@ else is ignored and logged.
   first), `editor.color` (a swatch).
 - Notices and prompts: `notice.run`, `prompt.run` (one of their buttons),
   `notice.close`, `prompt.close`.
+- iCloud Tabs: `cloud.toggle` (the folder), `cloud.toggleDevice` (a
+  device), `cloud.open` (a tab: opened in this window and space, as an
+  address typed in), `cloud.copy` (its address), `cloud.access` (System
+  Settings at Full Disk Access). A right-click on a tab's row (its
+  `cloud.open`) opens its menu: Open, Copy Link.
 - The rest: `sidebar.toggle`, `nav.back`, `nav.forward`, `nav.reload`,
   `archive.open`, `archive.restore` (an archived entry), `settings.open`
   (opens or closes the launcher's Settings; on a web page, Margin's start
@@ -252,8 +310,9 @@ same rules again.
   `text-overflow`, `hyphenate-character` or `text-emphasis`. Its rules can
   reach Margin's own parts, so this is how they keep only Margin's words.
 - **Margin's own words**: inside the `menu`, `menu-item`, `notice`,
-  `prompt`, `space-editor` and `settings` parts, and the `<m-menu>`,
-  `<m-notice>`, `<m-editor>`, `<m-prompt>` and `<m-settings>` slots, every
+  `prompt`, `space-editor`, `settings` and `cloud-tabs` parts, and the
+  `<m-menu>`, `<m-notice>`, `<m-editor>`, `<m-prompt>`, `<m-settings>`
+  and `<m-cloud-tabs>` slots, every
   visible text must come from
   Margin's bound labels (`{{i.label}}`, `{{notice.text}}`,
   `{{editor.labels.save}}`…). Text the theme writes there is removed and

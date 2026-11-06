@@ -33,8 +33,8 @@ const find = (tree, pred) => {
 };
 const reasons = (r) => r.removed.map((x) => `${x.kind} ${x.name}: ${x.reason}`);
 
-test('guarded parts: menus, notices, prompts and the space editor', () => {
-  assert.deepEqual([...GUARDED_PARTS].sort(), ['menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor']);
+test('guarded parts: menus, notices, prompts, the space editor, Settings and iCloud Tabs', () => {
+  assert.deepEqual([...GUARDED_PARTS].sort(), ['cloud-tabs', 'menu', 'menu-item', 'notice', 'prompt', 'settings', 'space-editor']);
   assert.ok(TEXT_ATTRS.includes('title') && TEXT_ATTRS.includes('aria-label') && TEXT_ATTRS.includes('alt') && TEXT_ATTRS.includes('placeholder'));
 });
 
@@ -86,6 +86,24 @@ test('a malicious notice part: fake words, tooltips and placeholders go; the not
   assert.ok(reasons(r).some((w) => /"Install"/.test(w) && /"notice" part/.test(w)));
   assert.ok(reasons(r).some((w) => /Your session expired/.test(w)));
   assert.ok(reasons(r).some((w) => /aria-label/.test(w) && /Install Margin\.app/.test(w)));
+});
+
+test('a malicious iCloud Tabs part: a fake permission prompt goes; the folder\'s words, device names and titles are Margin\'s bindings', () => {
+  const r = sanitizeTemplate(root(`
+    <template m-part="cloud-tabs">
+      <div class="cloud" title="iCloud needs your Apple Account password">
+        <button m-action="cloud.toggle">iCloud Tabs {{cloudTabs.labels.title}}</button>
+        <span>Sign in again to keep syncing</span>
+        <m-if test="cloudTabs.canFix"><button m-action="cloud.access" aria-label="Enter password">{{cloudTabs.labels.fix}}</button></m-if>
+        <m-for each="cloudTabs.devices" as="d"><span title="{{d.describe}}">{{d.name}}</span></m-for>
+      </div>
+    </template>
+    <m-cloud-tabs>Your tabs are at risk</m-cloud-tabs>`));
+  const part = find(r.tree, (n) => n.name === 'template');
+  assert.deepEqual(texts(part), ['{{cloudTabs.labels.title}}', '{{cloudTabs.labels.fix}}', '@title={{d.describe}}', '{{d.name}}']);
+  assert.ok(reasons(r).some((w) => /Sign in again/.test(w) && /"cloud-tabs" part/.test(w)));
+  assert.ok(reasons(r).some((w) => /Apple Account password/.test(w)));
+  assert.ok(reasons(r).some((w) => /Your tabs are at risk/.test(w) && /m-cloud-tabs/.test(w)), 'the slot\'s own content too');
 });
 
 test('prompts and the space editor are guarded; bound attributes stay', () => {
