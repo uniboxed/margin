@@ -314,7 +314,9 @@ export function startCore() {
   let saidOfApp = null;
   function sayApp() {
     if (appLink === undefined) return;
-    const said = !appUi() ? 'Margin.app isn\'t linked: the page as it is, no box' : drawsWindow(appLink, windowId ?? helloWindowId) ? 'Margin.app draws Margin around this window' : 'Margin.app is linked but draws nothing over this window: the page as it is, no box';
+    // (Its window not known yet, from Margin's state or the background's hello: not said either way.)
+    const known = state?.tabs?.[tabId]?.windowId ?? helloWindowId;
+    const said = !appUi() ? 'Margin.app isn\'t linked: the page as it is, no box' : known == null ? 'Margin.app is linked (this page\'s window not known yet)' : drawsWindow(appLink, known) ? 'Margin.app draws Margin around this window' : 'Margin.app is linked but draws nothing over this window: the page as it is, no box';
     if (said !== saidOfApp) console.debug(`[margin] ${said}`);
     saidOfApp = said;
   }

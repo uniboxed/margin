@@ -299,7 +299,7 @@ test('the app saying it draws nothing over a window: the registration follows at
   assert.equal(registered()?.left, 300, 'drawn again: its box at once');
 });
 
-test('a layout with no box anywhere (the frame turned off): registered at once; one with a box waits for layouts to settle', async () => {
+test('a layout with no box anywhere (the frame turned off): registered at once; a box back after none (Keep open again, with the frame off) at once too, as zeros leave no fix-up to give new pages their window\'s box; a box after another box waits for layouts to settle', async () => {
   const { layoutsChanged } = await import('../extension/background/registered.js');
   const { layoutOfFiles } = await import('../extension/shared/page-box.js');
   const registered = () => layoutOfFiles(fake.registered.get('margin-page')?.css);
@@ -312,9 +312,13 @@ test('a layout with no box anywhere (the frame turned off): registered at once; 
   assert.deepEqual(registered(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0 }, 'no box: at once');
   linkSays({ drawn: { 1: true }, layouts: at(280) });
   layoutsChanged();
+  await whenRegistered();
+  assert.equal(registered()?.left, 280, 'a box back after none: at once (else 2 s of new pages with no box beside the sidebar)');
+  linkSays({ drawn: { 1: true }, layouts: at(300) });
+  layoutsChanged();
   await sleep(100);
   await whenRegistered();
-  assert.deepEqual(registered(), { left: 0, top: 0, right: 0, bottom: 0, radius: 0 }, 'a box: not yet (LAYOUT_SETTLE_MS)');
+  assert.equal(registered()?.left, 280, 'a box after another: not yet (LAYOUT_SETTLE_MS)');
 });
 
 test.after(() => setTimeout(() => process.exit(0), 50));

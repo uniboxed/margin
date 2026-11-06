@@ -150,6 +150,9 @@ const markOn = async () => {
 const wasOnHere = async () => onHere || !!(await api.storage.session?.get(ON_KEY).catch(() => null))?.[ON_KEY];
 /** The registered layout, as keyOf (null: none, or off): what fixUp compares a window's with. */
 let registeredKey = /** @type {string | null} */ (null);
+// Whether the layout of zeros registered is there only because the layout had no box (linked,
+// shown): a box back in it is followed at once (layoutsChanged).
+let noBoxForLayout = false;
 // What the app said of the windows as last read (fixUp, between syncs: setLayoutSource gives the
 // live ones): this epoch's layouts, and whether it draws each window.
 /** @typedef {{ epoch?: string | null, layouts: Record<string, any>, drawn?: Record<string, boolean>, lastLayouts?: Record<string, any> }} LinkView */
@@ -202,6 +205,7 @@ async function syncPage() {
   }
   if (want) await markOn();
   registeredKey = want?.on ? keyOf(layout) : null;
+  noBoxForLayout = !!want && !want.on && linked && showing;
 }
 
 let registrations = Promise.resolve();
@@ -225,12 +229,19 @@ const another = () => keyOf(chooseFor(cached()?.settings, layoutSource(), regist
 // with no box anywhere follows at once, as a change in what the app draws
 // does (windowDrawnChanged): the box left registered meanwhile would be drawn
 // in new pages until their commit's sheet takes it away (the frame turned
-// off, say; a drag never comes to that).
+// off, say; a drag never comes to that). And so does a box back after a
+// layout with none: while zeros are registered there's no fix-up (fixUp
+// only puts in a window's own layout beside a registered box), so new pages
+// would start with no box beside a sidebar kept open again, for the 2 s
+// (Keep open turned off and on again with the frame off).
 let settleTimer = null;
 export function layoutsChanged() {
   clearTimeout(settleTimer);
   settleTimer = null;
-  if (isOwner() && registeredKey != null && chooseFor(cached()?.settings, layoutSource(), registeredKey) === null) return void queueRegistrations();
+  if (isOwner()) {
+    const chosen = chooseFor(cached()?.settings, layoutSource(), registeredKey);
+    if (registeredKey != null ? chosen === null : noBoxForLayout && chosen !== null) return void queueRegistrations();
+  }
   settleTimer = setTimeout(() => {
     settleTimer = null;
     if (!isOwner() || registeredKey == null || another()) void queueRegistrations();
