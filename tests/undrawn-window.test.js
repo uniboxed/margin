@@ -251,4 +251,21 @@ test('⌘T handed off while the copy still thinks the app draws there, and the a
   assert.deepEqual(pushes.find(([w]) => w === 3), [3, { type: 'palette', newTab: true }], 'drawn again later: handed to the app\'s palette');
 });
 
+test('a page committing in a tab Margin\'s state doesn\'t have yet: its window from Safari\'s word of the tab (tabs.onCreated, onAttached), its own sheet asked for in the commit\'s own turn, nothing awaited first', async () => {
+  linkSays({ drawn: { 2: true, 3: false }, layouts: { 2: { insets: { left: 300, top: 8, right: 8, bottom: 8 }, radius: 6.25, epoch: 'e1' } } });
+  fake.tabs.set(70, { id: 70, windowId: 2, url: 'https://a.test/', title: 'A', index: 5, active: false, status: 'loading' });
+  void fire('onCreated', { ...fake.tabs.get(70) });
+  fake.inserted.length = 0;
+  void commit(70);
+  assert.equal(fake.inserted.length, 1, 'asked for at once (a page paints its first frame 15 to 20 ms after it commits)');
+  assert.match(fake.inserted[0].css, /--margin-at-left: 300px/, 'its window\'s own layout');
+  // Moved to a window Margin.app draws nothing over.
+  fake.tabs.set(70, { ...fake.tabs.get(70), windowId: 3 });
+  void fire('onAttached', 70, { newWindowId: 3, newPosition: 0 });
+  fake.inserted.length = 0;
+  void commit(70);
+  assert.deepEqual(fake.inserted, [{ tabId: 70, css: OFF_CSS }], 'the window it\'s in now');
+  await sleep(50);
+});
+
 test.after(() => setTimeout(() => process.exit(0), 50));
