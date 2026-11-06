@@ -12,7 +12,8 @@
 #         the Space reads, the parker and its cross-process self-test against a fake
 #         world and a stand-in child, nothing spawned, and the parking registry with its crash
 #         marker in a temporary folder (parking-tests.swift); the switch's setting in
-#         browser.json and its notices by kind (handoff-ui-tests.swift)
+#         browser.json and its notices by kind (handoff-ui-tests.swift); the dev-only test hook
+#         against a fake world, and no title or address in the switch's lines (devhooks-tests.swift)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
 #         extension (fake-extension.mjs, Node), and a picture of the overlay
@@ -76,7 +77,7 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/safari/AppDelegate.swift ../../app/safari/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/safari/SafariWebExtensionHandler.swift
-  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift fake-safari.swift window-tests.swift private-calls-tests.swift handoff-tests.swift parking-tests.swift handoff-ui-tests.swift "${SHELL_SOURCES[@]}"
+  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift fake-safari.swift window-tests.swift private-calls-tests.swift handoff-tests.swift parking-tests.swift handoff-ui-tests.swift devhooks-tests.swift "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then

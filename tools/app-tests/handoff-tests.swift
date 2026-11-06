@@ -372,6 +372,8 @@ final class FakeHandoffWorld: HandoffWorld {
     var notices: [SwitchNotice] = []
     var onRequest: ((Req) -> Void)?
     var onEvent: ((ProfileSwitch.Event) -> Void)?
+    var errors: [String: String] = [:] // "link type" → the copy's error for that request (its words, as Safari's can be)
+    var devAllowed = false // DEV-HOOK: the dev hook allows this switch (both Test A and Test B, its default on)
 
     private func later(_ seconds: Double, _ fire: @escaping () -> Void) { _ = clock.after(seconds, fire) }
 
@@ -520,6 +522,7 @@ final class FakeHandoffWorld: HandoffWorld {
 
     private func arrive(_ r: Req, windowId: Int?, _ reply: @escaping (JSONObject?, String?) -> Void) {
         guard linked.contains(r.link) else { return } // its copy went away: no answer
+        if let error = errors["\(r.link) \(r.type)"] { return reply(nil, error) }
         let key = WindowKey(link: r.link, windowId: r.windowId ?? windowId ?? -1)
         if ["setWindowState", "focusWindow", "closeWindow"].contains(r.type) {
             if let notAfter = num(r.payload["notAfter"]), clock.now() * 1000 > notAfter {
@@ -639,6 +642,7 @@ final class FakeHandoffWorld: HandoffWorld {
         framedOn && inFrontNow(key) && win(key).flatMap { reads.windows[$0.number]?.bounds }.map(fillsDisplay) == true
     }
     func showSwitchNotice(_ notice: SwitchNotice) { notices.append(notice) }
+    func devHookAllows(_ a: String, _ b: String) -> Bool { devAllowed } // DEV-HOOK
 }
 
 let hA = "safari:A", hB = "safari:B", hC = "safari:C"
@@ -1022,7 +1026,7 @@ func handoffMachineTests() {
         handoffRun(w, 1.75)
         check("watchdog: B ready, A leaving: revealed at 1.7 s", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 watchdog: 0"] && s.run?.lateAt != nil && s.run?.r2At != nil && s.run?.aAskedAt != nil)
         handoffRun(w, 3)
-        check("watchdog: … then A parked unfrozen, done", w.events.last == .done(toB) && w.registry.isParked(1010) && s.session.lines.last?.contains("late (watchdog at 1700 ms)") == true, "\(s.session.lines)")
+        check("watchdog: … then A parked unfrozen, done", w.events.last == .done(toB) && w.registry.isParked(1010) && s.session.lines.last?.contains("late (watchdog at 1700 ms, waiting for ") == true, "\(s.session.lines)")
         handoffInvariants("watchdog, settling", w, s)
     }
     do {

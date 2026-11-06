@@ -117,13 +117,52 @@ Run `holds`, then G5, G6, G10, G12, G13, G14, G15, G17 and G18, one at a time: `
 
 G8 and G9 need `--person`: someone dismisses each prompt and does each step, then presses Enter.
 
-### Margin.app (G1's second half, G16)
+### Margin.app with the dev hook (G1's second half, G16)
 
-1. Install the Developer-ID, hardened build of Margin.app. In System Settings → Device Control and Data Access, check that Margin has **neither Screen Recording nor Accessibility** (G1 says "by hand").
-2. In release Safari, use only the **Test A** and **Test B** profiles, with one window each. Margin shows one and parks the other.
-3. Turn on the dev hook (WP12): `defaults write io.tirth.margin MarginDevHooks -bool YES`. Turn it off afterwards.
-4. `$L g1 --dev-hook --go`, then `$L g16 --go` (30 switches, about 2 minutes).
-5. Turn the dev hook off: `defaults delete io.tirth.margin MarginDevHooks`.
+These two run through Margin.app, never the lab's own calls. The lab posts WP12's dev hook (`app/shell/DevHooks.swift`) and reads Margin's log. Margin refuses the hook unless `MarginDevHooks` is YES, and unless the window it shows and the target are Safari's own **Test A** and **Test B** (exact names, read from Safari's files with Full Disk Access). It can't reach any other profile.
+
+Before:
+
+1. Tirth's go-ahead. Each handoff holds the screen still for about 1-1.5 s.
+2. Install the Developer-ID, hardened build of Margin.app. In System Settings → Device Control and Data Access, check that Margin has **neither Screen Recording nor Accessibility** (G1 checks this by hand). It needs **Full Disk Access**, for Safari's profile names.
+3. Turn the handoff and the hook on, then quit and reopen Margin.app (the handoff's gate is read at launch):
+   ```sh
+   defaults write io.tirth.margin MarginHandoff -bool YES
+   defaults write io.tirth.margin MarginDevHooks -bool YES
+   ```
+4. In release Safari, use only **Test A** and **Test B**: one window each, Test A's in full screen with Margin's sidebar. Switch to Test B and back once by hand, so Test B's window is parked and Test A's is shown.
+5. Check the hook from a terminal, with nothing moving:
+   ```sh
+   swift tools/handoff-lab/devswitch.swift dump
+   /usr/bin/log show --last 1m --style compact --predicate 'subsystem == "io.tirth.margin"' | grep 'dev hook'
+   ```
+   - The dump says `handoff on, parking on (self-test passed)`, `freeze ok, spaces ok, park ok`, `displays 1` and `1 parked`.
+   - `refused: …` names what's missing (the default, a name, no window shown).
+   - Stop there if anything is off.
+
+G1, Margin's half (one switch):
+
+1. `$L g1 --dev-hook --dry-run`, then `$L g1 --dev-hook --go`.
+2. The lab posts one `dev.switch` to Test B and waits up to 8 s for Margin's summary line.
+3. Pass: Margin's launch line says `freeze ok … park ok`, its self-test passed, its signature is Developer ID with the hardened runtime, and the switch's line has `(park+freeze, parked target), frozen N ms (result 0)`.
+4. You see the cover ("Switching to Test B…"), about a second of still screen, then Test B in full screen. Test A's window is parked: it isn't in Mission Control.
+
+G16 (at least 30 handoffs):
+
+1. Test A shown, Test B parked (the first switch goes to Test B). Leave the keyboard and mouse alone.
+2. `$L g16 --dry-run`, then `$L g16 --go` (30 switches, every 3 s, about 2 minutes; `--runs N` for more).
+3. Each switch is one Margin summary line in the report: its frozen ms, `late` if the watchdog revealed, `recovered` or `aborted` if it didn't land.
+4. Pass: every switch has a line, none recovered or aborted. The report gives the frozen-time distribution and the late rate. Tirth decides whether the late rate is acceptable, and the numbers replace TESTING.md's estimates.
+5. Abort with ⌃C at the first switch that looks wrong (a black screen, a window in the wrong place). The lab stops posting, and Margin's own recovery runs.
+6. Without the lab, the same loop by hand: `swift tools/handoff-lab/devswitch.swift alternate 30 --every 4`, with the log open.
+
+The hook's other kinds (for TESTING.md's live checklist, not the gates): `mode --freeze off` or `--old close|keep` caps Test A and Test B's switches for the session; `fail show|park|reveal|fullscreen` makes the next such step count as not landed, to see §4.4's recovery on purpose. A `fail` or `mode` lasts until Margin.app quits.
+
+After:
+
+1. Turn the hook off: `defaults delete io.tirth.margin MarginDevHooks`. The next notification is refused, with no relaunch.
+2. `defaults delete io.tirth.margin MarginHandoff` too, unless the build is meant to keep the handoff on, then quit and reopen Margin.app.
+3. The hook goes before production: `git grep DEV-HOOK` lists every part of it (TESTING.md, "Before production").
 
 ### After
 
@@ -136,6 +175,7 @@ G8 and G9 need `--person`: someone dismisses each prompt and does each step, the
 
 - `lab.swift`: the gates, the handoff they share (`handoff()`, §1.3's order), the frame recorder, the lab's own windows and panel, the children, and the STP and Margin drivers.
 - `build.sh`: builds `build/handoff-lab`.
+- `devswitch.swift`: the dev hook's sender (`swift tools/handoff-lab/devswitch.swift …`), for G16 by hand and TESTING.md's live checklist. It goes with the hook before production (`DEV-HOOK`).
 - `ext/`: the temporary extension for STP.
   - `bg.js` runs the lab's windows and tabs commands, as Margin's copy would, and reports focus and new tabs (ids and times).
   - `probe.js` is R3's frame probe (§3.2) in every lab page. It also keeps every rAF and `visibilitychange` time when armed.

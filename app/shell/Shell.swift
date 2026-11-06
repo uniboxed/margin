@@ -195,6 +195,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Whether a window's bounds fill its display (R2, a window shown over): the screens' by
         // default (ScreenGeometry.fillsDisplay); a harness's stand-in windows are off every screen.
         var fillsDisplay: ((CGRect) -> Bool)?
+        // DEV-HOOK: the dev-only test hook (DevHooks.swift, removed before production): whether
+        // MarginDevHooks is YES, read at each notification. Nil (every test, the harness): not listened for.
+        var devHooksOn: (() -> Bool)?
     }
 
     final class Link {
@@ -299,6 +302,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var everyParkedSince: TimeInterval? // §6.2: a read with Safari in front and every window parked
     var parkedEnding = false // §13.8: the shown window was closed, its parked windows closing
     var parkedBindAsked: Set<Int> = [] // parked windows the binder was asked to bind from the registry's record
+    var devHooks: DevHooks? // DEV-HOOK: the dev-only test hook (DevHooks.swift), only with Options.devHooksOn
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
@@ -338,6 +342,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.handoff = UserDefaults.standard.bool(forKey: "MarginHandoff")
         Diagnostics.note(options.handoff ? "handoff: on (MarginHandoff is set): profile switches hand off when the private calls allow"
                          : "handoff: off until its gates pass (MarginHandoff isn't set): every profile switch is the close-based one")
+        options.devHooksOn = { DevHooks.appDefault() } // DEV-HOOK
         return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
     }
 
@@ -366,6 +371,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         stopped = false
         link.start()
         startSafariNames()
+        // DEV-HOOK: heard only while MarginDevHooks is YES, and only for Safari's Test A and Test B.
+        if let on = options.devHooksOn, devHooks == nil {
+            devHooks = DevHooks(world: self, isOn: on)
+            devHooks?.listen()
+        }
     }
 
     // Quitting (§6.4, §13.1): the screen revealed if frozen, every parked window closed by its own copy
@@ -391,6 +401,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pointer.stop()
         apps.stop()
         safariNames?.stop()
+        devHooks?.stop() // DEV-HOOK
+        devHooks = nil // DEV-HOOK
         cloudWatcher?.stop()
         cloudWatcher = nil
         for overlay in overlays.values { overlay.close() }

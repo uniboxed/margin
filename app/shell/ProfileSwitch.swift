@@ -143,9 +143,11 @@ final class ProfileSwitch {
 
     var busy: Bool { phase != .idle }
 
+    // A copy's error can reach a line here (its words, not Margin's): scrubbed of addresses and titles.
     func note(_ s: String) {
-        history.append(s)
-        Diagnostics.note("profile switch: \(s)")
+        let line = Diagnostics.scrub(s)
+        history.append(line)
+        Diagnostics.note("profile switch: \(line)")
     }
 
     func enter(_ p: Phase, for seconds: Double) {

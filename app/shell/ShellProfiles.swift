@@ -451,7 +451,7 @@ extension Shell: SwitchWorld {
                     let result = reply["result"] as? JSONObject ?? [:]
                     if type == "openSpaceWindow", let made = SpaceWindowAnswer(result) { self.windowMade(profile, windowId: made.windowId, asked: asked, bounds: made.bounds) }
                     done(result, nil)
-                } else { done(nil, reply["error"] as? String ?? "refused") }
+                } else { done(nil, Diagnostics.scrub(reply["error"] as? String ?? "refused", max: 160)) } // a browser's words: never a page's
             } catch {
                 done(nil, "\(error)")
             }

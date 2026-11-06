@@ -613,6 +613,80 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2: the profile handoff, live in Test A and Test B (2026-11-06)
+
+The freeze-based switch between profiles, with the window you leave parked out of sight (`app/HANDOFF.md`). Build Margin.app from `feat/profile-handoff`. **Only in Safari's Test A and Test B profiles**, never your own. Each switch holds the whole screen still for about a second.
+
+Set-up:
+- Margin.app has Full Disk Access (for Safari's profile names). Test A and Test B have one window each, Test A's in full screen with Margin's sidebar.
+- Turn the handoff on, then quit and reopen Margin.app (it's read at launch):
+  `defaults write io.tirth.margin MarginHandoff -bool YES`
+- Keep the log open:
+  `/usr/bin/log stream --style compact --predicate 'subsystem == "io.tirth.margin"' | grep -E 'handoff|private calls|profile switch|dev hook'`
+- At launch it says `handoff: on (MarginHandoff is set)`, `private calls on macOS …: freeze ok, spaces ok, park ok (…)` and `private calls: cross-process self-test park N ms, …`. A `park off` or `freeze off` there: stop, and send me the line.
+- Margin's lines hold ids, window numbers, counts and milliseconds only, never a page's title or address. Send me any line that shows one.
+
+The honest numbers, until gate G16 measures them:
+- **A parked window:** about 1.0-1.45 s of still screen behind the cover (Safari Technology Preview: 1.09-1.32 s).
+- **The first switch to a profile** since Safari started (a new window): about 1.3-1.7 s.
+- **A slow switch:** still for 1.7 s (Margin's limit), then you see the rest of Safari's slide.
+- **"Close windows to save memory":** about 1.1-1.7 s still, then about 0.3 s of the new window, then about 0.15 s still again as the old one closes. Not measured yet (gate G3). Pages reload when you come back.
+- **More than one display:** today's slide, 0.4-0.65 s.
+- **For comparison, before:** a 0.4-0.65 s slide, with Margin's sidebar gone for about 180 ms.
+
+**Switching.**
+- [ ] Switch Test A → Test B and back ten times (⌃⌘→ / ⌃⌘←, or a space of the other profile in the sidebar). Each time: "Switching to Test B…" covers the page, the screen holds still for about a second, then Test B's window is there in full screen with its sidebar. No slide. Mission Control shows one Safari full-screen Space, not two.
+- [ ] Each switch is one `handoff:` line: `safari:…#N → safari:…#M (park+freeze, parked target), frozen T ms (result 0): …`. Send me every line with `late`, `recovered` or `aborted`, and the frozen times.
+- [ ] Each window comes back as you left it: its tab, its scroll, text you typed, a video's place.
+- [ ] Swipe the sidebar from Test A's last space into Test B's: the slide finishes first, then the screen holds still. It never freezes mid-slide.
+- [ ] Type in a page during a switch: the letters go to the window you're leaving until Test B is asked for full screen, then to Test B. Margin's keys queue: ⌃⌘→ pressed during a switch is another switch after it. ⌘T during a switch does nothing (the log says `… key mid-switch: dropped`).
+- [ ] Hold ⌃⌘→: at most one switch to the other profile per press.
+
+**Media.**
+- [ ] Play a video with sound in Test A, start Picture in Picture (it needs a click in the page), switch to Test B: the PiP window stays over Test B and the sound goes on. Switch back: the video is where it was.
+- [ ] Not Margin's: AirPods that switch to another Mac can pause what's playing. If media pauses as you switch, check whether the AirPods moved (Control Centre's sound menu) before telling me.
+
+**Windows coming back.**
+- [ ] With Test B parked, a link from another app (Mail, Messages) that Safari opens in Test B: Margin switches to Test B's window, with that tab in front. The log says `used while parked (tab …)`. If Safari opens it in Test A's window, nothing moves.
+- [ ] ⌘` and the Window menu: choose Test B's parked window. Margin switches to it (`used while parked (focus …)`). No second switch follows by itself.
+- [ ] ⌘W on the window shown, then click Safari in the Dock. To you it's one window: about 0.5 s after the ⌘W, every parked window closes too, with no drafts check (`the shown window N … closed by the person: the 1 parked close too`, then `… 1 parked closed`). Their tabs are kept as Margin tabs that aren't open. The Dock click opens Safari's own new window. Switching to Test B then makes a new window with its tabs from Margin's records (about 1.3-1.7 s).
+- [ ] Put the Mac to sleep during a switch: the screen comes back at once and one window is in front (the one you left, or Test B). After the wake, a parked window macOS brings back is parked again within 3 s, never switched to (`a wake: any of the N parked found back in the next 3 s is parked again`).
+- [ ] Quit Safari with Test B parked, then open it again: the windows it restores are normal windows. Each is parked the first time a switch leaves it.
+
+**Quitting and crashing.**
+- [ ] Quit Margin.app with Test B parked: Test B's window is closed by its copy, with no drafts check (text typed there is lost). Only the shown window stays. The log says `… at quit (N ms)`. Reopen Margin.app and switch to Test B: a new window with Test B's tabs, each page back at its scroll place once.
+- [ ] `npm run safari` with Test B parked: the same as a quit.
+- [ ] Only if you want to try a crash: `kill -9` Margin.app's pid with Test B parked. Test B's window comes back by itself as a normal window. Open Margin.app again (Safari still running): it's parked again with no switch, and the shown one stays. The log says `Margin.app didn't quit cleanly with 1 parked window: 1 parked again`.
+
+**Close windows to save memory.**
+- [ ] Turn it on in Margin's Settings with Test B parked: Test B's window closes (unseen), unless a page in it has unsent text. Then it stays, and the notice says "Kept Test B’s window open: a page in it has text you haven’t sent." with **Close window**.
+- [ ] Switch with it on: two still moments (Test B shown, then Test A closed), and Test A's pages reload when you come back.
+- [ ] Type in a field in Test A without sending, then switch: Test A isn't closed. The notice in Test B says "Kept Test A’s window open: …". **Close window** closes it at once, with no other check.
+
+**What stops a switch.**
+- [ ] A dialog open in Test A (an `alert()`, "Leave page?", a permission prompt): no switch, and the notice says "Finish the dialog in this window first."
+- [ ] A second Test A window you open yourself (⌘N) is left alone: never parked, never switched to. Margin's pins and tabs open in Test A's own window. A switch from your second window leaves it where it is (`the window left is one the person opened`).
+- [ ] A second display (or Sidecar): switches show today's slide, and the window you leave stays in its own full-screen Space (one more Space in Mission Control). The switch's line says `keep (2 displays: kept in its own Space)`. Unplug it: the next switch freezes and parks again. Several displays will work like one later.
+
+**Seen on purpose:**
+- A recovery after a step failed: a second full-screen entry (0.8-1.0 s) you can see, then the window you left in front again, with "Couldn’t switch to Test B: …".
+- A late reveal: after 1.7 s, the end of Safari's slide.
+- Close mode's two still moments.
+
+**The dev hook** (development only, Test A and Test B only, removed before production). It drives the same switches from a terminal, without clicks. Turn it on with `defaults write io.tirth.margin MarginDevHooks -bool YES` (no relaunch), off with `defaults delete io.tirth.margin MarginDevHooks`. It refuses anything unless the window shown and the target are Safari's own Test A and Test B. Every notification is one `dev hook: …` line, honoured or refused.
+- [ ] `swift tools/handoff-lab/devswitch.swift switch "Test B" --wait 3`, then click into Test A's window: the switch runs as a key press would (`dev hook: switch to Test B from …`).
+- [ ] `… devswitch.swift dump`: one line each for the private calls, the choices, the registry, the aftercare and the last 5 switch lines.
+- [ ] `… mode --freeze off`: Test A and Test B's switches show the slide, and windows are still parked. `--old close`: close mode. `--old keep`: the window you leave stays in its own full-screen Space. `--freeze on --old park`: back to normal. These last until Margin.app quits.
+- [ ] `… fail fullscreen`, then switch: the screen holds still 1.7 s, Test B's window shows as a normal window for a few seconds, then Test A is in full screen again with "Couldn’t switch to Test B: Safari’s window didn’t go full screen. Nothing was closed." Test B is parked again.
+- [ ] `… fail park`, then switch: Test B shows as usual, and Test A is closed (nothing typed in it) or kept as a normal window on the Desktop. Parking is off until Margin.app quits (`park off for this session`): later switches close the window you leave.
+- [ ] `… fail show`, then switch: Test B's parked window is closed by its copy (its tabs kept), and a new Test B window opens (about 1.3-1.7 s). Parking is off until Margin.app quits.
+- [ ] `… fail reveal`, then switch: it looks as usual, and the log says `freeze off for this session`. Later switches show the slide.
+- [ ] `… alternate 30 --every 4`: 30 switches, Test B then Test A. Gate G16 does the same from the lab (`tools/handoff-lab/README.md`).
+
+**Before production.**
+- [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `app/shell/DevHooks.swift`, `tools/app-tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
+- [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
+
 ## Margin 2: Safari reliability (2026-11-05)
 
 `npm run safari` from `fix/safari-reliability`, then `npm run log:app` (or `scripts/margin-log.sh 5`) in a terminal to watch Margin.app's log.

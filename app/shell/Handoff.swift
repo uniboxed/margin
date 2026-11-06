@@ -86,10 +86,14 @@ protocol HandoffWorld: SwitchWorld {
     // Shown just above its window (WindowMatcher.stackedAbove): R4's first half.
     func overlayAbove(_ key: WindowKey) -> Bool
     func showSwitchNotice(_ notice: SwitchNotice)
+    // DEV-HOOK: whether a switch between these two links may use what the dev-only hook set
+    // (DevHooks.swift: its default on, and both Safari's Test A and Test B). False by default.
+    func devHookAllows(_ a: String, _ b: String) -> Bool
 }
 
 extension HandoffWorld {
     var handoffOn: Bool { true }
+    func devHookAllows(_ a: String, _ b: String) -> Bool { false } // DEV-HOOK
 }
 
 struct HandoffOptions {
@@ -195,6 +199,10 @@ final class HandoffRun {
     var live = false
     var freezeAt: Double?
     var lateAt: Double? // the watchdog revealed
+    var lateWaiting: String? // what the watchdog's reveal found still to do
+    var revealResult: Int32? // the reveal's answer (SLSInvokeTransition's), the watchdog's too
+    var devTest = false // DEV-HOOK: a switch between Test A and Test B, as the dev hook allows (DevHooks.swift)
+    var devUsed: [String] = [] // DEV-HOOK: what of the hook's this switch used (its summary says so)
     var aSpace: UInt64? // A's full-screen Space (the active one at the freeze, with no A)
     var activeAtFreeze: UInt64?
     var fullScreenAtFreeze: Set<UInt64> = []
@@ -310,6 +318,7 @@ struct HandoffSession {
     var shown: (key: WindowKey, number: Int?)? // where the last switch landed
     var lines: [String] = [] // each switch's summary, the last 5
     var closeParkedAsked = false // §5: the setting turned on while a switch ran: its parked windows closed after it
+    var dev = DevHookState() // DEV-HOOK: the dev-only hook's caps and faults (DevHooks.swift)
 }
 
 extension ProfileSwitch: FreezerDelegate {
@@ -362,6 +371,7 @@ extension ProfileSwitch: FreezerDelegate {
                 closeWatchdog(run, heldMs)
             } else {
                 guard handle == run.handle else { return }
+                if case .revealFailed(_, _, let result, _, _) = reported { run.revealResult = result } else { run.revealResult = 0 }
                 late(run, (run.freezeAt ?? clock.now()) + Double(heldMs) / 1000)
             }
             tick()
@@ -376,6 +386,7 @@ extension ProfileSwitch: FreezerDelegate {
         run.lateAt = now
         run.revealedAt = now
         let waiting = run.r2At == nil ? "B" : run.aDeferred || run.aAskedAt == nil ? "A not started" : run.aParkedAt == nil ? "A's park" : "the settle"
+        run.lateWaiting = waiting
         note("late (watchdog at \(run.ms(now)) ms, waiting for \(waiting))")
     }
 
@@ -408,7 +419,15 @@ extension ProfileSwitch: FreezerDelegate {
                                         parkOn: hw.parkingOn && parking != nil && session.parkOff == nil,
                                         closeSetting: hw.closesWindows(to.profile), displays: displays,
                                         hasA: a != nil, aLinked: a.map { hw.isLinked($0.link) } ?? false, aExtra: aExtra)
-        let choice = HandoffChoice.pick(facts)
+        var choice = HandoffChoice.pick(facts)
+        // DEV-HOOK: the dev-only hook's caps, only for a switch between Safari's Test A and Test B.
+        let devTest = hw.devHookAllows(fromProfile, to.profile)
+        var devCapped = false
+        if devTest, !session.dev.isEmpty {
+            choice = session.dev.capped(choice)
+            devCapped = choice != HandoffChoice.pick(facts)
+            if devCapped { note("dev hook: choice capped to \(choice)") }
+        }
         let hasParked = !(parking?.entries(of: to.profile).isEmpty ?? true)
         // Closing without a freeze is today's switch (plus its drafts check), unless there's a parked
         // window to show, or a window's own activity asked.
@@ -419,6 +438,8 @@ extension ProfileSwitch: FreezerDelegate {
         gen += 1
         let run = HandoffRun(gen: gen, target: to, a: a, aNumber: aNumber, asked: asked, startedAt: clock.now())
         run.choice = choice
+        run.devTest = devTest // DEV-HOOK
+        if devCapped { run.devUsed.append("cap") } // DEV-HOOK
         target = to
         from = (fromProfile, windowId)
         newWindow = nil
@@ -693,6 +714,10 @@ extension ProfileSwitch: FreezerDelegate {
         case .parked:
             guard let n = run.bNumber, let parking = hw.parking else { return recover(run, hw, "Margin couldn’t find its window") }
             run.showAsked = true
+            // DEV-HOOK: a show that didn't land, with no call made: B stays in its own Space, and §4.4 goes on.
+            if devFault(run, .show) {
+                return showFailed(run, hw, n, ParkOutcome(number: n, step: .show, failure: .notLanded(spaces: hw.spaceReads?.spaces(of: n), onScreen: false), ms: 0, tries: 0, space: nil))
+            }
             parking.show(number: n, cause: .handoff) { [weak self, weak run] o in
                 guard let self, let run, self.run === run else { return }
                 guard self.phase == .frozen else {
@@ -771,6 +796,11 @@ extension ProfileSwitch: FreezerDelegate {
     private func askB(_ run: HandoffRun, _ hw: HandoffWorld) {
         guard let b = run.b, run.stateAskedAt == nil else { return }
         run.stateAskedAt = clock.now()
+        // DEV-HOOK: a request that never took, with no call made: the watchdog, then the settle timeout's recovery.
+        if devFault(run, .fullscreen) {
+            run.stateAnswer = .timedOut(windowId: b.windowId, state: "fullscreen")
+            return
+        }
         let notAfter = ((run.freezeAt ?? clock.now()) + ho.bNotAfter) * 1000
         windowCall(hw, b, .setWindowState(windowId: b.windowId, state: .fullscreen, focused: true, notAfter: notAfter)) { [weak self, weak run] answer, error in
             guard let self, let run, self.run === run else { return }
@@ -1015,6 +1045,11 @@ extension ProfileSwitch: FreezerDelegate {
         }()
         guard copyNormal, let server, let parking = hw.parking else { return }
         run.aParkAsked = true
+        // DEV-HOOK: a park that didn't land, with no call made: A stays a normal window where it is (§4.4).
+        if devFault(run, .park) {
+            let o = ParkOutcome(number: n, step: .park, failure: .notLanded(spaces: reads?.spaces(of: n), onScreen: server.onScreen), ms: 0, tries: 0, space: nil)
+            return aParkFailed(run, hw, a, n, ParkingRegistry.ParkResult(park: o))
+        }
         parking.park(number: n, link: a.link, windowId: a.windowId, pid: server.pid, bounds: server.bounds, cause: .handoff) { [weak self, weak run] r in
             guard let self, let run, self.run === run else { return }
             if r.park.ok {
@@ -1100,7 +1135,27 @@ extension ProfileSwitch: FreezerDelegate {
         guard run.live else { return }
         run.live = false
         let r = hw.handoffFreezer?.reveal(why)
+        switch r {
+        case .revealed?: run.revealResult = 0
+        case .failed(let result, _)?: run.revealResult = result
+        default: break
+        }
         if r == .notLive { late(run, clock.now()) } else { run.revealedAt = clock.now() }
+        // DEV-HOOK: revealed (the screen is never left held), then counted as a reveal that failed: the
+        // freeze off for the session, as FreezeRules has it.
+        if r == .revealed, devFault(run, .reveal) {
+            let held = run.freezeAt.map { Int(((clock.now() - $0) * 1000).rounded()) } ?? 0
+            session.rules.note(.revealFailed(handle: run.handle ?? 0, why: why, result: -1, released: nil, heldMs: held), at: clock.now())
+            run.revealResult = -1
+        }
+    }
+
+    // DEV-HOOK: a fault the dev-only hook armed (DevHooks.swift), used up by a Test A/Test B switch only.
+    private func devFault(_ run: HandoffRun, _ step: DevFailStep) -> Bool {
+        guard run.devTest, session.dev.take(step) else { return false }
+        run.devUsed.append(step.rawValue)
+        Diagnostics.note("dev hook: \(step.said)")
+        return true
     }
 
     // ---- after the reveal ----
@@ -1456,13 +1511,17 @@ extension ProfileSwitch: FreezerDelegate {
     private func summary(_ run: HandoffRun, _ hw: HandoffWorld) -> String {
         var s = "handoff: \(run.a.map(\.description) ?? "nothing") → \(run.b.map(\.description) ?? run.target.profile) (\(run.choice.old.rawValue)\(run.choice.freeze && run.handle != nil ? "+freeze" : ""), \(run.way.rawValue))"
         if let freezeAt = run.freezeAt, let revealed = run.revealedAt, run.handle != nil {
-            s += ", frozen \(Int(((revealed - freezeAt) * 1000).rounded())) ms"
+            s += ", frozen \(Int(((revealed - freezeAt) * 1000).rounded())) ms" + (run.revealResult.map { " (result \($0))" } ?? "")
         }
         var parts: [String] = []
         if run.way == .create { parts.append("created \(run.ms(run.createdAt))") } else { parts.append("shown \(run.ms(run.shownAt))") }
         parts.append("B steady \(run.ms(run.r2At))")
         if run.aAskedAt != nil { parts.append("A asked \(run.ms(run.aAskedAt))") }
-        if ho.frameProbe { parts.append("page frames \(run.ms(run.r3At))") }
+        if ho.frameProbe {
+            var frames = "page frames \(run.ms(run.r3At))"
+            if case .frames(let f)? = run.probe { frames += " (\(f.frames), tab \(f.tabId))" } else if run.probe != nil { frames += " (none)" }
+            parts.append(frames)
+        }
         parts.append("overlay framed \(run.framedAt == nil ? "-" : run.ms(run.framedAt))")
         if run.aLeftAt != nil { parts.append("A normal \(run.ms(run.aLeftAt))") }
         if run.aParkedAt != nil { parts.append("A parked \(run.ms(run.aParkedAt))") }
@@ -1478,10 +1537,12 @@ extension ProfileSwitch: FreezerDelegate {
         parts.append("settled \(run.ms(run.r5At))")
         s += ": " + parts.joined(separator: ", ")
         if !run.focusLine.isEmpty { s += "; \(run.focusLine)" }
-        if let at = run.lateAt { s += "; late (watchdog at \(run.ms(at)) ms)" }
+        if let at = run.lateAt { s += "; late (watchdog at \(run.ms(at)) ms\(run.lateWaiting.map { ", waiting for \($0)" } ?? ""))" }
         if let why = run.failure { s += "; recovered: \(why)" }
         if run.leftBehind > 0 { s += "; \(run.leftBehind) window left over A" }
-        return s
+        if !run.devUsed.isEmpty { s += "; dev hook: \(run.devUsed.joined(separator: ", "))" } // DEV-HOOK
+        // Its failure's words can carry a copy's (an error from Safari): never a page's address or title.
+        return Diagnostics.scrub(s)
     }
 
     // ---- recovery (§4.4) ----

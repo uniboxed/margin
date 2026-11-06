@@ -802,7 +802,9 @@ enum Margin {
     // WP12's dev hook (HANDOFF.md §9): a switch from the front window, as a key press would.
     // Margin refuses any profile not named exactly "Test A" or "Test B".
     static func devSwitch(to profile: String) {
-        DistributedNotificationCenter.default().postNotificationName(NSNotification.Name("io.tirth.margin.dev.switch"), object: nil, userInfo: ["to": profile], deliverImmediately: true)
+        // DEV-HOOK: goes with the hook before production (tools/handoff-lab/devswitch.swift is its sender for people).
+        DistributedNotificationCenter.default().postNotificationName(NSNotification.Name("io.tirth.margin.dev.switch"), object: nil,
+                                                                      userInfo: ["to": profile, "pid": String(ProcessInfo.processInfo.processIdentifier)], deliverImmediately: true)
     }
 }
 
