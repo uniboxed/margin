@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import * as M from '../extension/state/model.js';
 import { THEMES, DEFAULT_THEME, themeFor } from '../extension/themes/index.js';
 import arcadia, { WIDTH, snapWidth, clampWidth, sidebarWidth } from '../extension/themes/arcadia/theme.js';
@@ -15,9 +15,9 @@ test('Margin ships Arcadia, the default theme; an unknown theme falls back to it
   assert.equal(themeFor(undefined), arcadia);
 });
 
-test('every theme has its folder: theme.js (settings, first paint) beside its package', () => {
+test('every theme has its folder: theme.js (settings) beside its package and its first paint', () => {
   for (const theme of Object.values(THEMES)) {
-    for (const file of ['theme.js', 'theme.json', 'theme.html', 'theme.css']) assert.ok(existsSync(new URL(`themes/${theme.id}/${file}`, root)), `${theme.id}/${file}`);
+    for (const file of ['theme.js', 'theme.json', 'theme.html', 'theme.css', 'first-paint.css']) assert.ok(existsSync(new URL(`themes/${theme.id}/${file}`, root)), `${theme.id}/${file}`);
     assert.equal(theme.content, undefined, 'no theme script any more');
     assert.equal(typeof theme.settingsOf, 'function');
     assert.ok(Object.isFrozen(theme.defaults));
@@ -61,12 +61,6 @@ test('Arcadia sidebar width: default 260, clamped to 160–500, snapped to 10px'
   assert.equal(snapWidth(40), 160);
   assert.equal(snapWidth(9000), 500);
   assert.equal(clampWidth(171.5), 171.5, 'live dragging is not snapped');
-});
-
-test('Arcadia\'s placeholder follows its width; one file exists for every width', () => {
-  assert.equal(arcadia.placeholder({ themes: { arcadia: { sidebarWidth: 330 } } }), 'themes/arcadia/docked/w-330.css');
-  const files = readdirSync(new URL('themes/arcadia/docked/', root));
-  for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) assert.ok(files.includes(`w-${w}.css`), `w-${w}.css`);
 });
 
 test('the theme\'s earlier name: its id falls back, its own settings carry over, and the old entry goes', () => {

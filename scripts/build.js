@@ -1,16 +1,16 @@
 // Builds ready-to-load extensions for each browser from the one shared source:
 //   extension/ (shared) + platform/<target>/manifest.json (overrides)
 //   → dist/<target>/, with shared/platform.js stamped for that browser.
-// Also regenerates the themes' generated files first (scripts/build-styles.js).
 // dist/ is committed (no Node needed on the Mac to use it); a unit test fails
 // if it's out of date. Usage: node scripts/build.js
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { buildSync } from 'esbuild';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
-import { DOCKED_WIDTHS } from './build-styles.js';
+import { allLayoutFiles, firstPaintCss, firstPaintFile } from '../extension/shared/page-box.js';
+import { PACKAGE_THEMES } from '../extension/themes/packages.js';
+import { WIDTH } from '../extension/themes/arcadia/theme.js';
 
 const root = new URL('../', import.meta.url);
 const SOURCE = new URL('extension/', root);
@@ -61,9 +61,30 @@ const BUNDLES = {
   page: 'content/page.bundle.js',
   newtab: 'newtab/newtab.bundle.js',
 };
-// Where the page's box starts in the first-paint registration (background/
-// registered.js pagePlan): one file per left edge.
-const PAGE_LEFTS = [8, ...DOCKED_WIDTHS];
+// The first paint (shared/page-box.js, background/registered.js): the
+// layout's digit files and at.css, and each built-in theme's
+// first-paint file, the box with the theme's look (themes/<id>/first-paint.css).
+export const FIRST_PAINT_THEMES = PACKAGE_THEMES.filter((id) => existsSync(new URL(`themes/${id}/first-paint.css`, SOURCE)));
+function firstPaintFiles(out) {
+  mkdirSync(`${out}/content/layout`, { recursive: true });
+  for (const [file, css] of allLayoutFiles()) writeFileSync(`${out}/${file}`, css);
+  for (const id of FIRST_PAINT_THEMES) writeFileSync(`${out}/${firstPaintFile(id)}`, firstPaintCss(id, readFileSync(new URL(`themes/${id}/first-paint.css`, SOURCE), 'utf8')));
+}
+// Safari keeps registrations across launches and loads none of them if a file
+// one lists is missing (DECISIONS.md, 2026-10-25: WebKit validates them all
+// together at load, and `getRegisteredContentScripts` then lists none, so the
+// background can't drop them). The build before Margin 2 Phase 3 registered
+// a first-paint placeholder per sidebar width and a file per left edge for the
+// page's script: they stay as empty files until no Safari has that
+// registration, so an update from that build loads its registrations, and
+// the background replaces them (background/registered.js). Remove after a
+// release or two of Phase 3.
+const WIDTHS = Array.from({ length: (WIDTH.max - WIDTH.min) / WIDTH.step + 1 }, (_, i) => WIDTH.min + i * WIDTH.step);
+export const LEGACY_FILES = [
+  ...WIDTHS.map((w) => `themes/arcadia/docked/w-${w}.css`),
+  'themes/arcadia/docked/closed.css',
+  ...[8, ...WIDTHS].map((left) => `content/page/at-${left}.js`),
+];
 
 function bundle(out, manifest) {
   const write = (file, entries, { format = 'iife' } = {}) => buildSync({
@@ -80,9 +101,11 @@ function bundle(out, manifest) {
     logLevel: 'warning',
   });
 
-  // Where the page's box starts (background/registered.js pagePlan): read by
-  // the page's script, and gone again.
-  for (const left of PAGE_LEFTS) writeFileSync(`${out}/content/page/at-${left}.js`, `window[Symbol.for('margin.page.start')] = { left: ${left} };\n`);
+  firstPaintFiles(out);
+  for (const file of LEGACY_FILES) {
+    mkdirSync(dirname(`${out}/${file}`), { recursive: true });
+    writeFileSync(`${out}/${file}`, '');
+  }
 
   // Margin's content script (its core on web pages, with the UI runtime).
   const [sidebar] = manifest.content_scripts;
@@ -146,7 +169,6 @@ export function buildApp(outDir, { profile = 'safari' } = {}) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  execFileSync(process.execPath, [fileURLToPath(new URL('scripts/build-styles.js', root))], { stdio: 'inherit' });
   for (const target of TARGETS) {
     buildTo(new URL(`dist/${target}/`, root), { profile: target });
     console.log(`dist/${target}/`);

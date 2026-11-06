@@ -225,9 +225,6 @@ export function startCore() {
   };
   addEventListener('resize', checkFullscreen);
   const layout = startLayout(page);
-  // A page that puts a new <html> in (replaceChild, document.open): the
-  // first-paint placeholder is switched off on that one too (layout.js).
-  new MutationObserver(() => { if (state) layout.settle(); }).observe(document, { childList: true });
 
   // The box from Margin.app's layout for this window (shared/app-link.js):
   // its insets from the window's edges, less where this viewport sits in the

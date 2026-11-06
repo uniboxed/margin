@@ -17,7 +17,7 @@ import { switchLog, switchLogTo } from './background/switch-log.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
-import { queueRegistrations } from './background/registered.js';
+import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { sleepIdle, sleepIdleThrottled } from './background/sleep.js';
 import { navigate, navTarget, NAV_ACTIONS } from './background/navigation.js';
@@ -285,7 +285,7 @@ api.tabs.onAttached.addListener(owned(() => resync({ fresh: false })));
 api.tabs.onDetached?.addListener(owned(() => resync({ fresh: false })));
 // Chrome: a window going full screen becomes Margin full screen.
 api.windows?.onBoundsChanged?.addListener(owned((win) => followFullscreen(win.id)));
-// A closed window may have been the one in full screen (registered.js syncShell).
+// A closed window may have been the one in full screen (registered.js syncPage).
 if (platform?.marginFullscreen) api.windows?.onRemoved.addListener(owned(() => queueRegistrations()));
 api.windows?.onRemoved.addListener(owned((windowId) =>
   mutate((s) => {
@@ -414,10 +414,16 @@ appLink.onPageState((state) => {
   if (state === 'linked') void Promise.resolve(api.windows?.getAll?.()).then((wins) => pageLoads.tellAll((wins ?? []).map((w) => w.id)), () => pageLoads.tellAll());
 });
 // A window's layout: its page in front gets its box at once (the rest read
-// it from storage, appLink, as they're shown or start).
+// it from storage, appLink, as they're shown or start), and new pages get it
+// at their first paint (background/registered.js: the registered layout
+// follows once layouts settle; a window with another gets its own as each
+// page commits).
 appLink.onLayout((windowId, layout) => {
   void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout }).catch(() => {}), () => {});
+  layoutsChanged();
 });
+setLayoutSource(() => appLink.layouts());
+watchCommits();
 
 // What a page's zoom answer keeps (handlers.js getZoom), in every copy: a
 // copy that doesn't own the state now may again.
@@ -425,8 +431,8 @@ api.tabs.onZoomChange?.addListener(zoomChanged);
 api.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.pageZoom) zoomStored();
 });
-// The theme, its placeholder and the page's box follow the settings, and the
-// link to Margin.app (registered only while it's linked: background/registered.js).
+// The first paint follows the settings (the theme) and the link to
+// Margin.app (registered only while it's linked: background/registered.js).
 const linkTurned = (change) => !!change && appDraws(change.oldValue) !== appDraws(change.newValue);
 api.storage.onChanged.addListener(owned((changes, area) => {
   if (area === 'local' && (changes.settings || linkTurned(changes[APP_LINK_KEY]))) queueRegistrations();

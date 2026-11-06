@@ -5,8 +5,8 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DOCKED_WIDTHS } from '../scripts/build-styles.js';
-import { TARGETS, buildTo, manifestFor } from '../scripts/build.js';
+import { FIRST_PAINT_THEMES, LEGACY_FILES, TARGETS, buildTo, manifestFor } from '../scripts/build.js';
+import { allLayoutFiles, firstPaintFile, layoutFiles } from '../extension/shared/page-box.js';
 import { PACKAGE_THEMES } from '../extension/themes/packages.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -51,8 +51,15 @@ test('each build loads one bundled script per context', () => {
     // Nothing in the page's world from the manifest: a page Margin leaves
     // alone loads none of it (background/registered.js).
     assert.equal(manifest.content_scripts.find((c) => c.world === 'MAIN'), undefined, target);
-    assert.match(readFileSync(join(dir, 'content/page/at-8.js'), 'utf8'), /left: 8 /);
-    for (const width of DOCKED_WIDTHS) assert.match(readFileSync(join(dir, `content/page/at-${width}.js`), 'utf8'), new RegExp(`left: ${width} `));
+    // The first paint (background/registered.js): every digit file of every
+    // place, at.css, and each built-in theme's file.
+    for (const [file, css] of allLayoutFiles()) assert.equal(readFileSync(join(dir, file), 'utf8'), css, `${target}/${file}`);
+    assert.deepEqual(FIRST_PAINT_THEMES, PACKAGE_THEMES, 'every built-in theme has its first paint');
+    for (const id of FIRST_PAINT_THEMES) assert.match(readFileSync(join(dir, firstPaintFile(id)), 'utf8'), new RegExp(`--margin-fp: ${id};[\\s\\S]*html\\[data-margin-at="${id}"\\] \\{[\\s\\S]*translate\\(var\\(--margin-at-left\\)`), `${target}: ${id}'s first paint`);
+    for (const file of layoutFiles({ left: 1023.75, top: 0, right: 8.25, bottom: 999, radius: 63.75 })) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}: there for any layout`);
+    // Safari loads none of its registrations if a path one names is missing:
+    // the build before Phase 3's stay, empty, until no Safari has them.
+    for (const file of LEGACY_FILES) assert.equal(statSync(join(dir, file)).size, 0, `${target}/${file}: an empty stub`);
     // Each built-in theme ships as its package (read by the background for
     // Margin.app); no theme script is registered.
     for (const id of PACKAGE_THEMES) for (const f of ['theme.json', 'theme.html', 'theme.css']) assert.ok(statSync(join(dir, `themes/${id}/${f}`)).size > 0, `${target}/themes/${id}/${f}`);

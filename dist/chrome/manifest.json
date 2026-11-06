@@ -18,6 +18,7 @@
     "storage",
     "alarms",
     "scripting",
+    "webNavigation",
     "search"
   ],
   "host_permissions": [

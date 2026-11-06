@@ -3,10 +3,8 @@ import assert from 'node:assert/strict';
 import * as shortcuts from '../extension/shared/shortcuts.js';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { buildClosed, buildDocked, dockedWidths, DOCKED_WIDTHS } from '../scripts/build-styles.js';
-import { THEMES } from '../extension/themes/index.js';
 import { PACKAGE_THEMES } from '../extension/themes/packages.js';
-import { WIDTH } from '../extension/themes/arcadia/theme.js';
+import { FIRST_PAINT_MARK, firstPaintRoot } from '../extension/shared/page-box.js';
 
 const root = new URL('../extension/', import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL('manifest.json', root), 'utf8'));
@@ -16,13 +14,14 @@ const sources = (exts, dir = '') => readdirSync(new URL(dir || '.', root)).flatM
   const path = `${dir}${name}`;
   return statSync(new URL(path, root)).isDirectory() ? sources(exts, `${path}/`) : exts.some((e) => name.endsWith(e)) ? [path] : [];
 });
-const THEME_IDS = Object.keys(THEMES);
 
 test('manifest follows the SPEC constraints', () => {
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.type, undefined, 'Safari does not support module background workers');
   assert.deepEqual(manifest.host_permissions, ['<all_urls>']);
   for (const p of ['tabs', 'storage']) assert.ok(manifest.permissions.includes(p), p);
+  // A window's own layout reaches its pages as they commit (background/registered.js fixUp).
+  assert.ok(manifest.permissions.includes('webNavigation'));
   for (const p of ['sidePanel', 'bookmarks', 'history', 'tabGroups']) assert.ok(!manifest.permissions.includes(p), p);
   const [cs] = manifest.content_scripts;
   assert.equal(cs.run_at, 'document_start');
@@ -47,10 +46,9 @@ test('every file the manifest and new tab reference exists', () => {
     ...manifest.content_scripts.flatMap((c) => c.js),
     ...(manifest.web_accessible_resources ?? []).flatMap((w) => w.resources),
     manifest.chrome_url_overrides.newtab,
-    // Registered at runtime by background/registered.js (and by earlier versions).
-    ...THEME_IDS.flatMap((id) => dockedWidths(id).map((w) => `themes/${id}/docked/w-${w}.css`)),
-    // Each built-in theme's package (read by the background and the new-tab page).
-    ...PACKAGE_THEMES.flatMap((id) => ['theme.json', 'theme.html', 'theme.css'].map((f) => `themes/${id}/${f}`)),
+    // Each built-in theme's package (read by the background and the new-tab page),
+    // and its look at a page's first paint (scripts/build.js makes the registered file).
+    ...PACKAGE_THEMES.flatMap((id) => ['theme.json', 'theme.html', 'theme.css', 'first-paint.css'].map((f) => `themes/${id}/${f}`)),
   ];
   const html = readFileSync(new URL('newtab/newtab.html', root), 'utf8');
   for (const [, ref] of html.matchAll(/(?:src|href)="([^"]+)"/g)) files.push(new URL(ref, new URL('newtab/', root)).pathname.split('/extension/')[1]);
@@ -78,18 +76,15 @@ test('nothing exposed to web pages, and nothing on web pages fetches or draws a 
   }
 });
 
-test('first-paint placeholders: one up-to-date file per sidebar width, nothing else', () => {
-  const expected = [];
-  for (let w = WIDTH.min; w <= WIDTH.max; w += WIDTH.step) expected.push(w);
-  assert.deepEqual(DOCKED_WIDTHS, expected, 'build script widths match Arcadia\'s theme.js');
-  const names = expected.map((w) => `w-${w}.css`).sort();
-  assert.deepEqual(readdirSync(new URL('themes/arcadia/docked/', root)).sort(), [...names, 'closed.css'].sort());
-  assert.equal(readFileSync(new URL('themes/arcadia/docked/closed.css', root), 'utf8'), buildClosed('arcadia'), 'closed.css is stale: run npm run styles');
-  for (const w of expected) {
-    const css = readFileSync(new URL(`themes/arcadia/docked/w-${w}.css`, root), 'utf8');
-    assert.equal(css, buildDocked('arcadia', w), `w-${w}.css is stale: run npm run styles`);
-    assert.match(css, new RegExp(`translate\\(${w}px, 8px\\)`), 'the same box as the page\'s');
-    assert.ok(!css.includes('{{'));
+test('each built-in theme\'s first paint draws only on a page its own mark is on (a registration WebKit keeps applying after it was dropped paints nothing)', () => {
+  for (const id of PACKAGE_THEMES) {
+    const css = readFileSync(new URL(`themes/${id}/first-paint.css`, root), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const selectors = [...css.matchAll(/([^{}@]+)\{/g)].map((m) => m[1].trim()).filter((s) => !s.startsWith('media'));
+    assert.ok(selectors.length > 0, id);
+    for (const selector of selectors) {
+      for (const part of selector.split(',')) assert.ok(part.trim().startsWith(firstPaintRoot(id)), `${id}: ${part.trim()} is under ${FIRST_PAINT_MARK}="${id}"`);
+    }
+    assert.doesNotMatch(css, /url\(|@import/, `${id}: nothing to load`);
   }
 });
 
@@ -108,17 +103,18 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
     const block = css.slice(css.indexOf(selector));
     return block.match(new RegExp(`\\b${prop}: ([^;]+?)( !important)?;`))[1];
   };
-  // The first-paint placeholder and Arcadia's package: the same card, radius and shadow.
+  // The first paint and Arcadia's package: the same card shadow, then the frame
+  // (its corner is the layout's, which Margin.app measures from the package).
   const pkg = read('themes/arcadia/theme.css');
   const radius = pkg.match(/\n  --card-radius: ([^;]+);/)[1];
   const shadow = decl(pkg, '.card-edge { pointer-events: none;', 'box-shadow');
+  const frame = pkg.match(/\n  --frame: ([^;]+);/)[1];
   assert.equal(radius, '6.25px');
-  const docked = read('themes/arcadia/docked.template.css');
-  assert.equal(decl(docked, 'html:not([data-margin-docked="off"])::after', 'border-radius'), radius);
-  assert.ok(decl(docked, 'html:not([data-margin-docked="off"])::after', 'box-shadow').startsWith(`${shadow}, 0 0 0 100vmax`), 'placeholder: same shadow, then the frame');
-  // Arcadia's package (themes/arcadia): the same card, radius and shadow.
+  const first = read('themes/arcadia/first-paint.css');
+  assert.equal(decl(first, 'html[data-margin-at="arcadia"]::after', 'border-radius'), 'var(--margin-at-radius)');
+  assert.equal(decl(first, 'html[data-margin-at="arcadia"]::after', 'box-shadow'), `${shadow}, 0 0 0 100vmax ${frame}`, 'the first paint: same shadow, then the frame');
   // Plain CSS only: nothing for the browser to load (no images, no url()).
-  for (const css of [docked, pkg]) assert.doesNotMatch(css, /border-image|url\(/);
+  for (const css of [first, pkg]) assert.doesNotMatch(css, /border-image|url\(/);
 });
 
 test('no CSS corner-shape (yet): Safari\'s experimental version passes @supports but draws squares', () => {

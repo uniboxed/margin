@@ -121,6 +121,26 @@ const SERVER = `http://127.0.0.1:${process.env.MARGIN_HOST_PORT ?? 47811}`;
 // the page is gone since Phase 3: its address opens nothing).
 const OLD_SLEEP = (name) => `ext:sleep/sleep.html?${new URLSearchParams({ u: `${SERVER}/p/${name}`, t: name, k: `old-${name}` })}`;
 
+
+// The first paint (Margin 2 Phase 3: background/registered.js, content/page/main.js).
+// A fresh page that records its first frames (server.mjs /fp/), Margin's word to its
+// box held back LATE ms as Safari's content scripts come late: what's drawn is the
+// first paint's alone.
+const LATE = 400;
+const fresh = (name, late = LATE) => ({ op: 'open', name, url: `/fp/${name}?late=${late}`, active: true });
+// Its box at left/top/right/bottom in its first frame and every frame before Margin's
+// word (the host's window is 1200 wide); `how`: 'registered' (the variables from the
+// registration's sums) or 'own' (the window's own sheet, put in as the page committed).
+const firstFrame = (tab, [l, t, r, b], { theme = 'arcadia', how = 'registered', late = LATE } = {}) => checkPage(tab, `${tab}: in its box at ${l}/${t}/${r}/${b} from its first frame, the first paint alone (${how}, ${theme})`,
+  `const fp = window.__fp; if (!fp || fp.frames.length < 12 || performance.now() < ${late} + 50) return false; const f0 = fp.frames[0]; const right = (f) => f.x === ${l} && f.y === ${t} && f.w === ${1200 - l - r}; const early = fp.frames.filter((f) => f.t < ${late}); return f0.t < ${late} && right(f0) && early.every(right) && early.every((f) => f.mark === '${theme}') && f0.said === '${theme}' && ${how === 'own' ? "/^\\d/.test(f0.left)" : "f0.left.startsWith('calc(')"}`, 6000);
+// No box in any of its first frames: the page as it is, no mark, no frame, none of Margin's page scripts.
+const firstBare = (tab, label) => checkPage(tab, `${tab}: ${label}`, `const fp = window.__fp; if (!fp || fp.frames.length < 12) return false; return fp.frames.every((f) => f.x === 0 && f.y === 0 && f.w === 1200 && !f.mark && f.frame === 'none') && !window[Symbol.for('margin.page')]`, 6000);
+// What a page's first frame was, in the log (the measurements).
+const firstLog = (tab) => ({ op: 'page', in: tab, js: `const fp = window.__fp; return '${tab} first frame ' + JSON.stringify(fp.frames[0]) + ', ' + fp.frames.filter((f) => f.t < ${LATE}).length + ' frames before Margin spoke (' + fp.held + ' word(s) held back)'` });
+// Margin.app's layout settled, and registered (background/registered.js LAYOUT_SETTLE_MS, then a sync).
+const settledLayout = wait(3000);
+const pages = (prefix, n, layout, options) => Array.from({ length: n }, (_, i) => [fresh(`${prefix}${i}`), firstFrame(`${prefix}${i}`, layout, options), firstLog(`${prefix}${i}`)]).flat();
+
 export const SCENARIOS = {
   // Pages open at install get Margin (WebKit adds the core); switching
   // through Margin, including to a tab Safari unloaded. Nothing is drawn in
@@ -493,7 +513,8 @@ export const SCENARIOS = {
     { op: 'open', name: 'P', url: '/x/read-echo', active: true }, boxed('P'),
     wait(500),
     { op: 'page', in: 'P', js: `document.documentElement.classList.add('poke'); return 'poked'` },
-    wait(400),
+    // (The reads the poke starts are spaced out, doubling: what's checked is that they end.)
+    wait(1600),
     { op: 'page', in: 'P', js: `window.__before = __reads; window.__sync = document.documentElement.dataset.sync; return 'watching'` },
     wait(3000),
     checkPage('P', 'P: an observer that writes back doesn\'t keep reads running', `__reads === __before && document.documentElement.dataset.sync === __sync`, 200),
@@ -1127,10 +1148,10 @@ Object.assign(SCENARIOS, {
     nothingDrawn('B', 'B: off: nothing of Margin\'s, no frame'),
     check('A', 'A (behind): no box either', `!Margin.content.boxed() && Margin.content.appDraws() === false`, 2000),
     wait(1000), { op: 'open', name: 'C', url: '/p/C', active: true }, ready('C'), bare('C'), nothingDrawn('C', 'C (loaded once off): no box, nothing of Margin\'s, no frame'),
-    // (Its registrations are dropped (background/registered.js), but WebKit here still puts them
-    // in a web view made after they were registered, until it restarts: the page's script and the
-    // placeholder ran in C, and Margin's core took both off. DECISIONS.md, Phase 2 step 5.)
-    { op: 'page', in: 'C', js: `return 'C: the page\'s script ' + (window[Symbol.for('margin.page')] ? 'ran (WebKit kept the registration)' : 'not loaded')` },
+    // (The first paint's registration is updated to no box, never dropped: WebKit kept applying a
+    // dropped one to new pages. The page's script loads and stays out: Margin 2 Phase 3,
+    // background/registered.js; first-paint-off checks the first frames.)
+    checkPage('C', 'C: the page\'s script stayed out (no box anywhere)', `!window[Symbol.for('margin.page')] && !document.documentElement.hasAttribute('data-margin-at')`),
     appWith(260), reload('C'),
     linked('C'), boxed('C'),
   ],
@@ -1247,6 +1268,58 @@ Object.assign(SCENARIOS, {
     reload('A'), ready('A'),
     check('A', 'A: its first read took no theme package (a 3 MB one stored)', `!('uiTheme' in Margin.content.getState().state)`),
     boxed('A'),
+  ],
+  // The first paint at any layout (Margin 2 Phase 3, PLAN.md §14): fresh pages
+  // in their box from their first frame, before Margin's content script has
+  // said anything (held back 400 ms, as Safari runs it late). Margin.app's
+  // layout registered as digit files; a window whose layout isn't the one
+  // registered yet gets its own sheet as each page commits; back to a layout
+  // registered before (WebKit keeps every registration's CSS applying: the
+  // newest must win); a layout with no box at any edge: no box from the first
+  // frame, none of Margin's page scripts.
+  'first-paint': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
+    ...pages('K', 3, [260, 8, 8, 8]),
+    { op: 'appLayout', layout: [300, 12, 16, 20] },
+    ...pages('W', 2, [300, 12, 16, 20], { how: 'own' }),
+    settledLayout,
+    ...pages('R', 3, [300, 12, 16, 20]),
+    { op: 'appLayout', layout: [8, 8, 8, 8] }, settledLayout,
+    ...pages('F', 3, [8, 8, 8, 8]),
+    { op: 'appLayout', layout: [260, 8, 8, 8] }, settledLayout,
+    ...pages('B', 3, [260, 8, 8, 8]),
+    { op: 'appLayout', layout: [0, 0, 0, 0] }, settledLayout,
+    fresh('N0'), firstBare('N0', 'no box at any edge: the page as it is from its first frame'), firstLog('N0'),
+    { op: 'appLayout', layout: [260, 8, 8, 8] }, settledLayout,
+    ...pages('C', 2, [260, 8, 8, 8]),
+    // The content script on time: the same box, and the first paint's mark gone once it has spoken.
+    fresh('T0', 0), checkPage('T0', 'T0 (Margin\'s word not held): in its box, the mark gone (the box its world\'s own)', `const fp = window.__fp; return !!fp && fp.frames.length > 5 && fp.heard > 0 && fp.frames[0].x === 260 && !document.documentElement.hasAttribute('data-margin-at') && new DOMMatrix(getComputedStyle(document.documentElement).transform).e === 260`, 6000),
+  ],
+  // The link off after a first paint was registered: WebKit keeps applying
+  // the dropped registration to new pages, but off.css says so and nothing is
+  // drawn: no box from the first frame. Margin.app back: the first paint again.
+  'first-paint-off': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
+    ...pages('K', 2, [260, 8, 8, 8]),
+    { op: 'appKill' },
+    check('A', 'A: the grace over: off', `Margin.content.appDraws() === false`, 12000), wait(800),
+    fresh('O0'), firstBare('O0', 'off: the page as it is from its first frame, though WebKit keeps the dropped registration'), firstLog('O0'),
+    { op: 'page', in: 'O0', js: `return 'O0: the first paint says ' + JSON.stringify(getComputedStyle(document.documentElement).getPropertyValue('--margin-fp'))` },
+    fresh('O1'), firstBare('O1', 'and the next'),
+    appWith(260), reload('A'), linked('A'), wait(1500),
+    ...pages('L', 2, [260, 8, 8, 8]),
+  ],
+  // Another theme: its own first paint (its mark and its look), and none of
+  // the theme registered before it, whose CSS WebKit keeps applying.
+  'first-paint-theme': [
+    appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
+    ...pages('K', 1, [260, 8, 8, 8]),
+    { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { theme: "neo-brutalism" } }))' }, wait(1500),
+    ...pages('N', 2, [260, 8, 8, 8], { theme: 'neo-brutalism' }),
+    checkPage('N0', "N0: Neo-brutalism's look, not Arcadia's", `window.__fp.frames[0].frame.includes('rgb(255, 210, 63)') && !window.__fp.frames[0].frame.includes('rgb(156, 157, 161)')`),
+    { op: 'eval', in: 'A', js: 'return JSON.stringify(await Margin.content.send("updateSettings", { patch: { theme: "arcadia" } }))' }, wait(1500),
+    ...pages('B', 1, [260, 8, 8, 8]),
+    checkPage('B0', "B0: Arcadia's again", `window.__fp.frames[0].frame.includes('rgb(156, 157, 161)')`),
   ],
 });
 

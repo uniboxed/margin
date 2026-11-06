@@ -1,0 +1,35 @@
+/* arcadia's first paint (scripts/build.js, from shared/page-box.js and themes/arcadia/first-paint.css). */
+:root { --margin-fp: arcadia; }
+@media screen {
+  html[data-margin-at="arcadia"] {
+    position: absolute !important; left: 0 !important; top: 0 !important;
+    transform: translate(var(--margin-at-left), var(--margin-at-top)) !important; transform-origin: 0 0 !important;
+    width: calc(100vw - (var(--margin-at-left) + var(--margin-at-right))) !important; height: calc(100vh - (var(--margin-at-top) + var(--margin-at-bottom))) !important;
+    min-width: 0 !important; max-width: none !important; min-height: 0 !important; max-height: none !important;
+    margin: 0 !important; padding: 0 !important; box-sizing: border-box !important;
+    --margin-left: var(--margin-at-left); --margin-top: var(--margin-at-top); --margin-shift-x: calc(-1 * var(--margin-at-left)); --margin-shift-y: calc(-1 * var(--margin-at-top));
+    --margin-out-r: calc(-1 * var(--margin-at-right)); --margin-out-b: calc(-1 * var(--margin-at-bottom));
+  }
+}
+/* Arcadia's look at a page's first paint, around the box (shared/page-box.js
+   firstPaintCss adds the box itself; scripts/build.js writes the two as
+   content/layout/theme-arcadia.css, registered while Margin.app draws
+   Margin: background/registered.js). Margin.app's overlay draws the frame
+   over this as soon as it shows; this is what's there before, and where
+   the overlay isn't. Every rule only under <html> marked for Arcadia
+   (data-margin-at, set by the page's world: content/page/main.js), so a
+   registration WebKit keeps applying after it was dropped paints nothing.
+   The card's corner from the layout; its shadow and the frame's colour as
+   theme.css's (.card-edge, --frame). */
+@media screen {
+  /* <html> is the box: this is against it, and its overflow is the window's. */
+  html[data-margin-at="arcadia"]::after {
+    content: "" !important;
+    position: fixed !important;
+    inset: 0 !important;
+    border-radius: var(--margin-at-radius) !important;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06), 0 0 0 100vmax #9c9da1 !important;
+    pointer-events: none !important;
+    z-index: 2147483646 !important;
+  }
+}

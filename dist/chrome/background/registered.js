@@ -1,104 +1,217 @@
-// Content scripts registered at runtime, following the settings and the link
-// to Margin.app: the active theme's first-paint placeholder and the page's
-// box, only while the app is linked (or reconnecting: shared/app-link.js
-// appDraws). Not linked, no page has a box or a frame (Margin 2 Phase 2 step
-// 5): nothing is registered, and a page loads none of Margin's page scripts. Safari keeps
-// registrations across launches and loads none of them if a file one lists
-// is missing, so a path registered once must stay in the build (see
-// scripts/build.js LEGACY_LAYOUT_FILES). The theme itself isn't registered
-// any more: Margin's content script asks the background for its package
-// (Margin 2: background/theme-package.js).
+// Content scripts registered at runtime: the page's first paint, while
+// Margin.app draws Margin (shared/app-link.js appDraws: linked or
+// reconnecting). Not linked, no page has a box (Margin 2 Phase 2 step 5): a
+// page loads none of Margin's page scripts. Then the theme's package for
+// Margin.app (background/theme-package.js), not a registration.
+//
+// The first paint (Margin 2 Phase 3; PLAN.md §14, Spike 4): one registration,
+// `margin-page`, in the top frame at document_start: the page's script in its
+// own world (content/page/main.js) and CSS that spells a layout (the insets
+// and corner from Margin.app's layout for its windows: shared/page-box.js
+// layoutFiles) and says the theme with its look around the box
+// (firstPaintFile). Registrations are the same for every window, so the
+// layout most windows have is registered, and a window with another gets its
+// own as each of its pages commits (fixUp: scripting.insertCSS, on
+// webNavigation.onCommitted). Registered again only when that layout or the
+// theme changes, and a layout only once it's been the same for
+// LAYOUT_SETTLE_MS: WebKit keeps every registration it was given applying to
+// new pages (until it restarts), so each one piles up there, and a resize of
+// the sidebar sends many layouts; meanwhile the fix-up has new pages right.
+// Once registered in a run of Safari it's only ever updated, never taken
+// away: no longer linked (or no box anywhere), it's updated to a layout of
+// zeros, which a page's world reads as no box and leaves the page alone.
+// Taken away and registered again, WebKit kept drawing the one in between
+// (the host, 2026-11-05: on, then off.css alone, then on again gave every
+// new page off.css's word), where an update's newest files win (back to a
+// layout registered before, after two others: right). A Safari started
+// since has none left over, and gets nothing until it's linked.
+//
+// Safari keeps registrations across launches and loads none of them if a
+// file one lists is missing, so a path registered once stays in the build
+// (scripts/build.js LEGACY_FILES: the build before Phase 3's placeholders).
 import { platform } from '../shared/platform.js';
 import { APP_LINK_KEY, appDraws } from '../shared/app-link.js';
+import { firstPaintFile, layoutFiles, layoutOfFiles, layoutOwnCss, spelled } from '../shared/page-box.js';
 import { themeFor } from '../themes/index.js';
-import { api } from './store.js';
+import { PACKAGE_THEMES } from '../themes/packages.js';
+import { api, cached, isOwner } from './store.js';
 import { storeActiveTheme } from './theme-package.js';
 
-// ---- first-paint placeholder ------------------------------------------------
+const PAGE_ID = 'margin-page';
+// The build before Phase 3's first-paint placeholder (its file now an empty
+// stub: scripts/build.js LEGACY_FILES): dropped where it's still registered.
+const PREVIOUS_IDS = ['margin-docked'];
+const PAGE_JS = 'content/page.bundle.js';
+const FULLSCREEN_ONLY_JS = 'content/page/fullscreen-only.js';
+const LAYOUT_SETTLE_MS = 2000;
 
-// Wherever pages have a box, register the theme's placeholder CSS (Arcadia:
-// themes/arcadia/docked/w-<width>.css, one per sidebar width, or closed.css for
-// the frame alone): the browser applies it before the page's first paint, ahead
-// of content scripts, so the box and the frame are there from the first frame.
-// Feature-detected; without the scripting API the sidebar simply appears
-// when the content script runs.
-const DOCKED_ID = 'margin-docked';
-
-// Chrome, where Margin works only in full screen.
+// Chrome, where Margin works only in full screen: the page's script stays
+// out of windows with a toolbar itself (content/page/fullscreen-only.js),
+// and the CSS draws only where it marks the page.
 const worksInWindows = (settings) => !platform?.marginFullscreen || settings?.fullscreenOnly === false;
-// What the registrations follow, as stored (the link's state as pages see it:
-// background/link.js writes it as the copy in charge, and keeps it across a
-// background's restart).
-const read = async () => {
-  const got = await api.storage.local.get(['settings', APP_LINK_KEY]);
-  return { settings: got.settings, linked: appDraws(got[APP_LINK_KEY]) };
-};
 const anyFullscreen = async () => (await api.windows.getAll().catch(() => [])).some((win) => win.state === 'fullscreen');
 
-// What to register: [{ id, css, matches }], from the settings. Only where Margin
-// works in every window: CSS can't tell one window from another, so in Chrome's
-// full-screen-only mode the box and frame come with the page's script, which can.
-export function placeholderPlan(settings, { theme = themeFor(settings), showing = worksInWindows(settings) } = {}) {
-  if (!showing) return [];
-  const css = settings?.sidebarPinnedOpen ? theme.placeholder?.(settings) : settings?.frameWhenHidden !== false ? theme.closedPlaceholder : null;
-  return css ? [{ id: DOCKED_ID, css: [css], matches: ['<all_urls>'] }] : [];
+/** @typedef {{ left: number, top: number, right: number, bottom: number, radius: number }} Layout */
+// A window's layout as Margin.app measured it (shared/app-link.js layouts:
+// insets from the window's edges, and the card's corner), spelled.
+/** @param {any} l @returns {Layout | null} */
+export const layoutOf = (l) => (l?.insets ? spelled({ ...l.insets, radius: l.radius }) : null);
+/** @param {Layout | null} layout */
+const hasBox = (layout) => !!layout && ['left', 'top', 'right', 'bottom'].some((side) => layout[side] >= 0.5);
+/** @param {Layout | null} layout */
+const keyOf = (layout) => (layout ? JSON.stringify(spelled(layout)) : 'none');
+
+// Before Margin.app has measured any window: Arcadia's geometry from the
+// settings (beside the sidebar with Keep open, else in the frame, else none).
+const FRAME = 8;
+const RADIUS = 6.25; // Arcadia's card
+/** @returns {Layout | null} */
+export function layoutFromSettings(settings, theme = themeFor(settings)) {
+  if (settings?.sidebarPinnedOpen) return { left: theme.sidebarWidth?.(settings) ?? 260, top: FRAME, right: FRAME, bottom: FRAME, radius: RADIUS };
+  return settings?.frameWhenHidden !== false ? { left: FRAME, top: FRAME, right: FRAME, bottom: FRAME, radius: RADIUS } : null;
 }
 
-async function syncDockedCss() {
-  if (!api.scripting?.registerContentScripts) return;
-  const { settings, linked } = await read();
-  const want = placeholderPlan(settings, { showing: linked && worksInWindows(settings) });
-  const current = await api.scripting.getRegisteredContentScripts({ ids: [DOCKED_ID] });
-  const key = (list) => JSON.stringify(list.map((s) => [s.id, s.css ?? []]));
-  if (key(want) === key(current)) return;
-  if (current.length) await api.scripting.unregisterContentScripts({ ids: current.map((s) => s.id) });
-  if (want.length) {
-    await api.scripting.registerContentScripts(want.map(({ id, css, matches }) => ({ id, css, matches, runAt: 'document_start', allFrames: false })));
+/**
+ * The layout to register: the one most windows have (a tie: the one
+ * registered now, if it's among them, so a tie never re-registers), else, with
+ * no window measured yet, the settings'.
+ * @param {any} settings @param {Record<string, any>} layouts the link's @param {string | null} [registered] keyOf the registered one
+ * @returns {Layout | null}
+ */
+export function chooseLayout(settings, layouts, registered = null) {
+  const count = new Map();
+  for (const l of Object.values(layouts ?? {})) {
+    const layout = layoutOf(l);
+    if (!layout) continue;
+    const key = keyOf(layout);
+    count.set(key, { layout, n: (count.get(key)?.n ?? 0) + 1 });
   }
+  if (!count.size) return layoutFromSettings(settings);
+  const best = [...count.entries()].sort(([ka, a], [kb, b]) => b.n - a.n || Number(kb === registered) - Number(ka === registered))[0][1].layout;
+  return hasBox(best) ? best : null;
 }
 
-// ---- the page's box ----------------------------------------------------------
+/** The theme whose first paint pages get: the active one's, else Arcadia's. */
+const firstPaintTheme = (settings) => (PACKAGE_THEMES.includes(settings?.theme) ? settings.theme : PACKAGE_THEMES[0]);
 
-// Its script in the page's world (content/page/main.js), in the top frame.
-// Registered only while pages have a box, so a page Margin leaves alone loads
-// nothing there: Keep open (at the sidebar's edge), or hidden with the frame (at
-// the frame's). The file before it says where the box starts (built by
-// scripts/build.js): one file per width, because a script registered here
-// can't be given a value. Where Margin works only in full screen (Chrome):
-// only while a window is, and the script itself stays out of windows with a
-// toolbar (content/page/fullscreen-only.js). A page that misses it asks for it
-// (content/page-link.js, handlers.js injectPage).
-const PAGE_ID = 'margin-page';
-const PAGE_JS = 'content/page.bundle.js';
-const FRAME_LEFT = 8;
-const FULLSCREEN_ONLY_JS = 'content/page/fullscreen-only.js';
-/** @returns {string[] | null} the scripts, or null: no box */
-export function pagePlan(settings, { theme = themeFor(settings), showing = worksInWindows(settings) } = {}) {
-  if (!showing) return null;
-  const left = settings?.sidebarPinnedOpen ? theme.sidebarWidth?.(settings) ?? 260 : settings?.frameWhenHidden !== false ? FRAME_LEFT : null;
-  if (left == null) return null;
-  return [`content/page/at-${left}.js`, ...(worksInWindows(settings) ? [] : [FULLSCREEN_ONLY_JS]), PAGE_JS];
+const NO_BOX = Object.freeze({ left: 0, top: 0, right: 0, bottom: 0, radius: 0 });
+/**
+ * What to register: the first paint at the layout (`on`), the same at a
+ * layout of zeros (no box: after a first paint in this run of Safari), or
+ * null (nothing).
+ * @param {any} settings @param {{ linked: boolean, showing?: boolean, layout: Layout | null, wasOn?: boolean }} options
+ * @returns {{ js: string[], css: string[], on: boolean } | null}
+ */
+export function pagePlan(settings, { linked, showing = worksInWindows(settings), layout, wasOn = false }) {
+  const on = linked && showing && hasBox(layout);
+  if (!on && !wasOn) return null;
+  return { js: [...(worksInWindows(settings) ? [] : [FULLSCREEN_ONLY_JS]), PAGE_JS], css: [...layoutFiles(on ? /** @type {Layout} */ (layout) : NO_BOX), firstPaintFile(firstPaintTheme(settings))], on };
 }
+
+// ---- the registration ------------------------------------------------------------
+
+// Whether a first paint was registered in this run of Safari (storage.session:
+// a background started again keeps it): from then on it's only updated.
+const ON_KEY = 'firstPaintOn';
+let onHere = false;
+const markOn = async () => {
+  if (onHere) return;
+  onHere = true;
+  await api.storage.session?.set({ [ON_KEY]: true }).catch(() => {});
+};
+const wasOnHere = async () => onHere || !!(await api.storage.session?.get(ON_KEY).catch(() => null))?.[ON_KEY];
+/** The registered layout, as keyOf (null: none, or off): what fixUp compares a window's with. */
+let registeredKey = /** @type {string | null} */ (null);
+// The link's layouts as last read (fixUp, between syncs: setLayoutSource gives the live ones).
+let lastLayouts = {};
+let layoutSource = () => lastLayouts;
+/** Where the windows' layouts come from (background.js: the link's own, in memory). @param {() => Record<string, any>} fn */
+export const setLayoutSource = (fn) => { layoutSource = fn; };
+
+const sameScript = (a, b) => JSON.stringify(a ? { js: a.js ?? [], css: a.css ?? [] } : null) === JSON.stringify(b ? { js: b.js ?? [], css: b.css ?? [] } : null);
 async function syncPage() {
   if (!api.scripting?.registerContentScripts) return;
-  const { settings, linked } = await read();
-  const want = pagePlan(settings, { showing: linked && (worksInWindows(settings) || await anyFullscreen()) });
+  const got = await api.storage.local.get(['settings', APP_LINK_KEY]);
+  const settings = got.settings;
+  const linked = appDraws(got[APP_LINK_KEY]);
+  lastLayouts = got[APP_LINK_KEY]?.layouts ?? {};
+  for (const id of PREVIOUS_IDS) {
+    if ((await api.scripting.getRegisteredContentScripts({ ids: [id] }).catch(() => [])).length) await api.scripting.unregisterContentScripts({ ids: [id] }).catch(() => {});
+  }
   const [current] = await api.scripting.getRegisteredContentScripts({ ids: [PAGE_ID] });
-  if (JSON.stringify(want) === JSON.stringify(current?.js ?? null)) return;
-  if (current) await api.scripting.unregisterContentScripts({ ids: [PAGE_ID] });
-  if (want) await api.scripting.registerContentScripts([{ id: PAGE_ID, js: want, matches: ['<all_urls>'], runAt: 'document_start', allFrames: false, world: 'MAIN' }]);
+  // One from an earlier start of this background in this run of Safari (a
+  // relaunch's stored one loads with Safari: kept while the link is looked
+  // for, as `reconnecting`, else updated to no box).
+  if (current?.js?.length) await markOn();
+  const nowKey = current?.js?.length ? keyOf(layoutOfFiles(current.css)) : null;
+  const layout = chooseLayout(settings, lastLayouts, nowKey);
+  const showing = worksInWindows(settings) || await anyFullscreen();
+  const want = pagePlan(settings, { linked, showing, layout, wasOn: await wasOnHere() });
+  if (want && !sameScript(want, current)) {
+    const script = { id: PAGE_ID, js: want.js, css: want.css, matches: ['<all_urls>'], runAt: 'document_start', allFrames: false, world: 'MAIN' };
+    // Changed in place (above: the newest files win, and there's no moment
+    // with none for a page starting then); made where there's none yet. Only
+    // a browser with no update takes it away and makes it again.
+    if (current && api.scripting.updateContentScripts) await api.scripting.updateContentScripts([script]);
+    else {
+      if (current) await api.scripting.unregisterContentScripts({ ids: [PAGE_ID] });
+      await api.scripting.registerContentScripts([script]);
+    }
+  } else if (!want && current) {
+    // From before this run of Safari, with nothing drawn since: none left over to outweigh.
+    await api.scripting.unregisterContentScripts({ ids: [PAGE_ID] });
+  }
+  if (want) await markOn();
+  registeredKey = want?.on ? keyOf(layout) : null;
 }
 
 let registrations = Promise.resolve();
 export const queueRegistrations = () => {
   registrations = registrations
-    .then(syncDockedCss)
-    .catch((err) => console.warn('[margin] docked css', err))
     .then(syncPage)
-    .catch((err) => console.warn('[margin] page box', err))
+    .catch((err) => console.warn('[margin] first paint', err))
     .then(storeActiveTheme) // not a registration: the theme Margin.app is sent
     .catch((err) => console.warn('[margin] theme', err));
   return registrations;
 };
-// Settles once the registrations match the settings (tests).
+// Settles once the registrations match the settings and the link (tests).
 export const whenRegistered = () => registrations;
+
+// A window's layout changed (background.js: the link's onLayout): the
+// registration follows once layouts have settled, if the one to register is
+// another now.
+let settleTimer = null;
+export function layoutsChanged() {
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(() => {
+    settleTimer = null;
+    if (!isOwner() || registeredKey == null) return void queueRegistrations();
+    const settings = cached()?.settings;
+    if (keyOf(chooseLayout(settings, layoutSource(), registeredKey)) !== registeredKey) void queueRegistrations();
+  }, LAYOUT_SETTLE_MS);
+}
+
+// ---- a window with a layout of its own --------------------------------------------
+// Its page gets its window's layout as it commits, before its first
+// rendering update (Spike 4: 96 of 96 pages in WebKit and Chromium; the
+// page's world reads the variables again then: content/page/main.js). One
+// with no box there gets `--margin-fp: off`, so the registered one isn't drawn.
+/** What fixUp did, the last few (tests). @type {{ tabId: number, css: string, ok: boolean | string }[]} */
+export const fixUps = [];
+/** @param {number} tabId @param {string | undefined} documentId */
+async function fixUp(tabId, documentId) {
+  if (registeredKey == null || !isOwner() || !api.scripting?.insertCSS) return;
+  const windowId = cached()?.tabs?.[tabId]?.windowId ?? (await api.tabs.get(tabId).catch(() => null))?.windowId;
+  const own = windowId != null ? layoutOf(layoutSource()?.[windowId]) : null;
+  if (!own || keyOf(own) === registeredKey) return;
+  const css = hasBox(own) ? layoutOwnCss(own) : 'html:root { --margin-fp: off; }';
+  const insert = (target) => Promise.resolve(api.scripting.insertCSS({ target, css }));
+  const ok = await (documentId ? insert({ tabId, documentIds: [documentId] }).catch(() => insert({ tabId, frameIds: [0] })) : insert({ tabId, frameIds: [0] })).then(() => true, (err) => String(err?.message ?? err));
+  fixUps.push({ tabId, css, ok });
+  if (fixUps.length > 20) fixUps.shift();
+}
+export function watchCommits() {
+  api.webNavigation?.onCommitted?.addListener(({ tabId, frameId, documentId, url }) => {
+    if (frameId === 0 && /^(https?|file):/i.test(url ?? '')) void fixUp(tabId, documentId).catch(() => {});
+  });
+}

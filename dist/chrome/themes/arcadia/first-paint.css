@@ -1,0 +1,22 @@
+/* Arcadia's look at a page's first paint, around the box (shared/page-box.js
+   firstPaintCss adds the box itself; scripts/build.js writes the two as
+   content/layout/theme-arcadia.css, registered while Margin.app draws
+   Margin: background/registered.js). Margin.app's overlay draws the frame
+   over this as soon as it shows; this is what's there before, and where
+   the overlay isn't. Every rule only under <html> marked for Arcadia
+   (data-margin-at, set by the page's world: content/page/main.js), so a
+   registration WebKit keeps applying after it was dropped paints nothing.
+   The card's corner from the layout; its shadow and the frame's colour as
+   theme.css's (.card-edge, --frame). */
+@media screen {
+  /* <html> is the box: this is against it, and its overflow is the window's. */
+  html[data-margin-at="arcadia"]::after {
+    content: "" !important;
+    position: fixed !important;
+    inset: 0 !important;
+    border-radius: var(--margin-at-radius) !important;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24), 0 0 3px rgba(0, 0, 0, 0.06), 0 0 0 100vmax #9c9da1 !important;
+    pointer-events: none !important;
+    z-index: 2147483646 !important;
+  }
+}

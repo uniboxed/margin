@@ -1,14 +1,16 @@
 // Arcadia, Margin's first theme: Arc's look (a gray frame around the page
 // card, a sidebar of space chips, pins and tabs, a dark command palette).
 // The theme itself is the package in this folder (theme.json, theme.html,
-// theme.css: Margin 2, drawn by ui/runtime.js); this file describes what
-// the background needs before any page draws it: its settings and its
-// first-paint placeholders (docked/, until Phase 3 replaces them). UI-free:
-// the background, the state model and the build import it.
+// theme.css: Margin 2, drawn by ui/runtime.js; first-paint.css, its look at
+// a page's first paint). This file describes what the background needs
+// before anything draws it: its settings, and its sidebar's width for the
+// first paint when no layout of Margin.app's is known yet
+// (background/registered.js). UI-free: the background, the state model and
+// the build import it.
 
 // Sidebar width: resizable by dragging its right edge. Range measured from
-// Arc (Tirth's screenshots): 160–500 CSS px. Stored widths snap to 10px so the
-// first-paint placeholder (docked/w-<width>.css) has a file for every width.
+// Arc (Tirth's screenshots): 160–500 CSS px. Stored widths snap to 10px
+// (theme.json's step).
 const WIDTH = Object.freeze({ min: 160, max: 500, default: 260, step: 10 });
 const clampWidth = (w) => Math.min(WIDTH.max, Math.max(WIDTH.min, Number.isFinite(w) ? w : WIDTH.default));
 const snapWidth = (w) => clampWidth(Math.round(clampWidth(w) / WIDTH.step) * WIDTH.step);
@@ -33,12 +35,7 @@ export default Object.freeze({
   description: 'Arc’s look: a frame around the page, space chips, pins and tabs.',
   defaults,
   settingsOf,
-  // The first-paint placeholder while "Keep open" is on (registered CSS,
-  // applied before the page's first paint).
-  placeholder: (settings) => `themes/arcadia/docked/w-${sidebarWidth(settings)}.css`,
-  // While it isn't: the frame around the page, the page where it is.
-  closedPlaceholder: 'themes/arcadia/docked/closed.css',
-  // Where the page's box starts: the sidebar's edge (background/registered.js).
+  // Where the page's box starts with Keep open: the sidebar's edge (background/registered.js).
   sidebarWidth,
 });
 

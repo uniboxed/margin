@@ -28,7 +28,10 @@ const READ_PROPERTY = /^(margin|padding|border|box-?sizing|width|min-?width|max-
 const CHAIN_PROPERTY = /^(margin|font|zoom|--)/i;
 const INHERITED_INTO = /^(margin|padding|width|min-?width|max-?width|height|min-?height|max-?height)/i;
 
-export function startBox(left = DEFAULT_LEFT) {
+// `start`: where the box starts (content/page/main.js: the first paint's
+// layout, or the injection's left edge, inside the frame).
+/** @param {{ left?: number, top?: number, right?: number, bottom?: number }} [start] */
+export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bottom = FRAME } = {}) {
   let html = document.documentElement; // a page can replace it (rootArrived)
   // Sheets of the page's own world: `<style>` and style attributes are blocked by strict CSPs.
   const { replaceSync } = CSSStyleSheet.prototype;
@@ -63,9 +66,9 @@ export function startBox(left = DEFAULT_LEFT) {
   // its origin is in the window, and its scale: what coordinates go through.
   const box = {
     on: true,
-    left, top: FRAME, right: FRAME, bottom: FRAME,
-    dw: left + FRAME, dh: 2 * FRAME,
-    scale: 1, x: left, y: FRAME,
+    left, top, right, bottom,
+    dw: left + right, dh: top + bottom,
+    scale: 1, x: left, y: top,
     ours,
     body: () => document.body ?? html,
     // Full screen is the whole window again, read live: the resize that goes

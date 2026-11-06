@@ -10,7 +10,6 @@
     "test:app": "tools/app-tests/run.sh",
     "bench:theme": "node tests/theme/bench.js",
     "icons": "node scripts/make-icons.js",
-    "styles": "node scripts/build-styles.js",
     "build": "node scripts/build.js",
     "typecheck": "tsc -p .",
     "test:webkit": "tools/webkit-host/run.sh all",

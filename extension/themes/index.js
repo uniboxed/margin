@@ -1,9 +1,9 @@
-// The themes whose settings and first paint the background knows (theme.js,
-// UI-free, so the background, the state model and the build can import this
-// registry): Arcadia's placeholders and its sidebar width. What every
-// built-in theme looks like is its package (themes/packages.js, drawn by
-// ui/runtime.js); a package theme without an entry here (Neo-brutalism)
-// keeps its settings as saved and gets Arcadia's first paint until Phase 3.
+// The themes whose settings the background knows (theme.js, UI-free, so the
+// background, the state model and the build can import this registry):
+// Arcadia's sidebar width. What every built-in theme looks like is its
+// package (themes/packages.js, drawn by ui/runtime.js), with its look at a
+// page's first paint (themes/<id>/first-paint.css); a package theme without
+// an entry here (Neo-brutalism) keeps its settings as saved.
 import arcadia from './arcadia/theme.js';
 
 export const THEMES = Object.freeze({ [arcadia.id]: arcadia });

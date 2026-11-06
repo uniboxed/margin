@@ -10,6 +10,9 @@
 //              "Z…": all there at once, but its load comes late: an image that takes 3s;
 //              "Y…": an app's page: parsed at once with an empty body, its own content drawn by its script 0.25s
 //              later (window.__textAt), its load at 3s; window.__liftAt: when Margin's loading cover lifted)
+//   /fp/<Name>?late=N  a page that records where <html> is in each of its first frames (window.__fp:
+//              the page's first paint, Margin 2 Phase 3), holding Margin's word to its box back
+//              until N ms (as Safari runs content scripts late) so the first paint alone is seen
 //   /csp/<Name>  a page under a strict CSP, its sheet from /box.css
 //   /x/<name>  a fixture for the box (FIXTURES: pages with one thing a box has to get right)
 //   /other.css  a sheet of another origin, no CORS (on localhost: the page is on 127.0.0.1)
@@ -33,6 +36,24 @@ const BOX_BODY = '<h1 id=wide>Tall</h1><div id=full></div><div style="width: 400
 const TALL = '<div style="height: 5000px">tall</div>';
 // A read is a <margin-read> in <html> for a moment: this counts them.
 const COUNT_READS = `<script>window.__reads = 0; new MutationObserver((records) => { for (const r of records) for (const n of r.addedNodes) if (n.localName === 'margin-read') __reads++; }).observe(document.documentElement, { childList: true });</script>`;
+// Where <html> is in each of a page's first 40 frames (at each rendering
+// update, before it's drawn: after the page's world's own look, which asked
+// for its frame first), and what the first paint's CSS said then. Margin's
+// word to the page's box (`margin:box`) is held back until `late` ms, as
+// Safari's content scripts come about that late (Spike 4).
+const FIRST_FRAMES = `<script>(() => {
+  const late = Number(new URLSearchParams(location.search).get('late') || 0);
+  const fp = window.__fp = { frames: [], held: 0, heard: 0 };
+  addEventListener('margin:box', (e) => { if (performance.now() < late) { e.stopImmediatePropagation(); e.preventDefault(); fp.held++; } else fp.heard++; }, true);
+  const look = () => {
+    const html = document.documentElement;
+    const s = getComputedStyle(html);
+    const m = new DOMMatrix(s.transform);
+    fp.frames.push({ t: Math.round(performance.now()), x: m.e, y: m.f, w: Math.round(parseFloat(s.width)), mark: html.getAttribute('data-margin-at'), said: s.getPropertyValue('--margin-fp').trim(), left: s.getPropertyValue('--margin-at-left').trim(), frame: getComputedStyle(html, '::after').boxShadow });
+    if (fp.frames.length < 40) requestAnimationFrame(look);
+  };
+  requestAnimationFrame(look);
+})();</script>`;
 const FIXTURES = {
   // A page whose main thread stalls `stall` ms (default 1200), `after` ms
   // (default 30) after it handles being hidden, as Instagram's did in Safari
@@ -168,6 +189,11 @@ createServer((req, res) => {
   if (req.url === '/box.css') {
     res.setHeader('content-type', 'text/css');
     return res.end(BOX_CSS);
+  }
+  const firstPaint = /^\/fp\/(\w+)/.exec(req.url);
+  if (firstPaint) {
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    return res.end(`<!doctype html><html><head><meta charset="utf-8"><title>${firstPaint[1]}</title>${FIRST_FRAMES}<style>body{margin:0;font:20px sans-serif;background:#fff}</style></head><body><h1>Page ${firstPaint[1]}</h1><p>${'text '.repeat(400)}</p></body></html>`);
   }
   const strict = /^\/csp\/(\w+)/.exec(req.url);
   if (strict) {

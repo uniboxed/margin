@@ -58,7 +58,7 @@ globalThis.chrome = {
     getRegisteredContentScripts: async ({ ids } = {}) => [...fake.registered.values()].filter((s) => !ids || ids.includes(s.id)).map((s) => structuredClone(s)),
     registerContentScripts: async (list) => { for (const s of list) fake.registered.set(s.id, structuredClone(s)); },
     unregisterContentScripts: async ({ ids } = {}) => { for (const id of ids ?? [...fake.registered.keys()]) fake.registered.delete(id); },
-    updateContentScripts: async () => {},
+    updateContentScripts: async (list) => { for (const s of list) fake.registered.set(s.id, { ...fake.registered.get(s.id), ...structuredClone(s) }); },
   },
   storage: {
     local: {
@@ -94,24 +94,33 @@ function ask(type, payload = {}, from = 1) {
 
 await import('../extension/background.js');
 const store = await import('../extension/background/store.js');
-const { whenRegistered } = await import('../extension/background/registered.js');
+const { queueRegistrations, whenRegistered } = await import('../extension/background/registered.js');
+const { layoutFiles } = await import('../extension/shared/page-box.js');
 for (let i = 0; i < 100 && !store.isSynced(); i++) await sleep(10);
 assert.ok(store.isSynced(), 'synced');
 const settled = async () => { await sleep(30); await whenRegistered(); await sleep(10); };
 
-test('not linked: nothing is registered for the first paint (no box, no frame); linked or reconnecting, the box and its placeholder are; off again, they\'re dropped', async () => {
+test('not linked: nothing is registered for the first paint (no box, no frame); linked or reconnecting, the first paint is; off again, the same at no box (updated, never taken away); the build before\'s placeholder dropped', async () => {
   await settled();
   assert.deepEqual([...fake.registered.keys()], [], 'not linked: nothing');
+  fake.registered.set('margin-docked', { id: 'margin-docked', css: ['themes/arcadia/docked/w-260.css'] }); // the build before Phase 3's
   await chrome.storage.local.set({ appLink: { state: 'linked', layouts: {} } });
   await settled();
-  assert.deepEqual([...fake.registered.keys()].sort(), ['margin-docked', 'margin-page']);
-  assert.deepEqual(fake.registered.get('margin-page').js, ['content/page/at-8.js', 'content/page.bundle.js']);
-  await chrome.storage.local.set({ appLink: { state: 'reconnecting', layouts: {} } });
+  assert.deepEqual([...fake.registered.keys()], ['margin-page'], 'the build before\'s placeholder dropped');
+  const page = fake.registered.get('margin-page');
+  assert.deepEqual(page.js, ['content/page.bundle.js']);
+  assert.deepEqual(page.css, [...layoutFiles({ left: 8, top: 8, right: 8, bottom: 8, radius: 6.25 }), 'content/layout/theme-arcadia.css'], 'no window measured yet: the frame from the settings');
+  assert.equal(page.world, 'MAIN');
+  await chrome.storage.local.set({ appLink: { state: 'reconnecting', layouts: { 1: { insets: { left: 260, top: 8, right: 8, bottom: 8 }, radius: 10 } } } });
   await settled();
-  assert.deepEqual([...fake.registered.keys()].sort(), ['margin-docked', 'margin-page'], 'reconnecting: still there');
+  assert.ok(fake.registered.get('margin-page')?.js, 'reconnecting: still there');
+  void queueRegistrations(); // (the link's layouts settled: background.js layoutsChanged)
+  await settled();
+  assert.deepEqual(fake.registered.get('margin-page').css.slice(0, -1), layoutFiles({ left: 260, top: 8, right: 8, bottom: 8, radius: 10 }), 'at the window\'s layout');
   await chrome.storage.local.set({ appLink: { state: 'off', layouts: {} } });
   await settled();
-  assert.deepEqual([...fake.registered.keys()], [], 'off: dropped');
+  assert.deepEqual([...fake.registered.keys()], ['margin-page']);
+  assert.deepEqual(fake.registered.get('margin-page').css, [...layoutFiles({ left: 0, top: 0, right: 0, bottom: 0, radius: 0 }), 'content/layout/theme-arcadia.css'], 'off: no box');
 });
 
 test('not linked: ⌘T and the palette\'s key open Margin\'s new-tab page, once a press however it came; the sidebar\'s key does nothing; no page is asked to draw a palette', async () => {

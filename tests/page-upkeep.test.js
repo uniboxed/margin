@@ -1,7 +1,7 @@
 // What the page-world box code (content/page/) and the layout
 // (content/layout.js) keep, against a small fake of the browser's DOM: style
-// reads it doesn't repeat, and entries for what the page let go that don't
-// pile up. The fakes are only what these modules touch.
+// reads it doesn't repeat, entries for what the page let go that don't pile
+// up, and the box the layout gives. The fakes are only what these modules touch.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -45,13 +45,9 @@ function wait(ms) {
 }
 
 // ---- the DOM, as far as these modules go ------------------------------------
-const styleReads = { count: 0, pseudo: 0 };
+const styleReads = { count: 0 };
 const styleOf = new Map(); // node → position
-globalThis.getComputedStyle = (node, pseudo) => {
-  if (pseudo) {
-    styleReads.pseudo++;
-    return { content: node.placeholder ? '""' : 'none' };
-  }
+globalThis.getComputedStyle = (node) => {
   styleReads.count++;
   return { position: styleOf.get(node) ?? 'static' };
 };
@@ -253,93 +249,6 @@ test('sheets: @media rules a page took out are swept as they pile up, not only w
 });
 
 // ---- layout.js ----------------------------------------------------------------
-test('layout: whether the first-paint placeholder is there is asked once, not on every render; a change of its settings switches it off unasked', async () => {
-  const { startLayout } = await import('../extension/content/layout.js');
-  let state = { settings: { sidebarPinnedOpen: true } };
-  const page = { marks: { dataset: {} }, link: { can: true }, state: () => state, active: () => true, dormant: () => false, setBox() {} };
-  const layout = startLayout(/** @type {any} */ (page));
-  styleReads.pseudo = 0;
-  for (let n = 0; n < 10; n++) layout.settle();
-  assert.equal(styleReads.pseudo, 1, 'none here: asked once in ten renders');
-  assert.equal(html.dataset.marginDocked, undefined, '<html> untouched');
-  clock += 5001;
-  layout.settle();
-  assert.equal(styleReads.pseudo, 2, 'asked again a while later (registrations that came back late)');
-  // Keep open turned off: the frame's placeholder will be registered.
-  state = { settings: { sidebarPinnedOpen: false } };
-  layout.settle();
-  assert.equal(html.dataset.marginDocked, 'off', 'switched off before it arrives');
-  assert.equal(styleReads.pseudo, 2, 'without asking');
-  // A new <html> (document.open): asked about it, and switched off as it's there.
-  const fresh = node('html');
-  fresh.placeholder = true;
-  document.documentElement = fresh;
-  layout.settle();
-  layout.settle();
-  assert.equal(styleReads.pseudo, 3);
-  assert.equal(fresh.dataset.marginDocked, 'off');
-});
-
-test('layout: a placeholder registered after the page started is caught when it\'s shown, or once the wait is over on a page in sight', async () => {
-  const { startLayout } = await import('../extension/content/layout.js');
-  timers.clear();
-  const state = { settings: { sidebarPinnedOpen: true } };
-  const page = { marks: { dataset: {} }, link: { can: true }, state: () => state, active: () => true, dormant: () => false, setBox() {} };
-  const shownOrHidden = [];
-  const add = document.addEventListener;
-  document.addEventListener = (type, fn) => type === 'visibilitychange' && shownOrHidden.push(fn);
-  const layout = startLayout(/** @type {any} */ (page));
-  document.addEventListener = add;
-  const visibility = (hidden) => {
-    document.hidden = hidden;
-    for (const fn of shownOrHidden) fn();
-  };
-  try {
-    // A tab restored behind: drawn, then Safari's registrations come back.
-    const restored = node('html');
-    document.documentElement = restored;
-    document.hidden = true;
-    styleReads.pseudo = 0;
-    layout.settle();
-    restored.placeholder = true;
-    wait(1000);
-    layout.settle();
-    assert.equal(styleReads.pseudo, 1, 'hidden: asked once');
-    assert.equal(timers.size, 0, 'and not again once the wait is over: the show asks');
-    visibility(false); // switched to within the wait
-    assert.equal(restored.dataset.marginDocked, 'off', 'shown: asked at once, and switched off');
-    // Hidden, then drawn for a switch: asked at that render.
-    const prepared = node('html');
-    document.documentElement = prepared;
-    layout.settle();
-    visibility(true);
-    prepared.placeholder = true;
-    styleReads.pseudo = 0;
-    layout.settle();
-    layout.settle();
-    assert.equal(styleReads.pseudo, 1, 'the first render after it was hidden asks');
-    assert.equal(prepared.dataset.marginDocked, 'off');
-    // In sight (Margin updated with the tab in front): a render within the
-    // wait asks once it's over.
-    const inSight = node('html');
-    document.documentElement = inSight;
-    visibility(false);
-    layout.settle();
-    inSight.placeholder = true;
-    wait(1000);
-    styleReads.pseudo = 0;
-    layout.settle();
-    layout.settle();
-    assert.equal(styleReads.pseudo, 0, 'not within the wait');
-    wait(4000);
-    assert.equal(styleReads.pseudo, 1, 'once it\'s over');
-    assert.equal(inSight.dataset.marginDocked, 'off');
-  } finally {
-    document.hidden = false;
-    timers.clear();
-  }
-});
-
 test('layout: linked, the page\'s box is the app\'s layout for its window (none with nothing at any edge, or out of the way), and left as it is until there is one; not linked, no box', async () => {
   const { startLayout } = await import('../extension/content/layout.js');
   let active = true;
