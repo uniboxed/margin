@@ -89,7 +89,7 @@ One documented, versioned object, the same in both hosts: `window` (mode `fullsc
 
 1. The runtime renders the theme at the browser window's size and measures `<m-page>`: `left, top, right, bottom` insets and the corner radius.
 2. The host sends that layout to the extension for that window (`setLayout {windowId, insets, radius, mode}`).
-3. The extension keeps it per window and hands it to the pages: live pages get it over the existing `margin:box` message (it already carries four insets), and new pages get it before their first paint (Phase 3 changes the first-paint path so it isn't one file per width).
+3. The extension keeps it per window and hands it to the pages: live pages get it over the existing `margin:box` message (it already carries four insets), and new pages get it before their first paint (done in Phase 3: registered CSS variables spelled in digit files, one first-paint file per theme, and the window's own sheet as a page commits; section 14, Spike 4).
 4. When the theme's layout changes (sidebar hidden, a theme switch, the window resized, windowed versus full screen), steps 1–3 repeat. Themes can animate the change; the page follows the end state.
 
 The theme's `theme.json` also declares layout hints Margin needs before it can render, such as the reveal edge for a hidden sidebar and the minimum and maximum sidebar width, so first paint and the in-page fallback can work out the box without a render.
@@ -154,15 +154,15 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
   - **After a relaunch:** restored browser tabs are matched to Margin's tabs by address and order (today's `restore.js` logic); unmatched Margin tabs stay not open.
   - **Auto-archive** still moves tabs unused for `archiveAfterHours` into the archive, open or not.
   - Reopening a not-open tab starts fresh: its Back history and scroll position are gone, as when reopening any closed tab.
-  - **Sleeping tabs become closed-but-kept (Tirth, 2026-11-04):** after `sleepAfterHours` unused, Margin closes the browser tab itself and keeps it as a not-open Margin tab, with the same skips as now (the tab in front, playing sound, drafts, the never-sleep list). This frees all of its memory (no sleep page left running) and leaves nothing broken if Margin is removed. Chrome and Edge keep `tabs.discard`, which keeps the tab and its history at no memory cost. The sleep page (`extension/sleep/`, the sleep-page parts of `shared/sleep.js`, the copy moves and Back guards) goes in Phase 3; the choice of which tabs sleep and the draft check stay.
+  - **Sleeping tabs become closed-but-kept (Tirth, 2026-11-04):** after `sleepAfterHours` unused, Margin closes the browser tab itself and keeps it as a not-open Margin tab, with the same skips as now (the tab in front, playing sound, drafts, the never-sleep list). This frees all of its memory (no sleep page left running) and leaves nothing broken if Margin is removed. Chrome and Edge keep `tabs.discard`, which keeps the tab and its history at no memory cost. The sleep page went in Phase 3 (with its copy moves, Back guards and "Wake all"'s path in Safari); a tab an earlier build left on it is kept as its Margin tab, or loaded at its address if it's in front. The choice of which tabs sleep and the draft check stay.
 - Reuse from `feat/native-panel`: ExtensionLink, LinkSocket, LinkMessage, StateMirror, PanelWebView (own scheme), PanelController (minus the private calls), AppDelegate, the Xcode scripts. Not reused: SkyLight (private), AXSafari (Accessibility), Safari-sidebar Eligibility.
 
 ## 7. The extension, changed
 
 - **Switching (done in Phase 2 step 8, 2026-11-05):** `focusTab` is `tabs.update(active)`, and `windows.update(focused)` only if the window isn't focused (`background/tabs.js`, from about 1,100 lines). Navigation (next/previous tab and space) keeps its chaining, without wakes and passing checks. Each switch is one line in Margin.app's log (`background/switch-log.js`).
-- **Page box:** insets come from the theme's layout per window instead of `sidebarWidth` and a hard-coded 8 px frame (`box.js FRAME`, `build-styles.js FRAME`, `registered.js FRAME_LEFT`).
-  - First paint: the registered first-paint CSS carries the insets as CSS variables (`boxRules` already writes them on `<html>`), and the page's world reads them from there instead of from one `at-<width>.js` file per width.
-  - Per-layout first-paint CSS is generated at run time and registered, instead of 35 files per theme.
+- **Page box (done):** insets come from the theme's layout per window (Phase 2 step 3a for live pages; Phase 3 for the first paint).
+  - First paint (Phase 3): the registered CSS carries the insets as variables, spelled in digit files (`shared/page-box.js layoutFiles`), the theme's first-paint file builds the box from them under a mark the page's world sets (`data-margin-at`), and the page's world reads them (`content/page/main.js`). A window whose layout isn't the registered one gets its own sheet as each page commits (`registered.js fixUp`, `webNavigation`). No file per width: the 36 placeholders and the `at-*.js` files are empty stubs for one update's sake (`scripts/build.js LEGACY_FILES`).
+  - The registration is never taken away once made in a run of Safari, only updated (to zeros for no box): WebKit kept drawing a dropped registration in between (section 14).
 - **No UI in pages (done in Phase 2 step 5):** pages get only the box, while the app is linked (none otherwise: the page as it is), and the small scripts that must run in a page (gestures, pinch, the draft check, the navigation and ⌘T keys). The UI runtime, the theme loader and the in-page host are out of the content script and the new-tab page. With no app linked, Margin's new-tab page says Margin.app isn't running, with a button that starts it and an address field; Phase 7 makes that the prompt to install the app (and adds the toolbar button).
 - **Sleeping tabs:** kept; their checks no longer look at keep-ready, warm-up or slow Safari (done in Phase 2 step 8); they still wait for a switch under way.
 - **Safari manifest:** background as a page (for the link), `nativeMessaging` kept.
@@ -170,24 +170,24 @@ Reuse the protocol from `feat/native-panel` (which worked in Tirth's Safari), ge
 
 ## 8. What gets deleted
 
-Counted on `feat/sleeping-tabs` (wc -l). About 9,000 lines of extension code and about 11,000 lines of tests and scenarios. Phase 2 step 8 deleted the switching rows below (about 6,000 lines of extension code and 8,600 of tests); the rest is still Phase 3's.
+Counted on `feat/sleeping-tabs` (wc -l). About 9,000 lines of extension code and about 11,000 lines of tests and scenarios. Phase 2 step 8 deleted the switching rows below (about 6,000 lines of extension code and 8,600 of tests); Phase 3 the rest (2026-11-05: `DECISIONS.md` "Margin 2, Phase 3"). **Done.**
 
 | Where | Goes | Why |
 |---|---|---|
 | `background/tabs.js` | about 3,200 of 4,018 lines: wakes, holds, sidebar preparation, cover and paint barriers, ping gate, `focusTabNow`, WebKit's mark and introductions, kicks, restore behind, warm tab | Anti-blackout switching |
 | `background/keep-ready.js` (577), `warm-up.js` (586), `slow.js` (134) | Whole files | Anti-blackout switching |
-| `background/diagnostics.js` (159) and the switch-log button | Whole file | Development diagnostics |
+| `background/diagnostics.js` (159) and the switch-log button | Whole file (done, Phase 3: sleep passes, the open-tab repair and an empty storage are lines in Margin.app's log) | Development diagnostics |
 | `background.js`, `handlers.js`, `navigation.js` | Introduction and warm-up hooks, the deadline guard and `arrival`, `prewake`, `away`, `inView`, `warmUp*`, `pageBlinked`, `switchLog`, carry-open | Anti-blackout and in-page-only |
 | `content/core.js` | about 700 of 1,496 lines: first show, prepared show, covers, warm-up note, switching cover | Anti-blackout |
 | `content/hold.js` (72), `idle.js` (135), `shared/page-ready.js` (197), `shared/away.js` (80) | Whole files | Anti-blackout |
-| `themes/register.js`, theme JS bundles, `assets.js`, 35 `docked/w-*.css` per theme, `at-<width>.js` | Replaced by theme packages and run-time layout CSS | Themes v2 |
+| `themes/register.js`, theme JS bundles, `assets.js`, 35 `docked/w-*.css` per theme, `at-<width>.js` | Replaced by theme packages (Phase 1 step 4) and the first paint from layout variables (Phase 3; the previous build's paths stay as empty stubs for an update) | Themes v2 |
 | `themes/arcadia/sidebar.js` (1,742), `chrome.js`, `content.js`, `palette.js`, `newtab.js` | Their behavior moves into the runtime (about 1,600 lines); their structure and look into Arcadia's HTML and CSS; hover prewake and the warm-up note are deleted | Themes v2 |
-| `shared/platform.js` | `wakeTabs`, `keepTabsReady`, `introduceTabs`, `restoreTabs`, `warmUp`, `prepareSidebar`, `hiddenPaints`, `asksBackground()`, `madeAfresh()` | Anti-blackout |
-| Tests | in-window, wake (except its new-tab-hint and sleeping-switch cases), keep-ready, warm-up, slow-safari, page-ready, hold, idle, away; parts of answer-in-time, startup, slow-start, spaces-switch | They test deleted code |
-| WebKit host scenarios | unseen, unseennav, prepared, introduce, arrival, behind*, shell*, heavyflip, unloaded*, deferred, loadcover, twins, slowunloaded, restartrepair, recorder | They test deleted code |
-| `DECISIONS.md` | Nothing deleted: a new entry marks the anti-blackout sections (2026-10-26 to 2026-11-04) and the theme-JS sections as superseded, by heading | History stays readable |
+| `shared/platform.js` | `wakeTabs`, `keepTabsReady`, `introduceTabs`, `restoreTabs`, `warmUp`, `prepareSidebar`, `hiddenPaints`, `asksBackground()`, `madeAfresh()` (all gone; `prepareSidebar` and its `stateRev` in Phase 3) | Anti-blackout |
+| Tests | in-window, wake (except its new-tab-hint and sleeping-switch cases), keep-ready, warm-up, slow-safari, page-ready, hold, idle, away; parts of answer-in-time, startup, slow-start, spaces-switch; in Phase 3 the sleep page's, `stateRev`'s, the placeholders', the takeover's, and the in-page UI's e2e tests (the e2e tests of kept behaviour that drive the in-page UI are kept, skipped) | They test deleted code |
+| WebKit host scenarios | unseen, unseennav, prepared, introduce, arrival, behind*, shell*, heavyflip, unloaded*, deferred, loadcover, slowunloaded, restartrepair, recorder; in Phase 3 sleep-copy (now sleep-leftover) and update-old-layout (`twins` stays: it tests copies, kept) | They test deleted code |
+| `DECISIONS.md` | Nothing deleted: the "Margin 2, Phase 3" entry marks the anti-blackout sections (2026-10-26 to 2026-11-04) and the theme-JS sections as superseded, by heading (done) | History stays readable |
 
-Kept as they are: state model, stored state and copies, restore, tab updates, cut-off, site icons, search engine, archive, sleep (decoupled), the page box in the page's world, gestures, pinch, edits, and their tests.
+Kept as they are: state model, stored state and copies, restore, tab updates, cut-off, site icons, search engine, archive, sleep (decoupled), the page box in the page's world, gestures, pinch, edits, and their tests. Also gone in Phase 3, as only the deleted machinery or an update from before Margin 2 used them: the takeover of an earlier build's sidebar in pages and its reload, the guards for pages a pre-Margin 2 layout laid out, the page world's catch-up for a prepared show, the pages' blink watch, `build-styles.js`, and the stubs and old registration ids no build since registers.
 
 ## 9. The three built-in themes
 
@@ -226,11 +226,12 @@ Each phase ends with the unit tests passing, the WebKit host scenarios that appl
 - The extension's background becomes a page in Safari; the link replaces the in-page UI, which then leaves the extension altogether (step 5: pages never draw Margin's UI, linked or not, so what's tested in Safari is the app's).
 - Done when: in full-screen Safari, every feature works from the app's windows, pages fit the theme's slot, and nothing is drawn in pages.
 
-### Phase 3: slim the extension
+### Phase 3: slim the extension (done, 2026-11-05)
 
 - Delete section 8's code and tests. `focusTab` becomes the plain switch. Page box insets from layouts; the new first-paint path; sleep decoupled.
 - **Partly done in Phase 2 step 8 (2026-11-05)**, because the old switching made the overlay's highlight flicker in Tirth's Safari: the plain switch, and the whole background side of the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers and paint barriers, the ping gate, keep-ready, the warm-up, slow Safari), `content/hold.js`, `idle.js`, `shared/page-ready.js`, `away.js`, the pages' preparation and first-show code, the switch log's entries, the two settings, their platform flags and their tests and WebKit scenarios (DECISIONS.md "Margin 2, Phase 2 step 8"). Still Phase 3's: the sleep page (`extension/sleep/`), `diagnostics.js` (now only repairs, sleep and created tabs), the state's write numbers for prepared pages (`platform.prepareSidebar`, `stateRev`), theme JS leftovers, page box insets from layouts and the new first-paint path.
 - Done when: the code is gone, the tests pass, and switching in Safari is plain (Safari's own blink, no Margin covers).
+- **Done (2026-11-05)** on `feat/margin-app`: the sleep page, `diagnostics.js`, `stateRev`/`prepareSidebar`, the theme JS leftovers and stubs, the first paint at any layout, the obsolete tests, and a cleanup sweep (`DECISIONS.md` "Margin 2, Phase 3"; Tirth's Safari checks: `TESTING.md` "Margin 2 Phase 3").
 
 ### Phase 4: windowed mode
 
@@ -312,6 +313,7 @@ All four spikes ran; the raw notes, numbers and code are on the spike branches. 
 - Per window: the most common layout is registered; other windows get one `insertCSS` sheet on `webNavigation.onCommitted` (a new `webNavigation` permission). It arrived before the first rendering update in 96 of 96 pages.
 - Results: right in the first frame in 64 of 64 WebKit-host pages and in Chromium, including with the content script held back 250 ms the way Safari delays it; without the fix-up, every page jumped at about 255 ms.
 - Still to check in Safari itself: where its content scripts and `insertCSS` land against its first paint, and whether the leftover registered CSS survives a relaunch.
+- **Built in Phase 3 (2026-11-05),** with what the WebKit host showed then: a registration taken away and made again loses to the one in between (on, then `off.css` alone, then on again: every new page got `off.css`'s word), where an update's newest files win (back to a layout registered two layouts before: right). So the registration is only ever updated once made in a run of Safari, to a layout of zeros when nothing should be drawn, and nothing draws unless the page's world, reading the newest registration's theme and a layout with a box, marks the page. Measured with Margin's content script held back 400 ms: 24 of 24 fresh pages in their box from their first frame (22 from the registration, at five layouts and back to an earlier one, and two from their window's own sheet before the registration followed), and 3 of 3 with no box from their first frame (no box at any edge, and Margin.app gone while WebKit kept the dropped registration). First frames at 12–20 ms.
 
 ## 15. Spaces across profiles (tested 2026-11-04)
 

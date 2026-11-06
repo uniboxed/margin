@@ -1,6 +1,8 @@
 # Margin
 
-An Arc-style sidebar for Safari, built as a Safari Web Extension (prototype). It recreates the feel of Arc inside real Safari:
+An Arc-style sidebar for Safari, built as a Safari Web Extension and a Mac app (prototype). It recreates the feel of Arc inside real Safari.
+
+> **Margin 2 (`PLAN.md`):** Margin.app draws Margin's UI (the sidebar, the palette, menus, notices) in its own windows around each full-screen Safari window, and pages draw none of it. The extension keeps the tabs and their state, puts each page in its box beside the sidebar (from its first frame), puts tabs to sleep and links to the app. The list below and "Known limitations" describe the first prototype's in-page UI; what's built now is in `PLAN.md` §10 and `DECISIONS.md` (the "Margin 2" entries).
 
 - **Hover-reveal sidebar** on every website. Move the cursor to the left edge and the sidebar slides in as a floating card over the page. With **Keep open**, it docks: the page sits beside it in its own box, as in a narrower window, inside an Arc-style frame.
 - **Spaces** (emoji chips) that filter the sidebar to that space's tabs, separately in each window. Create, rename, recolor, and delete them inline, and drag tabs onto a chip to move them.
@@ -66,110 +68,87 @@ The fastest loop: Safari loads `dist/safari/` straight from the repo (committed,
 
 **After `git pull`:** reload Margin from Safari → Settings → Extensions (or remove it and add the folder again), then reload open pages. After editing files yourself, run `npm run build` first. A temporary extension doesn't survive quitting Safari, so add it again after a relaunch.
 
+A temporary extension can't link to Margin.app (the link needs the packaged extension handler), so it draws no sidebar: use `npm run safari` for Margin 2.
+
 **Don't run both copies.** If the Xcode-built Margin app is also installed, turn that one off in Safari → Settings → Extensions. Two copies keep separate spaces, pins, and archives, and fight over the new-tab page.
 
 ## Building for Safari (local, macOS)
 
-Only needed for a real installable app (or if your Safari has no "Add Temporary Extension…"). The Xcode build is unsigned, so it also needs Safari → Settings → Developer → **Allow unsigned extensions**, which resets every time Safari quits.
-
-The Xcode project is generated locally and not committed (`xcode/` is git-ignored). From the repo root:
+`npm run safari` (above) is the way: it makes the Xcode project when it's missing or out of date, builds, signs and installs. What it runs, for doing it by hand: the Xcode project is generated locally and not committed (`xcode/` is git-ignored). From the repo root, after `npm run build`:
 
 ```sh
 scripts/make-xcode.sh
 open xcode/Margin/Margin.xcodeproj
 ```
 
-The script runs Apple's converter:
+The script runs Apple's converter on the Safari build:
 
 ```sh
 xcrun safari-web-extension-converter dist/safari --project-location xcode --app-name Margin --bundle-identifier io.tirth.margin --macos-only --swift --no-open
 ```
 
-It then fixes the bundle IDs. The converter names the app `io.tirth.Margin` (capitalized from the app name) but the extension `io.tirth.margin.Extension`, and Xcode refuses to build with "Embedded binary's bundle identifier is not prefixed with the parent app's bundle identifier." The script sets the app to `io.tirth.margin`, the extension to `io.tirth.margin.Extension`, and `extensionBundleIdentifier` in the app's Swift code to match, then prints all three (and the app's own ID in the extension handler).
+It then fixes the bundle IDs (the converter names the app `io.tirth.Margin`, the extension `io.tirth.margin.Extension`, and Xcode refuses an extension whose ID isn't prefixed by the app's: the script sets the app to `io.tirth.margin` and `extensionBundleIdentifier` in the app's Swift to match), turns the app's App Sandbox off (Developer ID: it listens on 127.0.0.1), and adds Margin.app's own code: `app/safari/` (the set-up window, the app delegate, the extension handler), `app/shell/` (the link to the extension, window tracking, the overlays drawn around the browser's windows, the data store) and the overlays' page (`dist/app/`, built from `app/overlay/` and `extension/ui/`). Choose the **Margin (macOS)** scheme and Run (⌘R), with the same Team on both targets under Signing & Capabilities.
 
-In Xcode, choose the **Margin (macOS)** scheme and Run (⌘R). Safari picks up the extension from the app. If signing complains, set the same Team (your Personal Team, or "Sign to Run Locally") on both targets under Signing & Capabilities.
+**After pulling new changes,** re-run `npm run safari`. By hand: re-run `scripts/make-xcode.sh` whenever files under `dist/safari/` or `app/` are added or removed, else just Run again in Xcode.
 
-**The set-up window.** Margin's app opens a window that walks through what Safari needs (Margin on, allowed on every website, new windows and tabs opening Margin, ⌘T freed for Margin) and checks each step as you go, with tests to run in Safari; plus recommended steps and the shortcuts. Its code is in `app/safari/` (SwiftUI in the converter's window, and the extension handler), copied into the generated project by the script. The checks come from the extension through native messaging, so they need this packaged app: a temporary extension can't report to it. Chrome and Edge come later.
-
-**After pulling new changes,** re-run `scripts/make-xcode.sh` and Run again. That's always safe, and needed whenever files under `dist/safari/` are added or removed. For edits to existing files, just Run again in Xcode and reload pages in Safari. If Safari still shows old behavior, regenerate.
+**The set-up window.** Opened by hand, Margin.app shows a window that walks through what Safari needs (Margin on, allowed on every website, new tabs opening Margin, Full Disk Access for Safari's profile names) and checks each step as you go. Started by the extension, it runs in the background with no window and no Dock icon, and quits a while after the last browser has gone.
 
 ## Architecture
 
+Margin 2 (`PLAN.md`): Margin.app draws all of Margin's UI around each browser window; the extension owns the live tab state and does what only a page or the browser can.
+
 ```
-extension/              The one shared source, as ES modules (browsers load the bundles in dist/)
-  manifest.json         MV3: tabs, storage, alarms, scripting; <all_urls>; newtab override; commands
-  shared/platform.js    Per-browser profiles (favicon fetching, default shortcuts); stamped by the build
-  background.js         State owner (bundled into a classic service worker): registers every listener.
-                        Tab events → pure model → storage.local; routes the UI's messages.
-  background/           Its parts: store (load/mutate), handlers (the message protocol), tabs,
-                        search-engine, site-icons, registered (the theme, its placeholder, the page's
-                        box), archive, navigation (next/previous tab and space).
-  state/model.js        Pure state functions (no browser APIs), unit tested.
-  shared/view.js        Pure "what does the sidebar show for window W" derivation.
-  shared/search.js      URL-vs-search, fuzzy scoring, palette ranking.
-  shared/shortcuts.js   Shortcut strings ("Alt+KeyK") ↔ key events.
-  shared/dom.js         DOM helpers for core and themes (el, closed-shadow hosts, adoptStyles).
-  content/main.js       Content-script entry: core, then the palette's wiring once the theme is there.
-  content/core.js       Margin on web pages, behavior only: startup, the theme, state and rendering,
-                        icons, messages; drives the active theme's view. Its parts by job:
-  content/layout.js     Show/hide/dock, where the page's box goes, the placeholder hand-over, hover, the toggle key.
-  content/trackpad.js   Gesture guard, pull-to-refresh, swipe back/forward (Safari).
-  content/pinch.js      The pinch on a page with a box: the page scales, the sidebar doesn't (Safari).
-  content/page-link.js  Margin's side of the page's box: tells it where to be, brings its script in
-                        where it's missing, fetches style sheets a page can't read.
-  content/page/         The page's box, in the page's own world (one bundle, registered only while
-                        pages have a box): box, viewport, coords, media, sheets.
-  shared/page-box.js, page-css.js  The box's CSS and the rewrite of media queries and viewport units (pure).
-  content/loader.js     The page-load pill's timing.
-  content/takeover.js   Taking over from a copy of Margin left in the page by an install/update.
-  content/palette.js    The palette's shortcut and wiring (the palette itself is the theme's).
-  newtab/               Margin's new-tab page: the ⌘T hand-off, then the active theme's new-tab module.
-  themes/               What Margin looks like. Only the active theme's code loads.
-    index.js            The themes Margin ships (UI-free registry).
-    register.js         How a theme's content bundle hands itself to core (the theme contract).
-    arcadia/           The default theme: theme.js (UI-free: defaults, settings, bundle paths),
-                        content.js (on web pages: sidebar.js, chrome.js, palette.js), newtab.js +
-                        newtab.html, styles/*.css, docked.template.css. assets.js and docked/ are
-                        generated by `npm run styles` (CSS and markup as strings, applied
-                        synchronously with no fetch; one first-paint placeholder per width).
-platform/<browser>/     Manifest overrides per browser (today: the shortcut `commands`)
-dist/safari/, dist/chrome/
+extension/              The extension's shared source, as ES modules (browsers load the bundles in dist/)
+  manifest.json         MV3: tabs, storage, alarms, scripting, webNavigation; <all_urls>; newtab override; commands
+  shared/platform.js    Per-browser profiles (favicon fetching, sleeping tabs, default shortcuts); stamped by the build
+  background.js         State owner: registers every listener. Tab events → pure model → storage.local;
+                        routes pages' and Margin.app's requests.
+  background/           Its parts: store, handlers (the message protocol), link and app-link (Margin.app),
+                        tabs (the plain switch, opening, the open-tab repair), navigation, sleep, archive,
+                        registered (the page's first paint), notices, page-loads, switch-log (lines in
+                        Margin.app's log), cut-off, site-icons, search-engine, theme-package.
+  state/model.js        Pure state functions (no browser APIs), unit tested: tabs, kept tabs, spaces, pins, folders.
+  shared/               Pure helpers: view (what the sidebar shows), search, shortcuts, stored (storage
+                        format), data-set and data-merge (the data Margin.app owns), page-box (the box's CSS
+                        and the first paint's), page-css, app-link, sleep, notices, gestures, pull.
+  content/core.js       Margin on web pages, no UI: the box from Margin.app's layout, gestures, pinch, the
+                        draft check, navigation keys and ⌘T, icons and zoom, copies standing back.
+  content/page/         The page's box in the page's own world (one bundle, registered while Margin.app draws).
+  newtab/               Margin's new-tab page: drawn by Margin.app while linked; else a notice and an address field.
+  ui/                   The UI runtime (view model, renderer, sanitizer, actions, behaviors), run by Margin.app's
+                        overlay page (ui/host-app.js) and by the browser tests (ui/host.js).
+  themes/<id>/          Theme packages (theme.json, theme.html, theme.css, fonts), first-paint.css: see themes/README.md.
+app/                    Margin.app: shell/ (Swift), overlay/ (its page), safari/ (set-up window, extension handler);
+                        PROTOCOL.md is the link's protocol.
+platform/<browser>/     Manifest overrides per browser
+dist/safari/, dist/chrome/, dist/app/
                         Ready-to-load builds from `npm run build` (generated, committed; a test checks they're current)
-scripts/build.js        extension/ + platform/<browser>/ → dist/<browser>/, one esbuild bundle per context
-tests/
-  *.test.js             node --test unit tests
-  e2e/*.test.js         Playwright (headless Chromium) tests that load dist/chrome/ (and a Safari-profile variant) unpacked
+scripts/                build.js, safari.sh (install), make-xcode.sh, margin-log.sh (`npm run log:app`)
+tests/                  *.test.js unit tests; theme/ browser tests of the runtime and themes (Playwright);
+                        e2e/ the in-page era's Playwright suite, mostly skipped until rewritten against the app
+tools/                  webkit-host/ (Safari's extension engine, off screen), app-tests/ (Margin.app's checks)
 ```
 
-**Data flow:** the background is the only writer. It mirrors open tabs into `storage.local.tabs` and owns `spaces`, `activeSpaceByWindow`, `tabSpace`, `pins`, `archive`, and `settings`. Content scripts and the new tab render from `storage.local` (instantly, even while the background is asleep), update on `storage.onChanged`, and send typed messages (`activateTab`, `closeTab`, `newTab`, `pinTab`, `unpin`, `openPin`, `setSpace`, `createSpace`, `renameSpace`, `deleteSpace`, `moveTabToSpace`, `restoreArchive`, `updateSettings`, `updateThemeSettings`) to change anything. The background can be unloaded at any time: it serializes writes through one queue, rehydrates from storage on wake, and rebuilds tab→space assignments from pins after a browser restart.
-
-**Isolation:** injected UI lives in closed shadow roots on zero-size `position: fixed; z-index: 2147483647` hosts, so site CSS can't style it and it never changes the page's layout. Key events typed into Margin's UI don't reach the page's own shortcut handlers (except page listeners in the capture phase).
+**Data flow:** the background is the only writer of the extension's storage, which pages read (their tab, window and settings) and Margin.app gets as a snapshot and deltas over the link. On the Mac the lasting data (spaces, pins, folders, Margin's tabs, the archive, settings, icons) is Margin.app's, in `~/Library/Application Support/Margin/`; the extension's copy is a cache (`DATA.md`). The background can be unloaded at any time: it serializes writes through one queue and rehydrates from storage.
 
 Design decisions and every Safari fallback are in [DECISIONS.md](DECISIONS.md).
 
 ## Development
 
-No runtime dependencies. `npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, then bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `content/shell.bundle.js`, `newtab/newtab.bundle.js`, and per theme `themes/<id>/content.bundle.js` and `themes/<id>/newtab.bundle.js`) and points the manifest and `newtab.html` at them. `extension/` is ES modules (content scripts and Safari's service worker can't load those), so browsers load `dist/`. Run `npm install` once. Node 22+.
+`npm run build` copies `extension/` into `dist/<browser>/` with that browser's manifest overrides and profile, writes the first paint's files, bundles each context's scripts into one file with esbuild (`content/content.bundle.js`, `background.bundle.js`, `content/page.bundle.js`, `newtab/newtab.bundle.js`) and builds Margin.app's overlay page into `dist/app/`. Run `npm install` once. Node 22+.
 
 ```sh
-npm run build       # after any change under extension/ or platform/: regenerate dist/ (a test checks it; also runs `styles`)
+npm run build       # after any change under extension/, platform/ or app/overlay/: regenerate dist/ (a test checks it)
 npm test            # type check (tsc --checkJs, JSDoc types; types/*.d.ts), then unit tests (node --test)
-npm run test:e2e    # builds, then Playwright + headless Chromium (uses an installed Chromium; run `npx playwright install chromium` locally if needed)
-npm run test:webkit # macOS: Margin's Safari build on WebKit's own extension engine, off screen (tools/webkit-host/README.md)
-npm run styles      # after editing a theme's CSS, newtab.html or placeholder template: regenerate its assets.js and docked/ (a test checks it)
+npm run test:theme  # the UI runtime and the themes in headless WebKit and Chromium
+npm run test:app    # Margin.app's shell: unit checks and end to end against a fake extension, off screen
+npm run test:webkit # Margin's Safari build on WebKit's own extension engine, off screen (tools/webkit-host/README.md)
+npm run log:app     # Margin.app's and the extension's lines in the system log
 npm run icons       # regenerate extension/icons
 ```
 
-To try it in Chrome: chrome://extensions → Developer mode → Load unpacked → `dist/chrome/` (run `npm run build` after changes), and use the reload icon. Use `dist/chrome/` there: `dist/safari/` fetches site icons Chrome already provides. This is handy for fast iteration; check Safari-specific behavior (favicons, shortcuts, new tab) in Safari.
+`npm run test:e2e` (Playwright, the in-page era's suite) isn't run for now.
 
 ### Adding a theme
 
-A theme is a folder in `extension/themes/<id>/`, listed in `themes/index.js`:
-
-- `theme.js`: UI-free description (`id`, `name`, `defaults`, `settingsOf(settings)`, the bundle paths `content`/`newtab`, optional `placeholder(settings)`). The background, the state model and the build import it, so it must not import UI code.
-- `content.js`: calls `registerTheme({ id, geometry, createPalette, mount })` (`themes/register.js` documents the contract; `themes/arcadia/content.js` is the reference). Core decides when things show; the theme draws them.
-- `newtab.js`: `export function mount({ api, self, send, openPalette })`, which builds the whole new-tab page (Settings included).
-- `styles/*.css` and `newtab.html` become `assets.js` (`npm run styles`); a `docked.template.css` gives first-paint placeholders (add its widths in `scripts/build-styles.js`).
-- Its own settings live in `settings.themes[id]` and change through `updateThemeSettings`.
-
-Themes ship in the extension (MV3 and App Store review allow no downloaded code), and only the active one's code loads.
+A theme is HTML and CSS, no JavaScript: a package in `extension/themes/<id>/` (`theme.json`, `theme.html`, `theme.css`, bundled fonts), listed in `themes/packages.js`, with its look at a page's first paint in `first-paint.css`. `extension/themes/README.md` is the guide.

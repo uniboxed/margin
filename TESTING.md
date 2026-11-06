@@ -7,7 +7,7 @@ npm test            # unit tests: node --test tests/*.test.js
 npm run test:e2e    # builds dist/, then Playwright, headless Chromium, loads dist/chrome/ unpacked
 ```
 
-Everything below this line is **manual, in Safari on macOS**. The automated tests only prove the extension works in Chromium.
+Everything below this line is **manual, in Safari on macOS**. The automated tests only prove the extension works in Chromium. (Not run for now: Tirth's "no E2E for now". Since Margin 2 the e2e suite is mostly skipped tests waiting to be rewritten against Margin.app; `npm run test:webkit` and `npm run test:app` cover the extension and the app off screen.) Sections marked superseded test what Margin 2 removed: they're kept as history.
 
 ## Safari behaviors to confirm first
 
@@ -122,6 +122,9 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Arc frame and Keep open push
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): the fitted layout, the narrow rail and the per-width first-paint placeholders are gone; the page's box and its first paint come from Margin.app's layout (Phase 3). Kept as history; don't run these checks.
+
+
 - [ ] Hover the left edge (anywhere within about 10px): the sidebar slides in as a floating rounded card with a shadow, 8px from the window edges. There's no frame and the page doesn't move. Moving right past the card hides it.
 - [ ] Full-screen window (⌃⌘F): Margin opens about 24px before the edge, so moving left and stopping there doesn't trigger Safari's own sidebar (that only opens when resting at the very edge, which Margin can't block). Window → Fill: Safari's sidebar never opens from the edge.
 - [ ] Turn on "Keep open": the sidebar docks flush left, the Arc frame appears, and the page reflows to start right after the sidebar, nothing is hidden behind it on normal sites, and there's no horizontal scrollbar.
@@ -226,11 +229,17 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 
 ## Page card (Keep open)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): the fitted layout, the narrow rail and the per-width first-paint placeholders are gone; the page's box and its first paint come from Margin.app's layout (Phase 3). Kept as history; don't run these checks.
+
+
 - [ ] The page's corners are rounded (small, about 6pt, like Arc's), not square. Same on the new-tab page.
 - [ ] A soft shadow around the page, a little stronger along the bottom edge. No thin outline.
 - [ ] Opening a page: the corners and shadow are there from the first frame and don't change when Margin finishes loading. Resizing the sidebar: they move with the edge.
 
 ## Page-load indicator
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 - [ ] With "Keep open" on, reload a page (⌘R): a small dark pill appears centered in the gray strip above the page, pulses gently while it loads, and fades out when done. Click a link to another page: same.
 - [ ] In auto-hide mode the pill shows at the very top of the page, centered on the window.
@@ -239,6 +248,9 @@ Also observed: with "Keep open" on, on github.com the sidebar appears only once 
 - [ ] Click a download link: the pill may appear; it goes away on your next click or key press (or after 10s).
 
 ## Fitted layout with Keep open (Safari 27)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): the fitted layout, the narrow rail and the per-width first-paint placeholders are gone; the page's box and its first paint come from Margin.app's layout (Phase 3). Kept as history; don't run these checks.
+
 
 Retired 2026-11-01: there's no iframe now. Kept for its list of sites to try.
 
@@ -346,6 +358,9 @@ Reload Margin in chrome://extensions after pulling.
 
 ## Chrome: fitted layout (2026-10-26)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): the fitted layout, the narrow rail and the per-width first-paint placeholders are gone; the page's box and its first paint come from Margin.app's layout (Phase 3). Kept as history; don't run these checks.
+
+
 Retired 2026-11-01, as above.
 
 Reload Margin in chrome://extensions after pulling. Keep open on, in Margin full screen.
@@ -359,6 +374,9 @@ Reload Margin in chrome://extensions after pulling. Keep open on, in Margin full
 
 ## The narrow rail (2026-10-26)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): the fitted layout, the narrow rail and the per-width first-paint placeholders are gone; the page's box and its first paint come from Margin.app's layout (Phase 3). Kept as history; don't run these checks.
+
+
 Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 - [ ] Teams, Outlook, Google Docs: a narrow icon rail on the left, the page pushed by it only. Are their left app bars and top-right buttons (profile, settings) usable?
@@ -367,6 +385,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 - [ ] Settings → "show a narrow sidebar of icons" off: those sites are pushed by the full sidebar again.
 
 ## One sidebar across pages (2026-10-26)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 - [ ] Leave a tab alone for a while (or for hours), open several tabs elsewhere, go back to it: its sidebar lists them all at once, no reload needed.
 - [ ] Scroll the sidebar's tab list on one page, switch tabs: the next page's sidebar is at the same position; a new page too.
@@ -392,6 +413,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 ## Switching without black; ⌘T and "New tabs open with" (2026-10-26)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 - [ ] Switch through the sidebar, the palette and ⌥⌘↓/↑ to tabs you haven't used for a few minutes: fewer black flashes than before; switching never feels slower than about half a second.
 - [ ] Start page → Settings → Switch log (development) → Copy, after a session of switching, and send it along with any black flash you saw (and roughly when).
 - [ ] Safari Settings → General → "New tabs open with" → Margin, then ⌘T: Margin's palette over the page.
@@ -399,12 +423,18 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 ## Instant feedback on switching (2026-10-26)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 - [ ] Click a tab in the sidebar: it's highlighted at once (your page's tab softly) before the page changes.
 - [ ] Switching to a tab you haven't used for a while: if it takes a moment, the small loading pill shows at the top; quick switches never show it.
 - [ ] ⌥⌘↓/↑ and the palette: the same.
 - [ ] Clicking your own tab again during a slow switch keeps you where you are.
 
 ## Narrow rail off (2026-10-27)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): the fitted layout, the narrow rail and the per-width first-paint placeholders are gone; the page's box and its first paint come from Margin.app's layout (Phase 3). Kept as history; don't run these checks.
+
 
 - [ ] With Keep open, a page Margin can't fit (Teams, Outlook, Docs, or "Show normally" on a site): the full sidebar beside it, no narrow icon rail; the start page's Settings has no rail switch.
 
@@ -418,6 +448,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 ## Instant switching; spaces show their last tab (2026-10-27)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 - [ ] Switch between two tabs in the sidebar: the highlight jumps in one go (no soft step), no tooltip pops up, and the page follows almost at once.
 - [ ] Rest the pointer on a row, switch away with the keyboard, switch back without moving the mouse: no hover or × on that row until you move.
 - [ ] Click another space's emoji: that space's last tab comes to the front; an empty space opens the start page; ⌃⌘←/→ the same.
@@ -425,10 +458,16 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 ## A tab that slept through an update (2026-10-27)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 - [ ] Rebuild Margin with a few tabs open, leave one unused (asleep) during the rebuild, then switch to it: its sidebar works (switching from it lands), no stuck highlight or pill.
 - [ ] If Margin ever stops responding on a page, a note offers Reload after a few seconds; Reload fixes it.
 
 ## An empty screen while switching (2026-10-27)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 - [ ] Click another tab in the sidebar: the page you're leaving turns into a plain gray card at once (no flash of its content), a spinner shows in the middle if it takes a moment, then the other tab appears.
 - [ ] Switch back and forth quickly: coming back to a tab never shows the gray card or a spinner before its page.
@@ -439,6 +478,9 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 ## A tab shown for the first time (2026-10-29)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 - [ ] ⌘T, an address of a busy site (youtube.com, a Google search), Enter: as the new tab comes up there's no dark frame at all; record the screen and step through it frame by frame around the switch.
 - [ ] While the new tab loads behind, nothing flickers: not the page you're on, its cover or highlight, nor Safari's tab bar or address bar if they're showing.
 - [ ] ⌘-click a few links (they open behind), wait a few seconds, then click their rows in the sidebar: no dark frame either.
@@ -448,12 +490,18 @@ Keep open on (Safari, and Chrome in Margin full screen), signed in:
 
 ## Tabs of the space kept ready (2026-10-29)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 - [ ] Use a few tabs of a space, leave one for a minute or more, then switch back to it with Safari's own tab bar or ⌃Tab: no dark flash. The same from Margin's sidebar.
 - [ ] Settings › "Keep the tabs of the space you're in ready…" shows 30; set 0 and the flashes from Safari's own switching come back after a minute; set it back.
 - [ ] After 30 minutes without using Safari, Activity Monitor's Energy tab shows Safari's web content processes going quiet again.
 - [ ] A tab Safari unloaded (shown as reloading when you click it) still loads only when clicked.
 
 ## A new tab from ⌘T shows once it has loaded (2026-10-28)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 - [ ] On a page, ⌘T, type an address of a slow site (youtube.com), Enter: the page you were on stays, covered by the empty screen with its spinner, and the new tab's row appears in the sidebar at once, highlighted; no dark empty tab. Once the site has loaded it comes to the front, the sidebar open and scrolled as before.
 - [ ] The same with a search (words, Enter): the results come to the front once loaded; Margin's search engine (Settings) doesn't change because of it.
@@ -529,6 +577,9 @@ Run `scripts/make-xcode.sh`, then Run in Xcode (the reports need the packaged ap
 
 ## A tab Safari hasn't loaded (2026-10-29)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 Quit and reopen Safari with several tabs in a few spaces (Safari brings them back unloaded), then:
 
 - [ ] Click rows of tabs you haven't opened since the relaunch: the page you're on stays, covered by the empty screen with its spinner, the row highlighted; then the tab comes up drawn. No dark window at any point; record the screen and step through it frame by frame.
@@ -561,6 +612,32 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Quit and reopen Safari: Margin is still on, with your spaces and pins; no "Allow Unsigned Extensions" needed.
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
+
+## Margin 2 Phase 3: the extension slimmed, the first paint at any layout (2026-11-05)
+
+What changed for you: no Margin sleep page any more (Safari's sleeping tabs are closed and kept, as since step 1), a page is in its box from its first frame at whatever layout the theme gives the window (no more one file per sidebar width), and the development log and its leftovers are gone. Nothing else should look or behave differently. Install over the build you have now (`npm run safari`: the Xcode project is made again, files were added and removed) and keep `npm run log:app -- --stream` open.
+
+**The update from the build before.**
+- [ ] After `npm run safari`, every open page keeps working: switch tabs and spaces, ⌃⌘↓/↑, ⌘T, peek, a pinch, a swipe back. No page shows a frame or box that doesn't match Margin's sidebar.
+- [ ] The log shows `the open-tab repair, pass 0: N tabs, …` once (a line per pass, a few seconds apart at most).
+- [ ] If any tab was still on Margin's old grey sleep page (from the build before Phase 2 step 1): the log says `tab … was on the sleep page of an earlier Margin: closed, kept as its Margin tab (asleep)` for those behind, and `… in front: loaded at its address` for one in front. They're in their spaces in the sidebar, faded (not open), and open on a click. If you have none, nothing to check.
+- [ ] Safari › Settings › Extensions › Margin asks for nothing new. (The build adds the `webNavigation` permission; Safari shouldn't prompt for it. Tell me if it does, or if Margin was turned off by the update.)
+- [ ] Quit Safari and open it again: pages restored at launch come up in their box (or move into it within a moment as Margin.app links), as before.
+
+**The first paint.**
+- [ ] With Keep open on, open new pages (⌘T and an address, a link with ⌘-click then switch to it, a reload): the page is beside the sidebar from its first frame, never drawn at the window's edge first and then moving. Try a heavy site (YouTube, a news site) and a light one.
+- [ ] Drag the sidebar's edge to another width, let go, and open new pages right away and again after 3 seconds: both are at the new width from their first frame (the first ones get the window's layout as they commit, the later ones from the registration made again once the width has settled).
+- [ ] Keep open off (the frame alone), then on again: new pages are right from their first frame each time. The same after switching the theme to Neo-brutalism and back.
+- [ ] Two full-screen windows (two profiles, or one profile): new pages in each are right in their own window.
+- [ ] Quit Margin.app (or let its link drop): within about 6 s new pages have no box at all from their first frame (the page as it is, no grey frame); `npm run log:app` shows the link dropping. Open Margin.app again (or click the new-tab page's Start button): new pages have their box again from their first frame. Do this twice in a row. If a new page ever shows a box or frame while Margin.app isn't running, or none while it is, tell me the time: WebKit keeps applying registrations it was told to drop, and this build never drops one (it's updated to no box instead), so that would be something new.
+- [ ] Tell me if any page jumps at about a quarter of a second after it appears: that's Margin's content script moving a box the first paint got wrong.
+
+**Sleeping tabs (Safari closes and keeps them).**
+- [ ] Settings shows the hours and the never-sleep sites, and no "Wake all sleeping tabs" button any more (in Safari a sleeping tab is closed; each opens again as it's clicked, so there's nothing to wake).
+- [ ] `margin.sleepNow(60000)` in the background's console (or a long wait): tabs unused for that long close and stay in the sidebar, faded; the log has one `sleep: N due, M put to sleep (tab … closed, kept, unused … min, its page judged by margin); skipped: …` line per pass. A tab with a draft, one playing sound and the one in front aren't put to sleep (`skipped: edited 1`, `playing 1`, `in front 1`).
+- [ ] Open a sleeping Google search tab from the sidebar after changing Safari's search engine: Margin's search engine (Settings shows it) doesn't go back to the old one.
+
+**Send me** the log lines of anything that didn't do as described, with the time.
 
 ## Margin 2 Phase 2 step 9: Safari's own profile names (2026-11-05)
 
@@ -751,6 +828,9 @@ Before this build:
 
 ## Margin 2 Phase 1 (in-page development host) (2026-11-05)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 From `feat/ui-runtime`, run `npm run safari`. Margin now draws its sidebar, palette, menus and Settings with its new UI runtime and the Arcadia theme package. It should look like before. Switching tabs may blink: Margin 2 accepts Safari's own blink, and the switch cover is gone. Write what you see in DECISIONS.md.
 
 The sidebar:
@@ -790,6 +870,9 @@ Theme switch:
 
 ## Sleeping tabs (2026-11-04)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's sleep page is gone: Safari's sleeping tabs are closed and kept (Phase 2 step 1, Phase 3); see the Phase 3 section. Kept as history; don't run these checks.
+
+
 Margin now puts a tab you haven't used for 4 hours to sleep, to give its memory back, as Arc does. Safari has no way for an extension to unload a tab, so a sleeping tab shows Margin's own sleep page: a grey loading card with the page's title and icon. As soon as you show it (Margin's sidebar, Safari's tab bar, ⌘1–9), it goes back to its page. Margin keeps it in the sidebar as the page it was. Settings has the hours (0 = never), a list of sites that never sleep, and "Wake all sleeping tabs".
 
 Before you start: run `npm run safari`. Have Activity Monitor open (Memory tab, search "Safari Web Content" or the site's name). To see tabs sleep without waiting 4 hours, either set Settings → "Put tabs to sleep after not using them for" to `0.02` (about a minute; the check runs every 15 minutes), or open the background's console (Develop → Web Extension Background Content → Margin) and run `margin.sleepNow(60000)` to sleep tabs unused for a minute right away. Set it back to 4 afterwards.
@@ -818,6 +901,9 @@ Before you start: run `npm run safari`. Have Activity Monitor open (Memory tab, 
 
 ## A show only into a free page, and ⌃⌘↓ on every site (2026-11-04)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 Margin now shows a tab only once its page answers one more look just before the show, so a stalled page (Instagram on 2026-11-04) keeps the page before on screen instead of going dark. A press during that wait gives the show up and goes on from that tab. After a flip, a page that says it has drawn is shown about 0.6 s sooner. A tab's proof is kept in its page, so after an update the tabs Safari had already shown aren't flipped again. That starts from the next update, since this build starts cold. On web pages, ⌃⌘↓/↑ are taken by Margin before the page, so Outlook and Instagram no longer eat them. A cut-off tab in front is no longer reloaded in front: it's reloaded once you leave it.
 
 Before you start: run `npm run safari`. Use Dark Mode, and record the screen if you can.
@@ -844,6 +930,9 @@ Before you start: run `npm run safari`. Use Dark Mode, and record the screen if 
 
 ## No dark frame on Margin's switches (2026-11-03)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 Margin now introduces (an invisible flip to the tab and back) any tab it has no proof Safari has already shown with its page running, before it first shows it. It also never shows a tab before that tab's page has drawn again after a wake, a flip or a kick. The cost is about 0.3–0.4 s on the first Margin return to each such tab, under the cover. Switches made with Safari's own tab bar or keys can't be prepared and can still blink.
 
 Before you start: run `npm run safari`. Use Dark Mode (the blink is the dark gray of Safari's empty view), and if you can, record the screen while you switch.
@@ -865,6 +954,9 @@ Before you start: run `npm run safari`. Use Dark Mode (the blink is the dark gra
 **Send me** the switch log, the recording, and the times of any dark frame you see.
 
 ## After a relaunch: your likely tabs get ready on their own (2026-11-03)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 After Safari restarts, Margin now loads up to 6 of the tabs you're likely to click next, one at a time, behind the page you're on. It waits until Safari has settled and you're not typing, clicking or scrolling. Those are the tab you used last before the one in front, the tab each other space would show, tabs open on a pin, then other tabs you used recently. The sidebar shows a small note while it does this ("Getting your tabs ready", 3 of 6), then "Tabs ready". Nothing covers the page and nothing waits for it. Anything you do comes first.
 
@@ -894,6 +986,9 @@ Before you start: run `npm run safari`. Then quit Safari with several windows, s
 
 ## After a reboot: every click switches, within about 2 seconds (2026-11-03, evening)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 Right after a reboot Safari is slow to answer Margin, sometimes 2–3 s for each question, and Margin's own timers run late. Margin now notices this. A switch starts from what Margin already knows about the tab instead of first asking Safari where it is. While Safari is slow, the tab comes up about 1.5–2 s after the click, still loading if it has to, as Safari itself would show it, instead of after 5–7 s. The page you clicked on also waits 3 s longer for Margin's answer, so a slow answer is never taken as "didn't switch".
 
 Before you start: run `npm run safari`. The real test is right after a reboot (restart the Mac, open Safari with your usual windows, and start clicking as soon as the sidebar shows). Do the quick-Safari checks afterwards, once the Mac has settled.
@@ -918,6 +1013,9 @@ Before you start: run `npm run safari`. The real test is right after a reboot (r
 
 ## Startup: clicks that start, restores that wait for the load, one introduction (2026-11-03)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 After a Safari relaunch, Margin's check of the open tabs no longer asks every unloaded tab again and again, and it waits while you switch. A tab loaded behind the page comes up only once it has really loaded. A tab that has already come back into view after you left it, whether Safari or Margin brought it, isn't flipped again on its next switch. A tab that only came back into view because its window was uncovered still is.
 
 Before you start: run `npm run safari`. Do this right after a reboot or a Safari relaunch with many tabs, when the Mac is busy, as on 2026-11-03.
@@ -933,6 +1031,9 @@ Before you start: run `npm run safari`. Do this right after a reboot or a Safari
 - [ ] Close a tab and at once click its row in another window's sidebar, before the sidebar redraws. The row snaps back, and the log has no switch entry with `No tab with id` for it.
 
 ## The kick is back, for speed (2026-11-03)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 A switch to a tab Safari has put to sleep is quicker now. If the tab hasn't answered within about 60 ms (40 ms for one you left 8 s or more ago), Margin brings it to the front and the page you're on straight back, out of sight, so Safari wakes it at full speed. The page you're on stays in front until the tab is awake and drawn, as before. A tab kicked awake waits less for its page to draw before it comes up (0.15 s at most); a tab that woke slowly in the background before you clicked still gets up to 0.4 s, as this morning.
 
@@ -970,6 +1071,9 @@ This build fixes the notice that came up on nearly every switch this morning, an
 
 ## This round: the 20-minute check (2026-11-03)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 Start here. Run `npm run safari`, then use Safari as you normally do for about 20 minutes, on battery, with your usual tabs and spaces. Don't judge the first 5 minutes after quitting and reopening Safari.
 
 **The setting.** On Margin's new-tab page, Settings: "Keep the tab you just left ready to show…". It now means: the tab you just left, and the one before it, are kept from going to sleep for that many minutes, at low priority (the slow cores), so switching back to them shows no black. Nothing else is kept. The 0 you set earlier was for the old setting (six tabs, at full speed, for 30 minutes after you last used Safari); this build doesn't read it. Settings should show 1. If it shows 0, set it to 1.
@@ -1003,6 +1107,9 @@ Start here. Run `npm run safari`, then use Safari as you normally do for about 2
 
 ## Keep-ready: the tab just left, for a minute (2026-11-03)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 Keep-ready now keeps only the tab you just left (and the one before it) ready, for a minute, and lets go of them when you leave Safari. It used to keep up to six tabs running all the time. Settings on Margin's new-tab page: "Keep the tab you just left ready to show…". Your 0 for the old setting doesn't carry over: the new one starts at 1.
 
 - [ ] Settings shows 1, though you had set the old one to 0. The field takes 0 to 10.
@@ -1019,6 +1126,9 @@ Keep-ready now keeps only the tab you just left (and the one before it) ready, f
 - [ ] Chrome: switching behaves as before.
 
 ## Switching to a sleeping tab: the page you're on stays until it's ready (2026-11-03)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 A tab Safari has put to sleep used to be flicked to the front and straight back first (the other tab flashed for an instant), then shown after 0.15 s whether it was ready or not, which was the big black flash on heavy tabs. Now Margin wakes it and keeps the page you're on in front, under its empty screen (a spinner after a moment), until the tab is awake and has drawn, for up to about 1.6 s. Margin also starts waking a tab earlier: when the pointer rests on its row or on a space's icon, when you press, when you bring the sidebar out, and when you swipe toward a space. Test with keep-ready at 0 in Settings, or wait a minute or more after leaving the tab.
 
@@ -1058,6 +1168,9 @@ A space's icon at the bottom of the sidebar now switches as the mouse button goe
 
 ## No crash from asking for animations (2026-11-03)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 The page in front went black for about 2 seconds and reloaded when WebKit crashed sorting a page's animations, which Margin asked for on every read of the page's layout. Margin no longer asks.
 
 - [ ] After a day of normal use, look for new crash reports: `ls -t ~/Library/Logs/DiagnosticReports/ | grep WebContent | head`. For each one since the update, `grep -l compareAnimationsByCompositeOrder ~/Library/Logs/DiagnosticReports/com.apple.WebKit.WebContent-*.ips` should not list it. A `TypeLocationCache` crash is a different one (it was there before 2026-11-01); note it if it keeps coming.
@@ -1070,6 +1183,9 @@ The page in front went black for about 2 seconds and reloaded when WebKit crashe
 - [ ] Chrome (full screen): the same sites look as before.
 
 ## Round 3: the 30-minute check (2026-11-02)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 The check for round 3 (this round's is "This round: the 20-minute check" above). It checks the whole of round 3 (faster switching, no dark frames, less CPU and memory) in about 30 minutes of normal use. The sections below go into each part. Run `npm run safari` first. Use Safari as you normally do, with 15 or more tabs in a few spaces. Don't judge anything in the first 5 minutes after quitting and reopening Safari: tabs are still coming back then, and everything is slower. Close other heavy apps if you can, and note what else was running.
 
@@ -1115,12 +1231,18 @@ What the switch log shows, per switch: `shownAfter` is the ms from the click to 
 
 ## Round 3's last fixes (2026-11-02)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 - [ ] Leave Safari alone for 2 minutes or more, then come back and click a sidebar row for a tab you left 10 minutes ago or more. It comes up within a moment, with no black. In the switch log that switch has `hiddenForMs` (a number, not null) and `kicked`.
 - [ ] Rest the pointer on such a row for a second, then click it. No black. Its switch log line has `kicked` with `behind: true`, or no kick if the tab was still running.
 - [ ] Right after coming back to Safari from a long break (30 minutes or more), click a tab you haven't used in a long while, and switch away within a few seconds. Then use seven or more other tabs of the space, one after another. Activity Monitor: once those seven are used, that first tab's process (its address in the process name) goes quiet within a few seconds, not up to 75 s later.
 - [ ] Chrome: switching behaves as before.
 
 ## Switching at first paint, fewer dark frames (2026-11-02)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 Quit and reopen Safari with tabs in a few spaces, so most come back unloaded. Record the screen while you try these, and step through it frame by frame if anything flickers.
 
@@ -1138,6 +1260,9 @@ Quit and reopen Safari with tabs in a few spaces, so most come back unloaded. Re
 - [ ] If a dark flash or a slow switch shows: Start page → Settings → Switch log (development) → Copy. On those switches, `restored` or `loadWait` says `painted` when Margin waited for the first paint, `unseen: true` when it introduced a tab whose page had never been on screen, a new tab's wait says what it ended on in `ready`, and `barrier` says whether the page drew before the show (`drawn`) or Margin gave up waiting (`timeout`, and how long). Safari's log around them: `DidFirstVisuallyNonEmptyLayoutForFrame`, `hideContentUntilPendingUpdate`, `Selecting tab`.
 
 ## Keep-ready: six tabs (2026-11-02)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 Keep-ready now holds the six tabs you used last in the space shown, not every tab of it, and doesn't keep trying tabs Safari unloaded.
 
@@ -1168,6 +1293,9 @@ Margin's listeners come off as a page is left and go back on if you come back to
 
 ## Keep-ready holds end when they're no longer wanted (2026-11-02)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 Keep-ready still keeps the six tabs used last running, but no more than six at any time, and a tab that drops out of the six is let go at once instead of after 75 s.
 
 - [ ] Switch through ten or more tabs quickly (the sidebar, Safari's tab bar, ⌃⌘↓ held down), then stop and read for a minute. Activity Monitor → CPU, the `Safari Web Content` processes: their total falls back within a few seconds of stopping, not after a minute or more.
@@ -1180,6 +1308,9 @@ Keep-ready still keeps the six tabs used last running, but no more than six at a
 - [ ] Switch log (Start page → Settings → Switch log (development) → Copy): each switch has `heldAtAsk`, `hiddenForMs`, and under `preparation` a `timings` object (`lagMs`, `readMs`, `renderMs`, `catchUpMs`, `layoutMs`). Send it along with what felt slow.
 
 ## A tab Safari suspended is kicked awake (2026-11-02)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 A switch with the sidebar to a tab you haven't been to for a while brings it to the front and straight back first, out of sight, so Safari wakes it at full speed. If it doesn't wake in time, the tab is shown at once instead of after almost a second.
 
@@ -1194,6 +1325,9 @@ A switch with the sidebar to a tab you haven't been to for a while brings it to 
 - [ ] Chrome: switching behaves as before.
 
 ## A loaded tab is prepared without reading storage (2026-11-02)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 Switching to a tab that's loaded no longer waits for that tab's page to read Margin's storage: it draws from what it already has. A page busy with its own work is shown after about a quarter second instead of up to almost a second.
 
@@ -1210,6 +1344,9 @@ Switching to a tab that's loaded no longer waits for that tab's page to read Mar
 
 ## Restores: never shown with no document (2026-11-02)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
+
 A tab Safari unloaded (after a relaunch, or one left a long time) is loaded behind the page and shown once it has drawn. It's now never shown before its page has arrived, and it comes up sooner after it has drawn.
 
 - [ ] Relaunch Safari with many tabs, then click tabs that haven't loaded yet in the sidebar. The page you're on stays, covered, with its spinner, then the tab comes up drawn. Never Safari's dark empty view, and no flip to the tab and back.
@@ -1224,6 +1361,9 @@ A tab Safari unloaded (after a relaunch, or one left a long time) is loaded behi
 - [ ] Chrome: switching to tabs Chrome unloaded behaves as before.
 
 ## No wasted wakes (2026-11-02)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 Margin wakes fewer tabs it doesn't then show: a pointer passing over sidebar rows wakes none, a pointer resting on a row sends one small script every 1.5 s instead of two every half second, and a switch reuses a wake for longer.
 
@@ -1314,6 +1454,9 @@ Pinch, on a page with a box:
 
 ## The frame with the sidebar hidden (2026-10-31)
 
+> Superseded (Margin 2, Phase 3, 2026-11-05): the fitted layout, the narrow rail and the per-width first-paint placeholders are gone; the page's box and its first paint come from Margin.app's layout (Phase 3). Kept as history; don't run these checks.
+
+
 - [ ] Sidebar hidden: every page has the frame on all sides, with rounded corners, from its first frame: no pop-in on loads, reloads or tab switches. Hover the left edge: the sidebar floats over and the page doesn't move.
 - [ ] With Keep open on, turn it off with the button, with Option+S and from the palette: the sidebar slides off to the left while the frame's edge travels with it to 8px from the window's edge, smoothly each time, with no jump in the sidebar's shape. The page takes its full size at the start, under the sliding sidebar: say if that jump looks wrong. Turn it off and back on quickly, too.
 - [ ] The floating sidebar's corners match the page card's.
@@ -1326,6 +1469,9 @@ Pinch, on a page with a box:
 - [ ] New-tab page → Settings → "With the sidebar hidden, keep the frame around pages" off: pages are as before, with no frame and no inset (new pages from the first frame).
 
 ## Sidebar efficiency: scrolling, redraws, wheel (2026-10-31)
+
+> Superseded (Margin 2, Phase 3, 2026-11-05): Margin's UI is no longer drawn in pages, and the anti-blackout switching (wakes, holds, introductions, kicks, restores behind, covers, keep-ready, the warm-up) is gone (Phase 2 steps 5 and 8). Kept as history; don't run these checks.
+
 
 - [ ] **Looks the same.** With Keep open: the sidebar, the frame around the page, the card's rounded corners and shadow are where they were, at 100%, after ⌘+ and ⌘−, and after resizing the window. Hover mode: the sidebar slides in from the left edge as before. A long tab list still scrolls; a row's menu opens beside it.
 - [ ] With System Settings → Appearance → "Show scroll bars: Always" (try it, then set it back): the frame's right edge meets the page's scroll bar as before. The loading pill, the pull-to-refresh badge and the zoom readout are centred over the page card.
