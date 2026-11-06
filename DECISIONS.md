@@ -2586,3 +2586,38 @@ On `fix/safari-reliability` (from `feat/margin-app` e3725be). Tirth's report fro
   - The "isn't any profile's" line: nothing before a read, once after one, nothing without the permission, and again after a read mapped it in between.
   - The UNSIGNED-only test stays as it was.
 
+### A profile's spaces follow it across a signing change
+
+- **What could happen.** Not what happened in these runs. The data sets match the hello ids exactly (`data/safari/` holds `s-4282ea5b-…`, `s-8d454f81-…` and `s-default`), and nothing was split or lost. But the plists show it already happened once: the unsigned build of 10-24 had ids 5068E0E4… and BE3F2B99…, and the signed build got 8D454F81… and 4282EA5B… for the same profiles. That was before Margin.app's data store existed, so nothing was lost then. Safari keys an extension's state by `"<bundle id> (<team or UNSIGNED>)"` and makes a random `ProfileIdentifier` for each key and profile. So a build signed by another team, or `npm run safari -- --unsigned` over a signed install, gives every named profile's copy a new `s-<uuid>`. `takeProfile` takes it (acked and rev reset), the app has no set for it and asks for the copy's, and the copy's fresh defaults become that id's set. The real spaces stay under the old id, listed in `across` as another unlinked “Personal”. Only the default profile is safe (always `s-default`).
+- **`npm run safari` asks first** (`scripts/signing-check.sh`, sourced by `safari.sh`). It compares the installed copy's `codesign -dv` `TeamIdentifier` (`not set` for ad hoc) with the team about to be used, or `not set` with `--unsigned`. When they differ, it warns that named profiles' spaces start fresh and asks `Build and install it anyway? [y/N]`. Anything but y stops it before `xcodebuild`, with nothing installed. `--yes` goes on without asking. Nothing installed, or nothing codesign can say, goes on as before.
+- **The app carries the set over** (`DataSync.carry`, `BrowserProfiles.carrySource`/`mightCarry`/`carry`, `ShellProfiles.swift` `needChoice`/`carryOver`). The anchor is Safari's own id for the profile. `browser.json` keeps each Margin profile's `browserId` from an earlier read, and the read maps the new id to the same Safari profile. With the previous section's fix, the first correct read after this update saves `browserId` for `s-8d454f81-…` and `s-4282ea5b-…`. A profile never read correctly before a signing change can't be carried.
+  - **Which set.** The source for a new id N is the profile O with `browserId` = the Safari profile the last read maps N to. O must be an `s-<uuid>` (never `s-default`), not mapped by that read, not linked, and must have a set. With two such, the one linked last.
+  - **When.** At N's `data.hello`, if N has no set: if the read already maps N, at once. If no read maps N yet and some unlinked profile with a `browserId` has a set, the hello is held up to 3 s (`DataSync.holdFor`), and Safari's profiles are read at once. The new entry in Safari's plist can come after the copy's first hello, which is why there's a hold. The hold ends when a read maps N (carried over, or let go if nothing is to be carried) or after 3 s, when data.need goes as before. After each read, every linked Safari copy is checked again. After a new copy's first set is stored from its snapshot, it's checked again too: a set still at rev 1, that is, untouched since, can be replaced.
+  - **Never** when N's set has changed since its first one (rev past 1: a copy that already sent changes), while N's copy's snapshot is on its way, while O is linked, or with no read (no Full Disk Access: today's behaviour, a fresh set).
+  - **What N gets.** O's set, with O's `acked`. N's own items that O's set doesn't have (from its first set, or its held hello's queue: the fresh copy's defaults) become deletions, newer than they are, so N's copy ends up with O's set alone. Items both have stay O's: a fresh copy's defaults (its settings) are newer and would otherwise win. The held hello is then answered as a relink with nothing queued, so the copy gets the whole set and an ack. A set replaced after its first is sent to the copy as a snapshot.
+  - **The old set.** It's put away, not deleted: its folder is renamed to `data/<browser>/.archived/<profile>-<ms>/`, where `profiles()` never looks.
+  - **Names and order.** O's name, emoji and color (the color it was shown with) and its places in the one order go to N, and O is forgotten (hidden), so `across` has one “Personal”. The log says `safari: s-old → s-new (Safari profile X): data carried over (N items, M of the new copy's own left out; the old set put away)`.
+  - **The switch back** (the old build again: Safari adds its entry again, with the old id) carries the set back the same way, so it never ping-pongs onto a fresh set.
+- **Not known:** whether a build signed otherwise also gets fresh extension storage. If Safari keeps it, the copy's queue holds the real items, and the ones with ids in O's set stay O's (the same items, normally with the same times), so nothing is merged twice. Changes that copy made while unlinked are taken from O's set's version. That's acceptable for a signing change, which Tirth makes by hand.
+- **Tests.**
+  - `tools/app-tests/data-tests.swift` (`dataCarry`):
+    - a hello held, then carried: the set, the defaults deleted, the relink's snapshot and ack, the old folder put away, the log line;
+    - not from a linked profile, and not twice;
+    - the hold running out gives data.need;
+    - with no read, data.need at once;
+    - a first set from the copy's snapshot carried over by `onFirstSet`, the copy getting the carried set and an ack with its rev;
+    - a copy that sent changes since its first set gets no carry;
+    - not while its snapshot is on its way;
+    - the switch back.
+  - `safari-profiles-tests.swift`:
+    - `carrySource` and `mightCarry` before and after the read that maps the new id;
+    - neither while the old one is linked, with no set, for `s-default`, or with no read;
+    - `carry` moving the emoji, color and places and leaving one Personal.
+  - `tools/app-tests/e2e-data.swift` (`carryScenario`): the real link and shell watching a stand-in Safari folder (`fake-safari.swift`, now shared by the unit and end-to-end builds).
+    - Personal's copy links and its set is stored.
+    - A new copy's hello comes before the plist changes and is held, with no data.need.
+    - The plist's team entry is removed and an UNSIGNED one added. The read maps Personal to the new id, and the copy gets Personal's set (a renamed space included).
+    - The old set is put away, with one Personal and the log line.
+    - The switch back: the plist read first, then the old copy's hello gets the set at once.
+  - `tests/signing-check.test.js`: the same team says nothing; unsigned over signed, and signed over unsigned, warn and ask, and no answer stops; another team: y goes on, n stops, `--yes` goes on without asking; nothing installed, or nothing from codesign, goes on.
+

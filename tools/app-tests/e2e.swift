@@ -620,6 +620,7 @@ final class Runner: NSObject, NSApplicationDelegate {
     Task { @MainActor in
       await scenario()
       await dataScenario()
+      await carryScenario() // e2e-data.swift
       await profilesScenario()
       await windowsScenario()
       await windowsScenario(ownSpace: true)

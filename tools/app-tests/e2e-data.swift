@@ -196,3 +196,113 @@ func dataScenario() async {
   fake.stop()
   print(String(format: "  timings: the data scenario %.1f s", Date().timeIntervalSince(started)))
 }
+
+// A signing change end to end (ShellProfiles.swift carryOver): the real link
+// and shell, its data in a temporary folder, Safari's folder a stand-in
+// (fake-safari.swift) the shell watches as Margin.app does. Personal's copy
+// links as s-a…; then a build signed otherwise: Safari's entry for it
+// removed and a new one with a new id, whose copy says hello before the
+// plist says so. Its hello is held, the read maps it, and Personal's set is
+// carried to the new id; then the switch back carries it back.
+@MainActor
+func carryScenario() async {
+  let started = Date()
+  let fake = Fake()
+  do { try fake.start() } catch { return check("carry: the fake extension starts", false, "\(error)") }
+  guard await until(5, { fake.first("ready") != nil }) else { return check("carry: the fake extension starts", false) }
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-carry-\(UUID().uuidString)", isDirectory: true)
+  let safari = FakeSafari()
+  defer { try? FileManager.default.removeItem(at: root); safari.remove() }
+  safari.standard()
+  let ext = SafariProfiles.marginExtension
+  let idA = "A0A0A0A0-1111-4222-8333-444444444444", idB = "B0B0B0B0-1111-4222-8333-444444444444"
+  let sA = "s-" + idA.lowercased(), sB = "s-" + idB.lowercased()
+  let pA = DataProfile(browser: "safari", profile: sA), pB = DataProfile(browser: "safari", profile: sB)
+  let day = { (d: Int) in Date(timeIntervalSinceReferenceDate: 783_000_000 + Double(d) * 86_400) }
+  func personal(team: [String: Any], unsigned: [String: Any]?) {
+    var states: [String: Any] = ["\(ext) (TEAMX00000)": team]
+    if let unsigned { states["\(ext) (UNSIGNED)"] = unsigned }
+    safari.extensions(FakeSafari.personalServer, states)
+  }
+  personal(team: ["Enabled": true, "AddedDate": day(0), "ProfileIdentifier": idA], unsigned: nil)
+  var said: [String] = []
+  let echo = Diagnostics.echo
+  Diagnostics.echo = { said.append($0); echo?($0) }
+  defer { Diagnostics.echo = echo }
+
+  let link = SocketLink(dispatch: FakeDispatch(), safariSince: { nil }, wake: Notification.Name("io.tirth.margin.test.carry.\(ProcessInfo.processInfo.processIdentifier)"),
+                        timing: .init(tick: 0.5, dead: 3, keep: 30, hello: 2, request: 5, safariSettled: 2))
+  var options = Shell.Options()
+  options.harness = true
+  options.overlay.harness = true
+  options.root = URL(fileURLWithPath: env["MARGIN_APP_ROOT"]!)
+  options.bundleIds = ["safari": fakeBundle]
+  options.dataRoot = root
+  options.safariData = safari.folder
+  options.safariWatch.debounce = 0.1
+  options.safariWatch.latency = 0.05
+  options.safariWatch.retry = 0.3
+  options.safariWatch.busyRetry = 0.2
+  options.safariWatch.team = "TEAMX00000"
+  let shell = Shell(link: link, windows: ScriptedWindows(), apps: ScriptedApps(), hotKeys: FakeKeys(), options: options)
+  shell.start()
+  func maps(_ id: String) -> Bool { if case .read(let l)? = shell.safariNames?.last { return l.contains { $0.margin == id } }; return false }
+  guard await until(3, { link.port != nil }), await until(3, { maps(sA) }) else { return check("carry: linked, Safari's profiles read", false) }
+  var mark = fake.events.count
+  fake.tell(["do": "wantLink"])
+  guard await until(3, { fake.first("wantLink", since: mark) != nil }), let nonce = fake.first("wantLink", since: mark)?["nonce"] as? String else { return check("carry: wantLink", false) }
+  link.wantLink(nonce: nonce)
+  guard await until(3, { fake.first("link", since: mark) != nil }) else { return check("carry: the link", false) }
+  func connect(_ id: String, _ profile: String) { fake.tell(["do": "connect", "id": id, "profile": profile, "theme": NSNull(), "data": ["acked": 0]]) }
+  func close(_ id: String, _ key: String) async -> Bool {
+    let m = fake.events.count
+    fake.tell(["do": "close", "id": id])
+    return await until(3, { fake.first("close", since: m) { $0["id"] as? String == id } != nil && shell.links[key] == nil })
+  }
+  func named(_ p: DataProfile, _ space: String) -> String? { (shell.data.values("spaces", of: p)[space] as? JSONObject)?["name"] as? String }
+  let profiles = shell.profilesOf("safari")
+
+  // Personal's copy, signed by the team: its first set, linked to Safari's profile.
+  mark = fake.events.count
+  connect("A", sA)
+  check("carry: Personal's first copy: no set, no hold (the read maps it): data.need", await until(3, { fake.first("dataNeed", since: mark) != nil }))
+  check("carry: its set stored", await until(3, { fake.first("dataAck", since: mark) != nil }) && named(pA, "work") == "Deep Work")
+  check("carry: linked to Safari's profile", await until(3, { profiles.info[sA]?.browserId == FakeSafari.personalServer }) && profiles.name(sA) == "Personal")
+  let t = (Date().timeIntervalSince1970 * 1000).rounded()
+  check("carry: a space renamed", shell.data.change(pA, [DataChange(collection: "spaces", id: "work", item: DataItem(updatedAt: t, value: ["name": "Carried", "emoji": "", "color": "#000", "order": 1]))]))
+  check("carry: Personal's copy goes", await close("A", "safari:\(sA)"))
+
+  // A build signed otherwise: a new copy's hello before Safari's plist says so.
+  mark = fake.events.count
+  let saidBefore = said.count
+  connect("B", sB)
+  try? await Task.sleep(nanoseconds: 400_000_000)
+  check("carry: the new id's hello held, no data.need", fake.first("dataNeed", since: mark) == nil && shell.data.holding == [pB] && shell.links["safari:\(sB)"] != nil)
+  personal(team: ["Enabled": false, "AddedDate": day(0), "RemovedDate": day(3), "ProfileIdentifier": idA], unsigned: ["Enabled": true, "AddedDate": day(3), "ProfileIdentifier": idB])
+  check("carry: Safari's read maps Personal to the new id: Personal's set to its copy", await until(3, { fake.first("dataSnapshot", since: mark) != nil })
+        && (fake.first("dataSnapshot", since: mark)?["spaces"] as? JSONObject)?["work"] as? String == "Carried" && fake.first("dataNeed", since: mark) == nil,
+        "\(fake.first("dataSnapshot", since: mark) ?? [:])")
+  check("carry: then data.ack", await until(3, { fake.first("dataAck", since: mark) != nil }))
+  check("carry: the new id has the set, the old one none (put away)", named(pB, "work") == "Carried" && shell.data.profiles(browser: "safari").map(\.profile).contains(sB)
+        && !shell.data.profiles(browser: "safari").map(\.profile).contains(sA)
+        && ((try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("safari/.archived").path)) ?? []).count == 1)
+  check("carry: one Personal, the old id forgotten", await until(2, { profiles.info[sA]?.hidden == true }) && profiles.name(sB) == "Personal"
+        && profiles.profilesShown.filter { profiles.name($0) == "Personal" } == [sB], "\(profiles.profilesShown)")
+  check("carry: said in the log", said.dropFirst(saidBefore).contains { $0.contains("\(sA) → \(sB) (Safari profile \(FakeSafari.personalServer)): data carried over") }
+        && said.dropFirst(saidBefore).contains { $0.contains("data.hello held up to") })
+  check("carry: the new copy's link gone", await close("B", "safari:\(sB)"))
+
+  // The switch back: the team's build again (its entry added again, its old id), the plist read first.
+  personal(team: ["Enabled": true, "AddedDate": day(5), "RemovedDate": day(3), "ProfileIdentifier": idA], unsigned: ["Enabled": false, "AddedDate": day(3), "RemovedDate": day(5), "ProfileIdentifier": idB])
+  check("carry back: Safari's read maps Personal to the old id again", await until(3, { maps(sA) }))
+  mark = fake.events.count
+  connect("A2", sA)
+  check("carry back: the set comes back at once, no data.need", await until(3, { fake.first("dataAck", since: mark) != nil })
+        && (fake.first("dataSnapshot", since: mark)?["spaces"] as? JSONObject)?["work"] as? String == "Carried" && fake.first("dataNeed", since: mark) == nil)
+  check("carry back: under the old id again", named(pA, "work") == "Carried" && !shell.data.profiles(browser: "safari").map(\.profile).contains(sB) && profiles.name(sA) == "Personal")
+  var stopped = false
+  shell.stop { stopped = true }
+  _ = await until(3, { stopped })
+  fake.stop()
+  print(String(format: "  timings: the carry scenario %.1f s", Date().timeIntervalSince(started)))
+}

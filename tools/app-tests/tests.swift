@@ -72,6 +72,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     dataMerge()
     dataStore()
     dataSync()
+    dataCarry() // data-tests.swift
     profilesTests()
     safariProfilesTests() // safari-profiles-tests.swift
     oneMargin()

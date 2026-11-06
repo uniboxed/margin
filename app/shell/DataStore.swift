@@ -271,6 +271,28 @@ final class DataStore {
         cache[p] = nil
     }
 
+    // A profile's set put away, whole and as it was (a signing change carried
+    // it to another id: ShellProfiles.swift carryOver): its folder renamed to
+    // <browser>/.archived/<profile>-<ms>, where profiles() never looks, so
+    // the profile has no set any more. Nothing is deleted. Where it went, or
+    // nil if it had no folder or the rename failed.
+    @discardableResult func archive(_ p: DataProfile) -> URL? {
+        waitForWrites()
+        let dir = directory(p)
+        guard FileManager.default.fileExists(atPath: dir.path) else { return nil }
+        let into = root.appendingPathComponent(Self.fileName(p.browser), isDirectory: true).appendingPathComponent(".archived", isDirectory: true)
+        let to = into.appendingPathComponent("\(Self.fileName(p.profile))-\(Int(now()))", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: into, withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: dir, to: to)
+        } catch {
+            Diagnostics.warn("\(p): its data set not put away: \(error)")
+            return nil
+        }
+        cache[p] = nil
+        return to
+    }
+
     nonisolated struct Written: Sendable {
         var count = 0
         var crashed = false

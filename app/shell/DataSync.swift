@@ -26,6 +26,12 @@
 //    has had a snapshot, or matched the rev on hello): with everything the
 //    app sent before it applied, the copy then has the set at that rev.
 //
+// A profile's set carried to a new id (a signing change gives every named
+// Safari profile a new one: ShellProfiles.swift carryOver): carry(from:to:).
+// Before data.need for a profile with no set, `beforeNeed` is asked: it can
+// hold the hello up to `holdFor` (a Safari read may yet map the id), or name
+// the set to carry over at once.
+//
 // The read API for the rest of the app (the overlay's UI, step 4): profiles(),
 // set(of:), values(_:of:), marginTabs(of:), and onChange.
 
@@ -60,7 +66,19 @@ final class DataSync {
         // The copy has every item of the app's set, but for what the app sent
         // it since (in order) and its own changes still queued: acks carry the rev.
         var synced = false
+        // A data.hello held before data.need (beforeNeed said .hold), and the hold's end.
+        var heldHello: JSONObject?
+        var holdTimer: Timer?
+        var carrying = false // carry(from:to:) under way for it
+        var heldChanges: [DataChange] = [] // the copy's data.changes meanwhile
         init(_ peer: DataPeer) { self.peer = peer }
+    }
+
+    // What to do for a profile that has no set, before asking its copy for one.
+    enum NeedChoice {
+        case ask // data.need, as always
+        case hold // wait up to holdFor for carry(from:to:) or release(_:)
+        case carry(from: DataProfile, why: String) // that set is this profile's: carried over at once
     }
 
     let store: DataStore
@@ -71,6 +89,12 @@ final class DataSync {
     private var linked: [DataProfile: Linked] = [:]
     // Messages the app couldn't send (over 1 MB, the link down): tests read it.
     private(set) var unsent = 0
+    var beforeNeed: ((DataProfile) -> NeedChoice)?
+    var holdFor: TimeInterval = 3
+    // A set carried over (old, new, why), and a profile's first set stored from its copy.
+    var onCarried: ((DataProfile, DataProfile, String) -> Void)?
+    var onFirstSet: ((DataProfile) -> Void)?
+    var now: () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded() }
 
     init(store: DataStore) {
         self.store = store
@@ -121,7 +145,32 @@ final class DataSync {
 
     func linkDown(_ peer: DataPeer) {
         let p = peer.hello.dataProfile
-        if linked[p]?.peer === peer || linked[p]?.peer == nil { linked[p] = nil }
+        if linked[p]?.peer === peer || linked[p]?.peer == nil {
+            linked[p]?.holdTimer?.invalidate()
+            linked[p] = nil
+        }
+    }
+
+    // The profiles whose data.hello is held (beforeNeed's .hold).
+    var holding: [DataProfile] { linked.filter { $0.value.heldHello != nil && !$0.value.carrying }.map(\.key).sorted() }
+
+    // A held hello let go: data.need, as without the hold.
+    func release(_ p: DataProfile, why: String) {
+        guard let l = linked[p], !l.carrying, let body = l.heldHello else { return }
+        l.heldHello = nil
+        l.holdTimer?.invalidate()
+        l.holdTimer = nil
+        Diagnostics.note("\(p): data.hello no longer held (\(why))")
+        hello(l, p, body, hold: false)
+        takeHeldChanges(l, p)
+    }
+
+    // The copy's changes that came while its hello was held, taken as they would have been.
+    private func takeHeldChanges(_ l: Linked, _ p: DataProfile) {
+        guard !l.heldChanges.isEmpty else { return }
+        let list = l.heldChanges
+        l.heldChanges = []
+        changes(l, p, ["changes": list.map(\.json)])
     }
 
     func received(_ peer: DataPeer, _ kind: String, _ body: JSONObject) {
@@ -139,7 +188,7 @@ final class DataSync {
         }
     }
 
-    private func hello(_ l: Linked, _ p: DataProfile, _ body: JSONObject) {
+    private func hello(_ l: Linked, _ p: DataProfile, _ body: JSONObject, hold: Bool = true) {
         guard (int(body["format"]) ?? DataFormat.version) == DataFormat.version else {
             return Diagnostics.warn("\(p): data.hello of format \(body["format"] ?? "?"): left")
         }
@@ -149,6 +198,25 @@ final class DataSync {
         l.ackedSent = acked
         l.transfer = nil
         l.parts = [:]
+        if hold, store.load(p) == nil, let choice = beforeNeed?(p) {
+            switch choice {
+            case .ask: break
+            case .hold:
+                if l.heldHello == nil {
+                    Diagnostics.note("\(p): no data set, and no Safari profile maps it yet: data.hello held up to \(holdFor) s for Safari's profiles to be read")
+                    l.holdTimer?.invalidate()
+                    l.holdTimer = Timer.scheduledTimer(withTimeInterval: holdFor, repeats: false) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.release(p, why: "no Safari read mapped it within \(self?.holdFor ?? 0) s") }
+                    }
+                }
+                l.heldHello = body
+                return
+            case .carry(let from, let why):
+                l.heldHello = body
+                if carry(from: from, to: p, why: why) { return }
+                l.heldHello = nil
+            }
+        }
         guard let stored = store.load(p), acked <= stored.acked else {
             if let stored = store.load(p) {
                 Diagnostics.warn("\(p): the copy has \(Int(acked)) confirmed, the app's files only \(Int(stored.acked)): the whole set asked for")
@@ -239,12 +307,18 @@ final class DataSync {
             let sent = stored != nil ? self.sendSet(l, p) : nil // the copy lacks what the app had
             l.synced = true
             self.sendAck(l, upTo, rev: sent ?? rev)
+            if stored == nil { self.onFirstSet?(p) }
         }
     }
 
     private func changes(_ l: Linked, _ p: DataProfile, _ body: JSONObject) {
         let changes = DataChange.list(body["changes"])
         guard !changes.isEmpty else { return }
+        // Its hello held (or being carried over): kept, and taken once the hello is answered.
+        if l.heldHello != nil || l.carrying {
+            l.heldChanges += changes
+            return
+        }
         guard !l.awaiting, let stored = store.load(p) else {
             l.held += changes
             if !l.awaiting {
@@ -262,6 +336,65 @@ final class DataSync {
             self.answer(l, p, lost) // the app's newer items, for the changes that lost to them
             self.sendAck(l, upTo, rev: rev)
         }
+    }
+
+    // ---- carried over ----
+
+    // `old`'s set becomes `new`'s (the same browser profile under a new id:
+    // a signing change). Only while `old` isn't linked, and only if `new` has
+    // no set or just its first, untouched one (rev 1: stored from its copy's
+    // snapshot, nothing changed since), and its copy isn't sending one now.
+    // `new`'s own items that `old`'s set doesn't have (the new copy's fresh
+    // defaults, in its first set or its held hello's queue) become deletions,
+    // so its copy ends up with `old`'s set alone; items both have stay
+    // `old`'s (a fresh copy's defaults are newer, and would win). Stored,
+    // then `old`'s folder put away (DataStore.archive), then the copy told:
+    // its held hello answered as a relink, or the set sent to it. True if it's
+    // under way.
+    @discardableResult func carry(from old: DataProfile, to new: DataProfile, why: String) -> Bool {
+        guard old != new, old.browser == new.browser, !isLinked(old), let source = store.load(old) else { return false }
+        let target = store.load(new)
+        if let target, !target.rev.hasPrefix("1-") { return false } // changed since its first set: it's the person's now
+        let l = linked[new]
+        if l?.awaiting == true { return false } // its copy's snapshot is on its way: after it's stored (onFirstSet)
+        if l?.carrying == true { return false }
+        let held = l?.heldHello
+        var set = source.set
+        let t = now()
+        var theirs: [(collection: String, id: String, at: Double)] = []
+        for (c, list) in target?.set.items ?? [:] { for (id, item) in list where !item.deleted { theirs.append((c, id, item.updatedAt)) } }
+        for change in DataChange.list(held?["queue"]) where !change.item.deleted { theirs.append((change.collection, change.id, change.item.updatedAt)) }
+        var dropped = 0
+        for item in theirs where set.items[item.collection]?[item.id] == nil {
+            set.items[item.collection, default: [:]][item.id] = .tombstone(max(t, item.at + 1))
+            dropped += 1
+        }
+        for c in target?.set.collections ?? [] where set.items[c] == nil { set.items[c] = [:] }
+        let acked = max(source.acked, target?.acked ?? 0)
+        let items = source.set.items.values.map { $0.values.filter { !$0.deleted }.count }.reduce(0, +)
+        l?.carrying = true
+        save(new, set, acked: acked, changed: nil) { [weak self] _ in
+            guard let self else { return }
+            l?.carrying = false
+            let archived = self.store.archive(old)
+            Diagnostics.note("\(new.browser): \(old.profile) → \(new.profile) (\(why)): data carried over (\(items) items\(dropped > 0 ? ", \(dropped) of the new copy's own left out" : ""); the old set \(archived == nil ? "not put away" : "put away"))")
+            self.onCarried?(old, new, why)
+            guard let l = self.linked[new], l.peer != nil else { return }
+            if let body = l.heldHello {
+                // The held hello answered as a relink with nothing queued: the set goes to the copy.
+                l.heldHello = nil
+                l.holdTimer?.invalidate()
+                l.holdTimer = nil
+                var b = body
+                b["queue"] = [Any]()
+                self.hello(l, new, b, hold: false)
+            } else if !l.awaiting {
+                let sent = self.sendSet(l, new)
+                self.sendAck(l, l.ackedSent, rev: sent ?? self.store.savedRev)
+            }
+            self.takeHeldChanges(l, new)
+        }
+        return true
     }
 
     // ---- storing ----

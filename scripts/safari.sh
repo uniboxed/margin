@@ -9,6 +9,9 @@
 # The team: MARGIN_TEAM, else xcode/.team (one line, the team ID), else the
 # first team Xcode knows (Xcode → Settings → Accounts: add your Apple ID; a
 # free Personal Team works). `--unsigned`: build anyway, ad-hoc signed.
+# Signed otherwise than the installed copy (another team, or --unsigned over
+# a signed one), it warns that named profiles' spaces start fresh and asks
+# first (scripts/signing-check.sh); `--yes` goes on without asking.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -18,7 +21,13 @@ DERIVED="$PWD/xcode/build"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
 UNSIGNED=false
-[ "${1:-}" = "--unsigned" ] && UNSIGNED=true
+YES=false
+for arg in "$@"; do
+  case "$arg" in
+    --unsigned) UNSIGNED=true ;;
+    --yes) YES=true ;;
+  esac
+done
 
 npm run build
 # The project again when what makes it isn't what it was made from: the app's
@@ -58,6 +67,11 @@ add your Apple ID (a free Personal Team is enough), then run this again.
 EOF
   exit 1
 fi
+
+# The installed copy signed otherwise: its named profiles' spaces would start fresh. Asked first.
+. scripts/signing-check.sh
+if [ "$UNSIGNED" = true ]; then NEW_TEAM="not set"; else NEW_TEAM="$TEAM"; fi
+confirm_signing "$DEST" "$NEW_TEAM" "$YES" || exit 1
 
 if [ "$UNSIGNED" = true ]; then
   SIGN="CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM="

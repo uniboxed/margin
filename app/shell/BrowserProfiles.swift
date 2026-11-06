@@ -246,6 +246,64 @@ final class BrowserProfiles {
         return changed
     }
 
+    // ---- a profile under a new id (a signing change) ----
+
+    // A build signed by another team (or unsigned) is a new extension to
+    // Safari: each named profile's copy gets a new random id, so its spaces
+    // would start fresh while the old set sits beside them as a profile with
+    // no link. The browser's own id for the profile (`browserId`, kept from an
+    // earlier read) ties the two: the set to carry to `new` is the one of a
+    // known profile Margin linked to the same browser profile that the last
+    // read maps `new` to, that has a set, and that isn't linked. Copies with
+    // the browser's own ids only (`s-<uuid>`), never the default profile's.
+    // With two such, the one linked last. Nil with no read (no permission).
+    func carrySource(for new: String, hasSet: (String) -> Bool, linked: Set<String>) -> (old: String, browserId: String)? {
+        guard Self.browserOwn(new), let list = browserList, let mapped = list.first(where: { $0.margin == new }) else { return nil }
+        let current = Set(list.compactMap(\.margin))
+        let old = info.filter { id, i in
+            id != new && Self.browserOwn(id) && i.browserId == mapped.serverId && !current.contains(id) && !linked.contains(id) && hasSet(id)
+        }.max { ($0.value.lastSeen, $1.key) < ($1.value.lastSeen, $0.key) }
+        return old.map { ($0.key, mapped.serverId) }
+    }
+
+    // Worth waiting for a read before a new copy's first set: the last read
+    // (there is one: the permission's given) doesn't map `new`, and a profile
+    // linked to the browser's before has a set and isn't linked. That one may
+    // still be mapped by the last read: Safari's plist may not say yet that
+    // its entry was removed. The hold ends as soon as a read maps `new`.
+    func mightCarry(_ new: String, hasSet: (String) -> Bool, linked: Set<String>) -> Bool {
+        guard Self.browserOwn(new), let list = browserList, !list.contains(where: { $0.margin == new }) else { return false }
+        return info.contains { id, i in id != new && Self.browserOwn(id) && !i.browserId.isEmpty && !linked.contains(id) && hasSet(id) }
+    }
+
+    private static func browserOwn(_ id: String) -> Bool { id.hasPrefix("s-") && id != defaultProfile }
+
+    // `old`'s place taken by `new`: its name, emoji, color (the one it was
+    // shown with), when it was first seen and its places in the order; `old`
+    // forgotten (its data set was put away). Its copy linking again later
+    // (a switch back) brings it back, and the set is carried back the same way.
+    func carry(from old: String, to new: String) {
+        guard old != new, let o = info[old] else { return }
+        var n = info[new] ?? ProfileInfo()
+        n.name = o.name
+        n.named = o.named
+        n.emoji = o.emoji
+        n.color = o.color.isEmpty ? color(old) : o.color
+        n.firstSeen = n.firstSeen == 0 ? o.firstSeen : min(n.firstSeen, o.firstSeen)
+        n.lastSeen = max(n.lastSeen, o.lastSeen)
+        n.hidden = false
+        if n.browserId.isEmpty { (n.browserId, n.browserName) = (o.browserId, o.browserName) }
+        info[new] = n
+        var seen = Set<SpaceKey>()
+        let moved = { (list: [SpaceKey]) in list.filter { $0.profile != new }.map { $0.profile == old ? SpaceKey(profile: new, space: $0.space) : $0 }.filter { seen.insert($0).inserted } }
+        stored = moved(stored)
+        seen = []
+        order = moved(order)
+        _ = associate()
+        save()
+        forget(old)
+    }
+
     // ---- the order ----
 
     // The profiles' spaces as their sets have them now (each profile's in its

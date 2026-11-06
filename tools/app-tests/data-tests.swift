@@ -387,4 +387,113 @@ extension Tests {
     let afterCrash = testStore(root)
     check("and the files as before it", (afterCrash.load(p1)?.set.liveValues("spaces")["personal"] as? JSONObject)?["name"] as? String == "Home" && afterCrash.load(p1)?.acked == 730)
   }
+
+  // A profile's set carried to a new id (a signing change): DataSync's hold and carry.
+  static func dataCarry() {
+    let root = tempFolder("carry")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = testStore(root)
+    let sync = DataSync(store: store)
+    sync.now = { 5000 }
+    var carried: [String] = []
+    sync.onCarried = { old, new, why in carried.append("\(old.profile)>\(new.profile) \(why)") }
+    let pA = DataProfile(browser: "safari", profile: "s-aaaa"), pB = DataProfile(browser: "safari", profile: "s-bbbb")
+    func seed(_ p: DataProfile, _ changes: [DataChange], acked: Double = 100) {
+      var set = DataSet()
+      set.merge(changes)
+      store.save(p, DataStore.Stored(set: set, acked: acked), changed: nil)
+    }
+    seed(pA, [change("spaces", "work", 100, space("Deep Work")), change("spaces", "side", 90, space("Side", 1)), change("settings", "theme", 100, "arcadia")])
+    let oldDir = store.directory(pA)
+
+    // ---- a hello before Safari's read: held, then carried over ----
+    let b = FakePeer("s-bbbb")
+    sync.linkUp(b)
+    var asked: [String] = []
+    sync.beforeNeed = { p in asked.append(p.profile); return .hold }
+    let fresh = [change("spaces", "space1", 200, space("Space 1")).json, change("settings", "theme", 300, "neo").json]
+    sync.received(b, "data.hello", ["profile": "s-bbbb", "format": 1, "acked": 0, "queue": fresh])
+    check("carry: a new id's hello with no set, beforeNeed says hold: nothing sent yet", b.sent.isEmpty && asked == ["s-bbbb"] && sync.holding == [pB] && store.load(pB) == nil)
+    check("carry: not from a linked profile", { let a = FakePeer("s-aaaa"); sync.linkUp(a); defer { sync.linkDown(a) }; return !sync.carry(from: pA, to: pB, why: "x") }())
+    sync.received(b, "data.changes", ["profile": "s-bbbb", "changes": [change("pins", "pnew", 700, ["url": "https://new.test/"]).json]])
+    check("carry: a change while the hello is held: kept, nothing sent", b.sent.isEmpty && store.load(pB) == nil)
+    check("carry: under way", sync.carry(from: pA, to: pB, why: "Safari profile X"))
+    check("carry: the change made while held taken after it", store.load(pB)?.set.liveValues("pins")["pnew"] != nil && b.kinds.last == "data.ack" && num(b.sent.last?.body["upTo"]) == 700, "\(b.kinds)")
+    let bSet = store.load(pB)
+    check("carry: the new id has the old set's spaces and settings", (bSet?.set.liveValues("spaces")["work"] as? JSONObject)?["name"] as? String == "Deep Work"
+          && bSet?.set.liveValues("spaces").count == 2 && bSet?.set.liveValues("settings")["theme"] as? String == "arcadia", "\(bSet?.set.json ?? [:])")
+    check("carry: the new copy's own defaults left out (deleted), not merged in", bSet?.set.item("spaces", "space1")?.deleted == true && bSet?.set.item("settings", "theme")?.updatedAt == 100 && (bSet?.set.item("spaces", "space1")?.updatedAt ?? 0) > 200)
+    let back = assembled(b.sent)
+    check("carry: the held hello answered as a relink: the set to the copy, then data.ack", b.kinds.suffix(2) == ["data.ack", "data.ack"] && b.kinds.dropLast(2).allSatisfy { $0 == "data.snapshot" } && b.kinds.count >= 3
+          && back?.set != nil && (((back?.set["items"] as? JSONObject)?["spaces"] as? JSONObject)?["work"] as? JSONObject) != nil && !b.kinds.contains("data.need"), "\(b.kinds)")
+    check("carry: the old set put away, out of the profiles", store.profiles(browser: "safari") == [pB] && !FileManager.default.fileExists(atPath: oldDir.path)
+          && ((try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("safari/.archived").path)) ?? []).count == 1 && store.load(pA) == nil)
+    check("carry: said", carried == ["s-aaaa>s-bbbb Safari profile X"] && sync.holding.isEmpty)
+    check("carry: acked: the old set's, then the held change's", store.load(pB)?.acked == 700, "\(store.load(pB)?.acked ?? -1)")
+    check("carry: again: nothing (the old set is gone)", !sync.carry(from: pA, to: pB, why: "x"))
+
+    // ---- the hold runs out: data.need, as without it ----
+    sync.holdFor = 0.05
+    let c = FakePeer("s-cccc")
+    sync.linkUp(c)
+    sync.received(c, "data.hello", ["profile": "s-cccc", "format": 1, "acked": 0, "queue": []])
+    check("hold: nothing at first", c.sent.isEmpty)
+    waitUntil(1) { !c.sent.isEmpty }
+    check("hold: run out: data.need", c.kinds == ["data.need"], "\(c.kinds)")
+    sync.holdFor = 3
+
+    // ---- no read (beforeNeed not set, or .ask): data.need at once ----
+    sync.beforeNeed = nil
+    let g = FakePeer("s-gggg")
+    sync.linkUp(g)
+    sync.received(g, "data.hello", ["profile": "s-gggg", "format": 1, "acked": 0, "queue": []])
+    check("no Safari read: a fresh set as today (data.need at once)", g.kinds == ["data.need"])
+
+    // ---- after the new copy's first set: carried if it's untouched ----
+    let pE = DataProfile(browser: "safari", profile: "s-eeee"), pF = DataProfile(browser: "safari", profile: "s-ffff"), pD = DataProfile(browser: "safari", profile: "s-dddd")
+    seed(pE, [change("spaces", "home", 100, space("Home E")), change("pins", "pe", 100, ["url": "https://e.test/"])])
+    var first: [String] = []
+    sync.onFirstSet = { p in
+      first.append(p.profile)
+      if p == pF { sync.carry(from: pE, to: pF, why: "Safari profile Y") }
+    }
+    let f = FakePeer("s-ffff")
+    sync.linkUp(f)
+    sync.received(f, "data.hello", ["profile": "s-ffff", "format": 1, "acked": 0, "queue": []])
+    check("late: no set, data.need", f.kinds == ["data.need"])
+    f.sent = []
+    sync.received(f, "data.snapshot", ["profile": "s-ffff", "format": 1, "set": ["format": 1, "items": ["spaces": ["d1": ["updatedAt": 400, "value": space("Space 1")]], "pins": [String: Any]()]]])
+    let fSet = store.load(pF)
+    check("late: the first set stored, then carried over", first == ["s-ffff"] && (fSet?.set.liveValues("spaces")["home"] as? JSONObject)?["name"] as? String == "Home E"
+          && fSet?.set.item("spaces", "d1")?.deleted == true && fSet?.set.liveValues("pins").count == 1 && store.load(pE) == nil, "\(fSet?.set.json ?? [:])")
+    let fBack = assembled(f.sent)
+    check("late: the copy got the carried set and an ack with its rev", f.kinds.first == "data.ack" && f.kinds.last == "data.ack" && f.kinds.contains("data.snapshot")
+          && same(fBack?.set, fSet?.set.json) && f.sent.last?.body["rev"] as? String == fSet?.rev, "\(f.kinds)")
+    // A copy that has sent changes since its first set: never.
+    seed(pE, [change("spaces", "home", 100, space("Home E"))])
+    let d = FakePeer("s-dddd")
+    sync.linkUp(d)
+    sync.received(d, "data.hello", ["profile": "s-dddd", "format": 1, "acked": 0, "queue": []])
+    sync.received(d, "data.snapshot", ["profile": "s-dddd", "format": 1, "set": ["format": 1, "items": ["spaces": ["d1": ["updatedAt": 400, "value": space("Space 1")]]]]])
+    check("touched: the first set is rev 1", store.load(pD)?.rev.hasPrefix("1-") == true)
+    sync.received(d, "data.changes", ["profile": "s-dddd", "changes": [change("spaces", "d1", 500, space("Mine")).json]])
+    check("touched: a copy that sent changes since: no carry", !sync.carry(from: pE, to: pD, why: "x") && (store.load(pD)?.set.liveValues("spaces")["d1"] as? JSONObject)?["name"] as? String == "Mine"
+          && store.load(pE) != nil)
+    // While its copy's snapshot is on its way: not yet.
+    let h = FakePeer("s-hhhh")
+    sync.linkUp(h)
+    sync.received(h, "data.hello", ["profile": "s-hhhh", "format": 1, "acked": 0, "queue": []])
+    check("awaiting its copy's snapshot: not yet", !sync.carry(from: pE, to: DataProfile(browser: "safari", profile: "s-hhhh"), why: "x"))
+
+    // ---- the switch back: the old id links again, the set comes back ----
+    sync.linkDown(b)
+    let a2 = FakePeer("s-aaaa", epoch: "e9")
+    sync.linkUp(a2)
+    sync.beforeNeed = { p in p == pA ? .carry(from: pB, why: "Safari profile X") : .ask }
+    sync.received(a2, "data.hello", ["profile": "s-aaaa", "format": 1, "acked": 0, "queue": [change("spaces", "space1b", 600, space("Space 1")).json]])
+    check("switch back: carried back at once, as a relink", (store.load(pA)?.set.liveValues("spaces")["work"] as? JSONObject)?["name"] as? String == "Deep Work"
+          && store.load(pA)?.set.item("spaces", "space1b")?.deleted == true && a2.kinds.last == "data.ack" && a2.kinds.contains("data.snapshot") && !a2.kinds.contains("data.need")
+          && store.load(pB) == nil && store.profiles(browser: "safari").contains(pA) && !store.profiles(browser: "safari").contains(pB), "\(a2.kinds)")
+    check("switch back: said", carried.last == "s-bbbb>s-aaaa Safari profile X")
+  }
 }
