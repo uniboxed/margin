@@ -429,6 +429,18 @@ New `app/shell/PrivateCalls.swift`:
 - **The watchdog belongs to the freezer** (`RealFreezer`): a `DispatchSourceTimer` on a private serial queue calls `SLSInvokeTransition` if the handle is still live at 1.7 s, with a lock guarding the handle. A stuck main thread can't hold the screen. Gate G13 kills a freezing process to learn whether macOS releases a dead process's freeze.
 - **Reveal-at-once paths:** quit (`Shell.stop`, `Shell.swift:294`), will-sleep (§6.8), Safari quitting, a foreign Space change (§1.2), and any failure.
 
+Built (WP2): `app/shell/Freezer.swift`. Settled on the way:
+
+- **The protocol:** `Freezer { delegate, isLive, freeze(watchdog:) -> FreezeResult, reveal(RevealWhy) -> RevealResult }`. `FreezeResult` is `.frozen(handle)`, `.failed(result)` or `.unavailable(why)`. `RevealResult` is `.revealed`, `.failed(result, released:)` or `.notLive`. `RevealWhy` names each path above, plus `ready`, `watchdog`, `closed` and `cancelled`.
+- **The session rules are `FreezeRules`,** a struct the delegate keeps (WP8's machine), fed by `FreezeReport`s: two failed freezes in a row, or one failed reveal, turn it off. A success resets the count. A watchdog reveal is counted, not a failure. `FreezeRules(availability:)` starts off when the launch check didn't pass the freeze. It also keeps `lastRevealAt` and `lastWatchdogAt` for §1.5's cooldown. The freezer itself never decides whether to freeze.
+- **The lock is held through `SLSInvokeTransition` and `SLSReleaseTransition`,** not just while the handle is taken. So a reveal and the next freeze never overlap in SkyLight, and only one caller ever reveals a handle.
+- **The watchdog reveals off the main thread.** The labs only ever revealed on the main thread (`S/handoff/lab.swift:66`). Revealing from another thread on the main connection hasn't been tried on screen yet. It should be part of G1's run (WP13).
+- **A watchdog reveal reaches the delegate a moment later,** on the main actor. By then `isLive` is already false. Every report carries its handle, so a late one is never taken for a later freeze.
+- **A freezer that goes away while live reveals** (the labs released instead). A freeze asked while one is live is `.unavailable` and isn't counted.
+- **`FreezerOptions`:** `watchdog` 1.7 s and `closeWatchdog` 1.0 s. §4.5's caller passes `closeWatchdog` to `freeze(watchdog:)`.
+- **`FakeFreezer` is in `Freezer.swift`, not in the tests.** WP9's end-to-end run (`e2e-profiles.swift`, built without the unit test files) and the harness inject it through `Shell` options. It calls nothing private. Its results are scripted per call, and its watchdog runs on a `SwitchClock`.
+- **Not wired yet:** WP8/WP9 make `RealFreezer(skyLight: shell.skyLight)` and `FreezeRules(availability: shell.privateCalls)`, and call `reveal(.quit)`, `.sleep` and `.safariQuit` from the shell's paths.
+
 ### 4.4 Never strand a window
 
 Invariants, each with a unit test:
