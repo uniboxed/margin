@@ -964,6 +964,19 @@ export const SCENARIOS = {
     check('A', 'A: and once it\'s clear it\'s gone, off: the box goes', `Margin.content.appDraws() === false && !Margin.content.boxed()`, 9000),
     bare('A'), nothingDrawn('A'),
   ],
+  // The app back after quitting while Safari loses the handler's answers (as 27.2 does when several
+  // profiles' copies ask at once): the copy takes the link dispatched into its port without the
+  // answer, as a page starts (before the fix it waited for the answer forever).
+  'app-link-lost': [
+    { op: 'appStart' },
+    { op: 'open', name: 'A', url: '/p/T', active: true }, wait(800), { op: 'install' },
+    check('A', 'A: linked to the app', `Margin.content?.appDraws?.() === true`, 8000),
+    { op: 'appQuit' },
+    check('A', 'A: the app quit (bye): off', `Margin.content.appDraws() === false`, 3000),
+    { op: 'appLoseAnswers', count: 3 }, { op: 'appStart' }, reload('A'),
+    check('A', 'A: the app back, its answers lost: linked again from the link alone', `Margin.content?.appDraws?.() === true`, 9000),
+    check('A', 'A: and the app said hello to it', `const { appLink } = await browser.storage.local.get('appLink'); return appLink?.state === 'linked'`, 3000),
+  ],
   // A picture of a page in its box, for a look (build/screenshot.png).
   screenshot: [
     ...startBoxed('A', '/p/A'),

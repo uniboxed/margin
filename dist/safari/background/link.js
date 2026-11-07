@@ -13,9 +13,11 @@
 //     dispatches into the extension (SFSafariApplication.dispatchMessage)
 //     comes on it: { name, userInfo: { e: <JSON> } }.
 //  2. wantLink { nonce } (sendNativeMessage: the handler says whether the app
-//     is open and passes the nonce on);
+//     is open and passes the nonce on). Safari may never answer it when
+//     several profiles' copies ask at once (REPLY_WAIT_MS), so nothing waits
+//     on that answer for long;
 //  3. the app's `link` with that nonce: port, token, key (others' nonces, and
-//     ones Safari replays, are left);
+//     ones Safari replays, are left). Every copy hears every dispatch;
 //  4. ws://127.0.0.1:<port>/?t=<token>; the app's first message is
 //     welcome { key }: anything else closes the socket. Then hello, the
 //     snapshot, the theme in pieces, the keys and data.hello.
@@ -29,6 +31,9 @@
 // answered, ticks are answered, and nothing heard for DEAD_MS drops the link.
 // A drop is tried again with the kept link (RECONNECT_MS), then asked for
 // again, less and less often (ASK_MS), and on every page starting (poke).
+// Asked for while a try is under way (appUp, a page, the person), it's asked
+// again once that try ends unlinked; a try under way STUCK_MS is left; and
+// each ping checks an unlinked copy has a try under way or one to come.
 //
 // What pages see (storage.local appLink, shared/app-link.js): 'linked', then
 // on a drop 'reconnecting' for GONE_MS (the app keeps the last picture,
@@ -88,6 +93,14 @@ export const LAUNCH_ASKS = 20; // …this many times (10 s), then as any other t
 // (app/shell/BundleWatch.swift), and the handler starts the new one at the next ask.
 export const NO_LINK_ASK_MS = 5000;
 export const NO_LINK_ASKS = 3;
+// The extension handler's answer to wantLink, waited for this long at most. Safari 27.2 answers
+// only one of several native messages its profiles' copies send at once (2026-11-06: five copies
+// starting together, one answered, the other four promises never settled), so the link is taken
+// whenever it comes, answered or not: the app's dispatch reaches every copy.
+export const REPLY_WAIT_MS = 3000;
+// A try of the link under way this long is taken to be stuck (a promise Safari never settles):
+// left, and the link asked for again. Checked at each ping and whenever something asks.
+export const STUCK_MS = 45_000;
 const DELTA_MS = 16;
 export const WINDOWS_MS = 1000;
 const LAYOUT_WRITE_MS = 120;
@@ -136,6 +149,12 @@ const clock = (/** @type {number} */ ms) => {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 };
 const random = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${String(Math.random()).slice(2)}`;
+// What `promise` gives within `ms`, else null (it's left: Safari may never settle it).
+/** @template T @param {Promise<T>} promise @param {number} ms @returns {Promise<T | null>} */
+const within = (promise, ms) => new Promise((resolve) => {
+  const timer = setTimeout(() => resolve(null), ms);
+  promise.then((value) => { clearTimeout(timer); resolve(value); }, () => { clearTimeout(timer); resolve(null); });
+});
 const PROFILE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 /** The app's keys from the settings (`keys`: app/PROTOCOL.md): each command's combinations. @param {any} settings */
@@ -185,7 +204,7 @@ const webSha256 = async (/** @type {Uint8Array} */ bytes) => [...new Uint8Array(
  *   log?: (...args: any[]) => void,
  *   sha256?: (bytes: Uint8Array) => Promise<string>,
  *   now?: () => number,
- *   timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number, noLinkAsk: number, noLinkAsks: number, offFor: number }>,
+ *   timing?: Partial<{ ping: number, dead: number, check: number, linkWait: number, openWait: number, keptWait: number, reconnect: number[], ask: number[], gone: number, windows: number, layoutWrite: number, launchAsk: number, launchAsks: number, noLinkAsk: number, noLinkAsks: number, offFor: number, replyWait: number, stuck: number }>,
  * }} deps
  */
 export function createLink({
@@ -208,7 +227,7 @@ export function createLink({
   const T = {
     ping: PING_MS, dead: DEAD_MS, check: CHECK_MS, linkWait: LINK_WAIT_MS, openWait: OPEN_WAIT_MS, keptWait: KEPT_WAIT_MS,
     reconnect: RECONNECT_MS, ask: ASK_MS, gone: GONE_MS, windows: WINDOWS_MS, layoutWrite: LAYOUT_WRITE_MS, launchAsk: LAUNCH_ASK_MS, launchAsks: LAUNCH_ASKS,
-    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, offFor: OFF_MS, ...timing,
+    noLinkAsk: NO_LINK_ASK_MS, noLinkAsks: NO_LINK_ASKS, offFor: OFF_MS, replyWait: REPLY_WAIT_MS, stuck: STUCK_MS, ...timing,
   };
   // What the link does, in the background's console and, through the lasting
   // native port, in Margin.app's own log (the extension handler writes it to
@@ -269,6 +288,10 @@ export function createLink({
   let nonce = null;
   let linkWaiter = null;
   let busy = null;
+  // When the try under way (busy) started, and whether something asked for the link while it was
+  // under way (the app saying it's up, a page starting, the person): asked again once it ends.
+  let busySince = 0;
+  let askAgain = false;
   let askMs = 0;
   let askTimer = null;
   let lastHeard = 0;
@@ -303,6 +326,9 @@ export function createLink({
   let layoutTimer = null;
   let stateWrite = Promise.resolve();
   let profile = null;
+  // Whether `profile` is Safari's own id for this profile (`s-…`: from the handler's answer, now or
+  // kept from one before), so hello needn't wait for an answer to say it.
+  let profileSure = false;
   let acked = 0;
   // The app's set's revision this copy's cache matches (DATA.md "Revisions"): a
   // string, compared only for being the same; null when it has none.
@@ -447,7 +473,7 @@ export function createLink({
     } else if (message.name === 'appUp' && !ws) {
       appUp = true; // the kept link is the app's before
       askMs = 0;
-      void link({ kept: false });
+      void link({ kept: false }); // (a try under way: asked again once it ends)
     }
   }
 
@@ -457,60 +483,129 @@ export function createLink({
     const got = await Promise.resolve(session()?.get(SESSION_KEY)).catch(() => null);
     return validLink(got?.[SESSION_KEY]) ? got[SESSION_KEY] : null;
   }
+  // One try at a time. Asked for while one is under way, the link is asked for again as soon as
+  // that one ends unlinked (what it waits on may be an app that's gone, or an answer Safari lost);
+  // one under way STUCK_MS is left, and a new one made.
   function link({ kept = true } = {}) {
     if (!on || ws) return Promise.resolve(!!ws);
+    if (busy && !stuck()) {
+      askAgain = true;
+      return busy;
+    }
     clearTimeout(askTimer);
     askTimer = null;
-    return (busy ??= (async () => {
-      try {
-        if (kept && !appUp) {
-          const k = await keptLink();
-          if (k) {
-            const tried = await open(k, T.keptWait);
-            note(`kept link at the background's start (port ${k.port}): ${tried.how}`);
-            if (tried.ok) return true;
-          }
+    return attempt(async () => {
+      if (kept && !appUp) {
+        const k = await keptLink();
+        if (k) {
+          const tried = await open(k, T.keptWait);
+          note(`kept link at the background's start (port ${k.port}): ${tried.how}`);
+          if (tried.ok) return true;
         }
-        return await ask();
-      } finally {
-        busy = null;
       }
-    })());
+      return await ask();
+    });
   }
+  // A try (link, reconnect) as `busy`. Only the newest one clears it: one left as stuck that ends
+  // later changes nothing. Ended unlinked with something having asked meanwhile: asked again now.
+  function attempt(run) {
+    askAgain = false;
+    busySince = now();
+    const mine = (async () => {
+      try {
+        return await run();
+      } finally {
+        if (busy === mine) busy = null;
+      }
+    })();
+    busy = mine;
+    void mine.then((ok) => {
+      if (busy || !on || ws || ok || !askAgain) return;
+      askAgain = false;
+      askMs = 0;
+      void link({ kept: false });
+    }, () => {});
+    return mine;
+  }
+  // A try under way longer than STUCK_MS: noted, and left (busy cleared, so a new one can start).
+  function stuck() {
+    if (!busy || now() - busySince < T.stuck) return false;
+    note(`the link's try has been under way ${Math.round((now() - busySince) / 1000)} s (something it waits on never ended): left, and the link asked for again`);
+    busy = null;
+    return true;
+  }
+  // At each ping: an unlinked copy always has a try under way or one to come. A try stuck, or
+  // none of either (it never should be): the link asked for now.
+  function watch() {
+    if (!on || ws) return;
+    if (busy) {
+      if (!stuck()) return;
+    } else if (askTimer) {
+      return;
+    } else {
+      note('unlinked with no try under way or to come: the link asked for now');
+    }
+    askMs = 0;
+    void link({ kept: false });
+  }
+  // wantLink, and the app's `link` with its nonce taken as soon as it comes: before the handler's
+  // answer, which Safari may never give (REPLY_WAIT_MS). Only a copy whose profile id Safari
+  // hasn't given yet (none kept from an answer before) waits for the answer to say hello with it.
   async function ask() {
     if (!on) return false;
     if (noSocketHere()) return failed();
     if (await noSockets()) return failed({ socketsOff: true });
     appUp = false;
-    nonce = random();
-    const answer = new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(null), T.linkWait);
-      linkWaiter = (value) => { clearTimeout(timer); resolve(value); };
-    });
+    const mine = (nonce = random());
+    /** @type {Promise<{ port: number, token: string, key: string } | null>} */
+    const given = new Promise((resolve) => { linkWaiter = resolve; });
+    const taken = () => { if (nonce === mine) linkWaiter = null; };
     ensurePort(); // the link comes on it
-    let reply = null;
-    try {
-      reply = await api.runtime.sendNativeMessage(APP, { type: 'wantLink', nonce });
-    } catch (err) {
-      reply = null;
-      note('wantLink: the extension handler didn\'t answer:', String(err?.message ?? err));
-    }
-    await takeProfile(reply?.profile);
-    if (reply?.appOpen !== true || !on) {
-      linkWaiter?.(null);
-      linkWaiter = null;
-      // The handler started the app (it wasn't running): asked again soon,
-      // and again when it says it's up. Not running and not started: it's
-      // gone, no waiting for it.
-      if (reply?.launching === true) {
-        note('wantLink: Margin.app wasn\'t running; the handler is starting it');
-        return failed({ launching: true });
+    const asked = now();
+    const answered = within(
+      Promise.resolve()
+        .then(() => api.runtime.sendNativeMessage(APP, { type: 'wantLink', nonce: mine }))
+        .then((reply) => ({ reply }), (err) => ({ error: String(err?.message ?? err) })),
+      T.replyWait,
+    );
+    const first = await Promise.race([given.then((value) => ({ link: value })), answered]);
+    let got = first && 'link' in first ? first.link : null;
+    const answer = got ? null : first;
+    if (got && !profileSure) {
+      // The link came first, but hello must carry Safari's id for this profile (takeProfile).
+      const late = await answered;
+      if (late && 'reply' in late) await heardFrom(late.reply);
+      if (!late) {
+        taken();
+        note(`wantLink: the link came but the extension handler's answer didn't within ${T.replyWait} ms, and this profile's id isn't known yet: asked again`);
+        return failed({ lost: true });
       }
-      if (reply) note('wantLink: Margin.app isn\'t running and wasn\'t started');
-      return failed({ appGone: reply?.appOpen === false });
     }
-    const got = await answer;
-    linkWaiter = null;
+    if (!got) {
+      if (!answer) {
+        taken();
+        if (!on) return false;
+        note(`wantLink: no answer from the extension handler within ${T.replyWait} ms (${Math.round(now() - asked)} ms), and no link`);
+        return failed({ lost: true });
+      }
+      const reply = 'reply' in answer ? answer.reply : null;
+      if ('error' in answer) note('wantLink: the extension handler didn\'t answer:', answer.error);
+      await heardFrom(reply);
+      if (reply?.appOpen !== true || !on) {
+        taken();
+        // The handler started the app (it wasn't running): asked again soon,
+        // and again when it says it's up. Not running and not started: it's
+        // gone, no waiting for it.
+        if (reply?.launching === true) {
+          note('wantLink: Margin.app wasn\'t running; the handler is starting it');
+          return failed({ launching: true });
+        }
+        if (reply) note('wantLink: Margin.app isn\'t running and wasn\'t started');
+        return failed({ appGone: reply?.appOpen === false });
+      }
+      got = await within(given, T.linkWait);
+    }
+    taken();
     if (!got || !on) {
       if (on) note(`wantLink: Margin.app is running but sent no link within ${T.linkWait} ms`);
       return failed({ noLink: true });
@@ -524,16 +619,18 @@ export function createLink({
   // says it's up). Pages lose their box once it's clear.
   let launches = 0;
   let noLinks = 0;
-  function failed({ appGone = false, launching = false, noLink = false, socketsOff = false } = {}) {
+  // `lost`: the handler's answer never came (and no link): asked again like `noLink`, a little
+  // apart from the other copies that asked with it, and pages told nothing new.
+  function failed({ appGone = false, launching = false, noLink = false, socketsOff = false, lost = false } = {}) {
     if (appGone || socketsOff) gone();
     else if (pageState.state !== 'off' && !goneTimer) dropping();
     if (socketsOff) setWhy('sockets-off', { offAt: guard?.at ?? Date.now(), offUntil: guard?.until ?? undefined });
     else if (noLink || appGone || launching) setWhy(noLink ? 'no-link' : undefined);
-    if (!noLink) noLinks = 0;
+    if (!noLink && !lost) noLinks = 0;
     // Starting: every LAUNCH_ASK_MS for a while (its appUp may come first).
     if (launching && launches++ < T.launchAsks) askMs = T.launchAsk;
     // Running, no link: NO_LINK_ASK_MS a few times (it may be quitting for a new build), then as below.
-    else if (noLink && noLinks++ < T.noLinkAsks) askMs = T.noLinkAsk;
+    else if ((noLink || lost) && noLinks++ < T.noLinkAsks) askMs = lost ? Math.round(T.noLinkAsk * (1 + Math.random() / 2)) : T.noLinkAsk;
     else askMs = Math.min(Math.max(askMs * 2, T.ask[0]), T.ask[1]);
     clearTimeout(askTimer);
     askTimer = on ? setTimeout(() => { askTimer = null; void link({ kept: false }); }, askMs) : null;
@@ -758,29 +855,24 @@ export function createLink({
     void reconnect();
   }
   async function reconnect() {
-    if (busy) return busy;
-    busy = (async () => {
-      try {
-        let n = 0;
-        for (const ms of T.reconnect) {
-          await new Promise((resolve) => setTimeout(resolve, ms));
-          if (!on || ws) return !!ws;
-          const kept = appUp ? null : await keptLink();
-          if (!kept) {
-            note(appUp ? 'the kept link not tried: the app said it started again' : 'no kept link to try: asking');
-            break;
-          }
-          const tried = await open(kept, T.openWait);
-          note(`kept link try ${++n} of ${T.reconnect.length} (port ${kept.port}): ${tried.how}`);
-          if (tried.ok) return true;
-          if (tried.how === 'sockets off') break;
+    if (busy && !stuck()) return busy;
+    return attempt(async () => {
+      let n = 0;
+      for (const ms of T.reconnect) {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        if (!on || ws) return !!ws;
+        const kept = appUp ? null : await keptLink();
+        if (!kept) {
+          note(appUp ? 'the kept link not tried: the app said it started again' : 'no kept link to try: asking');
+          break;
         }
-        return on && !ws ? await ask() : !!ws;
-      } finally {
-        busy = null;
+        const tried = await open(kept, T.openWait);
+        note(`kept link try ${++n} of ${T.reconnect.length} (port ${kept.port}): ${tried.how}`);
+        if (tried.ok) return true;
+        if (tried.how === 'sockets off') break;
       }
-    })();
-    return busy;
+      return on && !ws ? await ask() : !!ws;
+    });
   }
 
   // ---- what the app says -----------------------------------------------------------
@@ -1087,6 +1179,7 @@ export function createLink({
     const meta = got?.[LINK_META];
     if (meta && typeof meta.profile === 'string' && PROFILE.test(meta.profile)) {
       profile = meta.profile;
+      profileSure = profile.startsWith('s-');
       acked = Number.isFinite(meta.acked) ? meta.acked : 0;
       rev = typeof meta.rev === 'string' && meta.rev ? meta.rev : null;
       // The cache started from defaults since (Safari wiped the rest, or it was
@@ -1109,11 +1202,19 @@ export function createLink({
   // profile the app knows apart: no acked, no rev (the app's data.need or
   // snapshot follows).
   async function takeProfile(id) {
-    if (typeof id !== 'string' || !PROFILE.test(id) || id === profile) return;
+    if (typeof id !== 'string' || !PROFILE.test(id)) return;
+    profileSure = true;
+    if (id === profile) return;
     profile = id;
     acked = 0;
     rev = null;
     await writeMeta();
+  }
+  // The handler's answer: Safari's id for the profile kept; an answer with none (a handler that
+  // gives none) means none will come, so nothing waits for one.
+  async function heardFrom(reply) {
+    if (reply && typeof reply === 'object' && !('profile' in reply)) profileSure = true;
+    await takeProfile(reply?.profile);
   }
   const writeMeta = () => Promise.resolve(isOwner() ? local().set({ [LINK_META]: { profile, acked, ...(rev ? { rev } : {}) } }) : null).catch(() => {});
   // `upTo` kept as acked (never lower); a `rev`, when the ack has one.
@@ -1223,7 +1324,7 @@ export function createLink({
     // The pages in front say again whether they're shown (what they said before this background
     // started is gone with the one before).
     void Promise.resolve(api.tabs.query({ active: true })).then((tabs) => { for (const t of tabs ?? []) if (Number.isInteger(t?.id)) askVisibility(t.id); }, () => {});
-    pingTimer = setInterval(ping, T.ping);
+    pingTimer = setInterval(() => { ping(); watch(); }, T.ping);
     ping();
     await link();
   }
@@ -1250,8 +1351,9 @@ export function createLink({
     start,
     stop,
     // A page started: if the app wasn't there when last asked, asked again now.
+    // A try under way: asked again once it ends (it may be waiting on an answer Safari lost).
     poke() {
-      if (on && !ws && !busy && askTimer) void link({ kept: false });
+      if (on && !ws && (busy || askTimer)) void link({ kept: false });
     },
     // Asked for by the person (the new-tab page's "Start Margin.app"): the
     // link asked for now, from the start of the waits (the handler starts the
