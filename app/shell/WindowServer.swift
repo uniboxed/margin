@@ -34,6 +34,13 @@ protocol WindowSource {
     // The same, or nil when the window server gave no list at all (not the same as an empty one:
     // the binder takes such a read as telling nothing, WindowMatcher.swift).
     func read(of pids: Set<pid_t>) -> [ServerWindow]?
+    // The on-screen windows in front of `window`, front to back (CGWindowListCopyWindowInfo's
+    // .optionOnScreenAboveWindow: exact, unlike the order of an every-window list). Nil: can't say.
+    func above(_ window: Int) -> [ServerWindow]?
+}
+
+extension WindowSource {
+    func above(_ window: Int) -> [ServerWindow]? { nil }
 }
 
 extension WindowSource {
@@ -42,6 +49,17 @@ extension WindowSource {
 
 struct CGWindowSource: WindowSource {
     func windows(of pids: Set<pid_t>) -> [ServerWindow] { read(of: pids) ?? [] }
+
+    func above(_ window: Int) -> [ServerWindow]? {
+        guard let n = CGWindowID(exactly: window),
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow, .excludeDesktopElements], n) as? [[String: Any]] else { return nil }
+        return list.enumerated().compactMap { i, w in
+            guard let pid = (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value, let number = (w[kCGWindowNumber as String] as? NSNumber)?.intValue,
+                  let raw = w[kCGWindowBounds as String], let bounds = CGRect(dictionaryRepresentation: raw as! CFDictionary) else { return nil }
+            return ServerWindow(number: number, pid: pid, layer: (w[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0, bounds: bounds,
+                                onScreen: true, alpha: (w[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1, order: i)
+        }
+    }
 
     func read(of pids: Set<pid_t>) -> [ServerWindow]? {
         guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }

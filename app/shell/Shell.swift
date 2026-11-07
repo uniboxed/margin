@@ -925,6 +925,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
     }
 
+    /// Whether an overlay is in front of its browser window (and behind its toolbar): the read's list first (cheap);
+    /// when that says no, asked exactly (the windows in front of the browser's window), since the every-window list's
+    /// order isn't front to back between Margin's windows and Safari's (Tirth's trace 2026-11-07): an overlay already
+    /// in front isn't ordered in again on every read, and a switch's R4 isn't held back by a wrong "behind".
+    func isStacked(_ list: [ServerWindow], overlay: OverlayController, browser: ServerWindow, toolbar: Int?) -> Bool {
+        if WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: browser.number, toolbar: toolbar, own: overlay.catcherWindowNumbers) { return true }
+        guard let above = windowSource.above(browser.number) else { return false }
+        return WindowMatcher.stackedAboveExactly(aboveBrowser: above, aboveToolbar: toolbar.flatMap { windowSource.above($0) } ?? (toolbar == nil ? nil : []),
+                                                overlay: overlay.windowNumber, browser: browser.bounds, browserPid: browser.pid, own: overlay.catcherWindowNumbers)
+    }
+
     // A shown overlay in its window's own Space, checked against the map on each read: in another Space, it's moved
     // into its window's (the Space bridge), at most once a second for each. Tirth's trace 2026-11-07 11:32:51: a
     // switch brought a parked window back into a new full-screen Space and macOS removed its old one, moving the
@@ -1247,7 +1258,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // Below the window's full-screen toolbar (its own window), so it slides over Margin too.
             let toolbar = WindowMatcher.fullScreenToolbar(list, browser: server)?.number
             let showed = overlay.show(over: number, frame: frame, toolbar: toolbar, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen")
-            if showed, wasShown, !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar, own: overlay.catcherWindowNumbers) {
+            if showed, wasShown, !isStacked(list, overlay: overlay, browser: server, toolbar: toolbar) {
                 overlay.reorder()
             }
             if showed, !wasShownAnywhere || overlay.aheadPending { overlay.arrived(); appeared(overlay, w, list: list) }

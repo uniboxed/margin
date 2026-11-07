@@ -65,6 +65,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     layouts()
     windowBinding() // window-tests.swift
     axBinding() // window-tests.swift: Accessibility's exact word
+    stackingExact() // window-tests.swift: in front of its window, asked exactly
     placementCheck() // window-tests.swift: the placer's check
     overlayPlanner() // window-tests.swift: the planner's rules
     overlaySpace() // window-tests.swift: an overlay kept in its window's Space, Tirth's session replayed

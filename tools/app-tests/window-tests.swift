@@ -1805,6 +1805,27 @@ extension Tests {
     check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
   }
 
+  // An overlay in front of its window, asked exactly (WindowMatcher.stackedAboveExactly; Shell.isStacked): the
+  // every-window list's order isn't front to back between apps (Tirth's trace 2026-11-07: 136 against 1).
+  static func stackingExact() {
+    let full = CGRect(x: 0, y: 33, width: 1512, height: 949)
+    func w(_ n: Int, pid: pid_t = 7, layer: Int = 0, alpha: Double = 1, _ b: CGRect = full) -> ServerWindow { ServerWindow(number: n, pid: pid, layer: layer, bounds: b, alpha: alpha) }
+    let edge = w(902, CGRect(x: 0, y: 33, width: 4, height: 949)), catcher = w(901), panel = w(900)
+    check("stacking: the overlay among the windows in front of its window: in front",
+          WindowMatcher.stackedAboveExactly(aboveBrowser: [edge, panel, catcher], aboveToolbar: [], overlay: 900, browser: full, browserPid: 50, own: [901, 902]))
+    check("stacking: not among them: behind", !WindowMatcher.stackedAboveExactly(aboveBrowser: [w(5, pid: 99)], aboveToolbar: nil, overlay: 900, browser: full, browserPid: 50))
+    check("stacking: in front of its toolbar too: not where it should be (the toolbar slides over Margin)",
+          !WindowMatcher.stackedAboveExactly(aboveBrowser: [panel], aboveToolbar: [panel], overlay: 900, browser: full, browserPid: 50))
+    check("stacking: another app's window between it and its window: not",
+          !WindowMatcher.stackedAboveExactly(aboveBrowser: [panel, w(5, pid: 99)], aboveToolbar: nil, overlay: 900, browser: full, browserPid: 50))
+    check("stacking: the browser's own popover, or a see-through window, between: still in front",
+          WindowMatcher.stackedAboveExactly(aboveBrowser: [panel, w(6, pid: 50, layer: 3), w(5, pid: 99, alpha: 0)], aboveToolbar: nil, overlay: 900, browser: full, browserPid: 50))
+    // Tirth's probe, 2026-11-07, Safari in front: the every-window list put the overlay at 101 and its window at 126 (right),
+    // his trace at 136 against 1 (wrong); asked exactly, the order is the window server's.
+    let list = [w(65173, CGRect(x: 0, y: 33, width: 4, height: 949)), w(65170), w(65172)]
+    check("stacking: Tirth's probe asked exactly: in front", WindowMatcher.stackedAboveExactly(aboveBrowser: list, aboveToolbar: [], overlay: 65170, browser: full, browserPid: 50, own: [65172, 65173]))
+  }
+
   // The placer's check (OverlayPlacer.swift): each placement checked on the next maps.
   static func placementCheck() {
     let full = CGRect(x: 0, y: 0, width: 1512, height: 982), side = CGRect(x: 0, y: 0, width: 300, height: 982)

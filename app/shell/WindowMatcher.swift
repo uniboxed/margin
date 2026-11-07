@@ -180,6 +180,15 @@ nonisolated enum WindowMatcher {
         return !shown[(o + 1)..<b].contains { !own.contains($0.number) && $0.layer >= 0 && $0.alpha > 0 && !($0.pid == browserPid && $0.layer > 0) && $0.bounds.intersects(shown[b].bounds) }
     }
 
+    /// The same question asked exactly: `aboveBrowser`, the on-screen windows in front of the browser's window (front to
+    /// back), `aboveToolbar` the same for its full-screen toolbar. The overlay is in front of its window, behind the
+    /// toolbar, with nothing but its own windows, the browser's small ones and see-through ones between.
+    static func stackedAboveExactly(aboveBrowser: [ServerWindow], aboveToolbar: [ServerWindow]?, overlay: Int, browser: CGRect, browserPid: pid_t, own: Set<Int> = []) -> Bool {
+        guard let o = aboveBrowser.firstIndex(where: { $0.number == overlay }) else { return false }
+        if let aboveToolbar, aboveToolbar.contains(where: { $0.number == overlay }) { return false }
+        return !aboveBrowser[(o + 1)...].contains { !own.contains($0.number) && $0.layer >= 0 && $0.alpha > 0 && !($0.pid == browserPid && $0.layer > 0) && $0.bounds.intersects(browser) }
+    }
+
     static func describe(_ r: CGRect) -> String { "\(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))×\(Int(r.height))" }
 
     // A time as the log shows it (local, to the millisecond).
