@@ -1652,6 +1652,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         soon()
     }
 
+    /// The space a sidebar shows, in the log beside what its copy's state says of that window (space ids only), and in
+    /// the trace (Tirth, 2026-11-07: after a switch the sidebar showed another space's tabs).
+    func shownSpace(_ overlay: OverlayController, _ said: JSONObject) {
+        let space = said["space"] as? String ?? "-"
+        let windowId = said["windowId"] as? Int
+        let copy = (links[overlay.key.link]?.mirror.value("activeSpaceByWindow") as? JSONObject)?[String(overlay.key.windowId)] as? String
+        let agree = copy == space
+        Diagnostics.note("\(overlay.key): its sidebar shows space \(space)\(said["foreign"] as? Bool == true ? " (another profile's)" : "")\(windowId.map { $0 == overlay.key.windowId ? "" : " for window \($0)" } ?? "") — its copy says \(copy ?? "-")\(agree ? "" : " (differs)")")
+        options.trace?.event("shownSpace \(overlay.key) \(space) copy \(copy ?? "-")", at: Diagnostics.now())
+    }
+
     func perform(from overlay: OverlayController, _ name: String, _ arg: Any?) {
         // A click in Margin: what lands late isn't the person's choice any more (§1.9). (The cover's word is the page's.)
         if name != "switch.coverShown" { switcher.personActed() }

@@ -77,6 +77,8 @@ protocol OverlayDelegate: AnyObject {
     func perform(from overlay: OverlayController, _ name: String, _ arg: Any?)
     // Its page drew after a `shown`, in this mode (`framed`: the handoff's R4, app/HANDOFF.md §3.2).
     func framed(_ overlay: OverlayController, mode: OverlayFramed.Mode)
+    // The space its page shows now (for the log, beside its copy's word).
+    func shownSpace(_ overlay: OverlayController, _ said: JSONObject)
 }
 
 final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate {
@@ -556,6 +558,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         case OverlayFramed.op:
             guard isShown, let framed = OverlayFramed(body) else { return }
             delegate?.framed(self, mode: framed.mode)
+        case "shownSpace":
+            delegate?.shownSpace(self, body)
         case "log":
             let text = "overlay page (\(key)): \(body["text"] as? String ?? "")"
             if ["error", "warn"].contains(body["level"] as? String ?? "") { Diagnostics.warn(text) } else { Diagnostics.note(text) }

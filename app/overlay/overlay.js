@@ -187,7 +187,18 @@ const coverWatch = createCoverWatch({
 let hitsLater = 0;
 function hitsAfter(ms) { clearTimeout(hitsLater); hitsLater = setTimeout(hitsSoon, ms); }
 for (const type of ['transitionend', 'transitioncancel', 'animationend']) addEventListener(type, () => hitsSoon(), true);
-const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); coverWatch.check(); });
+// The space the sidebar shows, told to the app when it changes (its window's, by the view model: theme-blind), for the
+// app's log beside the copy's own word (Tirth, 2026-11-07: after a switch the sidebar showed another space's tabs).
+let spaceTold = '';
+function reportSpace() {
+  const vm = runtime?.vm;
+  if (!vm?.space) return;
+  const told = JSON.stringify([host?.windowId ?? null, vm.space.id ?? null, !!vm.space.foreign]);
+  if (told === spaceTold) return;
+  spaceTold = told;
+  void post('shownSpace', { windowId: host?.windowId ?? null, space: vm.space.id ?? null, foreign: !!vm.space.foreign }).catch(() => {});
+}
+const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); queueMicrotask(reportSpace); coverWatch.check(); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // ---- the theme --------------------------------------------------------------------------

@@ -373,7 +373,8 @@ func handoffScenario() async {
       try? await Task.sleep(nanoseconds: 4_000_000)
     }
   }
-  shell.performAcross(from: o7, "profile.switch", ["profile": "P2", "space": "job"])
+  // (To P2's second space, Office: its window 8 shows its first, Job, until then, so the sidebar can be seen showing the wrong one.)
+  shell.performAcross(from: o7, "profile.switch", ["profile": "P2", "space": "home"])
   check("1: a handoff, not the close-based switch", shell.switcher.run != nil && shell.switcher.busy, "\(shell.switcher.history.suffix(3))")
   let done1 = await until(8, { !shell.switcher.busy })
   seen.watching = false
@@ -392,6 +393,14 @@ func handoffScenario() async {
         await until(5, { shell.overlays[k8]?.isShown == true }) && shell.overlays[k8] === o7 && o7.key == k8 && shell.overlays[k7].map { !$0.isShown && $0.key == k7 } ?? true,
         "\(String(describing: shell.overlays[k8]?.key)) \(String(describing: shell.overlays[k7]?.isShown))")
   check("1: its page took B's window in place, not loaded again", await waitJS(o7.webView, "return window.marginApp && document.querySelectorAll('.chip').length > 0") && o7.isReady)
+  // Tirth, 2026-11-07: after a switch the sidebar showed the new space's tabs, then another space's.
+  let activeChip = "const c = document.querySelector('.chip.active'); return c ? (c.classList.contains('foreign') ? 'foreign ' : '') + c.getAttribute('data-space-id') : null"
+  let chip1 = await js(o7.webView, activeChip) as? String
+  try? await Task.sleep(nanoseconds: 1_500_000_000)
+  let chip2 = await js(o7.webView, activeChip) as? String
+  let chipsSeen = await js(o7.webView, "return [...document.querySelectorAll('.chip')].map((c) => c.getAttribute('title') + (c.classList.contains('active') ? ' [active]' : '') + (c.classList.contains('foreign') ? ' [foreign]' : '') + (c.classList.contains('switching') ? ' [switching]' : '')).join(' | ')") as? String ?? "-"
+  check("1: the kept sidebar shows the space switched to (P2's home, its own now), and still does 1.5 s on", chip1 == "home" && chip2 == "home",
+        "\(chip1 ?? "nil") then \(chip2 ?? "nil"); chips: \(chipsSeen)")
   check("1: P1's copy told its window is parked", await until(3, { parkedSaid("A", 7, true, mark) }))
   check("1: A's drawn stayed on through the park", !drawnOff("A", 7, mark))
   check("1: no layout to the parked window", fake.first("setLayout", since: mark) { $0["id"] as? String == "A" && int(($0["msg"] as? JSONObject)?["windowId"]) == 7 } == nil)
