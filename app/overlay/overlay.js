@@ -181,7 +181,13 @@ const coverWatch = createCoverWatch({
   settling: () => !!runtime?.view.rootElement()?.querySelector('.m-swiping, .m-settling'),
   say: () => { host?.perform('switch.coverShown'); },
 });
-const watcher = new MutationObserver(() => { hitsSoon(); queueMicrotask(measureNow); queueMicrotask(reportWant); coverWatch.check(); });
+// What takes the pointer, measured again once a theme's animation ends (the sidebar sliding out over the page:
+// measured at the slide's start, it was still off screen, and the pointer went through it to the page, Tirth's
+// recording 2026-11-07 2:11), and a moment after any change (an animation that ends unheard).
+let hitsLater = 0;
+function hitsAfter(ms) { clearTimeout(hitsLater); hitsLater = setTimeout(hitsSoon, ms); }
+for (const type of ['transitionend', 'transitioncancel', 'animationend']) addEventListener(type, () => hitsSoon(), true);
+const watcher = new MutationObserver(() => { hitsSoon(); hitsAfter(400); queueMicrotask(measureNow); queueMicrotask(reportWant); coverWatch.check(); });
 addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // ---- the theme --------------------------------------------------------------------------

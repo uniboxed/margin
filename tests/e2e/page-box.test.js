@@ -115,6 +115,12 @@ test('Keep open off and on, and a wider sidebar, move the box live; a peek doesn
   assert.deepEqual(await slot(ui), hidden, 'the slot doesn\'t move for a peek');
   assert.deepEqual(sides(await pageBox(page)), hidden);
   await settled(ui);
+  // What takes the pointer covers the sidebar where it ended up, not where its slide began (measured again once
+  // the slide is over: app/overlay/overlay.js; Tirth's recording 2026-11-07 2:11, nothing in the peek clickable).
+  const bar = await ui.evaluate(() => { const r = document.querySelector('.margin-sidebar').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  const wid = m.shell.frontWindowId();
+  await m.until(() => { const h = m.shell.overlays.get(wid)?.hits; return h && (h.all || h.rects.some(([x, y, w, hh]) => bar.x >= x && bar.x <= x + w && bar.y >= y && bar.y <= y + hh)); },
+    { timeout: 3000, what: 'the sidebar out over the page in what takes the pointer' });
   await m.shoot(t, 'peek');
 
   // Keep open from the sidebar's own button: docked again, the box back beside it.

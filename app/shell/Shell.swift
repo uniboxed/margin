@@ -240,6 +240,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // window's profile never changes (SafariAX.swift).
     let safariAX = SafariAX()
     private var axProfiles: [Int: String] = [:]
+    // Settings Margin sent each copy (shareSettings, carrySettings), to know their echo; when each copy linked.
+    var settingsSent: [String: String] = [:]
+    var linkedAt: [String: Double] = [:]
     // Profiles whose window Margin asked Safari for during a switch: Safari's pid and that profile's windows before.
     var openedFor: [String: (pid: pid_t, before: [Int])] = [:]
     /// The window numbers Accessibility named as `link`'s.
@@ -448,6 +451,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         entry.drawn.grace = options.drawnGrace
         entry.mirror.begin(connection.hello)
         links[connection.key] = entry
+        linkedAt[connection.key] = options.clock()
         data.linkUp(connection)
         // A switch on its way to this profile: given the leaving window's settings as soon as its copy is here.
         if switcher.busy, switcher.target?.profile == connection.key {
@@ -479,7 +483,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 if case .windows = message { switcher.tick() }
                 if case .snapshot = message { acrossSoon(); cloudTabsCheck(); themesTellCopy(entry); themesCheck(entry) }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { acrossSoon() }
-                if case .delta(_, _, let changes, _) = message, changes["settings"] != nil { cloudTabsCheck(); themesCheck(entry) }
+                if case .delta(_, _, let changes, _) = message, changes["settings"] != nil { cloudTabsCheck(); themesCheck(entry); shareSettings(from: entry) }
             case .gap(let expected, let got):
                 Diagnostics.warn("\(connection.key): number \(got) came, \(expected) was next: the state asked for again")
                 resync(entry)

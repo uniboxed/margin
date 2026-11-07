@@ -594,7 +594,29 @@ extension Shell: SwitchWorld {
         if let current = b.mirror.value("settings") as? JSONObject,
            NSDictionary(dictionary: current.filter { patch[$0.key] != nil }).isEqual(to: patch) { return }
         Diagnostics.note("profile switch: \(link) given the sidebar and theme settings of the window it comes from (\(from))")
+        settingsSent[link] = (try? JSONSerialization.data(withJSONObject: patch, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) }
         Task { _ = try? await b.connection.request(type: "updateSettings", payload: ["patch": patch], windowId: nil) }
+    }
+
+    // Keep open, the frame, the theme and the themes' settings are the person's, not a profile's (Tirth, 2026-11-07:
+    // a window switched into showed its sidebar hidden): a change in one profile is given to the browser's other
+    // profiles. Not a change Margin made itself (the echo of its own `updateSettings`), and not in a copy's first
+    // 5 s after it linked (its set adopted from the app's store may be an old one).
+    func shareSettings(from entry: Link) {
+        guard let settings = entry.mirror.value("settings") as? JSONObject else { return }
+        let source = entry.connection.key
+        var patch: JSONObject = [:]
+        for k in Self.carriedSettings { if let v = settings[k] { patch[k] = v } }
+        guard !patch.isEmpty else { return }
+        let key = (try? JSONSerialization.data(withJSONObject: patch, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        if settingsSent[source] == key { settingsSent[source] = nil; return } // our own, back
+        guard options.clock() - (linkedAt[source] ?? 0) >= 5 else { return }
+        for (link, other) in links.sorted(by: { $0.key < $1.key }) where link != source && other.connection.hello.browser == entry.connection.hello.browser && other.connection.isUp {
+            if let cur = other.mirror.value("settings") as? JSONObject, NSDictionary(dictionary: cur.filter { patch[$0.key] != nil }).isEqual(to: patch) { continue }
+            settingsSent[link] = key
+            Task { _ = try? await other.connection.request(type: "updateSettings", payload: ["patch": patch], windowId: nil) }
+        }
+        Diagnostics.note("settings: \(source)'s sidebar and theme settings given to the browser's other profiles")
     }
 
     private func profileName(_ link: String) -> String {
