@@ -3,9 +3,26 @@
 ## Automated (cloud / any machine with Node 22)
 
 ```sh
+npm run test:quick  # while working: only the tests a change reaches, usually under a minute
+npm run gate        # once, before merging to main: every suite below, in order (about 10-15 min)
 npm test            # unit tests: node --test tests/*.test.js
 npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and WebKit, two files at a time
 ```
+
+**The quick tier** (`scripts/quick-test.mjs`) compares the branch with `main` (its commits since it left `main`, plus anything staged, unstaged or untracked). It always runs the build and the type check. It runs:
+- the JS tests whose imports reach a changed file, followed through every relative import;
+- the tests that name a changed theme, page or fixture file;
+- every theme test when a theme or the UI runtime changed (four at a time);
+- the Swift unit checks when `app/shell`, `app/safari` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
+- any e2e file that itself changed.
+
+At the end it lists what only the gate runs: the e2e suite, the WebKit host, the app's e2e checks. Options:
+- `--dry`: the plan only;
+- `--files a b …`: these files instead of git's;
+- `--base REF`: compare with REF instead of `main`;
+- `--all`: every quick test.
+
+Measured on 2026-11-07: a shared JS module 29 s, a Swift file (with its recompile) 36 s, a theme's CSS 50 s, a doc nothing but the build and type check.
 
 Everything below "The e2e suite" is **manual, in Safari on macOS**. The automated tests prove the extension and the overlay work in Chromium and WebKit, against a stand-in Margin.app. `npm run test:webkit` and `npm run test:app` cover the extension on WebKit's own engine and the real app, off screen: the WebKit host's window stays at −20000, −20000 for the whole run, never on a display (until 2026-11-06 AppKit moved it to the top left of the main display, in front of your windows). Sections marked superseded test what Margin 2 removed: they're kept as history.
 

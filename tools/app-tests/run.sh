@@ -47,13 +47,15 @@ BUILD="${MARGIN_APP_TESTS_BUILD:-$PWD/build}"
 mkdir -p "$BUILD"
 SHELL_SOURCES=(../../app/shell/*.swift)
 FLAGS=(-swift-version 5 -default-isolation MainActor -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault)
+# Compiled on every core (batch mode): about 4x faster than one job.
+JOBS=(-j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)")
 NODE="${NODE:-$(command -v node || echo /opt/homebrew/bin/node)}"
 WHAT="${1:-all}"
 
 build() { # name sources...
   local name="$1"; shift
   if [ ! -x "$BUILD/$name" ] || [ -n "$(find "$@" -newer "$BUILD/$name" 2>/dev/null)" ]; then
-    swiftc "${FLAGS[@]}" "$@" -o "$BUILD/$name" || exit 1
+    swiftc "${FLAGS[@]}" "${JOBS[@]}" "$@" -o "$BUILD/$name" || exit 1
   fi
 }
 
@@ -67,7 +69,7 @@ XCODE_FLAGS=(-swift-version 5 -default-isolation MainActor
 warnings() { # label flags... -- sources...
   local label="$1"; shift
   local out
-  out=$(swiftc -typecheck -parse-as-library "$@" 2>&1 | grep -E "(warning|error):" || true)
+  out=$(swiftc -typecheck -parse-as-library "${JOBS[@]}" "$@" 2>&1 | grep -E "(warning|error):" || true)
   if [ -n "$out" ]; then
     echo "FAIL $label: the Xcode build would warn:"; echo "$out" | head -20; status=1
   else
