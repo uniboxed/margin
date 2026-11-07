@@ -35,6 +35,43 @@ final class SafariCover {
     func close() { panel.orderOut(nil); panel.close() }
 }
 
+/// Which of Safari's windows want a cover now, and which covers go (pure: the shell's covers loop carries it out).
+enum CoverPlan {
+    struct Facts {
+        var candidates: [ServerWindow] = [] // Safari's windows (WindowMatcher.candidates)
+        var profiles: [Int: String] = [:] // the profile Accessibility named for each
+        var marginProfiles: Set<String> = [] // profiles Margin has data for or a link with
+        var laidOut: Set<Int> = [] // windows an overlay is over (shown, or placed in its Space)
+        var parked: Set<Int> = []
+        var switchBusy = false
+        var expired: Set<Int> = [] // covered long enough once: never again
+        var covers: [Int: Double] = [:] // the covers there, by window, since when
+        var fills: (CGRect) -> Bool = { _ in false }
+        var now: Double = 0
+    }
+    struct Plan: Equatable {
+        var wanted: [Int] = [] // windows that want a cover (made if they have none), in order
+        var close: [Int] = [] // covers that go
+        var expire: [Int] = [] // of those, the ones covered long enough (never again for that window)
+    }
+
+    static func decide(_ f: Facts, coverFor: Double = Shell.coverFor) -> Plan {
+        var plan = Plan()
+        for w in f.candidates.sorted(by: { $0.number < $1.number }) {
+            guard let link = f.profiles[w.number], f.marginProfiles.contains(link), !f.laidOut.contains(w.number), !f.parked.contains(w.number),
+                  !f.switchBusy, !f.expired.contains(w.number), f.fills(w.bounds) || f.covers[w.number] != nil else { continue }
+            plan.wanted.append(w.number)
+        }
+        let wanted = Set(plan.wanted)
+        for (n, since) in f.covers.sorted(by: { $0.key < $1.key }) where !wanted.contains(n) || f.now - since >= coverFor {
+            plan.close.append(n)
+            if f.now - since >= coverFor { plan.expire.append(n) }
+        }
+        plan.wanted.removeAll { n in plan.expire.contains(n) }
+        return plan
+    }
+}
+
 extension Shell {
     static let coverFor: Double = 6
     static let coverEvery: Double = 0.1
@@ -62,26 +99,37 @@ extension Shell {
             return endCovers()
         }
         // A read the window server didn't answer: this tick skipped (covers kept as they are).
-        guard let list = windowSource.read(of: pids) else { return }
+        guard let list = windowSource.read(of: pids.union([ProcessInfo.processInfo.processIdentifier])) else { return }
         let now = Diagnostics.now()
         let exact = safariExact(list: list, pids: pids)
-        let marginProfiles = Set(data.profiles(browser: "safari").map(\.key)).union(links.keys)
-        // Windows a layout is over already: shown over it, or placed in its Space.
-        let laidOut = Set(overlays.values.filter { $0.isShown }.compactMap(\.aboveWindow))
-        let parked = parking?.numbers ?? []
-        var wanted: [Int: ServerWindow] = [:]
-        for w in WindowMatcher.candidates(list, pids: pids) {
-            guard let link = exact[w.number], marginProfiles.contains(link), !laidOut.contains(w.number), !parked.contains(w.number),
-                  !switcher.busy, !coverExpired.contains(w.number), fillsDisplay(w.bounds) || covers[w.number] != nil else { continue }
-            wanted[w.number] = w
+        // (The map kept from this read too while covers are wanted: the trace has Safari's launch.)
+        if !started || !covers.isEmpty {
+            let changes = windowMap.update(now: now, list: list, browserPids: pids, marginPid: ProcessInfo.processInfo.processIdentifier, front: apps.frontPid, ax: ax)
+            options.trace?.map(windowMap.snapshot, changes)
         }
+        var facts = CoverPlan.Facts()
+        facts.candidates = WindowMatcher.candidates(list, pids: pids)
+        facts.profiles = exact
+        facts.marginProfiles = Set(data.profiles(browser: "safari").map(\.key)).union(links.keys)
+        // Windows a layout is over already: shown over it, or placed in its Space.
+        facts.laidOut = Set(overlays.values.filter { $0.isShown }.compactMap(\.aboveWindow))
+        facts.parked = parking?.numbers ?? []
+        facts.switchBusy = switcher.busy
+        facts.expired = coverExpired
+        facts.covers = covers.mapValues(\.since)
+        facts.fills = { [weak self] b in self?.fillsDisplay(b) ?? false }
+        facts.now = now
+        let plan = CoverPlan.decide(facts)
+        let byNumber = Dictionary(list.map { ($0.number, $0) }, uniquingKeysWith: { a, _ in a })
+        var wanted: [Int: ServerWindow] = [:]
+        for n in plan.wanted { if let w = byNumber[n] { wanted[n] = w } }
         // Gone: laid out, closed, out of full screen, or covered long enough (never again for that window).
-        for (n, c) in covers where wanted[n] == nil || now - c.since >= Self.coverFor {
-            if now - c.since >= Self.coverFor {
+        for n in plan.close {
+            if plan.expire.contains(n) {
                 coverExpired.insert(n)
                 Diagnostics.note("cover over window \(n) taken away after \(Int(Self.coverFor)) s: its layout wasn't ready")
             }
-            c.close()
+            covers[n]?.close()
             covers[n] = nil
         }
         coverExpired = coverExpired.filter { n in list.contains { $0.number == n } }

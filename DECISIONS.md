@@ -3084,3 +3084,9 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Why.** The every-window list (`CGWindowListCopyWindowInfo` with `.optionAll`) isn't front to back between Margin's windows and Safari's. In Tirth's trace an overlay that was visibly in front read 136 against its window's 1. A probe the same day with Safari in front read 101 against 126 (right). `WindowMatcher.stackedAbove` reads that order, so a wrong "behind" ordered the overlay in again on every read, and held a switch's R4 ("B's overlay above B") back.
 - **Now** (`Shell.isStacked`, the show path and the handoff's `overlayAbove`): the list's answer is taken when it says "in front". When it says "behind", the window server is asked exactly for the on-screen windows in front of the browser's window (and of its toolbar): `WindowSource.above`, `.optionOnScreenAboveWindow`. Then `WindowMatcher.stackedAboveExactly` applies the same rule as before: in front of the window, behind the toolbar, nothing but its own windows, the browser's small ones or see-through ones between. The harness's source can't say (nil), so it keeps the list's answer.
 - **Tests** (`window-tests.swift` `stackingExact`): each case, and Tirth's probe's windows.
+
+### The covers on the window module (2026-11-07)
+
+- The covers' decision is a pure function now (`ShellCovers.swift` `CoverPlan.decide`): which of Safari's windows want a cover (named by Accessibility, a profile with Margin, filling its display or already covered, not laid out, not parked, no switch, not expired) and which covers go (laid out, closed, out of full screen, or 6 s on: expired, never again). The covers loop carries it out as before.
+- Its read includes Margin's own windows and feeds the window map while covers are wanted or before the shell has started. So the trace has Safari's launch, the moments the covers are for.
+- Tests (`window-tests.swift` `coverPlan`): each rule.

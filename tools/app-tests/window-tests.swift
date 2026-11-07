@@ -1805,6 +1805,31 @@ extension Tests {
     check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
   }
 
+  // The covers' decision (ShellCovers.swift CoverPlan): which of Safari's windows want a cover, which covers go.
+  static func coverPlan() {
+    let full = CGRect(x: 0, y: 0, width: 1512, height: 982), small = CGRect(x: 100, y: 100, width: 900, height: 700)
+    func f(_ change: (inout CoverPlan.Facts) -> Void) -> CoverPlan.Plan {
+      var x = CoverPlan.Facts()
+      x.candidates = [ServerWindow(number: 100, pid: 50, bounds: full), ServerWindow(number: 101, pid: 50, bounds: small)]
+      x.profiles = [100: "safari:s-a", 101: "safari:s-a"]
+      x.marginProfiles = ["safari:s-a"]
+      x.fills = { $0 == full }
+      x.now = 10
+      change(&x)
+      return CoverPlan.decide(x)
+    }
+    check("covers: a full-screen window of a Margin profile, not laid out: covered; a window not filling its display: not", f { _ in }.wanted == [100])
+    check("covers: not for a window Accessibility hasn't named, or a profile without Margin",
+          f { $0.profiles = [:] }.wanted.isEmpty && f { $0.marginProfiles = [] }.wanted.isEmpty)
+    check("covers: not once its layout is over it, while it's parked, during a switch, or once expired",
+          f { $0.laidOut = [100] }.wanted.isEmpty && f { $0.parked = [100] }.wanted.isEmpty && f { $0.switchBusy = true }.wanted.isEmpty && f { $0.expired = [100] }.wanted.isEmpty)
+    check("covers: one already there stays while its window doesn't fill its display (going into full screen)",
+          f { $0.candidates = [ServerWindow(number: 100, pid: 50, bounds: small)]; $0.covers = [100: 9] }.wanted == [100])
+    check("covers: laid out: the cover goes", f { $0.laidOut = [100]; $0.covers = [100: 9] } == CoverPlan.Plan(wanted: [], close: [100], expire: []))
+    check("covers: 6 s on: taken away, never again for that window", f { $0.covers = [100: 4] } == CoverPlan.Plan(wanted: [], close: [100], expire: [100]))
+    check("covers: a closed window's cover goes", f { $0.candidates = []; $0.covers = [100: 9] } == CoverPlan.Plan(wanted: [], close: [100], expire: []))
+  }
+
   // An overlay in front of its window, asked exactly (WindowMatcher.stackedAboveExactly; Shell.isStacked): the
   // every-window list's order isn't front to back between apps (Tirth's trace 2026-11-07: 136 against 1).
   static func stackingExact() {
