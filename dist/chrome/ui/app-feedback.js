@@ -16,16 +16,18 @@ import { NOTICES, isNotice, switchFailure } from '../shared/notices.js';
  *
  * `show(view)`: the runtime's notice (null: none). `send(type, payload)`: a
  * request to the copy (the host's send). `frontTab()`: the window's tab in
- * front now, if known.
+ * front now, if known. `local(kind, action)`: a button of one of the
+ * overlay's own notices (shared/notices.js `local`), which never goes to the copy.
  * @param {{
  *   show: (notice: { id: string, text: string, actions: { id: string, label: string, primary?: boolean }[] } | null) => void,
  *   send: (type: string, payload: Record<string, any>) => unknown,
  *   frontTab?: () => number | null,
+ *   local?: (kind: string, action: string) => void,
  *   setTimer?: (fn: () => void, ms: number) => any,
  *   clearTimer?: (timer: any) => void,
  * }} options
  */
-export function createAppNotices({ show, send, frontTab = () => null, setTimer = setTimeout, clearTimer = clearTimeout }) {
+export function createAppNotices({ show, send, frontTab = () => null, local = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
   /** @type {{ id: string, kind: string, tabId: number | null, front: boolean } | null} */
   let current = null;
   let timer = null;
@@ -58,7 +60,8 @@ export function createAppNotices({ show, send, frontTab = () => null, setTimer =
      * @param {any} msg
      */
     push(msg) {
-      if (msg?.type === 'notice') return put(msg.kind, msg.tabId);
+      // The overlay's own notices are never the copy's to say.
+      if (msg?.type === 'notice') return NOTICES[msg.kind]?.local ? false : put(msg.kind, msg.tabId);
       if (msg?.type === 'switch-failed') {
         const kind = switchFailure(msg.reason);
         return kind ? put(kind) : false;
@@ -85,9 +88,13 @@ export function createAppNotices({ show, send, frontTab = () => null, setTimer =
       if (!current || arg?.id !== current.id) return false;
       const { kind, tabId } = current;
       clear(false);
-      void send('noticeAction', { notice: kind, action: String(arg.action ?? ''), ...(tabId != null ? { tabId } : {}) });
+      // The overlay's own: its buttons are the overlay's (`local`); the copy hears nothing.
+      if (NOTICES[kind].local) local(kind, String(arg.action ?? ''));
+      else void send('noticeAction', { notice: kind, action: String(arg.action ?? ''), ...(tabId != null ? { tabId } : {}) });
       return true;
     },
+    /** One of the overlay's own notices (`local` in shared/notices.js), put up. @param {string} kind */
+    say(kind) { return NOTICES[kind]?.local ? put(kind) : false; },
     /** The notice up now, as the runtime draws it (for a runtime made again: a new theme). */
     view: () => (current ? viewOf(current) : null),
     /** Which notice is up, and about which tab. */

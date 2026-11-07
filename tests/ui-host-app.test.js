@@ -170,3 +170,17 @@ test('dist/app is up to date with app/overlay and extension/ (run `npm run build
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('dist/app/arcadia.js: Arcadia\'s package for the overlay to fall back on, as a theme message, passing every check', async () => {
+  const text = readFileSync(join(root, 'dist/app/arcadia.js'), 'utf8');
+  const m = /^\/\/[^\n]*\nglobalThis\.marginFallbackTheme = (\{[\s\S]*\});\n$/.exec(text);
+  assert.ok(m, 'one assignment, nothing else');
+  const pkg = JSON.parse(m[1]);
+  assert.equal(pkg.id, 'arcadia');
+  assert.deepEqual(Object.keys(pkg).sort(), ['css', 'files', 'html', 'id', 'manifest']);
+  assert.equal(pkg.manifest, readFileSync(join(root, 'extension/themes/arcadia/theme.json'), 'utf8'));
+  const { sanitizeTheme, checkPackage } = await import('../extension/ui/theme-loader.js');
+  assert.deepEqual(checkPackage({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, new Uint8Array(Buffer.from(String(v), 'base64'))])) }), []);
+  const r = sanitizeTheme({ ...pkg, files: Object.keys(pkg.files) });
+  assert.deepEqual([r.errors, r.removed], [[], []]);
+});

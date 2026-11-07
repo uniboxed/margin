@@ -109,6 +109,8 @@ While linked, Margin's new-tab page (and its start page and Settings, `#launcher
 
 A theme package is sent as the UTF-8 JSON of `{ id, manifest, html, css, files: { path: base64 } }` (`background/theme-package.js` ThemeMessage), cut into pieces of at most 512 KB of bytes, each sent as `theme { id, transfer, part, parts, size, data }`: `transfer` the SHA-256 (64 lower-case hex) of the whole, `part` from 0, `parts` 1–64, `size` the whole's bytes, `data` the piece as base64. Pieces may come in any order. A piece with another `transfer` starts over (the older one is dropped). The whole is used only if its size and SHA-256 match, and it's at most 8 MB. The receiver checks the package again as any theme (`ui/theme-loader.js loadTheme`).
 
+A theme the overlay can't draw (refused by the checks, missing or broken, or with a page slot under 200 × 150 pt or outside the window) is replaced there by Arcadia, which the app bundles beside the overlay (`dist/app/arcadia.js`, written by `scripts/build.js`; a script, since the overlay's policy allows no connections). The overlay says ready as usual and puts up its own notice, `theme-failed` ("Margin couldn’t draw the theme you chose, so it’s using Arcadia for now…", Settings and OK). That notice's buttons stay in the overlay: Settings asks the copy for `openLauncher { settings: true }`, and no `noticeAction` is sent. The profile's `settings.theme` is left as it was, so the next package the copy sends is tried again. The log says the theme's id and the kinds of what was wrong, nothing from its files.
+
 ## What the app does with it
 
 - One mirror per link (`StateMirror.swift`); deltas apply in order; a gap asks for a resync, and until the snapshot comes, deltas are ignored.

@@ -2873,3 +2873,11 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - `theme.json` with a key twice in one object is refused (`JSON.parse` keeps the last; a reader that takes the first sees another id). Names, authors and labels with bidi controls or zero-width characters are refused.
 - **Kept on purpose:** a `data:` font in `@font-face` loads nothing and stays capped at 128 KB, so it stays allowed (fonts in `theme.json` remain the way the README teaches).
 - **The overlay's policy is tested on its own:** a page served with `OverlaySchemeHandler.policy` (read from the Swift source) and every payload put in raw, with no sanitizer, runs none of them and makes no request. A control run without the policy shows the same page does run and load them. The policy string is checked against `PLAN.md` §4's.
+
+### Falling back to Arcadia
+
+- **The app bundles Arcadia** beside the overlay as `dist/app/arcadia.js`, not `arcadia.json` as the plan said: the overlay's policy has `connect-src 'none'`, so it can't fetch a file, but it may run Margin's own scripts from its folder. The script sets one global with the package, and is loaded only when it's needed.
+- **When:** the package is refused, missing or unreadable, or its `<m-page>` is under 200 × 150 pt or reaches outside the window (judged only in windows at least twice that size).
+- **What shows:** Arcadia, drawn and said ready as usual, and a notice of the overlay's own, `theme-failed`. It doesn't name the theme (its name may be what's broken). Its buttons stay in the overlay: Settings opens Margin's Settings in that window, OK closes it. The copy can't push it and can't run its buttons (`isNoticeAction` refuses the overlay's own kinds).
+- **`settings.theme` is kept,** so the copy's next package is tried again.
+- **The log** says the theme's id and the kinds of what was wrong (`refused: 2 problem(s) in its theme.html`), never its files' text.

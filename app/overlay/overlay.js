@@ -41,6 +41,8 @@ const notices = createAppNotices({
   show: (notice) => runtime?.setUi({ notice }),
   send: (type, payload) => host?.send(type, payload),
   frontTab: () => host?.frontTabId ?? null,
+  // The overlay's own notice (a theme it couldn't draw): Settings opens Margin's Settings in this window.
+  local: (kind, action) => { if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true }); },
 });
 const gestures = createGestureFeedback({ set: (gesture) => runtime?.setUi({ gesture }) });
 // The copy's own switches in this window ('switching', then 'switch-done' or 'switch-failed').
@@ -165,12 +167,84 @@ addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // ---- the theme --------------------------------------------------------------------------
 
-/** @param {any} pkg the theme package (background/theme-package.js ThemeMessage) */
-async function mount(pkg) {
-  if (!host || !pkg || typeof pkg !== 'object' || typeof pkg.id !== 'string') return;
-  const files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))]));
-  const loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
-  if (!loaded.ok) return log('error', `theme ${pkg.id} refused:`, /** @type {any} */ (loaded).report.errors);
+// ---- falling back to Arcadia --------------------------------------------------------------
+// A theme refused (loadTheme), missing or broken, or one whose page slot
+// isn't usable (under 200 × 150 pt, or outside the window) is replaced by
+// Arcadia, bundled with the app (dist/app/arcadia.js: scripts/build.js
+// fallbackPackage), and the overlay says so (the `theme-failed` notice).
+// The profile's settings.theme stays: the theme is tried again the next time
+// it comes. The log says the theme's id and the kinds of what was wrong,
+// nothing from its files.
+const MIN_PAGE = { width: 200, height: 150 };
+/** @type {{ id: string, why: string } | null} */
+let themeFailure = null;
+/** What kinds of things were wrong, from the checks' errors (never their text). @param {string[]} errors */
+function reasonKinds(errors) {
+  const kinds = new Set();
+  for (const e of errors ?? []) {
+    const head = String(e).split(':')[0];
+    kinds.add(head === 'package' ? 'its size or its files' : head === 'theme.json' ? 'its theme.json' : head === 'template' ? 'its theme.html' : head === 'css' ? 'its theme.css' : 'a bundled file');
+  }
+  return [...kinds].join(', ') || 'not known';
+}
+/** Is the theme's page slot one a page can be shown in? */
+function usableLayout() {
+  const g = runtime?.measure();
+  if (!g) return true; // not measurable yet: nothing to judge
+  const { insets, container } = g;
+  if (container.width < MIN_PAGE.width * 2 || container.height < MIN_PAGE.height * 2) return true; // a window too small to judge
+  const w = container.width - insets.left - insets.right;
+  const h = container.height - insets.top - insets.bottom;
+  const inside = [insets.left, insets.top, insets.right, insets.bottom].every((v) => Number.isFinite(v) && v >= 0);
+  return inside && w >= MIN_PAGE.width && h >= MIN_PAGE.height;
+}
+/** Arcadia's package, from the script beside this page (loaded once, when first needed). */
+let fallbackLoad = /** @type {Promise<any> | null} */ (null);
+function fallbackPackage() {
+  fallbackLoad ??= new Promise((resolve) => {
+    const have = /** @type {any} */ (globalThis).marginFallbackTheme;
+    if (have) return resolve(have);
+    const el = document.createElement('script');
+    el.src = 'arcadia.js';
+    el.onload = () => resolve(/** @type {any} */ (globalThis).marginFallbackTheme ?? null);
+    el.onerror = () => resolve(null);
+    document.head.append(el);
+  });
+  return fallbackLoad;
+}
+/** @param {string} id @param {string} why */
+async function fallBack(id, why) {
+  themeFailure = { id, why };
+  log('warn', `theme ${JSON.stringify(id.slice(0, 64))} couldn't be drawn (${why}): Arcadia instead`);
+  const arcadia = await fallbackPackage();
+  if (!arcadia) return log('error', 'Arcadia, the fallback theme, is missing beside the overlay');
+  await mount(arcadia, { fallback: true });
+  notices.say('theme-failed');
+}
+
+/**
+ * @param {any} pkg the theme package (background/theme-package.js ThemeMessage)
+ * @param {{ fallback?: boolean }} [options] `fallback`: it's Arcadia standing in (never falls back again)
+ */
+async function mount(pkg, { fallback = false } = {}) {
+  if (!host) return;
+  const id = typeof pkg?.id === 'string' ? pkg.id : '(no id)';
+  let loaded = null;
+  let why = null;
+  if (!pkg || typeof pkg !== 'object' || typeof pkg.id !== 'string') why = 'no package';
+  else {
+    let files = null;
+    try { files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))])); } catch { why = 'its files aren\'t readable'; }
+    if (files) {
+      loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
+      if (!loaded.ok) why = `refused: ${/** @type {any} */ (loaded).report.errors.length} problem(s) in ${reasonKinds(/** @type {any} */ (loaded).report.errors)}`;
+    }
+  }
+  if (why) {
+    if (fallback) return log('error', `Arcadia, the fallback theme, couldn't be drawn either (${why})`);
+    return fallBack(id, why);
+  }
+  if (!fallback) themeFailure = null;
   const keep = { ...(runtime ? { palette: runtime.ui.palette } : {}), notice: notices.view(), gesture: gestures.shown };
   watcher.disconnect();
   runtime?.destroy();
@@ -192,6 +266,7 @@ async function mount(pkg) {
   lastLayout = '';
   lastWant = '';
   measureNow();
+  if (!fallback && !usableLayout()) return fallBack(id, 'its page slot is too small or outside the window');
   hitsSoon();
   reportWant();
   if (!saidReady && host.getState()) {
@@ -345,6 +420,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
+  // The theme the overlay couldn't draw, if it fell back to Arcadia (the app's tests read it).
+  themeFailure: () => (themeFailure ? { ...themeFailure } : null),
 };
 /** @type {any} */
 let pendingTheme = null;
