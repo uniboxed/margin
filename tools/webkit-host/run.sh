@@ -38,8 +38,15 @@ done
 # the Safari build at MARGIN_HOST_OLD_REF (default main), with the same hook, its lines
 # marked "old".
 OLD_REF="${MARGIN_HOST_OLD_REF:-main}"
+# dist/ isn't committed (since 2026-11-06): the old ref's source is built here when it has none.
 rm -rf "$BUILD/old" && mkdir -p "$BUILD/old"
-if git -C ../.. archive "$OLD_REF" dist/safari 2>/dev/null | tar -x -C "$BUILD/old" 2>/dev/null; then
+if git -C ../.. archive "$OLD_REF" 2>/dev/null | tar -x -C "$BUILD/old" 2>/dev/null; then
+  if [ ! -d "$BUILD/old/dist/safari" ]; then
+    ln -s "$(cd ../.. && pwd)/node_modules" "$BUILD/old/node_modules"
+    (cd "$BUILD/old" && node scripts/build.js >/dev/null 2>&1) || echo "the old build ($OLD_REF) didn't build: installOld can't run" >&2
+  fi
+fi
+if [ -d "$BUILD/old/dist/safari" ]; then
   export MARGIN_HOST_OLD_EXT="$BUILD/old/dist/safari"
   for f in background.bundle.js content/content.bundle.js; do
     sed "s/__PORT__/$PORT/; s/\"bg\" : \"cs \"/\"old bg\" : \"old cs \"/; s/where === \"bg\"/where.endsWith(\"bg\")/g" hook.js | cat - "$MARGIN_HOST_OLD_EXT/$f" > "$MARGIN_HOST_OLD_EXT/$f.tmp" && mv "$MARGIN_HOST_OLD_EXT/$f.tmp" "$MARGIN_HOST_OLD_EXT/$f"
