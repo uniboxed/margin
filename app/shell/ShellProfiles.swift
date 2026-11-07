@@ -443,7 +443,7 @@ extension Shell: SwitchWorld {
     func openProfileWindow(_ profile: String) -> Bool {
         guard options.safariAX, SafariAX.trusted, profile.hasPrefix("safari:"),
               let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").first?.processIdentifier,
-              let name = profilesOf("safari").browserNames[SwitchNotice.profileId(profile)]?.name, !name.isEmpty else { return false }
+              case let name = profilesOf("safari").browserNames[SwitchNotice.profileId(profile)]?.name ?? profileName(profile), !name.isEmpty else { return false }
         safariAX.newWindow(pid: pid, profileName: name) { [weak self] pressed in
             guard let self else { return }
             Diagnostics.note(pressed ? "asked Safari for a new window of \(profile) (File › New Window)" : "Safari's File › New Window has no item for \(profile): the person is told to open one")

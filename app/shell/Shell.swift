@@ -849,8 +849,12 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // in its window's own Space, a full-screen window in a full-screen Space, the Space bridge passed at launch,
     // no switch moving it; a failed placement waits 5 s before the next try.
     private var aheadFailedAt: [WindowKey: Double] = [:]
+    private var lastSwitchBusyAt: Double = -.infinity
     private func placeAhead(_ overlay: OverlayController, key: WindowKey, w: ExtWindow, number: Int, server: ServerWindow) -> Bool {
+        // (Not within 3 s of a switch: its windows' Spaces were just changed, and a read may still give the old one.)
+        if switcher.busy { lastSwitchBusyAt = Diagnostics.now() }
         guard !options.harness, overlay.ownSpace, !ownSpaceFellBack, w.state == "fullscreen", !inSwitch(key), !isParkedKey(key),
+              !switcher.busy, Diagnostics.now() - lastSwitchBusyAt >= 3,
               let reads = spaceReads, let bridge = reads as? SpaceBridge, bridge.canPark,
               Diagnostics.now() - (aheadFailedAt[key] ?? -.infinity) >= 5 else { return false }
         guard let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
@@ -1042,6 +1046,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 // the window, already drawn (nothing to show again when the Space returns). (Read off screen
                 // at the end of a slide, a window may still be listed a little offset: the same window.)
                 if keptInSpace {
+                    // Placed ahead and on screen while its window isn't: the Space read for it was stale (a window a
+                    // switch had just moved). That overlay alone is put away and not placed ahead for 30 s; the rest
+                    // keep their own Spaces (no fallback for every overlay).
+                    if overlay.aheadPending, byNumber[overlay.windowNumber]?.onScreen == true {
+                        overlay.hide("placed ahead in a Space that isn't its window's")
+                        aheadFailedAt[key] = Diagnostics.now() + 25
+                        continue
+                    }
                     overlay.reveal()
                     // But on screen itself while its window isn't (macOS kept it in the Space showing): put away,
                     // and back to every Space if a later read still says so (judgeOwnSpace: a closing window
@@ -1106,7 +1118,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         if overlays.values.contains(where: \.isShown) { pointer.start() } else { pointer.stop() }
         updateKeys(list: list, allPids: allPids)
         pointerMoved(PointerWatch.location, fromTrack: true)
-        if switcher.busy { switcher.tick() }
+        if switcher.busy { switcher.tick(); lastSwitchBusyAt = Diagnostics.now() }
 
         // The next read.
         let now = Diagnostics.now()
