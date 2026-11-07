@@ -46,3 +46,58 @@ export function shiftUnits(value) {
   });
   return value.split(OPAQUE).map((part, i) => (i % 2 ? part : inUnits(part))).join('');
 }
+
+// The property names a declaration block's text names, shorthands included
+// (`font: … var(--x)` is listed as its longhands, which read empty until the
+// var() is substituted, so only its text says `font`).
+export function declaredNames(cssText) {
+  const names = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  const take = (end) => {
+    const part = cssText.slice(start, end);
+    const colon = part.indexOf(':');
+    if (colon > 0) names.push(part.slice(0, colon).trim().toLowerCase());
+    start = end + 1;
+  };
+  for (let i = 0; i < cssText.length; i++) {
+    const c = cssText[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = ''; }
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ';' && depth === 0) take(i);
+  }
+  take(cssText.length);
+  return names;
+}
+
+// A declaration block's viewport units made the box's (shiftUnits), in place.
+// A shorthand with a var() in it (its longhands read empty, pending the var())
+// is set again as a whole, and the longhands set apart from it are put back
+// as they were. `style`: a CSSStyleDeclaration.
+export function shiftStyle(style) {
+  const was = new Map();
+  let pending = false;
+  // Over a copy of the names: a property set moves to the end of the live list.
+  for (const name of Array.from(style)) {
+    const value = style.getPropertyValue(name);
+    const priority = style.getPropertyPriority(name);
+    if (!value) pending = true;
+    was.set(name, [value, priority]);
+    const next = shiftUnits(value);
+    if (next !== value) style.setProperty(name, next, priority);
+  }
+  if (!pending) return;
+  for (const name of declaredNames(style.cssText)) {
+    if (was.has(name) || name.startsWith('--')) continue;
+    const value = style.getPropertyValue(name);
+    const next = shiftUnits(value);
+    if (!value || next === value) continue;
+    style.setProperty(name, next, style.getPropertyPriority(name));
+    for (const [longhand, [before, priority]] of was) {
+      if (before && style.getPropertyValue(longhand) !== shiftUnits(before)) style.setProperty(longhand, shiftUnits(before), priority);
+    }
+  }
+}

@@ -157,11 +157,10 @@ test('the docs\' media queries and vw units follow the box', async (t) => {
   await page.close();
 });
 
-// Found by this suite (2026-11-06): the docs' h1 stays 44 px in a 1172 px box (3.2vw of it is 37.5 px).
-// Its rule is a `font` shorthand with a var() in it: content/page/sheets.js walks the rule's
-// longhands, which read empty while a var() is pending, so shiftUnits never sees the vw (the
-// padding's clamp(…, 4vw, …), with no var(), is moved).
-test('vw inside a font shorthand that also has a var() follows the box', { todo: 'font: … clamp(…, 3.2vw, …) … var(--sans) is left as the window\'s vw' }, async () => {
+// Found by this suite (2026-11-06), fixed: the docs' h1 stayed 44 px in a 1172 px box (3.2vw of it
+// is 37.5 px). Its rule is a `font` shorthand with a var() in it, whose longhands read empty while
+// the var() is pending: the shorthand is now set again as a whole (shared/page-css.js shiftStyle).
+test('vw inside a font shorthand that also has a var() follows the box', async () => {
   const page = await m.open('docs.test', '/guide/getting-started');
   await boxIs(page, await slot(ui), 'the docs');
   try {
