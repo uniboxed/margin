@@ -912,12 +912,20 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let windowSpaces = fresh ? reads.spaces(of: number) : theirs?.spaces
         guard let target = Shell.spaceToJoin(overlay: overlaySpaces, window: windowSpaces,
                                              windowOnScreen: theirs?.onScreen == true, showing: snap.showing) else { return }
+        joinSpace(overlay, space: target, was: overlaySpaces)
+    }
+
+    // An overlay's windows moved into its window's Space (the Space bridge), at most once a second for each; the
+    // map reads Spaces again on the next read, so the move is checked there.
+    private func joinSpace(_ overlay: OverlayController, space: UInt64, was: [UInt64]? = nil) {
+        guard let bridge = spaceReads as? SpaceBridge, bridge.canPark else { return }
         let now = Diagnostics.now()
         guard now - (joinTriedAt[overlay.key] ?? -.infinity) >= 1 else { return }
         joinTriedAt[overlay.key] = now
-        let moved = overlay.spaceWindowNumbers.allSatisfy { bridge.add($0, to: target) }
-        windowMap.spacesChanged(at: now) // (read again on the next read: the move checked)
-        Diagnostics.note("\(overlay.key): its overlay was in Space \(overlaySpaces ?? []) while its window \(number) is in \(target): \(moved ? "moved into its window's Space" : "couldn't be moved")")
+        let moved = overlay.spaceWindowNumbers.allSatisfy { bridge.add($0, to: space) }
+        windowMap.spacesChanged(at: now)
+        let from = was ?? windowMap.snapshot.windows[overlay.windowNumber]?.spaces ?? []
+        Diagnostics.note("\(overlay.key): its overlay was in Space \(from) while its window is in \(space): \(moved ? "moved into its window's Space" : "couldn't be moved")")
     }
 
     // An overlay placed in its full-screen window's Space ahead of a visit (Overlay.placeAhead): only an overlay
@@ -1114,81 +1122,82 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
         // The overlays: made when wanted, shown when they can be, closed when their window is gone.
         for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
-            let full = w.state == "fullscreen" || options.windowedToo
+            // What it should do, from the facts (OverlayPlanner.swift); carried out here.
+            let existing = overlays[key]
+            let target = switcher.run != nil && switcher.isTarget(key)
+            let boundTo = next[key]
+            var facts = OverlayFacts()
+            facts.full = w.state == "fullscreen" || options.windowedToo
+            facts.hasTheme = entry.theme != nil
             // Parked: its overlay kept as it is, hidden (§2.3). The switch's target: made or kept from the
             // switch's start, shown from the app's own reads (R1, R2), not its copy's lagging state.
-            let parked = isParkedKey(key)
-            let target = switcher.run != nil && switcher.isTarget(key)
-            let wanted = (full || parked || target) && entry.theme != nil
-            // The window a profile switch is making: its overlay's page loads while it goes full screen.
-            let early = !wanted && entry.theme != nil && switcher.busy && switcher.target?.profile == key.link && switcher.newWindow == key.windowId
-            guard wanted || early else {
-                overlays[key]?.hide(entry.theme == nil ? "no theme yet" : "its window isn't in full screen")
-                continue
-            }
-            if parked, !target {
-                ownSpaceSuspects[key] = nil
-                overlays[key]?.hide("its window is parked")
-                continue
-            }
+            facts.parked = isParkedKey(key)
+            facts.target = target
+            facts.early = entry.theme != nil && switcher.busy && switcher.target?.profile == key.link && switcher.newWindow == key.windowId
             // The window the switch leaves: its overlay ordered out before its Space goes, and kept out.
-            if heldOut.contains(key) {
-                if switcher.run != nil, switcher.leaving == key {
-                    overlays[key]?.hide("its window leaves full screen for a switch")
-                    continue
-                }
-                heldOut.remove(key)
+            facts.leaving = heldOut.contains(key) && switcher.run != nil && switcher.leaving == key
+            facts.targetReady = target && switcher.run?.r2At != nil
+            facts.bound = boundTo
+            facts.absent = boundTo.map(absent.contains) ?? false
+            facts.window = boundTo.flatMap { byNumber[$0] }
+            facts.fills = options.harness || options.windowedToo || facts.window.map { fillsDisplay($0.bounds) } == true
+            facts.ownSpace = existing?.ownSpace ?? options.overlay.ownSpace
+            facts.shown = existing?.isShown ?? false
+            facts.over = existing?.aboveWindow
+            facts.windowFrame = existing?.windowFrame
+            facts.aheadPending = existing?.aheadPending ?? false
+            facts.overlayOnScreen = existing.flatMap { byNumber[$0.windowNumber]?.onScreen } ?? false
+            if let existing {
+                facts.overlaySpaces = windowMap.snapshot.windows[existing.windowNumber]?.spaces
+                facts.windowSpaces = boundTo.flatMap { windowMap.snapshot.windows[$0]?.spaces }
             }
-            let overlay = overlays[key] ?? makeOverlay(key)
-            // Never shown over a window that isn't bound, isn't on screen, or doesn't fill its display yet.
-            guard full || (target && switcher.run?.r2At != nil) else { overlay.hide("its window is still being made"); continue }
-            guard let number = next[key] else { overlay.hide("its window isn't bound to one of the window server's"); continue }
-            // Bound, but missing from this read (WindowBinder keeps it for a moment): kept where it is, unseen.
-            if absent.contains(number) { overlay.conceal(); continue }
-            guard let server = byNumber[number] else { overlay.hide("its window is gone from the window server"); continue }
-            // Kept where it is over its window in its own Space: shown over this window, at its size (a slide
-            // moves the window, it doesn't resize it).
-            let keptInSpace = overlay.ownSpace && overlay.isShown && overlay.aboveWindow == number && overlay.windowFrame.map { Shell.sameSize($0, server.bounds) } == true
-            if !server.onScreen {
-                // In its window's own Space, which isn't showing: left there, so it slides back in with
-                // the window, already drawn (nothing to show again when the Space returns). (Read off screen
-                // at the end of a slide, a window may still be listed a little offset: the same window.)
-                if keptInSpace {
-                    // Placed ahead and on screen while its window isn't: the Space read for it was stale (a window a
-                    // switch had just moved). That overlay alone is put away and not placed ahead for 30 s; the rest
-                    // keep their own Spaces (no fallback for every overlay).
-                    if overlay.aheadPending, byNumber[overlay.windowNumber]?.onScreen == true {
-                        overlay.hide("placed ahead in a Space that isn't its window's")
-                        aheadFailedAt[key] = Diagnostics.now() + 25
-                        continue
-                    }
-                    overlay.reveal()
-                    // But on screen itself while its window isn't (macOS kept it in the Space showing): put away,
-                    // and back to every Space if a later read still says so (judgeOwnSpace: a closing window
-                    // reads like this for a moment).
-                    // (Not in the test harness unless it asks: its stand-in windows have no Spaces.)
-                    // (Not a window a switch is moving: its Spaces change on purpose, §2.3.)
-                    if ownSpaceChecks, !ownSpaceFellBack, !spaceChanged, !inSwitch(key), byNumber[overlay.windowNumber]?.onScreen == true {
-                        suspectOwnSpace(overlay, number: number)
-                        overlay.hide("its window isn't on screen")
-                    }
-                    continue
+            facts.canMove = !options.harness && (spaceReads as? SpaceBridge)?.canPark == true && !inSwitch(key)
+            facts.canSuspect = ownSpaceChecks && !ownSpaceFellBack && !spaceChanged && !inSwitch(key)
+            facts.spaceChanged = spaceChanged
+            let decision = OverlayPlanner.decide(facts)
+            if decision.pastHeldOut, heldOut.contains(key), !facts.leaving { heldOut.remove(key) }
+            guard decision.needsOverlay else {
+                switch decision {
+                case .notWanted(let why): existing?.hide(why)
+                case .parked: ownSpaceSuspects[key] = nil; existing?.hide("its window is parked")
+                default: existing?.hide("its window leaves full screen for a switch")
                 }
+                continue
+            }
+            let overlay = existing ?? makeOverlay(key)
+            switch decision {
+            case .hide(let why): overlay.hide(why); continue
+            case .conceal: overlay.conceal(); continue
+            case .reveal: overlay.reveal(); continue
+            case .misplaced:
+                // Placed ahead and on screen while its window isn't: the Space read for it was stale (a window a
+                // switch had just moved). That overlay alone is put away and not placed ahead for 30 s; the rest
+                // keep their own Spaces (no fallback for every overlay).
+                overlay.hide("placed ahead in a Space that isn't its window's")
+                aheadFailedAt[key] = Diagnostics.now() + 25
+                continue
+            case .suspect:
+                // In its own Space but on screen itself while its window isn't (macOS kept it in the Space showing):
+                // put away, and back to every Space if a later read still says so (judgeOwnSpace: a closing window
+                // reads like this for a moment).
+                overlay.reveal()
+                suspectOwnSpace(overlay, number: facts.bound ?? 0)
+                overlay.hide("its window isn't on screen")
+                continue
+            case .placeAhead(let orHide):
                 // Placed ahead in its window's Space, so the layout is there when that Space slides in (Tirth,
                 // 2026-11-07: never Safari's own UI, not even on a first visit). Else put away, as before.
-                if placeAhead(overlay, key: key, w: w, number: number, server: server) { continue }
-                overlay.hide(spaceChanged ? "the active Space changed and its window isn't on screen" : "its window isn't on screen")
+                if let n = facts.bound, let server = facts.window, placeAhead(overlay, key: key, w: w, number: n, server: server) { continue }
+                overlay.hide(orHide)
                 continue
-            }
-            guard options.harness || options.windowedToo || fillsDisplay(server.bounds) else {
-                // On screen at its size but offset: its Space sliding in or out (a swipe between full-screen
-                // windows, Tirth's log 2026-11-06 23:30:19). An overlay in its window's own Space slides with it:
-                // left as it is, not moved (macOS moves it with the Space), so the layout comes and goes with
-                // the window instead of being put away for the slide and shown after it.
-                if keptInSpace { continue }
-                overlay.hide("its window doesn't fill its display (going into or out of full screen)")
+            case .keep: continue // sliding with its window's Space: macOS moves it with the Space
+            case .join(let space):
+                joinSpace(overlay, space: space)
                 continue
+            case .notWanted, .parked, .leaving: continue
+            case .show: break
             }
+            guard case .show(let number) = decision, let server = facts.window else { continue }
             overlay.browserPid = server.pid
             let wasShown = overlay.isShown && overlay.aboveWindow == number
             let wasShownAnywhere = overlay.isShown

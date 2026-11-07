@@ -1742,6 +1742,61 @@ extension Tests {
     check("trace: numbers and Margin's own keys only (no title)", !text.contains("Test A — x") && !text.contains("title"))
   }
 
+  // The planner (OverlayPlanner.swift): each rule, as Shell.track decided it before the planner took over.
+  static func overlayPlanner() {
+    let full = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    func win(_ n: Int, on: Bool = true, _ b: CGRect = full) -> ServerWindow { ServerWindow(number: n, pid: 50, bounds: b, onScreen: on) }
+    // A full-screen window of a linked copy, bound, on screen, filling its display, its overlay not shown yet.
+    func base() -> OverlayFacts {
+      var f = OverlayFacts()
+      f.full = true; f.hasTheme = true; f.bound = 100; f.window = win(100); f.fills = true; f.ownSpace = true; f.canSuspect = true
+      return f
+    }
+    func d(_ change: (inout OverlayFacts) -> Void) -> OverlayDecision { var f = base(); change(&f); return OverlayPlanner.decide(f) }
+    check("planner: a bound full-screen window on screen: shown over it", d { _ in } == .show(100))
+    check("planner: no theme yet: not wanted, nothing made", d { $0.hasTheme = false } == .notWanted("no theme yet") && !d { $0.hasTheme = false }.needsOverlay)
+    check("planner: not in full screen: not wanted", d { $0.full = false } == .notWanted("its window isn't in full screen"))
+    check("planner: the window a switch is making: made early, held until it's full screen",
+          d { $0.full = false; $0.early = true } == .hide("its window is still being made"))
+    check("planner: parked: put away, nothing made; a parked switch target is shown", d { $0.parked = true } == .parked && d { $0.parked = true; $0.target = true } == .show(100))
+    check("planner: the window a switch leaves: put away", d { $0.leaving = true } == .leaving && d { $0.leaving = true }.pastHeldOut)
+    check("planner: a target not in full screen yet: held until the switch shows it, then shown",
+          d { $0.full = false; $0.target = true } == .hide("its window is still being made") && d { $0.full = false; $0.target = true; $0.targetReady = true } == .show(100))
+    check("planner: not bound", d { $0.bound = nil; $0.window = nil } == .hide("its window isn't bound to one of the window server's"))
+    check("planner: bound but missing from one read: concealed where it is", d { $0.absent = true } == .conceal)
+    check("planner: its window gone from the window server", d { $0.window = nil } == .hide("its window is gone from the window server"))
+    // Off screen.
+    check("planner: its window off screen, the overlay not in its Space yet: placed ahead (else put away)",
+          d { $0.window = win(100, on: false) } == .placeAhead(orHide: "its window isn't on screen")
+          && d { $0.window = win(100, on: false); $0.spaceChanged = true } == .placeAhead(orHide: "the active Space changed and its window isn't on screen"))
+    func kept(_ f: inout OverlayFacts) { f.shown = true; f.over = 100; f.windowFrame = full; f.window = win(100, on: false) }
+    check("planner: kept in its window's Space that isn't showing: left there", d { kept(&$0) } == .reveal)
+    check("planner: kept there but itself on screen: suspected (the own-Space check)", d { kept(&$0); $0.overlayOnScreen = true } == .suspect)
+    check("planner: … unless the check can't (a switch moving it, a Space change in the last second): left there",
+          d { kept(&$0); $0.overlayOnScreen = true; $0.canSuspect = false } == .reveal)
+    check("planner: placed ahead but on screen while its window isn't: misplaced", d { kept(&$0); $0.overlayOnScreen = true; $0.aheadPending = true } == .misplaced)
+    check("planner: every overlay in every Space (the fallback): never kept, placed ahead or put away",
+          d { kept(&$0); $0.ownSpace = false } == .placeAhead(orHide: "its window isn't on screen"))
+    // Sliding.
+    let offset = CGRect(x: 600, y: 0, width: 1512, height: 982)
+    check("planner: on screen at its size but offset (a swipe), kept in its Space: left to slide with it",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.window = win(100, offset); $0.fills = false } == .keep)
+    check("planner: the same not kept in its Space: put away for the slide",
+          d { $0.window = win(100, offset); $0.fills = false } == .hide("its window doesn't fill its display (going into or out of full screen)"))
+    check("planner: resized (out of full screen): not the same window size, put away",
+          d { $0.shown = true; $0.over = 100; $0.windowFrame = full; $0.window = win(100, CGRect(x: 100, y: 100, width: 900, height: 700)); $0.fills = false }
+          == .hide("its window doesn't fill its display (going into or out of full screen)"))
+    check("planner: kept, off screen, its Spaces known and its window's elsewhere: moved into its window's Space",
+          d { kept(&$0); $0.overlaySpaces = [1]; $0.windowSpaces = [7]; $0.canMove = true } == .join(7)
+          && d { kept(&$0); $0.overlaySpaces = [1]; $0.windowSpaces = [7]; $0.canMove = true; $0.overlayOnScreen = true; $0.canSuspect = false } == .join(7))
+    check("planner: … not when they match, aren't known, the window is in two Spaces, or nothing can move it",
+          d { kept(&$0); $0.overlaySpaces = [7]; $0.windowSpaces = [7]; $0.canMove = true } == .reveal
+          && d { kept(&$0); $0.overlaySpaces = nil; $0.windowSpaces = [7]; $0.canMove = true } == .reveal
+          && d { kept(&$0); $0.overlaySpaces = [1]; $0.windowSpaces = [7, 8]; $0.canMove = true } == .reveal
+          && d { kept(&$0); $0.overlaySpaces = [1]; $0.windowSpaces = [7]; $0.canMove = false } == .reveal)
+    check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
+  }
+
   // An overlay kept in its window's Space (Shell.spaceToJoin), and Tirth's own session replayed (2026-11-07 11:32:51:
   // the sidebar left on the Desktop after a switch brought its window back into a new full-screen Space).
   static func overlaySpace() {
@@ -1768,6 +1823,21 @@ extension Tests {
     check("Tirth's session: replayed from its trace (\(maps.count) maps)", maps.count > 50)
     check("Tirth's session: the sidebar in the Desktop (Space 1) while its window showed in Space 3046", wrong > 0, "\(wrong)")
     check("Tirth's session: each of those maps says move it into 3046, and nothing else", !wouldMove.isEmpty && Set(wouldMove) == [3046], "\(wouldMove)")
+
+    // 11:33:03.969: he swiped to the Desktop, where the sidebar was, its window's Space no longer showing. The planner
+    // with the maps' Spaces: moved into its window's Space at once (it sat on the Desktop for a second before).
+    var planned: [OverlayDecision] = []
+    for (m, ov) in maps {
+      guard let state = ov.first(where: { $0.n == overlay }), state.shown, state.over == window,
+            let o = m.windows[overlay], let w = m.windows[window], !w.onScreen, o.onScreen else { continue }
+      var f = OverlayFacts()
+      f.full = true; f.hasTheme = true; f.bound = window; f.window = ServerWindow(number: window, pid: 1, bounds: w.bounds, onScreen: false)
+      f.fills = true; f.ownSpace = state.own; f.shown = true; f.over = window; f.windowFrame = w.bounds; f.overlayOnScreen = true
+      f.overlaySpaces = o.spaces; f.windowSpaces = w.spaces; f.canMove = true
+      f.canSuspect = false; f.spaceChanged = true // (the Space had just changed: the old rule waited a second)
+      planned.append(OverlayPlanner.decide(f))
+    }
+    check("Tirth's session: on the Desktop with its window away, the planner moves it into 3046 at once", !planned.isEmpty && planned.allSatisfy { $0 == .join(3046) }, "\(planned)")
   }
 
   // The own-Space suspicion (Shell.judgeOwnSpace): what drops it before every overlay joins every Space.
