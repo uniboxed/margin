@@ -53,6 +53,10 @@ export async function startSite({ port = 0, verbose = !!process.env.MARGIN_E2E_V
     if (verbose) console.log(`site ${req.method} ${hostname}${u.pathname}`);
     try {
       if (!site) return send(res, { status: 404, type: 'text/plain; charset=utf-8', body: 'No such site on the test server.' });
+      // On every page: `?wait=<ms>` answers that late (a slow server), `?nocontent` with 204 (the page stays).
+      const wait = Number(u.searchParams.get('wait'));
+      if (wait > 0) await new Promise((r) => setTimeout(r, Math.min(wait, 10_000)));
+      if (u.searchParams.has('nocontent')) { res.writeHead(204, { 'cache-control': 'no-store' }); return res.end(); }
       const out = await route(site, req, res, u, url);
       if (out === undefined) return; // the handler wrote it
       send(res, out, u);
