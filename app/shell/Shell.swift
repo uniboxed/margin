@@ -244,6 +244,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private(set) var ax = AXKnown()
     // Every window Margin cares about, as one snapshot (WindowMap.swift, the window module's step 1): kept from each read.
     let windowMap = WindowMap()
+    // Each shown overlay's placement, checked on the next maps (OverlayPlacer.swift), and how many maps in a row it was wrong on.
+    private var placements: [WindowKey: PlacedOverlay] = [:]
+    private var placementMisses: [WindowKey: Int] = [:]
     // Settings Margin sent each copy (shareSettings, carrySettings), to know their echo; when each copy linked.
     var settingsSent: [String: String] = [:]
     var linkedAt: [String: Double] = [:]
@@ -887,6 +890,41 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         slowTracksUnsaid = 0
     }
 
+    // The placer's check (OverlayPlacer.swift): each shown overlay's placement against this read's map, fixed on the
+    // second map in a row it's wrong on (moved into its window's Space, or ordered in again over it); a frame not
+    // the one asked only said. Each fix in the log and the trace. Not in the test harness (its windows have no Spaces).
+    private var frameSaid: [WindowKey: Double] = [:]
+    private var reorderedAt: [WindowKey: Double] = [:]
+    private func checkPlacements() {
+        guard !options.harness else { return }
+        let now = Diagnostics.now()
+        let canMove = (spaceReads as? SpaceBridge)?.canPark == true
+        for (key, p) in placements.sorted(by: { $0.key < $1.key }) {
+            guard let overlay = overlays[key], overlay.isShown, overlay.aboveWindow == p.window, !inSwitch(key) else {
+                placements[key] = nil; placementMisses[key] = nil; continue
+            }
+            let r = PlacementCheck.check(p, map: windowMap.snapshot, now: now, canMove: canMove, misses: placementMisses[key] ?? 0)
+            placementMisses[key] = r.wrong ? (placementMisses[key] ?? 0) + 1 : 0
+            guard let fix = r.fix else { continue }
+            switch fix {
+            case .join(let space):
+                joinSpace(overlay, space: space)
+            case .reorder(let why):
+                // (At most every 2 s for each: one that stays off screen isn't ordered in on every read.)
+                guard now - (reorderedAt[key] ?? -.infinity) >= 2 else { continue }
+                reorderedAt[key] = now
+                Diagnostics.note("\(key): its overlay \(why) (checked against the map): ordered in again over window \(p.window)")
+                overlay.reorder()
+                placementMisses[key] = 0
+            case .frame(let at):
+                guard now - (frameSaid[key] ?? -.infinity) >= 30 else { continue }
+                frameSaid[key] = now
+                Diagnostics.note("\(key): its overlay is at \(WindowMatcher.describe(at)), not \(WindowMatcher.describe(p.frame)) as asked")
+            }
+            options.trace?.event("placer \(key) \(fix)", at: now)
+        }
+    }
+
     // A shown overlay in its window's own Space, checked against the map on each read: in another Space, it's moved
     // into its window's (the Space bridge), at most once a second for each. Tirth's trace 2026-11-07 11:32:51: a
     // switch brought a parked window back into a new full-screen Space and macOS removed its old one, moving the
@@ -1103,6 +1141,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // The map, from this read (and the trace, when there's one: what changed, and what the copies said).
         windowMap.reads = spaceReads
         let mapChanges = windowMap.update(now: Diagnostics.now(), list: read, browserPids: readPids, marginPid: ProcessInfo.processInfo.processIdentifier, front: front, ax: ax)
+        checkPlacements()
         if let trace = options.trace {
             trace.map(windowMap.snapshot, mapChanges)
             trace.ext(ext.values.map { w, _ in TraceExt(k: "\(w.key)", state: w.state, b: w.bounds, focused: w.focused) }, at: windowMap.snapshot.at)
@@ -1147,6 +1186,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             facts.canSuspect = ownSpaceChecks && !ownSpaceFellBack && !spaceChanged && !inSwitch(key)
             facts.spaceChanged = spaceChanged
             let decision = OverlayPlanner.decide(facts)
+            if case .show = decision {} else if decision != .keep { placements[key] = nil; placementMisses[key] = nil }
             if decision.pastHeldOut, heldOut.contains(key), !facts.leaving { heldOut.remove(key) }
             guard decision.needsOverlay else {
                 switch decision {
@@ -1212,6 +1252,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             if showed, !wasShownAnywhere || overlay.aheadPending { overlay.arrived(); appeared(overlay, w, list: list) }
             if showed { deliverHeldPalette(overlay) }
+            if showed, placements[key].map({ $0.window != number || $0.frame != frame || $0.windowBounds != server.bounds }) ?? true {
+                placements[key] = PlacedOverlay(overlay: overlay.windowNumber, window: number, frame: frame, windowBounds: server.bounds, at: Diagnostics.now())
+                placementMisses[key] = 0
+            }
             if showed, !wasShown, overlay.ownSpace, !inSwitch(key),
                OverlayPlanner.checksOwnSpace(canMove: !options.harness && (spaceReads as? SpaceBridge)?.canPark == true) { checkOwnSpace(overlay, browser: number) }
             if showed, overlay.ownSpace { keepInWindowSpace(overlay, number: number, justShown: !wasShown) }

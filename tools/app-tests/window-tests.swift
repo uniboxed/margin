@@ -1805,6 +1805,67 @@ extension Tests {
     check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
   }
 
+  // The placer's check (OverlayPlacer.swift): each placement checked on the next maps.
+  static func placementCheck() {
+    let full = CGRect(x: 0, y: 0, width: 1512, height: 982), side = CGRect(x: 0, y: 0, width: 300, height: 982)
+    func map(overlay: MapWindow? = nil, window: MapWindow? = nil, showing: UInt64 = 7) -> WindowSnapshot {
+      var m = WindowSnapshot(at: 10)
+      m.displays = [MapDisplay(id: "D", frame: full, current: showing, desktops: [1], fullScreen: [7])]
+      if let overlay { m.windows[overlay.number] = overlay }
+      if let window { m.windows[window.number] = window }
+      return m
+    }
+    func ov(on: Bool = true, spaces: [UInt64]? = [7], order: Int = 0, bounds: CGRect = side) -> MapWindow {
+      MapWindow(number: 900, pid: 7, owner: .margin, layer: 0, bounds: bounds, onScreen: on, order: order, spaces: spaces)
+    }
+    func win(on: Bool = true, spaces: [UInt64]? = [7], order: Int = 1, bounds: CGRect = full) -> MapWindow {
+      MapWindow(number: 100, pid: 50, owner: .browser, layer: 0, bounds: bounds, onScreen: on, order: order, spaces: spaces)
+    }
+    let p = PlacedOverlay(overlay: 900, window: 100, frame: side, windowBounds: full, at: 9.5)
+    func c(_ m: WindowSnapshot, misses: Int = 1, now: Double = 10, canMove: Bool = true) -> (wrong: Bool, fix: PlacementFix?) {
+      PlacementCheck.check(p, map: m, now: now, canMove: canMove, misses: misses)
+    }
+    check("placer: where it was asked, on screen in front of its window: nothing wrong", c(map(overlay: ov(), window: win())) == (false, nil))
+    check("placer: in another Space: moved into its window's, on the second map in a row",
+          c(map(overlay: ov(on: false, spaces: [1]), window: win())) == (true, .join(7))
+          && c(map(overlay: ov(on: false, spaces: [1]), window: win()), misses: 0) == (true, nil))
+    check("placer: not on screen while its window is (its Spaces right or unknown): ordered in again",
+          c(map(overlay: ov(on: false), window: win())) == (true, .reorder("not on screen while its window is"))
+          && c(map(overlay: ov(on: false, spaces: nil), window: win())) == (true, .reorder("not on screen while its window is")))
+    check("placer: its order against its window isn't judged (the list's order isn't front to back between apps)", c(map(overlay: ov(order: 136), window: win(order: 1))) == (false, nil))
+    check("placer: not at the frame asked: said", c(map(overlay: ov(bounds: CGRect(x: 0, y: 0, width: 260, height: 982)), window: win()))
+          == (true, .frame(CGRect(x: 0, y: 0, width: 260, height: 982))))
+    check("placer: nothing judged within 0.2 s of the placement, while its window is off screen, moved or sliding, or not in the map",
+          c(map(overlay: ov(on: false), window: win()), now: 9.6) == (false, nil)
+          && c(map(overlay: ov(on: false), window: win(on: false))) == (false, nil)
+          && c(map(overlay: ov(on: false), window: win(bounds: CGRect(x: 600, y: 0, width: 1512, height: 982)))) == (false, nil)
+          && c(map(overlay: nil, window: win())) == (false, nil))
+    check("placer: without the Space bridge: not moved, ordered in again", c(map(overlay: ov(on: false, spaces: [1]), window: win()), canMove: false)
+          == (true, .reorder("not on screen while its window is")))
+
+    // Tirth's session (2026-11-07 11:32:51): shown over its window after a switch, but in the Desktop's Space.
+    let vectors = ProcessInfo.processInfo.environment["MARGIN_DATA_VECTORS"] ?? "../../tests/fixtures/data-merge"
+    let url = URL(fileURLWithPath: vectors).appendingPathComponent("../traces/2026-11-07-sidebar-on-desktop.jsonl").standardizedFileURL
+    // (A trace has a map only when something changed; live, every read checks the map it has, 4 to 30 times a
+    // second: checked here every 0.25 s until the next map.)
+    var placed: PlacedOverlay?, misses = 0, fixes: [PlacementFix] = []
+    let replay = WindowTrace.replayWithOverlays(WindowTrace.load(url))
+    for (i, (m, overlays)) in replay.enumerated() {
+      guard let o = overlays.first(where: { $0.n == 63556 }), o.shown, let over = o.over, let w = m.windows[over] else { placed = nil; continue }
+      if placed?.window != over { placed = PlacedOverlay(overlay: o.n, window: over, frame: o.f, windowBounds: w.bounds, at: m.at); misses = 0 }
+      let until = i + 1 < replay.count ? replay[i + 1].map.at : m.at + 1
+      var now = m.at
+      while now < until, fixes.isEmpty {
+        let r = PlacementCheck.check(placed!, map: m, now: now, canMove: true, misses: misses)
+        misses = r.wrong ? misses + 1 : 0
+        if let f = r.fix { fixes.append(f) }
+        now += 0.25
+      }
+    }
+    check("placer: Tirth's session: the sidebar left in the Desktop's Space after the switch is caught, and moved into 3046",
+          fixes.first == .join(3046), "\(fixes)")
+  }
+
   // An overlay kept in its window's Space (OverlayPlanner.spaceToJoin), and Tirth's own session replayed (2026-11-07 11:32:51:
   // the sidebar left on the Desktop after a switch brought its window back into a new full-screen Space).
   static func overlaySpace() {
