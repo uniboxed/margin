@@ -57,10 +57,12 @@ extension Shell {
 
     func updateCovers() {
         let pids = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").map(\.processIdentifier))
-        guard options.safariAX, SafariAX.trusted, !pids.isEmpty, let list = windowSource.read(of: pids) else {
+        guard options.safariAX, SafariAX.trusted, !pids.isEmpty else {
             coverExpired = []
             return endCovers()
         }
+        // A read the window server didn't answer: this tick skipped (covers kept as they are).
+        guard let list = windowSource.read(of: pids) else { return }
         let now = Diagnostics.now()
         let exact = safariExact(list: list, pids: pids)
         let marginProfiles = Set(data.profiles(browser: "safari").map(\.key)).union(links.keys)
@@ -83,7 +85,7 @@ extension Shell {
             covers[n] = nil
         }
         coverExpired = coverExpired.filter { n in list.contains { $0.number == n } }
-        for (n, w) in wanted.sorted(by: { $0.key < $1.key }) where covers[n] == nil {
+        for (n, w) in wanted.sorted(by: { $0.key < $1.key }) where covers[n] == nil && !coverExpired.contains(n) {
             let c = SafariCover(number: n, since: now)
             let frame = ScreenGeometry.appKitRect(w.bounds)
             c.panel.setFrame(frame, display: true)
