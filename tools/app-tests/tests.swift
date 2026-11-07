@@ -557,6 +557,12 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("quit guard: on with the browser in front and a window parked; off otherwise",
           Shell.guardsQuit(browserInFront: true, parked: 1, quitting: false) && !Shell.guardsQuit(browserInFront: true, parked: 0, quitting: false)
           && !Shell.guardsQuit(browserInFront: false, parked: 2, quitting: false) && !Shell.guardsQuit(browserInFront: true, parked: 2, quitting: true))
+    check("quit guard: with Margin's layout in front and its prompt wanted, held with nothing parked too",
+          Shell.guardsQuit(browserInFront: true, parked: 0, quitting: false, asks: true) && !Shell.guardsQuit(browserInFront: false, parked: 0, quitting: false, asks: true))
+    check("quit prompt: Return or Enter quits, Escape cancels, ⌘Q again quits, other keys nothing",
+          QuitPrompt.choice(keyCode: 36, command: false) == .quit && QuitPrompt.choice(keyCode: 76, command: false) == .quit
+          && QuitPrompt.choice(keyCode: 53, command: false) == .cancel && QuitPrompt.choice(keyCode: 12, command: true) == .quit
+          && QuitPrompt.choice(keyCode: 12, command: false) == nil && QuitPrompt.choice(keyCode: 0, command: false) == nil)
     var quits: [Bool] = []
     keys.onQuit = { quits.append($0) }
     keys.setQuitGuard(active: true)

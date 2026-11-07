@@ -446,6 +446,7 @@ func scenario() async {
   // ---- keys ----
   shell.track()
   check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 6))
+  check("… and ⌘Q and ⌥⌘Q, for Margin's quit prompt", keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && keys.held.values.contains(Combo.parse("Alt+Meta+KeyQ")!))
   mark = fake.events.count
   keys.press("Ctrl+Meta+ArrowDown")
   check("⌃⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
@@ -453,7 +454,7 @@ func scenario() async {
   apps.bringToFront(1)
   check("another app in front: let go", await until(2, { keys.held.isEmpty && !shell.shortcuts.isActive }))
   apps.bringToFront(browserPid)
-  check("back: held again", await until(2, { keys.held.count == 6 }))
+  check("back: held again", await until(2, { ownKeysHeld(keys) == 6 }))
   // The copy's Settings shortcuts (its `keys`): held instead of the defaults, at once.
   fake.tell(["do": "send", "id": "A", "msg": ["k": "keys", "bindings": ["next-tab": ["Alt+Meta+ArrowDown", "Ctrl+Meta+ArrowDown"], "toggle-sidebar": ["Alt+KeyK"]]]])
   check("the copy's keys: held as it says", await until(3, { Set(keys.held.values).contains(Combo.parse("Alt+Meta+ArrowDown")!) && Set(keys.held.values).contains(Combo.parse("Alt+KeyK")!) && !Set(keys.held.values).contains(Combo.parse("Alt+KeyS")!) }))
@@ -616,7 +617,9 @@ func scenario() async {
   print(String(format: "  timings: linked to overlay shown %.0f ms; whole run %.1f s", shownAfter * 1000, Date().timeIntervalSince(started)))
 }
 
-func shortcutsHeld(_ shell: Shell, _ keys: FakeKeys, _ n: Int) -> Bool { shell.shortcuts.isActive && keys.held.count == n }
+// Margin's own keys held (the quit guard's ⌘Q and ⌥⌘Q, ids from AppShortcuts.quitIdBase, counted apart).
+func ownKeysHeld(_ keys: FakeKeys) -> Int { keys.held.keys.filter { $0 < AppShortcuts.quitIdBase }.count }
+func shortcutsHeld(_ shell: Shell, _ keys: FakeKeys, _ n: Int) -> Bool { shell.shortcuts.isActive && ownKeysHeld(keys) == n }
 
 func waitJS(_ web: WKWebView, _ code: String) async -> Bool {
   for _ in 0..<60 {

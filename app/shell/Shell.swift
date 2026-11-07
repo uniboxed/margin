@@ -209,6 +209,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // ⌘Q or ⌥⌘Q handed on to the browser after Margin closed its parked windows (Shell.quitBrowser): the keys
         // posted to its process, as the person pressed them. A test records them instead.
         var passQuitKeys: (pid_t, Bool) -> Void = Shell.postQuitKeys
+        // Whether ⌘Q over Margin's layout asks first (Margin's own prompt, QuitPrompt.swift), and its "Always quit"
+        // (MarginAskBeforeQuit in the app's defaults; a test keeps its own).
+        var asksBeforeQuit: () -> Bool = { UserDefaults.standard.object(forKey: "MarginAskBeforeQuit") as? Bool ?? true }
+        var stopAskingBeforeQuit: () -> Void = { UserDefaults.standard.set(false, forKey: "MarginAskBeforeQuit") }
     }
 
     final class Link {
@@ -1531,7 +1535,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let midSwitch = switcher.keysMidSwitch && apps.frontPid.map { allPids.contains($0) || $0 == ownPid } == true
         shortcuts.set(active: ShortcutSet.active(frontPid: apps.frontPid, linkedPids: allPids, frontWindowHasOverlay: has) || midSwitch)
         shortcuts.setQuitGuard(active: Shell.guardsQuit(browserInFront: apps.frontPid.map(allPids.contains) == true,
-                                                        parked: parking?.entries.count ?? 0, quitting: quittingBrowser))
+                                                        parked: parking?.entries.count ?? 0, quitting: quittingBrowser,
+                                                        asks: has && options.asksBeforeQuit()))
     }
 
     /// ⌘Q (or ⌥⌘Q) posted to a process, a key press and release (Accessibility lets Margin post events); if it
@@ -1551,9 +1556,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         up.postToPid(pid)
     }
 
-    /// Whether ⌘Q and ⌥⌘Q are Margin's first (AppShortcuts' quit guard): a linked browser in front, with windows Margin
-    /// has parked, and not already quitting it.
-    static func guardsQuit(browserInFront: Bool, parked: Int, quitting: Bool) -> Bool { browserInFront && parked > 0 && !quitting }
+    /// Whether ⌘Q and ⌥⌘Q are Margin's first (AppShortcuts' quit guard): a linked browser in front, not already quitting
+    /// it, and either windows Margin has parked (closed first) or Margin's layout in front with its prompt wanted.
+    static func guardsQuit(browserInFront: Bool, parked: Int, quitting: Bool, asks: Bool = false) -> Bool {
+        browserInFront && !quitting && (parked > 0 || asks)
+    }
+
+    // Margin's quit prompt, while it's up (QuitPrompt.swift).
+    private(set) var quitPrompt: QuitPrompt?
 
     // ⌘Q or ⌥⌘Q in the browser with windows parked: every parked window closed by its own copy first (its tabs stay in
     // their spaces, not open), at most `quitCloseWithin`, then the same keys handed to the browser, which quits as it
@@ -1563,7 +1573,33 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private(set) var quittingBrowser = false
     static let quitCloseWithin: Double = 0.6
     func quitBrowser(keepWindows: Bool) {
+        // ⌘Q again with the prompt up: Quit.
+        if let prompt = quitPrompt { return prompt.choose(.quit) }
         guard !quittingBrowser, let pid = apps.frontPid else { return }
+        // Over Margin's layout, Margin's own prompt first (Tirth, 2026-11-07, as Arc's): Quit, Always quit, Cancel.
+        if options.asksBeforeQuit(), let front = frontOverlay(), let window = front.windowFrame {
+            let browser = links[front.key.link]?.connection.hello.browser == "safari" ? "Safari" : (NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the browser")
+            let prompt = QuitPrompt(browser: browser)
+            quitPrompt = prompt
+            Diagnostics.note("\(keepWindows ? "⌥⌘Q" : "⌘Q") over Margin's layout: Margin's quit prompt")
+            prompt.onChoice = { [weak self] choice in
+                guard let self else { return }
+                self.quitPrompt = nil
+                Diagnostics.note("quit prompt: \(choice == .cancel ? "cancelled" : choice == .always ? "always quit" : "quit")")
+                switch choice {
+                case .cancel: return
+                case .always: self.options.stopAskingBeforeQuit(); self.quitNow(pid: pid, keepWindows: keepWindows)
+                case .quit: self.quitNow(pid: pid, keepWindows: keepWindows)
+                }
+            }
+            prompt.show(over: window)
+            return
+        }
+        quitNow(pid: pid, keepWindows: keepWindows)
+    }
+
+    private func quitNow(pid: pid_t, keepWindows: Bool) {
+        guard !quittingBrowser else { return }
         quittingBrowser = true
         shortcuts.setQuitGuard(active: false)
         let keys = keepWindows ? "⌥⌘Q" : "⌘Q"
