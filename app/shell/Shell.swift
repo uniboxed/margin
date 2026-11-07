@@ -887,14 +887,6 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         slowTracksUnsaid = 0
     }
 
-    /// The Space an overlay shown over a window must be moved into, or nil when it's where it should be (or that
-    /// can't be told): its window on screen, in exactly one Space, one of the Spaces showing, and the overlay's
-    /// Spaces known and not just that one.
-    static func spaceToJoin(overlay: [UInt64]?, window: [UInt64]?, windowOnScreen: Bool, showing: Set<UInt64>) -> UInt64? {
-        guard windowOnScreen, let window, window.count == 1, let space = window.first, showing.contains(space), let overlay else { return nil }
-        return overlay == [space] ? nil : space
-    }
-
     // A shown overlay in its window's own Space, checked against the map on each read: in another Space, it's moved
     // into its window's (the Space bridge), at most once a second for each. Tirth's trace 2026-11-07 11:32:51: a
     // switch brought a parked window back into a new full-screen Space and macOS removed its old one, moving the
@@ -910,7 +902,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let fresh = justShown || (theirs?.onScreen == true && mine?.onScreen != true)
         let overlaySpaces = fresh ? reads.spaces(of: overlay.windowNumber) : mine?.spaces
         let windowSpaces = fresh ? reads.spaces(of: number) : theirs?.spaces
-        guard let target = Shell.spaceToJoin(overlay: overlaySpaces, window: windowSpaces,
+        guard let target = OverlayPlanner.spaceToJoin(overlay: overlaySpaces, window: windowSpaces,
                                              windowOnScreen: theirs?.onScreen == true, showing: snap.showing) else { return }
         joinSpace(overlay, space: target, was: overlaySpaces)
     }
@@ -1220,7 +1212,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             if showed, !wasShownAnywhere || overlay.aheadPending { overlay.arrived(); appeared(overlay, w, list: list) }
             if showed { deliverHeldPalette(overlay) }
-            if showed, !wasShown, overlay.ownSpace, !inSwitch(key) { checkOwnSpace(overlay, browser: number) }
+            if showed, !wasShown, overlay.ownSpace, !inSwitch(key),
+               OverlayPlanner.checksOwnSpace(canMove: !options.harness && (spaceReads as? SpaceBridge)?.canPark == true) { checkOwnSpace(overlay, browser: number) }
             if showed, overlay.ownSpace { keepInWindowSpace(overlay, number: number, justShown: !wasShown) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }

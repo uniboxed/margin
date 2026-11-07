@@ -1794,20 +1794,28 @@ extension Tests {
           && d { kept(&$0); $0.overlaySpaces = nil; $0.windowSpaces = [7]; $0.canMove = true } == .reveal
           && d { kept(&$0); $0.overlaySpaces = [1]; $0.windowSpaces = [7, 8]; $0.canMove = true } == .reveal
           && d { kept(&$0); $0.overlaySpaces = [1]; $0.windowSpaces = [7]; $0.canMove = false } == .reveal)
+    // The own-Space suspicion and its every-Space fallback: only a guess for when the Spaces can't be read or used.
+    check("planner: kept, on screen while its window isn't, Spaces known and the same: not suspected (a stale on-screen read)",
+          d { kept(&$0); $0.overlayOnScreen = true; $0.overlaySpaces = [7]; $0.windowSpaces = [7]; $0.canMove = true } == .reveal)
+    check("planner: … Spaces unknown, or nothing can move it: suspected as before",
+          d { kept(&$0); $0.overlayOnScreen = true; $0.overlaySpaces = nil; $0.windowSpaces = [7]; $0.canMove = true } == .suspect
+          && d { kept(&$0); $0.overlayOnScreen = true; $0.overlaySpaces = [7]; $0.windowSpaces = [7]; $0.canMove = false } == .suspect)
+    check("planner: the check after a first show (every Space on failure) only without the Space bridge",
+          OverlayPlanner.checksOwnSpace(canMove: false) && !OverlayPlanner.checksOwnSpace(canMove: true))
     check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
   }
 
-  // An overlay kept in its window's Space (Shell.spaceToJoin), and Tirth's own session replayed (2026-11-07 11:32:51:
+  // An overlay kept in its window's Space (OverlayPlanner.spaceToJoin), and Tirth's own session replayed (2026-11-07 11:32:51:
   // the sidebar left on the Desktop after a switch brought its window back into a new full-screen Space).
   static func overlaySpace() {
-    check("in its window's Space: nothing to do", Shell.spaceToJoin(overlay: [7], window: [7], windowOnScreen: true, showing: [7]) == nil)
-    check("in another Space while its window shows: moved into the window's", Shell.spaceToJoin(overlay: [1], window: [7], windowOnScreen: true, showing: [7]) == 7)
-    check("in no Space: moved", Shell.spaceToJoin(overlay: [], window: [7], windowOnScreen: true, showing: [7]) == 7)
+    check("in its window's Space: nothing to do", OverlayPlanner.spaceToJoin(overlay: [7], window: [7], windowOnScreen: true, showing: [7]) == nil)
+    check("in another Space while its window shows: moved into the window's", OverlayPlanner.spaceToJoin(overlay: [1], window: [7], windowOnScreen: true, showing: [7]) == 7)
+    check("in no Space: moved", OverlayPlanner.spaceToJoin(overlay: [], window: [7], windowOnScreen: true, showing: [7]) == 7)
     check("unknown, or its window off screen, in two Spaces, or in a Space not showing (mid-slide): left alone",
-          Shell.spaceToJoin(overlay: nil, window: [7], windowOnScreen: true, showing: [7]) == nil
-          && Shell.spaceToJoin(overlay: [1], window: [7], windowOnScreen: false, showing: [7]) == nil
-          && Shell.spaceToJoin(overlay: [1], window: [7, 8], windowOnScreen: true, showing: [7]) == nil
-          && Shell.spaceToJoin(overlay: [1], window: [7], windowOnScreen: true, showing: [1]) == nil)
+          OverlayPlanner.spaceToJoin(overlay: nil, window: [7], windowOnScreen: true, showing: [7]) == nil
+          && OverlayPlanner.spaceToJoin(overlay: [1], window: [7], windowOnScreen: false, showing: [7]) == nil
+          && OverlayPlanner.spaceToJoin(overlay: [1], window: [7, 8], windowOnScreen: true, showing: [7]) == nil
+          && OverlayPlanner.spaceToJoin(overlay: [1], window: [7], windowOnScreen: true, showing: [1]) == nil)
 
     let vectors = ProcessInfo.processInfo.environment["MARGIN_DATA_VECTORS"] ?? "../../tests/fixtures/data-merge"
     let url = URL(fileURLWithPath: vectors).appendingPathComponent("../traces/2026-11-07-sidebar-on-desktop.jsonl").standardizedFileURL
@@ -1818,7 +1826,7 @@ extension Tests {
     for (m, ov) in maps where ov.contains(where: { $0.n == overlay && $0.shown && $0.over == window }) {
       guard let o = m.windows[overlay], let w = m.windows[window] else { continue }
       if w.onScreen, let ws = w.spaces, o.spaces != ws { wrong += 1 }
-      if let to = Shell.spaceToJoin(overlay: o.spaces, window: w.spaces, windowOnScreen: w.onScreen, showing: m.showing) { wouldMove.append(to) }
+      if let to = OverlayPlanner.spaceToJoin(overlay: o.spaces, window: w.spaces, windowOnScreen: w.onScreen, showing: m.showing) { wouldMove.append(to) }
     }
     check("Tirth's session: replayed from its trace (\(maps.count) maps)", maps.count > 50)
     check("Tirth's session: the sidebar in the Desktop (Space 1) while its window showed in Space 3046", wrong > 0, "\(wrong)")

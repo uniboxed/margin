@@ -88,7 +88,10 @@ enum OverlayPlanner {
                 // (Tirth's trace 2026-11-07 11:33:03: the sidebar sat on the Desktop for a second).
                 if f.canMove, let ws = f.windowSpaces, ws.count == 1, let os = f.overlaySpaces, os != ws { return .join(ws[0]) }
                 if f.aheadPending, f.overlayOnScreen { return .misplaced }
-                if f.canSuspect, f.overlayOnScreen { return .suspect }
+                // On screen while its window isn't: a guess at the wrong Space, only when the Spaces can't say (with
+                // them, the rule above has moved it if it was; the same Spaces is a stale on-screen read).
+                let spacesKnown = f.canMove && f.overlaySpaces != nil && f.windowSpaces != nil
+                if f.canSuspect, f.overlayOnScreen, !spacesKnown { return .suspect }
                 return .reveal
             }
             return .placeAhead(orHide: f.spaceChanged ? "the active Space changed and its window isn't on screen" : "its window isn't on screen")
@@ -96,6 +99,19 @@ enum OverlayPlanner {
         guard f.fills else { return kept ? .keep : .hide("its window doesn't fill its display (going into or out of full screen)") }
         return .show(number)
     }
+
+    /// The Space an overlay shown over a window must be moved into, or nil when it's where it should be (or that
+    /// can't be told): its window on screen, in exactly one Space, one of the Spaces showing, and the overlay's
+    /// Spaces known and not just that one. (Checked by the shell right after a show, with Spaces read then.)
+    static func spaceToJoin(overlay: [UInt64]?, window: [UInt64]?, windowOnScreen: Bool, showing: Set<UInt64>) -> UInt64? {
+        guard windowOnScreen, let window, window.count == 1, let space = window.first, showing.contains(space), let overlay else { return nil }
+        return overlay == [space] ? nil : space
+    }
+
+    /// Whether a first show is checked a moment later for its overlay on screen with its window, every overlay joining
+    /// every Space if not (Shell.checkOwnSpace): only without the Space bridge. With it, an overlay out of its
+    /// window's Space is moved there, alone (spaceToJoin, `.join`), and the others are left as they are.
+    static func checksOwnSpace(canMove: Bool) -> Bool { !canMove }
 
     // Whether two bounds have the same size (to a point): a window offset in a slide is the same window.
     static func sameSize(_ a: CGRect, _ b: CGRect) -> Bool { abs(a.width - b.width) <= 1 && abs(a.height - b.height) <= 1 }
