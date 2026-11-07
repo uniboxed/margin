@@ -162,6 +162,13 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     if (JSON.stringify(next) !== JSON.stringify(platform.features.switchSettings ?? null)) platform.features = { ...platform.features, switchSettings: next };
   };
   followSwitchSettings();
+  // DEV-HOOK: Margin.app's development switches, as it says them (`across.dev`): its quit prompt's "ask before quitting".
+  function followDev(/** @type {any} */ raw) {
+    const ask = raw?.dev?.askBeforeQuit;
+    const next = typeof ask === 'boolean' ? ask : undefined;
+    if ((/** @type {any} */ (platform.features)).devAskBeforeQuit !== next) platform.features = /** @type {any} */ ({ ...platform.features, devAskBeforeQuit: next });
+  }
+  followDev(hello?.across);
   // Themes: Margin.app imports them (its file picker), and keeps the index (`themes`: app/PROTOCOL.md "User themes").
   /** @type {any} */ (platform.features).importThemes = true;
   /** @type {any} */ (platform.features).userThemes = Array.isArray(hello?.themes) ? hello.themes : [];
@@ -356,6 +363,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return emit();
         case 'across':
           across = acrossOf(msg.across);
+          followDev(msg.across);
           followSwitchSettings();
           rebuild();
           return emit();
@@ -389,6 +397,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           windows = Array.isArray(next.windows) ? next.windows : [];
           mode = next.mode === 'windowed' ? 'windowed' : 'fullscreen';
           across = acrossOf(next.across);
+          followDev(next.across);
           cloud = cloudOf(next.cloudTabs);
           if (Array.isArray(next.themes)) /** @type {any} */ (platform.features).userThemes = next.themes;
           followSwitchSettings();

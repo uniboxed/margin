@@ -267,7 +267,7 @@ func handoffScenario() async {
   options.passQuitKeys = { pid, keep in passedQuit.append((pid, keep)) }
   var asksBeforeQuit = true
   options.asksBeforeQuit = { asksBeforeQuit }
-  options.stopAskingBeforeQuit = { asksBeforeQuit = false }
+  options.setAskBeforeQuit = { asksBeforeQuit = $0 }
   options.fillsDisplay = { $0 == full }
   // A Margin.app that crashed with P2's window parked: it came back by itself to the Desktop, and its
   // marker is in the data folder (§13.2). The same Safari is still running.
@@ -603,6 +603,10 @@ func handoffScenario() async {
   let passedAlways = await until(3, { passedQuit.count == 2 })
   check("10: Always quit: the parked window closed, the keys passed on, and not asked again", !parkedBefore.isEmpty && closedAlways && passedAlways && !asksBeforeQuit,
         "\(parkedBefore) \(passedQuit.count) \(asksBeforeQuit)")
+  // DEV-HOOK: the development switch in Settings turns the prompt back on.
+  check("10: after Always quit, the app tells Settings the prompt is off", shell.devSwitches()["askBeforeQuit"] as? Bool == false)
+  if let shown = shell.overlays.values.first(where: { $0.isShown }) { shell.performAcross(from: shown, "switch.askBeforeQuit", ["on": true]) }
+  check("10: the development switch turns it back on", asksBeforeQuit && shell.devSwitches()["askBeforeQuit"] as? Bool == true)
   // (Back again for Margin's own quit below.)
   try? await Task.sleep(nanoseconds: 2_200_000_000)
   guard let o95b = shell.overlays[k95] ?? shell.overlays.values.first(where: { $0.isShown }), await until(5, { o95b.isShown }) else { return check("10: a window shown again", false) }

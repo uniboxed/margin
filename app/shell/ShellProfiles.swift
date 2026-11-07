@@ -221,6 +221,7 @@ extension Shell: SwitchWorld {
             var across = profiles.across(for: entry.connection.hello.profile, spaces: values, counts: counts, linked: linked, switching: switchingJSON(),
                                          switchSettings: switchSettingsShown(entry.connection.hello.browser), symbol: { ProfileSymbols.dataURL($0) })
             across["contents"] = contents.filter { $0["profile"] as? String != entry.connection.hello.profile }
+            if entry.connection.hello.browser == "safari" { across["dev"] = devSwitches() } // DEV-HOOK
             guard let json = jsonString(across) else { continue }
             if acrossSent[key] == json { continue }
             acrossSent[key] = json
@@ -228,6 +229,9 @@ extension Shell: SwitchWorld {
         }
         acrossSent = acrossSent.filter { overlays[$0.key] != nil }
     }
+
+    // DEV-HOOK: Margin.app's development switches, sent with `across` (Settings shows them: ui/settings-form.js).
+    func devSwitches() -> JSONObject { ["askBeforeQuit": options.asksBeforeQuit()] }
 
     func acrossJSON(for overlay: OverlayController) -> String? {
         guard let entry = links[overlay.key.link] else { return nil }
@@ -239,6 +243,7 @@ extension Shell: SwitchWorld {
         var across = profiles.across(for: entry.connection.hello.profile, spaces: values, counts: tabCounts(browser, Array(ids.keys)), linked: linked, switching: switchingJSON(),
                                      switchSettings: switchSettingsShown(browser), symbol: { ProfileSymbols.dataURL($0) })
         across["contents"] = spaceContents(browser, ids).filter { $0["profile"] as? String != entry.connection.hello.profile }
+        if browser == "safari" { across["dev"] = devSwitches() } // DEV-HOOK
         let json = jsonString(across)
         acrossSent[overlay.key] = json
         return json
@@ -435,6 +440,12 @@ extension Shell: SwitchWorld {
                 // On with windows parked: each closed by its copy, drafts permitting (HANDOFF.md §5).
                 if on { switcher.closeParkedWindows() }
             }
+        case "switch.askBeforeQuit":
+            // DEV-HOOK: the development switch for Margin's quit prompt (Settings), back on after "Always quit".
+            guard let on = arg["on"] as? Bool else { return }
+            options.setAskBeforeQuit(on)
+            Diagnostics.note("ask before quitting the browser: \(on ? "on" : "off") (the development switch)")
+            acrossSoon()
         case "switch.coverShown":
             switchCoverShown(overlay)
         case "switch.notice":

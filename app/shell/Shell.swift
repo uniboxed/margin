@@ -212,7 +212,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Whether ⌘Q over Margin's layout asks first (Margin's own prompt, QuitPrompt.swift), and its "Always quit"
         // (MarginAskBeforeQuit in the app's defaults; a test keeps its own).
         var asksBeforeQuit: () -> Bool = { UserDefaults.standard.object(forKey: "MarginAskBeforeQuit") as? Bool ?? true }
-        var stopAskingBeforeQuit: () -> Void = { UserDefaults.standard.set(false, forKey: "MarginAskBeforeQuit") }
+        var setAskBeforeQuit: (Bool) -> Void = { UserDefaults.standard.set($0, forKey: "MarginAskBeforeQuit") }
     }
 
     final class Link {
@@ -1588,7 +1588,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 Diagnostics.note("quit prompt: \(choice == .cancel ? "cancelled" : choice == .always ? "always quit" : "quit")")
                 switch choice {
                 case .cancel: return
-                case .always: self.options.stopAskingBeforeQuit(); self.quitNow(pid: pid, keepWindows: keepWindows)
+                case .always: self.options.setAskBeforeQuit(false); self.acrossSoon(); self.quitNow(pid: pid, keepWindows: keepWindows)
                 case .quit: self.quitNow(pid: pid, keepWindows: keepWindows)
                 }
             }

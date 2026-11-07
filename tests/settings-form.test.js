@@ -117,3 +117,13 @@ test('Settings in the view model: on Margin\'s own pages, while open; its button
   assert.equal(checkAction('settings.run', 'wakeAll', contextFromState(state)).ok, false, 'not while the form is closed');
   assert.deepEqual(requestFor('settings.open', undefined, { state, ui: { windowId: 7 } }), { kind: 'send', type: 'openLauncher', payload: { windowId: 7, settings: true } });
 });
+
+// DEV-HOOK: Margin.app's "ask before quitting" (its quit prompt, app/shell/QuitPrompt.swift), a development switch:
+// shown only when the app says it (`devAskBeforeQuit`), saved by the app.
+test('settings: the development switch for Margin\'s quit prompt, only when the app says it, saved by the app', () => {
+  assert.equal(settingsFields({}, {}).find((f) => f.id === 'devAskBeforeQuit'), undefined, 'not said: not shown');
+  const field = settingsFields({}, { devAskBeforeQuit: false }).find((f) => f.id === 'devAskBeforeQuit');
+  assert.ok(field && field.kind === 'toggle' && field.checked === false && /development/i.test(field.label), JSON.stringify(field));
+  assert.equal(settingsFields({}, { devAskBeforeQuit: true }).find((f) => f.id === 'devAskBeforeQuit')?.checked, true);
+  assert.deepEqual(saveField(field, true, {}), { perform: 'switch.askBeforeQuit', arg: { on: true } }, 'the app saves it');
+});

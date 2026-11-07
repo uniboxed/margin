@@ -126,6 +126,10 @@ export function settingsFields(settings, features = {}, ui = {}) {
   if (f.cloudTabs) list.push(field({ id: 'showCloudTabs', kind: 'toggle', label: 'Show iCloud Tabs: the tabs open on your other devices, in the sidebar and the command palette', checked: s.showCloudTabs !== false }));
   // Switching between profiles (Margin.app): the app's setting, not this copy's (saveField).
   if (f.switchSettings) list.push(field({ id: 'closeWindows', kind: 'toggle', label: CLOSE_WINDOWS_LABEL, checked: f.switchSettings.closeWindows === true }));
+  // DEV-HOOK: Margin.app's quit prompt back on after "Always quit" (development only; Margin.app's own setting).
+  if (typeof (/** @type {any} */ (f)).devAskBeforeQuit === 'boolean') {
+    list.push(field({ id: 'devAskBeforeQuit', kind: 'toggle', label: 'Ask before quitting Safari (development only)', checked: (/** @type {any} */ (f)).devAskBeforeQuit === true }));
+  }
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
   // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
   list.push(...themeOwnFields(s, ui.theme ?? null));
@@ -237,7 +241,7 @@ export function removePrompt(fieldId, list) {
  * that's Margin.app's (`closeWindows`) asks the host instead: `{ perform,
  * arg }`, its `perform` (ui/host-app.js), which the app saves.
  * @param {SettingsField} f @param {any} value @param {any} settings
- * @returns {{ type: 'updateSettings', payload: { patch: Record<string, any> } } | { perform: 'switch.closeWindows', arg: { on: boolean } } | null}
+ * @returns {{ type: 'updateSettings', payload: { patch: Record<string, any> } } | { perform: 'switch.closeWindows' | 'switch.askBeforeQuit', arg: { on: boolean } } | null}
  */
 export function saveField(f, value, settings) {
   if (!f || f.disabled) return null;
@@ -252,6 +256,7 @@ export function saveField(f, value, settings) {
     case 'toggle':
       if (typeof value !== 'boolean') return null;
       if (f.id === 'closeWindows') return { perform: 'switch.closeWindows', arg: { on: value } };
+      if (f.id === 'devAskBeforeQuit') return { perform: 'switch.askBeforeQuit', arg: { on: value } }; // DEV-HOOK
       return patch({ [f.id]: value });
     case 'choice': return f.options.some((o) => o.id === value) && value !== f.value ? patch({ [f.id]: value }) : null;
     case 'list': return f.id === 'neverSleepSites' ? patch({ neverSleepSites: siteList(String(value ?? '')) }) : null;
