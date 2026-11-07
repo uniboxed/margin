@@ -546,6 +546,14 @@ extension Shell: SwitchWorld {
     }
 
     func switchChanged(_ event: ProfileSwitch.Event) {
+        // (Ids only: a failure's words can name a profile.)
+        options.trace?.event({ switch event {
+            case .started(let t): "switch started \(t.profile)"
+            case .needsProfile(let t): "switch needsProfile \(t.profile)"
+            case .done(let t): "switch done \(t.profile)"
+            case .failed(let t, _): "switch failed \(t.profile)"
+            case .cancelled(let t): "switch cancelled \(t.profile)"
+        } }(), at: Diagnostics.now())
         let words: String?
         switch event {
         case .started(let t): words = nil; carrySettings(to: t.profile)

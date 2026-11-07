@@ -204,6 +204,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var devHooksOn: (() -> Bool)?
         // Which Safari window is which profile's, from Accessibility (SafariAX.swift): only the app (forApp).
         var safariAX = false
+        // The window trace (WindowTrace.swift, DEV): only the app's, unless a test gives one.
+        var trace: WindowTrace?
     }
 
     final class Link {
@@ -240,6 +242,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // window's profile never changes (SafariAX.swift).
     let safariAX = SafariAX()
     private(set) var ax = AXKnown()
+    // Every window Margin cares about, as one snapshot (WindowMap.swift, the window module's step 1): kept from each read.
+    let windowMap = WindowMap()
     // Settings Margin sent each copy (shareSettings, carrySettings), to know their echo; when each copy linked.
     var settingsSent: [String: String] = [:]
     var linkedAt: [String: Double] = [:]
@@ -346,6 +350,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
         apps.onChange = { [weak self] why in
             if why == "app launched" || why == "app activated" || why == "Space changed" { self?.coversSoon() }
+            if why == "Space changed" || why == "displays changed" { self?.windowMap.spacesChanged(at: Diagnostics.now()) }
+            self?.options.trace?.event(why, at: Diagnostics.now())
             if why == "Space changed" { self?.spaceDidChange() } else { self?.appsChanged(why) }
         }
         shortcuts.onCommand = { [weak self] command, isRepeat in self?.run(command, isRepeat: isRepeat) }
@@ -373,6 +379,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                          : "handoff: off (MarginHandoff is NO): every profile switch is the close-based one")
         options.devHooksOn = { DevHooks.appDefault() } // DEV-HOOK
         options.safariAX = true
+        options.trace = WindowTrace.forApp()
+        if let t = options.trace { Diagnostics.note("window trace: on (\(t.folder.path), numbers only; MarginWindowTrace NO turns it off)") }
         SafariAX.askOnce()
         Diagnostics.note(SafariAX.trusted ? "Accessibility: on (Safari's windows matched by their titles' profiles)" : "Accessibility: not granted (Safari's windows matched by their pages and focus only)")
         return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
@@ -435,6 +443,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         apps.stop()
         safariNames?.stop()
         endCovers()
+        options.trace?.event("stop", at: Diagnostics.now())
+        options.trace?.flush()
         devHooks?.stop() // DEV-HOOK
         devHooks = nil // DEV-HOOK
         cloudWatcher?.stop()
@@ -452,6 +462,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         entry.mirror.begin(connection.hello)
         links[connection.key] = entry
         linkedAt[connection.key] = options.clock()
+        options.trace?.event("link up \(connection.key)", at: Diagnostics.now())
         data.linkUp(connection)
         // A switch on its way to this profile: given the leaving window's settings as soon as its copy is here.
         if switcher.busy, switcher.target?.profile == connection.key {
@@ -533,6 +544,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
 
     func linkDown(_ connection: LinkConnection, _ why: String) {
         guard let entry = links[connection.key], entry.connection === connection else { return }
+        options.trace?.event("link down \(connection.key)", at: Diagnostics.now())
         entry.resyncTimer?.invalidate()
         links[connection.key] = nil
         data.linkDown(connection)
@@ -935,6 +947,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // in or out of full screen, a closed one's overlay put away), not at the next poll.
     func axEvent(_ e: SafariAX.Event) {
         guard !stopped else { return }
+        options.trace?.event({ switch e { case .window(let w): "ax window \(w.number)\(w.fullScreen ? " full" : "")"; case .gone(let n): "ax gone \(n)"; case .watching(let on): "ax watching \(on)" } }(), at: Diagnostics.now())
         switch e {
         case .window(let w):
             axLearn([w.number: w])
@@ -1054,6 +1067,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         }
         let before = matches
         matches = next
+        // The map, from this read (and the trace, when there's one: what changed, and what the copies said).
+        windowMap.reads = spaceReads
+        let mapChanges = windowMap.update(now: Diagnostics.now(), list: read, browserPids: readPids, marginPid: ProcessInfo.processInfo.processIdentifier, front: front, ax: ax)
+        if let trace = options.trace {
+            trace.map(windowMap.snapshot, mapChanges)
+            trace.ext(ext.values.map { w, _ in TraceExt(k: "\(w.key)", state: w.state, b: w.bounds, focused: w.focused) }, at: windowMap.snapshot.at)
+        }
         // The parked windows: the aftercare, the sweep, the copies told, the person's returns (§2.5, §2.6).
         if read != nil { handoffRead(ext, before: before, held: sweepHeld, copies: sweepCopies, reporting: sweepReporting, byBrowser: byBrowser, list: list) }
         // Each copy told which of its windows the app draws over, before any overlay shows or layout goes.
@@ -1162,6 +1182,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
         releaseHeldWindows()
+        options.trace?.overlays(overlays.map { key, o in
+            TraceOverlay(k: "\(key)", n: o.windowNumber, over: o.aboveWindow, shown: o.isShown, own: o.ownSpace, f: o.frameTopLeft)
+        }, at: Diagnostics.now())
         if read != nil { judgeOwnSpace(ext, byNumber) }
         if read != nil { followKept(byNumber) }
         // (Not a link's that dropped a moment ago, nor one back but without its state yet: kept as they are.)

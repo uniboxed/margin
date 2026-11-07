@@ -1657,6 +1657,91 @@ extension Tests {
     }
   }
 
+  // The window map (WindowMap.swift) and its trace (WindowTrace.swift): the window module's step 1.
+  static func windowMap() {
+    let clock = FakeClock()
+    let world = FakeSpaceWorld(clock: clock)
+    // Two displays, each with its own current Space: a full-screen Safari window on each, one more in a Space not showing.
+    let left = CGRect(x: 0, y: 0, width: 1512, height: 982), right = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+    world.displayList = [DisplaySpaces(display: "D-LEFT", current: 10, spaces: [ManagedSpace(id: 1, type: 0), ManagedSpace(id: 10, type: 4), ManagedSpace(id: 11, type: 4)]),
+                         DisplaySpaces(display: "D-RIGHT", current: 20, spaces: [ManagedSpace(id: 2, type: 0), ManagedSpace(id: 20, type: 4)])]
+    world.windows = [100: .init(pid: 50, bounds: left, spaces: [10]), 101: .init(pid: 50, bounds: left, spaces: [11]), 200: .init(pid: 50, bounds: right, spaces: [20]),
+                     900: .init(pid: 7, bounds: CGRect(x: 0, y: 0, width: 300, height: 982), spaces: [10])]
+    let map = WindowMap()
+    map.reads = world
+    map.frames = { ["d-left": left, "D-RIGHT": right] } // (identifiers matched without case)
+    var ax = AXKnown()
+    _ = ax.learn([100: SafariAX.Window(number: 100, title: "Test A — x", fullScreen: true)], names: ["s-a": "Test A"])
+    let list = [ServerWindow(number: 900, pid: 7, bounds: CGRect(x: 0, y: 0, width: 300, height: 982), order: 0),
+                ServerWindow(number: 100, pid: 50, bounds: left, order: 1),
+                ServerWindow(number: 200, pid: 50, bounds: right, order: 2),
+                ServerWindow(number: 101, pid: 50, bounds: left, onScreen: false, order: 3),
+                ServerWindow(number: 300, pid: 99, bounds: left, order: 4)]
+    let first = map.update(now: 1, list: list, browserPids: [50], marginPid: 7, front: 50, ax: ax)
+    let s = map.snapshot
+    check("map: every window with its owner (browser, Margin's own, another app's)",
+          s.windows[100]?.owner == .browser && s.windows[900]?.owner == .margin && s.windows[300]?.owner == .other, "\(s.windows.mapValues(\.owner))")
+    check("map: two displays, each with the Space it shows", s.displays.map(\.id) == ["D-LEFT", "D-RIGHT"] && s.showing == [10, 20], "\(s.displays)")
+    check("map: each window on its display, by its centre", s.windows[100]?.display == "D-LEFT" && s.windows[200]?.display == "D-RIGHT" && s.windows[101]?.display == "D-LEFT")
+    check("map: each browser and Margin window's Spaces; another app's not read", s.windows[100]?.spaces == [10] && s.windows[101]?.spaces == [11] && s.windows[200]?.spaces == [20]
+          && s.windows[900]?.spaces == [10] && s.windows[300]?.spaces == nil)
+    check("map: Accessibility's profile and full screen on Safari's windows", s.windows[100]?.link == "safari:s-a" && s.windows[100]?.fullScreen == true && s.windows[200]?.link == nil)
+    check("map: the first update says every window appeared, the front and the displays", first.contains(.appeared(100)) && first.contains(.front(50)) && first.contains { if case .displays = $0 { return true }; return false })
+
+    // A swipe on the left display: 101's Space shows, 100's doesn't.
+    world.displayList![0] = DisplaySpaces(display: "D-LEFT", current: 11, spaces: world.displayList![0].spaces)
+    map.spacesChanged(at: 1.1)
+    let list2 = list.map { w in w.number == 100 ? ServerWindow(number: 100, pid: 50, bounds: left, onScreen: false, order: 3)
+                                     : w.number == 101 ? ServerWindow(number: 101, pid: 50, bounds: left, onScreen: true, order: 1) : w }
+    let swipe = map.update(now: 1.2, list: list2, browserPids: [50], marginPid: 7, front: 50, ax: ax)
+    check("map: a swipe: the display's Space and both windows' on screen change, nothing else",
+          map.snapshot.showing == [11, 20] && swipe.contains(.onScreen(100, false)) && swipe.contains(.onScreen(101, true))
+          && !swipe.contains { if case .onScreen(200, _) = $0 { return true }; return false }, "\(swipe)")
+    // Nothing moving: no Space read until a second has passed.
+    world.windows[200]?.spaces = [2]
+    let quiet = map.update(now: 1.5, list: list2, browserPids: [50], marginPid: 7, front: 50, ax: ax)
+    check("map: nothing moved, under a second: no Space read, no change", quiet.isEmpty && map.snapshot.windows[200]?.spaces == [20], "\(quiet)")
+    let later = map.update(now: 2.3, list: list2, browserPids: [50], marginPid: 7, front: 50, ax: ax)
+    check("map: a second on, Spaces read again", later == [.spaces(200, [2])], "\(later)")
+    let gone = map.update(now: 2.4, list: list2.filter { $0.number != 101 }, browserPids: [50], marginPid: 7, front: nil, ax: ax)
+    check("map: a window closed, nothing in front", gone == [.front(nil), .gone(101)], "\(gone)")
+    let none = map.update(now: 2.5, list: nil, browserPids: [50], marginPid: 7, front: nil, ax: ax)
+    check("map: a read with no list keeps the windows", none.isEmpty && map.snapshot.windows.count == 4)
+    // Without SkyLight: Spaces unknown, never guessed.
+    let blind = WindowMap()
+    blind.update(now: 1, list: list, browserPids: [50], marginPid: 7, front: 50)
+    check("map: without the Space reads, Spaces and displays unknown", blind.snapshot.windows[100]?.spaces == nil && blind.snapshot.displays.isEmpty)
+
+    // The trace: written, read back, the same maps.
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("margin-trace-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let trace = WindowTrace(folder: folder)
+    let m2 = WindowMap()
+    m2.reads = world
+    m2.frames = { ["D-LEFT": left, "D-RIGHT": right] }
+    world.displayList![0] = DisplaySpaces(display: "D-LEFT", current: 10, spaces: world.displayList![0].spaces)
+    world.windows[200]?.spaces = [20]
+    var seen: [WindowSnapshot] = []
+    for (t, l, f) in [(100.0, list, Int32(50)), (100.2, list2, 50), (100.4, list2.filter { $0.number != 101 }, 50), (100.6, list2.filter { $0.number != 101 }, 0)] {
+      if t == 100.2 { world.displayList![0] = DisplaySpaces(display: "D-LEFT", current: 11, spaces: world.displayList![0].spaces); m2.spacesChanged(at: t) }
+      let ch = m2.update(now: t, list: l, browserPids: [50], marginPid: 7, front: f == 0 ? nil : f, ax: ax)
+      trace.map(m2.snapshot, ch)
+      if !ch.isEmpty || seen.isEmpty { seen.append(m2.snapshot) }
+    }
+    trace.event("Space changed", at: 100.2)
+    trace.overlays([TraceOverlay(k: "safari:s-a#1", n: 900, over: 100, shown: true, own: true, f: CGRect(x: 0, y: 0, width: 300, height: 982))], at: 100.3)
+    trace.overlays([TraceOverlay(k: "safari:s-a#1", n: 900, over: 100, shown: true, own: true, f: CGRect(x: 0, y: 0, width: 300, height: 982))], at: 100.35)
+    trace.flush()
+    let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+    let lines = files.first.map(WindowTrace.load) ?? []
+    let replayed = WindowTrace.replay(lines)
+    check("trace: one file, read back line by line", files.count == 1 && lines.count == 6, "\(files.count) files, \(lines.count) lines")
+    check("trace: the maps rebuilt from it are the maps it saw", replayed == seen, "\(replayed.count) vs \(seen.count)")
+    check("trace: an overlay state written once while unchanged; events kept", lines.filter { $0.ov != nil }.count == 1 && lines.contains { $0.ev == "Space changed" })
+    let text = files.first.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+    check("trace: numbers and Margin's own keys only (no title)", !text.contains("Test A — x") && !text.contains("title"))
+  }
+
   // The own-Space suspicion (Shell.judgeOwnSpace): what drops it before every overlay joins every Space.
   static func ownSpaceJudge() {
     let off = ServerWindow(number: 5, pid: 1, bounds: CGRect(x: 0, y: 0, width: 100, height: 100), onScreen: false)
