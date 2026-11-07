@@ -1,5 +1,5 @@
 // iCloud Tabs' live folder (Margin's <m-cloud-tabs>, each theme's
-// `cloud-tabs` part) and the palette's section for them, in both built-in
+// `cloud-tabs` part) and the palette's section for them, in every built-in
 // themes, in Playwright's WebKit and Chromium, headless, every network
 // request refused, with the mock host (ui/host.js) holding iCloud Tabs as
 // Margin.app's host does (tests/fixtures/cloud-tabs.js through
@@ -8,13 +8,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, ARCADIA, NEO } from './package.js';
+import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL } from './package.js';
 import { AIR } from '../fixtures/cloud-tabs.js';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const THEMES = [
   ['arcadia', ARCADIA, { newTab: '.new-tab-row', list: '.tabs-section', section: '.result-section' }],
   ['neo-brutalism', NEO, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
+  ['pixel', PIXEL, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
 ];
 const script = harnessScript();
 

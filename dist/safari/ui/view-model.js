@@ -106,7 +106,7 @@ export const VM_VERSION = 1;
  * Margin.app is switching to it. One profile: `profile` null, the rest false.
  * @typedef {{
  *   id: string, name: string, emoji: string, color: string, abbr: string,
- *   index: number, active: boolean, tabCount: number,
+ *   index: number, number: number, active: boolean, tabCount: number,
  *   profile: ProfileChip | null, foreign: boolean, profileMark: boolean, profileStart: boolean, switching: boolean,
  *   label: string,
  * }} SpaceChip
@@ -341,7 +341,7 @@ function fresh(input) {
   if (!state) {
     return {
       version: VM_VERSION, ready: false, window: win,
-      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, active: true, tabCount: 0, profile: null, foreign: false, profileMark: false, profileStart: false, switching: false, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
+      space: { id: '', name: '', emoji: '', color: '', abbr: '', index: 0, number: 1, active: true, tabCount: 0, profile: null, foreign: false, profileMark: false, profileStart: false, switching: false, label: '', pinned: [], folders: [], pins: [], today: [], hasToday: false, hasPinned: false, newTab: { active: false } },
       spaces: [], profiles: [], profile: null, multiProfile: false, tab: null, archive: [], hasArchive: false,
       palette: { open: !!paletteUi.open, query: paletteUi.query ?? '', newTab: !!paletteUi.newTab, rows: [], hasRows: false, selected: null },
       menu: null, editing, editor: null, notice, prompt, gesture, launcher: null, settingsForm: null, cloudTabs: null, settings, platform,
@@ -404,6 +404,8 @@ function fresh(input) {
       color: s.color ?? '',
       abbr: abbreviate(s.name),
       index,
+      // Its place counted from 1, for themes that show it (Pixel's "WORLD 2-1").
+      number: index + 1,
       active: o.own && s.id === view.spaceId,
       tabCount: o.own ? counts.get(s.id) ?? 0 : Number(s.tabCount) || 0,
       profile: multiProfile ? chipOf(profileId) : null,

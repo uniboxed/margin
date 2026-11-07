@@ -76,8 +76,10 @@ test('rows: icons from the stored favicons, a letter and color without one, slee
 
 test('spaces, the active tab, the window, the archive', () => {
   const vm = build(smallState());
-  assert.deepEqual(vm.spaces.map((s) => [s.id, s.abbr, s.active, s.tabCount, s.index]), [['home', 'HO', true, 5, 0], ['work', 'DW', false, 1, 1], ['side', 'SI', false, 0, 2]]);
-  assert.deepEqual([vm.space.name, vm.space.emoji, vm.space.color, vm.space.abbr, vm.space.tabCount], ['Home', '🏠', '#6c5ce7', 'HO', 5]);
+  assert.deepEqual(vm.spaces.map((s) => [s.id, s.abbr, s.active, s.tabCount, s.index, s.number]), [['home', 'HO', true, 5, 0, 1], ['work', 'DW', false, 1, 1, 2], ['side', 'SI', false, 0, 2, 3]], 'number: the place counted from 1 (Pixel\'s "WORLD 2-1")');
+  assert.deepEqual([vm.space.name, vm.space.emoji, vm.space.color, vm.space.abbr, vm.space.tabCount, vm.space.number], ['Home', '🏠', '#6c5ce7', 'HO', 5, 1]);
+  assert.equal(build({ ...smallState(), activeSpaceByWindow: { [W]: 'work' } }).space.number, 2, 'the space in front\'s own place');
+  assert.equal(buildViewModel({ state: null, ui: {}, platform: PLATFORM, settings: {} }).space.number, 1, 'before the state: 1, never 0');
   assert.deepEqual([vm.tab.id, vm.tab.host, vm.tab.pinned, vm.tab.asleep, vm.tab.newTab], [13, 'docs.example', true, false, false], 'the window\'s active tab');
   assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false, frameWhenHidden: true });
   assert.deepEqual(ids(vm.archive), ['ar1', 'ar2'], 'newest first, as stored');

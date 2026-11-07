@@ -4,8 +4,9 @@ A theme is HTML and CSS, no JavaScript. Margin's runtime (`extension/ui/`)
 renders it from a view model, runs its buttons as checked actions, and
 gives it behaviors (drag and drop, resizing, menus…) through attributes.
 The built-in themes are packages like any other: `arcadia/` (Margin's
-default, today's look) and `neo-brutalism/` (uses every binding, behavior
-and part). Read them next to this guide. The plan behind it is `PLAN.md`
+default, today's look), `neo-brutalism/` (uses every binding, behavior
+and part) and `pixel/` (an 8-bit game, dark only; every part, with pixel
+svg icons where Margin's words are guarded). Read them next to this guide. The plan behind it is `PLAN.md`
 §3 and §4.
 
 ## The files
@@ -198,7 +199,8 @@ host. Immutable: rows that didn't change are the same objects.
 
 - `window`: `id`, `mode`, `focused`, `sidebar` (`open`, `hidden`, `peek`),
   `sidebarOpen`, `peek`, `pinnedOpen` (Keep open), `frameWhenHidden`.
-- `space`: `id`, `name`, `emoji`, `color`, `abbr`, `index`, `tabCount`,
+- `space`: `id`, `name`, `emoji`, `color`, `abbr`, `index` (from 0),
+  `number` (its place counted from 1: Pixel's "WORLD 2-1"), `tabCount`,
   `pinned` (folders and loose pins in order; `isFolder` tells them apart),
   `folders[]` (`name`, `open`, `count`, `pins`, `shown`, `hasShown`), `pins`,
   `today` (the other tabs, newest first), `hasToday`, `hasPinned`,
@@ -225,7 +227,7 @@ host. Immutable: rows that didn't change are the same objects.
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.
 - `space.tabCount` counts the space's tabs open in this window and its tabs
   that aren't open.
-- `spaces[]` (chips: `active` too; `label`, the name, or "Name · Profile"
+- `spaces[]` (chips: `active` and `number` too; `label`, the name, or "Name · Profile"
   with several profiles), `profiles[]`, `profile` and `multiProfile`: with
   Margin.app and spaces in several browser profiles, `spaces[]` is every
   profile's spaces in one order; a chip's `profile` (`id`, `name`, `emoji`,

@@ -2839,6 +2839,27 @@ On `feat/pixel-user-themes`. The plan is `docs/phase6-themes.md`; the boards, a 
 - **Bundled SVG images stay unsanitized:** they're only ever drawn as images (an `img` or a CSS image), where WebKit runs no script and loads nothing. A payload test keeps that true.
 - **`npm run test:security`** gathers the sanitizer, guard, package and import payloads, every built-in theme, and any packages named in `MARGIN_THEMES`. No CI is added; the plan says how a macOS runner would run it later.
 
+## Margin 2, Phase 6: Pixel (2026-11-06)
+
+Built on `feat/pixel-user-themes`: `extension/themes/pixel/`, from the "Sidebar · Pixel / 8-bit" board (`docs/phase6/boards/Pixel.dc.html`). Work items 3 and 4 of `docs/phase6-themes.md` in one commit: the sidebar, the page and every other part.
+
+- **The package.** `theme.json`, `theme.html`, `theme.css`, `first-paint.css`, and Press Start 2P and Pixelify Sans (latin and latin-ext woff2, fetched once from Google Fonts on 2026-11-06, unmodified) with their SIL OFL texts and `fonts/SOURCES.txt`. Press Start 2P has a Reserved Font Name; the files are as served, so the name stays.
+- **As the board:** the PICO-8 colors, the dotted night ground, notched pixel borders (four hard shadows), the 252 px sidebar, 16 px gutters and an 18 px gap, `WORLD n-1`, folders with a count, the ▶ cursor, TODAY and CLEAR, `+ New tab ⌘T`, "STAGE CLEAR!", the chest, numbered chips, `SELECT DESTINATION`. Hidden: the page from the gutter; peek: a floating card 14 px from the edges.
+- **Left out, as `PLAN.md` §9 says:** the favorites tiles, the `?` Ask button and box, the BGM player. The address takes the full width and the space's header moves up.
+- **Differs from the board, on purpose:**
+  - The palette is centred. The board's sits 18 px right of centre (`left: 50%` less 330 px for a 696 px box).
+  - The palette's selected row is lit (`#3b3870`): the keyboard needs it. The board has no selection.
+  - Palette rows keep Margin's badge (the space's name), as small muted tags. The board has none.
+  - At most eight palette rows show; past them the list scrolls.
+  - The ▶, ▷ and ▼ marks are pixel svgs, not text, everywhere: guarded parts can't hold theme text, and an svg is the same in both engines (the board's glyphs come from the system's fonts).
+- **Margin's states the board doesn't draw:** active (yellow on `#3b3870`), behind (a hollow, still ▷), asleep (the title at 55 % and a blue "z"), playing (the board's green bars), loading (the icon box blinks yellow), not open (dimmed, the icon dashed), × on hover (tabs, and pins open in a tab), profile marks and foreign chips (dashed, dimmer), a chip being switched to blinks.
+- **The other parts in its style:** menus, the space editor, notices and prompts (the board's RPG text box, with a blinking ▼), Settings (dark fields, pixel-box toggles, a stepped ▼ on selects), the new-tab page as a title screen, iCloud Tabs (a pixel cloud, device tags in Press Start 2P), gesture badges, drag and drop marks, the resize handle, a stepped loading bar along the card's top border, and three square window controls after the board's "Glass on dark" set.
+- **Settings:** `sidebarWidth` (200–360 px, step 4, 252 by default) and `blink` (on by default). With `blink` off, or reduced motion, nothing blinks.
+- **One look in both system modes:** dark, as the board.
+- **Its slots for notices, prompts and the editor are `display: contents`.** As flex items of the root they took a gap and narrowed the page while shown.
+- **The view model has `number`** on `space` and each `spaces[]` chip: the place counted from 1.
+- **Tests:** `tests/theme/pixel.test.js` (WebKit and Chromium: nothing removed, the fonts from bytes, the board's sidebar and its states, the page's box in every sidebar state, nothing painted over the page's box (checked on screen), the palette's cap and keys, every part's words, windowed controls, blinking, both system modes, the first paint on screen). `cloud.test.js` and `feedback.test.js` now run Pixel too, and `behaviors.test.js` runs Neo-brutalism and Pixel (Arcadia's classes differ).
+
 ## Margin 2, Phase 6: Neo-brutalism to its board (2026-11-06)
 
 Work item 5 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`. Compared with the board (`docs/phase6/boards/Main.dc.html`) side by side, in WebKit and Chromium.

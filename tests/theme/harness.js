@@ -303,15 +303,16 @@ const T = {
 const rt = { runtime: null, host: null, mock: null, el: null, target: null, theme: null };
 
 Object.assign(T, {
-  // Neo-brutalism as a built-in theme: its files read through readFile (here
-  // from the package handed over, in the extension from its own URL).
-  async loadBuiltin(pkg, id = 'neo-brutalism') {
+  // Neo-brutalism (or another built-in theme, with its font families) as a
+  // built-in theme: its files read through readFile (here from the package
+  // handed over, in the extension from its own URL).
+  async loadBuiltin(pkg, id = 'neo-brutalism', families = ['Archivo Black', 'Space Grotesk']) {
     const p = unpack(pkg);
     const text = { 'theme.json': p.manifest, 'theme.html': p.html, 'theme.css': p.css };
     const read = [];
     const theme = await loadBuiltinTheme(id, { readFile: async (path) => { read.push(path); return text[path] ?? p.files[path]; } });
     rt.theme = theme;
-    return { ok: theme.ok, id: theme.id, read, fontErrors: theme.fontErrors, fonts: ['Archivo Black', 'Space Grotesk'].map((f) => document.fonts.check(`16px "${f}"`)) };
+    return { ok: theme.ok, id: theme.id, read, fontErrors: theme.fontErrors, fonts: families.map((f) => document.fonts.check(`16px "${f}"`)) };
   },
 
   // `replies`: what the host answers a request of each type with (values);

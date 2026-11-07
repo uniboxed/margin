@@ -1,0 +1,430 @@
+/* Pixel: Tirth's "Sidebar · Pixel / 8-bit" board, ported from the Design
+   canvas (Pixel.dc.html). The PICO-8 palette on a dotted night ground,
+   notched pixel borders (four hard box-shadows, no blur, no radius), Press
+   Start 2P for labels, Pixelify Sans for the rest. Motion in steps only.
+   One look, dark, in both system modes (the board has no light version). */
+
+.pixel {
+  --ground: #1d1b33;
+  --dots: #3a3766;
+  --side: #2a2850;
+  --hover: #3b3870;
+  --deep: #0b0a1a;
+  --ink: #f1f1f1;
+  --muted: #c2c3c7;
+  --yellow: #ffec27;
+  --green: #00e436;
+  --red: #ff004d;
+  --blue: #29adff;
+  --field: #5f5aa8;
+  --space: #00e436; /* the space's color (m-style), the accent */
+  --gutter: 16px;
+  --gap: 18px;
+  --sidebar: var(--m-sidebar-width, 252px); /* the sidebarWidth setting (Margin's m-resize) */
+  /* The notched pixel borders: light (dialogs, the sidebar, the page) and dark (tiles, icons). */
+  --pxb: 0 -3px 0 var(--ink), 0 3px 0 var(--ink), -3px 0 0 var(--ink), 3px 0 0 var(--ink);
+  --pxd: 0 -3px 0 var(--deep), 0 3px 0 var(--deep), -3px 0 0 var(--deep), 3px 0 0 var(--deep);
+  --pxs: 0 -2px 0 var(--deep), 0 2px 0 var(--deep), -2px 0 0 var(--deep), 2px 0 0 var(--deep);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--gutter);
+  display: flex;
+  gap: var(--gap);
+  overflow: hidden;
+  font-family: 'Pixelify Sans', ui-monospace, monospace;
+  font-size: 17px;
+  color: var(--ink);
+  color-scheme: dark;
+  isolation: isolate;
+  /* Where the page card's box starts: right of the sidebar and the gap, or
+     at the gutter with the sidebar hidden. */
+  --page-left: calc(var(--gutter) + var(--sidebar) + var(--gap));
+}
+.pf { font-family: 'Press Start 2P', ui-monospace, monospace; font-weight: 400; }
+
+/* The dotted night ground, never under the page: the page shows through
+   Margin's page slot. The ground's color is the page card's own spread
+   shadow; the dots are this layer with the card and its pixel border cut out. */
+.pixel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* above the card's spread shadow, under the sidebar */
+  pointer-events: none;
+  background-image: radial-gradient(var(--dots) 1px, transparent 1px);
+  background-size: 16px 16px;
+  -webkit-mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: 0 0, calc(var(--page-left) - 3px) calc(var(--gutter) - 3px);
+  -webkit-mask-size: 100% 100%, calc(100% - var(--page-left) - var(--gutter) + 6px) calc(100% - var(--gutter) * 2 + 6px);
+  -webkit-mask-composite: xor;
+  mask-image: linear-gradient(#000, #000), linear-gradient(#000, #000);
+  mask-repeat: no-repeat;
+  mask-position: 0 0, calc(var(--page-left) - 3px) calc(var(--gutter) - 3px);
+  mask-size: 100% 100%, calc(100% - var(--page-left) - var(--gutter) + 6px) calc(100% - var(--gutter) * 2 + 6px);
+  mask-composite: exclude;
+}
+.pixel:is([data-sidebar="hidden"], [data-sidebar="peek"]) { --page-left: var(--gutter); }
+/* "Keep the frame when hidden" off: the page fills the window, no border. */
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) { --gutter: 0px; }
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .page { box-shadow: none; }
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab)::before { display: none; }
+/* Margin's new-tab page: the sidebar always beside the launcher. */
+.pixel.newtab { --page-left: calc(var(--gutter) + var(--sidebar) + var(--gap)); }
+.pixel.newtab .sidebar { position: relative; left: auto; top: auto; bottom: auto; width: var(--sidebar); margin-left: 0; overflow: visible; box-shadow: var(--pxb); z-index: 2; }
+.pixel.newtab .peek-zone { display: none; }
+
+/* Margin's slots for what lies over everything: out of the row (their parts place themselves). */
+.notice-slot, .prompt-slot, .editor-slot { display: contents; }
+
+/* Buttons, icons, borders */
+.btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn:focus-visible, .row:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.pxb { box-shadow: var(--pxb); }
+.pxd { box-shadow: var(--pxd); }
+.hl:hover, .row:hover { background: var(--hover); }
+.press:active { transform: translate(0, 2px); }
+.pix { flex-shrink: 0; display: block; fill: currentColor; shape-rendering: crispEdges; }
+.grow { flex: 1; min-width: 0; }
+.left { text-align: left; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes px-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+/* What blinks: the address's block, the active row's cursor, the selected
+   palette row's, a notice's ▼; not while "Blinking cursor" is off. */
+.pixel.blink :is(.caret, .row.on .cursor .now, .palette-row.on .cursor .now, .more) { animation: px-blink 1s steps(1) infinite; }
+
+/* The sidebar */
+.sidebar { position: relative; z-index: 2; flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; background: var(--side); }
+.column { width: var(--sidebar); height: 100%; box-sizing: border-box; padding: 12px 10px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.window-bar { display: none; }
+.toolbar { flex-shrink: 0; display: flex; align-items: center; gap: 4px; height: 34px; }
+.tool { width: 34px; height: 34px; color: var(--ink); }
+.tool .pix { width: 16px; height: 16px; }
+.tool .pix.big { width: 18px; height: 18px; }
+@keyframes px-spin { 0% { transform: rotate(0deg); } 25% { transform: rotate(90deg); } 50% { transform: rotate(180deg); } 75% { transform: rotate(270deg); } 100% { transform: rotate(360deg); } }
+.reload.loading .pix { animation: px-spin .8s steps(4) infinite; }
+
+.address { flex-shrink: 0; height: 36px; justify-content: flex-start; gap: 8px; padding: 0 10px; background: var(--deep); color: var(--muted); box-shadow: inset 0 0 0 2px var(--field); }
+.chevron { color: var(--green); }
+.address .host { flex: 0 1 auto; min-width: 0; }
+.caret { flex-shrink: 0; width: 8px; height: 16px; background: var(--green); }
+
+.space-head { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 6px 2px 0; min-width: 0; }
+.space-head .world { flex-shrink: 0; font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--space); }
+.space-name { margin: 0; flex: 1; min-width: 0; font-family: 'Press Start 2P', monospace; font-size: 13px; font-weight: 400; line-height: 1.3; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.space-head .count { flex-shrink: 0; font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--muted); }
+
+/* The tabs: folders, iCloud Tabs, the divider, new tab, today. Scrolls. */
+.tabs { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 12px; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.folders { flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; }
+.folders:empty { display: none; }
+.folder { display: flex; flex-direction: column; }
+.folder-head { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 8px; height: 30px; padding: 0 6px; }
+.arrow { width: 6px; height: 10.5px; color: var(--space); }
+.folder.open > .folder-head .arrow, .cloud.open .cloud-head .arrow, .cloud-device.open .arrow { transform: rotate(90deg); }
+.folder-name { flex: 1; min-width: 0; text-align: left; font-family: 'Press Start 2P', monospace; font-size: 10px; line-height: 1.4; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.folder-count { flex-shrink: 0; color: var(--muted); }
+
+/* A row: the cursor, the icon, the title, its marks, × on hover. */
+.row { box-sizing: border-box; cursor: pointer; color: inherit; text-decoration: none; }
+.tab { position: relative; flex-shrink: 0; width: 100%; height: 32px; display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 0 6px; font-size: 16px; }
+.tab.on { background: var(--hover); color: var(--yellow); }
+.cursor { flex-shrink: 0; position: relative; width: 12px; height: 13.5px; color: var(--yellow); }
+.cursor .pix { position: absolute; left: 0; top: 0; width: 10.5px; height: 13.5px; visibility: hidden; }
+.row.on .cursor .now, .palette-row.on .cursor .now { visibility: visible; }
+/* In front in another window: a dim, still, hollow cursor. */
+.tab.behind:not(.on) .cursor .was { visibility: visible; opacity: .5; color: var(--muted); }
+.tab .title { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fav { flex-shrink: 0; width: 18px; height: 18px; box-sizing: border-box; box-shadow: var(--pxs); background: var(--deep); object-fit: cover; image-rendering: pixelated; }
+.letter { --fav: #5f574f; display: flex; align-items: center; justify-content: center; background: var(--fav); color: #fff; font-family: 'Press Start 2P', monospace; font-size: 8px; line-height: 1; text-transform: uppercase; overflow: hidden; }
+.emoji { display: flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; }
+/* Asleep: the title at 55 % and a small "z". */
+.tab.asleep .title { opacity: .55; }
+.zz { width: 7.5px; height: 7.5px; color: var(--blue); align-self: flex-start; margin-top: 7px; }
+/* Not open (still in its space; a click opens it): the icon dashed, dimmed. */
+.tab.not-open .title { opacity: .5; }
+.tab.not-open .fav { opacity: .55; box-shadow: none; outline: 2px dashed var(--field); outline-offset: 0; }
+/* Loading: the icon box blinks. */
+@keyframes px-busy { 0%, 49% { box-shadow: var(--pxs); } 50%, 100% { box-shadow: 0 -2px 0 var(--yellow), 0 2px 0 var(--yellow), -2px 0 0 var(--yellow), 2px 0 0 var(--yellow); } }
+.tab.busy .fav { animation: px-busy .5s steps(1) infinite; }
+/* Playing: the board's BGM bars. */
+.eq { flex-shrink: 0; display: flex; align-items: flex-end; gap: 2px; width: 13px; height: 12px; }
+.eq i { display: block; width: 3px; height: 4px; background: var(--green); animation: px-eq .9s steps(3) infinite; }
+.eq i:nth-child(2) { animation-delay: .3s; }
+.eq i:nth-child(3) { animation-delay: .6s; }
+@keyframes px-eq { 0% { height: 4px; } 33% { height: 12px; } 66% { height: 8px; } 100% { height: 4px; } }
+.pin-mark { flex-shrink: 0; display: grid; place-items: center; width: 10px; color: var(--muted); opacity: .7; }
+.pin-mark .pix { width: 7.5px; height: 10.5px; }
+/* Close: a pixel × on hover (tabs, and pins open in a tab). */
+.x { flex-shrink: 0; display: none; width: 22px; height: 22px; margin-right: -3px; color: var(--muted); }
+.x .pix { width: 10.5px; height: 10.5px; }
+.x:hover { background: var(--red); color: #fff; }
+.tab:hover .x { display: flex; }
+.tab:hover .eq, .tab:hover .pin-mark { display: none; }
+
+/* iCloud Tabs (Margin's <m-cloud-tabs>): a folder like the others, but live:
+   a pixel cloud in blue, nothing dragged in or out. Each device a tag in
+   Press Start 2P, with when it was last used; its tabs two lines, the title
+   over the site. A device not used for a week fades. */
+.cloud { flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; }
+.cloud-head { width: 100%; justify-content: flex-start; gap: 8px; height: 30px; padding: 0 6px; }
+.cloud-head .arrow { color: var(--blue); }
+.cloud-ico { width: 18px; height: 12px; color: var(--ink); }
+.cloud-ico .fill { fill: var(--blue); }
+.cloud-name { flex: 1; min-width: 0; text-align: left; font-family: 'Press Start 2P', monospace; font-size: 10px; line-height: 1.4; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cloud-body { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; }
+.cloud-note { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 2px 6px 6px; font-size: 14px; line-height: 1.3; color: var(--muted); }
+.cloud-device { width: 100%; flex-wrap: wrap; justify-content: flex-start; gap: 4px 8px; min-height: 28px; padding: 5px 6px; }
+.cloud-device .arrow { color: var(--muted); width: 4.5px; height: 7.9px; }
+.device-tag { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: calc(100% - 16px); height: 18px; padding: 0 6px; background: var(--deep); color: var(--blue); box-shadow: inset 0 0 0 2px var(--field); font-family: 'Press Start 2P', monospace; font-size: 8px; text-transform: uppercase; }
+.device-tag .pix { width: 10px; height: 10px; }
+.device-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+.device-when { flex: 1 0 100%; min-width: 0; padding-left: 12px; box-sizing: border-box; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--muted); }
+.cloud-tab { flex-shrink: 0; width: 100%; height: 38px; justify-content: flex-start; gap: 8px; padding: 0 6px 0 14px; }
+.cloud-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.cloud-text .title { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 1.1; }
+.cloud-host { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'Press Start 2P', monospace; font-size: 7px; line-height: 1.3; color: var(--muted); text-transform: uppercase; }
+.pinned-mark { flex-shrink: 0; display: grid; place-items: center; width: 16px; height: 16px; color: var(--yellow); }
+.pinned-mark .pix { width: 7.5px; height: 10.5px; }
+:is(.cloud-device, .cloud-tab).stale { opacity: .45; }
+
+/* The divider, TODAY, CLEAR, new tab, today */
+.today-zone { flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; }
+.divider { display: flex; align-items: center; gap: 8px; min-height: 24px; padding-top: 6px; margin-bottom: 10px; border-top: 3px dotted var(--field); }
+.today-label { flex: 1; font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--muted); }
+.clear { height: 24px; padding: 0 8px; font-family: 'Press Start 2P', monospace; font-size: 9px; background: var(--red); color: #fff; }
+.clear:hover { background: #ff3370; }
+.new-tab { flex-shrink: 0; width: 100%; justify-content: flex-start; gap: 10px; height: 32px; padding: 0 6px; color: var(--green); }
+.new-tab .plus { font-family: 'Press Start 2P', monospace; font-size: 11px; }
+.new-tab .kbd { font: inherit; font-size: 14px; color: var(--muted); }
+.new-tab.on { background: var(--hover); }
+.today { display: flex; flex-direction: column; gap: 2px; }
+/* Long lists: rows off screen skip style and layout until they scroll in. */
+.today .tab { content-visibility: auto; contain-intrinsic-size: auto 32px; }
+.stage-clear { padding: 8px 6px; font-family: 'Press Start 2P', monospace; font-size: 9px; line-height: 1.8; color: var(--muted); }
+
+/* The worlds: the chest, the numbered chips, "+" */
+.spaces { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+.chest { width: 36px; height: 36px; }
+.chest .pix.chest-ico { width: 20px; height: 20px; }
+.chest-ico .wood { fill: #ab5236; }
+.chest-ico .lid { fill: #ffa300; }
+.chest-ico .lock { fill: var(--yellow); }
+.add { width: 36px; height: 36px; }
+.add .pix { width: 9px; height: 9px; }
+/* Centred while they fit; many of them keep their size and scroll sideways
+   inside the bar (room kept for the lit edge and the profile marks). */
+.chips { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: safe center; gap: 10px; padding: 8px 8px 4px; margin: -5px -2px -1px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { --chip: var(--space); position: relative; flex: 0 0 34px; height: 34px; font-family: 'Press Start 2P', monospace; font-size: 11px; background: var(--chip); color: var(--deep); opacity: .55; }
+.chip:hover { opacity: .8; }
+.chip.on { opacity: 1; box-shadow: 0 -3px 0 var(--yellow), 0 3px 0 var(--yellow), -3px 0 0 var(--yellow), 3px 0 0 var(--yellow); }
+/* Another browser profile's space (Margin.app): its profile's mark on the
+   corner, dimmer, a dashed edge; a divider between profiles; a chip being
+   switched to blinks. */
+.chip.foreign { opacity: .4; outline: 2px dashed var(--muted); outline-offset: 1px; }
+.chip .profile-tag { position: absolute; top: -7px; right: -7px; min-width: 14px; height: 14px; padding: 0 2px; box-sizing: border-box; display: grid; place-items: center; background: var(--profile, var(--ink)); color: var(--deep); box-shadow: var(--pxs); font: 7px/1 'Press Start 2P', monospace; }
+.chip .profile-tag .profile-symbol { display: block; width: 9px; height: 9px; filter: brightness(0); }
+@keyframes px-switch { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .3; } }
+.chip.switching { animation: px-switch .4s steps(1) infinite; }
+.profile-gap { flex: none; width: 3px; height: 24px; background: var(--field); }
+
+/* The page: the browser's page goes in its box. Its pixel border and the
+   ground around it are its shadows, outside the box. */
+.page { flex: 1; min-width: 0; position: relative; z-index: 0; box-shadow: var(--pxb), 0 0 0 100vmax var(--ground); }
+
+/* A hidden sidebar: the page takes the room; hovering the left edge (Margin's
+   m-peek) shows the sidebar as a floating card over the page. */
+.peek-zone { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--m-reveal-zone, 14px); z-index: 6; }
+.pixel[data-sidebar="hidden"] .peek-zone { display: block; }
+.pixel[data-sidebar="hidden"] .sidebar { width: 0; overflow: hidden; margin-left: calc(-1 * var(--gap)); box-shadow: none; }
+.pixel[data-sidebar="peek"] .sidebar { position: absolute; left: 14px; top: 14px; bottom: 14px; width: var(--sidebar); z-index: 8; box-shadow: var(--pxb); }
+
+/* Windowed: Margin covers the toolbar, so the theme shows the window's
+   controls (three pixel squares, the board's "Glass on dark": outlined, filled
+   on hover) and a place to drag the window by. */
+.pixel[data-mode="windowed"] .window-bar { flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 20px; }
+.window-controls { display: flex; gap: 8px; padding: 0 2px; }
+.wc { width: 14px; height: 14px; box-shadow: inset 0 0 0 2px var(--c); color: transparent; }
+.wc .pix { width: 7px; height: 7px; }
+.wc.close { --c: var(--red); }
+.wc.min { --c: var(--yellow); }
+.wc.full { --c: var(--green); }
+.window-controls:hover .wc { background: var(--c); color: var(--deep); }
+.drag-region { flex: 1; height: 100%; }
+/* In a page (Chrome and Edge outside the Mac) the browser's toolbar stays. */
+.pixel[data-mode="inpage"] .toolbar { display: none; }
+
+/* Resizing the sidebar (Margin's m-resize): a dotted line in the gap. */
+.resizer { position: absolute; top: 0; bottom: 0; right: -13px; width: 8px; cursor: col-resize; z-index: 3; }
+.resizer.m-resizing, .resizer:hover { background: repeating-linear-gradient(to bottom, var(--field) 0 3px, transparent 3px 6px) center / 3px 100% no-repeat; }
+.pixel.m-resizing { cursor: col-resize; }
+
+/* Swiping between spaces (Margin's m-swipe): the header and the list move with the fingers. */
+.column.m-swiping .swipes { transform: translateX(var(--m-swipe-offset, 0px)); }
+.column.m-settling .swipes { transition: transform .2s steps(5); }
+
+/* Pressed, dragged, dropped (Margin's m-drag and m-drop). */
+.row.m-pressed { transform: translate(0, 1px); }
+.row.m-dragging:not(.m-drag-ghost) { opacity: .35; }
+.m-drag-ghost { opacity: .95; background: var(--ground); color: var(--ink); box-shadow: var(--pxb); }
+.m-drop-before { box-shadow: inset 0 3px 0 var(--yellow); }
+.m-drop-after { box-shadow: inset 0 -3px 0 var(--yellow); }
+.folder-head.m-drop-into, .folder.m-drop-into > .folder-head { background: var(--hover); box-shadow: inset 0 0 0 3px var(--yellow); }
+.chip.m-drop-into { opacity: 1; outline: 3px dashed var(--yellow); outline-offset: 4px; }
+.today-zone.m-drop-into .today { outline: 3px dashed var(--yellow); outline-offset: 2px; }
+.folders.m-drop-end { box-shadow: 0 3px 0 var(--yellow); }
+.m-landing { visibility: hidden; }
+.pixel.m-drag-tab .folders:empty { display: block; min-height: 30px; outline: 3px dashed var(--field); }
+
+/* A name edited in place (Margin's m-rename). */
+.m-renaming { outline: 2px solid var(--yellow); outline-offset: 2px; background: var(--deep); color: var(--ink); min-width: 2ch; text-transform: none; text-overflow: clip; }
+
+/* The page loading: a stepped bar marching along the card's top border. */
+.load-bar { position: absolute; top: calc(var(--gutter) - 3px); left: var(--page-left); right: var(--gutter); height: 3px; z-index: 4; pointer-events: none; background: repeating-linear-gradient(90deg, var(--yellow) 0 12px, var(--red) 12px 24px) 0 0 / 24px 100%; opacity: 0; visibility: hidden; transition: opacity .2s steps(2), visibility 0s linear .2s; }
+.load-bar.on { opacity: 1; visibility: visible; transition: opacity .2s steps(2); animation: px-march .4s steps(4) infinite; }
+@keyframes px-march { to { background-position: 24px 0; } }
+.pixel:not(.framed):is([data-sidebar="hidden"], [data-sidebar="peek"]):not(.newtab) .load-bar { top: 0; }
+
+/* Over the page, under a peeking sidebar: the gestures' badges. */
+.page-over { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); z-index: 4; pointer-events: none; overflow: hidden; }
+.page-over * { pointer-events: none; }
+.gesture { --gesture: 0; position: absolute; display: grid; place-items: center; width: 44px; height: 44px; margin: 3px; background: var(--ground); color: var(--ink); box-shadow: var(--pxb); opacity: calc(.35 + var(--gesture) * .65); }
+.gesture .pix { width: 24px; height: 24px; }
+.gesture.pull { top: 14px; left: 50%; margin-left: -22px; transform: translateY(calc((var(--gesture) - 1) * 30px)); }
+.gesture.swipe.back { left: 14px; top: 50%; margin-top: -22px; transform: translateX(calc((var(--gesture) - 1) * 30px)); }
+.gesture.swipe.forward { right: 14px; top: 50%; margin-top: -22px; transform: translateX(calc((1 - var(--gesture)) * 30px)); }
+.gesture.swipe.forward .pix { transform: scaleX(-1); }
+.gesture.armed { background: var(--yellow); color: var(--deep); }
+.gesture.done { opacity: 0; transition: opacity .3s steps(3) .1s; }
+
+/* Context menus (Margin's <m-menu>, the "menu" part) */
+.menu { min-width: 210px; max-width: 300px; box-sizing: border-box; padding: 8px; display: flex; flex-direction: column; gap: 2px; background: var(--ground); font-family: 'Pixelify Sans', ui-monospace, monospace; font-size: 16px; color: var(--ink); }
+.menu-item { display: flex; justify-content: flex-start; gap: 8px; height: 30px; padding: 0 8px; white-space: nowrap; }
+.menu-item .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-item .pix { width: 7px; height: 9px; color: var(--yellow); visibility: hidden; }
+.menu-item:hover, .menu-item:focus { background: var(--hover); color: var(--yellow); outline: none; }
+.menu-item:hover .pix, .menu-item:focus .pix { visibility: visible; }
+.menu-item.danger { color: var(--red); }
+.menu-item.danger:hover, .menu-item.danger:focus, .menu-item.confirming { background: var(--red); color: #fff; }
+.menu-item.danger:hover .pix, .menu-item.danger:focus .pix, .menu-item.confirming .pix { color: #fff; visibility: visible; }
+.menu-sep { border-top: 3px dotted var(--field); margin: 4px 4px; }
+
+/* The space editor (Margin's <m-editor>, the "space-editor" part) */
+.editor-layer { position: absolute; inset: 0; z-index: 12; }
+.scrim { position: absolute; inset: 0; background: rgba(11, 10, 26, .7); cursor: default; }
+.editor { position: absolute; left: calc(var(--gutter) + 10px); top: 112px; width: min(300px, calc(100% - 52px)); box-sizing: border-box; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; background: var(--ground); }
+.editor-title { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--yellow); text-transform: uppercase; }
+.editor-row { display: flex; gap: 8px; align-items: center; }
+.editor-emoji, .editor-name { height: 36px; box-sizing: border-box; border: 0; padding: 0 10px; font: inherit; font-size: 17px; background: var(--deep); color: var(--ink); box-shadow: inset 0 0 0 2px var(--field); outline: none; border-radius: 0; }
+.editor-emoji:focus, .editor-name:focus { box-shadow: inset 0 0 0 2px var(--yellow); }
+.editor-emoji { width: 48px; text-align: center; }
+.editor-name { flex: 1; min-width: 0; }
+.editor-name:disabled { opacity: .6; }
+.editor-note { font-size: 14px; line-height: 1.3; color: var(--muted); }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; padding: 3px; }
+.swatch { --swatch: var(--ink); width: 22px; height: 22px; background: var(--swatch); box-shadow: var(--pxs); }
+.swatch.on { box-shadow: 0 -3px 0 var(--yellow), 0 3px 0 var(--yellow), -3px 0 0 var(--yellow), 3px 0 0 var(--yellow); }
+
+/* Small press buttons (notices, prompts, the editor, Settings) */
+.small { flex-shrink: 0; white-space: nowrap; height: 30px; padding: 0 12px; font-family: 'Press Start 2P', monospace; font-size: 9px; text-transform: uppercase; background: var(--hover); color: var(--ink); box-shadow: var(--pxs); margin: 2px; }
+.small:hover { background: var(--field); }
+.small.primary { background: var(--green); color: var(--deep); }
+.small.primary:hover { background: #4dff76; }
+.small.danger { color: var(--red); }
+.small.danger:hover, .small.danger.confirming { background: var(--red); color: #fff; }
+.small[disabled] { opacity: .4; cursor: default; }
+
+/* The palette: the board's SELECT DESTINATION box. */
+.palette-layer { position: absolute; inset: 0; z-index: 20; }
+.palette { position: absolute; left: 50%; top: 140px; transform: translateX(-50%); width: min(660px, calc(100% - 100px)); max-height: calc(100% - 216px); box-sizing: content-box; padding: 18px; display: flex; flex-direction: column; background: var(--ground); }
+.palette-title { flex-shrink: 0; margin-bottom: 14px; font-family: 'Press Start 2P', monospace; font-size: 12px; color: var(--yellow); }
+.palette-field { flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; background: var(--deep); box-shadow: inset 0 0 0 2px var(--field); }
+.palette-field .chevron { font-family: 'Press Start 2P', monospace; font-size: 11px; }
+.palette-input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 19px; color: var(--ink); caret-color: var(--yellow); }
+.palette-input::placeholder { color: #8d8b9f; }
+.palette-rows { flex: 0 1 auto; min-height: 0; max-height: calc(8 * 42px); margin-top: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; scrollbar-width: thin; scrollbar-color: var(--field) transparent; }
+.palette-row { flex-shrink: 0; width: 100%; height: 40px; justify-content: flex-start; gap: 12px; padding: 0 10px; font-size: 17px; }
+.palette-row.on { background: var(--hover); }
+.palette-row .fav { margin: 0 2px; }
+/* The heading of a run of rows from one place (iCloud Tabs: "On Tirth's iPhone"). */
+.palette-section { flex-shrink: 0; margin: 8px 10px 4px; font-family: 'Press Start 2P', monospace; font-size: 8px; line-height: 1.4; color: var(--blue); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag { flex-shrink: 0; max-width: 34%; padding: 4px 6px; font-family: 'Press Start 2P', monospace; font-size: 7px; line-height: 1.3; text-transform: uppercase; color: var(--muted); background: var(--deep); box-shadow: inset 0 0 0 2px var(--field); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.palette-row.on .tag { color: var(--yellow); }
+.palette-empty { padding: 10px; font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--muted); }
+.palette-keys { flex-shrink: 0; margin-top: 14px; font-family: 'Press Start 2P', monospace; font-size: 8px; color: var(--muted); }
+
+/* Notices and prompts (Margin's words): the board's RPG text box. */
+.notice { position: absolute; left: calc(var(--page-left) + 20px); bottom: calc(var(--gutter) + 20px); z-index: 14; max-width: 420px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 18px; background: var(--ground); line-height: 1.35; }
+.notice-actions, .prompt-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.prompt-actions { justify-content: flex-end; }
+.more { position: absolute; right: 10px; bottom: 8px; width: 10.5px; height: 6px; color: var(--yellow); }
+.prompt-layer { position: absolute; inset: 0; z-index: 16; display: flex; align-items: center; justify-content: center; background: rgba(11, 10, 26, .7); }
+.prompt { position: relative; width: min(460px, calc(100% - 64px)); box-sizing: border-box; padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 12px; background: var(--ground); line-height: 1.35; }
+.prompt-title { font-family: 'Press Start 2P', monospace; font-size: 11px; line-height: 1.5; color: var(--yellow); text-transform: uppercase; }
+.prompt-text { color: var(--ink); }
+
+/* Margin's new-tab page: a title screen in the page card, and Settings. */
+.launcher-slot { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); overflow: hidden; z-index: 2; }
+.launcher { height: 100%; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 30px; padding: 12vh 32px 48px; background-color: var(--ground); background-image: radial-gradient(var(--dots) 1px, transparent 1px); background-size: 16px 16px; scrollbar-width: thin; scrollbar-color: var(--field) transparent; }
+.launcher > * { width: min(640px, 100%); flex: none; }
+.title-screen { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.title-screen .world { font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--space); }
+.stage { margin: 0 0 12px; max-width: 100%; font-family: 'Press Start 2P', monospace; font-size: 26px; font-weight: 400; line-height: 1.3; text-align: center; text-transform: uppercase; color: var(--ink); text-shadow: 3px 3px 0 var(--deep); overflow-wrap: anywhere; }
+.launcher-field { width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; background: var(--deep); box-shadow: inset 0 0 0 2px var(--field); }
+.launcher-field:focus-within { box-shadow: inset 0 0 0 2px var(--yellow); }
+.launcher-field .chevron { font-family: 'Press Start 2P', monospace; font-size: 12px; }
+.launcher-query { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: inherit; font-size: 20px; color: var(--ink); caret-color: transparent; }
+.launcher-query::placeholder { color: #8d8b9f; }
+.launcher h2 { margin: 0 0 14px; font-family: 'Press Start 2P', monospace; font-size: 10px; font-weight: 400; color: var(--yellow); }
+.launcher ul { list-style: none; margin: 0; padding: 0; }
+.pin-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 16px; padding: 3px; }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 10px 12px; background: var(--side); color: inherit; text-decoration: none; cursor: pointer; }
+.tile:hover { background: var(--hover); color: var(--yellow); }
+.tile:active { transform: translate(0, 2px); }
+.tile .fav { width: 24px; height: 24px; }
+.tile .letter { font-size: 10px; }
+.tile .title { min-width: 0; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; }
+.archive-list { display: flex; flex-direction: column; gap: 2px; }
+.archive-row { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 8px; }
+.archive-row .title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 16px; }
+.archive-row .when { flex-shrink: 0; font-family: 'Press Start 2P', monospace; font-size: 8px; color: var(--muted); }
+.settings-section { display: flex; flex-direction: column; align-items: flex-start; }
+.settings-slot { align-self: stretch; }
+.settings-form { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; padding: 18px; background: var(--side); box-shadow: var(--pxb); }
+.setting { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 16px; }
+.setting.stacked { flex-direction: column; align-items: stretch; }
+.setting.disabled { opacity: .45; }
+.settings-form :is(select, input, textarea) { font: inherit; font-size: 16px; color: var(--ink); background: var(--deep); border: 0; border-radius: 0; padding: 5px 9px; box-shadow: inset 0 0 0 2px var(--field); outline: none; }
+.settings-form :is(select, input, textarea):focus { box-shadow: inset 0 0 0 2px var(--yellow); }
+.settings-form textarea { resize: vertical; }
+.settings-form input.number { width: 6em; }
+.settings-form input.color { -webkit-appearance: none; appearance: none; flex-shrink: 0; width: 40px; height: 28px; padding: 3px; box-sizing: border-box; border: 0; border-radius: 0; background: var(--deep); box-shadow: 0 -2px 0 #5f5aa8, 0 2px 0 #5f5aa8, -2px 0 0 #5f5aa8, 2px 0 0 #5f5aa8; cursor: pointer; }
+.settings-form input.shortcut { width: 9em; cursor: pointer; }
+.settings-form input.shortcut.recording { background: var(--yellow); color: var(--deep); }
+/* A choice: a dark select with a stepped ▼ drawn from three bars. */
+.settings-form select { -webkit-appearance: none; appearance: none; padding-right: 30px; background-image: linear-gradient(var(--yellow), var(--yellow)), linear-gradient(var(--yellow), var(--yellow)), linear-gradient(var(--yellow), var(--yellow)); background-repeat: no-repeat; background-size: 10px 2px, 6px 2px, 2px 2px; background-position: right 10px top calc(50% - 2px), right 12px top 50%, right 14px top calc(50% + 2px); cursor: pointer; }
+/* A toggle: a pixel box, a yellow square inside when on. */
+.settings-form input.toggle { -webkit-appearance: none; appearance: none; flex-shrink: 0; width: 22px; height: 22px; padding: 0; margin: 0; cursor: pointer; }
+.settings-form input.toggle:checked { background: var(--yellow); box-shadow: inset 0 0 0 2px var(--field), inset 0 0 0 5px var(--deep); }
+.setting-group { margin-top: 12px; font-family: 'Press Start 2P', monospace; font-size: 10px; line-height: 1.5; color: var(--yellow); text-transform: uppercase; }
+.setting-group:first-child { margin-top: 0; }
+.settings-form .help { margin: 0; font-size: 14px; line-height: 1.3; color: var(--muted); }
+.settings-form .help.error { color: var(--red); }
+.settings-form .actions { display: flex; align-items: center; gap: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pixel.blink :is(.caret, .row.on .cursor .now, .palette-row.on .cursor .now, .more) { animation: none; }
+  .tab.busy .fav, .eq i, .load-bar.on, .reload.loading .pix, .chip.switching { animation: none; }
+  .column.m-settling .swipes, .gesture, .load-bar { transition: none; }
+}

@@ -7,6 +7,7 @@ import { buildSync } from 'esbuild';
 
 export const NEO = fileURLToPath(new URL('../../extension/themes/neo-brutalism/', import.meta.url));
 export const ARCADIA = fileURLToPath(new URL('../../extension/themes/arcadia/', import.meta.url));
+export const PIXEL = fileURLToPath(new URL('../../extension/themes/pixel/', import.meta.url));
 
 const PACKAGE_FILES = new Set(['theme.json', 'theme.html', 'theme.css']);
 // A package's own files: the three, and what's under fonts/ and images/.
