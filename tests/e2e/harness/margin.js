@@ -122,6 +122,12 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
 
   worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   const extensionId = new URL(worker.url()).host;
+  // A background that stopped and started again (a test can stop it): `m.bg` and the rest follow the new one.
+  context.on('serviceworker', (w) => {
+    if (new URL(w.url()).host !== extensionId) return;
+    worker = w;
+    m.worker = w;
+  });
   if (extensionId !== build.id) throw new Error(`the extension's id is ${extensionId}, not the one its key gives (${build.id})`);
 
   const m = {

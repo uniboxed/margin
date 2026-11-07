@@ -19,12 +19,14 @@
 //   with `drawn` off and `paletteDropped`; notices and loading held for an
 //   overlay made later), link (reconnecting, then linked);
 // - the app's keys (`key('palette')`, `navigate('next-tab')`), ticks every
-//   5 s, drops, a goodbye, a restart (new port, token and key, then `appUp`);
+//   5 s, drops, a kill, a goodbye, a restart (new port, token and key, then `appUp`);
 // - the data messages: `data.hello` answered with the seed's `data.snapshot`
-//   (or `data.need`), `data.changes` kept.
+//   for Safari's profile id (else `data.need`), `data.changes` kept.
 import { createHash } from 'node:crypto';
 import { startFakeApp } from '../../fake-app.js';
 
+// Safari's id for the profile the copy runs in, as its extension handler gives it (the default profile's).
+export const SAFARI_PROFILE = 's-default';
 const RECONNECT_GRACE_MS = 6000;
 const UNWANTED_GRACE_MS = 1500;
 const PALETTE_HOLD_MS = 1500;
@@ -104,8 +106,9 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
   const notify = () => { for (const fn of [...listeners]) fn(); };
   const send = (msg) => app?.send(msg);
 
-  async function startApp() {
+  async function startApp({ welcome = null } = {}) {
     app = await startFakeApp({
+      ...(welcome ? { welcome } : {}),
       onMessage: (m) => { received.push(m); take(m); notify(); },
       onClose: () => { if (!app?.open) linkDown('dropped'); },
     });
@@ -194,7 +197,8 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
         return;
       }
       case 'data.hello':
-        if (seed) send({ k: 'data.snapshot', epoch, profile: m.profile, format: seed.format ?? 1, set: seed, transfer: `seed-${Date.now()}`, part: 0, parts: 1 });
+        // The app has a set for the profile Safari names (the seed); one it doesn't know is asked for its own.
+        if (seed && m.profile === SAFARI_PROFILE) send({ k: 'data.snapshot', epoch, profile: m.profile, format: seed.format ?? 1, set: seed, transfer: `seed-${Date.now()}`, part: 0, parts: 1 });
         else send({ k: 'data.need', epoch, profile: m.profile, all: true });
         return;
       case 'data.changes':
@@ -470,10 +474,13 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     until,
     request,
 
-    /** What Safari's handler answers `wantLink` (relay.js), and the link it dispatches. */
+    /**
+     * What Safari's handler answers `wantLink` (relay.js: SafariWebExtensionHandler.swift reply,
+     * with Safari's id for the profile, `s-default` for the default one), and the link it dispatches.
+     */
     wantLink(nonce) {
-      if (!running) return { reply: { ok: true, appOpen: false, launching } };
-      return { reply: { ok: true, appOpen: true, launching: false }, link: linkAnswers ? JSON.parse(app.linkInfo(nonce).userInfo.e) : null };
+      if (!running) return { reply: { ok: true, appOpen: false, launching, profile: SAFARI_PROFILE } };
+      return { reply: { ok: true, appOpen: true, launching: false, profile: SAFARI_PROFILE }, link: linkAnswers ? JSON.parse(app.linkInfo(nonce).userInfo.e) : null };
     },
     /** The overlay over a window (its page drawn), waited for. */
     async overlay(windowId = frontWindowId(), { timeout = 10_000 } = {}) {
@@ -519,14 +526,22 @@ export async function startShell({ webkit, overlayUrl, dataSet = null, cloudTabs
     /** Not running, or starting (the handler's answers). */
     setRunning(on, { starting = false } = {}) { running = on; launching = starting; },
     setLinkAnswers(on) { linkAnswers = on; },
-    /** A new app: new port, token and key; then `appUp` (relay.dispatch is the caller's). */
-    async restart() {
-      const old = app;
-      old.drop();
-      await old.close();
+    /** The app gone (a crash, or quit without a word): its sockets dropped, nothing listening, not running. */
+    async kill() {
+      running = false;
+      app?.drop();
+      await app?.close().catch(() => {});
+    },
+    /**
+     * A new app: new port, token and key; then `appUp` (relay.dispatch is the caller's).
+     * `welcome(key)`: what it says on a socket opening (the default: its own key).
+     */
+    async restart({ welcome = null } = {}) {
+      app?.drop();
+      await app?.close().catch(() => {});
       running = true;
       launching = false;
-      await startApp();
+      await startApp({ welcome });
     },
     async close() {
       clearInterval(tickTimer);
