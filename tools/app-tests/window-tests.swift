@@ -1742,6 +1742,34 @@ extension Tests {
     check("trace: numbers and Margin's own keys only (no title)", !text.contains("Test A — x") && !text.contains("title"))
   }
 
+  // An overlay kept in its window's Space (Shell.spaceToJoin), and Tirth's own session replayed (2026-11-07 11:32:51:
+  // the sidebar left on the Desktop after a switch brought its window back into a new full-screen Space).
+  static func overlaySpace() {
+    check("in its window's Space: nothing to do", Shell.spaceToJoin(overlay: [7], window: [7], windowOnScreen: true, showing: [7]) == nil)
+    check("in another Space while its window shows: moved into the window's", Shell.spaceToJoin(overlay: [1], window: [7], windowOnScreen: true, showing: [7]) == 7)
+    check("in no Space: moved", Shell.spaceToJoin(overlay: [], window: [7], windowOnScreen: true, showing: [7]) == 7)
+    check("unknown, or its window off screen, in two Spaces, or in a Space not showing (mid-slide): left alone",
+          Shell.spaceToJoin(overlay: nil, window: [7], windowOnScreen: true, showing: [7]) == nil
+          && Shell.spaceToJoin(overlay: [1], window: [7], windowOnScreen: false, showing: [7]) == nil
+          && Shell.spaceToJoin(overlay: [1], window: [7, 8], windowOnScreen: true, showing: [7]) == nil
+          && Shell.spaceToJoin(overlay: [1], window: [7], windowOnScreen: true, showing: [1]) == nil)
+
+    let vectors = ProcessInfo.processInfo.environment["MARGIN_DATA_VECTORS"] ?? "../../tests/fixtures/data-merge"
+    let url = URL(fileURLWithPath: vectors).appendingPathComponent("../traces/2026-11-07-sidebar-on-desktop.jsonl").standardizedFileURL
+    let maps = WindowTrace.replayWithOverlays(WindowTrace.load(url))
+    let overlay = 63556, window = 63548
+    var wrong = 0, wouldMove: [UInt64] = []
+    // (Only while Margin has it shown over that window, as Shell.keepInWindowSpace is only asked then.)
+    for (m, ov) in maps where ov.contains(where: { $0.n == overlay && $0.shown && $0.over == window }) {
+      guard let o = m.windows[overlay], let w = m.windows[window] else { continue }
+      if w.onScreen, let ws = w.spaces, o.spaces != ws { wrong += 1 }
+      if let to = Shell.spaceToJoin(overlay: o.spaces, window: w.spaces, windowOnScreen: w.onScreen, showing: m.showing) { wouldMove.append(to) }
+    }
+    check("Tirth's session: replayed from its trace (\(maps.count) maps)", maps.count > 50)
+    check("Tirth's session: the sidebar in the Desktop (Space 1) while its window showed in Space 3046", wrong > 0, "\(wrong)")
+    check("Tirth's session: each of those maps says move it into 3046, and nothing else", !wouldMove.isEmpty && Set(wouldMove) == [3046], "\(wouldMove)")
+  }
+
   // The own-Space suspicion (Shell.judgeOwnSpace): what drops it before every overlay joins every Space.
   static func ownSpaceJudge() {
     let off = ServerWindow(number: 5, pid: 1, bounds: CGRect(x: 0, y: 0, width: 100, height: 100), onScreen: false)

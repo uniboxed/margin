@@ -146,14 +146,19 @@ final class WindowTrace: @unchecked Sendable {
     }
 
     /// The map as it was after each line that changed it, rebuilt from a trace (from its first `snap` on).
-    static func replay(_ lines: [TraceLine]) -> [WindowSnapshot] {
-        var out: [WindowSnapshot] = []
+    static func replay(_ lines: [TraceLine]) -> [WindowSnapshot] { replayWithOverlays(lines).map(\.map) }
+
+    /// The same, each with the overlays as the trace last said them by then (empty before its first `ov`).
+    static func replayWithOverlays(_ lines: [TraceLine]) -> [(map: WindowSnapshot, overlays: [TraceOverlay])] {
+        var out: [(map: WindowSnapshot, overlays: [TraceOverlay])] = []
+        var ov: [TraceOverlay] = []
         var s: WindowSnapshot?
         for line in lines {
+            if let o = line.ov { ov = o }
             if let snap = line.snap {
                 s = WindowSnapshot(at: line.t, windows: Dictionary(snap.map { ($0.number, $0) }, uniquingKeysWith: { a, _ in a }),
                                    displays: line.d ?? [], frontPid: line.front.flatMap { $0 < 0 ? nil : $0 })
-                out.append(s!)
+                out.append((s!, ov))
                 continue
             }
             guard var cur = s, line.w != nil || line.gone != nil || line.d != nil || line.front != nil else { continue }
@@ -163,7 +168,7 @@ final class WindowTrace: @unchecked Sendable {
             if let d = line.d { cur.displays = d }
             if let f = line.front { cur.frontPid = f < 0 ? nil : f }
             s = cur
-            out.append(cur)
+            out.append((cur, ov))
         }
         return out
     }

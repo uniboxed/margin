@@ -887,6 +887,39 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         slowTracksUnsaid = 0
     }
 
+    /// The Space an overlay shown over a window must be moved into, or nil when it's where it should be (or that
+    /// can't be told): its window on screen, in exactly one Space, one of the Spaces showing, and the overlay's
+    /// Spaces known and not just that one.
+    static func spaceToJoin(overlay: [UInt64]?, window: [UInt64]?, windowOnScreen: Bool, showing: Set<UInt64>) -> UInt64? {
+        guard windowOnScreen, let window, window.count == 1, let space = window.first, showing.contains(space), let overlay else { return nil }
+        return overlay == [space] ? nil : space
+    }
+
+    // A shown overlay in its window's own Space, checked against the map on each read: in another Space, it's moved
+    // into its window's (the Space bridge), at most once a second for each. Tirth's trace 2026-11-07 11:32:51: a
+    // switch brought a parked window back into a new full-screen Space and macOS removed its old one, moving the
+    // overlay kept hidden there to the Desktop: no sidebar over Safari after the switch, and the sidebar on the
+    // Desktop when he swiped there.
+    private var joinTriedAt: [WindowKey: Double] = [:]
+    // (Read from SkyLight there and then, not the map's last read, when it was just shown or the map has it off screen
+    // while its window is on: the map reads a window's Spaces only when it moves, goes on or off screen, or each second.)
+    private func keepInWindowSpace(_ overlay: OverlayController, number: Int, justShown: Bool) {
+        guard !options.harness, let reads = spaceReads, let bridge = reads as? SpaceBridge, bridge.canPark else { return }
+        let snap = windowMap.snapshot
+        let mine = snap.windows[overlay.windowNumber], theirs = snap.windows[number]
+        let fresh = justShown || (theirs?.onScreen == true && mine?.onScreen != true)
+        let overlaySpaces = fresh ? reads.spaces(of: overlay.windowNumber) : mine?.spaces
+        let windowSpaces = fresh ? reads.spaces(of: number) : theirs?.spaces
+        guard let target = Shell.spaceToJoin(overlay: overlaySpaces, window: windowSpaces,
+                                             windowOnScreen: theirs?.onScreen == true, showing: snap.showing) else { return }
+        let now = Diagnostics.now()
+        guard now - (joinTriedAt[overlay.key] ?? -.infinity) >= 1 else { return }
+        joinTriedAt[overlay.key] = now
+        let moved = overlay.spaceWindowNumbers.allSatisfy { bridge.add($0, to: target) }
+        windowMap.spacesChanged(at: now) // (read again on the next read: the move checked)
+        Diagnostics.note("\(overlay.key): its overlay was in Space \(overlaySpaces ?? []) while its window \(number) is in \(target): \(moved ? "moved into its window's Space" : "couldn't be moved")")
+    }
+
     // An overlay placed in its full-screen window's Space ahead of a visit (Overlay.placeAhead): only an overlay
     // in its window's own Space, a full-screen window in a full-screen Space, the Space bridge passed at launch,
     // no switch moving it; a failed placement waits 5 s before the next try.
@@ -1179,6 +1212,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if showed, !wasShownAnywhere || overlay.aheadPending { overlay.arrived(); appeared(overlay, w, list: list) }
             if showed { deliverHeldPalette(overlay) }
             if showed, !wasShown, overlay.ownSpace, !inSwitch(key) { checkOwnSpace(overlay, browser: number) }
+            if showed, overlay.ownSpace { keepInWindowSpace(overlay, number: number, justShown: !wasShown) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
         releaseHeldWindows()

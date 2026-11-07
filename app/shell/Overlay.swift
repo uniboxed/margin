@@ -115,6 +115,13 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     // Events over Margin's UI the catcher took and handed to the overlay (the tests read it; the log says the first ones).
     private(set) var caughtEvents = 0
     var catcherWindowNumbers: Set<Int> { catcherShown ? [catcher.windowNumber] : [] }
+    /// Its windows that go into a Space with it: the panel, the catcher when it's out, the edge when it has one.
+    var spaceWindowNumbers: Set<Int> {
+        var numbers: Set<Int> = [panel.windowNumber]
+        numbers.formUnion(catcherWindowNumbers)
+        if edgeFrame != nil, let edge = edgePanel { numbers.insert(edge.windowNumber) }
+        return numbers
+    }
 
     weak var delegate: OverlayDelegate?
     let key: WindowKey
@@ -400,10 +407,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             catcher.alphaValue = 1
         }
         guard show(over: number, frame: frame, toolbar: nil, why: "placed in its window's Space ahead of a visit") else { return false }
-        var numbers: Set<Int> = [panel.windowNumber]
-        numbers.formUnion(catcherWindowNumbers)
-        if edgeFrame != nil, let edge = edgePanel { numbers.insert(edge.windowNumber) }
-        guard move(numbers) else {
+        guard move(spaceWindowNumbers) else {
             hide("couldn't be placed in its window's Space")
             return false
         }

@@ -65,6 +65,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     layouts()
     windowBinding() // window-tests.swift
     axBinding() // window-tests.swift: Accessibility's exact word
+    overlaySpace() // window-tests.swift: an overlay kept in its window's Space, Tirth's session replayed
     windowMap() // window-tests.swift: the window map and its trace
     ownSpaceJudge() // window-tests.swift: what drops an own-Space suspicion
     axEvents() // window-tests.swift: Safari's Accessibility events and the scan kept for startup
