@@ -129,10 +129,10 @@ test('a tab closed meanwhile: its row says it is no longer open', async (t) => {
   assert.equal(await frontId(), ids.shop, 'the tab in front stayed');
 });
 
-// Found by this suite (2026-11-06): a tab open before the app's data set came in (a first link, or
-// Safari's storage wiped) stays in the copy's default space, which the set replaces: the tab is in
-// no space the sidebar shows, and no row draws it.
-test('a tab open before the app\'s set came in is in a space the sidebar shows', { todo: 'the tab keeps the default space the set removed (tabSpace "personal"), and no row shows it' }, async () => {
+// Found by this suite (2026-11-06), fixed: a tab open before the app's data set came in (a first
+// link, or Safari's storage wiped) stayed in the copy's default space, which the set replaces: in
+// no space the sidebar shows, and no row drew it (shared/data-set.js stateFromDataSet).
+test('a tab open before the app\'s set came in is in a space the sidebar shows', async () => {
   const early = await startMargin({ name: 'tabs', running: false });
   try {
     const page = early.context.pages()[0];

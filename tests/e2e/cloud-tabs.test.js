@@ -31,7 +31,7 @@ const cloudView = () => ui.evaluate(() => ({
 }));
 const setSettings = (patch) => m.shell.request('updateSettings', { patch }, windowId);
 // A press on the folder or a device, then the overlay told of the new setting (the press after
-// it is made from that: the todo below). `from`: the shell's message count before the press.
+// it is made from that, or from what's drawn). `from`: the shell's message count before the press.
 async function pressed(selector) {
   const from = m.shell.received.length;
   await ui.click(selector);
@@ -77,12 +77,11 @@ test('a device closed and opened again; the folder too', async () => {
   await m.until(async () => (await m.stored('settings')).settings.cloudTabsOpen === true, { what: 'open in the settings' });
 });
 
-// Found by this suite (2026-11-06): the folder is drawn closed at once (the runtime's pending
-// settings), but the next press's request is made from the state as stored (ui/runtime.js dispatch:
-// host.getState(), not viewState), which still says open: it asks to close again, and the folder
-// stays closed. The same for a device, and for Keep open. Seen under load in this file; held here
-// by keeping the app's word back between the two presses.
-test('the folder pressed twice before the setting comes back: closed, then open again', { todo: 'the second press is made from the stored state, not what\'s drawn: closed twice' }, async () => {
+// Found by this suite (2026-11-06), fixed: the folder is drawn closed at once (the runtime's pending
+// settings), but the next press's request was made from the state as stored (ui/runtime.js
+// dispatch: host.getState(), not viewState), which still said open: it asked to close again. The
+// same for a device, and for Keep open. Held here by keeping the app's word back between the presses.
+test('the folder pressed twice before the setting comes back: closed, then open again', async () => {
   await m.until(async () => (await cloudView()).open, { what: 'the folder open' });
   m.shell.hold(true);
   try {

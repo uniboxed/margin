@@ -1,9 +1,9 @@
 // The page's CSS spoken for its box: media queries and viewport units.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { asksSize, hasUnits, shiftQuery, shiftUnits } from '../extension/shared/page-css.js';
+import { asksSize, declaredNames, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../extension/shared/page-css.js';
 import { readFileSync } from 'node:fs';
-import { FITTED_BODY, HOLD_ELEMENT, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
+import { FITTED_BODY, HOLD_ELEMENT, bodyBackgroundCss, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
 
 test('a query about the window\'s size moves by the room the page doesn\'t have', () => {
   assert.equal(shiftQuery('(max-width: 900px)', 268, 16), '(max-width: 1168px)');
@@ -110,4 +110,54 @@ test('the box follows a page\'s zoom on <html>', () => {
   assert.ok(zoomed.includes('calc(50vw - 155px)'));
   assert.ok(zoomed.includes('translate(150px, 5px)'));
   assert.ok(zoomed.includes('--margin-dw: 155px'));
+});
+
+// A declaration block as a browser keeps one (enough of it): a shorthand with a var() is kept as
+// its text, its longhands reading empty (pending the var()); one without is its longhands.
+function fakeStyle(decls) {
+  const LONG = { font: ['font-style', 'font-weight', 'font-size', 'line-height', 'font-family'], padding: ['padding-top', 'padding-right', 'padding-bottom', 'padding-left'] };
+  const longs = new Map();
+  const shorts = new Map();
+  const style = {
+    getPropertyValue: (n) => (shorts.has(n) ? shorts.get(n) : longs.get(n)?.[0] ?? ''),
+    getPropertyPriority: (n) => longs.get(n)?.[1] ?? '',
+    setProperty(n, v, p = '') {
+      if (LONG[n]) {
+        if (v.includes('var(')) { shorts.set(n, v); for (const l of LONG[n]) { longs.delete(l); longs.set(l, ['', p]); } } else for (const l of LONG[n]) { longs.delete(l); longs.set(l, [v, p]); }
+      } else { for (const [s, ls] of Object.entries(LONG)) if (ls.includes(n)) shorts.delete(s); longs.delete(n); longs.set(n, [v, p]); }
+    },
+    get cssText() { return [...shorts].map(([n, v]) => `${n}: ${v};`).concat([...longs].filter(([n]) => ![...shorts.keys()].some((s) => LONG[s].includes(n))).map(([n, [v]]) => `${n}: ${v};`)).join(' '); },
+    [Symbol.iterator]: () => [...longs.keys()][Symbol.iterator](),
+  };
+  for (const [n, v] of decls) style.setProperty(n, v);
+  return style;
+}
+
+test('declaredNames: the names a block\'s text gives, shorthands too, not split inside brackets or strings', () => {
+  assert.deepEqual(declaredNames('font: 800 clamp(30px, 3.2vw, 44px) / 1.15 var(--sans); color: red; background: url("a;b.png"); content: \'x;y\''), ['font', 'color', 'background', 'content']);
+  assert.deepEqual(declaredNames(''), []);
+});
+
+test('shiftStyle: vw in a font shorthand with a var() is moved too; a longhand set apart from it is kept', () => {
+  const style = fakeStyle([['font', '800 clamp(30px, 3.2vw, 44px)/1.15 var(--sans)'], ['color', 'red']]);
+  shiftStyle(style);
+  assert.equal(style.getPropertyValue('font'), shiftUnits('800 clamp(30px, 3.2vw, 44px)/1.15 var(--sans)'));
+  assert.match(style.getPropertyValue('font'), /--margin-dw/);
+  assert.equal(style.getPropertyValue('color'), 'red');
+  // Twice: once.
+  const once = style.getPropertyValue('font');
+  shiftStyle(style);
+  assert.equal(style.getPropertyValue('font'), once);
+  // Without a var(): the longhands, as before.
+  const plain = fakeStyle([['padding', '4vw']]);
+  shiftStyle(plain);
+  assert.equal(plain.getPropertyValue('padding-left'), shiftUnits('4vw'));
+});
+
+test('a body\'s background image is kept on <body>, which fills the box, not the window\'s canvas; a color alone is left to the canvas', () => {
+  assert.equal(bodyBackgroundCss({ backgroundImage: 'none', backgroundColor: 'rgb(0, 0, 0)' }), '');
+  const css = bodyBackgroundCss({ backgroundImage: 'linear-gradient(red, blue)', backgroundColor: 'rgb(1, 2, 3)' });
+  assert.match(css, /^@media screen \{ :where\(html\) \{/, 'no weight: a page\'s own rule on <html> wins');
+  assert.match(css, /background-color: rgb\(1, 2, 3\)/, 'the canvas keeps <body>\'s color');
+  assert.match(css, /background-image: linear-gradient\(transparent, transparent\)/, 'something on <html> stops it going to the canvas');
 });

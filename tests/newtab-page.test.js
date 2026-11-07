@@ -120,3 +120,9 @@ test('the new-tab page: Margin turned its link off (the socket guard): when, and
   assert.equal(page.els.start.hidden, false, 'Start instead');
   assert.equal(page.els.title.textContent, 'Margin.app isn’t running');
 });
+
+test('the new-tab page: an element with `hidden` is never laid out, whatever display its rule gives', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('../extension/newtab/newtab.html', import.meta.url), 'utf8');
+  assert.match(html, /\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/, '[hidden] wins over main { display: grid }');
+});

@@ -330,6 +330,17 @@ export const SCENARIOS = {
     { op: 'open', name: 'Q', url: '/x/app', active: true }, boxed('Q', 360),
     checkPage('Q', 'Q: an app that fills the window still does', `return ${rect('app')}[3] === innerHeight`, 2000),
   ],
+  // A body's gradient background in the box: kept on <body>, which fills the box, not the
+  // window's canvas (laid out from the window's corner at the box's size: a step at the box's
+  // width). MARGIN_HOST_SHOTS: a PNG of it there, to look at.
+  'body-background': [
+    ...startBoxed('G', '/x/body-gradient'),
+    checkPage('G', 'G: the gradient is <body>\'s own (<html> has a background), and <body> fills the box', `const h = getComputedStyle(document.documentElement), b = getComputedStyle(document.body), r = document.body.getBoundingClientRect(); return h.backgroundImage !== 'none' && b.backgroundImage.startsWith('linear-gradient') && r.left === 0 && r.top === 0 && Math.round(r.width) === innerWidth && Math.round(r.height) === innerHeight`, 2000),
+    layoutAt(0, 0, 0, 0), bare('G'),
+    checkPage('G', 'G: no box: nothing of Margin\'s on <html>, the gradient the canvas\'s again', `getComputedStyle(document.documentElement).backgroundImage === 'none'`, 2000),
+    keepOpen, boxed('G'),
+    ...(process.env.MARGIN_HOST_SHOTS ? [wait(300), { op: 'snapshot', file: `${process.env.MARGIN_HOST_SHOTS}/body-background.png` }] : []),
+  ],
   // An app whose reset comes after `load`: <body>'s default margin and auto
   // height mustn't stay what Margin read first.
   'late-body': [

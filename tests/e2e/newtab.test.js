@@ -45,10 +45,9 @@ test('linked, the overlay draws the launcher over Margin\'s new-tab page', async
   await page.close();
 });
 
-// Found by this suite (2026-11-06): newtab.html's `main { display: grid }` overrides the `hidden`
-// attribute, so the page lays its "Margin.app isn't running" notice out even while linked. The
-// launcher covers it in the slot; it shows wherever the launcher doesn't (before it draws).
-test('linked, Margin\'s new-tab page lays out nothing of its own', { todo: 'the hidden notice is drawn: main { display: grid } beats [hidden]' }, async () => {
+// Found by this suite (2026-11-06), fixed: newtab.html's `main { display: grid }` overrode the
+// `hidden` attribute, so the page laid its "Margin.app isn't running" notice out even while linked.
+test('linked, Margin\'s new-tab page lays out nothing of its own', async () => {
   const { page } = await newTabPage();
   try {
     await page.waitForFunction(() => document.getElementById('notice')?.hidden === true);

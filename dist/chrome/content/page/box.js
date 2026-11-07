@@ -1,7 +1,7 @@
 // The box itself (shared/page-box.js): its sheets, moving it, and what a real
 // window's root does that a box has to do by hand: the scroll handed to <body>
 // and back, the page's scroll locks, and things put directly under <html>.
-import { bodyFitCss, boxCss, FITTED_BODY, HOLD_ELEMENT, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS } from '../../shared/page-box.js';
+import { bodyBackgroundCss, bodyFitCss, boxCss, FITTED_BODY, HOLD_ELEMENT, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS } from '../../shared/page-box.js';
 import { keyframesIn, startMoves } from './moves.js';
 
 const DEFAULT_LEFT = 260;
@@ -42,7 +42,8 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   const paddingSheet = sheet(); // <body>'s margin as padding (measureBody)
   const zoomSheet = sheet(); // a pinch (setZoom)
   const readSheet = sheet(); // how <body> is read (readWithout, readSaid)
-  const ours = [boxSheet, fitSheet, scrollSheet, paddingSheet, zoomSheet, readSheet];
+  const backSheet = sheet(); // <body>'s background drawn on <body> (checkBackground)
+  const ours = [boxSheet, fitSheet, scrollSheet, paddingSheet, zoomSheet, readSheet, backSheet];
   const zoom = { scale: 1, x: 0, y: 0 };
   // The browser's own, from before viewport.js speaks for the box.
   const { matches, append, remove, checkVisibility } = Element.prototype;
@@ -168,6 +169,7 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     }
     wasPinned = pinned;
     const own = getComputedStyle(body);
+    checkBackground(own);
     // One side's rule. What the page says shows, unless it's our own rule's
     // value, which stands for the page saying nothing. Forced, its value hides
     // what the page says: what it said then stands.
@@ -197,6 +199,14 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     rule.y.force ||= lost(rule.y, after.overflowY);
     rule.x.force ||= lost(rule.x, after.overflowX);
     checkLocks();
+  }
+
+  // <body>'s background on <body>, not the canvas (shared/page-box.js bodyBackgroundCss).
+  let backCss = '';
+  function checkBackground(own) {
+    const css = bodyBackgroundCss(own);
+    if (css !== backCss) replaceSync.call(backSheet, css);
+    backCss = css;
   }
 
   // <body> fills the box and scrolls, so what the page says about its size and
@@ -744,8 +754,9 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     Object.assign(box, { on: false, left: 0, top: 0, right: 0, bottom: 0, dw: 0, dh: 0 });
     place();
     write();
-    for (const emptied of [fitSheet, scrollSheet, paddingSheet]) replaceSync.call(emptied, '');
+    for (const emptied of [fitSheet, scrollSheet, paddingSheet, backSheet]) replaceSync.call(emptied, '');
     scrollCss = '';
+    backCss = '';
     fit = '';
     paddingCss = '';
     lastSaid = '';

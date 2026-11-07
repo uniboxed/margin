@@ -66,6 +66,9 @@ const FIXTURES = {
   // do): Margin's listener, on the window from document_start, still comes
   // first (commandkeys).
   'eats-arrows': `<script>window.__eaten = { window: 0, document: 0, body: 0 }; const eat = (where) => (e) => { if (e.code !== 'ArrowDown') return; __eaten[where]++; e.preventDefault(); e.stopImmediatePropagation(); }; addEventListener('keydown', eat('window'), true); document.addEventListener('keydown', eat('document'), true); addEventListener('DOMContentLoaded', () => document.body.addEventListener('keydown', eat('body')));</script><textarea id=t></textarea><p>Mail</p>`,
+  // A body whose background is a gradient, as a full-height timer's: with nothing on <html> it
+  // would be the canvas's, laid out from the window's corner (body-background).
+  'body-gradient': `<style>body { margin: 0; min-height: 100vh; background: linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255)) }</style><h1>Gradient</h1>`,
   // Apps that say what <body> is only after `load`, by a <style>, a <link>, a rule a script inserts, a class.
   'late-style': `<script>addEventListener('load', () => setTimeout(() => { const s = document.createElement('style'); s.textContent = 'html, body { margin: 0; height: 100% } #app { height: 100% }'; document.head.append(s); }, 300));</script><div id=app>Mail</div>`,
   'late-link': `<script>addEventListener('load', () => setTimeout(() => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'data:text/css,html, body { margin: 0; height: 100%25 } %23app { height: 100%25 }'; document.head.append(l); }, 300));</script><div id=app>Mail</div>`,
