@@ -32,7 +32,7 @@ const APP_DIR = fileURLToPath(new URL('../../../dist/app/', import.meta.url));
 // The app's Content Security Policy for its overlay pages (app/shell/OverlayWebView.swift policy).
 export const OVERLAY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'";
 // Addresses of search engines the copy may go to (Safari's default, the learned ones).
-const ENGINES = /^https?:\/\/([a-z0-9-]+\.)*(google|bing|duckduckgo|yahoo|ecosia|startpage|baidu|yandex|kagi)\.[a-z.]+\//i;
+export const ENGINES = /^https?:\/\/([a-z0-9-]+\.)*(google|bing|duckduckgo|yahoo|ecosia|startpage|baidu|yandex|kagi)\.[a-z.]+\//i;
 export const SIZE = { width: 1440, height: 900 };
 
 // The overlay's files, served as the app serves them (its own origin, its policy, nothing cached).

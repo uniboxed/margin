@@ -4,10 +4,55 @@
 
 ```sh
 npm test            # unit tests: node --test tests/*.test.js
-npm run test:e2e    # builds dist/, then Playwright, headless Chromium, loads dist/chrome/ unpacked
+npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and WebKit, two files at a time
 ```
 
-Everything below this line is **manual, in Safari on macOS**. The automated tests only prove the extension works in Chromium. (Not run for now: Tirth's "no E2E for now". Since Margin 2 the e2e suite is mostly skipped tests waiting to be rewritten against Margin.app; `npm run test:webkit` and `npm run test:app` cover the extension and the app off screen: the WebKit host's window stays at −20000, −20000 for the whole run, never on a display (until 2026-11-06 AppKit moved it to the top left of the main display, in front of your windows).) Sections marked superseded test what Margin 2 removed: they're kept as history.
+Everything below "The e2e suite" is **manual, in Safari on macOS**. The automated tests prove the extension and the overlay work in Chromium and WebKit, against a stand-in Margin.app. `npm run test:webkit` and `npm run test:app` cover the extension on WebKit's own engine and the real app, off screen: the WebKit host's window stays at −20000, −20000 for the whole run, never on a display (until 2026-11-06 AppKit moved it to the top left of the main display, in front of your windows). Sections marked superseded test what Margin 2 removed: they're kept as history.
+
+## The e2e suite
+
+`tests/e2e/`. What runs:
+
+- **Margin:** the Safari build's profile with Chrome's manifest, in headless Chromium (`--headless=new`). Its real link client, page scripts and background.
+- **Margin.app:** a stand-in in Node (`tests/e2e/harness/shell.js`). The real overlay page (`dist/app/overlay.html`) runs in headless WebKit, one per full-screen window, served with the app's content policy.
+- **Safari's extension handler:** a native messaging relay (`harness/native-host.mjs`, `relay.js`). Its manifest sits in the test's own temporary profile.
+- **The pages:** a local site of 20 realistic pages on 17 made-up `.test` sites (`tests/e2e/site/`). Nothing leaves the Mac: other hosts don't resolve, search engines are answered locally, and a test fails on any request outside the site.
+
+How to run it:
+
+- `npm run test:e2e`: the build, then every file, two at a time. About 2 minutes on Tirth's Mac (129 and 131 s in two runs on 2026-11-06, the build included).
+- One file: `node scripts/build.js && node --test tests/e2e/sleep.test.js`.
+- One test: add `--test-name-pattern="pulling down"`.
+- Headless only. Nothing shows on screen. Never run `playwright install`: Chromium and WebKit are installed.
+- Screenshots go to `$MARGIN_E2E_SHOTS/<file>-<test>/` (default `$TMPDIR/margin-e2e-shots`), never the repo. Each point has `page.png`, `overlay.png` and `window.png` (the two put together).
+- `MARGIN_E2E_VERBOSE=1` prints what the shell, the relay and the site do.
+- `node tests/e2e/site/shoot.mjs [dir]` photographs every page of the test site.
+
+What each file covers:
+
+| File | What |
+|---|---|
+| `link` | linking, the page box at once, the app starting late |
+| `link-drops` | a drop mended, the app gone a moment and past 6 s, a goodbye, a wrong welcome key |
+| `data` | the app's set as the cache, changes sent, changes queued while unlinked, a wiped profile refilled |
+| `tabs`, `spaces`, `pins-folders` | the sidebar in the overlay |
+| `palette`, `newtab`, `archive` | the palette, the launcher, searches, the archive |
+| `icons-titles`, `navigation` | site icons and titles, next and previous, history |
+| `sleep` | sleeping tabs: idle pages closed and kept, busy ones awake |
+| `page-box`, `scroll` | every site in its box, fixed and sticky parts, frames, gestures |
+| `loading` | a streamed page, leaving, a reload, a page that stays |
+| `cloud-tabs` | iCloud Tabs in the sidebar and the palette |
+| `themes` | each built-in theme chosen in Settings and drawn with real content |
+| `chrome-build` | the Chrome build on its own |
+| `site` | the test site itself |
+
+Tests marked `todo` found a product bug: they stay in, failing, until it's fixed. `DECISIONS.md` lists them.
+
+What the suite can't see (covered by `npm run test:app` and `npm run test:webkit`):
+
+- the window server, Spaces, pointer pass-through and the app's hot keys;
+- WebKit's own extension engine, Safari reloading Margin, tab ids changing on a relaunch;
+- the app's data files and the real Swift link.
 
 ## Safari behaviors to confirm first
 

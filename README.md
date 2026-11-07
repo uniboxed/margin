@@ -125,7 +125,7 @@ dist/safari/, dist/chrome/, dist/app/
                         Ready-to-load builds from `npm run build` (generated, committed; a test checks they're current)
 scripts/                build.js, safari.sh (install), make-xcode.sh, margin-log.sh (`npm run log:app`)
 tests/                  *.test.js unit tests; theme/ browser tests of the runtime and themes (Playwright);
-                        e2e/ the in-page era's Playwright suite, mostly skipped until rewritten against the app
+                        e2e/ the real extension linked to a stand-in Margin.app, the real overlay, a local test site
 tools/                  webkit-host/ (Safari's extension engine, off screen), app-tests/ (Margin.app's checks)
 ```
 
@@ -143,11 +143,10 @@ npm test            # type check (tsc --checkJs, JSDoc types; types/*.d.ts), the
 npm run test:theme  # the UI runtime and the themes in headless WebKit and Chromium
 npm run test:app    # Margin.app's shell: unit checks and end to end against a fake extension, off screen
 npm run test:webkit # Margin's Safari build on WebKit's own extension engine, off screen (tools/webkit-host/README.md)
+npm run test:e2e    # the whole thing in headless Chromium and WebKit, on a local site of realistic pages (TESTING.md)
 npm run log:app     # Margin.app's and the extension's lines in the system log
 npm run icons       # regenerate extension/icons
 ```
-
-`npm run test:e2e` (Playwright, the in-page era's suite) isn't run for now.
 
 ### Adding a theme
 

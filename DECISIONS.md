@@ -2824,3 +2824,44 @@ On `feat/icloud-tabs` (from `feat/margin-app` at e3725be). Tirth asked for it on
 
 **Open, for Tirth:** the `TESTING.md` checks ("Margin 2: iCloud Tabs"), first that this Mac isn't listed and that each device's order matches Safari's.
 
+
+## The e2e suite rewritten (2026-11-06)
+
+On `test/e2e-rewrite` (from `feat/margin-app`). Tirth asked for the e2e suite to be rewritten, on pages that look and behave like real sites. The plan is `docs/e2e-plan.md`; `TESTING.md` "The e2e suite" says how to run it.
+
+**What runs.** The Safari build's profile in headless Chromium, linked through a native messaging relay to a stand-in Margin.app in Node; the real overlay page in headless WebKit; a local site of 20 realistic pages on 17 `.test` sites. Nothing leaves the Mac.
+
+**The second half** (plan items 11 to 17):
+
+- `sleep.test.js` (4): a pass closes idle pages and keeps their Margin tabs, not open; a mail draft, the podcast and the video playing, a never-sleep site, text in another site's frame and the tab in front stay; a click opens one again; off the list, the dashboard sleeps.
+- `page-box.test.js` (8): every site in the slot at the slot's width, with a picture of each; `?fp` pages in the box from their first frame; Keep open, a peek and a wider sidebar; the docs' media queries and `vw`; the travel page's fixed bar, sticky sub-nav, cookie bar, chat bubble and modal; frames; no box where the app doesn't draw.
+- `scroll.test.js` (9, rewritten): the wheel and a sticky bar; the feed loading more; scroll kept across switches; no bounce; sideways swipes stopped, not over a carousel, and the setting; pull to refresh and swipe drawn by the overlay; none when scrolled down, small, toward no history, or off.
+- `loading.test.js` (5): a report streaming in; leaving a page shown before a slow server answers; a reload; a 204; a mail draft's "Leave page?".
+- `cloud-tabs.test.js` (8): the folder above New Tab, devices folded, a tab opened here, Copy Link and Full Disk Access asked of the app, the palette's section, the setting.
+- `data.test.js` (4): the app's set as the cache; changes sent as made; changes made while the app was gone, in the next `data.hello`; a wiped profile filled again.
+- `link-drops.test.js` (5): a drop mended in about 0.3 s; the app gone a moment (dimmed, "Reconnecting", box kept) and back; gone past 6 s (no box, the new-tab notice) and a new app; a goodbye; a wrong welcome key.
+- `themes.test.js` (1 + 1 per theme): each theme in `PACKAGE_THEMES` chosen in the Settings of the one before, sent again, and drawn with tabs, pins, a folder, iCloud Tabs, the palette, the launcher's archive, a menu, the editor, a notice, the hidden sidebar and a peek. Pixel joins on its own once Phase 6 lists it.
+- `chrome-build.test.js` (6): `dist/chrome` alone: it starts, its new-tab page, Chrome's shortcuts and icons, nothing in pages, `chrome.search`.
+
+**Harness changes:**
+
+- Headless Chromium shows every tab as visible. A script the background runs in a tab behind the front one now sees it hidden while it runs (`build.js` `HIDDEN_BEHIND`), as Safari's would be. Without it no tab ever sleeps.
+- The relay answers `wantLink` with Safari's id for the profile (`s-default`), as `SafariWebExtensionHandler.swift` does. The stand-in app has a set only for that profile; any other gets `data.need`.
+- The shell can `kill()` the app (nothing listening) and `restart({ welcome })`. `m.worker` follows a background that starts again.
+- The site: `?wait=<ms>` answers late, `?nocontent` answers 204, on any address.
+
+**The old suite.** `enhancements`, `loader`, `platform`, `scroll` and `smoke` went with `helpers.js`. Their tests are in `scroll`, `navigation`, `loading` and `chrome-build`. One was dropped: upgrading to the Safari build moves the ⌃⌘ shortcut defaults. `tests/model.test.js` covers it, and stopping Chromium's worker tests nothing Safari does.
+
+**Bugs found, kept as `todo`** (six in all; the first four are the first half's, noted in their files):
+
+- `newtab.html#launcher` gets no launcher, and the page says "Margin.app isn't running" while linked (`archive`, `newtab`).
+- Linked, the new-tab page's hidden notice is drawn: `main { display: grid }` beats `[hidden]` (`newtab`).
+- A tab open before the app's set came in keeps the default space the set removed, and no row shows it (`tabs`).
+- New: `vw` inside a `font` shorthand that also has a `var()` isn't moved to the box. The docs' `h1` stays 44 px in a 1172 px box (3.2vw of it is 37.5 px). `content/page/sheets.js` walks a rule's longhands, which read empty while a `var()` is pending, so `shiftUnits` never sees it (`page-box`).
+- New: the iCloud Tabs folder pressed twice before the app's word comes back stays closed. It's drawn closed at once (the runtime's pending settings), but the next press's request is made from the stored state (`ui/runtime.js` dispatch reads `host.getState()`, not `viewState`), which still says open: it asks to close again. The same code serves a device's fold and Keep open. Seen once under load, then held in a test by keeping the app's word back between the presses (`cloud-tabs`).
+
+**Seen, not a bug:** with `storage.local` wiped but `storage.session` kept, the background links on its kept link and never asks the handler, so it says hello under a profile id of its own making. Safari wipes both at once (the extension loads again), so the test wipes both.
+
+**Not covered here:** the window server, Spaces, pass-through and hot keys; WebKit's extension engine; the app's files and its Swift link. `npm run test:app` and `npm run test:webkit` have them.
+
+**Time.** The whole suite: 129 and 131 s in two runs on Tirth's Mac, the build included (target: under 4 minutes). 119 tests: 113 pass, 6 `todo`, none skipped.
