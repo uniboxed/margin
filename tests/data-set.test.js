@@ -129,6 +129,20 @@ test('the data set back into the state (the cache refilled): spaces, pins, folde
   assert.deepEqual(stateFromDataSet(s, without).pins, []);
 });
 
+test('the data set\'s spaces in place of the copy\'s: a tab in a space the set took away joins its window\'s space, or the first', () => {
+  const wiped = M.defaultState();
+  const set = { format: 1, items: { spaces: {
+    home: { updatedAt: 1, value: { name: 'Home', emoji: '', color: '#000', order: 0 } },
+    work: { updatedAt: 1, value: { name: 'Work', emoji: '', color: '#111', order: 1 } },
+  } } };
+  const early = { ...wiped, tabs: { 5: { id: 5, windowId: 1, url: 'https://a.test/' }, 6: { id: 6, windowId: 2, url: 'https://b.test/' } }, tabSpace: { 5: 'personal', 6: 'personal' }, activeSpaceByWindow: { 2: 'work' } };
+  const next = stateFromDataSet(early, set);
+  assert.deepEqual(next.spaces.map((x) => x.id), ['home', 'work']);
+  assert.equal(next.tabSpace[5], 'home', 'its window has no space of the set\'s: the first');
+  assert.equal(next.tabSpace[6], 'work', 'its window\'s space');
+  assert.equal(stateFromDataSet(next, { items: { pins: {} } }).tabSpace, next.tabSpace, 'spaces untouched: tabs untouched');
+});
+
 // ---- the queue -------------------------------------------------------------------------
 
 test('the queue: the first look starts every item at 0 (not queued); changes, new items and deletions get their times; the same values again change nothing', () => {

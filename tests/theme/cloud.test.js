@@ -1,5 +1,5 @@
 // iCloud Tabs' live folder (Margin's <m-cloud-tabs>, each theme's
-// `cloud-tabs` part) and the palette's section for them, in both built-in
+// `cloud-tabs` part) and the palette's section for them, in every built-in
 // themes, in Playwright's WebKit and Chromium, headless, every network
 // request refused, with the mock host (ui/host.js) holding iCloud Tabs as
 // Margin.app's host does (tests/fixtures/cloud-tabs.js through
@@ -8,13 +8,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage, ARCADIA, NEO } from './package.js';
+import { harnessScript, themeForPage, ARCADIA, NEO, PIXEL } from './package.js';
 import { AIR } from '../fixtures/cloud-tabs.js';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const THEMES = [
   ['arcadia', ARCADIA, { newTab: '.new-tab-row', list: '.tabs-section', section: '.result-section' }],
   ['neo-brutalism', NEO, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
+  ['pixel', PIXEL, { newTab: '.new-tab', list: '.tabs', section: '.palette-section' }],
 ];
 const script = harnessScript();
 
@@ -88,6 +89,17 @@ for (const [engineName, engine] of ENGINES) {
           assert.equal(await count('.cloud-tab'), 0);
           await click('.cloud-head');
           assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsOpen: true } }]);
+          await ev(() => T.rtSettings({ cloudTabsOpen: true, cloudTabsClosed: [] }));
+          assert.equal(await count('.cloud-tab'), 6);
+          // Pressed twice before the state agrees: each press from what's drawn (closed, then open).
+          await click('.cloud-head');
+          assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsOpen: false } }]);
+          await click('.cloud-head');
+          assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsOpen: true } }], 'open again, not closed twice');
+          assert.equal(await count('.cloud-tab'), 6, 'drawn open');
+          await click('.cloud-device', 1);
+          await click('.cloud-device', 1);
+          assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsClosed: [] } }], 'a device: closed, then open again');
           await ev(() => T.rtSettings({ cloudTabsOpen: true, cloudTabsClosed: [] }));
           assert.equal(await count('.cloud-tab'), 6);
         });

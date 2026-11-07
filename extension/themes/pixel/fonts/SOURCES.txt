@@ -1,0 +1,16 @@
+Bundled fonts, fetched once from Google Fonts on 2026-11-06 (the CSS API
+with a Safari user agent, which serves woff2 per subset). Margin never fetches
+them at run time: the runtime makes FontFace objects from these bytes.
+
+CSS: https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@400..700&display=swap
+
+press-start-2p-latin.woff2       https://fonts.gstatic.com/s/pressstart2p/v16/e3t4euO8T-267oIAQAu6jDQyK3nVivNm4I81.woff2
+press-start-2p-latin-ext.woff2   https://fonts.gstatic.com/s/pressstart2p/v16/e3t4euO8T-267oIAQAu6jDQyK3nbivNm4I81PZQ.woff2
+pixelify-sans-latin.woff2        https://fonts.gstatic.com/s/pixelifysans/v3/CHylV-3HFUT7aC4iv1TxGDR9Jn0Ei0tSaJ0.woff2
+pixelify-sans-latin-ext.woff2    https://fonts.gstatic.com/s/pixelifysans/v3/CHylV-3HFUT7aC4iv1TxGDR9JnMEi0tSaJ1f2A.woff2
+(Pixelify Sans's files are variable: one file covers weights 400 to 700.
+The files are as Google Fonts serves them, unmodified.)
+
+Licences (SIL Open Font License 1.1), from the google/fonts repository:
+OFL-PressStart2P.txt   https://raw.githubusercontent.com/google/fonts/main/ofl/pressstart2p/OFL.txt
+OFL-PixelifySans.txt   https://raw.githubusercontent.com/google/fonts/main/ofl/pixelifysans/OFL.txt

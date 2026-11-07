@@ -304,6 +304,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var parkedEnding = false // §13.8: the shown window was closed, its parked windows closing
     var parkedBindAsked: Set<Int> = [] // parked windows the binder was asked to bind from the registry's record
     var devHooks: DevHooks? // DEV-HOOK: the dev-only test hook (DevHooks.swift), only with Options.devHooksOn
+    // ---- user themes (ShellThemes.swift) ----
+    lazy var userThemes = UserThemes(harness: options.harness)
 
     init(link: SocketLink, windows: WindowSource, apps: AppWatch, hotKeys: HotKeyRegistrar, options: Options = Options()) {
         self.link = link
@@ -443,9 +445,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 entry.resyncTimer?.invalidate()
                 forward(message, of: entry, windowsBefore: windowsBefore)
                 if case .windows = message { switcher.tick() }
-                if case .snapshot = message { acrossSoon(); cloudTabsCheck() }
+                if case .snapshot = message { acrossSoon(); cloudTabsCheck(); themesTellCopy(entry); themesCheck(entry) }
                 if case .delta(_, _, let changes, _) = message, changes["spaces"] != nil { acrossSoon() }
-                if case .delta(_, _, let changes, _) = message, changes["settings"] != nil { cloudTabsCheck() }
+                if case .delta(_, _, let changes, _) = message, changes["settings"] != nil { cloudTabsCheck(); themesCheck(entry) }
             case .gap(let expected, let got):
                 Diagnostics.warn("\(connection.key): number \(got) came, \(expected) was next: the state asked for again")
                 resync(entry)
@@ -463,7 +465,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 entry.theme = text
                 entry.themeId = id
                 Diagnostics.note("\(connection.key): theme \(id) here (\(data.count) bytes)")
-                for overlay in overlays(of: entry) { overlay.push(raw: #"{"type":"theme","theme":"# + text + "}") }
+                themesCheck(entry) // the copy's package, or the stored one its settings choose (ShellThemes.swift)
                 burst("theme")
             case .refused(let why):
                 Diagnostics.warn("\(connection.key): a theme refused: \(why)")
@@ -1311,7 +1313,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         json += #","across":"# + (acrossJSON(for: overlay) ?? "null")
         json += #","cloudTabs":"# + cloudTabsJSON(for: overlay)
         json += #","held":"# + (jsonString(entry.held.messages(for: overlay.key.windowId)) ?? "[]")
-        json += #","theme":"# + (entry.theme ?? "null") + "}"
+        json += #","themes":"# + themesListJSON
+        json += #","theme":"# + (overlayTheme(for: entry, overlay: overlay) ?? "null") + "}"
         return json
     }
 
@@ -1352,6 +1355,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             performAcross(from: overlay, name, arg as? JSONObject ?? [:])
         case "cloud.access", "copyText":
             performCloud(name, arg)
+        case _ where name.hasPrefix("theme."):
+            performTheme(from: overlay, name, arg)
         default:
             Diagnostics.note("\(overlay.key): \(name) isn't the app's yet")
         }

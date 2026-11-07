@@ -11,10 +11,11 @@
 
 /**
  * @typedef {{ id: string, label: string, primary?: boolean }} NoticeButton
- * @typedef {{ text: string, actions: NoticeButton[], ms: number, tab: boolean }} NoticeWords
+ * @typedef {{ text: string, actions: NoticeButton[], ms: number, tab: boolean, local?: boolean }} NoticeWords
  * `ms`: how long it stays up unless a button closes it first; `tab`: it's
  * about the page of one tab, and goes when that tab is no longer the
- * window's tab in front.
+ * window's tab in front; `local`: the overlay's own (its buttons stay in the
+ * overlay: ui/app-feedback.js), never pushed by the copy.
  */
 
 /** @type {Readonly<Record<string, NoticeWords>>} */
@@ -53,13 +54,23 @@ export const NOTICES = Object.freeze({
   'tab-gone': { text: 'That tab is no longer open.', actions: [], ms: 4000, tab: false },
   'no-answer': { text: 'Margin didn’t answer, so the tab didn’t switch. Try again.', actions: [], ms: 4000, tab: false },
   'not-shown': { text: 'Margin couldn’t show that tab. Try again.', actions: [], ms: 4000, tab: false },
+  // The overlay's own (app/overlay/overlay.js fallBack): the theme it was
+  // handed was refused, missing, or left no usable page, so it draws Arcadia,
+  // bundled with the app. The theme's name isn't said: it may be what's broken.
+  'theme-failed': {
+    text: 'Margin couldn’t draw the theme you chose, so it’s using Arcadia for now. Settings › Theme says why.',
+    actions: [{ id: 'settings', label: 'Settings', primary: true }, { id: 'ok', label: 'OK' }],
+    ms: 20000,
+    tab: false,
+    local: true,
+  },
 });
 
 /** Whether `kind` is one of Margin's notices. @param {unknown} kind */
 export const isNotice = (kind) => typeof kind === 'string' && Object.prototype.hasOwnProperty.call(NOTICES, kind);
 
-/** Whether `action` is one of the buttons of notice `kind`. @param {unknown} kind @param {unknown} action */
-export const isNoticeAction = (kind, action) => isNotice(kind) && NOTICES[/** @type {string} */ (kind)].actions.some((a) => a.id === action);
+/** Whether `action` is one of the buttons of notice `kind` the copy runs (the overlay's own notices: never). @param {unknown} kind @param {unknown} action */
+export const isNoticeAction = (kind, action) => isNotice(kind) && !NOTICES[/** @type {string} */ (kind)].local && NOTICES[/** @type {string} */ (kind)].actions.some((a) => a.id === action);
 
 /**
  * Which notice a switch that didn't happen gets, from why (a request's error,

@@ -24,7 +24,7 @@ import { noticeAnswered } from './notices.js';
 import { isNoticeAction } from '../shared/notices.js';
 import * as pageLoads from './page-loads.js';
 import { moveIndex } from '../ui/behaviors/drop-rules.js';
-import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, plainSetting } from '../themes/packages.js';
+import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, USER_THEME_ID, plainSetting } from '../themes/packages.js';
 
 // The tab a nav request is for: the one named, the page's own, or the one
 // in front of the window.
@@ -40,12 +40,16 @@ async function frontTab(tabId, windowId, sender) {
 // user imported), merged into what's saved: names as theme.json's, plain
 // values, at most MAX_SETTINGS. The theme's spec checks each value again
 // where it's applied (ui/theme-loader.js resolveSettings).
+/** Is `id` one of the person's imported themes (Margin.app's index, storage.local userThemes)? @param {unknown} id */
+async function userThemeListed(id) {
+  if (typeof id !== 'string') return false;
+  const index = (await api.storage.local.get(USER_THEMES_KEY).catch(() => ({})))?.[USER_THEMES_KEY];
+  return Array.isArray(index) && index.some((e) => e?.id === id);
+}
+
 async function updatePackageThemeSettings(themeId, patch) {
   if (typeof themeId !== 'string' || !patch || typeof patch !== 'object' || Array.isArray(patch)) return;
-  if (!PACKAGE_THEMES.includes(themeId)) {
-    const index = (await api.storage.local.get(USER_THEMES_KEY).catch(() => ({})))?.[USER_THEMES_KEY];
-    if (!Array.isArray(index) || !index.some((e) => e?.id === themeId)) return; // not a theme Margin has
-  }
+  if (!PACKAGE_THEMES.includes(themeId) && !(await userThemeListed(themeId))) return; // not a theme Margin has
   const clean = Object.fromEntries(Object.entries(patch).filter(([k, v]) => SETTING_NAME.test(k) && plainSetting(v)));
   if (!Object.keys(clean).length) return;
   await mutate((s) => {
@@ -917,7 +921,8 @@ export const handlers = {
   },
   /** @param {{ patch: Record<string, any> }} message */
   async updateSettings({ patch }) {
-    if ('theme' in patch && !THEMES[patch.theme] && !PACKAGE_THEMES.includes(patch.theme)) return; // not a theme Margin has
+    // Not a theme Margin has: a built-in, or one in Margin.app's index of imported themes (userThemes).
+    if ('theme' in patch && !THEMES[patch.theme] && !PACKAGE_THEMES.includes(patch.theme) && !(await userThemeListed(patch.theme))) return;
     await mutate((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   },
   // "Margin full screen" on or off for this window (Chrome; background/fullscreen.js).
@@ -931,6 +936,17 @@ export const handlers = {
   async windowState(_, sender) {
     const id = sender.tab?.windowId;
     return { fullscreen: id != null && platform?.marginFullscreen ? await isFullscreen(id) : false };
+  },
+  // Margin.app's index of the themes the person imported (app/shell/ThemeStore.swift: they're the
+  // Mac's, kept by the app; a copy holds only the list, never a package), sent as a copy links and
+  // whenever it changes. Kept in storage.local (`userThemes`) for updateSettings and the theme's settings.
+  /** @param {{ list: any[] }} message */
+  async userThemes({ list }) {
+    if (!Array.isArray(list)) return false;
+    const clean = list.slice(0, 50).filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && USER_THEME_ID.test(e.id) && !PACKAGE_THEMES.includes(e.id))
+      .map((e) => ({ id: e.id, name: String(e.name ?? '').slice(0, 60), version: String(e.version ?? '').slice(0, 16), author: String(e.author ?? '').slice(0, 80) }));
+    await api.storage.local.set({ [USER_THEMES_KEY]: clean });
+    return true;
   },
   // A theme's own settings (settings.themes[themeId]), merged into what's
   // there (updateSettings replaces whole top-level keys).

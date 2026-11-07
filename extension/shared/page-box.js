@@ -245,3 +245,15 @@ export function readFirstPaint(style) {
   if (theme === 'off' || !/^[a-z][a-z0-9-]*$/.test(theme)) return { theme: null, layout: null };
   return { theme, layout: /** @type {any} */ (Object.fromEntries(LAYOUT_SIDES.map((side) => [side, pixels(style.getPropertyValue(`--margin-at-${side}`))]))) };
 }
+
+// <body>'s background, with <html> saying none, is the window's canvas's: an
+// image in it is laid out at <html>'s size from the window's corner, not moved
+// with <html> into the box (a gradient steps at the box's width and repeats
+// along its bottom). Any background on <html> keeps it on <body>, which fills
+// the box; the canvas keeps <body>'s color. No weight: a page's own rule on
+// <html> wins, and then <body>'s is on <body> already. '' with no image.
+/** @param {{ backgroundImage: string, backgroundColor: string }} body <body>'s computed style */
+export function bodyBackgroundCss({ backgroundImage, backgroundColor }) {
+  if (!backgroundImage || backgroundImage === 'none') return '';
+  return `@media screen { :where(html) { background-color: ${backgroundColor}; background-image: linear-gradient(transparent, transparent); } }`;
+}

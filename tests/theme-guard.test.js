@@ -166,8 +166,9 @@ test('a stylesheet writes no text: content and quotes take only "", no var(), co
   assert.ok(r.removed.every((x) => /writes (text|letters)|in a property that writes text/.test(x.reason)), r.removed.map((x) => x.reason).join('\n'));
 });
 
-test('every built-in theme passes the rule with nothing removed (Neo-brutalism binds its editor\'s words now)', () => {
+test('every built-in theme passes the rule with nothing removed (Neo-brutalism binds its editor\'s words now; Pixel\'s ▶ and ▼ in guarded parts are svgs)', () => {
   assert.ok(BUILTIN_THEMES.includes('neo-brutalism'));
+  assert.ok(BUILTIN_THEMES.includes('pixel'));
   for (const id of BUILTIN_THEMES) {
     const t = readTheme(new URL(`../extension/themes/${id}/`, import.meta.url).pathname);
     const r = sanitizeTheme({ ...t, files: Object.keys(t.files) });

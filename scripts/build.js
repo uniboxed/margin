@@ -137,7 +137,7 @@ function bundle(out, manifest) {
 // host, extension/ui/host-app.js) as one script and its page, for the app's
 // Resources/app/ (scripts/xcode-add-sources.py). Safari's profile for now
 // (Margin 2 Phase 2 is Safari's; Chrome and Edge are Phase 5).
-export const APP_FILES = ['overlay.html', 'overlay.js'];
+export const APP_FILES = ['overlay.html', 'overlay.js', 'arcadia.js'];
 export function buildApp(outDir, { profile = 'safari' } = {}) {
   const out = outDir instanceof URL ? fileURLToPath(outDir) : outDir;
   rmSync(out, { recursive: true, force: true });
@@ -165,7 +165,27 @@ export function buildApp(outDir, { profile = 'safari' } = {}) {
     rmSync(tmp, { recursive: true, force: true });
   }
   cpSync(fileURLToPath(new URL('app/overlay/overlay.html', root)), `${out}/overlay.html`);
+  writeFileSync(`${out}/${FALLBACK_FILE}`, fallbackScript());
   return out;
+}
+
+// Arcadia, bundled with the overlay (docs/phase6-themes.md §3): what it draws
+// when the theme it's handed is refused, missing, or leaves no usable page.
+// A script, not JSON: the overlay's policy allows no connections (fetch),
+// only Margin's own scripts from its folder. The package in the `theme`
+// message's shape (background/theme-package.js ThemeMessage), loaded only
+// when it's needed (app/overlay/overlay.js fallBack).
+export const FALLBACK_FILE = 'arcadia.js';
+export function fallbackPackage() {
+  const dir = new URL('themes/arcadia/', SOURCE);
+  const manifest = readFileSync(new URL('theme.json', dir), 'utf8');
+  const raw = JSON.parse(manifest);
+  const named = [...(raw.fonts ?? []).map((f) => f.file), ...(raw.images ?? [])];
+  const files = Object.fromEntries(named.map((p) => [p, readFileSync(new URL(p, dir)).toString('base64')]));
+  return { id: 'arcadia', manifest, html: readFileSync(new URL('theme.html', dir), 'utf8'), css: readFileSync(new URL('theme.css', dir), 'utf8'), files };
+}
+function fallbackScript() {
+  return `// Arcadia for Margin.app's overlay to fall back on (scripts/build.js fallbackPackage).\nglobalThis.marginFallbackTheme = ${JSON.stringify(fallbackPackage())};\n`;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

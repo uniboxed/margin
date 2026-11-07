@@ -76,8 +76,10 @@ test('rows: icons from the stored favicons, a letter and color without one, slee
 
 test('spaces, the active tab, the window, the archive', () => {
   const vm = build(smallState());
-  assert.deepEqual(vm.spaces.map((s) => [s.id, s.abbr, s.active, s.tabCount, s.index]), [['home', 'HO', true, 5, 0], ['work', 'DW', false, 1, 1], ['side', 'SI', false, 0, 2]]);
-  assert.deepEqual([vm.space.name, vm.space.emoji, vm.space.color, vm.space.abbr, vm.space.tabCount], ['Home', '🏠', '#6c5ce7', 'HO', 5]);
+  assert.deepEqual(vm.spaces.map((s) => [s.id, s.abbr, s.active, s.tabCount, s.index, s.number]), [['home', 'HO', true, 5, 0, 1], ['work', 'DW', false, 1, 1, 2], ['side', 'SI', false, 0, 2, 3]], 'number: the place counted from 1 (Pixel\'s "WORLD 2-1")');
+  assert.deepEqual([vm.space.name, vm.space.emoji, vm.space.color, vm.space.abbr, vm.space.tabCount, vm.space.number], ['Home', '🏠', '#6c5ce7', 'HO', 5, 1]);
+  assert.equal(build({ ...smallState(), activeSpaceByWindow: { [W]: 'work' } }).space.number, 2, 'the space in front\'s own place');
+  assert.equal(buildViewModel({ state: null, ui: {}, platform: PLATFORM, settings: {} }).space.number, 1, 'before the state: 1, never 0');
   assert.deepEqual([vm.tab.id, vm.tab.host, vm.tab.pinned, vm.tab.asleep, vm.tab.newTab], [13, 'docs.example', true, false, false], 'the window\'s active tab');
   assert.deepEqual(vm.window, { id: W, mode: 'inpage', focused: true, sidebar: 'hidden', sidebarOpen: false, peek: false, pinnedOpen: false, frameWhenHidden: true });
   assert.deepEqual(ids(vm.archive), ['ar1', 'ar2'], 'newest first, as stored');
@@ -264,4 +266,16 @@ test('the window\'s frame when hidden, and the new-tab launcher: the space\'s pi
   const all = buildViewModel({ state: many, ui: { windowId: W, inNewTab: true, launcher: { allArchived: true } }, platform: PLATFORM, now });
   assert.deepEqual([all.launcher.archive.length, all.launcher.moreLabel], [14, 'Show fewer']);
   assert.equal(all.archive.at(-1).ago, '14h ago');
+});
+
+test('Margin\'s own pages show no host: never the extension\'s id, and a letter from the title', () => {
+  const state = smallState();
+  const t = state.tabs[14];
+  for (const url of ['safari-web-extension://4F1E2D3C-AAAA-BBBB-CCCC-123456789ABC/newtab/newtab.html', 'chrome-extension://abcdefghijklmnop/newtab/newtab.html']) {
+    state.tabs[14] = { ...t, url, title: 'New Tab' };
+    const vm = build(state);
+    const r = vm.space.today.find((x) => x.id === 14);
+    assert.equal(r.host, '', url);
+    assert.equal(r.letter, 'N', 'the letter comes from the title');
+  }
 });

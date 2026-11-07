@@ -45,7 +45,9 @@ test('the app host: the state from the hello, in the pages\' shape, drawable', (
   const { features, ...platform } = host.platform;
   assert.deepEqual(platform, { browser: 'safari', os: 'mac', app: true });
   // What Settings offers: the build's profile (Safari's in dist/app), as the new-tab page gave it.
-  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'cloudTabs', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'switchSettings']);
+  assert.deepEqual(Object.keys(features).sort(), ['blockGestures', 'cloudTabs', 'importThemes', 'marginFullscreen', 'newTabHint', 'search', 'sleepTabs', 'switchSettings', 'userThemes']);
+  assert.equal(features.importThemes, true, 'Margin.app imports themes');
+  assert.deepEqual(features.userThemes, [], 'none imported in this hello');
   assert.equal(features.cloudTabs, true, 'Safari: Settings offer "Show iCloud Tabs"');
   assert.equal(features.switchSettings, null, 'one profile: no "Close windows to save memory" (tests/handoff-ui.test.js)');
   assert.equal(state.tabs[13].title, 'Docs');
@@ -170,4 +172,42 @@ test('dist/app is up to date with app/overlay and extension/ (run `npm run build
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('dist/app/arcadia.js: Arcadia\'s package for the overlay to fall back on, as a theme message, passing every check', async () => {
+  const text = readFileSync(join(root, 'dist/app/arcadia.js'), 'utf8');
+  const m = /^\/\/[^\n]*\nglobalThis\.marginFallbackTheme = (\{[\s\S]*\});\n$/.exec(text);
+  assert.ok(m, 'one assignment, nothing else');
+  const pkg = JSON.parse(m[1]);
+  assert.equal(pkg.id, 'arcadia');
+  assert.deepEqual(Object.keys(pkg).sort(), ['css', 'files', 'html', 'id', 'manifest']);
+  assert.equal(pkg.manifest, readFileSync(join(root, 'extension/themes/arcadia/theme.json'), 'utf8'));
+  const { sanitizeTheme, checkPackage } = await import('../extension/ui/theme-loader.js');
+  assert.deepEqual(checkPackage({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, new Uint8Array(Buffer.from(String(v), 'base64'))])) }), []);
+  const r = sanitizeTheme({ ...pkg, files: Object.keys(pkg.files) });
+  assert.deepEqual([r.errors, r.removed], [[], []]);
+});
+
+test('the app host and themes: the index from the hello and `themes`; Import, a kept theme and Remove (only once its prompt says Remove) go to the app', async () => {
+  const b = bridge();
+  const got = [];
+  const host = createAppHost({ hello: hello({ themes: [{ id: 'mine', name: 'Mine', version: '1.0.0' }] }), post: b.post, onMessage: (m) => got.push(m.type) });
+  assert.deepEqual(host.userThemes.map((e) => e.id), ['mine']);
+  assert.deepEqual(host.platform.features.userThemes, host.userThemes);
+  host.receive({ type: 'themes', list: [] });
+  assert.deepEqual(host.userThemes, []);
+  host.receive({ type: 'themes', list: 'evil' });
+  assert.deepEqual(host.userThemes, [], 'not a list: ignored');
+  host.receive({ type: 'themeFile', kind: 'zip', zip: '' });
+  assert.deepEqual(got, ['themeFile'], 'what the picker read goes to the overlay');
+  const performed = () => b.posts.filter((p) => p.op === 'perform').map((p) => [p.name, p.arg]);
+  assert.equal(host.perform('theme.import'), true);
+  assert.equal(host.perform('theme.save', {}), false, 'no value');
+  assert.equal(host.perform('theme.save', { value: { format: 2, id: 'mine' } }), true);
+  host.perform('prompt', { id: 'remove-theme:mine', action: 'cancel' });
+  host.perform('prompt', { id: 'remove-theme:../x', action: 'remove' });
+  host.perform('prompt', { id: 'remove-theme:mine', action: 'remove' });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(performed(), [['theme.import', null], ['theme.save', { value: { format: 2, id: 'mine' } }], ['theme.remove', { id: 'mine' }]]);
+  host.destroy();
 });

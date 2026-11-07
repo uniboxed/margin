@@ -251,5 +251,16 @@ export function stateFromDataSet(state, set) {
     }
     Object.assign(next, { tabs: records, tabSpace, keptTabs });
   }
+  // A tab in a space the set took away (one open before the set came in, in
+  // the copy's default space): it joins its window's space, or the first.
+  if (next.spaces !== state.spaces) {
+    const known = (id) => next.spaces.some((s) => s.id === id);
+    const home = (tabId) => {
+      const id = next.activeSpaceByWindow?.[next.tabs?.[tabId]?.windowId];
+      return known(id) ? id : next.spaces[0].id;
+    };
+    const stray = Object.entries(next.tabSpace ?? {}).filter(([, sid]) => !known(sid));
+    if (stray.length) next.tabSpace = { ...next.tabSpace, ...Object.fromEntries(stray.map(([tabId]) => [tabId, home(tabId)])) };
+  }
   return next;
 }

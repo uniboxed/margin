@@ -42,6 +42,37 @@ const FILE_PATH = /^(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.
  * @typedef {{ manifest: string, html: string, css: string, files: Record<string, Uint8Array> }} ThemePackage
  */
 
+// What a file's first bytes must be for its kind: a font that isn't woff2,
+// or an "image" that's a script or a page, is refused before anything
+// decodes it. An svg image is UTF-8 text whose first element is <svg>
+// (images never run script or load anything, but a page isn't an image);
+// a note is UTF-8 text with no NUL.
+const ascii = (bytes, at, text) => bytes.length >= at + text.length && [...text].every((c, i) => bytes[at + i] === c.charCodeAt(0));
+const SIGNATURES = {
+  woff2: (b) => ascii(b, 0, 'wOF2'),
+  png: (b) => b.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => b[i] === v),
+  jpg: (b) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  gif: (b) => ascii(b, 0, 'GIF87a') || ascii(b, 0, 'GIF89a'),
+  webp: (b) => ascii(b, 0, 'RIFF') && ascii(b, 8, 'WEBP'),
+  avif: (b) => ascii(b, 4, 'ftyp') && ['avif', 'avis', 'mif1', 'msf1'].some((brand) => ascii(b, 8, brand)),
+};
+SIGNATURES.jpeg = SIGNATURES.jpg;
+/** @param {Uint8Array} bytes @returns {string | null} the text, if it's UTF-8 with no NUL */
+function utf8Text(bytes) {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return text.includes('\u0000') ? null : text;
+  } catch { return null; }
+}
+const SVG_START = /^\uFEFF?\s*(?:<\?xml[^>]{0,200}\?>\s*)?(?:<!--[\s\S]{0,4000}?-->\s*)*(?:<!DOCTYPE svg[^>]{0,400}>\s*)?<svg[\s>]/i;
+/** Does the file's content match its kind (by its extension)? @param {string} path @param {Uint8Array} bytes */
+export function contentMatches(path, bytes) {
+  const ext = path.split('.').pop().toLowerCase();
+  if (ext === 'svg') { const text = utf8Text(bytes); return text !== null && SVG_START.test(text); }
+  if (ext === 'txt' || ext === 'md') return utf8Text(bytes) !== null;
+  return SIGNATURES[ext]?.(bytes) ?? false;
+}
+
 const byteLength = (s) => (typeof s === 'string' ? new TextEncoder().encode(s).length : 0);
 
 /**
@@ -57,15 +88,20 @@ export function checkPackage(pkg) {
   const paths = Object.keys(files);
   if (paths.length > PACKAGE_LIMITS.files) errors.push(`package: more than ${PACKAGE_LIMITS.files} files`);
   let total = byteLength(pkg.manifest) + byteLength(pkg.html) + byteLength(pkg.css);
+  // Paths that differ only by case are one file on the Mac's disk.
+  const folded = new Set();
   for (const path of paths) {
     const bytes = files[path];
     if (!(bytes instanceof Uint8Array)) { errors.push(`${path}: not bytes`); continue; }
     total += bytes.length;
-    if (!FILE_PATH.test(path) || path.length > 200 || path.split('/').some((seg) => /^\.+$/.test(seg))) errors.push(`${path}: bad path`);
-    else if (FONT_FILE.test(path)) { if (bytes.length > PACKAGE_LIMITS.fontBytes) errors.push(`${path}: font larger than ${PACKAGE_LIMITS.fontBytes} bytes`); }
-    else if (IMAGE_FILE.test(path)) { if (bytes.length > PACKAGE_LIMITS.imageBytes) errors.push(`${path}: image larger than ${PACKAGE_LIMITS.imageBytes} bytes`); }
-    else if (NOTE_FILE.test(path)) { if (bytes.length > PACKAGE_LIMITS.noteBytes) errors.push(`${path}: note larger than ${PACKAGE_LIMITS.noteBytes} bytes`); }
-    else errors.push(`${path}: not a file a theme may bundle (woff2 fonts, png, jpg, gif, webp, avif, svg images, txt or md notes)`);
+    const kind = FONT_FILE.test(path) ? 'font' : IMAGE_FILE.test(path) ? 'image' : NOTE_FILE.test(path) ? 'note' : null;
+    if (!FILE_PATH.test(path) || path.length > 200 || path.split('/').some((seg) => /^\.+$/.test(seg))) { errors.push(`${path}: bad path`); continue; }
+    if (folded.has(path.toLowerCase())) { errors.push(`${path}: another file has the same name but for case`); continue; }
+    folded.add(path.toLowerCase());
+    if (!kind) { errors.push(`${path}: not a file a theme may bundle (woff2 fonts, png, jpg, gif, webp, avif, svg images, txt or md notes)`); continue; }
+    const cap = PACKAGE_LIMITS[`${kind}Bytes`];
+    if (bytes.length > cap) errors.push(`${path}: ${kind} larger than ${cap} bytes`);
+    else if (!contentMatches(path, bytes)) errors.push(`${path}: its content isn't a ${path.split('.').pop().toLowerCase()} ${kind}`);
   }
   if (total > PACKAGE_LIMITS.totalBytes) errors.push(`package: larger than ${PACKAGE_LIMITS.totalBytes} bytes`);
   return errors;
@@ -91,7 +127,7 @@ export function sanitizeTheme(pkg, { assetUrl = (p) => p } = {}) {
     ...css.removed.map((r) => ({ file: 'theme.css', ...r })),
   ];
   const errors = [...manifest.errors, ...html.errors, ...css.errors];
-  return { ok: errors.length === 0, manifest: manifest.manifest, tree: html.tree, css: css.css, removed, errors, stats: { ...html.stats, ...css.stats } };
+  return { ok: errors.length === 0, manifest: manifest.manifest, tree: html.tree, css: css.css, removed, errors, stats: { ...html.stats, ...css.stats }, structure: html.structure };
 }
 
 // ---------------------------------------------------------------------------

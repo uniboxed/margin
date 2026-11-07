@@ -84,6 +84,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     parkingTests() // parking-tests.swift
     handoffUiTests() // handoff-ui-tests.swift
     devHooksTests() // devhooks-tests.swift (DEV-HOOK: removed with the hook)
+    themeTests() // theme-tests.swift
     print(failures == 0 ? "all \(passed) checks passed" : "\(failures) of \(passed + failures) checks failed", String(format: "(%.2f s)", Date().timeIntervalSince(started)))
     exit(failures == 0 ? 0 : 1)
   }

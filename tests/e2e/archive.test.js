@@ -1,105 +1,122 @@
-// Auto-archive: the background's alarm (runs), and archiving and restoring (skipped: they went
-// through the in-page UI that Margin 2 Phase 2 step 5 removed). Not run for now (no E2E runs for now).
+// Auto-archive and the archive, through the overlay: the alarm, stale tabs
+// archived while pinned and active ones stay, the sidebar's archive button
+// opening Margin's start page with the archived tabs, and an archived tab
+// restored from there and from the palette into its own space.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, startServer, clickInShadow, sidebarSnapshot, paletteSnapshot, tabsInBrowser, waitFor, gotoLauncher, readState } from './helpers.js';
+import { startMargin } from './harness/margin.js';
+import { SPACES } from './harness/seed.js';
+import { sidebar, palette, chip } from './harness/ui.js';
 
-let ctx, server;
+let m;
+let ui;
+
+const HOUR = 3600_000;
+const SEED = (url) => ({
+  spaces: SPACES,
+  archive: [
+    { id: 'ar-dash', url: url('metrics.test', '/'), title: 'Overview · Metrics', spaceId: 'sp-work', favIconUrl: '', closedAt: Date.now() - 6 * HOUR },
+    { id: 'ar-podcast', url: url('radio.test', '/'), title: 'The sound of low tide · Radio Field', spaceId: 'sp-home', favIconUrl: '', closedAt: Date.now() - 30 * HOUR },
+  ],
+  settings: { sidebarPinnedOpen: true },
+});
+
+const frontId = async () => (await m.front())?.id;
+const archive = async () => (await m.stored('archive')).archive ?? [];
+const setSettings = (patch) => m.shell.request('updateSettings', { patch }, m.shell.frontWindowId());
+
 before(async () => {
-  ctx = await launch();
-  server = await startServer();
+  m = await startMargin({ name: 'archive', seed: SEED });
+  ui = await m.ui();
 });
-after(async () => {
-  await ctx?.context.close();
-  await server?.close();
-});
+after(async () => { await m?.close(); });
 
-const storage = (key) => readState(ctx.worker, key);
-const send = (page, msg) => page.evaluate((m) => chrome.runtime.sendMessage(m), msg);
-
-async function openPage(name) {
-  const page = await ctx.context.newPage();
-  await page.goto(`${server.base}/${name}`);
-  await page.waitForSelector('margin-sidebar-host', { state: 'attached' });
-  await waitFor(async () => (await sidebarSnapshot(page)).tabs.includes(name));
-  return page;
-}
-
-test('the background schedules the archive check with browser.alarms (Chromium)', async () => {
-  const alarm = await waitFor(() => ctx.worker.evaluate(() => chrome.alarms.get('margin-archive')));
+test('the background schedules the archive check (browser.alarms)', async () => {
+  const alarm = await m.until(() => m.bg(() => chrome.alarms.get('margin-archive')), { what: 'the alarm' });
   assert.equal(alarm.periodInMinutes, 15);
 });
 
-test('stale, unpinned, inactive tabs are closed and archived; pinned and active ones stay', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const stale = await openPage('stale');
-  const pinned = await openPage('pinned-stale');
-  const active = await openPage('active');
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  const tabs = await tabsInBrowser(ctx.worker);
-  const id = (title) => tabs.find((t) => t.title === title).id;
-  await send(nt, { type: 'pinTab', tabId: id('pinned-stale') });
-  await active.bringToFront();
-  await send(nt, { type: 'activateTab', tabId: id('active') });
-  await waitFor(async () => (await storage('tabs'))[id('active')]?.active);
+test('stale tabs are closed and archived; a pinned one and the one in front stay', async (t) => {
+  await m.open('dispatch.test', '/longread');
+  const longread = await frontId();
+  await m.open('accounts.test', '/signin');
+  const signin = await frontId();
+  await m.open('embed.test', '/');
+  const embeds = await frontId();
+  const res = await m.shell.request('pinTab', { tabId: embeds }, m.shell.frontWindowId());
+  assert.equal(res.ok, true);
+  await m.open('harbor.test', '/');
+  const harbor = await frontId();
+  await m.until(async () => (await sidebar(ui)).tabs.some((r) => r.id === harbor && r.active), { what: 'the travel page in front' });
+  await m.shoot(t, 'before');
 
-  await send(nt, { type: 'updateSettings', patch: { archiveAfterHours: 1 / 3600 } }); // 1 second
+  assert.equal((await setSettings({ archiveAfterHours: 1 / 3600 })).ok, true); // one second
   await new Promise((r) => setTimeout(r, 1200));
-  const count = await ctx.worker.evaluate(() => globalThis.margin.archiveNow());
-  assert.ok(count >= 1);
+  const count = await m.bg(() => globalThis.margin.archiveNow());
+  assert.ok(count >= 2, `archived ${count}`);
+  await setSettings({ archiveAfterHours: 12 });
 
-  await waitFor(async () => stale.isClosed());
-  assert.equal(pinned.isClosed(), false);
-  assert.equal(active.isClosed(), false);
-  const archive = await storage('archive');
-  assert.equal(archive[0].title, 'stale');
-  assert.equal(archive.some((a) => a.title === 'pinned-stale' || a.title === 'active'), false);
-
-  await send(nt, { type: 'updateSettings', patch: { archiveAfterHours: 12 } });
-  for (const p of [pinned, active, nt]) await p.close();
+  await m.until(async () => { const open = (await m.tabs()).map((x) => x.id); return !open.includes(longread) && !open.includes(signin); }, { what: 'the stale tabs closed' });
+  const open = (await m.tabs()).map((x) => x.id);
+  assert.ok(open.includes(embeds), 'the pinned tab stays');
+  assert.ok(open.includes(harbor), 'the tab in front stays');
+  const titles = (await archive()).map((a) => a.title);
+  assert.ok(titles.some((x) => x.startsWith('Sign in')), `the sign-in page archived: ${titles.join(' | ')}`);
+  assert.ok(titles.some((x) => x.length > 150), 'the long read archived');
+  assert.ok(!titles.some((x) => /^Harbor|coast walk/.test(x)), 'not the pinned one or the one in front');
+  await m.until(async () => { const v = await sidebar(ui); return !v.tabs.some((r) => r.id === longread || r.id === signin); }, { what: 'their rows gone' });
+  await m.shoot(t, 'after');
 });
 
-test('closing from the sidebar archives; the new-tab archive list restores in place', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const keep = await openPage('keeper');
-  await openPage('closeme');
-  await clickInShadow(keep, '.tab .close', 'closeme');
-  await waitFor(async () => (await storage('archive'))[0]?.title === 'closeme');
-
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  await nt.waitForSelector('#archive-list li');
-  assert.equal(await nt.textContent('#archive-list li .title'), 'closeme');
-  await nt.click('#archive-list li');
-  await nt.waitForURL(`${server.base}/closeme`);
-  await waitFor(async () => !(await storage('archive')).some((a) => a.title === 'closeme'));
-  await nt.close();
-  await keep.close();
+// Found by this suite (2026-11-06): the archive button opens Margin's start page (openLauncher:
+// newtab.html#launcher), which the overlay doesn't take for a new-tab page (see newtab.test.js):
+// no launcher, no archive list, and the page says "Margin.app isn't running" while linked.
+test('the archive button opens Margin\'s start page with the archived tabs; one restored comes back in place', { todo: 'newtab.html#launcher gets no launcher (shared/view.js NEW_TAB_PAGE)' }, async (t) => {
+  await ui.click('.bar-button.archive');
+  const page = await m.until(async () => { const f = await m.front(); return f?.url.startsWith(m.newTabUrl()) && f; }, { what: 'Margin\'s start page in front' });
+  await m.shoot(t, 'start-page');
+  try {
+    await m.until(async () => (await sidebar(ui)).launcher, { what: 'the launcher drawn' });
+    const rows = await m.until(async () => { const r = await ui.$$eval('.archive-row .title', (els) => els.map((e) => e.textContent)); return r.length >= 3 && r; }, { what: 'the archive list' });
+    assert.ok(rows.some((r) => r.startsWith('Sign in')), `the newest first: ${rows.join(' | ')}`);
+    assert.equal(rows.at(-1), 'The sound of low tide · Radio Field', 'the oldest last');
+    await m.shoot(t, 'archive-list');
+    await ui.locator('.archive-row', { hasText: 'The sound of low tide' }).click();
+    await m.until(async () => (await m.front())?.url === m.url('radio.test', '/'), { what: 'the podcast back' });
+    assert.ok(!(await m.tabs()).some((x) => x.id === page.id && x.url.startsWith(m.newTabUrl())), 'the start page made way');
+    await m.until(async () => !(await archive()).some((a) => a.id === 'ar-podcast'), { what: 'out of the archive' });
+  } finally {
+    // Not left open for the next test (the palette's restore).
+    if ((await m.tabs()).some((x) => x.id === page.id)) await m.bg((id) => chrome.tabs.remove(id), page.id);
+  }
 });
 
-test('archived tabs are restorable from the palette, into their space', { skip: 'drives or observes through the in-page UI removed in Margin 2 Phase 2 step 5: to rewrite against the app or storage' }, async () => {
-  const page = await openPage('palette-archive');
-  const nt = await ctx.context.newPage();
-  await gotoLauncher(nt, ctx);
-  const windowId = await nt.evaluate(() => chrome.tabs.getCurrent().then((t) => t.windowId));
-  const { result } = await send(nt, { type: 'createSpace', windowId, name: 'Old', emoji: '📦' });
-  const victim = await openPage('archived-in-old');
-  const victimId = (await tabsInBrowser(ctx.worker)).find((t) => t.title === 'archived-in-old').id;
-  await send(nt, { type: 'closeTab', tabId: victimId });
-  await waitFor(async () => victim.isClosed());
-  await send(nt, { type: 'setSpace', windowId, spaceId: 'personal', bringTab: false });
-  await nt.close();
+test('the launcher over a new tab lists the archived tabs, newest first, and one restored takes the page\'s place', async (t) => {
+  const page = await m.context.newPage();
+  await page.goto(m.newTabUrl());
+  const nt = await m.until(async () => { const f = await m.front(); return f?.url.startsWith(m.newTabUrl()) && f; }, { what: 'the new-tab page in front' });
+  await m.until(async () => (await sidebar(ui)).launcher, { what: 'the launcher drawn' });
+  const rows = await m.until(async () => { const r = await ui.$$eval('.archive-row .title', (els) => els.map((e) => e.textContent)); return r.length >= 3 && r; }, { what: 'the archive list' });
+  assert.ok(rows[0].startsWith('Sign in') || rows[0].startsWith('What the river'), `the newest first: ${rows.join(' | ')}`);
+  assert.equal(rows.at(-1), 'The sound of low tide · Radio Field', 'the oldest last');
+  await m.shoot(t, 'archive-list', { page });
+  await ui.locator('.archive-row', { hasText: 'The sound of low tide' }).click();
+  await m.until(async () => (await m.front())?.url === m.url('radio.test', '/'), { what: 'the podcast back' });
+  assert.ok(!(await m.tabs()).some((x) => x.id === nt.id && x.url.startsWith(m.newTabUrl())), 'the new-tab page made way');
+  await m.until(async () => !(await archive()).some((a) => a.id === 'ar-podcast'), { what: 'out of the archive' });
+});
 
-  await page.bringToFront();
-  await page.keyboard.press('Meta+KeyT');
-  await page.keyboard.type('archived in old');
-  await waitFor(async () => (await paletteSnapshot(page)).ids[0]?.startsWith('archive:'));
-  const opened = ctx.context.waitForEvent('page');
-  await page.keyboard.press('Enter');
-  const restored = await opened;
-  await restored.waitForURL(`${server.base}/archived-in-old`);
-  await waitFor(async () => (await storage('activeSpaceByWindow'))[windowId] === result.spaceId);
-  const restoredId = (await tabsInBrowser(ctx.worker)).find((t) => t.url.endsWith('/archived-in-old')).id;
-  assert.equal((await storage('tabSpace'))[restoredId], result.spaceId);
-  await restored.close();
-  await page.close();
+test('an archived tab restored from the palette opens in its own space', async (t) => {
+  m.shell.key('palette');
+  await m.until(async () => (await palette(ui)).focused, { what: 'the palette' });
+  await ui.keyboard.type('metrics');
+  await m.until(async () => (await palette(ui)).rows.some((r) => r.id === 'archive:ar-dash'), { what: 'the archived dashboard' });
+  await m.shoot(t, 'palette');
+  await ui.click('.palette .result[data-id="archive:ar-dash"]');
+  const dash = await m.until(async () => { const f = await m.front(); return f?.url === m.url('metrics.test', '/') && f; }, { what: 'the dashboard open' });
+  assert.equal((await m.state()).tabSpace[dash.id], 'sp-work', 'in Work, where it was');
+  await m.until(async () => (await sidebar(ui)).space === 'Work', { what: 'the window shows Work' });
+  await m.until(async () => (await sidebar(ui)).tabs.some((r) => r.id === dash.id && r.active), { what: 'its row, highlighted' });
+  await ui.click(chip('sp-home'));
+  await m.until(async () => (await sidebar(ui)).space === 'Home', { what: 'Home again' });
 });

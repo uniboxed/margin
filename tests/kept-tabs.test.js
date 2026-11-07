@@ -304,11 +304,12 @@ test('Margin.app\'s data (background/link.js): its data set becomes the cache wi
   try {
     const t0 = Date.now();
     const T = t0 - 60_000; // (the app's times: a minute ago, within the tombstones' keep)
-    // The app's whole set: a space and a pin it has, the space this copy has.
+    // The app's whole set: a space and a pin it has, the spaces this copy has (one it left out
+    // would move this copy's tabs in it to another: a change of this copy's).
     const s0 = await state();
-    const mine = s0.spaces[0];
+    const mine = Object.fromEntries(s0.spaces.map((sp, i) => [sp.id, { updatedAt: T + 1000, value: { name: sp.name, emoji: sp.emoji ?? '', color: sp.color ?? '', order: i } }]));
     const set = { format: 1, items: {
-      spaces: { [mine.id]: { updatedAt: T + 1000, value: { name: mine.name, emoji: mine.emoji ?? '', color: mine.color ?? '', order: 0 } }, 'from-app': { updatedAt: T + 2000, value: { name: 'From the app', emoji: '📦', color: '#123456', order: 1 } } },
+      spaces: { ...mine, 'from-app': { updatedAt: T + 2000, value: { name: 'From the app', emoji: '📦', color: '#123456', order: s0.spaces.length } } },
       pins: { 'pin-app': { updatedAt: T + 2000, value: { spaceId: 'from-app', url: 'https://pinned.test/', title: 'Pinned', folderId: null, pos: 0 } } },
     } };
     await store.adoptDataSet(() => set);

@@ -1,0 +1,34 @@
+/* pixel's first paint (scripts/build.js, from shared/page-box.js and themes/pixel/first-paint.css). */
+:root { --margin-fp: pixel; }
+@media screen {
+  html[data-margin-at="pixel"] {
+    position: absolute !important; left: 0 !important; top: 0 !important;
+    transform: translate(var(--margin-at-left), var(--margin-at-top)) !important; transform-origin: 0 0 !important;
+    width: calc(100vw - (var(--margin-at-left) + var(--margin-at-right))) !important; height: calc(100vh - (var(--margin-at-top) + var(--margin-at-bottom))) !important;
+    min-width: 0 !important; max-width: none !important; min-height: 0 !important; max-height: none !important;
+    margin: 0 !important; padding: 0 !important; box-sizing: border-box !important;
+    --margin-left: var(--margin-at-left); --margin-top: var(--margin-at-top); --margin-shift-x: calc(-1 * var(--margin-at-left)); --margin-shift-y: calc(-1 * var(--margin-at-top));
+    --margin-out-r: calc(-1 * var(--margin-at-right)); --margin-out-b: calc(-1 * var(--margin-at-bottom));
+  }
+}
+/* Pixel's look at a page's first paint, around the box (shared/page-box.js
+   firstPaintCss adds the box itself; scripts/build.js writes the two as
+   content/layout/theme-pixel.css, registered while Margin.app draws Margin:
+   background/registered.js). Margin.app's overlay draws the theme over this
+   as soon as it shows; this is what's there before. Every rule only under
+   <html> marked for Pixel (data-margin-at, set by the page's world:
+   content/page/main.js), so a registration WebKit keeps applying after it
+   was dropped paints nothing. The card as theme.css's .page: its notched
+   light pixel border (four hard shadows outside the box, no radius) and the
+   night ground spread around it. */
+@media screen {
+  html[data-margin-at="pixel"]::after {
+    content: "" !important;
+    position: fixed !important;
+    inset: 0 !important;
+    border-radius: var(--margin-at-radius) !important;
+    box-shadow: 0 -3px 0 #f1f1f1, 0 3px 0 #f1f1f1, -3px 0 0 #f1f1f1, 3px 0 0 #f1f1f1, 0 0 0 100vmax #1d1b33 !important;
+    pointer-events: none !important;
+    z-index: 2147483646 !important;
+  }
+}

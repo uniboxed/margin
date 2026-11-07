@@ -4,10 +4,55 @@
 
 ```sh
 npm test            # unit tests: node --test tests/*.test.js
-npm run test:e2e    # builds dist/, then Playwright, headless Chromium, loads dist/chrome/ unpacked
+npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and WebKit, two files at a time
 ```
 
-Everything below this line is **manual, in Safari on macOS**. The automated tests only prove the extension works in Chromium. (Not run for now: Tirth's "no E2E for now". Since Margin 2 the e2e suite is mostly skipped tests waiting to be rewritten against Margin.app; `npm run test:webkit` and `npm run test:app` cover the extension and the app off screen: the WebKit host's window stays at −20000, −20000 for the whole run, never on a display (until 2026-11-06 AppKit moved it to the top left of the main display, in front of your windows).) Sections marked superseded test what Margin 2 removed: they're kept as history.
+Everything below "The e2e suite" is **manual, in Safari on macOS**. The automated tests prove the extension and the overlay work in Chromium and WebKit, against a stand-in Margin.app. `npm run test:webkit` and `npm run test:app` cover the extension on WebKit's own engine and the real app, off screen: the WebKit host's window stays at −20000, −20000 for the whole run, never on a display (until 2026-11-06 AppKit moved it to the top left of the main display, in front of your windows). Sections marked superseded test what Margin 2 removed: they're kept as history.
+
+## The e2e suite
+
+`tests/e2e/`. What runs:
+
+- **Margin:** the Safari build's profile with Chrome's manifest, in headless Chromium (`--headless=new`). Its real link client, page scripts and background.
+- **Margin.app:** a stand-in in Node (`tests/e2e/harness/shell.js`). The real overlay page (`dist/app/overlay.html`) runs in headless WebKit, one per full-screen window, served with the app's content policy.
+- **Safari's extension handler:** a native messaging relay (`harness/native-host.mjs`, `relay.js`). Its manifest sits in the test's own temporary profile.
+- **The pages:** a local site of 20 realistic pages on 17 made-up `.test` sites (`tests/e2e/site/`). Nothing leaves the Mac: other hosts don't resolve, search engines are answered locally, and a file fails on any request outside the site, anything the overlay loads from the web, or any error in the overlay (`m.close()`).
+
+How to run it:
+
+- `npm run test:e2e`: the build, then every file, two at a time. About 2 minutes on Tirth's Mac (132 s in three runs in a row on 2026-11-06, the build included).
+- One file: `node scripts/build.js && node --test tests/e2e/sleep.test.js`.
+- One test: add `--test-name-pattern="pulling down"`.
+- Headless only. Nothing shows on screen. Never run `playwright install`: Chromium and WebKit are installed.
+- Screenshots go to `$MARGIN_E2E_SHOTS/<file>-<test>/` (default `$TMPDIR/margin-e2e-shots`), never the repo. Each point has `page.png`, `overlay.png` and `window.png` (the two put together).
+- `MARGIN_E2E_VERBOSE=1` prints what the shell, the relay and the site do.
+- `node tests/e2e/site/shoot.mjs [dir]` photographs every page of the test site.
+
+What each file covers:
+
+| File | What |
+|---|---|
+| `link` | linking, the page box at once, the app starting late |
+| `link-drops` | a drop mended, the app gone a moment and past 6 s, a goodbye, a wrong welcome key |
+| `data` | the app's set as the cache, changes sent, changes queued while unlinked, a wiped profile refilled |
+| `tabs`, `spaces`, `pins-folders` | the sidebar in the overlay |
+| `palette`, `newtab`, `archive` | the palette, the launcher, searches, the archive |
+| `icons-titles`, `navigation` | site icons and titles, next and previous, history |
+| `sleep` | sleeping tabs: idle pages closed and kept, busy ones awake |
+| `page-box`, `scroll` | every site in its box, fixed and sticky parts, frames, gestures |
+| `loading` | a streamed page, leaving, a reload, a page that stays |
+| `cloud-tabs` | iCloud Tabs in the sidebar and the palette |
+| `themes` | each built-in theme chosen in Settings and drawn with real content |
+| `chrome-build` | the Chrome build on its own |
+| `site` | the test site itself |
+
+Tests marked `todo` found a product bug: they stay in, failing, until it's fixed. `DECISIONS.md` lists them.
+
+What the suite can't see (covered by `npm run test:app` and `npm run test:webkit`):
+
+- the window server, Spaces, pointer pass-through and the app's hot keys;
+- WebKit's own extension engine, Safari reloading Margin, tab ids changing on a relaunch;
+- the app's data files and the real Swift link.
 
 ## Safari behaviors to confirm first
 
@@ -686,6 +731,20 @@ The honest numbers, until gate G16 measures them:
 **Before production.**
 - [ ] The dev hook goes: `git grep -n DEV-HOOK` lists every part. Delete `app/shell/DevHooks.swift`, `tools/app-tests/devhooks-tests.swift` and `tools/handoff-lab/devswitch.swift`, and every marked line in `Shell.swift`, `Handoff.swift`, `tools/app-tests/` (`run.sh`, `tests.swift`, the fake world in `handoff-tests.swift`) and the lab's `devSwitch` (G1's `--dev-hook` and G16 need another way to drive Margin by then). Then `npm run test:app`, and `defaults delete io.tirth.margin MarginDevHooks` on every test Mac.
 - [ ] The handoff's gate (`MarginHandoff`) is decided by the gates' results, not left to a default someone set.
+## Margin 2 Phase 6: user themes (2026-11-06)
+
+Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R extension/themes/neo-brutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
+
+1. **Import a folder over full screen.** Safari in full screen, Margin's new-tab page, Settings › Import Theme…. The file panel shows over full-screen Safari, not on another Space. Choose `my-neo`. The window draws My Neo at once, with a dark bar at the top: "Previewing “My Neo” 1.0.0 by Margin. Use this theme?". The pages move to My Neo's box.
+2. **Cancel.** Press Cancel: the theme from before comes back. Import again and press Escape: the same. Import again and wait 30 s: it ends by itself and Settings says so.
+3. **Use it.** Import again, press Use Theme. Settings lists “My Neo” 1.0.0 with Remove, and the Theme menu shows My Neo. Other profiles keep their theme; their Settings list My Neo too.
+4. **The `.margintheme` file.** Change the version in `theme.json` to 1.1.0, pack it again, import the file: the bar says "Replaces version 1.0.0". Use it.
+5. **A broken theme.** Add an `evil.js` file to the folder and import it: nothing previews, Settings says it can't use it and names `evil.js`. Finder's Compress on the folder, renamed `.margintheme`: imports like the folder.
+6. **The theme's own settings.** With My Neo in use, Settings shows "Settings of “My Neo”" with its sidebar width. Change it: the sidebar follows.
+7. **Remove while in use.** Remove “My Neo” and confirm. The window goes back to Arcadia at once. A second profile that used it goes back to Arcadia too.
+8. **Fallback.** Hard to make by hand: skip unless a theme goes blank. A theme Margin can't draw shows Arcadia with "Margin couldn’t draw the theme you chose…" and Settings and OK.
+9. **After an import, resize the window** (or dock the Web Inspector): the pages still follow the box. (In the off-screen app tests an overlay that had the keyboard got no resize events; on screen it should.)
+10. Light and dark system modes: the bar looks the same in both.
 
 ## Margin 2: Safari reliability (2026-11-05)
 
@@ -798,6 +857,14 @@ The honest numbers, until gate G16 measures them:
 - [ ] Hold ⌃⌘↓ through about ten tabs on a busy Mac (several heavy pages loading): the highlight moves down and never jumps back, even when Safari is slow to show a tab. The overlay's line says `the highlight went back 0 times`.
 - [ ] While holding ⌃⌘↓ for a few seconds, the log gets at most one `windows report at …` line a second from that profile, not one per tab.
 - [ ] Right after a sidebar disappears (or in a window you just put in full screen, before its sidebar shows), press ⌘T: within about 2 s Margin's new-tab page opens in that window, with its address field and a note that Margin.app hasn't placed the window. The log says `palette push for window N (…) dropped: …; its copy asked to open Margin's new-tab page there`, then from the copy `the app couldn't show the palette over window N: Margin's new-tab page opened there`. Once the sidebar is back, ⌘T opens the palette again.
+
+## Every profile links again after Margin.app restarts (2026-11-06)
+
+Before: after an update or a quick quit and restart of Margin.app, often only the profile that asked last (usually Work) linked; the others stayed unlinked until Safari restarted, and the toolbar button and new pages didn't help. Checked on Test A and Test B already (`DECISIONS.md`, same title). What's left for you:
+
+- [ ] With windows open in three or more profiles, run `npm run safari`. Within about 5 s every profile's window has Margin drawn again. In `npm run log:app` there's one `hello: safari:…` per profile.
+- [ ] Quit Margin.app from its menu and open it again, once with each profile's window in front and once with another app in front. Every profile links within about 4 s each time.
+- [ ] Lines like `wantLink: no answer from the extension handler within 3000 ms …` are fine (Safari lost that answer; the copy asks again). Send me any `the link's try has been under way N s …` or `unlinked with no try under way or to come …` line, with the time.
 
 ## Margin 2: iCloud Tabs (2026-11-05)
 

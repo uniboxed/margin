@@ -489,6 +489,23 @@ test('updateThemeSettings: a package theme\'s settings (built in, or imported), 
   assert.equal((await load()).settings.themes.arcadia.sidebarWidth, 330, 'Arcadia\'s own, as before (snapped)');
 });
 
+test('userThemes: Margin.app\'s index of imported themes kept (ids checked, built-ins\' left out); updateSettings then takes a listed id', async () => {
+  await setup();
+  const { handlers } = await import('../extension/background/handlers.js');
+  await handlers.updateSettings({ patch: { theme: 'mine' } });
+  assert.notEqual((await load()).settings.theme, 'mine', 'not listed yet: refused');
+  assert.equal(await handlers.userThemes({ list: 'evil' }), false);
+  assert.equal(await handlers.userThemes({ list: [{ id: 'mine', name: 'Mine', version: '1.0.0', author: 'Me', bytes: 9, html: '<x>' }, { id: 'arcadia', name: 'Fake' }, { id: '../evil' }, null] }), true);
+  assert.deepEqual(fake.local.userThemes, [{ id: 'mine', name: 'Mine', version: '1.0.0', author: 'Me' }], 'only the index\'s fields, never a package');
+  await handlers.updateSettings({ patch: { theme: 'mine' } });
+  assert.equal((await load()).settings.theme, 'mine');
+  await handlers.userThemes({ list: [] });
+  await handlers.updateSettings({ patch: { theme: 'mine' } });
+  await handlers.updateSettings({ patch: { theme: 'arcadia' } });
+  assert.equal((await load()).settings.theme, 'arcadia');
+  delete fake.local.userThemes;
+});
+
 // (Last: this copy is stale from here on.)
 test('showSpace (Safari): a copy a newer one replaced, its last check over a second ago, fails as stale before it switches anything (its write waits, and wouldn\'t ask until then)', async () => {
   await setup();

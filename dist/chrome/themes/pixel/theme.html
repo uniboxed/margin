@@ -1,0 +1,438 @@
+<div class="pixel" m-attr:data-mode="{{window.mode}}" m-attr:data-sidebar="{{window.sidebar}}" m-class:framed="{{window.frameWhenHidden}}" m-class:newtab="{{launcher}}" m-class:blink="{{settings.blink}}" m-style:--space="{{space.color}}">
+
+  <!-- Pixel: Tirth's "Sidebar · Pixel / 8-bit" board (Pixel.dc.html). The
+       PICO-8 palette on a dotted night ground, notched pixel borders (four
+       hard box-shadows), Press Start 2P for labels, Pixelify Sans for the
+       rest, a blinking cursor. Icons are pixel svgs (crisp edges). -->
+
+  <div class="peek-zone" m-peek="left" aria-hidden="true"></div>
+
+  <nav class="sidebar pxb" aria-label="Sidebar">
+    <div class="column" m-swipe="spaces">
+
+      <!-- Windowed (Margin covers the toolbar): the window's buttons, after
+           the board's "Glass on dark" set, as three square pixel dots. -->
+      <div class="window-bar">
+        <m-window-controls class="window-controls">
+          <button class="btn wc close" aria-label="Close window" m-action="window.close"><svg class="pix" viewBox="0 0 7 7" aria-hidden="true"><path d="M1 1h1v1H1zM2 2h1v1H2zM3 3h1v1H3zM4 4h1v1H4zM5 5h1v1H5zM5 1h1v1H5zM4 2h1v1H4zM2 4h1v1H2zM1 5h1v1H1z"></path></svg></button>
+          <button class="btn wc min" aria-label="Minimise window" m-action="window.minimise"><svg class="pix" viewBox="0 0 7 7" aria-hidden="true"><path d="M1 3h5v1H1z"></path></svg></button>
+          <button class="btn wc full" aria-label="Full screen" m-action="window.fullscreen"><svg class="pix" viewBox="0 0 7 7" aria-hidden="true"><path d="M1 1h3v1H2v2H1zM6 6H3V5h2V3h1z"></path></svg></button>
+        </m-window-controls>
+        <m-drag-region class="drag-region"></m-drag-region>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn hl press tool" aria-label="Toggle sidebar" m-attr:aria-pressed="{{window.sidebarOpen}}" m-action="sidebar.toggle">
+          <svg class="pix big" viewBox="0 0 12 12" aria-hidden="true"><path d="M1 2h10v1H1zM1 10h10v1H1zM1 3h1v7H1zM10 3h1v7h-1zM4 3h1v7H4z"></path></svg>
+        </button>
+        <div class="grow"></div>
+        <button class="btn hl press tool" aria-label="Back" m-action="nav.back">
+          <svg class="pix" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 6h1V5h1V4h1V3h1v2h4v2H7v2H6V8H5V7H4V6z"></path></svg>
+        </button>
+        <button class="btn hl press tool" aria-label="Forward" m-action="nav.forward">
+          <svg class="pix" viewBox="0 0 12 12" aria-hidden="true"><path d="M9 6H8V5H7V4H6V3H5v2H1v2h4v2h1V8h1V7h1V6z"></path></svg>
+        </button>
+        <button class="btn hl press tool reload" aria-label="Reload" m-class:loading="{{tab.loading}}" m-action="nav.reload">
+          <svg class="pix" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h5v1H3zM2 3h1v6H2zM3 9h6v1H3zM9 6h1v3H9zM8 1h1v1H8zM9 2h1v2H8V3h1zM7 3h1v1H7z"></path></svg>
+        </button>
+      </div>
+
+      <!-- The address: "> host" and a blinking block; opens the palette. -->
+      <button class="btn press address" aria-label="Address: {{tab.url}}. Open command bar" m-action="palette.open">
+        <span class="chevron" aria-hidden="true">&gt;</span>
+        <span class="host ellipsis">{{tab.host}}</span>
+        <span class="caret" aria-hidden="true"></span>
+      </button>
+
+      <div class="space-head swipes">
+        <span class="world" aria-hidden="true">WORLD {{space.number}}-1</span>
+        <h2 class="space-name" m-rename="space">{{space.name}}</h2>
+        <span class="count" title="{{space.tabCount}} tabs">×{{space.tabCount}}</span>
+      </div>
+
+      <div class="tabs swipes" m-scroll="tabs">
+        <div class="folders" m-drop="pins">
+          <m-for each="space.pinned" as="g">
+            <m-if test="g.isFolder">
+              <div class="folder" data-folder-id="{{g.id}}" m-class:open="{{g.open}}" m-drop="folder">
+                <button class="btn row folder-head" m-attr:aria-expanded="{{g.open}}" m-action="folder.toggle" m-arg="{{g.id}}" m-drag="folder">
+                  <svg class="pix arrow" viewBox="0 0 4 7" aria-hidden="true"><path d="M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z"></path></svg>
+                  <span class="folder-name" m-rename="folder">{{g.name}}</span>
+                  <span class="folder-count">{{g.count}}</span>
+                </button>
+                <m-for each="g.shown" as="t">
+                  <a class="row tab pin" data-pin-id="{{t.id}}" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:open="{{t.open}}" m-action="pin.open" m-arg="{{t.id}}" m-drag="pin">
+                    <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg><svg class="pix was" viewBox="0 0 7 9"><path d="M0 0h1v9H0zM1 0h1v1H1zM1 8h1v1H1zM2 1h2v1H2zM2 7h2v1H2zM4 2h2v1H4zM4 6h2v1H4zM6 3h1v3H6z"></path></svg></span>
+                    <m-if test="t.icon">
+                      <img class="fav" alt="" m-icon="{{t.icon}}">
+                      <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                    </m-if>
+                    <span class="title">{{t.title}}</span>
+                    <m-if test="t.asleep"><svg class="pix zz" viewBox="0 0 5 5" aria-label="Asleep" role="img"><path d="M0 0h5v1H0zM3 1h1v1H3zM2 2h1v1H2zM1 3h1v1H1zM0 4h5v1H0z"></path></svg></m-if>
+                    <m-if test="t.audible"><span class="eq" role="img" aria-label="Playing audio"><i></i><i></i><i></i></span></m-if>
+                    <m-if test="t.open">
+                      <button class="btn x" aria-label="Close tab (stays pinned)" m-action="tab.close" m-arg="{{t.tabId}}"><svg class="pix" viewBox="0 0 7 7" aria-hidden="true"><path d="M0 0h2v1H0zM1 1h2v1H1zM2 2h3v1H2zM3 3h1v1H3zM2 4h3v1H2zM1 5h2v1H1zM0 6h2v1H0zM5 0h2v1H5zM4 1h2v1H4zM4 5h2v1H4zM5 6h2v1H5z"></path></svg></button>
+                    </m-if>
+                  </a>
+                </m-for>
+              </div>
+              <m-else>
+                <a class="row tab pin loose" data-pin-id="{{g.id}}" title="{{g.title}}" m-class:on="{{g.active}}" m-class:behind="{{g.behind}}" m-class:asleep="{{g.asleep}}" m-class:busy="{{g.loading}}" m-class:open="{{g.open}}" m-action="pin.open" m-arg="{{g.id}}" m-drag="pin">
+                  <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg><svg class="pix was" viewBox="0 0 7 9"><path d="M0 0h1v9H0zM1 0h1v1H1zM1 8h1v1H1zM2 1h2v1H2zM2 7h2v1H2zM4 2h2v1H4zM4 6h2v1H4zM6 3h1v3H6z"></path></svg></span>
+                  <m-if test="g.icon">
+                    <img class="fav" alt="" m-icon="{{g.icon}}">
+                    <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{g.color}}">{{g.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{g.title}}</span>
+                  <span class="pin-mark" aria-hidden="true"><svg class="pix" viewBox="0 0 5 7"><path d="M1 0h3v1H1zM1 1h1v3H1zM3 1h1v3H3zM0 3h5v1H0zM2 4h1v3H2z"></path></svg></span>
+                  <m-if test="g.asleep"><svg class="pix zz" viewBox="0 0 5 5" aria-label="Asleep" role="img"><path d="M0 0h5v1H0zM3 1h1v1H3zM2 2h1v1H2zM1 3h1v1H1zM0 4h5v1H0z"></path></svg></m-if>
+                  <m-if test="g.audible"><span class="eq" role="img" aria-label="Playing audio"><i></i><i></i><i></i></span></m-if>
+                  <m-if test="g.open">
+                    <button class="btn x" aria-label="Close tab (stays pinned)" m-action="tab.close" m-arg="{{g.tabId}}"><svg class="pix" viewBox="0 0 7 7" aria-hidden="true"><path d="M0 0h2v1H0zM1 1h2v1H1zM2 2h3v1H2zM3 3h1v1H3zM2 4h3v1H2zM1 5h2v1H1zM0 6h2v1H0zM5 0h2v1H5zM4 1h2v1H4zM4 5h2v1H4zM5 6h2v1H5z"></path></svg></button>
+                  </m-if>
+                </a>
+              </m-else>
+            </m-if>
+          </m-for>
+        </div>
+
+        <!-- iCloud Tabs (Margin.app with Safari): a live folder above the new-tab row, outside every drop zone. -->
+        <m-cloud-tabs class="cloud-slot"></m-cloud-tabs>
+
+        <div class="today-zone" m-drop="tabs">
+          <div class="divider">
+            <span class="today-label">TODAY</span>
+            <m-if test="space.hasToday">
+              <button class="btn press clear" m-action="today.clear">CLEAR</button>
+            </m-if>
+          </div>
+
+          <button class="btn row new-tab" m-class:on="{{space.newTab.active}}" m-action="tab.new">
+            <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg></span>
+            <span class="plus" aria-hidden="true">+</span>
+            <span class="grow left">New tab</span>
+            <kbd class="kbd">⌘T</kbd>
+          </button>
+
+          <div class="today">
+            <m-for each="space.today" as="t">
+              <a class="row tab" data-tab-id="{{t.id}}" title="{{t.title}}" m-class:on="{{t.active}}" m-class:behind="{{t.behind}}" m-class:asleep="{{t.asleep}}" m-class:busy="{{t.loading}}" m-class:not-open="{{t.notOpen}}" m-action="tab.activate" m-arg="{{t.id}}" m-drag="tab">
+                <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg><svg class="pix was" viewBox="0 0 7 9"><path d="M0 0h1v9H0zM1 0h1v1H1zM1 8h1v1H1zM2 1h2v1H2zM2 7h2v1H2zM4 2h2v1H4zM4 6h2v1H4zM6 3h1v3H6z"></path></svg></span>
+                <m-if test="t.icon">
+                  <img class="fav" alt="" m-icon="{{t.icon}}">
+                  <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                </m-if>
+                <span class="title">{{t.title}}</span>
+                <m-if test="t.asleep"><svg class="pix zz" viewBox="0 0 5 5" aria-label="Asleep" role="img"><path d="M0 0h5v1H0zM3 1h1v1H3zM2 2h1v1H2zM1 3h1v1H1zM0 4h5v1H0z"></path></svg></m-if>
+                <m-if test="t.audible"><span class="eq" role="img" aria-label="Playing audio"><i></i><i></i><i></i></span></m-if>
+                <button class="btn x" aria-label="Close tab" m-action="tab.close" m-arg="{{t.id}}"><svg class="pix" viewBox="0 0 7 7" aria-hidden="true"><path d="M0 0h2v1H0zM1 1h2v1H1zM2 2h3v1H2zM3 3h1v1H3zM2 4h3v1H2zM1 5h2v1H1zM0 6h2v1H0zM5 0h2v1H5zM4 1h2v1H4zM4 5h2v1H4zM5 6h2v1H5z"></path></svg></button>
+              </a>
+            </m-for>
+          </div>
+          <m-if test="!space.hasToday">
+            <div class="stage-clear">STAGE CLEAR!<br>NEW TABS LAND HERE.</div>
+          </m-if>
+        </div>
+      </div>
+
+      <!-- The worlds: the archive chest, the spaces as numbered chips, "+". -->
+      <div class="spaces">
+        <button class="btn hl press tool chest" aria-label="Archive and library" m-action="archive.open">
+          <svg class="pix chest-ico" viewBox="0 0 12 12" aria-hidden="true"><path class="wood" d="M1 4h10v7H1z"></path><path class="lid" d="M1 3h10v2H1zM5 5h2v2H5z"></path><path class="lock" d="M5 6h2v1H5z"></path></svg>
+        </button>
+        <div class="chips" role="group" aria-label="Spaces">
+          <m-for each="spaces" as="s">
+            <m-if test="s.profileStart"><span class="profile-gap" aria-hidden="true"></span></m-if>
+            <button class="btn press chip" aria-label="Switch to {{s.label}} space" title="{{s.label}}" m-attr:aria-pressed="{{s.active}}" m-class:on="{{s.active}}" m-class:foreign="{{s.foreign}}" m-class:switching="{{s.switching}}" m-style:--chip="{{s.color}}" m-action="space.switch" m-arg="{{s.id}}" m-drop="space">{{s.number}}<m-if test="s.profileMark"><span class="profile-tag" m-style:--profile="{{s.profile.color}}" aria-hidden="true"><m-if test="s.profile.symbol"><img class="profile-symbol" alt="" m-icon="{{s.profile.symbol}}"><m-else>{{s.profile.initial}}</m-else></m-if></span></m-if></button>
+          </m-for>
+        </div>
+        <button class="btn hl press tool add" aria-label="New folder or space" m-action="menu.open" m-arg="add">
+          <svg class="pix" viewBox="0 0 6 6" aria-hidden="true"><path d="M2 0h2v6H2zM0 2h6v2H0z"></path></svg>
+        </button>
+      </div>
+
+    </div>
+    <div class="resizer" m-resize="sidebar" title="Drag to resize · double-click to reset" aria-hidden="true"></div>
+  </nav>
+
+  <m-page class="page"></m-page>
+
+  <!-- The page in front loading (its load, the page being left, a site's own
+       navigation): a stepped bar marching along the page card's top border,
+       seen with the sidebar hidden too. -->
+  <div class="load-bar" m-class:on="{{tab.loading}}" aria-hidden="true"></div>
+
+  <!-- Margin's trackpad gestures on the page (pull to refresh, swipe back and
+       forward): a pixel badge over the page that comes in with the fingers and
+       fills yellow once letting go would do it. Never takes the pointer. -->
+  <div class="page-over" aria-hidden="true">
+    <m-if test="gesture.pull">
+      <div class="gesture pull" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="pix" viewBox="0 0 12 12"><path d="M3 2h5v1H3zM2 3h1v6H2zM3 9h6v1H3zM9 6h1v3H9zM8 1h1v1H8zM9 2h1v2H8V3h1zM7 3h1v1H7z"></path></svg>
+      </div>
+    </m-if>
+    <m-if test="gesture.swipe">
+      <div class="gesture swipe" m-class:back="{{gesture.back}}" m-class:forward="{{gesture.forward}}" m-class:armed="{{gesture.armed}}" m-class:done="{{gesture.done}}" m-style:--gesture="{{gesture.progress}}">
+        <svg class="pix" viewBox="0 0 12 12"><path d="M3 6h1V5h1V4h1V3h1v2h4v2H7v2H6V8H5V7H4V6z"></path></svg>
+      </div>
+    </m-if>
+  </div>
+
+  <!-- The palette: the board's "SELECT DESTINATION" box. At most eight rows
+       show; past them the list scrolls. -->
+  <m-if test="palette.open">
+    <div class="palette-layer">
+      <button class="btn scrim" aria-label="Close command bar" m-action="palette.close"></button>
+      <div class="palette pxb" role="dialog" aria-label="New tab">
+        <label class="palette-title" for="palette-input">SELECT DESTINATION</label>
+        <div class="palette-field">
+          <span class="chevron" aria-hidden="true">&gt;</span>
+          <input id="palette-input" class="palette-input" m-input="palette" placeholder="search or type a url…" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="palette-rows" m-scroll="palette">
+          <m-for each="palette.rows" as="r">
+            <!-- A run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): its heading. -->
+            <m-if test="r.sectionStart"><div class="palette-section" aria-hidden="true">{{r.section}}</div></m-if>
+            <button class="btn row palette-row" data-id="{{r.id}}" m-class:on="{{r.selected}}" m-attr:aria-selected="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
+              <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg></span>
+              <!-- Search and Open: a pixel magnifier and arrow (the font's ⌕ and ↗ draw as specks). -->
+              <m-if test="r.isSearch">
+                <span class="fav glyph" aria-hidden="true"><svg class="pix" viewBox="0 0 9 9"><path d="M2 0h3v1H2zM1 1h1v1H1zM5 1h1v1H5zM0 2h1v3H0zM6 2h1v3H6zM1 5h1v1H1zM5 5h1v1H5zM2 6h3v1H2zM6 6h1v1H6zM7 7h1v1H7zM8 8h1v1H8z"></path></svg></span>
+                <m-else>
+              <m-if test="r.isOpen">
+                <span class="fav glyph" aria-hidden="true"><svg class="pix" viewBox="0 0 9 9"><path d="M3 0h6v6H8V2H7v1H6v1H5v1H4v1H3v1H2v1H1v1H0V8h1V7h1V6h1V5h1V4h1V3h1V2h1V1H3z"></path></svg></span>
+                <m-else>
+              <m-if test="r.emoji">
+                <span class="fav emoji" aria-hidden="true">{{r.emoji}}</span>
+                <m-else>
+                  <m-if test="r.icon">
+                    <img class="fav" alt="" m-icon="{{r.icon}}">
+                    <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{r.color}}">{{r.letter}}</span></m-else>
+                  </m-if>
+                </m-else>
+              </m-if>
+                </m-else>
+              </m-if>
+                </m-else>
+              </m-if>
+              <span class="grow left ellipsis">{{r.title}}</span>
+              <m-if test="r.badge"><span class="tag">{{r.badge}}</span></m-if>
+            </button>
+          </m-for>
+          <m-if test="!palette.hasRows"><div class="palette-empty">NO MATCHES</div></m-if>
+        </div>
+        <div class="palette-keys" aria-hidden="true">↑↓ MOVE · ↵ GO · ESC BACK</div>
+      </div>
+    </div>
+  </m-if>
+
+  <m-launcher class="launcher-slot"></m-launcher>
+  <m-menu class="menu-slot"></m-menu>
+  <m-editor class="editor-slot"></m-editor>
+  <m-notice class="notice-slot"></m-notice>
+  <m-prompt class="prompt-slot"></m-prompt>
+
+  <!-- iCloud Tabs: the tabs open on the person's other devices, a folder that's
+       plainly live: a pixel cloud, nothing to drag in or out; each device a
+       tag in Press Start 2P with when it was last used, its tabs under it.
+       Every word is Margin's (a guarded part): the arrows are svgs. -->
+  <template m-part="cloud-tabs">
+    <div class="cloud" role="group" m-attr:aria-label="{{cloudTabs.labels.title}}" m-class:open="{{cloudTabs.open}}">
+      <button class="btn row cloud-head" title="{{cloudTabs.labels.toggle}}" m-attr:aria-expanded="{{cloudTabs.open}}" m-action="cloud.toggle">
+        <svg class="pix arrow" viewBox="0 0 4 7" aria-hidden="true"><path d="M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z"></path></svg>
+        <svg class="pix cloud-ico" viewBox="0 0 12 8" aria-hidden="true"><path d="M4 1h3v1H4zM3 2h1v1H3zM7 2h1v1H7zM8 3h2v1H8zM1 4h2v1H1zM2 3h1v1H2zM10 4h1v1h-1zM0 5h1v2H0zM11 5h1v2h-1zM1 7h10v1H1z"></path><path class="fill" d="M4 2h3v1H4zM3 3h5v1H3zM3 4h7v1H3zM1 5h10v2H1z"></path></svg>
+        <span class="cloud-name">{{cloudTabs.labels.title}}</span>
+        <m-if test="cloudTabs.hasCount"><span class="folder-count">{{cloudTabs.count}}</span></m-if>
+      </button>
+      <m-if test="cloudTabs.open">
+        <div class="cloud-body">
+          <m-if test="cloudTabs.hasMessage">
+            <div class="cloud-note" role="status">
+              <span class="text">{{cloudTabs.message}}</span>
+              <m-if test="cloudTabs.canFix"><button class="btn press small cloud-fix" m-action="cloud.access">{{cloudTabs.labels.fix}}</button></m-if>
+            </div>
+          </m-if>
+          <m-for each="cloudTabs.devices" as="d">
+            <button class="btn row cloud-device" data-device-id="{{d.id}}" title="{{d.describe}}" m-class:open="{{d.open}}" m-class:stale="{{d.stale}}" m-attr:aria-expanded="{{d.open}}" m-attr:aria-label="{{d.describe}}" m-action="cloud.toggleDevice" m-arg="{{d.id}}">
+              <svg class="pix arrow" viewBox="0 0 4 7" aria-hidden="true"><path d="M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z"></path></svg>
+              <span class="device-tag">
+                <m-if test="d.isPhone"><svg class="pix" viewBox="0 0 7 9" aria-hidden="true"><path d="M1 0h5v1H1zM0 1h1v7H0zM6 1h1v7H6zM1 8h5v1H1zM3 6h1v1H3z"></path></svg></m-if>
+                <m-if test="d.isPad"><svg class="pix" viewBox="0 0 9 9" aria-hidden="true"><path d="M1 0h7v1H1zM0 1h1v7H0zM8 1h1v7H8zM1 8h7v1H1zM4 6h1v1H4z"></path></svg></m-if>
+                <m-if test="d.isMac"><svg class="pix" viewBox="0 0 11 9" aria-hidden="true"><path d="M2 0h7v1H2zM1 1h1v5H1zM9 1h1v5H9zM2 6h7v1H2zM0 8h11v1H0z"></path></svg></m-if>
+                <m-if test="d.isVision"><svg class="pix" viewBox="0 0 11 7" aria-hidden="true"><path d="M2 0h7v1H2zM1 1h1v1H1zM9 1h1v1H9zM0 2h1v3H0zM10 2h1v3h-1zM1 5h3v1H1zM7 5h3v1H7zM4 4h3v1H4z"></path></svg></m-if>
+                <m-if test="d.isOther"><svg class="pix" viewBox="0 0 9 9" aria-hidden="true"><path d="M3 0h3v1H3zM1 1h2v1H1zM6 1h2v1H6zM0 3h1v3H0zM8 3h1v3H8zM1 7h2v1H1zM6 7h2v1H6zM3 8h3v1H3zM4 1h1v7H4zM1 4h7v1H1z"></path></svg></m-if>
+                <span class="device-name">{{d.name}}</span>
+              </span>
+              <span class="device-when">{{d.updated}}</span>
+            </button>
+            <m-for each="d.shown" as="t">
+              <button class="btn row cloud-tab" data-cloud-tab-id="{{t.id}}" title="{{t.url}}" m-class:stale="{{d.stale}}" m-attr:aria-label="{{t.label}}" m-action="cloud.open" m-arg="{{t.id}}">
+                <m-if test="t.icon">
+                  <img class="fav" alt="" m-icon="{{t.icon}}">
+                  <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{t.color}}">{{t.letter}}</span></m-else>
+                </m-if>
+                <span class="cloud-text">
+                  <span class="title">{{t.title}}</span>
+                  <span class="cloud-host">{{t.host}}</span>
+                </span>
+                <m-if test="t.pinned">
+                  <span class="pinned-mark" title="{{cloudTabs.labels.pinned}}"><svg class="pix" viewBox="0 0 5 7" aria-hidden="true"><path d="M1 0h3v1H1zM1 1h1v3H1zM3 1h1v3H3zM0 3h5v1H0zM2 4h1v3H2z"></path></svg></span>
+                </m-if>
+              </button>
+            </m-for>
+          </m-for>
+        </div>
+      </m-if>
+    </div>
+  </template>
+
+  <!-- Margin's notices: the board's RPG text box, a blinking ▼ in its corner. -->
+  <template m-part="notice">
+    <div class="notice pxb" role="status">
+      <span class="text">{{notice.text}}</span>
+      <div class="notice-actions">
+        <m-for each="notice.actions" as="a">
+          <button class="btn press small" m-class:primary="{{a.primary}}" m-action="notice.run" m-arg="{{a.id}}">{{a.label}}</button>
+        </m-for>
+      </div>
+      <svg class="pix more" viewBox="0 0 7 4" aria-hidden="true"><path d="M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z"></path></svg>
+    </div>
+  </template>
+
+  <template m-part="prompt">
+    <div class="prompt-layer">
+      <div class="prompt pxb" role="alertdialog" m-attr:aria-label="{{prompt.title}}">
+        <div class="prompt-title">{{prompt.title}}</div>
+        <div class="prompt-text">{{prompt.text}}</div>
+        <div class="prompt-actions">
+          <m-for each="prompt.actions" as="a">
+            <button class="btn press small" m-class:primary="{{a.primary}}" m-class:danger="{{a.danger}}" m-action="prompt.run" m-arg="{{a.id}}">{{a.label}}</button>
+          </m-for>
+        </div>
+        <svg class="pix more" viewBox="0 0 7 4" aria-hidden="true"><path d="M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z"></path></svg>
+      </div>
+    </div>
+  </template>
+
+  <!-- Margin's new-tab page: a title screen in the page card. -->
+  <template m-part="launcher">
+    <main class="launcher">
+      <div class="title-screen">
+        <div class="world">WORLD {{space.number}}-1</div>
+        <h1 class="stage">{{space.name}}</h1>
+        <label class="launcher-field">
+          <span class="chevron" aria-hidden="true">&gt;</span>
+          <input class="launcher-query" m-input="launcher" placeholder="search or type a url…" aria-label="Search or enter address" spellcheck="false" autocomplete="off">
+          <span class="caret" aria-hidden="true"></span>
+        </label>
+      </div>
+      <m-if test="launcher.hasPins">
+        <section>
+          <h2>PINNED</h2>
+          <ul class="pin-tiles">
+            <m-for each="launcher.pins" as="p">
+              <li>
+                <a class="tile pxd" title="{{p.url}}" m-action="pin.open" m-arg="{{p.id}}">
+                  <m-if test="p.icon">
+                    <img class="fav" alt="" m-icon="{{p.icon}}">
+                    <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{p.color}}">{{p.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{p.title}}</span>
+                </a>
+              </li>
+            </m-for>
+          </ul>
+        </section>
+      </m-if>
+      <m-if test="launcher.hasArchive">
+        <section>
+          <h2>RECENTLY ARCHIVED</h2>
+          <ul class="archive-list">
+            <m-for each="launcher.archive" as="a">
+              <li>
+                <a class="row archive-row" title="{{a.url}}" m-action="archive.restore" m-arg="{{a.id}}">
+                  <m-if test="a.icon">
+                    <img class="fav" alt="" m-icon="{{a.icon}}">
+                    <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{a.color}}">{{a.letter}}</span></m-else>
+                  </m-if>
+                  <span class="title">{{a.title}}</span>
+                  <span class="when">{{a.ago}}</span>
+                </a>
+              </li>
+            </m-for>
+          </ul>
+          <m-if test="launcher.more">
+            <button class="btn press small" m-action="launcher.more">{{launcher.moreLabel}}</button>
+          </m-if>
+        </section>
+      </m-if>
+      <section class="settings-section">
+        <button class="btn press small settings-button" m-attr:aria-expanded="{{launcher.settingsOpen}}" m-action="settings.open">SETTINGS</button>
+        <m-settings class="settings-slot"></m-settings>
+      </section>
+    </main>
+  </template>
+
+  <!-- Settings: Margin's form (its fields, words and inputs are Margin's; this lays them out). -->
+  <template m-part="settings">
+    <div class="settings-form">
+      <m-for each="settingsForm.fields" as="f">
+        <m-if test="f.isGroup"><div class="setting-group" role="heading" aria-level="3">{{f.label}}</div></m-if>
+        <m-if test="f.isInfo"><p class="help">{{f.label}}</p></m-if>
+        <m-if test="f.isNumber"><label class="setting"><span class="label">{{f.label}}</span><input class="number" m-input="setting-number"></label></m-if>
+        <m-if test="f.isToggle"><label class="setting" m-class:disabled="{{f.disabled}}"><span class="label">{{f.label}}</span><input class="toggle" m-input="setting-toggle"></label></m-if>
+        <m-if test="f.isChoice">
+          <label class="setting"><span class="label">{{f.label}}</span><select class="choice" m-input="setting-choice"></select></label>
+          <m-if test="f.hasStatus"><p class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</p></m-if>
+        </m-if>
+        <m-if test="f.isList"><label class="setting stacked"><span class="label">{{f.label}}</span><textarea class="list" m-input="setting-list" rows="3" spellcheck="false"></textarea></label></m-if>
+        <m-if test="f.isColor"><label class="setting" m-class:theme-own="{{f.fromTheme}}"><span class="label">{{f.label}}</span><input class="color" m-input="setting-color"></label></m-if>
+        <m-if test="f.isShortcut"><label class="setting"><span class="label">{{f.label}}</span><input class="shortcut" m-input="setting-shortcut" m-class:recording="{{f.recording}}"></label></m-if>
+        <m-if test="f.isButton">
+          <div class="actions">
+            <button class="btn press small" m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button>
+            <m-if test="f.hasStatus"><span class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</span></m-if>
+          </div>
+        </m-if>
+      </m-for>
+    </div>
+  </template>
+
+  <template m-part="menu">
+    <div class="menu pxb" role="menu" m-attr:aria-label="{{menu.label}}">
+      <m-for each="menu.items" as="i">
+        <m-if test="i.separator">
+          <div class="menu-sep" role="separator"></div>
+          <m-else>
+            <button class="btn menu-item" role="menuitem" m-class:danger="{{i.danger}}" m-class:confirming="{{i.confirming}}" m-action="menu.run" m-arg="{{i.id}}"><svg class="pix now" viewBox="0 0 7 9" aria-hidden="true"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg><span class="label">{{i.label}}</span></button>
+          </m-else>
+        </m-if>
+      </m-for>
+    </div>
+  </template>
+
+  <template m-part="space-editor">
+    <div class="editor-layer">
+      <button class="btn scrim" m-attr:aria-label="{{editor.labels.cancel}}" m-action="editor.cancel"></button>
+      <div class="editor pxb" role="dialog" m-attr:aria-label="{{editor.labels.title}}">
+        <div class="editor-title">{{editor.labels.title}}</div>
+        <div class="editor-row">
+          <input class="editor-emoji" m-input="space-emoji" maxlength="8" m-attr:aria-label="{{editor.labels.emoji}}" autocomplete="off" spellcheck="false">
+          <input class="editor-name" m-input="space-name" maxlength="40" m-attr:placeholder="{{editor.labels.name}}" m-attr:aria-label="{{editor.labels.name}}" m-attr:disabled="{{editor.nameLocked}}" autocomplete="off" spellcheck="false">
+        </div>
+        <m-if test="editor.nameLocked"><div class="editor-note">{{editor.labels.note}}</div></m-if>
+        <div class="swatches" role="radiogroup" m-attr:aria-label="{{editor.labels.colors}}">
+          <m-for each="editor.colors" as="c">
+            <button class="btn swatch" role="radio" m-attr:aria-checked="{{c.selected}}" m-class:on="{{c.selected}}" m-style:--swatch="{{c.color}}" m-action="editor.color" m-arg="{{c.id}}"></button>
+          </m-for>
+        </div>
+        <div class="editor-row actions">
+          <button class="btn press small danger" title="{{editor.deleteTitle}}" m-attr:disabled="{{editor.cannotDelete}}" m-class:confirming="{{editor.confirmDelete}}" m-action="editor.delete">{{editor.deleteLabel}}</button>
+          <div class="grow"></div>
+          <button class="btn press small" m-action="editor.cancel">{{editor.labels.cancel}}</button>
+          <button class="btn press small primary" m-action="editor.save">{{editor.labels.save}}</button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>

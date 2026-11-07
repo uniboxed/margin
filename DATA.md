@@ -33,7 +33,7 @@ Every item is `{ updatedAt, value }`, or a tombstone `{ updatedAt, deleted: true
 | `settings` | the setting's name | the setting's value (any JSON); every setting but `themes` |
 | `themeSettings` | the theme's id | that theme's settings object |
 | `siteIcons` | the site's origin | `data` (a `data:` image), `href`, `at` |
-| `userThemes` | the theme's id | the stored package (`ui/theme-loader.js`: `format`, `id`, `version`, `manifest`, `html`, `css`, `files`) |
+| `userThemes` | the theme's id | unused: imported themes belong to the Mac, kept by Margin.app outside the data sets (`app/shell/ThemeStore.swift`); copies get the index by `req userThemes` (`app/PROTOCOL.md` "User themes") |
 
 Only web pages are Margin tabs worth keeping: a new-tab page or an extension page isn't in `tabs`. In the extension, an open Margin tab is a browser tab's record with its Margin id (`mid`) and place (`order`); one that isn't open is in `keptTabs` (`state/model.js`).
 
@@ -72,7 +72,7 @@ A change is `{ collection, id, updatedAt, value }` or `{ collection, id, updated
 - The first time (storage from before this build, or wiped by Safari), every item starts at 0: what the cache had then isn't a change of the extension's, so a wiped cache that started from defaults never overwrites the app's data. Every change after that has its time.
 - **The queue** is every item and tombstone with a time after the last change the app took (`pendingChanges(meta, items, since)`, `store.js pendingQueue(since)`). One entry per item: a later change to an item replaces an earlier one, which gives the same merge result.
 - Tombstones are kept 60 days, at most 2,000 per collection. A deletion older than that, made while the app was never linked, could come back from the app's copy.
-- User themes are stored under keys of their own; the converter reads them, but their changes aren't queued until Phase 6 builds importing.
+- User themes aren't in the data set: Margin.app keeps them for the whole Mac (`app/PROTOCOL.md` "User themes"). A copy keeps only their index (`storage.local` `userThemes`, from the app). The converter still reads `userTheme:<id>` keys, but no build ever wrote any.
 
 ## The converter (first link)
 

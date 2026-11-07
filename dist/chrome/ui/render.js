@@ -256,6 +256,7 @@ function compileBlock(nodes, ctx, locals) {
           if (value === 'setting-number') copy.setAttribute('type', 'number');
           if (value === 'setting-toggle') { copy.setAttribute('type', 'checkbox'); copy.setAttribute('switch', ''); }
           if (value === 'setting-shortcut') { copy.setAttribute('type', 'text'); copy.setAttribute('readonly', ''); }
+          if (value === 'setting-color') copy.setAttribute('type', 'color');
           continue;
         }
         if (a.startsWith('m-')) {

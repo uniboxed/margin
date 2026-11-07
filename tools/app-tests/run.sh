@@ -13,7 +13,8 @@
 #         world and a stand-in child, nothing spawned, and the parking registry with its crash
 #         marker in a temporary folder (parking-tests.swift); the switch's setting in
 #         browser.json and its notices by kind (handoff-ui-tests.swift); the dev-only test hook
-#         against a fake world, and no title or address in the switch's lines (devhooks-tests.swift)
+#         against a fake world, and no title or address in the switch's lines (devhooks-tests.swift);
+#         the user themes' store and what the picker chose, read (theme-tests.swift, in a temporary folder)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
 #         extension (fake-extension.mjs, Node), and a picture of the overlay
@@ -30,7 +31,8 @@
 #         the overlay's keyboard and its page's focus through shows, put-aways and relinks;
 #         e2e-overlays.swift, overlays through a window closing, a link dropping and Safari's
 #         own sidebar sliding in; and e2e-cloud.swift, iCloud Tabs from a stand-in for
-#         Safari's file drawn live in the overlay
+#         Safari's file drawn live in the overlay; and e2e-themes.swift, a theme the overlay
+#         can't draw replaced by Arcadia, and said
 # window-tests.swift's randomized runs take WINDOW_RUNS (default 300),
 # WINDOW_LAG (the flags' lag, default 1.2 s) and WINDOW_SEED (one run, printed).
 # Built with swiftc as the app target builds it (Swift 5, main actor by
@@ -77,12 +79,12 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/safari/AppDelegate.swift ../../app/safari/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/safari/SafariWebExtensionHandler.swift
-  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift fake-safari.swift window-tests.swift private-calls-tests.swift handoff-tests.swift parking-tests.swift handoff-ui-tests.swift devhooks-tests.swift "${SHELL_SOURCES[@]}"
+  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift theme-tests.swift fake-safari.swift window-tests.swift private-calls-tests.swift handoff-tests.swift parking-tests.swift handoff-ui-tests.swift devhooks-tests.swift "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
   [ -f ../../dist/app/overlay.js ] || { echo "dist/app/ is missing: run npm run build" >&2; exit 1; }
-  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift fake-safari.swift "${SHELL_SOURCES[@]}"
+  build e2e e2e.swift e2e-data.swift e2e-profiles.swift e2e-windows.swift e2e-keyboard.swift e2e-overlays.swift e2e-cloud.swift e2e-themes.swift fake-safari.swift "${SHELL_SOURCES[@]}"
   MARGIN_APP_ROOT="$PWD/../../dist/app" MARGIN_FAKE_EXTENSION="$PWD/fake-extension.mjs" MARGIN_NODE="$NODE" \
     MARGIN_APP_SHOT="${MARGIN_APP_SHOT:-$BUILD/overlay.png}" "$BUILD/e2e" || status=1
 fi

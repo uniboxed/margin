@@ -2,7 +2,7 @@
 // and viewport units are rewritten (shared/page-css.js). Only sheets that
 // changed are looked at: one observer on the document, at most one pass a
 // frame, and none on a tab out of sight until it's shown.
-import { asksSize, hasUnits, shiftQuery, shiftUnits } from '../../shared/page-css.js';
+import { asksSize, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../../shared/page-css.js';
 
 const SWEEP_FLOOR = 64;
 
@@ -73,14 +73,7 @@ export function startSheets(box) {
         // One serialization for both questions.
         const said = units && (plain ? rule.cssText : style?.cssText);
         if (said && plain && said.includes(HAS)) noteHas(selectorText.get.call(rule));
-        // Over a copy of the names: a property set moves to the end of the live list.
-        if (said && hasUnits(said)) {
-          for (const name of Array.from(style)) {
-            const value = style.getPropertyValue(name);
-            const next = shiftUnits(value);
-            if (next !== value) style.setProperty(name, next, style.getPropertyPriority(name));
-          }
-        }
+        if (said && hasUnits(said)) shiftStyle(style);
         if (/** @type {any} */ (rule).cssRules?.length) walkRules(/** @type {any} */ (rule).cssRules, units);
         if (/** @type {any} */ (rule).styleSheet) visit(/** @type {any} */ (rule).styleSheet);
       } catch {}
@@ -327,11 +320,7 @@ export function startSheets(box) {
   function shiftInline(node) {
     const { style } = node;
     if (!style || !hasUnits(style.cssText)) return;
-    for (const name of Array.from(style)) {
-      const value = style.getPropertyValue(name);
-      const next = shiftUnits(value);
-      if (next !== value) style.setProperty(name, next, style.getPropertyPriority(name));
-    }
+    shiftStyle(style);
   }
   const inlineIn = (root) => {
     if (root.matches?.(INLINE)) shiftInline(root);
