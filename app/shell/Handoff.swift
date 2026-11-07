@@ -528,8 +528,14 @@ extension ProfileSwitch: FreezerDelegate {
                 }
             } else if phase != .waitingForProfile {
                 enter(.waitingForProfile, for: options.profileWait)
-                note("\(link) isn't linked: waiting for one of its windows")
-                world?.switchChanged(.needsProfile(run.target))
+                // Its copy starts with a window Margin asks Safari for (its own menu, through Accessibility); the
+                // switch goes on once that copy links (this is asked again on each poll). Else the person is told.
+                if world?.openProfileWindow(link) == true {
+                    note("\(link) isn't linked: asked the browser for a new window of it, waiting for its copy")
+                } else {
+                    note("\(link) isn't linked: waiting for one of its windows")
+                    world?.switchChanged(.needsProfile(run.target))
+                }
             }
             return
         }

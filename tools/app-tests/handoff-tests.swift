@@ -303,6 +303,14 @@ func freezerTests() {
 // cover drawn, `framed` after a window enters full screen, ordered out) and the notices.
 
 final class FakeHandoffWorld: HandoffWorld {
+    // Safari's own menu opening a profile's window (Shell.openProfileWindow, through Accessibility): asked for these.
+    var opensWindows = false
+    var openedWindowFor: [String] = []
+    func openProfileWindow(_ profile: String) -> Bool {
+        guard opensWindows else { return false }
+        openedWindowFor.append(profile)
+        return true
+    }
     struct Win {
         var id: Int
         var number: Int
@@ -1023,6 +1031,19 @@ func handoffMachineTests() {
         handoffRun(w, 4)
         check("waitingForProfile: its window opened: shown full screen, A parked", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010), "\(w.events) \(s.history.suffix(3))")
         handoffInvariants("waitingForProfile, opened", w, s, [hA, hC])
+    }
+    do {
+        // With Accessibility: Margin asks Safari for the profile's window itself, the person isn't told to open one,
+        // and the switch goes on when its copy links with that window (Tirth, 2026-11-07: "Test A isn't open").
+        let (w, s) = handoffSetup { $0.linked.remove(hC); $0.opensWindows = true }
+        s.start(toC, from: hA, windowId: 10)
+        check("waitingForProfile with Accessibility: Safari asked for a window, no needsProfile", s.phase == .waitingForProfile && w.openedWindowFor == [hC] && w.events == [.started(toC)], "\(w.events) \(w.openedWindowFor)")
+        handoffRun(w, 1)
+        check("and asked once, not on every poll", w.openedWindowFor == [hC], "\(w.openedWindowFor)")
+        let kc = w.add(hC, id: 30, number: 3030, state: "fullscreen")
+        handoffRun(w, 4)
+        check("its window opened by Safari: shown, A parked", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010), "\(w.events) \(s.history.suffix(3))")
+        handoffInvariants("waitingForProfile, opened by Margin", w, s, [hA, hC])
     }
     // ---- the watchdog's three states, and step 5's latest start ----
     do {
