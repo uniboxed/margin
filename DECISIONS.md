@@ -2890,3 +2890,13 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **What was removed is said by count and kind,** with the theme's own words taken out of the reasons ("2 declarations removed from theme.css: url() is not a bundled file…").
 - **`npm run theme:pack <folder> [out]`** writes the zip (sorted, dated 1 January 2026, so the same folder makes the same file), after the same checks. It leaves out what a package doesn't hold (a built-in's `first-paint.css`, Arcadia's `theme.js`) and says so. All three built-ins go through it and back unchanged (`tests/theme-import.test.js`).
 - **`MARGIN_THEMES`** takes `.margintheme` files too, read as an import is.
+
+### Margin.app keeps the imported themes
+
+- **For the whole Mac, outside the data sets:** `app/shell/ThemeStore.swift` keeps `~/Library/Application Support/Margin/themes/<id>.json` and `index.json`, written as `DataStore` writes. In a test the folder is a temporary one.
+- **Copies get the index by a request (`req userThemes`), not through the data set** as the plan said. The themes aren't a profile's, so a per-profile collection would hold the same list once per profile and need merging for nothing. The request goes after each snapshot and on every change. The `userThemes` collection stays in the data set's list, unused.
+- **The app chooses the package:** the stored one when a profile's `settings.theme` is in the index, the copy's otherwise. The copy still sends Arcadia for an id it doesn't ship, so an overlay always has something to draw.
+- **Removing** a theme asks every linked copy that used it to go back to Arcadia. A copy that isn't linked keeps the old id in `settings.theme`: it gets Arcadia from its own package (the id isn't one it ships), and the next index tells its `updateSettings` the id is gone. Its `settings.themes[id]` is left: a few plain values, unused.
+- **The picker** is `NSOpenPanel` (folders and any file; a chosen file must be named `.margintheme`), opened with the app activated and `.fullScreenAuxiliary`, `.moveToActiveSpace`, so it shows over full-screen Safari. The harness answers for it (`UserThemes.pick`).
+- **Not built yet:** a plain first paint for a user theme's pages (they get Arcadia's frame before the overlay draws), the set-up window's "Use Arcadia in every profile".
+- **`Shell.swift` changes by small hooks only:** one stored property, a `case` in `perform`, the theme chosen in the hello and on a new package, the index after a snapshot and the package checked after a settings change. The rest is in `ShellThemes.swift` and `ThemeStore.swift`.

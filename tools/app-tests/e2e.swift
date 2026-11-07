@@ -386,6 +386,7 @@ func scenario() async {
   fake.tell(["do": "theme", "id": "A", "theme": "arcadia"])
   check("back to Arcadia", await until(5, { shell.links["safari:P1"]?.themeId == "arcadia" }))
   await themeFallbackScenario(shell: shell, fake: fake, overlay: o7) // e2e-themes.swift
+  await userThemesScenario(shell: shell, fake: fake, overlay: o7)
 
   // ---- the left edge, and the pointer peek needs (Phase 2 step 8) ----
   let guardFrame = CGRect(x: o7.frameTopLeft.minX, y: o7.frameTopLeft.minY, width: EdgeGuard.width, height: o7.frameTopLeft.height)

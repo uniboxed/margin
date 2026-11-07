@@ -6,7 +6,8 @@
 #         profiles (profiles-tests.swift: the order, the names' file, the
 #         cross-profile switch against a fake world and clock); Safari's profile
 #         names and iCloud Tabs read from stand-ins for Safari's files
-#         (safari-profiles-tests.swift, cloud-tabs-tests.swift)
+#         (safari-profiles-tests.swift, cloud-tabs-tests.swift); the user themes' store
+#         and what the picker chose, read (theme-tests.swift, in a temporary folder)
 #   e2e:  e2e.swift, the real link, shell and overlays (off screen, in an
 #         accessory app that never activates) against a stand-in for the
 #         extension (fake-extension.mjs, Node), and a picture of the overlay
@@ -65,7 +66,7 @@ status=0
 if [ "$WHAT" = unit ] || [ "$WHAT" = all ]; then
   warnings "the app" "${XCODE_FLAGS[@]}" ../../app/safari/AppDelegate.swift ../../app/safari/ViewController.swift "${SHELL_SOURCES[@]}"
   warnings "the extension handler" -swift-version 5 ../../app/safari/SafariWebExtensionHandler.swift
-  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift fake-safari.swift window-tests.swift "${SHELL_SOURCES[@]}"
+  build tests tests.swift data-tests.swift profiles-tests.swift safari-profiles-tests.swift cloud-tabs-tests.swift theme-tests.swift fake-safari.swift window-tests.swift "${SHELL_SOURCES[@]}"
   MARGIN_DATA_VECTORS="$PWD/../../tests/fixtures/data-merge" "$BUILD/tests" || status=1
 fi
 if [ "$WHAT" = e2e ] || [ "$WHAT" = all ]; then
