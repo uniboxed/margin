@@ -65,6 +65,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     layouts()
     windowBinding() // window-tests.swift
     axBinding() // window-tests.swift: Accessibility's exact word
+    viewportDelay() // window-tests.swift: the inspector's delay, for the log
     showingPerDisplay() // window-tests.swift: the Space showing on each display
     coverPlan() // window-tests.swift: the covers' decision
     stackingExact() // window-tests.swift: in front of its window, asked exactly

@@ -1810,6 +1810,17 @@ extension Tests {
     check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
   }
 
+  // The delay between a page's resize and Margin drawing in its new area, for the log (Shell.viewportDelay), and
+  // the copy's times read (ExtWindow.parse `viewportTimes`).
+  static func viewportDelay() {
+    check("viewport delay: each hop", Shell.viewportDelay(ViewportTimes(resized: 100.0, said: 100.02, heard: 100.32), now: 100.38)
+          == "; the page resized 380 ms ago: said after 20, its copy heard it after 300, Margin had it 60 later", Shell.viewportDelay(ViewportTimes(resized: 100.0, said: 100.02, heard: 100.32), now: 100.38))
+    check("viewport delay: no times, nothing", Shell.viewportDelay(nil, now: 1) == "")
+    let parsed = ExtWindow.parse([["windowId": 1, "state": "fullscreen", "viewport": ["x": 0, "y": 33, "width": 1512, "height": 485],
+                                   "viewportTimes": ["resized": 100_000, "said": 100_020, "heard": 100_320]]], link: "safari:P")
+    check("viewport delay: the copy's times read, in seconds", parsed.first?.viewportTimes?.resized == 100 && parsed.first?.viewportTimes?.heard == 100.32)
+  }
+
   // The Space showing on a window's display (SpaceReads.showing(onDisplayOf:)): each display has its own.
   static func showingPerDisplay() {
     let world = FakeSpaceWorld(clock: FakeClock())

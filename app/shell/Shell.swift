@@ -1260,7 +1260,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: docked)
             noteLeftPart(overlay, window: server.bounds, viewport: viewport, measured: w.viewportMeasured, docked: docked, frame: frame)
             if frame != server.bounds, overlay.windowFrame != server.bounds || overlay.frameTopLeft != frame {
-                Diagnostics.note("\(key): Safari takes part of its window (the Web Inspector docked?): Margin draws in \(frame) of \(server.bounds)")
+                Diagnostics.note("\(key): Safari takes part of its window (the Web Inspector docked?): Margin draws in \(frame) of \(server.bounds)\(Shell.viewportDelay(w.viewportTimes, now: options.clock()))")
             }
             overlay.windowFrame = server.bounds
             overlay.size(to: frame)
@@ -1422,6 +1422,19 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // sidebar come out even with the guard in place?): where the pointer and the guard were, and what
     // the overlay did. Once per appearance.
     private var leftPartSaid: Set<WindowKey> = []
+    /// Where the time went between the page's resize and Margin drawing in its new area, for the log: "; the page
+    /// resized 380 ms ago: said after 20, its copy heard it after 300, Margin had it 60 later". Empty without times.
+    static func viewportDelay(_ t: ViewportTimes?, now: Double) -> String {
+        guard let t, let heard = t.heard else { return "" }
+        let ms = { (s: Double) in Int((s * 1000).rounded()) }
+        var parts: [String] = []
+        if let r = t.resized, let said = t.said { parts.append("said after \(ms(said - r))") }
+        if let said = t.said { parts.append("its copy heard it after \(ms(heard - said))") }
+        parts.append("Margin had it \(ms(now - heard)) later")
+        let from = t.resized ?? t.said ?? heard
+        return "; the page resized \(ms(now - from)) ms ago: " + parts.joined(separator: ", ")
+    }
+
     private func noteLeftPart(_ overlay: OverlayController, window: CGRect, viewport: CGRect?, measured: Bool, docked: CGFloat?, frame: CGRect) {
         let left = viewport.map { $0.minX } ?? 0
         guard left > Shell.edgeSnap else { leftPartSaid.remove(overlay.key); return }

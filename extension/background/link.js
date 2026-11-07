@@ -1092,14 +1092,15 @@ export function createLink({
     const seen = rest.activeTabId != null ? visibility.get(rest.activeTabId) : null;
     return {
       ...rest,
-      ...(vp && vp.tabId === rest.activeTabId ? { viewport: vp.rect } : {}),
+      ...(vp && vp.tabId === rest.activeTabId ? { viewport: vp.rect, ...(vp.times ? { viewportTimes: vp.times } : {}) } : {}),
       ...(seen && seen.windowId === rest.windowId ? { visible: seen.visible, visibleAt: seen.at } : {}),
       ...(blurredAt != null ? { blurredAt } : {}),
     };
   }
   // Where each window's tab in front says its page area sits in the window, when that's less than
   // all of it (content/core.js viewportNow: the docked Web Inspector): windowId → { tabId, rect }.
-  /** @type {Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean } }>} */
+  // (`times`: when the page was resized, said it, and this copy heard it, for Margin.app's log.)
+  /** @type {Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean }, times?: { resized?: number, said?: number, heard: number } }>} */
   const viewports = new Map();
   // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
   // app tells same-bounds windows apart by them (app/shell/WindowMatcher.swift). Not kept past the background.
@@ -1486,11 +1487,11 @@ export function createLink({
       void windowsNow();
     },
     // A page in front saying where its area sits in its window (handlers.js viewport; null: all of it).
-    /** @param {number} windowId @param {number} tabId @param {{ x: number, y: number, width: number, height: number, measured?: boolean } | null} rect */
-    viewport(windowId, tabId, rect) {
+    /** @param {number} windowId @param {number} tabId @param {{ x: number, y: number, width: number, height: number, measured?: boolean } | null} rect @param {{ resized?: number, said?: number, heard: number } | null} [times] */
+    viewport(windowId, tabId, rect, times = null) {
       if (!Number.isInteger(windowId) || !Number.isInteger(tabId)) return;
       const had = JSON.stringify(viewports.get(windowId) ?? null);
-      if (rect) viewports.set(windowId, { tabId, rect });
+      if (rect) viewports.set(windowId, { tabId, rect, ...(times ? { times } : {}) });
       else if (viewports.get(windowId)?.tabId === tabId || rect === null) viewports.delete(windowId);
       if (JSON.stringify(viewports.get(windowId) ?? null) === had) return;
       windowsFromKnown();

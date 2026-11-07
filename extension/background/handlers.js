@@ -407,14 +407,18 @@ export const handlers = {
   // Where the page in front's area sits in its window, when Safari takes part of it (the docked Web
   // Inspector: content/core.js viewportNow), for Margin.app's overlay (background/link.js viewport).
   // `measured`: the page found where its area starts from a pointer event (else it's a guess).
-  /** @param {{ viewport?: { x: number, y: number, width: number, height: number, measured?: boolean } | null }} message */
-  async viewport({ viewport = null } = {}, sender) {
+  // `resizedAt`, `at`: when the page was resized and when it said so (its Date.now()), passed on with when this
+  // copy heard it, so Margin.app's log says where the time went (Tirth, 2026-11-07: the layout late beside the inspector).
+  /** @param {{ viewport?: { x: number, y: number, width: number, height: number, measured?: boolean } | null, resizedAt?: number, at?: number }} message */
+  async viewport({ viewport = null, resizedAt, at } = {}, sender) {
     const tab = sender?.tab;
     if (!tab || tab.active === false || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId)) return;
     const ok = (v) => Number.isFinite(v) && v >= 0 && v < 100_000;
     const rect = viewport && ok(viewport.x) && ok(viewport.y) && ok(viewport.width) && ok(viewport.height) && viewport.width > 0 && viewport.height > 0
       ? { x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height, ...(viewport.measured === true ? { measured: true } : {}) } : null;
-    appLink.viewport(tab.windowId, tab.id, rect);
+    const time = (v) => Number.isFinite(v) && v > 0;
+    const times = { ...(time(resizedAt) ? { resized: resizedAt } : {}), ...(time(at) ? { said: at } : {}), heard: Date.now() };
+    appLink.viewport(tab.windowId, tab.id, rect, times);
   },
   // A page saying whether it's shown (content/core.js and the new-tab page: document.visibilityState,
   // at a change, at its start and when asked), for Margin.app to tell same-bounds windows of different

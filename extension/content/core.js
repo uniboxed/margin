@@ -296,12 +296,14 @@ export function startCore() {
     const key = JSON.stringify(v);
     if (key === toldViewport) return;
     toldViewport = key;
-    void send('viewport', { viewport: v }, false);
+    void send('viewport', { viewport: v, resizedAt, at: Date.now() }, false);
   }
   // At once (the next frame: Safari's resize as the inspector docks), and again once a drag of its
   // edge settles; the copy and the app pass it on without waiting (Margin's area follows quickly).
   let viewportSettle = 0;
+  let resizedAt = 0; // (for Margin.app's log: how long the word took)
   addEventListener('resize', () => {
+    resizedAt = Date.now();
     requestAnimationFrame(tellViewport);
     clearTimeout(viewportSettle);
     viewportSettle = setTimeout(tellViewport, 120);
