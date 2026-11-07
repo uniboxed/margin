@@ -40,11 +40,9 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   const scrollSheet = sheet(); // how <body> scrolls (checkLocks)
   const fitSheet = sheet(); // <body>'s size in the box (measureBody)
   const paddingSheet = sheet(); // <body>'s margin as padding (measureBody)
-  const zoomSheet = sheet(); // a pinch (setZoom)
   const readSheet = sheet(); // how <body> is read (readWithout, readSaid)
   const backSheet = sheet(); // <body>'s background drawn on <body> (checkBackground)
-  const ours = [boxSheet, fitSheet, scrollSheet, paddingSheet, zoomSheet, readSheet, backSheet];
-  const zoom = { scale: 1, x: 0, y: 0 };
+  const ours = [boxSheet, fitSheet, scrollSheet, paddingSheet, readSheet, backSheet];
   // The browser's own, from before viewport.js speaks for the box.
   const { matches, append, remove, checkVisibility } = Element.prototype;
   const computed = window.getComputedStyle;
@@ -157,7 +155,6 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
   function checkLocks() {
     const { body } = document;
     if (!box.on || !body || body.localName !== 'body') return;
-    if (zoom.scale !== 1) return; // a pinch clips <html>: looked at when it ends (setZoom)
     const root = getComputedStyle(html);
     // A lock that pins <body> (fixed, top: -Ypx) can't be read in computed style
     // (the box's rule holds it relative) and doesn't stop <body> scrolling: its
@@ -750,7 +747,6 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     if (!box.on) return;
     const before = { dw: box.dw, dh: box.dh };
     const scrolled = scrollOf(box.body());
-    setZoom(1, 0, 0);
     Object.assign(box, { on: false, left: 0, top: 0, right: 0, bottom: 0, dw: 0, dh: 0 });
     place();
     write();
@@ -769,22 +765,13 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     restSoon(before, false);
   }
 
-  // ---- a pinch (content/pinch.js) ---------------------------------------------
-  // The page scaled at <html>, so what's fixed scales with it, moved by (x, y)
-  // from the box's corner. `will-change` only during a pinch: at rest WebKit
-  // draws the page again at the zoom.
+  // ---- where the box is in the window ------------------------------------------
+  // Its origin, and its scale (always 1: a pinch is Safari's own, which page/coords.js
+  // needn't undo; Margin's own pinch, which scaled the page at <html>, was removed 2026-11-07).
   function place() {
-    box.x = box.left + zoom.x;
-    box.y = box.top + zoom.y;
-    box.scale = zoom.scale;
-  }
-  function setZoom(scale, x, y, moving = false) {
-    const ended = zoom.scale !== 1 && scale === 1;
-    Object.assign(zoom, { scale, x, y });
-    place();
-    const transform = `transform: translate(${box.x}px, ${box.y}px) scale(${scale}) !important;`;
-    replaceSync.call(zoomSheet, scale === 1 ? '' : `@media screen { html { ${transform} ${moving ? 'will-change: transform !important;' : ''} overflow: clip !important; } }`);
-    if (ended) checkLocks();
+    box.x = box.left;
+    box.y = box.top;
+    box.scale = 1;
   }
   place();
 
@@ -804,7 +791,6 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     }
     if (!(next?.left >= 0) || refused) return;
     on({ left: next.left, top: next.top, right: next.right, bottom: next.bottom }, !!next.live);
-    if (next.scale != null) setZoom(next.scale, next.tx ?? 0, next.ty ?? 0, !!next.moving);
   }
   document.addEventListener('margin:box', (event) => {
     event.preventDefault();

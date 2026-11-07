@@ -818,23 +818,23 @@ export const SCENARIOS = {
     checkPage('A', 'A: and the next one works', `visualViewport.scale > 1.1`, 1500),
     { op: 'pinch', deltas: Array(30).fill(-0.03) }, wait(400),
   ],
-  // On a page with a box (the app's layout): Margin's pinch, the page scaled
-  // at <html>, clicks land, two fingers move it, then scroll it.
+  // On a page with a box (the app's layout), gestures Margin's (the default): a pinch is Safari's own (Margin's
+  // own pinch, the page scaled at <html>, was removed 2026-11-07: slow next to Safari's). The box stays where the
+  // app's layout put it, and the page's area as told to the app stays the window's (shared/app-link.js
+  // unpinchedSize); the pinch that would open Safari's tab overview is still cancelled.
   'pinch-box': [
+    { op: 'windowFrame', on: true },
     ...startBoxed('A', '/p/T'), wait(500),
-    { op: 'pinch', deltas: Array(14).fill(0.03), x: 700, y: 400 }, wait(100),
-    checkPage('A', 'zoomed by Margin, not by Safari', `${AT} return at.scale > 1.2 && visualViewport.scale === 1`, 800),
-    checkPage('A', 'the page\'s own measures stay at its size', `const r = document.getElementById('full').getBoundingClientRect(); return Math.abs(r.width - innerWidth) < 1`),
-    checkPage('A', 'a point in the window finds what\'s drawn there', `const x = innerWidth / 2, y = innerHeight / 2; const r = document.elementFromPoint(x, y).getBoundingClientRect(); return r.left <= x && x <= r.right && r.top <= y && y <= r.bottom`),
-    { op: 'pinch', deltas: Array(40).fill(-0.03), x: 700, y: 400 }, wait(350),
-    checkPage('A', 'pinched back: the page as it was', `${AT} return at.scale === 1 && at.x === 260 && at.y === 8`, 800),
-    { op: 'pinch', deltas: Array(40).fill(0.06), x: 700, y: 400 }, wait(350),
-    checkPage('A', 'at most 3×', `${AT} return Math.abs(at.scale - 3) < 0.01`, 800),
-    { op: 'pinch', deltas: Array(60).fill(-0.05), x: 700, y: 400 }, wait(300), { op: 'pinch', deltas: Array(8).fill(-0.03), x: 700, y: 400 }, wait(350),
-    checkPage('A', 'pinched in past its size: it springs back', `${AT} return at.scale === 1`, 800),
-    { op: 'pinch', deltas: Array(14).fill(0.04), x: 700, y: 400 }, wait(200),
-    { op: 'eval', in: 'A', js: 'const { settings } = await browser.storage.local.get("settings"); await browser.storage.local.set({ settings: { ...settings, blockGestures: false } }); return "off"' },
-    checkPage('A', 'gestures turned off: back to its size', `${AT} return at.scale === 1`, 1500),
+    { op: 'pinch', deltas: Array(14).fill(0.03), x: 700, y: 400 }, wait(300),
+    checkPage('A', 'outward: Safari\'s own magnification, not Margin\'s', `${AT} return visualViewport.scale > 1.2 && at.scale === 1`, 1500),
+    checkPage('A', 'the box where the app\'s layout put it', `${AT} return at.x === 260 && at.y === 8`, 1500),
+    check('A', 'the page\'s area as told to the app: the whole window', `Margin.content.viewportNow() === null`, 1500),
+    { op: 'pinch', deltas: Array(40).fill(-0.03), x: 700, y: 400 }, wait(400),
+    checkPage('A', 'inward, while magnified: Safari\'s, back to its size', `${AT} return visualViewport.scale === 1 && at.x === 260 && at.y === 8`, 2000),
+    { op: 'page', in: 'A', js: `window.__pinch = []; addEventListener('gesturestart', (e) => __pinch.push(e.defaultPrevented), false); return 'listening'` },
+    { op: 'pinch', deltas: Array(10).fill(-0.03), x: 700, y: 400 }, wait(200),
+    checkPage('A', 'inward at its size (Safari\'s all-tabs pinch): cancelled, nothing moves', `visualViewport.scale === 1 && __pinch[0] === true`),
+    { op: 'windowFrame', on: false },
   ],
   // Safari's own pinch on a page Margin.app draws around (gestures not Margin's): WebKit divides innerWidth and
   // innerHeight by the pinch's scale (a 3× pinch reads a third), which read as Safari taking most of the window: the

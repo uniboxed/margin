@@ -29,8 +29,7 @@ const withScale = (scale, fn) => {
 test('pinch, on a page: only what would open Safari\'s overview is cancelled (the first event, inward, at normal scale)', () => withScale(1, () => {
   const win = fakeWindow();
   let settings = { blockGestures: true };
-  const seen = [];
-  installGestureGuard({ getSettings: () => settings, pinch: () => 'native', onPinch: (p) => seen.push(p), win });
+  installGestureGuard({ getSettings: () => settings, pinch: () => 'native', win });
   assert.deepEqual(win.listeners.gesturestart.options, { capture: true, passive: false });
   assert.equal(start(win, 0.98), true, 'inward at normal scale');
   assert.equal(start(win, 1.02), false, 'outward: Safari\'s');
@@ -44,41 +43,28 @@ test('pinch, on a page: only what would open Safari\'s overview is cancelled (th
   assert.equal(start(win, 0.98), false, 'setting off: all Safari\'s');
   settings = null;
   assert.equal(start(win, 0.98), true, 'before settings load: on (the default)');
-  assert.deepEqual(seen, [], 'Margin takes none of them');
+  assert.deepEqual(Object.keys(win.listeners).filter((t) => t.startsWith('gesture')), ['gesturestart'], 'only the first event is looked at: Margin has no pinch of its own (removed 2026-11-07)');
 }));
 
-test('pinch, elsewhere: none on the new-tab page; on a page with a box it\'s Margin\'s, all three stages, unless magnified', () => withScale(1, () => {
+test('pinch, elsewhere: none on the new-tab page or in full screen (block); a page with a box is Safari\'s like any (Margin\'s own pinch was removed)', () => withScale(1, () => {
   const blocked = fakeWindow();
   installGestureGuard({ getSettings: () => ({}), win: blocked });
   assert.equal(start(blocked, 1.02), true, 'blocked by default, outward too');
-  const card = fakeWindow();
-  const seen = [];
-  installGestureGuard({ getSettings: () => ({}), pinch: () => 'own', onPinch: (p) => seen.push(p), win: card });
-  assert.equal(start(card, 0.98), true);
-  const go = (type, scale) => {
-    const event = { scale, preventDefault() { this.done = true; }, stopPropagation() {} };
-    card.listeners[type].fn(event);
-    return event.done;
-  };
-  assert.equal(go('gesturechange', 1.5), true);
-  assert.equal(go('gestureend', 1.5), true);
-  assert.deepEqual(seen.map((p) => [p.phase, p.scale]), [['start', 0.98], ['change', 1.5], ['end', 1.5]]);
-  assert.deepEqual([seen[0].x, seen[0].y], [10, 20]);
+  assert.equal(start(blocked, 0.98), true, 'and inward');
   visualViewport.scale = 2;
-  assert.equal(start(card, 1.1), false, 'magnified by Safari (smart zoom): its pinch, read from the top window');
-  assert.equal(go('gesturechange', 1.5), undefined);
+  assert.equal(start(blocked, 1.1), false, 'magnified by Safari (smart zoom): its pinch, read from the top window');
 }));
 
-test('wheel: a pinch reported as ⌃+wheel is left alone (cancelling it would count as handling the pinch); a taken wheel event is cancelled', () => {
+test('wheel: a pinch reported as ⌃+wheel is left alone (cancelling it would count as handling the pinch); vertical is the page\'s', () => {
   const win = fakeWindow();
-  installGestureGuard({ getSettings: () => ({ blockGestures: true }), onWheelFirst: (e) => e.deltaY === 77, win });
+  installGestureGuard({ getSettings: () => ({ blockGestures: true }), win });
   const wheel = (e) => {
     let prevented = false;
     win.listeners.wheel.fn({ deltaX: 0, cancelable: true, ...e, preventDefault: () => { prevented = true; }, stopPropagation() {}, composedPath: () => [] });
     return prevented;
   };
   assert.equal(wheel({ ctrlKey: true, deltaY: 10 }), false);
-  assert.equal(wheel({ deltaY: 77 }), true);
+  assert.equal(wheel({ deltaY: 77 }), false, 'no wheel is taken for a pan of Margin\'s own (none since its pinch went)');
   assert.equal(wheel({ deltaY: 5 }), false);
 });
 

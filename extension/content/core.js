@@ -3,8 +3,7 @@
 // or not: no UI runtime, no theme, no element of Margin's in the document.
 // What a page keeps is what only a page can do: its box (while the app is
 // linked, from the app's layout for its window: content/layout.js; not
-// linked, none, the page as it is), the trackpad's gestures and Margin's
-// pinch, the draft check, the keys a page hears (navigation, ⌘T), its icon
+// linked, none, the page as it is), the trackpad's gestures, the draft check, the keys a page hears (navigation, ⌘T), its icon
 // and zoom, and its part in the background's switches (Phase 3 slims them).
 // It reads the state from storage.local, for its tab and window, its
 // settings and its copy of Margin.
@@ -15,7 +14,6 @@ import { platform } from '../shared/platform.js';
 import { watchEdits } from './edits.js';
 import { startTrackpad } from './trackpad.js';
 import { startPageLink } from './page-link.js';
-import { startPinch } from './pinch.js';
 import { SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { startLoads } from './loads.js';
@@ -150,20 +148,17 @@ export function startCore() {
   const active = () => !retired() && (!fullscreenOnly() || fullscreen === true);
   Margin.content.active = active; // (whether this copy acts here: it hasn't stood back; Chrome: in full screen)
 
-  // The page's box (content/page-link.js), and the pinch that scales it.
+  // The page's box (content/page-link.js).
   const link = startPageLink(send);
   /** @type {{ left: number, top: number, right: number, bottom: number } | null} */
   let box = null;
-  const pinch = startPinch({ box: () => box, link });
-  Margin.content.pinched = () => pinch.zoomed();
   const page = {
-    api, marks, send, link, pinch,
+    api, marks, send, link,
     // Where the box is now (content/layout.js).
     boxed: () => !!box,
     setBox: (next) => {
       box = link.can ? next : null;
       link.setBox(box);
-      pinch.follow();
     },
     state: () => state,
     active,

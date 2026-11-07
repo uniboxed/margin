@@ -36,10 +36,6 @@ export function startPageLink(send) {
     if (box) fetchUnreadable();
     else restoreLinks();
   }
-  // A pinch's transform (content/pinch.js): at most once a frame, while one runs.
-  function setZoom(box, { scale, x, y, moving }) {
-    if (can) say(JSON.stringify({ ...box, scale, tx: x, ty: y, moving }));
-  }
 
   // ---- sheets the page can't read ---------------------------------------------
   // Another origin's, with no CORS: unreadable to any script here, so media
@@ -145,5 +141,5 @@ export function startPageLink(send) {
   }, true);
   document.addEventListener('DOMContentLoaded', () => { if (boxed()) fetchUnreadable(); });
 
-  return { setBox, setZoom, can };
+  return { setBox, can };
 }

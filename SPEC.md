@@ -52,7 +52,7 @@ margin/
       core.js              # Margin on web pages: behavior only; parts in layout.js, trackpad.js,
                            # loader.js, takeover.js
       palette.js           # palette shortcut and wiring (the palette's look is the theme's)
-      page-link.js, pinch.js # Margin's side of the page's box, and the pinch
+      page-link.js         # Margin's side of the page's box
       page/                # the page's box, in the page's world (registered at runtime)
     newtab/
       newtab.html          # Margin's new-tab page: loads the active theme's new-tab module

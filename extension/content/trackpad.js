@@ -1,7 +1,7 @@
 // Margin's trackpad gestures on the page (Safari builds): the guard that keeps
 // Safari's swipe, pinch for all tabs and bounce from leaving or distorting the
-// page, and Margin's own pull-to-refresh and swipe back/forward, and the
-// pinch on a page with a box (content/pinch.js). Called by content/core.js.
+// page, and Margin's own pull-to-refresh and swipe back/forward. A pinch is
+// Safari's own (Margin's own pinch was removed 2026-11-07). Called by content/core.js.
 // Their feedback (how far a pull or a swipe has gone, armed, done) is drawn
 // by Margin.app's overlay: told as it goes (`page.tellGesture`, at most every
 // GESTURE_TELL_MS but for a change of state; content/core.js), never drawn here.
@@ -36,7 +36,7 @@ export function gestureTeller(kind, tell, now = () => performance.now()) {
 // `page`: see content/core.js.
 /** @param {any} page */
 export function startTrackpad(page) {
-  const { marks, pinch } = page;
+  const { marks } = page;
   // Safari: keep trackpad swipes, pinches and the page bounce from leaving or
   // distorting the page (setting); re-synced on every render.
   // Not in a copy that stood back for a newer one (content/core.js): that one's guard is enough.
@@ -45,21 +45,12 @@ export function startTrackpad(page) {
   const gestureGuard = !platform?.blockGestures ? null : installGestureGuard({
     getSettings: () => (page.dormant?.() ? { blockGestures: false } : page.state()?.settings),
     wanted: () => page.state()?.settings?.blockGestures !== false,
-    // Safari's own on a page left alone; on a page with a box it would
-    // magnify Margin too: Margin's own there.
-    pinch: () => (document.fullscreenElement ? 'block' : page.boxed() ? 'own' : 'native'),
-    onPinch: ({ phase, scale, x, y }) => {
-      if (phase === 'start') pinch.start(x, y);
-      else if (phase === 'change') pinch.move(scale);
-      else pinch.end();
-    },
-    onWheelFirst: (event) => pinch.pan(event.deltaX, event.deltaY),
+    // Safari's own (but for what opens its tab overview); none in an element's full screen.
+    pinch: () => (document.fullscreenElement ? 'block' : 'native'),
   });
   const updateGestureGuards = () => {
     gestureGuard?.update();
     syncWheelWatch();
-    // Gestures off, or this copy stood back: nothing could move or undo a zoomed page.
-    if (page.dormant?.() || page.state()?.settings?.blockGestures === false) pinch.reset();
   };
 
   // ---- pull to refresh (Safari builds) ---------------------------------------
@@ -140,7 +131,7 @@ export function startTrackpad(page) {
       // Pixel deltas only (a trackpad).
       const usable = () => event.deltaMode === 0;
       const wheel = { deltaY: event.deltaY, deltaX: event.deltaX, time: event.timeStamp };
-      const zoomed = pinch.zoomed(); // the wheel pans it: no gestures
+      const zoomed = (visualViewport?.scale ?? 1) > 1.001; // magnified by Safari: the wheel pans it, no gestures
       const pulling = pullEnabled() && !pullRefreshing && !zoomed;
       const swiping = swipeEnabled() && !zoomed;
       if (pulling) showPull(pullTracker.wheel({ ...wheel, eligible: () => usable() && atPageTop(event, document) }));

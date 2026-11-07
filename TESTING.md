@@ -1733,13 +1733,12 @@ No iframe anymore, Keep open or hidden. Reload pages once after updating. Off-sc
 - [ ] Chrome: outside full screen pages are untouched; in Margin full screen they have the box; leaving it puts them back.
 - [ ] How it feels against the fitted layout: first paint, tab switches, scrolling.
 
-Pinch, on a page with a box:
+Pinch, on a page with a box (Safari's own since 2026-11-07; Margin's own pinch was removed):
 
-- [ ] Pinch in and out several times at different spots: smooth, under your fingers, the sidebar and frame don't scale, on a heavy site too.
-- [ ] At rest at 2×, is text sharp? Compare with Safari's own zoom on a page with no box. If it stays soft, say so before anything else is done about it.
-- [ ] Zoomed: click a link, a menu, a field: it lands where you pressed. Two fingers move the page, then scroll it at the edges. Fixed bars scale with the page.
-- [ ] Past 3× and below 1×: it gives a little and springs back.
-- [ ] Double-tap with two fingers: Safari's smart zoom, which scales the sidebar too. Say if that's a problem.
+- [ ] Pinch out and in several times at different spots: Safari's own zoom, smooth and under your fingers, on a heavy site too. The sidebar doesn't zoom.
+- [ ] While zoomed, and after zooming back: the sidebar stays its size and in place (never squeezed into a corner), and the page's box is where it was.
+- [ ] Pinch in at normal size: nothing happens; Safari's all-tabs overview doesn't open (Margin's gestures on).
+- [ ] Zoomed in: two fingers pan the page; pull-to-refresh and swipe back/forward don't start.
 
 ## Pinch zoom (2026-10-31)
 

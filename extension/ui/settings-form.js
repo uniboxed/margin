@@ -112,7 +112,7 @@ export function settingsFields(settings, features = {}, ui = {}) {
   }
   if (f.blockGestures) {
     const gestures = s.blockGestures !== false;
-    list.push(field({ id: 'blockGestures', kind: 'toggle', label: 'Use Margin’s trackpad gestures instead of Safari’s (pinch zooms the page; no all-tabs pinch, no bounce)', checked: gestures }));
+    list.push(field({ id: 'blockGestures', kind: 'toggle', label: 'Use Margin’s trackpad gestures instead of Safari’s (no all-tabs pinch, no bounce)', checked: gestures }));
     list.push(field({ id: 'swipeNavigation', kind: 'toggle', label: 'Swipe sideways with two fingers to go back or forward', checked: s.swipeNavigation !== false, disabled: !gestures }));
     // Margin's pull-to-refresh replaces Safari's, which only goes away with the bounce.
     list.push(field({ id: 'pullToRefresh', kind: 'toggle', label: 'Pull down at the top of a page to reload', checked: s.pullToRefresh !== false, disabled: !gestures }));

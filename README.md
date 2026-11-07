@@ -42,7 +42,7 @@ Safari extensions can't change Safari's own UI, so Margin works around it:
   - A rule on `body` that a site adds later can be masked on the few pages whose own `overflow: visible` Margin has to overrule.
   - Framesets and non-HTML documents have no box: the sidebar floats over them.
   - If Margin is removed while pages are open, they keep the box until they're reloaded.
-- **Pinch (Safari).** On a page with a box, Margin's own zoom: the page scales, the sidebar doesn't, and fixed bars scale with the page. A busy site may lag behind the fingers, since it runs on the page's main thread. Safari's double-tap zoom is Safari's own, and scales the sidebar too. With the frame off and Keep open off, Safari's pinch stays.
+- **Pinch (Safari).** Safari's own zoom on every page (Margin's own pinch was removed on 2026-11-07: slow next to Safari's). It magnifies the page's whole area, the frame around a page with a box included; Margin's sidebar, drawn by Margin.app, doesn't zoom. Margin's box stays where its layout put it. With Margin's trackpad gestures on (the default), the inward pinch that would open Safari's all-tabs overview is blocked.
 - **Pins are URL-based.** Navigating a pinned tab to another URL makes it a regular tab again.
 - **Tabs closed with ⌘W aren't archived.** Only auto-archived tabs and tabs closed with Margin's × are.
 - **Unverified in Safari.** Everything was automated-tested in headless Chromium only. See [TESTING.md](TESTING.md) for what needs a manual check.
@@ -111,7 +111,7 @@ extension/              The extension's shared source, as ES modules (browsers l
   shared/               Pure helpers: view (what the sidebar shows), search, shortcuts, stored (storage
                         format), data-set and data-merge (the data Margin.app owns), page-box (the box's CSS
                         and the first paint's), page-css, app-link, sleep, notices, gestures, pull.
-  content/core.js       Margin on web pages, no UI: the box from Margin.app's layout, gestures, pinch, the
+  content/core.js       Margin on web pages, no UI: the box from Margin.app's layout, gestures, the
                         draft check, navigation keys and ⌘T, icons and zoom, copies standing back.
   content/page/         The page's box in the page's own world (one bundle, registered while Margin.app draws).
   newtab/               Margin's new-tab page: drawn by Margin.app while linked; else a notice and an address field.

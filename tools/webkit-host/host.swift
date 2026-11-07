@@ -35,6 +35,12 @@ let pageRecorder = """
   // Whether the page's window frame is told to WebKit (its outerWidth and outerHeight then the window's, as in
   // Safari; else 0): the `windowFrame` op, off by default so every other scenario keeps the host as it was.
   static var tellsWindowFrame = false
+  // Web content processes that ended under a page (a crash: "A problem repeatedly occurred" in Safari).
+  static var crashes = 0
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    Tab.crashes += 1
+    log("the web content process of \(name) ended (\(Tab.crashes) so far)")
+  }
   @objc(_webView:getWindowFrameWithCompletionHandler:)
   func webViewWindowFrame(_ wv: WKWebView, completionHandler: @escaping (CGRect) -> Void) {
     completionHandler(Tab.tellsWindowFrame ? wv.frame : .zero)
@@ -759,6 +765,8 @@ Task { @MainActor in
         if Date() > deadline { fail(label, last); break }
         try? await Task.sleep(nanoseconds: 100_000_000)
       }
+    case "noCrash": // { op: 'noCrash', label }: no web content process ended so far
+      if Tab.crashes == 0 { log("PASS \(step["label"] as? String ?? "no web content process ended")") } else { fail(step["label"] as? String ?? "no web content process ended", "\(Tab.crashes)") }
     case "windowFrame": // { op: 'windowFrame', on }: pages' outerWidth and outerHeight their window's (Tab.tellsWindowFrame)
       Tab.tellsWindowFrame = step["on"] as? Bool ?? true; log("windowFrame \(Tab.tellsWindowFrame)")
     case "pinch": // { op: 'pinch', deltas, x?, y? }: real magnify events handed to the shown tab's web view

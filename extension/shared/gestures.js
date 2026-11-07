@@ -121,18 +121,16 @@ const NO_BOUNCE_CSS = ':root { overscroll-behavior-y: none !important; }';
 
 // `getSettings()` returns the current settings (or null while unknown).
 // `pinch()`, for a pinch starting in `win` with the page at its normal scale:
-// 'native' (Safari's, but for what opens its overview), 'block' (none: the
-// new-tab page, full screen) or 'own' (Margin's, through
-// `onPinch({ phase: 'start' | 'change' | 'end', scale, x, y })`: a page with a
-// box, where Safari's would scale the sidebar too). `onWheelFirst(event)`: a
-// wheel event that's taken (panning a zoomed page). `wanted()`: whether the guard is on by the settings
-// alone (default: getSettings says so). Returns { update() }: call it when
-// settings change (adds or removes the no-bounce rule, and the wheel
-// listener).
+// 'native' (Safari's, but for what opens its overview) or 'block' (none: the
+// new-tab page, full screen). (Margin's own pinch, a page with a box scaled at
+// <html>, was removed 2026-11-07: Tirth found it slow next to Safari's own.)
+// `wanted()`: whether the guard is on by the settings alone (default:
+// getSettings says so). Returns { update() }: call it when settings change
+// (adds or removes the no-bounce rule, and the wheel listener).
 /**
- * @param {{ getSettings: () => any, wanted?: () => boolean, pinch?: () => 'native' | 'block' | 'own', onPinch?: (pinch: { phase: 'start' | 'change' | 'end', scale: number, x?: number, y?: number }) => void, onWheelFirst?: (event: WheelEvent) => boolean, win?: Window & typeof globalThis }} options
+ * @param {{ getSettings: () => any, wanted?: () => boolean, pinch?: () => 'native' | 'block', win?: Window & typeof globalThis }} options
  */
-function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'block', onPinch = () => {}, onWheelFirst = undefined, win = globalThis.window }) {
+function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'block', win = globalThis.window }) {
   if (!win) return { update() {} };
   const doc = win.document;
   const enabled = () => getSettings()?.blockGestures !== false;
@@ -152,10 +150,6 @@ function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'b
   const wheelOptions = { capture: true, passive: false };
   const onWheel = (/** @type {WheelEvent} */ event) => {
     if (!enabled() || !event.cancelable || event.ctrlKey) return;
-    if (onWheelFirst?.(event)) {
-      event.stopPropagation(); // not for the page as well: a map would move under the pan
-      return event.preventDefault();
-    }
     if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
     if (pageScrollsX(event, doc)) return;
     event.preventDefault();
@@ -171,32 +165,11 @@ function installGestureGuard({ getSettings, wanted = undefined, pinch = () => 'b
   syncWheel();
 
   // Decided on the first event alone (see the top of this file).
-  let ours = false;
-  const options = { capture: true, passive: false };
   win.addEventListener('gesturestart', (event) => {
-    ours = false;
     if (!enabled() || zoomedIn()) return; // magnified: Safari's, both ways
-    const mode = pinch();
-    if (mode === 'native' && event.scale >= 1) return;
+    if (pinch() === 'native' && event.scale >= 1) return;
     event.preventDefault();
-    if (mode !== 'own') return;
-    event.stopPropagation(); // Margin's, not the page's as well
-    ours = true;
-    onPinch({ phase: 'start', scale: event.scale, x: /** @type {any} */ (event).clientX, y: /** @type {any} */ (event).clientY });
-  }, options);
-  win.addEventListener('gesturechange', (event) => {
-    if (!ours || !enabled()) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (Number.isFinite(event.scale)) onPinch({ phase: 'change', scale: event.scale });
-  }, options);
-  win.addEventListener('gestureend', (event) => {
-    if (!ours) return;
-    ours = false;
-    event.preventDefault();
-    event.stopPropagation();
-    onPinch({ phase: 'end', scale: event.scale });
-  }, options);
+  }, { capture: true, passive: false });
 
   // No bounce at the top/bottom (and so no Safari pull-to-refresh).
   let sheet = null;

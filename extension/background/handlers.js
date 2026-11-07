@@ -403,7 +403,7 @@ export const handlers = {
     }
   },
   // Page zoom (the browser's own, like ⌘+): for the page's box (in the
-  // page's zoomed pixels) and Margin's pinch; remembered per site.
+  // page's zoomed pixels); remembered per site.
   // Where the page in front's area sits in its window, when Safari takes part of it (the docked Web
   // Inspector: content/core.js viewportNow), for Margin.app's overlay (background/link.js viewport).
   // `measured`: the page found where its area starts from a pointer event (else it's a guess).

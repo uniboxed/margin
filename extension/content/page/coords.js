@@ -1,6 +1,6 @@
 // Client coordinates: the page's origin is its box, not the window (the
-// transform on <html> counts in what the browser reports, and a pinch adds a
-// scale). So what the page places by a rectangle (menus, tooltips) lands where
+// transform on <html> counts in what the browser reports; its scale is 1 since
+// Margin's own pinch went, 2026-11-07). So what the page places by a rectangle (menus, tooltips) lands where
 // it means, and points it asks about find what's there. One transform: where
 // the box's corner is in the window, and its scale (box.x, box.y, box.scale).
 
