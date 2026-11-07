@@ -196,6 +196,11 @@ final class AppShortcuts {
         self.bindings = Self.ordered(bindings)
         self.keyRepeat = keyRepeat
         registrar.onHit = { [weak self] id in
+            if id >= Self.quitIdBase {
+                guard let self, self.guardsQuit, Int(id - Self.quitIdBase) < Self.quitCombos.count else { return }
+                self.onQuit?(Self.quitCombos[Int(id - Self.quitIdBase)].keepWindows)
+                return
+            }
             guard let self, self.isActive, Int(id) < self.bindings.count else { return }
             let (combo, command) = self.bindings[Int(id)]
             self.stopRepeat()
@@ -232,6 +237,26 @@ final class AppShortcuts {
 
     private static func ordered(_ bindings: [Combo: AppCommand]) -> [(Combo, AppCommand)] {
         bindings.sorted { ($0.value.rawValue, $0.key.keyCode, $0.key.modifiers) < ($1.value.rawValue, $1.key.keyCode, $1.key.modifiers) }
+    }
+
+    // ---- the quit guard ----
+    // ⌘Q and ⌥⌘Q (Quit and Keep Windows), taken while a linked browser is in front with windows Margin has parked
+    // (Shell.updateKeys): Margin's first, so it closes those windows before the browser saves its windows for its
+    // next launch, then hands the same keys on (Shell.quitBrowser; Tirth, 2026-11-07: parked windows came back as
+    // small windows on the Desktop after Safari quit). Never held otherwise: ⌘Q is the browser's as it always was.
+    static let quitCombos: [(combo: Combo, keepWindows: Bool)] = [(Combo.parse("Meta+KeyQ")!, false), (Combo.parse("Alt+Meta+KeyQ")!, true)]
+    static let quitIdBase: UInt32 = 900
+    var onQuit: ((Bool) -> Void)? // keep windows (⌥⌘Q) or not
+    private(set) var guardsQuit = false
+
+    func setQuitGuard(active: Bool) {
+        guard active != guardsQuit else { return }
+        guardsQuit = active
+        for (i, entry) in Self.quitCombos.enumerated() {
+            let id = Self.quitIdBase + UInt32(i)
+            if !active { registrar.unregister(id: id); continue }
+            if !registrar.register(entry.combo, id: id) { Diagnostics.warn("\(entry.combo) is another app's: Margin can't close parked windows before the browser quits by it") }
+        }
     }
 
     // New combinations (the copy's `keys`): held at once if the keys are held now.

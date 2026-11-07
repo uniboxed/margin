@@ -208,6 +208,14 @@ extension Shell: HandoffWorld {
             if !parking.entries.isEmpty { Diagnostics.note("handoff: \(system): any of the \(parking.entries.count) parked found back in the next 3 s is parked again") }
         }
         switch why {
+        case "will power off":
+            // Logging out, restarting or shutting down: the parked windows closed by their copies before the browser is
+            // asked to quit, so it doesn't save them to bring back on the Desktop (as Shell.quitBrowser for ⌘Q).
+            guard let parking, !parking.entries.isEmpty else { break }
+            Diagnostics.note("the Mac is logging out or shutting down: \(parking.entries.count) parked window\(parking.entries.count == 1 ? "" : "s") closed first")
+            parking.endAll(cause: .quit, within: Shell.quitCloseWithin, close: parkedCloser()) { end in
+                Diagnostics.note("before the power off: closed \(end.closed), returned \(end.returned), \(end.left) left (\(end.ms) ms)")
+            }
         case "will sleep":
             switcher.revealNow(.sleep)
         case "woke":

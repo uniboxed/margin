@@ -263,6 +263,8 @@ func handoffScenario() async {
   options.switchClock = clock
   options.handoff = true
   options.handoffParts = HandoffParts(reads: world, parker: SpaceParker(reads: world, bridge: world, clock: clock), freezer: freezer)
+  var passedQuit: [(pid_t, Bool)] = []
+  options.passQuitKeys = { pid, keep in passedQuit.append((pid, keep)) }
   options.fillsDisplay = { $0 == full }
   // A Margin.app that crashed with P2's window parked: it came back by itself to the Desktop, and its
   // marker is in the data folder (§13.2). The same Safari is still running.
@@ -560,11 +562,30 @@ func handoffScenario() async {
   check("9: one Margin has parked now: left alone, still parked", !reqs("A", "closeWindow", mark9).contains { int(payload($0)["windowId"]) == 9 } && shell.parking?.isParked(n9) == true)
   fake.tell(["do": "windows", "id": "A", "list": [box(normal1).merging(["windowId": 9, "state": "normal", "focused": false, "activeTabId": 13]) { $1 }]])
   try? await Task.sleep(nanoseconds: 300_000_000)
+
+  // ---- 10. ⌘Q in Safari with a window parked (Tirth, 2026-11-07): Margin's first, the parked window closed by its
+  // copy, then the keys passed on to Safari. ----
+  let mark10 = fake.events.count
+  check("10: with Safari in front and a window parked, ⌘Q is Margin's first", await until(3, { keys.held.values.contains(Combo.parse("Meta+KeyQ")!) }))
+  keys.press("Meta+KeyQ")
+  let asked10 = await until(3, { reqs("A", "closeWindow", mark10).contains { int(payload($0)["windowId"]) == 9 } })
+  check("10: the parked window closed by its copy before Safari quits", asked10, "\(reqs("A", "closeWindow", mark10).map { payload($0) })")
+  check("10: then ⌘Q passed on to Safari, once, not keeping windows", await until(3, { passedQuit.count == 1 }) && passedQuit.first?.0 == browserPid && passedQuit.first?.1 == false,
+        "\(passedQuit.map { "\($0.0) \($0.1)" })")
+  check("10: ⌘Q let go meanwhile (the keys passed on reach Safari)", !keys.held.values.contains(Combo.parse("Meta+KeyQ")!))
+  // (Safari didn't really quit here: back to P1, a window made for it, so P2's is parked for Margin's own quit.)
+  try? await Task.sleep(nanoseconds: 2_200_000_000)
+  guard let o95 = shell.overlays[k95], await until(5, { o95.isShown }) else { return check("10: P2's window still shown", false) }
+  shell.performAcross(from: o95, "profile.switch", ["profile": "P1", "space": p1Spaces[0]])
+  check("10: then to P1 again: P2's window parked", await until(10, { !shell.switcher.busy }) && shell.parking?.entries.isEmpty == false, "\(shell.switcher.session.lines.last ?? "-")")
+  let parkedAtQuit = (shell.parking?.entries.values.compactMap(\.key) ?? [])
   mark = fake.events.count
   var stopped = false
   shell.stop { stopped = true }
-  check("quit: every parked window closed by its copy, then the rest", await until(3, { stopped }) && reqs("A", "closeWindow", mark).contains { int(payload($0)["windowId"]) == 9 }
-        && shell.parking?.entries.isEmpty == true)
+  let copyId = { (k: WindowKey) in k.link == "safari:P1" ? "A" : "B" }
+  check("quit: every parked window closed by its copy, then the rest", await until(3, { stopped }) && !parkedAtQuit.isEmpty
+        && parkedAtQuit.allSatisfy { k in reqs(copyId(k), "closeWindow", mark).contains { int(payload($0)["windowId"]) == k.windowId } }
+        && shell.parking?.entries.isEmpty == true, "\(parkedAtQuit)")
   check("quit: the crash marker gone", !FileManager.default.fileExists(atPath: shell.parkingMarkerURL.path))
   check("nothing the app sent was over 1 MB", fake.first("tooBig") == nil)
   for w in windows.stands.values { w.close() }

@@ -206,6 +206,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         var safariAX = false
         // The window trace (WindowTrace.swift, DEV): only the app's, unless a test gives one.
         var trace: WindowTrace?
+        // ⌘Q or ⌥⌘Q handed on to the browser after Margin closed its parked windows (Shell.quitBrowser): the keys
+        // posted to its process, as the person pressed them. A test records them instead.
+        var passQuitKeys: (pid_t, Bool) -> Void = Shell.postQuitKeys
     }
 
     final class Link {
@@ -358,6 +361,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if why == "Space changed" { self?.spaceDidChange() } else { self?.appsChanged(why) }
         }
         shortcuts.onCommand = { [weak self] command, isRepeat in self?.run(command, isRepeat: isRepeat) }
+        shortcuts.onQuit = { [weak self] keep in self?.quitBrowser(keepWindows: keep) }
         pointer.onMove = { [weak self] at in self?.pointerMoved(at) }
         pointer.onPress = { [weak self] at in self?.pressed(at) }
         if let parts = options.handoffParts { useHandoffParts(parts) }
@@ -1526,6 +1530,57 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let ownPid = ProcessInfo.processInfo.processIdentifier
         let midSwitch = switcher.keysMidSwitch && apps.frontPid.map { allPids.contains($0) || $0 == ownPid } == true
         shortcuts.set(active: ShortcutSet.active(frontPid: apps.frontPid, linkedPids: allPids, frontWindowHasOverlay: has) || midSwitch)
+        shortcuts.setQuitGuard(active: Shell.guardsQuit(browserInFront: apps.frontPid.map(allPids.contains) == true,
+                                                        parked: parking?.entries.count ?? 0, quitting: quittingBrowser))
+    }
+
+    /// ⌘Q (or ⌥⌘Q) posted to a process, a key press and release (Accessibility lets Margin post events); if it
+    /// can't be posted, the plain quit asked of the app instead.
+    nonisolated static func postQuitKeys(_ pid: pid_t, _ keepWindows: Bool) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        let flags: CGEventFlags = keepWindows ? [.maskCommand, .maskAlternate] : [.maskCommand]
+        let q: CGKeyCode = 12 // kVK_ANSI_Q
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: q, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: q, keyDown: false) else {
+            NSRunningApplication(processIdentifier: pid)?.terminate()
+            return
+        }
+        down.flags = flags
+        up.flags = flags
+        down.postToPid(pid)
+        up.postToPid(pid)
+    }
+
+    /// Whether ⌘Q and ⌥⌘Q are Margin's first (AppShortcuts' quit guard): a linked browser in front, with windows Margin
+    /// has parked, and not already quitting it.
+    static func guardsQuit(browserInFront: Bool, parked: Int, quitting: Bool) -> Bool { browserInFront && parked > 0 && !quitting }
+
+    // ⌘Q or ⌥⌘Q in the browser with windows parked: every parked window closed by its own copy first (its tabs stay in
+    // their spaces, not open), at most `quitCloseWithin`, then the same keys handed to the browser, which quits as it
+    // would have (its own "quit with these tabs?" too). So the browser never saves them as windows to bring back on the
+    // Desktop at its next launch (Tirth, 2026-11-07). A parked window whose copy can't be asked goes back to its Desktop
+    // as at Margin's own quit.
+    private(set) var quittingBrowser = false
+    static let quitCloseWithin: Double = 0.6
+    func quitBrowser(keepWindows: Bool) {
+        guard !quittingBrowser, let pid = apps.frontPid else { return }
+        quittingBrowser = true
+        shortcuts.setQuitGuard(active: false)
+        let keys = keepWindows ? "⌥⌘Q" : "⌘Q"
+        guard let parking, !parking.entries.isEmpty else {
+            options.passQuitKeys(pid, keepWindows)
+            quittingBrowser = false
+            return
+        }
+        Diagnostics.note("\(keys) in the browser with \(parking.entries.count) parked window\(parking.entries.count == 1 ? "" : "s"): closed first, then the keys passed on")
+        options.trace?.event("quit \(keys) with \(parking.entries.count) parked", at: Diagnostics.now())
+        parking.endAll(cause: .quit, within: Shell.quitCloseWithin, close: parkedCloser()) { [weak self] end in
+            guard let self else { return }
+            Diagnostics.note("before the browser quits: closed \(end.closed), returned \(end.returned), \(end.left) left (\(end.ms) ms); \(keys) passed on")
+            self.options.passQuitKeys(pid, keepWindows)
+            // (Taken again only if the browser is still in front with windows parked: its quit was cancelled.)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.quittingBrowser = false }
+        }
     }
 
     // ---- the pointer ----

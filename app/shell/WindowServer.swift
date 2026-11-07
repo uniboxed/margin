@@ -165,6 +165,7 @@ final class WorkspaceApps: AppWatch {
             (workspace, NSWorkspace.didTerminateApplicationNotification, "app quit"),
             (workspace, NSWorkspace.activeSpaceDidChangeNotification, "Space changed"),
             (workspace, NSWorkspace.willSleepNotification, "will sleep"),
+            (workspace, NSWorkspace.willPowerOffNotification, "will power off"),
             (workspace, NSWorkspace.didWakeNotification, "woke"),
             (NotificationCenter.default, NSApplication.didChangeScreenParametersNotification, "displays changed"),
         ]

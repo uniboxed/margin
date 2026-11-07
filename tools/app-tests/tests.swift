@@ -553,6 +553,24 @@ final class FakeRegistrar: HotKeyRegistrar {
     keys.set(active: false)
     check("let go after a rebind: none held", fake.held.isEmpty)
 
+    // The quit guard (Shell.quitBrowser): ⌘Q and ⌥⌘Q, Margin's only while the browser is in front with windows parked.
+    check("quit guard: on with the browser in front and a window parked; off otherwise",
+          Shell.guardsQuit(browserInFront: true, parked: 1, quitting: false) && !Shell.guardsQuit(browserInFront: true, parked: 0, quitting: false)
+          && !Shell.guardsQuit(browserInFront: false, parked: 2, quitting: false) && !Shell.guardsQuit(browserInFront: true, parked: 2, quitting: true))
+    var quits: [Bool] = []
+    keys.onQuit = { quits.append($0) }
+    keys.setQuitGuard(active: true)
+    let q = fake.held.first { $0.value == Combo.parse("Meta+KeyQ") }?.key, oq = fake.held.first { $0.value == Combo.parse("Alt+Meta+KeyQ") }?.key
+    check("quit guard: ⌘Q and ⌥⌘Q held, apart from Margin's keys (none held now)", q != nil && oq != nil && fake.held.count == 2 && !keys.isActive)
+    if let q, let oq { fake.onHit?(q); fake.onHit?(oq) }
+    check("quit guard: each press says which (⌥⌘Q keeps the windows)", quits == [false, true], "\(quits)")
+    keys.set(active: true)
+    keys.set(active: false)
+    check("quit guard: Margin's keys coming and going leave it held", fake.held.count == 2 && keys.guardsQuit)
+    keys.setQuitGuard(active: false)
+    if let q { fake.onHit?(q) }
+    check("quit guard: let go, ⌘Q is the browser's again", fake.held.isEmpty && quits.count == 2)
+
     // A held key repeats at the Mac's repeat (a test clock), until let go.
     var waits: [(TimeInterval, () -> Void)] = []
     var mods = true
