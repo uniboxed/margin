@@ -1602,6 +1602,61 @@ extension Tests {
 
 extension Tests {
   // Accessibility names each window's profile (SafariAX.swift, WindowBinder.update `exact`).
+  // Safari's Accessibility events (SafariAX.watch) and what's kept of them (AXKnown); the other Spaces' scan
+  // (SafariAX.shouldScan) kept for what the events can't give.
+  static func axEvents() {
+    // The scan: without events, as before (an unknown window, every 0.5 s).
+    check("no events: an unknown window is scanned for at once, then every 0.5 s",
+          SafariAX.shouldScan(now: 10, unknownSince: 10, scannedAt: -.infinity, scans: 0, watching: false)
+          && !SafariAX.shouldScan(now: 10.3, unknownSince: 10, scannedAt: 10, scans: 1, watching: false)
+          && SafariAX.shouldScan(now: 10.5, unknownSince: 10, scannedAt: 10, scans: 1, watching: false))
+    check("nothing unknown: no scan, events or not",
+          !SafariAX.shouldScan(now: 10, unknownSince: nil, scannedAt: -.infinity, scans: 0, watching: false)
+          && !SafariAX.shouldScan(now: 10, unknownSince: nil, scannedAt: -.infinity, scans: 0, watching: true))
+    check("events heard: the first scan at once (windows open on other Spaces before Margin)",
+          SafariAX.shouldScan(now: 10, unknownSince: 10, scannedAt: -.infinity, scans: 0, watching: true))
+    check("events heard: after it, a window unknown for under 2 s isn't scanned for (its event names it)",
+          !SafariAX.shouldScan(now: 21.9, unknownSince: 20, scannedAt: 10, scans: 1, watching: true))
+    check("events heard: one unknown for 2 s is (an event missed), at most every 5 s",
+          SafariAX.shouldScan(now: 22, unknownSince: 20, scannedAt: 10, scans: 1, watching: true)
+          && !SafariAX.shouldScan(now: 26, unknownSince: 20, scannedAt: 22, scans: 2, watching: true)
+          && SafariAX.shouldScan(now: 27, unknownSince: 20, scannedAt: 22, scans: 2, watching: true))
+    // Over a minute of reads with one window never found (not a window Accessibility can see): 0.5 s scans before, 5 s with events.
+    do {
+      func count(watching: Bool) -> Int {
+        var scans = 0, at = -Double.infinity
+        for i in 0..<240 { let now = 100 + Double(i) * 0.25; if SafariAX.shouldScan(now: now, unknownSince: 100, scannedAt: at, scans: scans, watching: watching) { scans += 1; at = now } }
+        return scans
+      }
+      check("a window never found: about 12 scans a minute with events, not 120", count(watching: true) <= 13 && count(watching: false) >= 110, "\(count(watching: true)) vs \(count(watching: false))")
+    }
+
+    // What's kept.
+    let names = ["s-default": "Work", "s-b": "Personal", "s-c": "Test A"]
+    func win(_ n: Int, _ title: String, full: Bool = true) -> SafariAX.Window { SafariAX.Window(number: n, title: title, fullScreen: full) }
+    do {
+      var k = AXKnown()
+      let learned = k.learn([7: win(7, "Test A — Start Page")], names: names)
+      check("a created window's event names its profile at once, no read needed", learned == [7] && k.profiles[7] == "safari:s-c" && k.fullScreen[7] == true, "\(learned) \(k.profiles)")
+      check("its next events change nothing of its profile", k.learn([7: win(7, "Personal — x")], names: names).isEmpty && k.profiles[7] == "safari:s-c")
+      _ = k.learn([7: win(7, "Test A — x", full: false)], names: names)
+      check("out of full screen: kept as not full screen", k.fullScreen[7] == false && k.profiles[7] == "safari:s-c")
+      k.gone(7)
+      check("closed: forgotten", k.profiles[7] == nil && k.fullScreen[7] == nil)
+    }
+    do {
+      var k = AXKnown()
+      check("a window without a title yet: no profile (its title's event names it later)", k.learn([8: win(8, "")], names: names).isEmpty && k.profiles[8] == nil && k.fullScreen[8] == true)
+      check("then titled: named", k.learn([8: win(8, "Personal — Inbox")], names: names) == [8] && k.profiles[8] == "safari:s-b")
+      var j = AXKnown()
+      check("without Safari's profile names: no profile (every title would read as the default's), full screen kept",
+            j.learn([9: win(9, "Test A — x", full: false)], names: [:]).isEmpty && j.fullScreen[9] == false && j.profiles[9] == nil)
+      _ = k.learn([10: win(10, "Start Page")], names: names)
+      k.keep(listed: [10])
+      check("only windows the window server lists are kept", k.profiles == [10: "safari:s-default"] && k.fullScreen.keys.sorted() == [10], "\(k.profiles)")
+    }
+  }
+
   static func axBinding() {
     let A = "safari:s-default", B = "safari:s-b", C = "safari:s-c"
     let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)

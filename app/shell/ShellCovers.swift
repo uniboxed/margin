@@ -93,7 +93,7 @@ extension Shell {
                 c.panel.order(.above, relativeTo: n)
             } else {
                 guard let reads = spaceReads, let bridge = reads as? SpaceBridge, bridge.canPark,
-                      let space = reads.spaces(of: n)?.first, reads.fullScreenSpaces()?.contains(space) == true else { c.close(); continue }
+                      ax.fullScreen[n] != false, let space = reads.spaces(of: n)?.first, reads.fullScreenSpaces()?.contains(space) == true else { c.close(); continue }
                 c.panel.alphaValue = 0
                 c.panel.order(.above, relativeTo: n)
                 let moved = bridge.add(c.panel.windowNumber, to: space)

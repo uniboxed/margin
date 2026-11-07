@@ -65,6 +65,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     layouts()
     windowBinding() // window-tests.swift
     axBinding() // window-tests.swift: Accessibility's exact word
+    axEvents() // window-tests.swift: Safari's Accessibility events and the scan kept for startup
     parkedWindowBinding() // window-tests.swift
     stacking()
     passThrough()

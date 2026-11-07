@@ -239,14 +239,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // Safari's windows as Accessibility reads them, and the profile (link) each one's title named, once known: a
     // window's profile never changes (SafariAX.swift).
     let safariAX = SafariAX()
-    private var axProfiles: [Int: String] = [:]
+    private(set) var ax = AXKnown()
     // Settings Margin sent each copy (shareSettings, carrySettings), to know their echo; when each copy linked.
     var settingsSent: [String: String] = [:]
     var linkedAt: [String: Double] = [:]
     // Profiles whose window Margin asked Safari for during a switch: Safari's pid and that profile's windows before.
     var openedFor: [String: (pid: pid_t, before: [Int])] = [:]
     /// The window numbers Accessibility named as `link`'s.
-    func axWindows(of link: String) -> [Int] { axProfiles.filter { $0.value == link }.map(\.key).sorted() }
+    func axWindows(of link: String) -> [Int] { ax.profiles.filter { $0.value == link }.map(\.key).sorted() }
     // Covers over Safari's windows until their layouts are ready (ShellCovers.swift).
     var covers: [Int: SafariCover] = [:]
     var coverTimer: Timer?
@@ -869,7 +869,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
               !switcher.busy, Diagnostics.now() - lastSwitchBusyAt >= 3,
               let reads = spaceReads, let bridge = reads as? SpaceBridge, bridge.canPark,
               Diagnostics.now() - (aheadFailedAt[key] ?? -.infinity) >= 5 else { return false }
-        guard let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
+        // (A window Accessibility read as not full screen: no SkyLight calls. One it read as full screen is still
+        // checked with SkyLight, as entering full screen says so before the window is in its own Space.)
+        guard ax.fullScreen[number] != false, let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
         let viewport = w.viewport
         let docked = Shell.dockedLeft(overlay)
         let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: docked)
@@ -882,30 +884,53 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     }
 
     // Safari's windows' profiles from Accessibility: known ones at once, unknown ones asked for (the answer
-    // comes back on the main thread and reads again). Window numbers only: no title is kept or logged.
+    // comes back on the main thread and reads again). Safari's events heard too (SafariAX.watch): a window
+    // created, closed, moved or resized reads the window server at once. Window numbers only: no title is kept
+    // or logged.
     func safariExact(list: [ServerWindow], pids: Set<pid_t>) -> [Int: String] {
         guard options.safariAX, SafariAX.trusted, let pid = pids.first else { return [:] }
         let wanted = Set(WindowMatcher.candidates(list, pids: pids).map(\.number))
-        let listed = Set(list.map(\.number))
-        axProfiles = axProfiles.filter { listed.contains($0.key) }
-        if !wanted.subtracting(axProfiles.keys).isEmpty {
+        ax.keep(listed: Set(list.map(\.number)))
+        safariAX.watch(pid: pid) { [weak self] e in self?.axEvent(e) }
+        if !wanted.subtracting(ax.profiles.keys).isEmpty {
             safariAX.refresh(pid: pid, wanted: wanted) { [weak self] found in
                 guard let self, !self.stopped else { return }
-                let names = self.profilesOf("safari").browserNames.mapValues(\.name)
-                // Without Safari's profile names (Full Disk Access), a title can't name one: every window would read as the default's.
-                guard !names.isEmpty else { return }
-                var learned = false
-                for (n, w) in found where self.axProfiles[n] == nil && !w.title.isEmpty {
-                    guard let id = SafariAX.profile(ofTitle: w.title, names: names, defaultId: "s-default") else { continue }
-                    self.axProfiles[n] = "safari:" + id
-                    learned = true
-                    if !self.axSaid.contains(n) { self.axSaid.insert(n); Diagnostics.note("Accessibility: window \(n) is safari:\(id)'s\(w.fullScreen ? " (full screen)" : "")") }
-                }
-                if learned { self.burst("Accessibility named a window's profile") }
+                if !self.axLearn(found).isEmpty { self.burst("Accessibility named a window's profile") }
             }
         }
-        return axProfiles.filter { wanted.contains($0.key) }
+        return ax.profiles.filter { wanted.contains($0.key) }
     }
+
+    // What Accessibility read of Safari's windows, kept; the windows whose profile it named now.
+    @discardableResult
+    func axLearn(_ found: [Int: SafariAX.Window]) -> [Int] {
+        let names = profilesOf("safari").browserNames.mapValues(\.name)
+        let learned = ax.learn(found, names: names)
+        for n in learned where !axSaid.contains(n) {
+            axSaid.insert(n)
+            Diagnostics.note("Accessibility: window \(n) is \(ax.profiles[n] ?? "?")'s\(found[n]?.fullScreen == true ? " (full screen)" : "")")
+        }
+        return learned
+    }
+
+    // One of Safari's Accessibility events: the window server read at once (a new window's layout, a window
+    // in or out of full screen, a closed one's overlay put away), not at the next poll.
+    func axEvent(_ e: SafariAX.Event) {
+        guard !stopped else { return }
+        switch e {
+        case .window(let w):
+            axLearn([w.number: w])
+            burst("Accessibility: a window changed")
+        case .gone(let n):
+            ax.gone(n)
+            burst("Accessibility: a window closed")
+        case .watching(let on):
+            guard on != axWatching else { return }
+            axWatching = on
+            Diagnostics.note(on ? "Accessibility: Safari's window events heard (new, closed, moved, resized)" : "Accessibility: Safari's window events not heard yet (tried again in 1 s)")
+        }
+    }
+    private var axWatching: Bool?
 
     // Read the window server often for a while (something is moving).
     func burst(_ why: String) {
