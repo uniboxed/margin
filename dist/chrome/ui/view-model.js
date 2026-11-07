@@ -57,6 +57,7 @@ export const VM_VERSION = 1;
  *   launcherPage?: boolean,
  *   pageLoading?: boolean,
  *   gesture?: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done', progress?: number, direction?: number } | null,
+ *   theme?: { id: string, name: string, settings: Record<string, any> } | null,
  * }} UiState
  *
  * @typedef {{
@@ -559,7 +560,7 @@ function fresh(input) {
   // Its Settings form, open (ui/settings-form.js).
   let settingsForm = null;
   if (launcher && ui.settingsOpen) {
-    const fields = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {} });
+    const fields = settingsFields(state.settings, input.platform?.features ?? {}, { recording: ui.recording ?? null, status: ui.settingsStatus ?? {}, theme: ui.theme ?? null });
     settingsForm = { fields, hasFields: fields.length > 0 };
   }
 

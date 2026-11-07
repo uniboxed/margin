@@ -93,3 +93,79 @@ func userThemesScenario(shell: Shell, fake: Fake, overlay o7: OverlayController)
   fake.tell(["do": "delta", "id": "A", "changes": ["settings": ["newValue": settings]]])
   check("user themes: a theme that isn't the app's can't be saved", { shell.performTheme(from: o7, "theme.save", ["value": storedNeo(id: "arcadia")]); return !shell.userThemes.store.has("arcadia") }())
 }
+
+// A copy of a built-in theme's folder as a person's: its own id and name, only a package's files.
+func personalCopy(of builtin: String, id: String, name: String, in root: URL) -> URL {
+  let fm = FileManager.default
+  let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../extension/themes/\(builtin)").standardizedFileURL
+  let dst = root.appendingPathComponent(id, isDirectory: true)
+  try? fm.removeItem(at: dst)
+  try? fm.copyItem(at: src, to: dst)
+  for extra in ["first-paint.css", "theme.js"] { try? fm.removeItem(at: dst.appendingPathComponent(extra)) }
+  let manifestURL = dst.appendingPathComponent("theme.json")
+  var manifest = (try? JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL))) as? JSONObject ?? [:]
+  manifest["id"] = id
+  manifest["name"] = name
+  manifest["version"] = "1.0.0"
+  try? JSONSerialization.data(withJSONObject: manifest).write(to: manifestURL)
+  return dst
+}
+
+// Import Theme… end to end, with the harness answering for the file picker: a folder
+// previewed under Margin's bar and used; a .margintheme file previewed and cancelled (the
+// theme from before back); a folder with a script in it refused, with why.
+@MainActor
+func importScenario(shell: Shell, fake: Fake, overlay o7: OverlayController) async {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent("margin-e2e-import-\(UUID().uuidString)", isDirectory: true)
+  try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: root); shell.userThemes.pick = nil }
+  let folder = personalCopy(of: "neo-brutalism", id: "e2e-import", name: "E2E Import", in: root)
+  shell.userThemes.pick = { folder }
+  var mark = fake.events.count
+  shell.performTheme(from: o7, "theme.import", nil)
+  check("import: a folder picked: previewed over the window, under Margin's bar with the theme's name",
+        await waitJS(o7.webView, "const p = marginApp.preview(); return p.shown && p.text.includes('Previewing “E2E Import” 1.0.0 by Margin') && !!document.querySelector('.nb')"))
+  check("import: the bar takes the pointer (in the hits the app gets)", await waitJS(o7.webView, "return !!marginApp.preview().rect"))
+  check("import: nothing went to the copy while previewing", fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "updateSettings" } == nil)
+  _ = await js(o7.webView, "marginApp.previewPress('use'); return true")
+  check("import: Use Theme: kept by the app", await until(5, { shell.userThemes.store.has("e2e-import") }))
+  check("import: and this profile asked to use it", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "updateSettings" } != nil }))
+  check("import: the bar gone", await waitJS(o7.webView, "return !marginApp.preview().shown && !!document.querySelector('.nb')"))
+  let stateNow = shell.links["safari:P1"]?.mirror.stateJSON().flatMap { try? JSONSerialization.jsonObject(with: $0) as? JSONObject } ?? [:]
+  var settings = (stateNow["settings"] as? JSONObject) ?? [:]
+  settings["theme"] = "e2e-import"
+  fake.tell(["do": "delta", "id": "A", "changes": ["settings": ["newValue": settings]]])
+  try? await Task.sleep(nanoseconds: 300_000_000)
+
+  // A .margintheme file (macOS's own zip of a folder), previewed and cancelled.
+  let arc = personalCopy(of: "arcadia", id: "e2e-zip", name: "E2E Zip", in: root)
+  let zip = root.appendingPathComponent("e2e-zip.margintheme")
+  let ditto = Process()
+  ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+  ditto.arguments = ["-c", "-k", "--keepParent", arc.path, zip.path]
+  try? ditto.run()
+  ditto.waitUntilExit()
+  shell.userThemes.pick = { zip }
+  shell.performTheme(from: o7, "theme.import", nil)
+  check("import: a .margintheme file picked: read in the overlay and previewed",
+        await waitJS(o7.webView, "const p = marginApp.preview(); return p.shown && p.text.includes('“E2E Zip”') && !!document.querySelector('.arcadia')"))
+  _ = await js(o7.webView, "marginApp.previewPress('cancel'); return true")
+  check("import: Cancel: the theme from before back, nothing kept", await waitJS(o7.webView, "return !marginApp.preview().shown && !!document.querySelector('.nb') && !document.querySelector('.arcadia')") && !shell.userThemes.store.has("e2e-zip"))
+
+  // Refused: a script in the folder.
+  try? Data("alert(1)".utf8).write(to: folder.appendingPathComponent("evil.js"))
+  shell.userThemes.pick = { folder }
+  shell.performTheme(from: o7, "theme.import", nil)
+  check("import: a folder with a script refused, and Settings says why", await waitJS(o7.webView, "const s = marginApp.importStatus(); return !marginApp.preview().shown && !!s?.error && s.text.includes('evil.js')"))
+  shell.userThemes.pick = { nil }
+  mark = fake.events.count
+  shell.performTheme(from: o7, "theme.import", nil)
+  try? await Task.sleep(nanoseconds: 200_000_000)
+  check("import: the picker cancelled: nothing happens", fake.first("req", since: mark) == nil)
+
+  // Removed while in use: back to the copy's own theme.
+  shell.performTheme(from: o7, "theme.remove", ["id": "e2e-import"])
+  check("import: removed while in use: Arcadia again", await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && !document.querySelector('.nb')"))
+  settings["theme"] = "arcadia"
+  fake.tell(["do": "delta", "id": "A", "changes": ["settings": ["newValue": settings]]])
+}

@@ -121,7 +121,7 @@ export function hitRects(root, slot, { limit = 64, getStyle = (el) => /** @type 
  *   onNotice?: (arg: { id?: string, action?: string }) => void,
  *   warn?: (...args: any[]) => void,
  * }} options
- * @returns {Host & { staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], takeFailure(): { type: string, error: string } | null, destroy(): void }}
+ * @returns {Host & { staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void }}
  */
 export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args) }) {
   const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
@@ -148,6 +148,9 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
   };
   // "Show iCloud Tabs" in Settings: Safari's windows (Chrome and Edge: Phase 5, sessions.getDevices()).
   platform.features.cloudTabs = platform.browser === 'safari';
+  // Themes: Margin.app imports them (its file picker), and keeps the index (`themes`: app/PROTOCOL.md "User themes").
+  /** @type {any} */ (platform.features).importThemes = true;
+  /** @type {any} */ (platform.features).userThemes = Array.isArray(hello?.themes) ? hello.themes : [];
   // The window's tabs loading, as the copy last said (`push` `loading`).
   /** @type {Set<number>} */
   let loading = new Set();
@@ -257,6 +260,8 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
     },
     get layout() { return layout; },
     get windows() { return windows; },
+    /** Margin.app's index of imported themes. */
+    get userThemes() { return /** @type {any} */ (platform.features).userThemes; },
     /** @param {string} name @param {any} [arg] */
     perform(name, arg) {
       switch (name) {
@@ -278,6 +283,14 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
         case 'space.move':
           void post('perform', { name, arg: arg ?? null }).catch(() => {});
           return true;
+        // Themes (app/shell/ShellThemes.swift): the file picker; a checked theme kept; one removed.
+        case 'theme.import':
+          void post('perform', { name, arg: null }).catch(() => {});
+          return true;
+        case 'theme.save':
+          if (!arg?.value || typeof arg.value !== 'object') return false;
+          void post('perform', { name, arg: { value: arg.value } }).catch(() => {});
+          return true;
         // iCloud Tabs (app/shell/ShellCloudTabs.swift): System Settings at Full Disk Access, an address copied.
         case 'cloud.access':
           void post('perform', { name, arg: null }).catch(() => {});
@@ -290,8 +303,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           // The runtime closed it; the overlay's notices tell the copy what was chosen.
           onNotice(arg ?? {});
           return true;
-        case 'prompt':
-          return true; // the runtime closes it; the app puts up no prompts yet
+        case 'prompt': {
+          // The runtime closes it. Settings' Remove asked first (ui/settings-form.js removePrompt): removed only on Remove.
+          const m = /^remove-theme:([a-z0-9][a-z0-9-]{0,40})$/.exec(String(arg?.id ?? ''));
+          if (m && arg?.action === 'remove') void post('perform', { name: 'theme.remove', arg: { id: m[1] } }).catch(() => {});
+          return true;
+        }
         default:
           return false; // history goes to the copy (goBack, goForward, reload); the window's other buttons are Phase 4's
       }
@@ -316,6 +333,12 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           return emit();
         case 'cloudTabs':
           cloud = cloudOf(msg.cloudTabs);
+          rebuild();
+          return emit();
+        case 'themes':
+          // Margin.app's index of imported themes changed (Settings lists them).
+          if (!Array.isArray(msg.list)) return;
+          /** @type {any} */ (platform.features).userThemes = msg.list;
           rebuild();
           return emit();
         case 'windows': {

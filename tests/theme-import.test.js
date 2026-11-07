@@ -28,9 +28,9 @@ test('a folder: the three texts at the top, or in the one folder everything is i
   const top = packageFromFiles(MINE);
   assert.equal(top.ok, true);
   assert.deepEqual(Object.keys(top.pkg.files), ['LICENSE.txt']);
-  const nested = packageFromFiles({ ...Object.fromEntries(Object.entries(MINE).map(([k, v]) => [`my-theme/${k}`, v])), '__MACOSX/my-theme/._theme.json': enc('x'), 'my-theme/.DS_Store': enc('x') });
+  const nested = packageFromFiles({ ...Object.fromEntries(Object.entries(MINE).map(([k, v]) => [`my-theme/${k}`, v])), '__MACOSX/my-theme/._theme.json': enc('x'), 'my-theme/.DS_Store': enc('x'), 'my-theme/._theme.css': enc('x') });
   assert.equal(nested.ok, true);
-  assert.equal(nested.skipped, 2);
+  assert.equal(nested.skipped, 3);
   assert.equal(nested.pkg.manifest, top.pkg.manifest);
 });
 

@@ -360,7 +360,7 @@ const BEHAVIORS = {
   'm-rename': ['space', 'folder', 'tab'],
   'm-scroll': ['tabs', 'palette', 'archive'],
   'm-swipe': ['spaces'],
-  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', ...['number', 'toggle', 'choice', 'list', 'shortcut'].map((k) => `setting-${k}`)],
+  'm-input': ['palette', 'space-name', 'space-emoji', 'launcher', ...['number', 'toggle', 'choice', 'list', 'shortcut', 'color'].map((k) => `setting-${k}`)],
 };
 // Which element each of Margin's inputs is: a Settings list is a <textarea>,
 // a choice a <select> (Margin draws its options), the rest <input>s (Margin

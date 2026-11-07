@@ -347,6 +347,7 @@
 .setting.disabled { opacity: .45; }
 .settings-form :is(select, input, textarea) { font: inherit; color: var(--ink); background: var(--paper); border: 2.5px solid var(--ink); border-radius: 8px; padding: 4px 8px; }
 .settings-form input.number { width: 6em; }
+.settings-form input.color { -webkit-appearance: none; appearance: none; flex-shrink: 0; width: 44px; height: 30px; padding: 3px; box-sizing: border-box; border: 2.5px solid var(--ink); border-radius: 8px; background: var(--paper); box-shadow: 2px 2px 0 var(--ink); cursor: pointer; }
 .settings-form input.shortcut { width: 9em; cursor: pointer; }
 .settings-form input.shortcut.recording { background: var(--yellow); }
 /* A toggle: a bordered pill, its knob left (off) or right on yellow (on). */

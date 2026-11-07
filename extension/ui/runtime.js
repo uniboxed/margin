@@ -180,6 +180,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     onRun: stays && onSwitchRun ? (run) => { if (!destroyed) onSwitchRun(run); } : null,
   });
 
+  const themeInfo = Object.freeze({ id: theme.manifest?.id ?? theme.id, name: theme.manifest?.name ?? '', settings: theme.manifest?.settings ?? {} });
   // The UI state with what the host knows (its window, tab and mode).
   const fullUi = () => ({
     ...ui,
@@ -188,6 +189,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     mode: host.mode ?? 'inpage',
     inNewTab: !!host.inNewTab,
     launcherPage: !!host.launcher,
+    // The active theme, for Settings' "Settings of …" (ui/settings-form.js): its id, name and theme.json settings.
+    theme: themeInfo,
     justShown: (firstRender || Date.now() - lastShownAt < JUST_SHOWN_MS) && switchAskedAt <= lastShownAt,
   });
 
@@ -521,7 +524,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   };
 
   const rt = {
-    host, theme, view, doc, win, container, scale,
+    host, theme, themeInfo, view, doc, win, container, scale,
     get vm() { return vm; },
     get ui() { return ui; },
     get state() { return host.getState(); },

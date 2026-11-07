@@ -25,8 +25,10 @@ export const IMPORT_LIMITS = Object.freeze({
 });
 
 const TEXTS = ['theme.json', 'theme.html', 'theme.css'];
-// Finder's leftovers, skipped: its resource forks and folder settings.
-const JUNK = (path) => path.startsWith('__MACOSX/') || path.split('/').some((seg) => seg === '.DS_Store');
+// macOS's leftovers, skipped: resource forks and extended attributes (Finder's
+// Compress puts them in __MACOSX/, ditto and others beside each file as ._name)
+// and folder settings (.DS_Store).
+const JUNK = (path) => path.startsWith('__MACOSX/') || path.split('/').some((seg) => seg === '.DS_Store' || seg.startsWith('._'));
 const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
 /**

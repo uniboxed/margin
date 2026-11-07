@@ -386,7 +386,6 @@ func scenario() async {
   fake.tell(["do": "theme", "id": "A", "theme": "arcadia"])
   check("back to Arcadia", await until(5, { shell.links["safari:P1"]?.themeId == "arcadia" }))
   await themeFallbackScenario(shell: shell, fake: fake, overlay: o7) // e2e-themes.swift
-  await userThemesScenario(shell: shell, fake: fake, overlay: o7)
 
   // ---- the left edge, and the pointer peek needs (Phase 2 step 8) ----
   let guardFrame = CGRect(x: o7.frameTopLeft.minX, y: o7.frameTopLeft.minY, width: EdgeGuard.width, height: o7.frameTopLeft.height)
@@ -491,6 +490,9 @@ func scenario() async {
 
   // ---- iCloud Tabs (e2e-cloud.swift) ----
   await cloudScenario(shell: shell, fake: fake, overlay: o7, cloud: cloud)
+  // Imported themes (e2e-themes.swift), after the keyboard's checks: a preview takes and gives back the keyboard.
+  await userThemesScenario(shell: shell, fake: fake, overlay: o7)
+  await importScenario(shell: shell, fake: fake, overlay: o7)
 
   // ---- a second profile, a copy not in charge, a newer link ----
   mark = fake.events.count

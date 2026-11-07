@@ -126,10 +126,23 @@ dialog) still takes it.
 
 **Settings.** The `settings` part lays out `settingsForm.fields` (Margin's
 words only: it's guarded like a menu). Each field has one of `isNumber`,
-`isToggle`, `isChoice`, `isList`, `isShortcut`, `isButton`, `isInfo`,
-`isGroup`, and `label`, `status`, `error`, `disabled`, `recording`. Draw
-Margin's inputs for them, inside the field's `<m-for>`; Margin sets their
-value, type, options and bounds, and saves them by its own rules:
+`isToggle`, `isChoice`, `isList`, `isShortcut`, `isColor`, `isButton`,
+`isInfo`, `isGroup`, and `label`, `status`, `error`, `disabled`,
+`recording`, `fromTheme`. Draw Margin's inputs for them, inside the
+field's `<m-for>`; Margin sets their value, type, options and bounds, and
+saves them by its own rules.
+
+In Margin.app the form also has Import Theme… (a button), each imported
+theme (an info line and a Remove button), and the active theme's own
+settings from its `theme.json` under "Settings of “Name”": number, length
+(a number input, saved with its default's unit), toggle, choice and color
+(`isColor`, a colour well: `<input m-input="setting-color">`). Those
+fields have `fromTheme` true: their label is the theme's own text (capped
+at 40 characters, with no characters that reorder or hide text), so mark
+them (`m-class:theme-own="{{f.fromTheme}}"`). They only ever save that
+theme's settings.
+
+
 
 ```html
 <m-for each="settingsForm.fields" as="f">
@@ -138,6 +151,7 @@ value, type, options and bounds, and saves them by its own rules:
   <m-if test="f.isChoice"><label>{{f.label}}<select m-input="setting-choice"></select></label></m-if>
   <m-if test="f.isList"><label>{{f.label}}<textarea m-input="setting-list"></textarea></label></m-if>
   <m-if test="f.isShortcut"><label>{{f.label}}<input m-input="setting-shortcut"></label></m-if>
+  <m-if test="f.isColor"><label>{{f.label}}<input m-input="setting-color"></label></m-if>
   <m-if test="f.isButton"><button m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button></m-if>
 </m-for>
 ```
@@ -305,7 +319,7 @@ Opt in with attributes; they stay on the element, so CSS can select them.
 
 | Attribute | Values | What Margin does |
 |---|---|---|
-| `m-input` | `palette`, `space-name`, `space-emoji`, `launcher`, `setting-number`, `setting-toggle`, `setting-choice` (a `<select>`), `setting-list` (a `<textarea>`), `setting-shortcut` | Margin's own fields (the only inputs allowed): typing, keys, focus |
+| `m-input` | `palette`, `space-name`, `space-emoji`, `launcher`, `setting-number`, `setting-toggle`, `setting-choice` (a `<select>`), `setting-list` (a `<textarea>`), `setting-shortcut`, `setting-color` (a colour well) | Margin's own fields (the only inputs allowed): typing, keys, focus |
 | `m-peek` | `left`, `right`, `top`, `bottom` | the hover zone that brings a hidden sidebar out (`--m-reveal-zone` is its size) |
 | `m-resize` | `sidebar` | drags the `sidebarWidth` setting; double-click resets it |
 | `m-drag` | `tab`, `pin`, `folder`, `space` | the row can be dragged |

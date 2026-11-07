@@ -8,10 +8,12 @@
 // field records the next key combination pressed in it (Escape cancels;
 // a combination another shortcut has is refused with a word saying which),
 // and Margin's own shortcuts wait meanwhile (`ui.recording`).
-import { saveField, runField, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.js';
+import { saveField, saveThemeField, runField, removePrompt, shortcutTaken, wokeText, SHORTCUT_HELP } from '../settings-form.js';
 import * as shortcuts from '../../shared/shortcuts.js';
 
-const NAMES = new Set(['setting-number', 'setting-toggle', 'setting-choice', 'setting-list', 'setting-shortcut']);
+const NAMES = new Set(['setting-number', 'setting-toggle', 'setting-choice', 'setting-list', 'setting-shortcut', 'setting-color']);
+// A colour well shows #rrggbb only: a theme's other colours show as their nearest it can.
+const wellColor = (v) => (/^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : /^#[0-9a-f]{3}$/i.test(v) ? `#${[...v.slice(1)].map((c) => c + c).join('')}`.toLowerCase() : '#000000');
 
 /** @param {any} rt */
 export function installSettings(rt) {
@@ -59,6 +61,10 @@ export function installSettings(rt) {
           input.rows ||= 3;
           if (focused() !== el && input.value !== f.value) input.value = f.value;
           break;
+        case 'setting-color':
+          if (input.type !== 'color') input.type = 'color';
+          if (focused() !== el && input.value !== wellColor(f.value)) input.value = wellColor(f.value);
+          break;
         case 'setting-shortcut':
           input.readOnly = true;
           input.classList.toggle('m-recording', f.recording);
@@ -72,7 +78,8 @@ export function installSettings(rt) {
 
   function save(el, value) {
     const f = fieldOf(el);
-    const request = saveField(f, value, rt.state?.settings);
+    // The active theme's own settings (fields Margin made from its theme.json) save only updateThemeSettings for it.
+    const request = f?.fromTheme ? saveThemeField(f, value, rt.themeInfo ?? null) : saveField(f, value, rt.state?.settings);
     if (!request) { sync(); return false; } // back to what's saved
     void rt.host.send(request.type, request.payload);
     return true;
@@ -118,6 +125,13 @@ export function installSettings(rt) {
     /** A button of the form (settings.run). */
     run(id) {
       const f = rt.vm?.settingsForm?.fields.find((x) => x.id === id && x.isButton);
+      // Themes (Margin.app): Import asks the app for its file picker; Remove asks first, in Margin's prompt.
+      if (id === 'themeImport') {
+        status('themeImport', 'Choose a theme’s folder or a .margintheme file…');
+        return rt.host.perform?.('theme.import') === true;
+      }
+      const prompt = f ? removePrompt(id, rt.host.userThemes ?? []) : null;
+      if (prompt) { rt.setUi({ prompt }); return true; }
       const request = runField(f);
       if (!request) return false;
       if (id === 'wakeAll') {

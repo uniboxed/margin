@@ -331,6 +331,7 @@
         <m-if test="f.isToggle"><label class="setting" m-class:disabled="{{f.disabled}}"><span>{{f.label}}</span><input class="toggle" m-input="setting-toggle"></label></m-if>
         <m-if test="f.isChoice"><label class="setting"><span>{{f.label}}</span><select m-input="setting-choice"></select></label></m-if>
         <m-if test="f.isList"><label class="setting stacked"><span>{{f.label}}</span><textarea m-input="setting-list" rows="3" spellcheck="false"></textarea></label></m-if>
+        <m-if test="f.isColor"><label class="setting" m-class:theme-own="{{f.fromTheme}}"><span>{{f.label}}</span><input class="color" m-input="setting-color"></label></m-if>
         <m-if test="f.isShortcut"><label class="setting"><span>{{f.label}}</span><input class="shortcut" m-input="setting-shortcut" m-class:recording="{{f.recording}}"></label></m-if>
         <m-if test="f.isButton">
           <div class="actions">
