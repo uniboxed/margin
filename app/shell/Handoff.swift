@@ -725,7 +725,8 @@ extension ProfileSwitch: FreezerDelegate {
 
     private func freezeAndGo(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
         let reads = hw.spaceReads
-        run.activeAtFreeze = reads?.activeSpace()
+        // (The Space showing on A's display: each display has its own; one display, the active Space.)
+        run.activeAtFreeze = run.aNumber.flatMap { reads?.showing(onDisplayOf: $0) } ?? reads?.activeSpace()
         run.fullScreenAtFreeze = reads?.fullScreenSpaces() ?? []
         if let n = run.aNumber, let spaces = reads?.spaces(of: n) {
             run.aSpace = spaces.first { run.fullScreenAtFreeze.contains($0) } ?? run.activeAtFreeze
@@ -948,7 +949,7 @@ extension ProfileSwitch: FreezerDelegate {
             note("\(a) closed mid-switch: nothing to park")
         }
         // §1.2: under the freeze, the active Space may only be A's, or a full-screen one holding B.
-        if run.live, let reads, let active = reads.activeSpace() {
+        if run.live, let reads, let active = (run.aNumber ?? run.bNumber).flatMap({ reads.showing(onDisplayOf: $0) }) ?? reads.activeSpace() {
             let fs = reads.fullScreenSpaces() ?? []
             let holdsB = run.bNumber.flatMap { reads.spaces(of: $0)?.contains(active) } ?? !run.fullScreenAtFreeze.contains(active)
             if active != run.aSpace, !(fs.contains(active) && holdsB) {
@@ -1004,7 +1005,7 @@ extension ProfileSwitch: FreezerDelegate {
         guard let b = run.b else { return }
         let reads = hw.spaceReads
         let r1: Bool
-        if let reads, let active = reads.activeSpace(), let spaces = reads.spaces(of: n), let fs = reads.fullScreenSpaces() {
+        if let reads, let active = reads.showing(onDisplayOf: n), let spaces = reads.spaces(of: n), let fs = reads.fullScreenSpaces() {
             r1 = active != run.aSpace && spaces.contains(active) && fs.contains(active)
         } else {
             // No Space reads: today's public check (§3.2).
@@ -1224,7 +1225,7 @@ extension ProfileSwitch: FreezerDelegate {
             let reads = hw.spaceReads
             // Untouched in its full-screen Space: keep, close's first freeze, a busy A, its copy gone.
             if run.choice.old != .park || run.aKept != nil {
-                return reads?.activeSpace() != run.aSpace && hw.overlayOffScreen(a)
+                return reads?.showing(onDisplayOf: n) != run.aSpace && hw.overlayOffScreen(a)
             }
             guard run.aParkedAt != nil, let left = run.aLeftAt else { return false }
             return reads?.readsParked(n) != false && hw.overlayOffScreen(a) && now - left >= ho.settleAfterExit - 1e-9
@@ -1478,7 +1479,7 @@ extension ProfileSwitch: FreezerDelegate {
 
     // B in front: its Space the active one (the window server), and Safari's first window on screen.
     private func bInFront(_ run: HandoffRun, _ hw: HandoffWorld, _ b: WindowKey) -> Bool {
-        if let reads = hw.spaceReads, let n = run.bNumber ?? hw.number(of: b), let active = reads.activeSpace() {
+        if let reads = hw.spaceReads, let n = run.bNumber ?? hw.number(of: b), let active = reads.showing(onDisplayOf: n) {
             guard reads.spaces(of: n)?.contains(active) == true else { return false }
         }
         return hw.inFront(b.link, windowId: b.windowId)
@@ -1608,7 +1609,7 @@ extension ProfileSwitch: FreezerDelegate {
 
     private func spacesKey(_ hw: HandoffWorld) -> [UInt64] {
         guard let reads = hw.spaceReads else { return [] }
-        return (reads.fullScreenSpaces() ?? []).sorted() + [reads.activeSpace() ?? 0]
+        return (reads.fullScreenSpaces() ?? []).sorted() + reads.showingAll()
     }
 
     // §1.2: landed once no full-screen Space has changed for 150 ms. Only then is the switch idle.
@@ -1771,7 +1772,7 @@ extension ProfileSwitch: FreezerDelegate {
         restoreA(run, hw)
         let back: Bool = {
             guard run.restoring, let a = run.a, let n = run.aNumber else { return true }
-            guard let reads = hw.spaceReads, let active = reads.activeSpace() else { return true }
+            guard let reads = hw.spaceReads, let active = reads.showing(onDisplayOf: n) else { return true }
             let full = hw.copyWindows(a.link).first { $0.key == a }?.state == "fullscreen"
             return full && reads.spaces(of: n)?.contains(active) == true && (reads.fullScreenSpaces()?.contains(active) ?? false)
         }()

@@ -66,6 +66,23 @@ extension SpaceReads {
         displays().map { Set($0.flatMap(\.fullScreen)) }
     }
 
+    /// The Space showing on the display holding a window (by its bounds' centre): each display has its own when
+    /// "Displays have separate Spaces" is on. One display (or that setting off), or a window or display that doesn't
+    /// read: the active Space, as before.
+    func showing(onDisplayOf window: Int) -> UInt64? {
+        if let displays = displays(), displays.count > 1, let bounds = self.window(window)?.bounds, let id = display(at: bounds),
+           let d = displays.first(where: { $0.display.caseInsensitiveCompare(id) == .orderedSame }), let current = d.current {
+            return current
+        }
+        return activeSpace()
+    }
+
+    /// Every display's Space showing (one display: the active Space).
+    func showingAll() -> [UInt64] {
+        if let displays = displays(), displays.count > 1 { return displays.compactMap(\.current).sorted() }
+        return activeSpace().map { [$0] } ?? []
+    }
+
     // How many displays macOS manages Spaces for (§6.7: more than one, no freeze for that switch).
     // Not NSScreen.screens.count: mirrored displays count once, and "Displays have separate
     // Spaces" off gives one entry for all of them.

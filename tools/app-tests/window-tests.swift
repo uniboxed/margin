@@ -1805,6 +1805,24 @@ extension Tests {
     check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
   }
 
+  // The Space showing on a window's display (SpaceReads.showing(onDisplayOf:)): each display has its own.
+  static func showingPerDisplay() {
+    let world = FakeSpaceWorld(clock: FakeClock())
+    let left = CGRect(x: 0, y: 0, width: 1512, height: 982), right = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+    world.displayOf = ["D-LEFT": left, "D-RIGHT": right]
+    world.displayList = [DisplaySpaces(display: "D-LEFT", current: 10, spaces: [ManagedSpace(id: 1, type: 0), ManagedSpace(id: 10, type: 4)]),
+                         DisplaySpaces(display: "D-RIGHT", current: 20, spaces: [ManagedSpace(id: 2, type: 0), ManagedSpace(id: 20, type: 4)])]
+    world.windows = [100: .init(pid: 50, bounds: left, spaces: [10]), 200: .init(pid: 50, bounds: right, spaces: [20])]
+    world.active = 20 // (the display used last: the right one)
+    check("displays: a window on the left display: the left display's Space, not the active one", world.showing(onDisplayOf: 100) == 10)
+    check("displays: on the right display: the right one's", world.showing(onDisplayOf: 200) == 20)
+    check("displays: every display's Space showing", world.showingAll() == [10, 20])
+    check("displays: a window the reads don't know: the active Space", world.showing(onDisplayOf: 999) == 20)
+    world.displayList = [world.displayList![0]]
+    world.active = 10
+    check("displays: one display (or separate Spaces off): the active Space, as before", world.showing(onDisplayOf: 200) == 10 && world.showingAll() == [10])
+  }
+
   // The covers' decision (ShellCovers.swift CoverPlan): which of Safari's windows want a cover, which covers go.
   static func coverPlan() {
     let full = CGRect(x: 0, y: 0, width: 1512, height: 982), small = CGRect(x: 100, y: 100, width: 900, height: 700)

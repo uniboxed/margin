@@ -124,7 +124,8 @@ final class SpaceParker: BridgeParker {
 
     func show(_ number: Int, done: @escaping (ParkOutcome) -> Void) {
         guard let start = begin(number, .show, done) else { return }
-        guard let active = reads.activeSpace() else { return start.finish(.noTarget("the active Space didn't read")) }
+        // (Into the Space showing on its display: each display has its own; one display, the active Space.)
+        guard let active = reads.showing(onDisplayOf: number) else { return start.finish(.noTarget("the active Space didn't read")) }
         out(start, to: active)
     }
 
