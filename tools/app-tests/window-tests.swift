@@ -786,12 +786,155 @@ extension Tests {
       let w = threeShown()
       w.run(10)
       check("visible: with no page saying, nothing bound", w.binder.numbers.isEmpty && w.wrong.isEmpty, "\(w.binder.numbers)")
-      // One page silent: the others' word isn't enough while it could be the one shown (unknown is never hidden).
-      w.silent = [k(A, 155)]
+      // The page of the window on screen silent: the others' word that they're hidden binds nothing (unknown is never hidden).
+      w.silent = [k(B, 153)]
       w.pages = true
       w.run(3)
-      check("visible: one page saying nothing: nothing bound by the others' word while it's free", w.binder.numbers.isEmpty && w.wrong.isEmpty, "\(w.binder.numbers)")
-      check("visible: and the log says which", w.said.contains("not bound from its page: safari:A#155 said nothing of being hidden since Margin.app started"), w.said)
+      check("visible: the shown window's page saying nothing: nothing bound by the others' word that they're hidden", w.binder.numbers.isEmpty && w.wrong.isEmpty, "\(w.binder.numbers)")
+      check("visible: and the log says why", w.said.contains("safari: window 18285 (on screen, 0,0 1512×982) not bound from its page: no page with its bounds says it's shown since Margin.app started"), w.said)
+      // A page off screen silent: the shown one's word binds its window once the pages have settled (a page shown
+      // before may have newly said so and not yet said it's hidden), not before; the silent one isn't bound by it.
+      let s = threeShown()
+      s.silent = [k(A, 155)]
+      s.pages = true
+      s.run(2.4)
+      check("visible: one page off screen saying nothing: not bound while the pages may still be settling", s.binder.numbers.isEmpty, "\(s.binder.numbers)")
+      check("visible: and the log says which", s.said.contains("not bound from its page: safari:A#155 said nothing yet (the pages settling after the last change)"), s.said)
+      s.run(1.2)
+      check("visible: then the shown one bound by its page, the silent one not", s.binder.numbers == [k(B, 153): 18285] && s.wrong.isEmpty, "\(s.binder.numbers)\n\(s.said)")
+      check("visible: and the log says the silent page didn't stop it", s.said.contains("safari:B#153 is window 18285: visible: its page alone says it's shown (since ") && s.said.contains("; safari:A#155 said nothing, the others hidden"), s.said)
+    }
+    do {
+      // Tirth's log, 2026-11-06 21:24:30-21:25:05: Safari reopened with five profiles, one full-screen window each,
+      // all with the same bounds, each on its own Space. The copies link one by one over 10 s; three pages said
+      // they're hidden before their copies linked, one never says (its tab not loaded), and the one whose window
+      // a Space slide brought on screen (Safari not in front) said it's shown as the slide began, its word heard
+      // 3 s late; Safari came to the front 2.5 s after the slide. Nothing was bound and nothing drawn.
+      let fs = CGRect(x: 0, y: 33, width: 1512, height: 949)
+      let D = "safari:s-default", P2 = "safari:s-4282", P3 = "safari:s-defee", P4 = "safari:s-27f6", P5 = "safari:s-8d45"
+      func startup() -> World {
+        let w = World()
+        for n in [50775, 50782, 50790, 50798, 50802] { w.add(n, fs) }
+        w.show(50802)
+        w.truth = [k(D, 85): 50775, k(P2, 117): 50782, k(P3, 167): 50790, k(P4, 199): 50798, k(P5, 140): 50802]
+        let t0 = w.t
+        w.spaceChanged(ago: 1.4)
+        w.run(1)
+        // The first two copies link (held for a read, then their state), each calling its own window focused.
+        w.held = [P2]; w.read(0.05); w.held = []
+        w.put(P2, 117, fs, focused: true, visible: false, visibleAt: t0 - 1.4)
+        w.held = [D]; w.read(0.1); w.held = []
+        w.put(D, 85, fs, focused: true, focusedAt: t0 - 0.9)
+        w.run(1.9)
+        // A Space slide to s-default's window, Safari not in front: its page shown as the slide begins.
+        w.inFront = false
+        w.show(50775, also: [50802]); w.read(0.03)
+        let shownAt = w.t
+        w.run(0.1, every: 0.03)
+        w.show(50775); w.read(0.03)
+        w.spaceChanged()
+        w.run(2.4)
+        w.say(k(D, 85), visible: true, at: shownAt) // heard 3 s late
+        w.inFront = true // Safari to the front, over the Space already showing
+        w.run(2)
+        w.held = [P3]; w.read(0.05); w.held = []
+        w.put(P3, 167, fs, focused: false, focusedAt: t0 - 1.5, visible: false, visibleAt: t0 - 1.5, blurredAt: t0 - 1.5)
+        w.run(2.7)
+        // The last two: one hidden, one that never says.
+        w.held = [P4, P5]; w.read(0.05); w.held = []
+        w.put(P4, 199, fs, focusedAt: t0 - 1.6, blurredAt: t0 + 5)
+        w.put(P5, 140, fs, focused: true, visible: false, visibleAt: t0 - 1.4)
+        return w
+      }
+      let w = startup()
+      let reported = w.t
+      w.run(0.6, every: 0.05)
+      check("startup, five profiles: the window on screen bound within 0.6 s of the last copy reporting, Safari in front", w.binder.numbers == [k(D, 85): 50775] && w.wrong.isEmpty,
+            "\(w.binder.numbers) after \(String(format: "%.2f", w.t - reported)) s\n\(w.said)")
+      check("startup: by its page (the silent one didn't stop it)", w.said.contains("safari:s-default#85 is window 50775: visible: its page alone says it's shown (since ")
+            && w.said.contains("; safari:s-27f6#199 said nothing, the others hidden"), w.said)
+      // Then each Space in turn (Safari in front, each page saying 0.1-0.25 s after its window's change, no focus
+      // change heard): each window whose page speaks is bound once its page has said and the others' have
+      // settled (1.5 s; 2.5 s after the silent page's window, whose page can't say it's hidden); the silent one
+      // waits, and is bound by elimination once it's the only free one.
+      w.pages = true
+      w.silent = [k(P4, 199)]
+      w.pageLag = { _, visible in visible ? 0.1 : 0.25 }
+      var from = 50775
+      for (key, n, within) in [(k(P3, 167), 50790, 1.5), (k(P4, 199), 50798, 3), (k(P2, 117), 50782, 2.5), (k(P5, 140), 50802, 1.5)] {
+        swipe(w, to: n, from: from)
+        from = n
+        let start = w.t
+        while w.binder.numbers[key] == nil && w.t - start < 3 { w.read(0.05) }
+        if key == k(P4, 199) {
+          check("startup: the silent page's window shown: not bound by the others' word", w.binder.numbers[key] == nil && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+        } else {
+          check("startup: \(key)'s Space shown: bound by its page within \(within) s of the slide's end", w.binder.numbers[key] == n && w.t - start <= within && w.wrong.isEmpty,
+                "\(w.binder.numbers) after \(String(format: "%.2f", w.t - start)) s\n\(w.lines.suffix(12).joined(separator: "\n"))")
+        }
+        w.run(0.5, every: 0.05)
+      }
+      // The same, with the last copies' pages said at various lags (0-3 s) and Safari coming to the front at various
+      // times: never wrong at any read, and bound once all have reported with Safari in front.
+      for seed in 1...30 {
+        var r = Seeded(state: UInt64(seed * 15485863))
+        let v = startup()
+        if r.chance(0.5) { v.inFront = false; v.run(r.range(0, 2)); v.inFront = true }
+        v.run(1.5, every: 0.05)
+        if !v.wrong.isEmpty || v.binder.numbers != [k(D, 85): 50775] {
+          check("startup (seed \(seed)): bound, never wrong", false, "\(v.wrong.prefix(3)) \(v.binder.numbers)\n\(v.said)")
+          break
+        }
+        if seed == 30 { check("startup, Safari to the front at various times (30 runs): bound once it is, never wrong", true) }
+      }
+      // The window on screen is the silent page's (its tab not loaded): nothing bound to it by the others' word.
+      let q = startup()
+      q.truth = [k(D, 85): 50798, k(P2, 117): 50782, k(P3, 167): 50790, k(P4, 199): 50775, k(P5, 140): 50802]
+      q.say(k(D, 85), visible: false, at: q.t - 2)
+      q.run(4)
+      check("startup: the on-screen window's page silent, every other hidden: nothing bound, nothing wrong", q.binder.numbers.isEmpty && q.wrong.isEmpty, "\(q.binder.numbers)\n\(q.said)")
+      // A page that newly said it's shown as its window slid away (a tab loading in it), its window not bound yet,
+      // its hidden word late by up to 1.5 s, the window coming on screen silent: never bound to it.
+      for lateBy in [0.3, 0.9, 1.5] {
+        let o = threeShown()
+        o.show(18278) // A's window on screen as Margin.app starts
+        o.silent = [k(C, 795)]
+        o.pages = true
+        o.pageLag = { _, _ in 0.1 }
+        o.run(1.25) // A's page has said it's shown; its window not bound yet (the pages may be settling)
+        o.pages = false
+        let free = o.binder.numbers.isEmpty
+        o.show(18342, also: [18278]); o.read(0.03)
+        o.say(k(A, 155), visible: true, at: o.t) // newly said as its window slides away
+        o.run(0.2, every: 0.03)
+        o.show(18342); o.read(0.03); o.spaceChanged()
+        let end = o.t
+        o.run(lateBy, every: 0.05)
+        o.say(k(A, 155), visible: false, at: end + 0.05)
+        o.run(3, every: 0.05)
+        check("slid away: a page newly shown as its free window slid away, hidden \(lateBy) s late, the new window's page silent: never bound wrong",
+              free && o.wrong.isEmpty && o.binder.numbers[k(A, 155)] != 18342, "free: \(free) \(o.wrong.prefix(2)) \(o.binder.numbers)\n\(o.lines.suffix(10).joined(separator: "\n"))")
+      }
+    }
+    do {
+      // Tirth's log, 2026-11-06 21:25:20: no page can say (Margin updated: the pages' scripts are the old copy's),
+      // the focus change says which, but the window was offset by a swipe begun when it was weighed: still bound.
+      let fs = CGRect(x: 0, y: 33, width: 1512, height: 949)
+      let D = "safari:s-default", P2 = "safari:s-4282", P3 = "safari:s-defee"
+      let w = World()
+      for n in [50775, 50782, 50802] { w.add(n, fs) }
+      w.inFront = false; w.show(50782)
+      w.put(D, 828, fs, focused: true); w.put(P2, 825, fs, focused: true); w.put(P3, 842, fs, focused: true)
+      w.truth = [k(D, 828): 50775, k(P2, 825): 50782, k(P3, 842): 50802]
+      w.run(3)
+      w.show(50775); w.inFront = true; w.read(0.05); w.spaceChanged()
+      w.focus(k(D, 828), at: w.t + 0.02)
+      w.run(1.6, every: 0.1)
+      // A swipe toward 50802 begins: 50775 offset, 50802 in front.
+      w.move(50775, fs.offsetBy(dx: 3115, dy: 0)); w.show(50802, also: [50775])
+      w.run(0.8, every: 0.1)
+      check("focus moved: its window offset by a swipe when the change is weighed: bound by its settled bounds", w.binder.numbers[k(D, 828)] == 50775 && w.wrong.isEmpty,
+            "\(w.binder.numbers)\n\(w.said)")
     }
     do {
       // A window no linked copy reports (a Private window, a profile without Margin) with the same bounds, shown

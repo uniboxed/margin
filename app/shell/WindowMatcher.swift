@@ -27,8 +27,9 @@
 //    and the browser's front window changing at about that time, each alone);
 //    the only free window with its bounds (on both sides); visible (the only
 //    window on screen with its bounds, every window with them a reported one,
-//    and its page alone saying it's shown, every other free one's hidden, said
-//    since the last Space change or new front window); settled focus (within
+//    and its page alone saying it's shown, every other free one's hidden or, the
+//    pages settled, silent, said since the last Space change or window come on or
+//    gone off screen); settled focus (within
 //    one copy: the only window it calls focused, the same front window for a
 //    while, and as many browser windows with those bounds as it reports).
 //    A copy's focused flag is about its own windows only (each profile's copy
@@ -234,6 +235,12 @@ final class WindowBinder {
         var visibleLag: Double = 1.0
         // What the pages say holds this long, over reads that told something, before a window is bound by it.
         var visibleHold: Double = 0.3
+        // A page that has said nothing (its tab not loaded yet, a page Margin can't run in) doesn't stop the page
+        // that says it's shown from binding its window, once this long has passed after `visibleLag` from the last
+        // change: a page shown before it (newly said in the change, its window the one going) has said it's hidden
+        // and been heard by then (Tirth's log, 2026-11-06 21:24: five profiles' restored full-screen windows, one
+        // page that never spoke, nothing drawn).
+        var visibleQuiet: Double = 1.0
         // A bound window on screen whose page has said it's hidden this long, while another profile's
         // same-bounds window's page says it's shown: not its window, the binding goes.
         var hiddenDrop: Double = 2.0
@@ -316,16 +323,23 @@ final class WindowBinder {
     // Reads that told something (whole lists, nothing missing), in a row since.
     private var steadySince: Double?
     private var steadyReads = 0
-    // Changes that change which pages are shown: new front windows and Space changes. `at`: when it may have
-    // begun (the read before a new front window was seen; a Space change when it was heard); `latest`: the
-    // latest it can have happened (the read it was seen in, the Space change heard). A Space change heard
-    // within `visibleLag` after a new front window, with no other since, is taken as the same one (macOS
-    // says the Space changed once its slide is over); so is a new front window that may have come before a
-    // Space change heard since the read before it (both seen in one read).
-    private struct Transition { var at: Double; var latest: Double; var space: Bool; var front: Bool }
+    // Changes that change which pages are shown: the browser's windows coming on or going off screen, and
+    // Space changes. (Not the front window alone: the browser coming to the front, or another of the windows
+    // on screen coming forward, shows and hides no page. Tirth's log, 2026-11-06 21:24:50: Safari brought to
+    // the front over the Space already showing made the shown page's word stale.) `at`: when it may have begun
+    // (the read before a window was seen come or go; a Space change when it was heard); `latest`: the latest
+    // it can have happened (the read it was seen in, the Space change heard). A Space change heard within
+    // `visibleLag` after windows came or went, with no other since, is taken as the same one (macOS says the
+    // Space changed once its slide is over); so is a window come on screen that may have come before a Space
+    // change heard since the read before it (both seen in one read). Windows going off screen within
+    // `visibleLag` of the last change are the end of it (a slide: the new window on screen first, then the
+    // old one off): the window come on screen at its start, whose page said it's shown then, still counts.
+    // `front`: seen in the window server's list; `went`: the windows gone off screen in it.
+    private struct Transition { var at: Double; var latest: Double; var space: Bool; var front: Bool; var went: Set<Int> = [] }
     private var transitions: [Transition] = []
     private var lastSpaceChange: Double = -.infinity
-    private var lastFrontNumber: Int?
+    // The browser's windows on screen in the last read that told something.
+    private var lastOnScreen: Set<Int> = []
     // The visible rule's evidence for each free window on screen, held since; why it didn't bind (said once).
     private var seeing: [Int: (key: WindowKey, since: Double)] = [:]
     private var visibleSaid: [Int: String] = [:]
@@ -500,7 +514,6 @@ final class WindowBinder {
             // In front since before the first read: when isn't known, so taken as now (settled focus waits `quiet`).
             front = nowFront
             frontSince = now
-            lastFrontNumber = nowFront
             // When it came to the front isn't known: a change at some time before, which no focus can be told against.
             if nowFront != nil { changes.append(Change(at: now, after: now - T.history, number: nowFront)) }
         } else if nowFront != front {
@@ -516,26 +529,34 @@ final class WindowBinder {
                 frontSince = now
                 frontMissingAfter = nil
                 frontNoted.append("\(nowFront.map(String.init) ?? "none") at \(WindowMatcher.clock(now))")
-                // Another window in front: a transition, from when it may have begun. A Space change heard
-                // since then (in this read, or across reads that told nothing) may have come after it: the same
-                // transition, from the earlier of the two (Tirth's log, 2026-11-05 21:53:03: the front window
-                // changed 166 ms before the Space change was heard, and one read saw both).
-                if let n = nowFront, n != lastFrontNumber {
-                    if lastFrontNumber != nil {
-                        if let i = transitions.indices.last, transitions[i].space, !transitions[i].front, since <= transitions[i].latest {
-                            transitions[i].front = true
-                            transitions[i].at = min(transitions[i].at, since)
-                            transitions[i].latest = max(transitions[i].latest, now)
-                        } else {
-                            transitions.append(Transition(at: since, latest: now, space: false, front: true))
-                            transitions = Array(transitions.suffix(4))
-                        }
-                    }
-                    lastFrontNumber = n
-                }
             }
         } else {
             frontMissingAfter = nil
+        }
+        if !collapsed {
+            // The browser's windows on screen (one missing from this read as it was). One come on screen: a
+            // transition from when it may have begun; a Space change heard since then (in this read, or across
+            // reads that told nothing) may have come after it: the same transition, from the earlier of the two
+            // (Tirth's log, 2026-11-05 21:53:03: the front window changed 166 ms before the Space change was
+            // heard, and one read saw both). Only gone off screen: the end of the last change if it's that near
+            // (a slide), else a transition of its own.
+            let onNow = Set(candidates.filter(\.onScreen).map(\.number)).union(lastOnScreen.filter { present[$0] == nil && missing($0) })
+            if !first {
+                let gone = lastOnScreen.subtracting(onNow)
+                let came = !onNow.subtracting(lastOnScreen).isEmpty, went = !gone.isEmpty
+                if came || went {
+                    if let i = transitions.indices.last, came ? after <= transitions[i].latest : after <= transitions[i].latest + T.visibleLag {
+                        transitions[i].front = true
+                        if came { transitions[i].at = min(transitions[i].at, after) }
+                        transitions[i].latest = max(transitions[i].latest, now)
+                        transitions[i].went.formUnion(gone)
+                    } else {
+                        transitions.append(Transition(at: after, latest: now, space: false, front: true, went: gone))
+                        transitions = Array(transitions.suffix(4))
+                    }
+                }
+            }
+            lastOnScreen = onNow
         }
 
         // ---- the extension's side ----
@@ -792,7 +813,9 @@ final class WindowBinder {
             guard !retired.contains(number) else { log("\(heard): window \(number), in front then, was a closed window's"); continue }
             // Its window missing from this read: weighed again when it's back (or gone).
             guard let w = present[number] else { if missing(number) { focusEvents[i].decided = false }; continue }
-            guard fits(e, w) else { log("\(heard): doesn't fit window \(number) (\(e.bounds.map(WindowMatcher.describe) ?? "no bounds") and \(WindowMatcher.describe(w.bounds)))"); continue }
+            // (Its bounds, or the ones it settled in: a window offset for a moment, in a Space's slide, still has
+            // its own. Tirth's log, 2026-11-06 21:25:22: the focus change that told it was lost to one.)
+            guard fits(e, w) || (e.bounds.map { has(number, $0) } ?? false) else { log("\(heard): doesn't fit window \(number) (\(e.bounds.map(WindowMatcher.describe) ?? "no bounds") and \(WindowMatcher.describe(w.bounds)))"); continue }
             let why = "focus moved to it at \(WindowMatcher.clock(ev.at)) and window \(number) came to the front by \(WindowMatcher.clock(change.at)), each alone then"
             let holder = bindings.first { $0.value.number == number && $0.key != ev.key }?.key
             if bindings[ev.key]?.number == number {
@@ -862,8 +885,13 @@ final class WindowBinder {
         // pages of a window that isn't on screen hidden). Bound when, for `visibleHold` over steady reads, with
         // the browser in front and no link held: the window is the only one on screen with its bounds, every
         // window with them is a reported one, its page alone says it's shown (said as of now, above), and every
-        // other free window's page with them says it's hidden. Not in Margin.app's first `visibleLag` (a
-        // switch just before it may not have been said yet). With nothing said, nothing is bound (never guessed).
+        // other free window's page with them says it's hidden, or has said nothing at all once `visibleQuiet` has
+        // passed after the last change's `visibleLag` (a page that was shown and newly said so in the change has
+        // said it's hidden by then: the one still saying it's shown is the window on screen; a page that has
+        // said nothing is never taken as hidden, nor as shown), or at once when every window the change took off
+        // screen is bound (the page whose window went is known, and isn't this one). Not in Margin.app's first
+        // `visibleLag` (a switch just before it may not have been said yet). With nothing said, nothing is bound
+        // (never guessed).
         let since = lastChange.map { "since \(WindowMatcher.clock($0.at))" } ?? "since Margin.app started"
         var nowSeeing: [Int: (key: WindowKey, since: Double)] = [:]
         // The rule not weighed at all on this read: why, once per change of reason, while a window is free.
@@ -881,6 +909,10 @@ final class WindowBinder {
                 let shown = candidates.filter { $0.onScreen && WindowMatcher.close($0.bounds, w.bounds) }
                 let visible = group.filter { $0.visible == true && saidSince($0) }
                 let unsure = group.filter { bindings[$0.key] == nil && !visible.contains($0) && !hiddenNow($0) }
+                // Only pages that have said nothing, and the pages long settled since the last change.
+                let silent = !unsure.isEmpty && unsure.allSatisfy { $0.visible == nil }
+                let wentKnown = lastChange.map { c in c.front && !c.went.isEmpty && c.went.allSatisfy(bound.contains) } ?? false
+                let quietFrom = wentKnown ? -.infinity : (lastChange?.latest ?? firstReadAt ?? now) + T.visibleLag + T.visibleQuiet
                 let sameServer = serverHaving(w.bounds)
                 var reason: String?
                 if !steady { reason = "the window server's reads aren't steady yet" }
@@ -888,7 +920,8 @@ final class WindowBinder {
                 else if sameServer != group.count { reason = "\(sameServer) window(s) have its bounds, \(group.count) reported (a Private window, or a profile without Margin?)" }
                 else if visible.count != 1 { reason = visible.isEmpty ? "no page with its bounds says it's shown \(since)" : "\(visible.count) pages say they're shown \(since) (\(visible.map { $0.key.description }.joined(separator: ", ")))" }
                 else if bindings[visible[0].key] != nil { reason = "\(visible[0].key) says it's shown, but it's bound to another window" }
-                else if !unsure.isEmpty { reason = "\(unsure.map { $0.key.description }.joined(separator: ", ")) said nothing of being hidden \(since)" }
+                else if !unsure.isEmpty, !silent { reason = "\(unsure.map { $0.key.description }.joined(separator: ", ")) said nothing of being hidden \(since)" }
+                else if silent, now < quietFrom { reason = "\(unsure.map { $0.key.description }.joined(separator: ", ")) said nothing yet (the pages settling after the last change)" }
                 if let reason {
                     // Said once per window per change, once the pages have had their time to say.
                     let key = "\(lastChange?.at ?? 0) \(reason)"
@@ -904,7 +937,8 @@ final class WindowBinder {
                 guard now - holding >= T.visibleHold else { continue }
                 nowSeeing[w.number] = nil
                 visibleSaid[w.number] = nil
-                bind(x.key, w.number, now, "visible: its page alone says it's shown (since \(WindowMatcher.clock(x.visibleAt!))), window \(w.number) the only one on screen with its bounds (\(sameServer) window(s) with them, all reported)")
+                let quiet = silent ? "; \(unsure.map { $0.key.description }.joined(separator: ", ")) said nothing, the others hidden" : ""
+                bind(x.key, w.number, now, "visible: its page alone says it's shown (since \(WindowMatcher.clock(x.visibleAt!))), window \(w.number) the only one on screen with its bounds (\(sameServer) window(s) with them, all reported)\(quiet)")
             }
         }
         seeing = nowSeeing
