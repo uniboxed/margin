@@ -14,6 +14,12 @@
 // tab.favIconUrl (background/site-icons.js fetches each site's icon itself).
 // The background here sees tabs without it (SAFARI_TABS, put before the
 // bundle), so the icons Margin draws are the ones it fetched, as in Safari.
+//
+// And one thing headless Chromium does that Safari doesn't: every tab is
+// visible (document.visibilityState is 'visible' behind the front tab too).
+// A script the background runs in a tab that isn't in front sees it hidden
+// while it runs (HIDDEN_BEHIND), as Safari's tab would be: the sleeping
+// tabs' ask (background/sleep.js sleepInPage) needs it.
 import { generateKeyPairSync, createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -44,6 +50,30 @@ export const SAFARI_TABS = `// e2e: tabs as Safari gives them (no favIconUrl).
 })();
 `;
 
+export const HIDDEN_BEHIND = `// e2e: a tab behind the front one is hidden, as in Safari.
+(() => {
+  const s = globalThis.chrome?.scripting;
+  if (!s?.executeScript) return;
+  const run = s.executeScript.bind(s);
+  const mark = (on) => {
+    globalThis.__e2eHidden = on;
+    if (globalThis.__e2eVisibility) return;
+    globalThis.__e2eVisibility = true;
+    const real = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState').get;
+    Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get() { return globalThis.__e2eHidden ? 'hidden' : real.call(this); } });
+  };
+  s.executeScript = async (inj) => {
+    const tabId = inj?.target?.tabId;
+    if (typeof inj?.func !== 'function' || tabId == null) return run(inj);
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab || tab.active) return run(inj);
+    const target = { tabId, ...(inj.target.allFrames ? { allFrames: true } : {}), ...(inj.target.frameIds ? { frameIds: inj.target.frameIds } : {}) };
+    await run({ target, func: mark, args: [true] }).catch(() => {});
+    try { return await run(inj); } finally { run({ target, func: mark, args: [false] }).catch(() => {}); }
+  };
+})();
+`;
+
 export const SOCKET_GUARD = 'canSocket=()=>typeof globalThis.document=="object"&&typeof globalThis.WorkerGlobalScope>"u"';
 
 /** The extension id Chromium gives an extension whose manifest has this public key (DER). */
@@ -65,6 +95,6 @@ export function testBuild(dir) {
   const bundlePath = join(path, 'background.bundle.js');
   const bundle = readFileSync(bundlePath, 'utf8');
   if (!bundle.includes(SOCKET_GUARD)) throw new Error('the e2e harness: the link\'s socket guard (background/link.js canSocket) is no longer the string it patches; update SOCKET_GUARD in tests/e2e/harness/build.js');
-  writeFileSync(bundlePath, SAFARI_TABS + bundle.replace(SOCKET_GUARD, 'canSocket=()=>!0'));
+  writeFileSync(bundlePath, SAFARI_TABS + HIDDEN_BEHIND + bundle.replace(SOCKET_GUARD, 'canSocket=()=>!0'));
   return { path, id: extensionId(der) };
 }

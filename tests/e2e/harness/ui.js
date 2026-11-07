@@ -15,7 +15,7 @@ export function sidebar(ui) {
     };
     return {
       space: document.querySelector('.space-title .title')?.textContent.trim() ?? null,
-      tabs: q('a.tab').map((a) => ({ id: Number(a.dataset.tabId), title: a.querySelector('.title')?.textContent ?? '', active: has(a, 'active'), busy: has(a, 'busy'), asleep: has(a, 'asleep'), notOpen: has(a, 'not-open'), audible: !!a.querySelector('.audible-icon'), icon: icon(a) })),
+      tabs: q('a.tab').map((a) => ({ id: Number(a.dataset.tabId), key: a.dataset.tabId ?? '', title: a.querySelector('.title')?.textContent ?? '', active: has(a, 'active'), busy: has(a, 'busy'), asleep: has(a, 'asleep'), notOpen: has(a, 'not-open'), audible: !!a.querySelector('.audible-icon'), icon: icon(a) })),
       pins: q('a.pin').map((a) => ({ id: a.dataset.pinId, title: a.querySelector('.title')?.textContent ?? '', active: has(a, 'active'), open: has(a, 'open'), nested: has(a, 'nested'), icon: icon(a) })),
       folders: q('a.folder[data-folder-id]').map((a) => ({ id: a.dataset.folderId, name: a.querySelector('.title')?.textContent ?? '', open: has(a, 'open') })),
       chips: q('.chip').map((c) => ({ id: c.dataset.spaceId, active: has(c, 'active'), label: c.getAttribute('aria-label') ?? '' })),
@@ -99,7 +99,7 @@ export async function drag(ui, from, to, { at = 0.5, steps = 12 } = {}) {
   await ui.mouse.up();
 }
 
-/** The row of a tab (its selector). @param {number} id */
+/** The row of a tab (its selector): an open tab's number, or a not-open tab's own id (a string). @param {number|string} id */
 export const tabRow = (id) => `a.tab[data-tab-id="${id}"]`;
 /** A chip (its selector). @param {string} id */
 export const chip = (id) => `.chip[data-space-id="${id}"]`;
