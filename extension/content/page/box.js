@@ -132,7 +132,8 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     },
   });
   let rootZoom = 1; // the page's `zoom` on <html> (readSaid)
-  const write = () => replaceSync.call(boxSheet, box.on ? boxCss(box, rootZoom) : NO_BOX_CSS);
+  let rootClipsY = true; // <html> clips up and down (checkLocks: not while the page says its overflow-x)
+  const write = () => replaceSync.call(boxSheet, box.on ? boxCss(box, rootZoom, rootClipsY) : NO_BOX_CSS);
   function setRootZoom(next) {
     if (next === rootZoom) return;
     rootZoom = next;
@@ -156,6 +157,14 @@ export function startBox({ left = DEFAULT_LEFT, top = FRAME, right = FRAME, bott
     const { body } = document;
     if (!box.on || !body || body.localName !== 'body') return;
     const root = getComputedStyle(html);
+    // The page's own overflow-x on <html> (hidden, auto, scroll) would make the box's clip up and down hidden, which
+    // reads below as the page locking <html>: then the box clips only sideways, and what the page says up and down
+    // shows (nothing: auto). Said once a page sets or drops it (a layout of <html> then, not at every check).
+    const clipsY = !/hidden|auto|scroll/.test(root.overflowX);
+    if (clipsY !== rootClipsY) {
+      rootClipsY = clipsY;
+      write();
+    }
     // A lock that pins <body> (fixed, top: -Ypx) can't be read in computed style
     // (the box's rule holds it relative) and doesn't stop <body> scrolling: its
     // style attribute says so, and <body> is locked where it is.

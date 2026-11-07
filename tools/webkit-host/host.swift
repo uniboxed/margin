@@ -35,6 +35,8 @@ let pageRecorder = """
   // Whether the page's window frame is told to WebKit (its outerWidth and outerHeight then the window's, as in
   // Safari; else 0): the `windowFrame` op, off by default so every other scenario keeps the host as it was.
   static var tellsWindowFrame = false
+  // Web views made from now on say they're Safari (the `safariAgent` op: real sites serve Safari its own pages).
+  static var safariAgent = false
   // Web content processes that ended under a page (a crash: "A problem repeatedly occurred" in Safari).
   static var crashes = 0
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -84,6 +86,7 @@ let pageRecorder = """
       // into an empty storage, as a restored tab's first load finds it).
       cfg.userContentController.addUserScript(WKUserScript(source: "(() => { try { const own = (\(json))[location.origin]; if (own && !sessionStorage.length) for (const [k, v] of own) sessionStorage.setItem(k, v); } catch {} })();", injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
+    if Tab.safariAgent { cfg.applicationNameForUserAgent = "Version/27.2 Safari/605.1.15" }
     let wv = WKWebView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800), configuration: cfg)
     wv.isInspectable = true
     wv.allowsMagnification = true // as Safari's
@@ -767,8 +770,12 @@ Task { @MainActor in
       }
     case "noCrash": // { op: 'noCrash', label }: no web content process ended so far
       if Tab.crashes == 0 { log("PASS \(step["label"] as? String ?? "no web content process ended")") } else { fail(step["label"] as? String ?? "no web content process ended", "\(Tab.crashes)") }
+    case "safariAgent": // { op: 'safariAgent', on }: tabs made from now on say they're Safari (Tab.safariAgent)
+      Tab.safariAgent = step["on"] as? Bool ?? true; log("safariAgent \(Tab.safariAgent)")
     case "windowFrame": // { op: 'windowFrame', on }: pages' outerWidth and outerHeight their window's (Tab.tellsWindowFrame)
       Tab.tellsWindowFrame = step["on"] as? Bool ?? true; log("windowFrame \(Tab.tellsWindowFrame)")
+    case "wheel": // { op: 'wheel', dy?, count?, x?, y? }: a real trackpad scroll handed to the shown tab's web view
+      if let wv = host.window.active?.webView { await wheelOn(wv, step) }
     case "pinch": // { op: 'pinch', deltas, x?, y? }: real magnify events handed to the shown tab's web view
       if let wv = host.window.active?.webView { await pinchOn(wv, step) }
     case "appStart": // { op: 'appStart', layout?: [left, top, right, bottom] }
@@ -849,6 +856,30 @@ func pinchField(_ n: UInt32) -> CGEventField { CGEventField(rawValue: n)! }
   try? await Task.sleep(nanoseconds: 120_000_000)
   log("pinch \(deltas.count) deltas: native magnification \(wv.magnification)")
 }
+// A real trackpad scroll handed to a web view: `dy` points per event (negative: down the page), `count` events, as
+// a two-finger swipe sends them (began, changed…, ended), at (x, y) in the window from its top left.
+@MainActor func wheelOn(_ wv: WKWebView, _ step: [String: Any]) async {
+  let dy = step["dy"] as? Int32 ?? -40, count = step["count"] as? Int ?? 20
+  let x = step["x"] as? Double ?? 700, y = step["y"] as? Double ?? 400
+  let screenH = NSScreen.screens[0].frame.height
+  for i in 0..<count {
+    guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: dy, wheel2: 0, wheel3: 0) else { continue }
+    cg.location = CGPoint(x: x, y: screenH - (800 - y))
+    cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+    cg.setIntegerValueField(CGEventField(rawValue: 99)!, value: i == 0 ? 1 : 2) // scroll phase: began, changed
+    if let e = NSEvent(cgEvent: cg) { wv.scrollWheel(with: e) }
+    try? await Task.sleep(nanoseconds: 12_000_000)
+  }
+  if let end = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: 0, wheel2: 0, wheel3: 0) {
+    end.location = CGPoint(x: x, y: screenH - (800 - y))
+    end.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+    end.setIntegerValueField(CGEventField(rawValue: 99)!, value: 4) // ended
+    if let e = NSEvent(cgEvent: end) { wv.scrollWheel(with: e) }
+  }
+  try? await Task.sleep(nanoseconds: 300_000_000)
+  log("wheel \(count) × \(dy)")
+}
+
 // A whole run's time limit in seconds (MARGIN_HOST_TIMEOUT, default 120).
 let limit = Double(ProcessInfo.processInfo.environment["MARGIN_HOST_TIMEOUT"] ?? "") ?? 120
 DispatchQueue.main.asyncAfter(deadline: .now() + limit) { log("TIMEOUT"); exit(1) }

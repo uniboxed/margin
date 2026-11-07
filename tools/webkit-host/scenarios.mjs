@@ -854,6 +854,20 @@ export const SCENARIOS = {
     checkPage('A', 'pinched back: its box as it was', `${AT} return at.x === 260 && at.y === 8 && visualViewport.scale === 1`, 1500),
     { op: 'windowFrame', on: false },
   ],
+  // <html> with overflow-x: hidden alone and <body> with overflow: hidden (msu.edu): the page scrolls on <html>, so in
+  // the box <body> scrolls. The box's own clip on <html> mustn't read as the page locking it: its weightless
+  // `overflow: clip` turned <html>'s overflow-y into hidden beside the page's overflow-x: hidden (shared/page-box.js).
+  'root-x-hidden': [
+    ...startBoxed('X', '/x/root-x-hidden'),
+    checkPage('X', 'X: <body> scrolls in the box (not hidden)', `/auto|scroll/.test(getComputedStyle(document.body).overflowY)`, 3000),
+    { op: 'page', in: 'X', js: `window.__top0 = document.querySelector('.tall').getBoundingClientRect().top; return 'at ' + window.__top0` },
+    { op: 'wheel', dy: -40, count: 20 },
+    checkPage('X', 'X: a real two-finger scroll moves the page', `document.querySelector('.tall').getBoundingClientRect().top < window.__top0 - 200`, 2000),
+    { op: 'page', in: 'X', js: `document.documentElement.style.overflowY = 'hidden'; return 'locked'` },
+    checkPage('X', 'X: <html> locked by the page: <body> stops scrolling', `getComputedStyle(document.body).overflowY === 'hidden'`, 2000),
+    { op: 'page', in: 'X', js: `document.documentElement.style.overflowY = ''; return 'unlocked'` },
+    checkPage('X', 'X: unlocked: <body> scrolls again', `/auto|scroll/.test(getComputedStyle(document.body).overflowY)`, 2000),
+  ],
   // Two copies of Margin loaded at once in one controller (as Safari would
   // load a new one while the old one still runs): they share one script world
   // in pages, so a page runs one copy, here the first's. Once the newer copy

@@ -38,6 +38,8 @@ before(async () => {
   // The podcast and the video, playing.
   const radio = await m.open('radio.test', '/');
   ids.radio = await frontId();
+  // The tune is 24 s: on a busy machine the rest of this set-up can outlast it, and ended is rightly not playing.
+  await radio.evaluate(() => { /** @type {HTMLAudioElement} */ (document.getElementById('audio')).loop = true; });
   await radio.click('#play');
   await radio.waitForFunction(() => !document.getElementById('audio').paused);
   const reel = await m.open('reel.test', '/watch');

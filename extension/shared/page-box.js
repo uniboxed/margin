@@ -102,7 +102,9 @@ export const SAID_CSS = `html:not(:fullscreen)::backdrop { width: inherit !impor
 export const NO_BOX_CSS = ':root { --margin-dw: 0px; --margin-dh: 0px; }';
 
 // The page-world sheet, for { left, top, right, bottom } in the page's pixels.
-export function boxCss(box, zoom = 1) {
+// `clipY`: <html> clips up and down too (the window never scrolls, and a quirks-mode page's <body> stays a scroller of
+// its own, not the document's). Off while the page says <html>'s overflow-x itself (content/page/box.js checkLocks).
+export function boxCss(box, zoom = 1, clipY = true) {
   const scaled = { left: box.left / zoom, top: box.top / zoom, right: box.right / zoom, bottom: box.bottom / zoom };
   const dw = scaled.left + scaled.right;
   const dh = scaled.top + scaled.bottom;
@@ -115,8 +117,10 @@ export function boxCss(box, zoom = 1) {
       position: relative !important; inset: auto !important;
       scroll-padding: inherit !important; scroll-behavior: inherit !important; scroll-snap-type: inherit !important; overscroll-behavior: inherit !important;
     }
-    /* Nothing said: html clips, and a page's own value shows. */
-    :where(html) { overflow: clip; }
+    /* Nothing said: html clips, and a page's own value shows. A page's overflow-x: hidden (auto, scroll) alone turns
+       a weightless clip up and down into hidden, read as the page locking <html> (msu.edu, 2026-11-07: <body> left at
+       its own overflow: hidden, the page unscrollable): then only sideways, so what it says up and down shows. */
+    :where(html) { ${clipY ? 'overflow: clip' : 'overflow-x: clip'}; }
     /* The top layer ignores <html>. Its elements are placed one by one
        (content/page/top-layer.js), their backdrops here. */
     ::backdrop { inset: ${box.top}px ${box.right}px ${box.bottom}px ${box.left}px !important; }

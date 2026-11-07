@@ -103,6 +103,14 @@ test('a rule on <html>\'s size has to outweigh nothing to hide the flags', () =>
   for (const flag of [READ_ELEMENT, HOLD_ELEMENT]) assert.ok(STILL_CSS.includes(`${flag}:not(#m#m#m#m#m)`), 'a page\'s `:root :not(#z#z) { display: block !important }` must not show one');
 });
 
+test('<html> clips both ways, and only sideways while the page says its own overflow-x', () => {
+  const box = { left: 300, top: 10, right: 10, bottom: 10 };
+  assert.match(boxCss(box), /:where\(html\) \{ overflow: clip; \}/, 'nothing said: the window never scrolls');
+  const sideways = boxCss(box, 1, false);
+  assert.match(sideways, /:where\(html\) \{ overflow-x: clip; \}/);
+  assert.doesNotMatch(sideways, /:where\(html\) \{ overflow: clip/, 'no clip up and down to turn into hidden');
+});
+
 test('the box follows a page\'s zoom on <html>', () => {
   const box = { left: 300, top: 10, right: 10, bottom: 10 };
   assert.ok(boxRules('html', box).includes('calc(100vw - 310px)'), 'with no zoom, as ever');
