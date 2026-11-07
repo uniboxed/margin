@@ -202,6 +202,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // DEV-HOOK: the dev-only test hook (DevHooks.swift, removed before production): whether
         // MarginDevHooks is YES, read at each notification. Nil (every test, the harness): not listened for.
         var devHooksOn: (() -> Bool)?
+        // Which Safari window is which profile's, from Accessibility (SafariAX.swift): only the app (forApp).
+        var safariAX = false
     }
 
     final class Link {
@@ -234,6 +236,16 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private(set) var matches: [WindowKey: Int] = [:]
     // Each browser's window bindings (WindowMatcher.swift).
     private(set) var binders: [String: WindowBinder] = [:]
+    // Safari's windows as Accessibility reads them, and the profile (link) each one's title named, once known: a
+    // window's profile never changes (SafariAX.swift).
+    let safariAX = SafariAX()
+    private var axProfiles: [Int: String] = [:]
+    // Covers over Safari's windows until their layouts are ready (ShellCovers.swift).
+    var covers: [Int: SafariCover] = [:]
+    var coverTimer: Timer?
+    var coverExpired: Set<Int> = []
+    var coverQuietSince: Double?
+    private var axSaid: Set<Int> = []
     // A linked browser has been in front since the first link came up: the shell is at work.
     private(set) var started = false
     private(set) var tracks = 0
@@ -326,6 +338,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if collections.contains("spaces") || collections.contains("tabs") { self?.acrossSoon() }
         }
         apps.onChange = { [weak self] why in
+            if why == "app launched" || why == "app activated" || why == "Space changed" { self?.coversSoon() }
             if why == "Space changed" { self?.spaceDidChange() } else { self?.appsChanged(why) }
         }
         shortcuts.onCommand = { [weak self] command, isRepeat in self?.run(command, isRepeat: isRepeat) }
@@ -350,6 +363,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         Diagnostics.note(options.handoff ? "handoff: on (MarginHandoff is set): profile switches hand off when the private calls allow"
                          : "handoff: off until its gates pass (MarginHandoff isn't set): every profile switch is the close-based one")
         options.devHooksOn = { DevHooks.appDefault() } // DEV-HOOK
+        options.safariAX = true
+        SafariAX.askOnce()
+        Diagnostics.note(SafariAX.trusted ? "Accessibility: on (Safari's windows matched by their titles' profiles)" : "Accessibility: not granted (Safari's windows matched by their pages and focus only)")
         return Shell(link: SocketLink(), windows: CGWindowSource(), apps: WorkspaceApps(), hotKeys: CarbonHotKeys(), options: options)
     }
 
@@ -378,6 +394,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         stopped = false
         link.start()
         startSafariNames()
+        coversSoon()
         // DEV-HOOK: heard only while MarginDevHooks is YES, and only for Safari's Test A and Test B.
         if let on = options.devHooksOn, devHooks == nil {
             devHooks = DevHooks(world: self, isOn: on)
@@ -408,6 +425,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         pointer.stop()
         apps.stop()
         safariNames?.stop()
+        endCovers()
         devHooks?.stop() // DEV-HOOK
         devHooks = nil // DEV-HOOK
         cloudWatcher?.stop()
@@ -825,6 +843,52 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         slowTracksUnsaid = 0
     }
 
+    // An overlay placed in its full-screen window's Space ahead of a visit (Overlay.placeAhead): only an overlay
+    // in its window's own Space, a full-screen window in a full-screen Space, the Space bridge passed at launch,
+    // no switch moving it; a failed placement waits 5 s before the next try.
+    private var aheadFailedAt: [WindowKey: Double] = [:]
+    private func placeAhead(_ overlay: OverlayController, key: WindowKey, w: ExtWindow, number: Int, server: ServerWindow) -> Bool {
+        guard !options.harness, overlay.ownSpace, !ownSpaceFellBack, w.state == "fullscreen", !inSwitch(key), !isParkedKey(key),
+              let reads = spaceReads, let bridge = reads as? SpaceBridge, bridge.canPark,
+              Diagnostics.now() - (aheadFailedAt[key] ?? -.infinity) >= 5 else { return false }
+        guard let space = reads.spaces(of: number)?.first, reads.fullScreenSpaces()?.contains(space) == true else { return false }
+        let viewport = w.viewport
+        let docked = Shell.dockedLeft(overlay)
+        let frame = Shell.overlayFrame(window: server.bounds, viewport: viewport, dockedLeft: docked)
+        overlay.windowFrame = server.bounds
+        overlay.size(to: frame)
+        overlay.browserPid = server.pid
+        let placed = overlay.placeAhead(over: number, frame: frame) { numbers in numbers.allSatisfy { bridge.add($0, to: space) } }
+        if !placed { aheadFailedAt[key] = Diagnostics.now() }
+        return placed
+    }
+
+    // Safari's windows' profiles from Accessibility: known ones at once, unknown ones asked for (the answer
+    // comes back on the main thread and reads again). Window numbers only: no title is kept or logged.
+    func safariExact(list: [ServerWindow], pids: Set<pid_t>) -> [Int: String] {
+        guard options.safariAX, SafariAX.trusted, let pid = pids.first else { return [:] }
+        let wanted = Set(WindowMatcher.candidates(list, pids: pids).map(\.number))
+        let listed = Set(list.map(\.number))
+        axProfiles = axProfiles.filter { listed.contains($0.key) }
+        if !wanted.subtracting(axProfiles.keys).isEmpty {
+            safariAX.refresh(pid: pid, wanted: wanted) { [weak self] found in
+                guard let self, !self.stopped else { return }
+                let names = self.profilesOf("safari").browserNames.mapValues(\.name)
+                // Without Safari's profile names (Full Disk Access), a title can't name one: every window would read as the default's.
+                guard !names.isEmpty else { return }
+                var learned = false
+                for (n, w) in found where self.axProfiles[n] == nil && !w.title.isEmpty {
+                    guard let id = SafariAX.profile(ofTitle: w.title, names: names, defaultId: "s-default") else { continue }
+                    self.axProfiles[n] = "safari:" + id
+                    learned = true
+                    if !self.axSaid.contains(n) { self.axSaid.insert(n); Diagnostics.note("Accessibility: window \(n) is safari:\(id)'s\(w.fullScreen ? " (full screen)" : "")") }
+                }
+                if learned { self.burst("Accessibility named a window's profile") }
+            }
+        }
+        return axProfiles.filter { wanted.contains($0.key) }
+    }
+
     // Read the window server often for a while (something is moving).
     func burst(_ why: String) {
         burstUntil = Diagnostics.now() + options.burstFor
@@ -915,9 +979,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             for entry in entries { copies[entry.connection.key] = entry.connection.hello.instanceId ?? entry.connection.hello.since.map { "\($0)" } ?? entry.connection.epoch }
             let binder = binders[browser] ?? WindowBinder(browser: browser)
             binders[browser] = binder
+            let exact = browser == "safari" && read != nil ? safariExact(list: list, pids: pids) : [:]
             let bound = binder.update(now: wallNow, ext: windows.map(\.0), reporting: Set(entries.map(\.connection.key)), copies: copies, held: held,
                                       server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, listed: read != nil, spaceChangedAt: spaceChangedWall,
-                                      parked: parkedNumbers)
+                                      parked: parkedNumbers, exact: exact)
             next.merge(bound) { a, _ in a }
             let boundNumbers = Set(bound.values)
             freeWindows[browser] = WindowMatcher.candidates(list, pids: pids).filter { !boundNumbers.contains($0.number) && !parkedNumbers.contains($0.number) }
@@ -987,6 +1052,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                     }
                     continue
                 }
+                // Placed ahead in its window's Space, so the layout is there when that Space slides in (Tirth,
+                // 2026-11-07: never Safari's own UI, not even on a first visit). Else put away, as before.
+                if placeAhead(overlay, key: key, w: w, number: number, server: server) { continue }
                 overlay.hide(spaceChanged ? "the active Space changed and its window isn't on screen" : "its window isn't on screen")
                 continue
             }
@@ -1019,7 +1087,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if showed, wasShown, !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar, own: overlay.catcherWindowNumbers) {
                 overlay.reorder()
             }
-            if showed, !wasShownAnywhere { appeared(overlay, w, list: list) }
+            if showed, !wasShownAnywhere || overlay.aheadPending { overlay.arrived(); appeared(overlay, w, list: list) }
             if showed { deliverHeldPalette(overlay) }
             if !wasShown, overlay.ownSpace, !inSwitch(key) { checkOwnSpace(overlay, browser: number) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }

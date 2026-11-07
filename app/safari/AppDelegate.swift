@@ -19,6 +19,7 @@
 // the shell starts at launch. Copied over the converter's by scripts/make-xcode.sh.
 
 import Cocoa
+import ServiceManagement
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -38,6 +39,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // The executable as it was at launch; quits once another build is in its place.
     private var bundle: BundleWatch?
 
+    // Opened by macOS at login (a login item: SMAppService.mainApp), so it's running before Safari opens and
+    // can cover Safari's windows from their first frame (ShellCovers.swift). Read while the open event is current.
+    private var atLogin = false
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        if let event = NSAppleEventManager.shared().currentAppleEvent, event.eventID == kAEOpenApplication,
+           event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem {
+            atLogin = true
+        }
+    }
+
+    // Margin.app opens at login (Tirth, 2026-11-07: Safari's UI never shown, not even as Safari opens: Margin has
+    // to be running first). Added once; if the person turns it off in System Settings, it stays off.
+    private func addLoginItemOnce() {
+        let key = "MarginLoginItemAdded"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        do {
+            try SMAppService.mainApp.register()
+            UserDefaults.standard.set(true, forKey: key)
+            Diagnostics.note("Margin.app opens at login now (System Settings › General › Login Items turns it off)")
+        } catch {
+            Diagnostics.note("Margin.app couldn't be added to the login items: \(error.localizedDescription)")
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         bundle = BundleWatch(quit: { RunLoop.main.perform { NSApp.terminate(nil) } })
         // The storyboard's window, shown at launch (but opened with --background).
@@ -45,11 +70,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Dock icon, and doesn't quit by itself while that window is open).
         if let window = NSApp.windows.first(where: { $0.contentViewController is ViewController }) {
             keep(window)
-            let background = CommandLine.arguments.contains("--background")
+            watching = atLogin || CommandLine.arguments.contains("--watch")
+            let background = CommandLine.arguments.contains("--background") || atLogin
             if background || Self.startedForLink() {
                 window.orderOut(nil)
                 NSApp.setActivationPolicy(.accessory)
-                Diagnostics.note(background ? "Margin.app started with --background: no set-up window" : "Margin.app started for a link (the extension's note): no set-up window")
+                Diagnostics.note(atLogin ? "Margin.app opened at login: no set-up window" : background ? "Margin.app started with --background: no set-up window" : "Margin.app started for a link (the extension's note): no set-up window")
             } else {
                 // An agent app (LSUIElement, scripts/make-xcode.sh): opened by
                 // the person, it gets its Dock icon and comes forward.
@@ -67,6 +93,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         terminating?.setEventHandler { RunLoop.main.perform { NSApp.terminate(nil) } }
         terminating?.resume()
         endOthers()
+        addLoginItemOnce()
     }
 
     // Another Margin.app of this bundle still running (one an update left, or
@@ -105,8 +132,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         startShell()
     }
 
+    // Watching (opened at login, or restarted idle with --watch): no shell, no link, no web views until a browser
+    // Margin works in opens; then the shell starts, in time to cover that browser's windows (ShellCovers.swift).
+    private var watching = false
+    private var browserLaunch: NSObjectProtocol?
+    static let browsers: Set<String> = ["com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.microsoft.edgemac"]
+    private static func browserRunning() -> Bool {
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier.map(browsers.contains) ?? false }
+    }
+
     private func startShell() {
         guard idleCheck == nil else { return }
+        if watching, !Self.browserRunning() {
+            guard browserLaunch == nil else { return }
+            Diagnostics.note("Margin.app is waiting for a browser to open (no shell until then)")
+            browserLaunch = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
+                let id = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+                guard let id, Self.browsers.contains(id) else { return }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if let o = self.browserLaunch { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+                    self.browserLaunch = nil
+                    self.watching = false
+                    Diagnostics.note("\(id) opened: Margin's shell starts")
+                    self.startShell()
+                }
+            }
+            return
+        }
+        watching = false
         if let bundle {
             bundle.watch(shell.link)
             // Replaced while it was starting: no shell at all.
@@ -144,7 +198,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard shell.links.isEmpty, !setupOpen else { idleSince = nil; return }
         let since = idleSince ?? Date()
         idleSince = since
-        if Date().timeIntervalSince(since) >= Self.idleQuitAfter { NSApp.terminate(nil) }
+        guard Date().timeIntervalSince(since) >= Self.idleQuitAfter else { return }
+        // A login item: back to watching in a fresh process (nothing of the shell kept), so the next browser to
+        // open is covered from its first frame. Otherwise quit, as before (a browser starting starts it again).
+        if SMAppService.mainApp.status == .enabled {
+            Diagnostics.note("no copy linked for \(Int(Self.idleQuitAfter / 60)) min: Margin.app goes back to waiting for a browser")
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = false
+            configuration.addsToRecentItems = false
+            configuration.createsNewApplicationInstance = true
+            configuration.arguments = ["--background", "--watch"]
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            }
+            idleCheck?.invalidate()
+            idleCheck = nil
+            return
+        }
+        NSApp.terminate(nil)
     }
 
     // Started by the extension handler for a copy's link (SafariWebExtensionHandler.swift

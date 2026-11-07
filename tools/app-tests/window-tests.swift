@@ -70,7 +70,7 @@ final class World {
     let listed = noList ? [] : collapse ? server.filter { !pids.contains($0.pid) } : server.filter { !blipped.contains($0.number) }
     let said = lines.count
     let out = binder.update(now: t, ext: ext.keys.sorted().flatMap { ext[$0]! }, reporting: Set(ext.keys), copies: copies, held: held,
-                            server: listed, pids: pids, browserInFront: inFront, listed: !noList, spaceChangedAt: spaceAt, parked: parked)
+                            server: listed, pids: pids, browserInFront: inFront, listed: !noList, spaceChangedAt: spaceAt, parked: parked, exact: exact)
     // Measured, not read from the line's words: how long the window had been out of the reads.
     for line in lines[said...] where line.contains(" is gone from the window server") {
       guard let n = line.range(of: "is no longer window ").flatMap({ Int(line[$0.upperBound...].prefix { $0.isNumber }) }), !pids.isEmpty else { continue }
@@ -81,6 +81,8 @@ final class World {
     for (k, n) in out where truth[k] != nil && truth[k] != n { wrong.append("\(k) bound to \(n), is \(truth[k]!) (t+\(String(format: "%.2f", t - 1_800_000_000)))") }
     return out
   }
+  // Accessibility's word: window number → the link its title names (SafariAX).
+  var exact: [Int: String] = [:]
   func run(_ seconds: Double, every: Double = 0.25) {
     var left = seconds
     while left > 1e-9 { read(min(every, left)); left -= every }
@@ -1593,6 +1595,67 @@ extension Tests {
       check("made by Margin: a parked window listed again isn't the new window", w.binder.numbers[k(C, 90)] == nil && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
       w.add(400, left); w.read(0.05)
       check("and the real new one is", w.binder.numbers[k(C, 90)] == 400 && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+    }
+  }
+}
+
+
+extension Tests {
+  // Accessibility names each window's profile (SafariAX.swift, WindowBinder.update `exact`).
+  static func axBinding() {
+    let A = "safari:s-default", B = "safari:s-b", C = "safari:s-c"
+    let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    func k(_ link: String, _ id: Int) -> WindowKey { WindowKey(link: link, windowId: id) }
+    let names = ["s-default": "Work", "s-b": "Personal", "s-c": "Test A"]
+    check("a title names its profile: a named one by its prefix, the default's by none",
+          SafariAX.profile(ofTitle: "Personal — Inbox", names: names, defaultId: "s-default") == "s-b"
+          && SafariAX.profile(ofTitle: "Test A — x", names: names, defaultId: "s-default") == "s-c"
+          && SafariAX.profile(ofTitle: "Test A", names: names, defaultId: "s-default") == "s-c"
+          && SafariAX.profile(ofTitle: "Inbox — Personal stuff", names: names, defaultId: "s-default") == "s-default"
+          && SafariAX.profile(ofTitle: "Start Page", names: names, defaultId: "s-default") == "s-default")
+
+    // Three profiles, three same-bounds full-screen windows, one on screen, nothing said by any page:
+    // bound at the first read, every one, the off-screen ones too.
+    do {
+      let w = World()
+      w.add(100, screen, on: true); w.add(101, screen); w.add(102, screen)
+      w.put(A, 1, screen); w.put(B, 2, screen); w.put(C, 3, screen)
+      w.truth = [k(A, 1): 101, k(B, 2): 100, k(C, 3): 102]
+      w.exact = [100: B, 101: A, 102: C]
+      let out = w.read()
+      check("Accessibility: every same-bounds window bound at the first read, on screen or not", out == w.truth, "\(out)")
+      check("and never wrong", w.wrong.isEmpty, w.wrong.joined(separator: "; "))
+    }
+    // A binding the other rules made to another profile's window goes, and the right one is made.
+    do {
+      let w = World()
+      w.add(100, screen, on: true)
+      w.put(A, 1, screen)
+      _ = w.read() // bound by its bounds alone (one window)
+      w.add(101, screen); w.put(B, 2, screen)
+      w.exact = [100: B, 101: A]
+      let out = w.read()
+      check("Accessibility overrides: A's window is 101 and B's 100", out[k(A, 1)] == 101 && out[k(B, 2)] == 100, "\(out)")
+    }
+    // Two windows of one profile: only the one with its bounds is bound; same bounds, neither (the other rules decide).
+    do {
+      let w = World()
+      let left = CGRect(x: 40, y: 60, width: 900, height: 700)
+      w.add(100, screen, on: true); w.add(101, left, on: true)
+      w.put(A, 1, screen); w.put(A, 2, left, state: "normal")
+      w.exact = [100: A, 101: A]
+      let out = w.read()
+      check("one profile's two windows: each by its own bounds", out[k(A, 1)] == 100 && out[k(A, 2)] == 101, "\(out)")
+    }
+    // A window not yet named (its title empty) waits; a parked window is never named.
+    do {
+      let w = World()
+      w.add(100, screen, on: true); w.add(101, screen)
+      w.put(A, 1, screen); w.put(B, 2, screen)
+      w.parked = [101]
+      w.exact = [100: A, 101: B]
+      let out = w.read()
+      check("a parked window is left to the parking registry", out[k(B, 2)] == nil && out[k(A, 1)] == 100, "\(out)")
     }
   }
 }

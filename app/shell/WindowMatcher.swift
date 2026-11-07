@@ -414,7 +414,7 @@ final class WindowBinder {
     @discardableResult
     func update(now: Double, ext: [ExtWindow], reporting: Set<String>, copies: [String: String] = [:], held: Set<String> = [],
                 server: [ServerWindow], pids: Set<pid_t>, browserInFront: Bool, listed: Bool = true, spaceChangedAt: Double = -.infinity,
-                parked: Set<Int> = []) -> [WindowKey: Int] {
+                parked: Set<Int> = [], exact: [Int: String] = [:]) -> [WindowKey: Int] {
         let first = reads == 0 // the first read that told something
         defer { lastRead = now; noteFront(now) }
         let T = timing
@@ -748,6 +748,33 @@ final class WindowBinder {
             drift[key] = nil
             bindings[key] = nil
             bind(key, other.number, now, "its bounds (\(WindowMatcher.describe(eb))) have matched window \(other.number) alone for \(Int(T.moved)) s, not window \(b.number)'s (\(WindowMatcher.describe(own.bounds)))", was: b.number)
+        }
+
+        // ---- exact: Accessibility names each window's profile (SafariAX.swift) ----
+        // `exact`: window number → the link of the profile its title names. A binding to another profile's key is
+        // wrong and goes; a window is bound to its profile's one free window there (or the one free window of
+        // its profile with its bounds and state, when the profile has several), with nothing else to wait for.
+        if !exact.isEmpty {
+            for (number, link) in exact.sorted(by: { $0.key < $1.key }) where !parked.contains(number) && present[number] != nil {
+                if let (key, _) = bindings.first(where: { $0.value.number == number }), key.link != link {
+                    drop(key, "Accessibility says window \(number) is \(link)'s")
+                }
+            }
+            for (number, link) in exact.sorted(by: { $0.key < $1.key }) where !parked.contains(number) && !retired.contains(number) {
+                guard let w = present[number], !bound.contains(number) else { continue }
+                let free = byKey.values.filter { $0.key.link == link && bindings[$0.key] == nil && !parkedKey($0.key) && $0.state != "minimized" }.sorted { $0.key < $1.key }
+                // The profile's windows the window server lists and no binding has: one, and one of its copy's free.
+                let unbound = exact.filter { $0.value == link && present[$0.key] != nil && !parked.contains($0.key) && !bound.contains($0.key) }.count
+                if free.count == 1, unbound == 1 {
+                    bind(free[0].key, number, now, "Accessibility: its title names \(link), the profile's one window")
+                } else if free.count > 1 {
+                    let fitting = free.filter { e in (e.bounds.map { WindowMatcher.close($0, w.bounds) } ?? false) || (e.bounds.map { has(number, $0) } ?? false) }
+                    let sameSize = exact.filter { $0.value == link && !bound.contains($0.key) && (present[$0.key].map { WindowMatcher.close($0.bounds, w.bounds) } ?? false) }.count
+                    if fitting.count == 1, sameSize == 1 {
+                        bind(fitting[0].key, number, now, "Accessibility: its title names \(link), the one of its windows with these bounds")
+                    }
+                }
+            }
         }
 
         // ---- made by Margin's own request ----

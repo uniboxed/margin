@@ -64,6 +64,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     mirror()
     layouts()
     windowBinding() // window-tests.swift
+    axBinding() // window-tests.swift: Accessibility's exact word
     parkedWindowBinding() // window-tests.swift
     stacking()
     passThrough()

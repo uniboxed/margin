@@ -378,6 +378,38 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         return true
     }
 
+    /// Placed ahead of a visit: over its window `number`, which is in another Space (not on screen), so that when
+    /// that Space slides in the layout is already there and drawn (Tirth, 2026-11-07: "i should never see safari's
+    /// ui at all"). Ordered in unseen (alpha 0: ordering in puts a window in the active Space), then its windows
+    /// moved into its window's Space by `move` (the Space bridge), then seen again there. False, and put away, if
+    /// it can't be shown or moved. `aheadPending`: shown this way and not yet on screen (the shell's first on-screen
+    /// show then does what a first show does).
+    private(set) var aheadPending = false
+    @discardableResult
+    func placeAhead(over number: Int, frame: CGRect, move: (Set<Int>) -> Bool) -> Bool {
+        guard isReady, crashBudgetOK, allowed(ScreenGeometry.appKitRect(frame)) else { return false }
+        panel.alphaValue = 0
+        edgePanel?.alphaValue = 0
+        catcher.alphaValue = 0
+        defer {
+            if !isConcealed { panel.alphaValue = 1; edgePanel?.alphaValue = 1 }
+            catcher.alphaValue = 1
+        }
+        guard show(over: number, frame: frame, toolbar: nil, why: "placed in its window's Space ahead of a visit") else { return false }
+        var numbers: Set<Int> = [panel.windowNumber]
+        numbers.formUnion(catcherWindowNumbers)
+        if edgeFrame != nil, let edge = edgePanel { numbers.insert(edge.windowNumber) }
+        guard move(numbers) else {
+            hide("couldn't be placed in its window's Space")
+            return false
+        }
+        aheadPending = true
+        return true
+    }
+
+    /// Its first time on screen after `placeAhead` (the shell's on-screen show).
+    func arrived() { aheadPending = false }
+
     // Put back just above its browser window (something came between them: a click raised the browser).
     func reorder() {
         guard isShown, aboveWindow != nil else { return }
@@ -425,6 +457,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         panel.orderOut(nil)
         reveal()
         isShown = false
+        aheadPending = false
         aboveWindow = nil
         belowWindow = nil
         setIgnoring(false)
