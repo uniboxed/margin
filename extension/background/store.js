@@ -263,8 +263,9 @@ function trackKeys(keys) {
 // items with a new time, and the new tombstones.
 function changedItems(collection, before, after, items) {
   const out = [];
-  for (const [id, [at]] of Object.entries(after.items)) {
-    if (at > 0 && before?.items?.[id]?.[0] !== at) out.push({ collection, id, updatedAt: at, value: items[id] });
+  for (const [id, [at, fp]] of Object.entries(after.items)) {
+    const had = before?.items?.[id];
+    if (at > 0 && (had?.[0] !== at || had?.[1] !== fp)) out.push({ collection, id, updatedAt: at, value: items[id] });
   }
   for (const [id, at] of Object.entries(after.gone ?? {})) if (before?.gone?.[id] !== at) out.push({ collection, id, updatedAt: at, deleted: true });
   return out;
