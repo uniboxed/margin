@@ -61,6 +61,16 @@ test('the active theme\'s own settings, from its theme.json: Margin\'s inputs, i
   assert.equal(settingsFields({}, {}, { theme: { id: 'x', name: 'X', settings: {} } }).some((x) => x.id === 'themeSettings'), false, 'none: no heading');
 });
 
+test('the theme\'s own settings come after Margin\'s, right before the keyboard shortcuts: Margin\'s rows never sit under "Settings of …"', () => {
+  const ids = settingsFields({}, { importThemes: true, userThemes: LIST, cloudTabs: true }, { theme: THEME }).map((x) => x.id);
+  const heading = ids.indexOf('themeSettings');
+  const shortcuts = ids.indexOf('shortcuts');
+  assert.ok(heading > 0 && shortcuts > heading, 'the heading before the shortcuts');
+  assert.ok(ids.slice(heading + 1, shortcuts).every((id) => id.startsWith('themeSetting:')), 'only the theme\'s rows between the two headings');
+  for (const id of ['theme', 'themeImport', 'removeTheme:mine', 'engine', 'archiveAfterHours', 'frameWhenHidden', 'showCloudTabs']) assert.ok(ids.indexOf(id) < heading, `${id} before the theme's own`);
+  assert.equal(ids[ids.indexOf('themeImport') - 1], 'theme', 'Import Theme… right under the theme choice');
+});
+
 test('saving a theme\'s own setting: updateThemeSettings for that theme only, checked against its spec', () => {
   const f = byId(settingsFields({}, {}, { theme: THEME }));
   assert.deepEqual(saveThemeField(f['themeSetting:width'], '320', THEME), { type: 'updateThemeSettings', payload: { themeId: 'mine', patch: { width: '320px' } } });

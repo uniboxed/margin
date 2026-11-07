@@ -134,8 +134,26 @@ func importScenario(shell: Shell, fake: Fake, overlay o7: OverlayController) asy
   let stateNow = shell.links["safari:P1"]?.mirror.stateJSON().flatMap { try? JSONSerialization.jsonObject(with: $0) as? JSONObject } ?? [:]
   var settings = (stateNow["settings"] as? JSONObject) ?? [:]
   settings["theme"] = "e2e-import"
+  check("import: until the app's package for it comes, Settings says it's saving", await waitJS(o7.webView, "return marginApp.saving() === 'e2e-import' || /^Saved\\./.test(marginApp.importStatus()?.text ?? '')"))
   fake.tell(["do": "delta", "id": "A", "changes": ["settings": ["newValue": settings]]])
+  check("import: the app's package for it came: saved, nothing waiting", await waitJS(o7.webView, "return marginApp.saving() === null && /^Saved\\./.test(marginApp.importStatus()?.text ?? '') && !!document.querySelector('.nb')"))
   try? await Task.sleep(nanoseconds: 300_000_000)
+
+  // Use Theme refused by the app (its store full): the theme from before back, not the unsaved one.
+  let tiny = { (id: String) -> JSONObject in ["format": 2, "id": id, "version": "1.0.0", "savedAt": 1, "manifest": jsonString(["format": 2, "id": id, "name": id, "version": "1.0.0"] as JSONObject) ?? "{}", "html": "<div><m-page></m-page></div>", "css": "", "files": [String: String]()] }
+  let fillers = (0..<(ThemeStore.maxThemes - shell.userThemes.store.list().count)).map { "e2e-fill-\($0)" }
+  for id in fillers { _ = try? shell.userThemes.store.save(tiny(id)) }
+  shell.themesListChanged()
+  let full = personalCopy(of: "arcadia", id: "e2e-full", name: "E2E Full", in: root)
+  shell.userThemes.pick = { full }
+  shell.performTheme(from: o7, "theme.import", nil)
+  check("import: with the store full, a theme still previewed", await waitJS(o7.webView, "const p = marginApp.preview(); return p.shown && p.text.includes('“E2E Full”') && !!document.querySelector('.arcadia')"))
+  _ = await js(o7.webView, "marginApp.previewPress('use'); return true")
+  check("import: Use Theme refused by the app: the theme from before drawn again, and Settings says why",
+        await waitJS(o7.webView, "const s = marginApp.importStatus(); return !!document.querySelector('.nb') && !document.querySelector('.arcadia') && marginApp.saving() === null && !!s?.error && s.text.includes('more than')")
+          && !shell.userThemes.store.has("e2e-full"))
+  for id in fillers { _ = try? shell.userThemes.store.remove(id) }
+  shell.themesListChanged()
 
   // A .margintheme file (macOS's own zip of a folder), previewed and cancelled.
   let arc = personalCopy(of: "arcadia", id: "e2e-zip", name: "E2E Zip", in: root)
@@ -168,4 +186,18 @@ func importScenario(shell: Shell, fake: Fake, overlay o7: OverlayController) asy
   check("import: removed while in use: Arcadia again", await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && !document.querySelector('.nb')"))
   settings["theme"] = "arcadia"
   fake.tell(["do": "delta", "id": "A", "changes": ["settings": ["newValue": settings]]])
+
+  // Previewed and cancelled while Arcadia stands in for a theme Margin couldn't draw: Arcadia back, still standing in.
+  try? await Task.sleep(nanoseconds: 300_000_000)
+  fake.tell(["do": "theme", "id": "A", "theme": "neo-brutalism", "edit": ["html": "<div class=\"broken\">no page here</div>"]])
+  check("import: the copy's theme refused: Arcadia standing in", await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && marginApp.themeFailure()?.id === 'neo-brutalism'"))
+  let other = personalCopy(of: "neo-brutalism", id: "e2e-over-fallback", name: "E2E Over", in: root)
+  shell.userThemes.pick = { other }
+  shell.performTheme(from: o7, "theme.import", nil)
+  check("import: over the fallback: previewed", await waitJS(o7.webView, "const p = marginApp.preview(); return p.shown && !!document.querySelector('.nb')"))
+  _ = await js(o7.webView, "marginApp.previewPress('cancel'); return true")
+  check("import: Cancel over the fallback: Arcadia back, still standing in for the theme it couldn't draw",
+        await waitJS(o7.webView, "return !marginApp.preview().shown && !!document.querySelector('.arcadia') && !document.querySelector('.nb') && marginApp.themeFailure()?.id === 'neo-brutalism'"))
+  fake.tell(["do": "theme", "id": "A", "theme": "arcadia"])
+  check("import: the copy's good theme again", await waitJS(o7.webView, "return !!document.querySelector('.arcadia') && marginApp.themeFailure() === null"))
 }

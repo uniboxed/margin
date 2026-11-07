@@ -203,18 +203,30 @@ function usableLayout() {
   const inside = [insets.left, insets.top, insets.right, insets.bottom].every((v) => Number.isFinite(v) && v >= 0);
   return inside && w >= MIN_PAGE.width && h >= MIN_PAGE.height;
 }
-/** Arcadia's package, from the script beside this page (loaded once, when first needed). */
+/**
+ * Arcadia's package, from the script beside this page (loaded when first
+ * needed). Read only as the script's own property of the window, and only as
+ * a package: a theme's element with that id is also `window.marginFallbackTheme`
+ * (named access, from the window's prototype chain), and the sanitizer
+ * removes such ids too. Nothing wrong is kept: the next fallback tries again.
+ */
 let fallbackLoad = /** @type {Promise<any> | null} */ (null);
+function fallbackFromScript() {
+  if (!Object.hasOwn(globalThis, 'marginFallbackTheme')) return null;
+  const p = /** @type {any} */ (globalThis).marginFallbackTheme;
+  const plain = p && typeof p === 'object' && Object.getPrototypeOf(p) === Object.prototype;
+  return plain && p.id === 'arcadia' && ['manifest', 'html', 'css'].every((k) => typeof p[k] === 'string') && p.files && typeof p.files === 'object' ? p : null;
+}
 function fallbackPackage() {
   fallbackLoad ??= new Promise((resolve) => {
-    const have = /** @type {any} */ (globalThis).marginFallbackTheme;
+    const have = fallbackFromScript();
     if (have) return resolve(have);
     const el = document.createElement('script');
     el.src = 'arcadia.js';
-    el.onload = () => resolve(/** @type {any} */ (globalThis).marginFallbackTheme ?? null);
+    el.onload = () => resolve(fallbackFromScript());
     el.onerror = () => resolve(null);
     document.head.append(el);
-  });
+  }).then((pkg) => { if (!pkg) fallbackLoad = null; return pkg; });
   return fallbackLoad;
 }
 /** @param {string} id @param {string} why */
@@ -251,7 +263,9 @@ async function mount(pkg, { fallback = false, preview: previewing = false } = {}
     if (fallback) return void log('error', `Arcadia, the fallback theme, couldn't be drawn either (${why})`);
     return fallBack(id, why);
   }
-  if (!fallback && !previewing) { themeFailure = null; current = pkg; }
+  if (!fallback && !previewing) themeFailure = null;
+  // What a preview puts back: this, Arcadia standing in included.
+  if (!previewing) drawn = { pkg, fallback };
   const keep = { ...(runtime ? { palette: runtime.ui.palette, settingsOpen: runtime.ui.settingsOpen, settingsStatus: runtime.ui.settingsStatus } : {}), notice: notices.view(), gesture: gestures.shown };
   watcher.disconnect();
   runtime?.destroy();
@@ -322,9 +336,23 @@ function openPaletteTimed(options, by) {
 // checked here (ui/theme-import.js: the same checks as every load), and drawn over the live
 // window under Margin's own bar (ui/theme-preview.js). Use Theme hands the checked package to the
 // app (`perform theme.save`), which keeps it and sets the profile's theme; Cancel, Escape, or 30 s
-// with no answer put the theme from before back.
-/** @type {any} */
-let current = null; // the package drawn now (not a preview, not the fallback)
+// with no answer put the theme from before back. After Use Theme the previewed theme stays drawn,
+// and the theme from before is kept, until the app's package for it comes (`theme`): a refusal
+// (`themeSaved` not ok), a package that can't be stored, or no package within SAVE_WAIT_MS put
+// the theme from before back.
+/**
+ * What's drawn now (not a preview): the profile's package, or Arcadia standing in for it (`fallback`).
+ * @type {{ pkg: any, fallback: boolean } | null}
+ */
+let drawn = null;
+const SAVE_WAIT_MS = 10_000;
+/** Use Theme pressed, the app's word not in yet: the theme's id, and what to put back. @type {{ id: string, before: { pkg: any, fallback: boolean } | null, timer: any } | null} */
+let saving = null;
+/** The theme from before, drawn again (Arcadia again, as the fallback, if it was standing in). @param {{ pkg: any, fallback: boolean } | null} before */
+function putBack(before) {
+  if (!before) return mounting;
+  return (mounting = mounting.then(() => mount(before.pkg, { fallback: before.fallback })));
+}
 const preview = {
   /** @type {any} */ pkg: null,
   /** @type {any} */ before: null,
@@ -344,7 +372,7 @@ function previewFailed(text) {
   const before = preview.before;
   preview.pkg = null;
   preview.before = null;
-  if (before) mounting = mounting.then(() => mount(before)).then(() => importStatus(text, true));
+  if (before) putBack(before).then(() => importStatus(text, true));
   else importStatus(text, true);
   return false;
 }
@@ -358,11 +386,11 @@ async function themeFile(msg) {
   }
   const m = read.manifest;
   const message = { id: m.id, manifest: read.pkg.manifest, html: read.pkg.html, css: read.pkg.css, files: Object.fromEntries(Object.entries(read.pkg.files).map(([p, b]) => [p, toBase64(b)])) };
-  preview.before ??= current;
+  preview.before ??= drawn;
   preview.pkg = read.pkg;
   log('note', `import: previewing (${Object.keys(read.pkg.files).length} files, ${read.removed.length} kind(s) of thing removed)`);
-  const drawn = await (mounting = mounting.then(() => mount(message, { preview: true })));
-  if (!drawn || preview.pkg !== read.pkg) return;
+  const shown = await (mounting = mounting.then(() => mount(message, { preview: true })));
+  if (!shown || preview.pkg !== read.pkg) return;
   const installed = (host?.userThemes ?? []).find((e) => e?.id === m.id);
   preview.bar.show({ name: m.name, version: m.version, author: m.author, replaces: installed && installed.version !== m.version ? String(installed.version) : null });
   setKeys(true);
@@ -371,15 +399,31 @@ async function themeFile(msg) {
 }
 function usePreview() {
   const pkg = preview.pkg;
+  const before = preview.before;
   preview.pkg = null;
   preview.before = null;
   setKeys(editable(document.activeElement));
   hitsSoon();
   if (!pkg) return;
   let stored;
-  try { stored = encodeStoredTheme(pkg).value; } catch (err) { return importStatus(`Margin couldn’t keep that theme (${String(err?.message ?? err).slice(0, 160)}).`, true); }
+  try { stored = encodeStoredTheme(pkg).value; } catch (err) {
+    void putBack(before);
+    return importStatus(`Margin couldn’t keep that theme (${String(err?.message ?? err).slice(0, 160)}).`, true);
+  }
+  const id = String(stored.id);
+  if (saving) clearTimeout(saving.timer);
+  saving = { id, before, timer: setTimeout(() => saveUnanswered(id), SAVE_WAIT_MS) };
   host?.perform('theme.save', { value: stored });
-  importStatus('Saved. This profile uses it now; choose it in other profiles’ Settings.');
+  importStatus('Saving…');
+}
+/** No package for the theme came in time: the theme from before back, and why. @param {string} id */
+function saveUnanswered(id) {
+  if (saving?.id !== id) return;
+  const { before } = saving;
+  saving = null;
+  const kept = (host?.userThemes ?? []).some((e) => e?.id === id);
+  log('note', `import: no package for the saved theme within ${SAVE_WAIT_MS / 1000} s (${kept ? 'kept' : 'not kept'}): the theme from before back`);
+  void putBack(before).then(() => importStatus(kept ? 'Margin kept the theme, but this profile didn’t switch to it. Choose it under Theme.' : 'Margin couldn’t keep that theme: Margin.app didn’t answer.', true));
 }
 /** @param {string | null} text */
 async function endPreview(text) {
@@ -388,7 +432,7 @@ async function endPreview(text) {
   preview.before = null;
   setKeys(editable(document.activeElement));
   hitsSoon();
-  if (before) await (mounting = mounting.then(() => mount(before)));
+  if (before) await putBack(before);
   importStatus(text);
 }
 
@@ -401,11 +445,25 @@ function onMessage(msg) {
       void themeFile(msg);
       return;
     case 'themeSaved':
-      if (msg.ok === false) importStatus(String(msg.error ?? 'Margin couldn’t keep that theme.').slice(0, 300), true);
+      if (msg.ok !== false) return;
+      // Refused by the app: the theme from before back (the previewed one stays drawn otherwise).
+      if (saving) {
+        const { before } = saving;
+        clearTimeout(saving.timer);
+        saving = null;
+        void putBack(before).then(() => importStatus(String(msg.error ?? 'Margin couldn’t keep that theme.').slice(0, 300), true));
+      } else importStatus(String(msg.error ?? 'Margin couldn’t keep that theme.').slice(0, 300), true);
       return;
     case 'theme':
       // A new package while previewing: drawn once the preview ends.
-      if (preview.pkg) { pendingTheme = msg.theme; preview.before = msg.theme; return; }
+      if (preview.pkg) { pendingTheme = msg.theme; preview.before = { pkg: msg.theme, fallback: false }; return; }
+      // The app's package after Use Theme: the save went through (another theme: drawn, as any).
+      if (saving) {
+        const ok = msg.theme?.id === saving.id;
+        clearTimeout(saving.timer);
+        saving = null;
+        if (ok) importStatus('Saved. This profile uses it now; choose it in other profiles’ Settings.');
+      }
       pendingTheme = msg.theme;
       if (host?.getState()) mounting = mounting.then(() => mount(msg.theme));
       return;
@@ -522,6 +580,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   previewPress: (/** @type {'use' | 'cancel'} */ which) => preview.bar.press(which),
   // What Settings says about the last import (the app's tests read it).
   importStatus: () => runtime?.ui.settingsStatus?.themeImport ?? null,
+  // Use Theme pressed and the app's word not in yet (the app's tests read it).
+  saving: () => (saving ? saving.id : null),
 };
 /** @type {any} */
 let pendingTheme = null;

@@ -243,15 +243,19 @@ export async function packageFromZip(zip) {
     if (JUNK(name)) { files[name] = new Uint8Array(0); continue; } // dropped by packageFromFiles, counted as skipped
     const problem = pathProblem(name);
     if (problem) return fail(`${JSON.stringify(name.slice(0, 80))}: ${problem}`);
-    const cap = Math.min(capFor(name) || 1, PACKAGE_LIMITS.totalBytes);
-    if (e.size > cap && capFor(name)) return fail(`${name}: larger than ${cap} bytes`);
+    // A kind no package holds is refused before anything is inflated (its
+    // size is the zip's word only), as checkPackage would refuse it after.
+    if (!capFor(name)) return fail(`${name}: not a file a theme may bundle (woff2 fonts, png, jpg, gif, webp, avif, svg images, txt or md notes)`);
+    const cap = Math.min(capFor(name), PACKAGE_LIMITS.totalBytes - total);
+    if (e.size > cap) return fail(cap < capFor(name) ? `it holds more than ${PACKAGE_LIMITS.totalBytes} bytes` : `${name}: larger than ${cap} bytes`);
     const raw = zip.subarray(data, data + e.csize);
     let bytes;
     if (e.method === 0) {
       if (e.csize !== e.size) return fail(`${name}: its sizes disagree`);
       bytes = raw.slice();
     } else {
-      try { bytes = await inflate(raw, Math.max(e.size, 0)); } catch (err) { return fail(`${name}: ${err.message}`); }
+      // Never past what it says it holds, which is within its kind's cap and what's left of the package's.
+      try { bytes = await inflate(raw, Math.min(Math.max(e.size, 0), cap)); } catch (err) { return fail(`${name}: ${err.message}`); }
       if (bytes.length !== e.size) return fail(`${name}: it inflates to another size than it says`);
     }
     if (crc32(bytes) !== e.crc) return fail(`${name}: its check (CRC-32) doesn't match`);
@@ -287,8 +291,27 @@ export function removedSummary(removed, max = 5) {
 }
 
 /**
+ * What an imported theme's template lacks of the ways back out of it: the
+ * new-tab page (`launcher` part in `<m-launcher>`) with Settings in it (the
+ * `settings` part in `<m-settings>`, where the theme is chosen and removed),
+ * and the `prompt` and `notice` parts in `<m-prompt>` and `<m-notice>`
+ * (Remove's question; why Margin fell back). A built-in theme has them all.
+ * @param {{ parts?: string[], slots?: string[] } | undefined} structure
+ */
+export function missingWaysOut(structure) {
+  const parts = new Set(structure?.parts ?? []);
+  const slots = new Set(structure?.slots ?? []);
+  const missing = [];
+  for (const part of ['launcher', 'settings', 'prompt', 'notice']) if (!parts.has(part)) missing.push(`<template m-part="${part}">`);
+  for (const slot of ['m-launcher', 'm-prompt', 'm-notice']) if (!slots.has(`>${slot}`)) missing.push(`<${slot}> outside the parts`);
+  if (!slots.has('launcher>m-settings') && !slots.has('>m-settings')) missing.push('<m-settings> in the launcher part');
+  return missing;
+}
+
+/**
  * A read package checked as an import: the caps and file kinds, the
- * sanitizer, and an id that isn't a built-in's. `ok`: it may be previewed
+ * sanitizer, an id that isn't a built-in's, and the parts the person needs
+ * to switch away from it again (missingWaysOut). `ok`: it may be previewed
  * (what was removed is said, not fatal, as for any theme load).
  * @param {import('./theme-loader.js').ThemePackage} pkg
  */
@@ -297,6 +320,8 @@ export function checkImport(pkg) {
   if (caps.length) return { ok: false, errors: caps, removed: [], manifest: null };
   const report = sanitizeTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files: Object.keys(pkg.files) });
   if (!report.ok) return { ok: false, errors: report.errors, removed: removedSummary(report.removed), manifest: null };
+  const missing = missingWaysOut(report.structure);
+  if (missing.length) return { ok: false, errors: [`theme.html: no ${missing.join(', no ')} (an imported theme must draw Margin's Settings, prompts and notices, so it can be switched away from)`], removed: removedSummary(report.removed), manifest: null };
   const m = report.manifest;
   if (BUILTIN_THEMES.includes(m.id)) return { ok: false, errors: [`its id "${m.id}" is a built-in theme's: give it your own`], removed: [], manifest: null };
   return { ok: true, errors: [], removed: removedSummary(report.removed), manifest: { id: m.id, name: m.name, version: m.version, author: m.author ?? '' } };

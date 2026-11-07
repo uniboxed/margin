@@ -382,6 +382,8 @@ const PARTS = new Set(['palette-row', 'notice', 'menu-item', 'window-controls', 
 // an attribute that shows or speaks text. Icons (svg shapes), images and
 // decoration stay. ui/render.js applies the same rule again as it compiles.
 export const GUARDED_PARTS = Object.freeze(['menu', 'menu-item', 'notice', 'space-editor', 'prompt', 'settings', 'cloud-tabs']);
+// The elements a part is put in.
+const SLOT_ELEMENTS = new Set(['m-palette', 'm-notice', 'm-menu', 'm-editor', 'm-launcher', 'm-prompt', 'm-settings', 'm-cloud-tabs']);
 export const GUARDED_SLOTS = Object.freeze(['m-menu', 'm-notice', 'm-editor', 'm-prompt', 'm-settings', 'm-cloud-tabs']);
 // Attributes whose value is shown (a tooltip, a placeholder, an image's
 // stand-in) or spoken (a screen reader's label).
@@ -415,9 +417,13 @@ const ID_VALUE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 // window (named access) wherever the window has none of its own, and these
 // are names Margin's code, the app's bridge or the extension's APIs are read
 // by. (The overlay's container is its document, so its ids are the window's.)
-export const RESERVED_IDS = Object.freeze(['browser', 'chrome', 'safari', 'webkit', 'marginApp', 'Margin', 'T', 'margin', 'opener', 'parent', 'top', 'self', 'frames', 'window', 'document', 'globalThis', 'module', 'exports', 'define', 'require']);
+// Every global of Margin's own is `margin` and a capital (`marginApp`,
+// `marginFallbackTheme`: RESERVED_PREFIX), so a later one is covered too;
+// `margin-results` and the like stay.
+export const RESERVED_IDS = Object.freeze(['browser', 'chrome', 'safari', 'webkit', 'marginApp', 'marginFallbackTheme', 'Margin', 'T', 'margin', 'opener', 'parent', 'top', 'self', 'frames', 'window', 'document', 'globalThis', 'module', 'exports', 'define', 'require']);
 const RESERVED_ID_SET = new Set(RESERVED_IDS.map((id) => id.toLowerCase()));
-const idOk = (value) => ID_VALUE.test(value) && !RESERVED_ID_SET.has(value.toLowerCase());
+export const RESERVED_PREFIX = /^margin[A-Z0-9_]/i;
+const idOk = (value) => ID_VALUE.test(value) && !RESERVED_ID_SET.has(value.toLowerCase()) && !RESERVED_PREFIX.test(value);
 const FRAGMENT_URL = /^url\(\s*#[A-Za-z][A-Za-z0-9_-]*\s*\)$/;
 
 function staticValueOk(element, name, value, ctx) {
@@ -450,7 +456,7 @@ function staticValueOk(element, name, value, ctx) {
  * Sanitizes a template.
  * @param {string} html
  * @param {{ files?: string[], assetUrl?: (path: string) => string }} [options]
- * @returns {{ tree: any, removed: any[], errors: string[], stats: { pages: number, nodes: number } }}
+ * @returns {{ tree: any, removed: any[], errors: string[], stats: { pages: number, nodes: number }, structure?: { parts: string[], slots: string[] } }}
  */
 export function sanitizeTemplate(html, { files = [], assetUrl = (p) => p } = {}) {
   if (typeof html !== 'string') return { tree: null, removed: [], errors: ['template: not text'], stats: { pages: 0, nodes: 0 } };
@@ -460,7 +466,7 @@ export function sanitizeTemplate(html, { files = [], assetUrl = (p) => p } = {})
   const removed = parsed.removed;
   const errors = parsed.errors;
   const stats = { pages: 0, nodes: 0 };
-  const ctx = { files, assetUrl, removed, errors, stats, parts: new Set() };
+  const ctx = { files, assetUrl, removed, errors, stats, parts: new Set(), slots: new Set() };
   const children = cleanChildren(parsed.root.children, { ...ctx, ns: HTML, forDepth: 0, inTemplate: false, inIf: false, guard: null });
   const tree = { type: 'root', children };
   if (!errors.length) {
@@ -468,7 +474,11 @@ export function sanitizeTemplate(html, { files = [], assetUrl = (p) => p } = {})
     if (roots.length !== 1) errors.push(`template: needs exactly one root element (found ${roots.length})`);
     if (stats.pages !== 1) errors.push(`template: needs exactly one <m-page> (found ${stats.pages})`);
   }
-  return { tree, removed, errors, stats };
+  // Which parts it has, and where its slots are ("launcher>m-settings": in the
+  // launcher part; ">m-notice": in the window's own tree). ui/theme-import.js
+  // checks an import has what the person needs to get back out of it.
+  const structure = { parts: [...ctx.parts], slots: [...ctx.slots] };
+  return { tree, removed, errors, stats, structure };
 }
 
 function cleanChildren(list, ctx) {
@@ -508,10 +518,12 @@ function cleanNode(node, ctx) {
     if (part && PARTS.has(part)) {
       if (ctx.parts.has(part)) { report(ctx.removed, 'element', `template m-part="${part}"`, 'a second template for this part (the first is the one used)', at); return null; }
       ctx.parts.add(part);
+      sub.part = part;
     }
     if (GUARDED_PART_SET.has(part)) sub.guard = `"${part}" part`;
   }
   if (GUARDED_SLOT_SET.has(lname)) sub.guard ??= `<${lname}>`;
+  if (SLOT_ELEMENTS.has(lname)) ctx.slots?.add(`${ctx.part ?? ''}>${lname}`);
   if (lname === 'm-for') {
     sub.forDepth = ctx.forDepth + 1;
     if (sub.forDepth > LIMITS.forDepth) { ctx.errors.push(`template: <m-for> nested deeper than ${LIMITS.forDepth}`); return null; }

@@ -162,7 +162,8 @@
 .tab:is(:hover, :focus-within) .audible { display: none; }
 /* A pin outside the folders: the board's folder row in a card without a
    border; pins side by side share one card. */
-.loose-card { flex-shrink: 0; padding: 4px; border-radius: 12px; background: var(--paper); }
+/* 4 px and the folder's 2.5 px border: its rows line up with a folder's. */
+.loose-card { flex-shrink: 0; padding: 4px 6.5px; border-radius: 12px; background: var(--paper); }
 .loose-card + .loose-card { margin-top: -6px; padding-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .loose-card:has(+ .loose-card) { padding-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .fav { width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 5px; background: var(--paper); object-fit: cover; }
@@ -215,8 +216,10 @@
 
 /* Spaces */
 .spaces { flex-shrink: 0; display: flex; gap: 6px; }
-.chips { flex: 1; display: flex; gap: 6px; min-width: 0; }
-.chip { --chip: var(--paper); flex: 1; min-width: 0; height: 44px; border: 2.5px solid var(--ink); border-radius: 10px; font-family: 'Archivo Black', sans-serif; font-size: 13px; background: var(--chip); box-shadow: 3px 3px 0 var(--ink); }
+/* Many spaces: the chips keep a readable width and scroll sideways (room kept for their shadows and tags). */
+.chips { flex: 1; display: flex; gap: 6px; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding: 8px 8px 4px 0; margin: -8px -8px -4px 0; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { --chip: var(--paper); flex: 1 0 34px; min-width: 34px; height: 44px; border: 2.5px solid var(--ink); border-radius: 10px; font-family: 'Archivo Black', sans-serif; font-size: 13px; background: var(--chip); box-shadow: 3px 3px 0 var(--ink); }
 .chip.on { transform: translate(3px, 3px); box-shadow: inset 0 0 0 2px var(--paper); }
 /* Another browser profile's space (Margin.app): its profile's tag on the corner, a gap between profiles. */
 .chip { position: relative; }
@@ -313,9 +316,13 @@
 .palette-row.on { background: rgba(17, 17, 17, .08); }
 /* The heading of a run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): a sky-blue tag. */
 .palette-section { flex-shrink: 0; align-self: flex-start; max-width: 100%; margin-top: 6px; padding: 2px 8px; border: 2px solid var(--ink); border-radius: 6px; background: #8fdcff; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
-/* The board's tag: the space's color, a 2 px ink border, capitals. */
-.tag { flex-shrink: 0; max-width: 40%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; line-height: 15px; text-transform: uppercase; letter-spacing: .3px; border: 2px solid var(--ink); border-radius: 6px; padding: 2px 6px; background: var(--space); }
+/* The board's tag: the row's space's color (white for Archived, Search…), a 2 px ink border,
+   capitals, one width for every row so the icons and titles after it line up. */
+.tag { flex-shrink: 0; width: 92px; text-align: center; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; line-height: 15px; text-transform: uppercase; letter-spacing: .3px; border: 2px solid var(--ink); border-radius: 6px; padding: 2px 6px; background: var(--tag, var(--paper)); }
 .palette-row .fav { width: 20px; height: 20px; }
+/* Search and Open: an icon in the board's ink, in a box like a site's. */
+.fav.glyph { display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 6px; background: var(--paper); }
+.fav.glyph .ico { width: 14px; height: 14px; stroke-width: 3; }
 .fav.emoji { display: flex; align-items: center; justify-content: center; border: 0; background: none; font-size: 16px; line-height: 1; }
 .enter { font-size: 12px; font-weight: 700; }
 

@@ -11,7 +11,7 @@
 import * as S from '../shared/search.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { siteList } from '../shared/sleep.js';
-import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../themes/packages.js';
+import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from '../themes/packages.js';
 import { settingValueOk } from './theme-schema.js';
 
 /**
@@ -95,7 +95,7 @@ export function settingsFields(settings, features = {}, ui = {}) {
   const theme = PACKAGE_THEMES.includes(s.theme) || imported.some((t) => t.id === s.theme) ? s.theme : PACKAGE_THEMES[0];
   const options = [...PACKAGE_THEMES.map((id) => ({ id, label: PACKAGE_THEME_NAMES[id] ?? id })), ...imported.map((t) => ({ id: t.id, label: t.name || t.id }))];
   list.push(field({ id: 'theme', kind: 'choice', label: 'Theme', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
-  list.push(...themeFields(s, f, status, imported, ui.theme ?? null));
+  list.push(...importFields(f, status, imported));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
   list.push(field({ id: 'archiveAfterHours', kind: 'number', label: 'Archive tabs not used for (hours, 0 = never)', value: String(s.archiveAfterHours ?? 12), min: 0, max: 720, step: '1' }));
   if (f.sleepTabs) {
@@ -120,6 +120,8 @@ export function settingsFields(settings, features = {}, ui = {}) {
   // iCloud Tabs (Margin.app with Safari): the sidebar's live folder and the palette's section.
   if (f.cloudTabs) list.push(field({ id: 'showCloudTabs', kind: 'toggle', label: 'Show iCloud Tabs: the tabs open on your other devices, in the sidebar and the command palette', checked: s.showCloudTabs !== false }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
+  // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
+  list.push(...themeOwnFields(s, ui.theme ?? null));
   // Keyboard shortcuts: recorded by pressing them.
   list.push(field({ id: 'shortcuts', kind: 'group', label: 'Keyboard shortcuts' }));
   const keys = currentShortcuts(s);
@@ -141,27 +143,28 @@ export const themeText = (text, max) => { const t = String(text ?? '').replace(I
 
 /** Margin.app's index of imported themes, as Settings shows it. @param {unknown} list */
 export function userThemeList(list) {
-  return (Array.isArray(list) ? list : []).filter((e) => e && typeof e.id === 'string' && /^[a-z0-9][a-z0-9-]{0,40}$/.test(e.id) && !PACKAGE_THEMES.includes(e.id)).slice(0, 50)
+  return (Array.isArray(list) ? list : []).filter((e) => e && typeof e.id === 'string' && USER_THEME_ID.test(e.id) && !PACKAGE_THEMES.includes(e.id)).slice(0, 50)
     .map((e) => ({ id: e.id, name: themeText(e.name, 40), version: themeText(e.version, 16), author: themeText(e.author, 40) }));
 }
 
 const SETTING_PREFIX = 'themeSetting:';
 const REMOVE_PREFIX = 'removeTheme:';
 
-/**
- * Import Theme… (Margin.app only: `features.importThemes`), each imported
- * theme with Remove, and the active theme's own settings (`theme`: the
- * runtime's loaded theme: id, name, its theme.json settings).
- */
-function themeFields(s, f, status, imported, theme) {
+/** Import Theme… (Margin.app only: `features.importThemes`) and each imported theme with Remove, under the theme choice. */
+function importFields(f, status, imported) {
   const out = [];
-  if (f.importThemes) {
-    out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
-    for (const t of imported) {
-      out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}` }));
-      out.push(field({ id: `${REMOVE_PREFIX}${t.id}`, kind: 'button', label: `Remove “${t.name || t.id}”` }));
-    }
+  if (!f.importThemes) return out;
+  out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
+  for (const t of imported) {
+    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}` }));
+    out.push(field({ id: `${REMOVE_PREFIX}${t.id}`, kind: 'button', label: `Remove “${t.name || t.id}”` }));
   }
+  return out;
+}
+
+/** The active theme's own settings (`theme`: the runtime's loaded theme: id, name, its theme.json settings), under "Settings of “Name”". */
+function themeOwnFields(s, theme) {
+  const out = [];
   const specs = theme?.settings && typeof theme.settings === 'object' ? Object.entries(theme.settings) : [];
   // Margin's own width setting (m-resize drags it) is shown as the theme's too.
   if (!theme || !specs.length) return out;

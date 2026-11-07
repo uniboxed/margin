@@ -56,13 +56,17 @@ my-theme/
    files at most. Nothing else goes in: no scripts, no other kinds of file.
 4. **Fonts:** woff2 only, each with its licence text beside it (the SIL OFL
    for Google Fonts). No font services, no addresses anywhere.
-5. **Check it** before you share it, as Margin will:
+5. **Keep the ways back out:** the `launcher`, `settings`, `prompt` and
+   `notice` parts, with `<m-launcher>`, `<m-prompt>` and `<m-notice>` in
+   the window's tree and `<m-settings>` in the launcher part. An import
+   without them is refused: Settings is where a theme is switched or removed.
+6. **Check it** before you share it, as Margin will:
    `MARGIN_THEMES=~/my-theme npm run test:security`.
-6. **Share it** as one file: zip the folder and name it
+7. **Share it** as one file: zip the folder and name it
    `my-theme.margintheme`. Finder's Compress works (rename the `.zip`), and
    so does `npm run theme:pack ~/my-theme` (it also checks it, and says what
    it left out).
-7. **Import it:** in Margin, Settings › Theme › Import Theme…, pick the
+8. **Import it:** in Margin, Settings › Theme › Import Theme…, pick the
    folder or the `.margintheme` file, look at the preview, and choose Use
    Theme. Importing the same `id` again replaces it. Remove it from the
    same place.
@@ -135,7 +139,8 @@ saves them by its own rules.
 
 In Margin.app the form also has Import Theme… (a button), each imported
 theme (an info line and a Remove button), and the active theme's own
-settings from its `theme.json` under "Settings of “Name”": number, length
+settings from its `theme.json` under "Settings of “Name”", after Margin's
+own settings and before the keyboard shortcuts: number, length
 (a number input, saved with its default's unit), toggle, choice and color
 (`isColor`, a colour well: `<input m-input="setting-color">`). Those
 fields have `fromTheme` true: their label is the theme's own text (capped
@@ -143,19 +148,27 @@ at 40 characters, with no characters that reorder or hide text), so mark
 them (`m-class:theme-own="{{f.fromTheme}}"`). They only ever save that
 theme's settings.
 
-
-
 ```html
 <m-for each="settingsForm.fields" as="f">
   <m-if test="f.isToggle"><label>{{f.label}}<input m-input="setting-toggle"></label></m-if>
   <m-if test="f.isNumber"><label>{{f.label}}<input m-input="setting-number"></label></m-if>
-  <m-if test="f.isChoice"><label>{{f.label}}<select m-input="setting-choice"></select></label></m-if>
+  <m-if test="f.isChoice">
+    <label>{{f.label}}<select m-input="setting-choice"></select></label>
+    <m-if test="f.hasStatus"><p role="status" m-class:error="{{f.error}}">{{f.status}}</p></m-if>
+  </m-if>
   <m-if test="f.isList"><label>{{f.label}}<textarea m-input="setting-list"></textarea></label></m-if>
   <m-if test="f.isShortcut"><label>{{f.label}}<input m-input="setting-shortcut"></label></m-if>
   <m-if test="f.isColor"><label>{{f.label}}<input m-input="setting-color"></label></m-if>
-  <m-if test="f.isButton"><button m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button></m-if>
+  <m-if test="f.isButton">
+    <button m-action="settings.run" m-arg="{{f.id}}">{{f.label}}</button>
+    <m-if test="f.hasStatus"><span role="status" m-class:error="{{f.error}}">{{f.status}}</span></m-if>
+  </m-if>
 </m-for>
 ```
+
+Draw `status` under a choice and a button (`hasStatus`). The theme
+choice's status says why Margin fell back to Arcadia; a button's says
+what it did.
 
 **iCloud Tabs.** The tabs open in Safari on the person's other devices
 (Margin.app reads them; Chrome and Edge get none yet). The `cloud-tabs`
@@ -239,7 +252,10 @@ host. Immutable: rows that didn't change are the same objects.
   `editor` part also edits a profile (`editor.isProfile`: no delete).
 - `tab` (the one in front), `archive[]`
   (`ago` too), `palette` (`open`, `query`, `rows[]`: `title`, `subtitle`,
-  `badge`, `emoji`, `icon`, `letter`, `color`, `selected`, `goes`; `hasRows`),
+  `badge`, `spaceColor` (the badge's space's color, `''` for Archived,
+  Search…), `emoji`, `isSearch` and `isOpen` (the typed text as a search or
+  an address: draw an icon of your own), `icon`, `letter`, `color`,
+  `selected`, `goes`; `hasRows`),
   `menu` (`label`, `items[]`: `id`, `label`, `separator`, `danger`,
   `confirming`), `settingsForm` (`fields[]`, above), `editor` (`name`, `emoji`, `color`, `colors[]`,
   `deleteLabel`, `deleteTitle`, `cannotDelete`, `confirmDelete`, `labels`:
@@ -380,7 +396,9 @@ same rules again.
   theme wrote outside them (svg `<text>` in a `<symbol>`).
 - Ids named like the globals Margin's code reads (`webkit`, `marginApp`,
   `browser`, `chrome`, `safari`, `Margin`, `T`, `window`, `top`… any case:
-  `ui/sanitize.js RESERVED_IDS`) are removed: in Margin.app's overlay the
+  `ui/sanitize.js RESERVED_IDS`), and any id that is `margin` and then a
+  letter, digit or `_` (`marginFallbackTheme`; `margin-results` is fine),
+  are removed: in Margin.app's overlay the
   theme's ids are the window's names. One template per part: a second is
   removed.
 - Files: each one's first bytes must match its kind (`wOF2` for a font,

@@ -9,16 +9,20 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { deflateRawSync } from 'node:zlib';
-import { packageFromFiles, packageFromZip, checkImport, readThemeFile, removedSummary, crc32 } from '../extension/ui/theme-import.js';
+import { packageFromFiles, packageFromZip, checkImport, missingWaysOut, readThemeFile, removedSummary, crc32 } from '../extension/ui/theme-import.js';
 import { PACKAGE_THEMES } from '../extension/themes/packages.js';
 import { packTheme, zipFiles, folderFiles } from '../scripts/pack-theme.js';
 import { readTheme } from './theme/package.js';
 
 const enc = (s) => new TextEncoder().encode(s);
 const THEMES = new URL('../extension/themes/', import.meta.url).pathname;
+const WAYS_OUT = '<div class="r"><m-page></m-page><m-launcher></m-launcher><m-prompt></m-prompt><m-notice></m-notice>'
+  + '<template m-part="launcher"><main><m-settings></m-settings></main></template>'
+  + '<template m-part="settings"><div></div></template><template m-part="prompt"><div></div></template><template m-part="notice"><div></div></template></div>';
 const MINE = {
   'theme.json': enc(JSON.stringify({ format: 2, id: 'mine', name: 'Mine', version: '1.0.0', author: 'Me' })),
-  'theme.html': enc('<div class="r"><m-page></m-page></div>'),
+  // The ways back out an import must have (missingWaysOut): the new-tab page with Settings, prompts, notices.
+  'theme.html': enc(WAYS_OUT),
   'theme.css': enc('.r{display:flex}'),
   'LICENSE.txt': enc('mine'),
 };
@@ -145,6 +149,17 @@ test('zip payloads built by hand: duplicates, overlaps, a bomb, too many entries
   const bomb = deflateRawSync(zeros);
   assert.match(await errorsOf(packageFromZip(rawZip([...base, { name: 'images/bomb.png', body: bomb, method: 8, size: 1000, crc: 0 }]))), /inflates past 1000 bytes/);
   assert.match(await errorsOf(packageFromZip(rawZip([...base, { name: 'NOTES.txt', body: bomb, method: 8, size: zeros.length, crc: crc32(zeros) }]))), /larger than/);
+  // A kind no package holds, saying it's huge: refused before it's inflated (a 1 GB bomb in under 1 MB).
+  const big = { name: 'x.bin', body: bomb, method: 8, size: 1_000_000_000, crc: 0 };
+  const before = process.memoryUsage().rss;
+  assert.match(await errorsOf(packageFromZip(rawZip([...base, big]))), /x\.bin: not a file a theme may bundle/);
+  assert.match(await errorsOf(packageFromZip(rawZip([...base, { ...big, name: 'fonts/LICENSE' }]))), /not a file a theme may bundle/);
+  assert.ok(process.memoryUsage().rss - before < 200 * 1024 * 1024, 'nothing near its size inflated');
+  // Allowed kinds, each within its cap, past the package's total: refused once the total is reached, not after.
+  const fontBytes = new Uint8Array(500 * 1024);
+  const fontBody = deflateRawSync(fontBytes);
+  const font = (i) => ({ name: `fonts/f${i}.woff2`, body: fontBody, method: 8, size: fontBytes.length, crc: crc32(fontBytes) });
+  assert.match(await errorsOf(packageFromZip(rawZip([...base, ...[1, 2, 3, 4, 5, 6, 7].map(font)]))), /^it holds more than 3145728 bytes$/);
   assert.match(await errorsOf(packageFromZip(rawZip(Array.from({ length: 71 }, (_, i) => stored(`n${i}.txt`, 'x'))))), /more than 70 entries/);
   // Its paths go through the same rules as a folder's.
   assert.match(await errorsOf(packageFromZip(rawZip([...base, stored('../../evil.txt', 'x')]))), /"\." or "\.\."/);
@@ -163,6 +178,18 @@ test('checkImport: a built-in\'s id refused; what was removed said by count and 
   assert.match(r.removed[0], /^2 declarations removed from theme\.css: /);
   assert.deepEqual(r.manifest, { id: 'mine', name: 'Mine', version: '1.0.0', author: 'Me' });
   assert.deepEqual(removedSummary([]), []);
+});
+
+test('checkImport: a theme with no way back out of it refused (no Settings, prompt or notice), with what it lacks', () => {
+  const only = packageFromFiles({ ...MINE, 'theme.html': enc('<div class="root"><m-page></m-page></div>') });
+  const r = checkImport(only.pkg);
+  assert.equal(r.ok, false);
+  assert.match(r.errors[0], /^theme\.html: no <template m-part="launcher">, no <template m-part="settings">, no <template m-part="prompt">, no <template m-part="notice">, no <m-launcher> outside the parts, no <m-prompt> outside the parts, no <m-notice> outside the parts, no <m-settings> in the launcher part/);
+  // Settings anywhere but the new-tab page (here: a menu, which only shows on a right-click) doesn't count.
+  const hidden = packageFromFiles({ ...MINE, 'theme.html': enc(WAYS_OUT.replace('<main><m-settings></m-settings></main>', '<main></main>').replace('<template m-part="settings">', '<template m-part="menu"><m-settings></m-settings></template><template m-part="settings">')) });
+  assert.deepEqual(checkImport(hidden.pkg).errors, ['theme.html: no <m-settings> in the launcher part (an imported theme must draw Margin\'s Settings, prompts and notices, so it can be switched away from)']);
+  assert.equal(missingWaysOut({ parts: ['launcher', 'settings', 'prompt', 'notice'], slots: ['>m-launcher', '>m-prompt', '>m-notice', 'launcher>m-settings'] }).length, 0);
+  assert.equal(checkImport(packageFromFiles(MINE).pkg).ok, true);
 });
 
 test('readThemeFile: what Margin.app hands over, folder or zip, as base64; its error words passed on', async () => {

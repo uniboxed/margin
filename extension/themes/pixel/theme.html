@@ -195,6 +195,13 @@
             <m-if test="r.sectionStart"><div class="palette-section" aria-hidden="true">{{r.section}}</div></m-if>
             <button class="btn row palette-row" data-id="{{r.id}}" m-class:on="{{r.selected}}" m-attr:aria-selected="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
               <span class="cursor" aria-hidden="true"><svg class="pix now" viewBox="0 0 7 9"><path d="M0 0h2v9H0zM2 1h2v7H2zM4 2h2v5H4zM6 3h1v3H6z"></path></svg></span>
+              <!-- Search and Open: a pixel magnifier and arrow (the font's ⌕ and ↗ draw as specks). -->
+              <m-if test="r.isSearch">
+                <span class="fav glyph" aria-hidden="true"><svg class="pix" viewBox="0 0 9 9"><path d="M2 0h3v1H2zM1 1h1v1H1zM5 1h1v1H5zM0 2h1v3H0zM6 2h1v3H6zM1 5h1v1H1zM5 5h1v1H5zM2 6h3v1H2zM6 6h1v1H6zM7 7h1v1H7zM8 8h1v1H8z"></path></svg></span>
+                <m-else>
+              <m-if test="r.isOpen">
+                <span class="fav glyph" aria-hidden="true"><svg class="pix" viewBox="0 0 9 9"><path d="M3 0h6v6H8V2H7v1H6v1H5v1H4v1H3v1H2v1H1v1H0V8h1V7h1V6h1V5h1V4h1V3h1V2h1V1H3z"></path></svg></span>
+                <m-else>
               <m-if test="r.emoji">
                 <span class="fav emoji" aria-hidden="true">{{r.emoji}}</span>
                 <m-else>
@@ -202,6 +209,10 @@
                     <img class="fav" alt="" m-icon="{{r.icon}}">
                     <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{r.color}}">{{r.letter}}</span></m-else>
                   </m-if>
+                </m-else>
+              </m-if>
+                </m-else>
+              </m-if>
                 </m-else>
               </m-if>
               <span class="grow left ellipsis">{{r.title}}</span>

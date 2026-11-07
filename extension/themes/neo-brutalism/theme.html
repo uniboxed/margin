@@ -170,8 +170,14 @@
             <!-- A run of rows from one place (iCloud Tabs: "On Tirth's iPhone"): its heading. -->
             <m-if test="r.sectionStart"><div class="palette-section" aria-hidden="true">{{r.section}}</div></m-if>
             <button class="btn row palette-row" m-class:on="{{r.selected}}" m-attr:aria-description="{{r.section}}" m-action="palette.run" m-arg="{{r.id}}">
-              <!-- The board's tag (TAB, ASK): here the row's badge (its space, Archived, Search…), in the space's color. -->
-              <m-if test="r.badge"><span class="tag">{{r.badge}}</span></m-if>
+              <!-- The board's tag (TAB, ASK): here the row's badge (its space, Archived, Search…), in that space's color, one width for all. -->
+              <m-if test="r.badge"><span class="tag" m-style:--tag="{{r.spaceColor}}">{{r.badge}}</span></m-if>
+              <m-if test="r.isSearch">
+                <span class="fav glyph" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l5 5"></path></svg></span>
+                <m-else>
+              <m-if test="r.isOpen">
+                <span class="fav glyph" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><path d="M8 16 17 7M9 7h8v8"></path></svg></span>
+                <m-else>
               <m-if test="r.emoji">
                 <span class="fav emoji" aria-hidden="true">{{r.emoji}}</span>
                 <m-else>
@@ -179,6 +185,10 @@
                     <img class="fav" alt="" m-icon="{{r.icon}}">
                     <m-else><span class="fav letter" aria-hidden="true" m-style:--fav="{{r.color}}">{{r.letter}}</span></m-else>
                   </m-if>
+                </m-else>
+              </m-if>
+                </m-else>
+              </m-if>
                 </m-else>
               </m-if>
               <span class="grow left ellipsis">{{r.title}}</span>
@@ -329,7 +339,10 @@
         <m-if test="f.isInfo"><p class="help">{{f.label}}</p></m-if>
         <m-if test="f.isNumber"><label class="setting"><span>{{f.label}}</span><input class="number" m-input="setting-number"></label></m-if>
         <m-if test="f.isToggle"><label class="setting" m-class:disabled="{{f.disabled}}"><span>{{f.label}}</span><input class="toggle" m-input="setting-toggle"></label></m-if>
-        <m-if test="f.isChoice"><label class="setting"><span>{{f.label}}</span><select m-input="setting-choice"></select></label></m-if>
+        <m-if test="f.isChoice">
+          <label class="setting"><span>{{f.label}}</span><select m-input="setting-choice"></select></label>
+          <m-if test="f.hasStatus"><p class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</p></m-if>
+        </m-if>
         <m-if test="f.isList"><label class="setting stacked"><span>{{f.label}}</span><textarea m-input="setting-list" rows="3" spellcheck="false"></textarea></label></m-if>
         <m-if test="f.isColor"><label class="setting" m-class:theme-own="{{f.fromTheme}}"><span>{{f.label}}</span><input class="color" m-input="setting-color"></label></m-if>
         <m-if test="f.isShortcut"><label class="setting"><span>{{f.label}}</span><input class="shortcut" m-input="setting-shortcut" m-class:recording="{{f.recording}}"></label></m-if>

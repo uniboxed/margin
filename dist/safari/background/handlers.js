@@ -22,7 +22,7 @@ import { noticeAnswered } from './notices.js';
 import { isNoticeAction } from '../shared/notices.js';
 import * as pageLoads from './page-loads.js';
 import { moveIndex } from '../ui/behaviors/drop-rules.js';
-import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, plainSetting } from '../themes/packages.js';
+import { MAX_SETTINGS, PACKAGE_THEMES, SETTING_NAME, USER_THEMES_KEY, USER_THEME_ID, plainSetting } from '../themes/packages.js';
 
 // The tab a nav request is for: the one named, the page's own, or the one
 // in front of the window.
@@ -896,7 +896,7 @@ export const handlers = {
   /** @param {{ list: any[] }} message */
   async userThemes({ list }) {
     if (!Array.isArray(list)) return false;
-    const clean = list.slice(0, 50).filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && /^[a-z0-9][a-z0-9-]{0,40}$/.test(e.id) && !PACKAGE_THEMES.includes(e.id))
+    const clean = list.slice(0, 50).filter((e) => e && typeof e === 'object' && typeof e.id === 'string' && USER_THEME_ID.test(e.id) && !PACKAGE_THEMES.includes(e.id))
       .map((e) => ({ id: e.id, name: String(e.name ?? '').slice(0, 60), version: String(e.version ?? '').slice(0, 16), author: String(e.author ?? '').slice(0, 80) }));
     await api.storage.local.set({ [USER_THEMES_KEY]: clean });
     return true;

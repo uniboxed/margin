@@ -127,7 +127,7 @@ export function sanitizeTheme(pkg, { assetUrl = (p) => p } = {}) {
     ...css.removed.map((r) => ({ file: 'theme.css', ...r })),
   ];
   const errors = [...manifest.errors, ...html.errors, ...css.errors];
-  return { ok: errors.length === 0, manifest: manifest.manifest, tree: html.tree, css: css.css, removed, errors, stats: { ...html.stats, ...css.stats } };
+  return { ok: errors.length === 0, manifest: manifest.manifest, tree: html.tree, css: css.css, removed, errors, stats: { ...html.stats, ...css.stats }, structure: html.structure };
 }
 
 // ---------------------------------------------------------------------------

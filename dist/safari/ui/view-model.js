@@ -123,8 +123,8 @@ export const VM_VERSION = 1;
  * ("On Tirth's iPhone": iCloud Tabs), `sectionStart` on its first row ('' and
  * false for Margin's own rows).
  * @typedef {{
- *   id: string, kind: string, title: string, subtitle: string, badge: string,
- *   emoji: string, icon: string | null, letter: string, color: string,
+ *   id: string, kind: string, title: string, subtitle: string, badge: string, spaceColor: string,
+ *   emoji: string, isSearch: boolean, isOpen: boolean, icon: string | null, letter: string, color: string,
  *   selected: boolean, goes: boolean, section: string, sectionStart: boolean,
  * }} PaletteRow
  *
@@ -471,7 +471,12 @@ function fresh(input) {
         title: item.title ?? '',
         subtitle: item.subtitle ?? '',
         badge: item.badge ?? '',
+        // The badge's space's color ('' for Archived, Search…): a tag can match that space's chip.
+        spaceColor: item.spaceColor ?? '',
         emoji: item.emoji ?? '',
+        // The typed text as a search, or as an address to open (a theme may draw its own icon).
+        isSearch: item.kind === 'go' && item.search === true,
+        isOpen: item.kind === 'go' && item.search === false,
         icon: checkIconUrl(icon) ? icon : null,
         letter,
         color,

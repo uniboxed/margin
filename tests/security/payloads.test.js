@@ -34,7 +34,12 @@ test('reserved ids: each refused in html and svg, any case; other ids kept', () 
       assert.doesNotMatch(JSON.stringify(r.tree), new RegExp(`"id","${v}"`), v);
     }
   }
-  const ok = sanitizeTemplate(wrap('<div id="sidebar"></div><svg><defs><linearGradient id="g1"></linearGradient></defs></svg>'), { files: [] });
+  // Any id like a global of Margin's own (`margin` and a capital, digit or "_"), now or later.
+  for (const v of ['marginFallbackTheme', 'marginSomethingLater', 'MARGINX', 'margin_x', 'margin2']) {
+    const r = sanitizeTemplate(wrap(`<div id="${v}"></div>`), { files: [] });
+    assert.doesNotMatch(JSON.stringify(r.tree), new RegExp(`"id","${v}"`), v);
+  }
+  const ok = sanitizeTemplate(wrap('<div id="sidebar"></div><div id="margin-results"></div><svg><defs><linearGradient id="g1"></linearGradient></defs></svg>'), { files: [] });
   assert.deepEqual(ok.removed, []);
 });
 

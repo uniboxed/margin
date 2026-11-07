@@ -2839,6 +2839,24 @@ On `feat/pixel-user-themes`. The plan is `docs/phase6-themes.md`; the boards, a 
 - **Bundled SVG images stay unsanitized:** they're only ever drawn as images (an `img` or a CSS image), where WebKit runs no script and loads nothing. A payload test keeps that true.
 - **`npm run test:security`** gathers the sanitizer, guard, package and import payloads, every built-in theme, and any packages named in `MARGIN_THEMES`. No CI is added; the plan says how a macOS runner would run it later.
 
+## Margin 2, Phase 6: the first review of themes (2026-11-06)
+
+On `feat/pixel-user-themes`. Fourteen findings; all fixed but parts of the last.
+
+- **The theme choice shows its status** in all three built-ins (why Margin fell back to Arcadia). The guide's example draws `status` under a choice and a button.
+- **The theme's own settings come after Margin's,** right before "Keyboard shortcuts". Import Theme… and the imported themes stay under the theme choice. Margin's rows no longer sit under "Settings of “Name”".
+- **An imported theme's id survives every fresh read.** `normalizeState` keeps any id an imported theme may have (`USER_THEME_ID`, the same rule as `ThemeStore.idOK`). It doesn't read the index: Margin.app, the overlay and Settings already fall back to Arcadia for an id that isn't listed. Earlier names of a built-in (`arcadium`, `arcadia-2`) still become it.
+- **A zip entry of a kind no package holds is refused before it's inflated.** Every inflate stops at the least of its declared size, its kind's cap and what's left of the 3 MB package. A 1 GB entry in a small zip is refused at once.
+- **The overlay remembers what it draws,** Arcadia standing in included. Cancel, Escape, the 30 s timeout and a preview that fails put that back (Arcadia as the fallback again, still saying why).
+- **Use Theme keeps the theme from before until the app's package comes.** A refusal (`themeSaved` not ok), a package that can't be stored, or no package within 10 s put it back. Settings says "Saving…", then "Saved.", or why not. No change in `app/shell`.
+- **The fallback package is read only as the script's own property** of the window, with its shape checked, and a bad result isn't cached. The sanitizer removes `marginFallbackTheme` and any id that is `margin` and then a letter, digit or `_` (Margin's globals are named so; Arcadia's `margin-results` stays).
+- **An imported theme must have its ways back out:** the `launcher`, `settings`, `prompt` and `notice` parts, `<m-launcher>`, `<m-prompt>` and `<m-notice>` in the window's tree, and `<m-settings>` in the launcher part. The sanitizer reports where parts and slots are; `checkImport` refuses one that lacks them and says what's missing. Built-in themes aren't held to it (they have them all).
+  - **Not covered:** a theme can still hide those with CSS. The preview shows it first, under Margin's own bar. The set-up window's "Use Arcadia in every profile" is still to build.
+- **Neo-brutalism's palette tags** take the row's own space's colour (`spaceColor` in the view model; white for Archived, Search, Open, iCloud), and all have one width (92 px), so the icons and titles line up.
+- **Search and Open rows have drawn icons** in Neo-brutalism and Pixel (`isSearch`, `isOpen` in the view model): the fonts' ⌕ and ↗ drew as specks.
+- **Neo-brutalism's loose pins** line up with folder rows (4 px plus the folder's 2.5 px border).
+- **Many spaces:** Neo-brutalism's chips keep 34 px and scroll sideways; Pixel's keep their size, stay centred while they fit (`safe center`) and scroll inside the bar.
+
 ## Margin 2, Phase 6: Pixel (2026-11-06)
 
 Built on `feat/pixel-user-themes`: `extension/themes/pixel/`, from the "Sidebar · Pixel / 8-bit" board (`docs/phase6/boards/Pixel.dc.html`). Work items 3 and 4 of `docs/phase6-themes.md` in one commit: the sidebar, the page and every other part.
@@ -2924,7 +2942,7 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 
 ### Settings for themes, and the preview
 
-- **Settings › Theme** lists the built-ins, then the imported themes by name. In Margin.app: Import Theme… (with the last import's status under it), each imported theme as "“Name” 1.0.0 · by Author" with Remove, and the active theme's own settings under "Settings of “Name”". Why Margin fell back to Arcadia shows under the theme choice.
+- **Settings › Theme** lists the built-ins, then the imported themes by name. In Margin.app: Import Theme… (with the last import's status under it), each imported theme as "“Name” 1.0.0 · by Author" with Remove, and the active theme's own settings under "Settings of “Name”" (after Margin's own settings: see the first review). Why Margin fell back to Arcadia shows under the theme choice.
 - **A theme's own words in Margin's form** (its name, author, setting labels) are shown, as the plan proposed: capped at 40 characters, with bidi controls and zero-width characters taken out, inside Margin's words ("Settings of …", "Remove …"), and with `fromTheme` so a theme can mark them. They only ever save that theme's settings (`updateThemeSettings`, checked against its spec).
 - **Lengths are number inputs** saved with their default's unit (`252` → `252px`). **Colours** are a new input, `m-input="setting-color"`: Margin makes it a colour well and sets its value; a colour that isn't `#rgb` or `#rrggbb` shows as black until changed. All three built-in themes draw it (Pixel's row is in its uncommitted files, beside the Pixel work).
 - **Remove asks first** in Margin's prompt part: "Remove “Name”? Windows using it go back to Arcadia." Only its Remove button reaches the app.

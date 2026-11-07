@@ -395,6 +395,7 @@
         </m-if>
         <m-if test="f.isChoice">
           <label class="setting"><span class="label">{{f.label}}</span><select class="choice" m-input="setting-choice"></select></label>
+          <m-if test="f.hasStatus"><p class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</p></m-if>
         </m-if>
         <m-if test="f.isList">
           <label class="setting stacked"><span class="label">{{f.label}}</span><textarea class="list" m-input="setting-list" rows="3" spellcheck="false" autocomplete="off"></textarea></label>
