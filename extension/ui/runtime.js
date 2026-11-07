@@ -337,7 +337,9 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     if (!verdict.ok) return refuse(name, arg, /** @type {any} */ (verdict).reason);
     // Margin's own pages (the launcher) open their Settings in place.
     if (name === 'settings.open' && host.launcher) return local('settings.toggle', undefined, info);
-    const request = requestFor(name, arg, { state, ui: { windowId: now.windowId, sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row: name === 'palette.run' ? items.find((i) => i.id === arg) : null });
+    // Made from what's drawn (a fold or Keep open pressed again before the
+    // state agrees asks for the other way, not the same again).
+    const request = requestFor(name, arg, { state: viewState(state), ui: { windowId: now.windowId, sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row: name === 'palette.run' ? items.find((i) => i.id === arg) : null });
     // Choosing a row closes the palette first (Arcadia's palette); one opened
     // for a new tab keeps "+ New Tab" lit while another tab comes to the front.
     if (name === 'palette.run') {

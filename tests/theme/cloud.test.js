@@ -90,6 +90,17 @@ for (const [engineName, engine] of ENGINES) {
           assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsOpen: true } }]);
           await ev(() => T.rtSettings({ cloudTabsOpen: true, cloudTabsClosed: [] }));
           assert.equal(await count('.cloud-tab'), 6);
+          // Pressed twice before the state agrees: each press from what's drawn (closed, then open).
+          await click('.cloud-head');
+          assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsOpen: false } }]);
+          await click('.cloud-head');
+          assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsOpen: true } }], 'open again, not closed twice');
+          assert.equal(await count('.cloud-tab'), 6, 'drawn open');
+          await click('.cloud-device', 1);
+          await click('.cloud-device', 1);
+          assert.deepEqual(await lastSent('updateSettings'), ['updateSettings', { patch: { cloudTabsClosed: [] } }], 'a device: closed, then open again');
+          await ev(() => T.rtSettings({ cloudTabsOpen: true, cloudTabsClosed: [] }));
+          assert.equal(await count('.cloud-tab'), 6);
         });
 
         await t.test('live: a tab retitled on another device changes that row only; the list keeps its scroll', async () => {
