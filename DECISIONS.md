@@ -2857,13 +2857,16 @@ On `test/e2e-rewrite` (from `feat/margin-app`). Tirth asked for the e2e suite to
 **Bugs found, kept as `todo`** (nine in all; the first four are the first half's, noted in their files):
 
 - `newtab.html#launcher` gets no launcher, and the page says "Margin.app isn't running" while linked (`archive`, `newtab`).
-- Linked, the new-tab page's hidden notice is drawn: `main { display: grid }` beats `[hidden]` (`newtab`).
 - A tab open before the app's set came in keeps the default space the set removed, and no row shows it (`tabs`).
 - New: `vw` inside a `font` shorthand that also has a `var()` isn't moved to the box. The docs' `h1` stays 44 px in a 1172 px box (3.2vw of it is 37.5 px). `content/page/sheets.js` walks a rule's longhands, which read empty while a `var()` is pending, so `shiftUnits` never sees it (`page-box`).
 - New: the iCloud Tabs folder pressed twice before the app's word comes back stays closed. It's drawn closed at once (the runtime's pending settings), but the next press's request is made from the stored state (`ui/runtime.js` dispatch reads `host.getState()`, not `viewState`), which still says open: it asks to close again. The same code serves a device's fold and Keep open. Seen once under load, then held in a test by keeping the app's word back between the presses (`cloud-tabs`).
 - New, from review: a body with a gradient background is drawn wrong in the box. The root's background stays tiled from the window's origin at the box's size (1172 × 884), not moved with the root. There's a hard step at x 1172 and a band along the bottom (the timer and the podcast). Both pages look right on their own. The fix is in `content/page/box.js`: give the root background the box's offset, or paint it on the moved root (`page-box`).
 - New, from review: Arcadia draws a short notice one word per line. `.notice { width: min-content }` shrinks it to its longest word, so "That tab is no longer open." is a 58 px column over the space's name. `width: max-content` with the existing `max-width` fixes it (`themes`). For Phase 6.
 - New, from review: Neo-brutalism's address field shows the extension's id over Margin's own new-tab page (`tab.host` of the page's address). In Safari it would be the extension's UUID. It should be empty or say New Tab (`themes`). For Phase 6. The same host gives a start page kept as a row its letter icon (a "J" from the id, seen in `spaces` after a delete).
+
+**Fixed since** (`fix/e2e-found-bugs`; each test is a normal one now):
+
+- The new-tab page's hidden notice was drawn while linked: `main { display: grid }` beat `[hidden]`. `newtab.html` now has `[hidden] { display: none !important }` (`newtab`; unit: `newtab-page`).
 
 **Seen, not a bug:** with `storage.local` wiped but `storage.session` kept, the background links on its kept link and never asks the handler, so it says hello under a profile id of its own making. Safari wipes both at once (the extension loads again), so the test wipes both.
 
