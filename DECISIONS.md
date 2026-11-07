@@ -2856,3 +2856,20 @@ Work item 5 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`. Compared wi
 - **One look in light and dark system modes** (`color-scheme: light`, so Margin's selects, fields and scrollbars stay light too). Settings' toggles are Neo switches (a bordered pill, the knob right on yellow when on); buttons stay on one line.
 - **Differs from the board, on purpose:** no favorites, Ask or mini player (`PLAN.md` §9); the palette label says "SEARCH OR TYPE A URL" until Ask exists; the selected palette row keeps an 8 % ink fill for the keyboard; real site icons in square boxes rather than the board's letter tiles (round tiles aren't data Margin has).
 - **Tests:** `tests/theme/neo-brutalism.test.js` (WebKit and Chromium: nothing removed, folder heads, close, speaker and behind, loose pins, the palette's cap, tags and icons with 200 tabs and in a 600 px window, the page's box with and without the frame, notices moving nothing, nothing painted over the page's box on screen, both system modes, the first paint on screen).
+
+## Margin 2, Phase 6: user themes and the security suite (2026-11-06)
+
+Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`.
+
+### The security suite
+
+- **One command: `npm run test:security`.** It runs the sanitizer and guard payloads, the new payloads (`tests/security/`), every built-in theme through the checks an import goes through, and the live part in WebKit and Chromium (`tests/theme/security.test.js`). The Node parts stay in `npm test`, the live part in `npm run test:theme`.
+- **`MARGIN_THEMES`** (folders, `:` between them) adds a theme of anyone's to the same checks, before it's shared.
+- **New rules, found by the new payloads:**
+  - An svg `<use>` inside a guarded part is removed. It could draw svg `<text>` from a `<symbol>` outside the part: theme words in a menu.
+  - Ids named like the globals Margin's code reads (`browser`, `chrome`, `webkit`, `marginApp`, `Margin`, `T`, `top`…, any case) are removed. The overlay's container is its document, so a theme's ids are the window's names; `shared/platform.js` reads `globalThis.browser ?? globalThis.chrome`.
+  - A second template for one part is removed (the renderer uses the first; a second is a decoy).
+  - `checkPackage` checks each file's first bytes against its kind, and refuses two paths that differ only by case (one file on the Mac's disk).
+  - `theme.json` with a key twice in one object is refused (`JSON.parse` keeps the last; a reader that takes the first sees another id). Names, authors and labels with bidi controls or zero-width characters are refused.
+- **Kept on purpose:** a `data:` font in `@font-face` loads nothing and stays capped at 128 KB, so it stays allowed (fonts in `theme.json` remain the way the README teaches).
+- **The overlay's policy is tested on its own:** a page served with `OverlaySchemeHandler.policy` (read from the Swift source) and every payload put in raw, with no sanitizer, runs none of them and makes no request. A control run without the policy shows the same page does run and load them. The policy string is checked against `PLAN.md` §4's.

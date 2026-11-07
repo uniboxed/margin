@@ -17,8 +17,41 @@ import { LIMITS, checkCssValue, isBundledPath } from './sanitize.js';
 export const MODES = Object.freeze(['fullscreen', 'windowed', 'inpage']);
 export const SETTING_TYPES = Object.freeze(['color', 'length', 'number', 'choice', 'toggle']);
 const EDGES = ['left', 'right', 'top', 'bottom', 'none'];
-// Text a theme shows about itself (Settings): no control characters, no markup.
-const text = (min, max) => `^[^\\u0000-\\u001f<>]{${min},${max}}$`;
+// Text a theme shows about itself (Settings): no control characters, no
+// markup, and none of the invisible characters that reorder or hide text
+// (bidi controls and marks, zero-width characters, the BOM), so a name reads
+// as it's stored.
+const text = (min, max) => `^[^\\u0000-\\u001f\\u007f<>\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2069\\ufeff]{${min},${max}}$`;
+
+/**
+ * The first key an object of this JSON text has twice (JSON.parse keeps the
+ * last, so a reader that takes the first sees another theme), or null.
+ * @param {string} json @returns {string | null}
+ */
+export function duplicateKey(json) {
+  const stack = []; // per open object: its keys; per array: null
+  let expectKey = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < json.length && json[j] !== '"') j += json[j] === '\\' ? 2 : 1;
+      const top = stack[stack.length - 1];
+      if (expectKey && top) {
+        let key;
+        try { key = JSON.parse(json.slice(i, j + 1)); } catch { return null; }
+        if (top.has(key)) return key;
+        top.add(key);
+        expectKey = false;
+      }
+      i = j;
+    } else if (c === '{') { stack.push(new Set()); expectKey = true; }
+    else if (c === '[') { stack.push(null); expectKey = false; }
+    else if (c === '}' || c === ']') { stack.pop(); expectKey = false; }
+    else if (c === ',') expectKey = !!stack[stack.length - 1];
+  }
+  return null;
+}
 
 const FONT = Object.freeze({
   type: 'object',
@@ -232,6 +265,8 @@ export function checkManifest(text, { files = [] } = {}) {
     return { manifest: null, removed, errors: [`theme.json: ${e.message}`] };
   }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { manifest: null, removed, errors: ['theme.json: not an object'] };
+  const twice = duplicateKey(text);
+  if (twice !== null) return { manifest: null, removed, errors: [`theme.json: the key ${JSON.stringify(twice.slice(0, 40))} appears twice in one object`] };
   const kindOf = (name) => (/^fonts\[/.test(name) ? 'font' : /^settings\./.test(name) ? 'setting' : /^images\[/.test(name) ? 'image' : 'manifest');
   const ctx = { files, drop: (name, reason) => removed.push({ kind: kindOf(name), name, reason }) };
   // Field by field at the top, so every bad one is said, not just the first.

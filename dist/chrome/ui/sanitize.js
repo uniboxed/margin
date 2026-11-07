@@ -411,6 +411,13 @@ export function guardText(value) {
 const guardedWhy = (guard) => `static text in Margin's ${guard} (only Margin's bound labels show there)`;
 
 const ID_VALUE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+// Ids a theme may not give: an element with an id is also a property of the
+// window (named access) wherever the window has none of its own, and these
+// are names Margin's code, the app's bridge or the extension's APIs are read
+// by. (The overlay's container is its document, so its ids are the window's.)
+export const RESERVED_IDS = Object.freeze(['browser', 'chrome', 'safari', 'webkit', 'marginApp', 'Margin', 'T', 'margin', 'opener', 'parent', 'top', 'self', 'frames', 'window', 'document', 'globalThis', 'module', 'exports', 'define', 'require']);
+const RESERVED_ID_SET = new Set(RESERVED_IDS.map((id) => id.toLowerCase()));
+const idOk = (value) => ID_VALUE.test(value) && !RESERVED_ID_SET.has(value.toLowerCase());
 const FRAGMENT_URL = /^url\(\s*#[A-Za-z][A-Za-z0-9_-]*\s*\)$/;
 
 function staticValueOk(element, name, value, ctx) {
@@ -423,7 +430,8 @@ function staticValueOk(element, name, value, ctx) {
       if (isBundledPath(value, ctx.files) && IMAGE_EXT.test(value)) return ctx.assetUrl(value);
       return null;
     }
-    case 'id': case 'for': return ID_VALUE.test(value) ? value : null;
+    case 'id': return idOk(value) ? value : null;
+    case 'for': return ID_VALUE.test(value) ? value : null;
     case 'tabindex': return /^(-1|0)$/.test(value) ? value : null;
     case 'type':
       if (element === 'button') return value.toLowerCase() === 'button' ? 'button' : null;
@@ -452,7 +460,7 @@ export function sanitizeTemplate(html, { files = [], assetUrl = (p) => p } = {})
   const removed = parsed.removed;
   const errors = parsed.errors;
   const stats = { pages: 0, nodes: 0 };
-  const ctx = { files, assetUrl, removed, errors, stats };
+  const ctx = { files, assetUrl, removed, errors, stats, parts: new Set() };
   const children = cleanChildren(parsed.root.children, { ...ctx, ns: HTML, forDepth: 0, inTemplate: false, inIf: false, guard: null });
   const tree = { type: 'root', children };
   if (!errors.length) {
@@ -496,6 +504,11 @@ function cleanNode(node, ctx) {
   if (lname === 'template') {
     sub.inTemplate = true;
     const part = node.attrs.find(([n]) => n.toLowerCase() === 'm-part')?.[1];
+    // One template per part: the renderer uses the first, so a second is dead weight (or a decoy).
+    if (part && PARTS.has(part)) {
+      if (ctx.parts.has(part)) { report(ctx.removed, 'element', `template m-part="${part}"`, 'a second template for this part (the first is the one used)', at); return null; }
+      ctx.parts.add(part);
+    }
     if (GUARDED_PART_SET.has(part)) sub.guard = `"${part}" part`;
   }
   if (GUARDED_SLOT_SET.has(lname)) sub.guard ??= `<${lname}>`;
@@ -533,6 +546,12 @@ function cleanSvg(node, ctx) {
   const name = SVG_ELEMENTS.get(lname);
   if (!name) {
     report(ctx.removed, 'element', `svg ${node.name}`, 'not allowed in svg (dropped with its content)', at);
+    return null;
+  }
+  // A <use> draws what it points at, wherever that is: inside a guarded part
+  // it could show text the theme wrote outside it (svg <text> in a <symbol>).
+  if (name === 'use' && ctx.guard) {
+    report(ctx.removed, 'element', 'svg use', `inside Margin's ${ctx.guard} (it can show the theme's text from outside it)`, at);
     return null;
   }
   const attrs = cleanAttrs(node, name, SVG, ctx);
@@ -599,7 +618,7 @@ function cleanAttrs(node, element, ns, ctx) {
       continue;
     }
     if (ns === SVG && /url\s*\(/i.test(value) && !FRAGMENT_URL.test(value.trim())) { drop(rawName, 'url() other than #fragment'); continue; }
-    if (ns === SVG && name === 'id' && !ID_VALUE.test(value)) { drop(rawName, 'bad id'); continue; }
+    if (ns === SVG && name === 'id' && !idOk(value)) { drop(rawName, ID_VALUE.test(value) ? 'named like a global Margin reads' : 'bad id'); continue; }
     if (ns === SVG && name !== 'href' && name !== 'style') { out.push([name, value]); continue; }
     const ok = staticValueOk(element, name, value, { ...ctx, ns });
     if (ok === null) { drop(rawName, `value ${JSON.stringify(value.slice(0, 80))} not allowed`); continue; }

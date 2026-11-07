@@ -320,6 +320,20 @@ same rules again.
   (and the other text-bearing `aria-*`) values. Icons (svg shapes), images
   and decoration stay. So a theme can't make a menu item say "Delete" over
   "Close Tab", or a notice ask for a password.
+- Inside those parts an svg `<use>` is removed too: it could draw text the
+  theme wrote outside them (svg `<text>` in a `<symbol>`).
+- Ids named like the globals Margin's code reads (`webkit`, `marginApp`,
+  `browser`, `chrome`, `safari`, `Margin`, `T`, `window`, `top`… any case:
+  `ui/sanitize.js RESERVED_IDS`) are removed: in Margin.app's overlay the
+  theme's ids are the window's names. One template per part: a second is
+  removed.
+- Files: each one's first bytes must match its kind (`wOF2` for a font,
+  the PNG, JPEG, GIF, WebP or AVIF signature for an image, UTF-8 text that
+  starts with `<svg` for an svg image, UTF-8 text for a note). Two paths
+  that differ only by case are refused.
+- `theme.json`: a key twice in one object refuses the theme. A name, author
+  or label with control characters, bidi controls or zero-width
+  characters is refused.
 - Bound values are checked at run time: CSS variables hold no `url()`,
   strings, escapes or `!important`; icons are `data:` images only.
 - Actions come only from the list above, with checked arguments; a few only
@@ -328,6 +342,12 @@ same rules again.
   window, misleading text outside Margin's parts, or pictures of words (a
   bundled image, a font's glyphs). Imported themes show their name and
   author in Settings.
+- Checked as one command: `npm run test:security` runs every rule's
+  payloads in Node and live in WebKit and Chromium (every request refused),
+  every built-in theme through the checks an imported one goes through,
+  and the overlay's own policy with the sanitizer skipped. To check your
+  theme the same way: `MARGIN_THEMES=~/my-theme npm run test:security`
+  (several: separate them with `:`).
 
 ## Size caps
 
