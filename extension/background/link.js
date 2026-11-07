@@ -223,6 +223,7 @@ const webSha256 = async (/** @type {Uint8Array} */ bytes) => [...new Uint8Array(
  *   data?: { pendingQueue: (since: number) => Promise<any[]>, snapshot: () => Promise<any>, adopt: (set: any, options?: { changes?: any[], omitted?: any[] }) => Promise<unknown>, take: (changes: any[]) => Promise<unknown>, onChanges: (cb: (changes: any[]) => void) => unknown },
  *   theme?: () => Promise<any>,
  *   commandKeys?: () => Record<string, string>,
+ *   wasParked?: (windowId: number) => boolean,
  *   log?: (...args: any[]) => void,
  *   sha256?: (bytes: Uint8Array) => Promise<string>,
  *   now?: () => number,
@@ -240,6 +241,8 @@ export function createLink({
   data = null,
   theme = async () => null,
   commandKeys = () => ({}),
+  // Whether a window is one the app had parked before Safari quit (background/parked-restore.js): told on its entry.
+  wasParked = (/** @type {number} */ _windowId) => false,
   log = (...args) => console.info('[margin] link:', ...args),
   sha256 = webSha256,
   // A monotonic clock (ms) for how long the app's been quiet and whether a check ran late.
@@ -1005,7 +1008,7 @@ export function createLink({
     note(`parked windows forgotten (${why}): ${[...parked.keys()].join(', ')}`);
     const ids = [...parked.keys()];
     parked.clear();
-    for (const id of ids) for (const cb of [...parkedListeners]) cb(id, false);
+    for (const id of ids) for (const cb of [...parkedListeners]) cb(id, false, true); // (forgotten: not the app's word)
   }
   const parkedListeners = new Set();
   // A window gone: what the app said of it goes too.
@@ -1095,6 +1098,7 @@ export function createLink({
       ...(vp && vp.tabId === rest.activeTabId ? { viewport: vp.rect, ...(vp.times ? { viewportTimes: vp.times } : {}) } : {}),
       ...(seen && seen.windowId === rest.windowId ? { visible: seen.visible, visibleAt: seen.at } : {}),
       ...(blurredAt != null ? { blurredAt } : {}),
+      ...(wasParked(rest.windowId) ? { wasParked: true } : {}),
     };
   }
   // Where each window's tab in front says its page area sits in the window, when that's less than
@@ -1552,7 +1556,7 @@ export function createLink({
     // Whether the app said it parked the window (this epoch).
     parked: (/** @type {number | null | undefined} */ windowId) => windowId != null && parked.has(windowId),
     parkedWindows: () => [...parked.keys()],
-    /** @param {(windowId: number, on: boolean) => void} cb */
+    /** `forgot`: forgotten as a link went or came, not the app's word. @param {(windowId: number, on: boolean, forgot?: boolean) => void} cb */
     onParked(cb) { parkedListeners.add(cb); return () => parkedListeners.delete(cb); },
     linked: () => !!ws,
     // 'linked', 'reconnecting' or 'off', as pages see it.

@@ -898,6 +898,27 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         acrossSent[key] = nil; cloudSent[key] = nil
     }
 
+    /// Whether a window its copy says it had parked before Safari quit is closed now: not one Margin has parked now
+    /// (a Margin update keeps them alive and out of sight), not in full screen (a restored parked window comes back
+    /// normal), and asked once.
+    static func closesRestoredParked(wasParked: Bool, parkedNow: Bool, state: String, asked: Bool) -> Bool {
+        wasParked && !parkedNow && state != "fullscreen" && !asked
+    }
+
+    // Parked windows Safari restored after a quit, as normal windows on the Desktop (Tirth, 2026-11-07): closed by
+    // their own copy, as Margin's quit closes parked ones (their tabs stay in their spaces, not open).
+    private var restoredClosed: Set<WindowKey> = []
+    private func closeRestoredParked(_ ext: [WindowKey: (ExtWindow, Link)]) {
+        for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
+            let parkedNow = isParkedKey(key) || matches[key].map { parking?.numbers.contains($0) == true } == true
+            guard Shell.closesRestoredParked(wasParked: w.wasParked, parkedNow: parkedNow, state: w.state, asked: restoredClosed.contains(key)) else { continue }
+            restoredClosed.insert(key)
+            Diagnostics.note("\(key): a window Margin had parked before Safari quit, restored by Safari: closed (its tabs stay in their spaces)")
+            options.trace?.event("closeRestoredParked \(key)", at: Diagnostics.now())
+            Task { [weak entry] in _ = try? await entry?.connection.request(type: "closeWindow", payload: ["windowId": key.windowId], windowId: key.windowId) }
+        }
+    }
+
     // The placer's check (OverlayPlacer.swift): each shown overlay's placement against this read's map, fixed on the
     // second map in a row it's wrong on (moved into its window's Space, or ordered in again over it); a frame not
     // the one asked only said. Each fix in the log and the trace. Not in the test harness (its windows have no Spaces).
@@ -1282,6 +1303,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
         releaseHeldWindows()
+        closeRestoredParked(ext)
         options.trace?.overlays(overlays.map { key, o in
             TraceOverlay(k: "\(key)", n: o.windowNumber, over: o.aboveWindow, shown: o.isShown, own: o.ownSpace, f: o.frameTopLeft)
         }, at: Diagnostics.now())

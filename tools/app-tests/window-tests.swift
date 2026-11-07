@@ -1810,6 +1810,19 @@ extension Tests {
     check("planner: shown over another window before: shown over this one", d { $0.shown = true; $0.over = 99; $0.windowFrame = full } == .show(100))
   }
 
+  // A parked window Safari restored after a quit (its copy's `wasParked`): closed, unless Margin has it parked now.
+  static func restoredParked() {
+    check("restored parked: a normal window its copy had parked, Margin not parking it now: closed",
+          Shell.closesRestoredParked(wasParked: true, parkedNow: false, state: "normal", asked: false))
+    check("restored parked: not one Margin has parked now (a Margin update), not in full screen, not twice, not one never parked",
+          !Shell.closesRestoredParked(wasParked: true, parkedNow: true, state: "normal", asked: false)
+          && !Shell.closesRestoredParked(wasParked: true, parkedNow: false, state: "fullscreen", asked: false)
+          && !Shell.closesRestoredParked(wasParked: true, parkedNow: false, state: "normal", asked: true)
+          && !Shell.closesRestoredParked(wasParked: false, parkedNow: false, state: "normal", asked: false))
+    let parsed = ExtWindow.parse([["windowId": 5, "state": "normal", "wasParked": true], ["windowId": 6, "state": "normal"]], link: "safari:P")
+    check("restored parked: read from the copy's window list", parsed.first { $0.key.windowId == 5 }?.wasParked == true && parsed.first { $0.key.windowId == 6 }?.wasParked == false)
+  }
+
   // The delay between a page's resize and Margin drawing in its new area, for the log (Shell.viewportDelay), and
   // the copy's times read (ExtWindow.parse `viewportTimes`).
   static func viewportDelay() {

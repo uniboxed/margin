@@ -97,6 +97,9 @@ struct ExtWindow: Equatable {
     // When the page was resized, said its area, and its copy heard it (seconds since 1970; nil: not said): for the
     // log's delay when Margin draws in a new area (Tirth, 2026-11-07: the layout late beside the inspector).
     var viewportTimes: ViewportTimes?
+    // A window its copy had parked before Safari quit, restored by Safari as a normal window (the copy's
+    // background/parked-restore.js): the app closes it (Shell.closeRestoredParked).
+    var wasParked = false
     // Whether its tab in front's page says it's shown (document.visibilityState), and when it last said
     // so (seconds since 1970). Nil: not known (no word from that page), never taken as hidden.
     var visible: Bool?
@@ -131,6 +134,7 @@ struct ExtWindow: Equatable {
                               focusedAt: ms(w["focusedAt"]), createdAt: ms(w["createdAt"]), viewport: viewport(w["viewport"]),
                               visible: visible, visibleAt: visible == nil ? nil : visibleAt, blurredAt: ms(w["blurredAt"]))
             e.viewportMeasured = e.viewport != nil && (w["viewport"] as? JSONObject)?["measured"] as? Bool == true
+            e.wasParked = w["wasParked"] as? Bool == true
             if e.viewport != nil, let t = w["viewportTimes"] as? JSONObject { e.viewportTimes = ViewportTimes(resized: ms(t["resized"]), said: ms(t["said"]), heard: ms(t["heard"])) }
             return e
         }

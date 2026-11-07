@@ -544,6 +544,22 @@ func handoffScenario() async {
   guard let o9again = shell.overlays[k9], await until(5, { o9again.isShown }) else { return check("8: 9's overlay back", false) }
   shell.performAcross(from: o9again, "profile.switch", ["profile": "P2", "space": "home"])
   check("8: then to P2's window again: 9 parked", await until(8, { !shell.switcher.busy }) && shell.parking?.isParked(n9) == true, "\(shell.switcher.session.lines.last ?? "-")")
+
+  // ---- 9. Safari restored a window Margin had parked before it quit (Tirth, 2026-11-07): its copy says so
+  // (`wasParked`, background/parked-restore.js); the app closes it by its copy, once. One Margin has parked now
+  // (9: a Margin update keeps them alive and out of sight) isn't. ----
+  let mark9 = fake.events.count
+  fake.tell(["do": "windows", "id": "A", "list": [
+    box(normal1).merging(["windowId": 9, "state": "normal", "focused": false, "activeTabId": 13, "wasParked": true]) { $1 },
+    box(normal2).merging(["windowId": 31, "state": "normal", "focused": false, "activeTabId": 14, "wasParked": true]) { $1 },
+  ]])
+  let closed31 = await until(3, { reqs("A", "closeWindow", mark9).contains { int(payload($0)["windowId"]) == 31 } })
+  try? await Task.sleep(nanoseconds: 600_000_000)
+  check("9: a parked window Safari restored after a quit: closed by its copy, once", closed31 && reqs("A", "closeWindow", mark9).filter { int(payload($0)["windowId"]) == 31 }.count == 1,
+        "\(reqs("A", "closeWindow", mark9).map { payload($0) })")
+  check("9: one Margin has parked now: left alone, still parked", !reqs("A", "closeWindow", mark9).contains { int(payload($0)["windowId"]) == 9 } && shell.parking?.isParked(n9) == true)
+  fake.tell(["do": "windows", "id": "A", "list": [box(normal1).merging(["windowId": 9, "state": "normal", "focused": false, "activeTabId": 13]) { $1 }]])
+  try? await Task.sleep(nanoseconds: 300_000_000)
   mark = fake.events.count
   var stopped = false
   shell.stop { stopped = true }
