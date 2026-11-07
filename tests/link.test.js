@@ -13,7 +13,7 @@ import { startFakeApp } from './fake-app.js';
 
 globalThis.chrome = { runtime: { getURL: (p) => `safari-web-extension://test/${p}`, getManifest: () => ({ version: '2.0.0' }) } };
 const { createLink, keyBindings, themePieces, SESSION_KEY, LINK_META, STATE_KEYS, APP_REQUESTS, WINDOW_CALLS, PARKED_WHY, windowCallRefusal } = await import('../extension/background/link.js');
-const { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, NOT_DRAWN } = await import('../extension/shared/app-link.js');
+const { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, NOT_DRAWN, unpinchedSize } = await import('../extension/shared/app-link.js');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(test, ms = 2000) {
@@ -1108,4 +1108,20 @@ test('link: the handoff\'s words — its requests taken, others refused, the win
     link.stop();
     await app.close();
   }
+});
+
+
+// A pinch magnifies the page; its area stays the window's (shared/app-link.js unpinchedSize). WebKit's own numbers,
+// measured 2026-11-07 in a 1512 × 949 web view: pinched 3×, innerWidth 504, innerHeight 316, visualViewport
+// 504 × 316.328125 at scale 3 (what made Margin draw its sidebar in a corner and drop the page's box).
+test('a pinch: the page\'s area as before it, not a third of it', () => {
+  assert.deepEqual(unpinchedSize({ innerWidth: 1512, innerHeight: 949, visualViewport: { width: 1512, height: 949, scale: 1 } }), { width: 1512, height: 949 }, 'unpinched: as it is');
+  const pinched = unpinchedSize({ innerWidth: 504, innerHeight: 316, visualViewport: { width: 504, height: 316.328125, scale: 3 } });
+  assert.ok(Math.abs(pinched.width - 1512) < 0.5 && Math.abs(pinched.height - 949) < 0.5, JSON.stringify(pinched));
+  assert.deepEqual(unpinchedSize({ innerWidth: 800, innerHeight: 600 }), { width: 800, height: 600 }, 'no visual viewport: as it is');
+  // The page's box from the pinched size, unpinched: the same box as unpinched.
+  const layout = { insets: { left: 260, top: 8, right: 8, bottom: 8 } };
+  const box = (inner) => boxFromLayout(layout, { outerWidth: 1512, outerHeight: 949, innerWidth: inner.width, innerHeight: inner.height });
+  assert.deepEqual(box(pinched), box({ width: 1512, height: 949 }), 'the box doesn\'t change with a pinch');
+  assert.notDeepEqual(box({ width: 504, height: 316 }), box({ width: 1512, height: 949 }), '(the raw pinched size would change it)');
 });

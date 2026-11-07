@@ -26,12 +26,19 @@ let pageRecorder = """
   })();
   """
 
-@MainActor final class Tab: NSObject, WKWebExtensionTab, WKNavigationDelegate {
+@MainActor final class Tab: NSObject, WKWebExtensionTab, WKNavigationDelegate, WKUIDelegate {
   let name: String
   var url: URL
   var webView: WKWebView?
   // The extension address the web view was made for (an extension page's), or nil (a web page's).
   var madeFor: String?
+  // Whether the page's window frame is told to WebKit (its outerWidth and outerHeight then the window's, as in
+  // Safari; else 0): the `windowFrame` op, off by default so every other scenario keeps the host as it was.
+  static var tellsWindowFrame = false
+  @objc(_webView:getWindowFrameWithCompletionHandler:)
+  func webViewWindowFrame(_ wv: WKWebView, completionHandler: @escaping (CGRect) -> Void) {
+    completionHandler(Tab.tellsWindowFrame ? wv.frame : .zero)
+  }
   // Asleep with a view already (made as Safari selected it, its load put off): no page yet, and
   // WebKit answers a script there with an error in place of a result, as in Safari.
   var unloaded = false
@@ -83,6 +90,7 @@ let pageRecorder = """
       unsafeBitCast(method_getImplementation(m), to: Setter.self)(wv, noOcclusion, false)
     }
     wv.navigationDelegate = self
+    wv.uiDelegate = self
     webView = wv
     loadingObs = [
       wv.observe(\.isLoading, options: [.new]) { [weak self] _, _ in MainActor.assumeIsolated { guard let self else { return }; host.controllers.forEach { $0.didChangeTabProperties([.loading], for: self) } } },
@@ -751,6 +759,8 @@ Task { @MainActor in
         if Date() > deadline { fail(label, last); break }
         try? await Task.sleep(nanoseconds: 100_000_000)
       }
+    case "windowFrame": // { op: 'windowFrame', on }: pages' outerWidth and outerHeight their window's (Tab.tellsWindowFrame)
+      Tab.tellsWindowFrame = step["on"] as? Bool ?? true; log("windowFrame \(Tab.tellsWindowFrame)")
     case "pinch": // { op: 'pinch', deltas, x?, y? }: real magnify events handed to the shown tab's web view
       if let wv = host.window.active?.webView { await pinchOn(wv, step) }
     case "appStart": // { op: 'appStart', layout?: [left, top, right, bottom] }

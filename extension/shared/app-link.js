@@ -80,6 +80,26 @@ export function layoutFor(link, windowId) {
  * @param {{ outerWidth: number, outerHeight: number, innerWidth: number, innerHeight: number, zoom?: number, x?: number, y?: number }} view
  * @returns {{ left: number, top: number, right: number, bottom: number } | null}
  */
+/**
+ * The page's area in CSS pixels as it is before any pinch (a pinch magnifies the page; it doesn't change its area).
+ * WebKit gives innerWidth and innerHeight divided by the pinch's scale (measured 2026-11-07: a 1512 × 949 page
+ * pinched 3× reads 504 × 316, visualViewport 504 × 316.33 at scale 3), which read as Safari taking most of the
+ * window: Margin drew its sidebar into a corner, and the page lost its box. Unpinched, innerWidth and innerHeight
+ * as they are. Pinched, scaled back, from the larger of the inner and visual viewport sizes (the inner size is
+ * rounded down to whole pixels; the visual one leaves out a classic scrollbar).
+ * @param {{ innerWidth: number, innerHeight: number, visualViewport?: { width: number, height: number, scale: number } | null }} w
+ * @returns {{ width: number, height: number }}
+ */
+export function unpinchedSize({ innerWidth, innerHeight, visualViewport = null }) {
+  const s = visualViewport?.scale;
+  if (!(Number.isFinite(s) && /** @type {number} */ (s) > 1.001)) return { width: innerWidth, height: innerHeight };
+  const k = /** @type {number} */ (s);
+  return {
+    width: Math.max(innerWidth, finite(visualViewport?.width)) * k,
+    height: Math.max(innerHeight, finite(visualViewport?.height)) * k,
+  };
+}
+
 export function boxFromLayout(layout, { outerWidth, outerHeight, innerWidth, innerHeight, zoom = 1, x, y }) {
   const insets = layout?.insets;
   if (!insets) return null;

@@ -20,7 +20,7 @@ import { SWITCH_GRACE_MS } from '../shared/switching.js';
 import { startLayout } from './layout.js';
 import { startLoads } from './loads.js';
 import { fromStorage, onlyMark, openTabsCurrent, readForPage, takesChanges, withChanges } from '../shared/stored.js';
-import { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor } from '../shared/app-link.js';
+import { APP_LINK_KEY, appDraws, boxFromLayout, drawsWindow, layoutFor, unpinchedSize } from '../shared/app-link.js';
 import { probeFrames, watchVisible } from '../shared/frame-probe.js';
 import { startScrollRecord } from './scroll-record.js';
 /** @import { MessageType, Request, Result } from '../../types/margin' */
@@ -238,7 +238,9 @@ export function startCore() {
     const l = layoutFor(appLink, windowId ?? helloWindowId);
     if (!l) return null;
     const at = viewportNow();
-    const insets = boxFromLayout(l, { outerWidth, outerHeight, innerWidth, innerHeight, zoom: pageZoom, x: at?.x, y: at?.y }) ?? { left: 0, top: 0, right: 0, bottom: 0 };
+    // (The page's area as before any pinch: a pinch magnifies the page, it doesn't move its box. shared/app-link.js.)
+    const inner = unpinchedSize({ innerWidth, innerHeight, visualViewport });
+    const insets = boxFromLayout(l, { outerWidth, outerHeight, innerWidth: inner.width, innerHeight: inner.height, zoom: pageZoom, x: at?.x, y: at?.y }) ?? { left: 0, top: 0, right: 0, bottom: 0 };
     const radius = Number(l.radius) || 0;
     /** @type {import('./layout.js').Geometry} */
     const g = { insets, radius, radii: Array.isArray(l.radii) ? l.radii : [radius, radius, radius, radius] };
@@ -261,8 +263,11 @@ export function startCore() {
   let pointerOrigin = null; // as found for the viewport size w × h
   const viewportNow = () => {
     const z = pageZoom || 1;
-    const w = innerWidth * z;
-    const h = innerHeight * z;
+    // (Before any pinch: WebKit divides innerWidth and innerHeight by a pinch's scale, which read as Safari taking
+    // most of the window, Tirth's log 2026-11-07: Margin drew in a third of it.)
+    const inner = unpinchedSize({ innerWidth, innerHeight, visualViewport });
+    const w = inner.width * z;
+    const h = inner.height * z;
     const offX = Math.max(0, outerWidth - w);
     const offY = Math.max(0, outerHeight - h);
     if (offX < 1 && offY < 1) return null;
@@ -275,6 +280,8 @@ export function startCore() {
     return { x: half(x), y: half(y), width: half(w), height: half(h), ...(known ? { measured: true } : {}) };
   };
   const learnOrigin = (/** @type {MouseEvent} */ e) => {
+    // (Not while pinched: an event's client point is then in the magnified page, not the window's points.)
+    if ((visualViewport?.scale ?? 1) > 1.001) return;
     const z = pageZoom || 1;
     const w = innerWidth * z;
     const h = innerHeight * z;
@@ -335,6 +342,8 @@ export function startCore() {
     applyApp();
   }
   Margin.content.appDraws = () => appUi();
+  // The page's area as it would be told to the app now (null: the whole window): tests read it.
+  Margin.content.viewportNow = () => viewportNow();
   addEventListener('resize', applyApp);
   // ⌘T reaching the page (Safari's File › New Tab given another shortcut).
   // Linked, in a window the app draws over, it's the app's (its hot key,

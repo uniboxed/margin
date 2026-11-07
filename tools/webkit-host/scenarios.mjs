@@ -836,6 +836,24 @@ export const SCENARIOS = {
     { op: 'eval', in: 'A', js: 'const { settings } = await browser.storage.local.get("settings"); await browser.storage.local.set({ settings: { ...settings, blockGestures: false } }); return "off"' },
     checkPage('A', 'gestures turned off: back to its size', `${AT} return at.scale === 1`, 1500),
   ],
+  // Safari's own pinch on a page Margin.app draws around (gestures not Margin's): WebKit divides innerWidth and
+  // innerHeight by the pinch's scale (a 3× pinch reads a third), which read as Safari taking most of the window: the
+  // page lost its box, and Margin.app was told the page's area was a third of it (Tirth's log 2026-11-07, Margin drew
+  // its sidebar in a corner). The area before the pinch is used (shared/app-link.js unpinchedSize).
+  'pinch-native': [
+    { op: 'windowFrame', on: true }, // (outerWidth and outerHeight the window's, as in Safari)
+    ...startBoxed('A', '/p/T'), wait(300),
+    { op: 'eval', in: 'A', js: 'const { settings } = await browser.storage.local.get("settings"); await browser.storage.local.set({ settings: { ...settings, blockGestures: false } }); return "gestures Safari\'s"' },
+    wait(400),
+    { op: 'pinch', deltas: Array(40).fill(0.06), x: 700, y: 400 }, wait(500),
+    checkPage('A', 'Safari pinched it (not Margin)', 'visualViewport.scale > 1.5', 1500),
+    { op: 'eval', in: 'A', js: 'return JSON.stringify({ iw: innerWidth, ih: innerHeight, ow: outerWidth, oh: outerHeight, s: visualViewport.scale, vw: visualViewport.width, z: Margin.content.viewportNow() })' },
+    checkPage('A', 'pinched: the page keeps its box where the app\'s layout put it', `${AT} return at.x === 260 && at.y === 8`, 1500),
+    check('A', 'pinched: the page\'s area as told to the app is still the whole window (none)', `Margin.content.viewportNow() === null`, 1500),
+    { op: 'pinch', deltas: Array(60).fill(-0.06), x: 700, y: 400 }, wait(500),
+    checkPage('A', 'pinched back: its box as it was', `${AT} return at.x === 260 && at.y === 8 && visualViewport.scale === 1`, 1500),
+    { op: 'windowFrame', on: false },
+  ],
   // Two copies of Margin loaded at once in one controller (as Safari would
   // load a new one while the old one still runs): they share one script world
   // in pages, so a page runs one copy, here the first's. Once the newer copy
