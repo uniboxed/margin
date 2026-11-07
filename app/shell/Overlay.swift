@@ -25,10 +25,47 @@ import QuartzCore
 import WebKit
 
 // Key only while a text field in it has focus; never main.
-final class OverlayPanel: NSPanel {
+class OverlayPanel: NSPanel {
     var allowKey = false
     override var canBecomeKey: Bool { allowKey }
     override var canBecomeMain: Bool { false }
+}
+
+// The region that isn't the page's (PassThrough.swift CatchRegion), filled at alpha 0.01 so the window
+// server never passes the pointer through it; the rest left fully transparent. Top-left coordinates.
+final class CatchView: NSView {
+    var region = CatchRegion(all: true, hole: nil) { didSet { if region != oldValue { needsDisplay = true } } }
+    override var isFlipped: Bool { true }
+    override var isOpaque: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil } // (under the web view: never the one that takes an event)
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.clear.setFill()
+        bounds.fill(using: .copy)
+        let fill = NSColor(calibratedWhite: 0, alpha: 0.01)
+        fill.setFill()
+        let path = NSBezierPath(rect: bounds)
+        if !region.all, let hole = region.hole {
+            path.append(NSBezierPath(roundedRect: hole, xRadius: region.radius, yRadius: region.radius))
+            path.windingRule = .evenOdd
+        }
+        path.fill()
+        for r in region.hits { NSBezierPath(rect: r).fill() }
+    }
+}
+
+// Just below its overlay, at its frame, filled where the overlay's region isn't the page's (CatchView) and
+// never told to ignore the mouse (so its transparent pixels, the slot, still let the pointer through to the
+// page): what reaches it is an event over Margin's UI that the overlay let through because its
+// `ignoresMouseEvents` hadn't caught up with the pointer yet. Handed to the overlay, which takes the mouse
+// from then on: a click or a scroll over Margin's UI never reaches the browser.
+final class OverlayCatcher: OverlayPanel {
+    weak var overlay: OverlayController?
+    static let forwarded: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+                                                   .otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel, .magnify, .smartMagnify, .swipe]
+    override func sendEvent(_ event: NSEvent) {
+        if Self.forwarded.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue)), let overlay, overlay.caught(event) { return }
+        super.sendEvent(event)
+    }
 }
 
 protocol OverlayDelegate: AnyObject {
@@ -70,6 +107,14 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     // The thin panel at the window's left edge (PassThrough.swift EdgeGuard): nil with `edgeWidth` 0.
     let edgePanel: OverlayPanel?
     private(set) var edgeFrame: CGRect?
+    // Just below the overlay (OverlayCatcher), and the overlay's own fill under its web view (CatchView).
+    let catcher: OverlayCatcher
+    private let catcherView = CatchView(frame: .zero)
+    private let fillView = CatchView(frame: .zero)
+    private(set) var catcherShown = false
+    // Events over Margin's UI the catcher took and handed to the overlay (the tests read it; the log says the first ones).
+    private(set) var caughtEvents = 0
+    var catcherWindowNumbers: Set<Int> { catcherShown ? [catcher.windowNumber] : [] }
 
     weak var delegate: OverlayDelegate?
     let key: WindowKey
@@ -84,6 +129,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         options.ownSpace = false
         panel.collectionBehavior = Self.collectionBehavior
         edgePanel?.collectionBehavior = Self.collectionBehavior
+        catcher.collectionBehavior = Self.collectionBehavior
     }
 
     private(set) var isReady = false // the page has drawn
@@ -144,7 +190,21 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         } else {
             edgePanel = nil
         }
+        catcher = OverlayCatcher(contentRect: start, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        catcher.level = options.level
+        catcher.hidesOnDeactivate = false
+        catcher.isOpaque = false
+        catcher.hasShadow = false
+        catcher.backgroundColor = .clear
+        catcher.animationBehavior = .none
+        catcher.isReleasedWhenClosed = false
+        catcher.collectionBehavior = behavior
+        // (Its `ignoresMouseEvents` never set: the window server passes the pointer through its transparent pixels.)
+        catcherView.frame = NSRect(origin: .zero, size: start.size)
+        catcherView.autoresizingMask = [.width, .height]
+        catcher.contentView = catcherView
         super.init()
+        catcher.overlay = self
         panel.level = options.level
         panel.hidesOnDeactivate = false
         panel.isFloatingPanel = false
@@ -156,9 +216,15 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = behavior
         panel.acceptsMouseMovedEvents = true
+        // Said, not left to the default: a window left at the default passes the pointer through its fully
+        // transparent pixels, and the theme's may be (or its web view's layers may not count).
+        panel.ignoresMouseEvents = false
         let content = NSView(frame: NSRect(origin: .zero, size: start.size))
         content.wantsLayer = true
         content.layer?.backgroundColor = .clear
+        fillView.frame = content.bounds
+        fillView.autoresizingMask = [.width, .height]
+        content.addSubview(fillView)
         webView.autoresizingMask = [.width, .height]
         webView.frame = content.bounds
         content.addSubview(webView)
@@ -186,6 +252,52 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         webView.stopLoading()
         panel.close()
         edgePanel?.close()
+        catcher.close()
+    }
+
+    // The region that isn't the page's, as the layout says now (CatchRegion), in both fills.
+    private func updateCatch() {
+        let region = CatchRegion.of(frame: frameTopLeft, slot: slot)
+        fillView.region = region
+        catcherView.region = region
+    }
+
+    // The catcher just below the overlay, at its frame, while it's shown (and not concealed); away otherwise.
+    // `restack`: the overlay was just ordered.
+    private func placeCatcher(restack: Bool = false) {
+        guard isShown, !isConcealed, aboveWindow != nil, frameTopLeft.width > 0, allowed(ScreenGeometry.appKitRect(frameTopLeft)) else {
+            if catcherShown { catcher.orderOut(nil) }
+            catcherShown = false
+            return
+        }
+        let appKit = ScreenGeometry.appKitRect(frameTopLeft)
+        if catcher.frame != appKit { catcher.setFrame(appKit, display: false) }
+        updateCatch()
+        if !catcherShown || restack { catcher.order(.below, relativeTo: panel.windowNumber) }
+        catcherShown = true
+    }
+
+    /// An event over Margin's UI that reached the catcher (the overlay let it through: its `ignoresMouseEvents`
+    /// hadn't caught up yet): the overlay takes the mouse, and the event is handed to its window. False if the
+    /// overlay isn't shown (the catcher then lets AppKit have it, which does nothing with it).
+    func caught(_ event: NSEvent) -> Bool {
+        guard isShown, !isConcealed else { return false }
+        caughtEvents += 1
+        if caughtEvents <= 3 || caughtEvents % 100 == 0 {
+            Diagnostics.note("\(key): an event over Margin's UI reached the catcher under its overlay (\(event.type.rawValue), \(caughtEvents) so far): handed to the overlay, which takes the mouse")
+        }
+        setIgnoring(false)
+        panel.sendEvent(retargeted(event) ?? event)
+        return true
+    }
+
+    // The same event for the overlay's window (the same frame as the catcher's, so the same point in it).
+    private func retargeted(_ event: NSEvent) -> NSEvent? {
+        guard let cg = event.cgEvent?.copy() else { return nil }
+        cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(panel.windowNumber))
+        cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(panel.windowNumber))
+        guard let e = NSEvent(cgEvent: cg), e.window === panel, abs(e.locationInWindow.x - event.locationInWindow.x) < 1, abs(e.locationInWindow.y - event.locationInWindow.y) < 1 else { return nil }
+        return e
     }
 
     // The edge guard where this overlay's slot needs it, just above the overlay; away otherwise.
@@ -230,6 +342,8 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         panel.setFrame(appKit, display: false)
         CATransaction.commit()
         frameTopLeft = frame
+        updateCatch()
+        if catcherShown { placeCatcher() }
     }
 
     /// Over the browser window `number`, at its bounds (`frame`, top left),
@@ -259,6 +373,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             isShown = true
             Diagnostics.note("overlay shown over \(key) (window \(number)): \(why)")
         }
+        placeCatcher(restack: ordered)
         placeEdge(restack: ordered)
         return true
     }
@@ -267,6 +382,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     func reorder() {
         guard isShown, aboveWindow != nil else { return }
         orderInPlace()
+        placeCatcher(restack: true)
         placeEdge(restack: true)
     }
 
@@ -288,6 +404,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         panel.ignoresMouseEvents = true
         edgePanel?.alphaValue = 0
         edgePanel?.ignoresMouseEvents = true
+        placeCatcher()
     }
 
     func reveal() {
@@ -297,6 +414,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         panel.ignoresMouseEvents = ignoring
         edgePanel?.alphaValue = 1
         edgePanel?.ignoresMouseEvents = false
+        if panel.isVisible { placeCatcher(restack: true) }
     }
 
     // `why`: for the log (only a shown overlay put away is logged).
@@ -310,6 +428,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         aboveWindow = nil
         belowWindow = nil
         setIgnoring(false)
+        placeCatcher()
         placeEdge()
     }
 
@@ -321,10 +440,12 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         return PassThrough.slot(in: frameTopLeft, layout: layout, hits: hits, captureAll: captureAll)
     }
 
+    // (Always said to the window, even when it's what it was: never left at the default, which lets the
+    // pointer through fully transparent pixels.)
     func setIgnoring(_ on: Bool) {
-        guard on != ignoring else { return }
         ignoring = on
-        panel.ignoresMouseEvents = on || isConcealed
+        let want = on || isConcealed
+        if panel.ignoresMouseEvents != want { panel.ignoresMouseEvents = want }
     }
 
     // ---- the page ----
@@ -357,6 +478,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         case "layout":
             guard let geometry = body["geometry"] as? JSONObject, let layout = PageLayout(geometry: geometry) else { return }
             self.layout = layout
+            updateCatch()
             placeEdge()
             delegate?.layoutChanged(self, layout)
             delegate?.overlayChanged(self, "layout")
@@ -367,6 +489,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
             }
             hits = Array(rects.prefix(64))
             captureAll = body["all"] as? Bool == true || rects.count > 64
+            updateCatch()
             placeEdge()
             delegate?.overlayChanged(self, "hits")
         case "focus":

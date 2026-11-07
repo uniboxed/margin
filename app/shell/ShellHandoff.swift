@@ -118,7 +118,7 @@ extension Shell: HandoffWorld {
         guard let overlay = overlays[key], overlay.isShown, let number = matches[key], overlay.aboveWindow == number else { return false }
         let list = windowSource.windows(of: [ProcessInfo.processInfo.processIdentifier, overlay.browserPid])
         let toolbar = list.first { $0.number == number }.flatMap { WindowMatcher.fullScreenToolbar(list, browser: $0)?.number }
-        return WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar)
+        return WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar, own: overlay.catcherWindowNumbers)
     }
 
     // ---- what the shell asks of it ----

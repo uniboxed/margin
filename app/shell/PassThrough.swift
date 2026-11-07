@@ -53,6 +53,38 @@ enum PassThrough {
     }
 }
 
+// Where the overlay's own windows take the mouse whatever its `ignoresMouseEvents` says (Tirth, 2026-11-06:
+// a scroll over the sidebar scrolled the page behind it; sometimes nothing in the layout took a click): the
+// window server passes the pointer through a window's fully transparent pixels, and the overlay's one
+// window follows the pointer after the fact (the first event over Margin's UI, coming from over the page,
+// still reached Safari). So the region that isn't the page's, known from the layout (everything but the
+// slot, less its rounded corners, plus what the theme draws over it, `hits`; all of it with `captureAll`
+// or no layout yet), is filled at alpha 0.01: under the overlay's web view (a transparent part of the theme
+// still takes the mouse), and in a catcher just below the overlay that never ignores the mouse and hands
+// what it gets to the overlay (Overlay.swift OverlayCatcher). Only the page slot lets the pointer through.
+struct CatchRegion: Equatable {
+    var all: Bool // the whole frame
+    var hole: CGRect? // the slot, in the frame's coordinates (top left), cut out
+    var radius: CGFloat = 0
+    var hits: [CGRect] = [] // filled again over the hole
+
+    // For an overlay at `frame` (top left) with this slot (window server coordinates).
+    static func of(frame: CGRect, slot: Slot?) -> CatchRegion {
+        guard let slot, !slot.captureAll else { return CatchRegion(all: true, hole: nil) }
+        let hole = slot.rect.offsetBy(dx: -frame.minX, dy: -frame.minY).intersection(CGRect(origin: .zero, size: frame.size))
+        guard !hole.isNull, hole.width > 0, hole.height > 0 else { return CatchRegion(all: true, hole: nil) }
+        return CatchRegion(all: false, hole: hole, radius: min(slot.radius, hole.width / 2, hole.height / 2), hits: slot.hits.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) })
+    }
+
+    // Whether a point (in the frame, top left) is filled: the same answer as !PassThrough.pageGets.
+    func contains(_ p: CGPoint, in size: CGSize) -> Bool {
+        guard CGRect(origin: .zero, size: size).contains(p) else { return false }
+        guard !all, let hole else { return true }
+        if hits.contains(where: { $0.contains(p) }) { return true }
+        return !PassThrough.pageGets(p, Slot(rect: hole, radius: radius))
+    }
+}
+
 // Which pointer positions an overlay's page wants handed in (app/overlay/overlay.js
 // reportWant; only peek uses them): none while its sidebar is docked, those within
 // `zone` points of its peek edges while the sidebar is hidden, every one while it's

@@ -88,13 +88,17 @@ struct DrawnOutbox {
     var windows: Set<Int> { Set(offSince.keys).union(sent.keys).union(everBound) }
 
     // What to send for the window now (nil: nothing), why, and when to look again if off is pending.
-    mutating func offer(windowId id: Int, now: TimeInterval, bound: Bool, wanted: Bool) -> (send: Bool?, why: String, due: TimeInterval?) {
+    // `pending`: not bound, but its window is one of the browser's same-bounds windows off screen, none of them
+    // bound and none on screen (other Spaces' full-screen windows, not told apart until one comes on screen):
+    // on as if bound, so its pages have their box as its Space slides in and the overlay, bound then (the
+    // visible rule at once, WindowMatcher.swift), only has to show. Off by the grace once it's on screen unbound.
+    mutating func offer(windowId id: Int, now: TimeInterval, bound: Bool, wanted: Bool, pending: Bool = false) -> (send: Bool?, why: String, due: TimeInterval?) {
         if bound { everBound.insert(id) }
-        if bound && wanted {
+        if (bound || pending) && wanted {
             offSince[id] = nil
             guard sent[id] != true else { return (nil, "", nil) }
             sent[id] = true
-            return (true, "bound, and in full screen", nil)
+            return (true, bound ? "bound, and in full screen" : "in full screen, not bound yet: its window is one of the browser's same-bounds windows off screen", nil)
         }
         let since = offSince[id] ?? now
         offSince[id] = since
@@ -851,6 +855,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         return out
     }
 
+    private var lastBrowserOnScreen: Set<Int> = []
+
+    // Whether two bounds have the same size (to a point): a window offset in a slide is the same window.
+    static func sameSize(_ a: CGRect, _ b: CGRect) -> Bool { abs(a.width - b.width) <= 1 && abs(a.height - b.height) <= 1 }
+
     // One read of the window server, and everything that follows from it.
     func track() {
         pollTimer?.invalidate()
@@ -875,9 +884,19 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let read = windowSource.read(of: own)
         let list = read ?? []
         let byNumber = Dictionary(list.map { ($0.number, $0) }, uniquingKeysWith: { a, _ in a })
+        // The browser's windows coming on or going off screen (a swipe between full-screen windows starts; macOS
+        // says the Space changed only once it's over): read often for a moment, so a window bound as it slides
+        // in has its overlay as soon as it's in place.
+        if read != nil {
+            let onScreen = Set(WindowMatcher.candidates(list, pids: readPids).filter(\.onScreen).map(\.number))
+            if onScreen != lastBrowserOnScreen { burstUntil = max(burstUntil, Diagnostics.now() + options.burstFor) }
+            lastBrowserOnScreen = onScreen
+        }
 
         // Each browser's windows, bound (WindowBinder: it logs every binding made, moved or dropped, and why).
         var next: [WindowKey: Int] = [:]
+        // Each browser's windows no binding has (for `drawn` while a window waits to be told apart: updateDrawn).
+        var freeWindows: [String: [ServerWindow]] = [:]
         // Bound windows this read didn't list (a blip: their overlays are kept where they are, unseen).
         var absent: Set<Int> = []
         var ext: [WindowKey: (ExtWindow, Link)] = [:]
@@ -900,6 +919,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                                       server: list, pids: pids, browserInFront: front.map(pids.contains) ?? false, listed: read != nil, spaceChangedAt: spaceChangedWall,
                                       parked: parkedNumbers)
             next.merge(bound) { a, _ in a }
+            let boundNumbers = Set(bound.values)
+            freeWindows[browser] = WindowMatcher.candidates(list, pids: pids).filter { !boundNumbers.contains($0.number) && !parkedNumbers.contains($0.number) }
             absent.formUnion(binder.absentNumbers)
             sweepHeld.formUnion(held)
             sweepCopies.merge(copies) { a, _ in a }
@@ -910,7 +931,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // The parked windows: the aftercare, the sweep, the copies told, the person's returns (§2.5, §2.6).
         if read != nil { handoffRead(ext, before: before, held: sweepHeld, copies: sweepCopies, reporting: sweepReporting, byBrowser: byBrowser, list: list) }
         // Each copy told which of its windows the app draws over, before any overlay shows or layout goes.
-        updateDrawn(ext)
+        updateDrawn(ext, free: freeWindows)
 
         // The overlays: made when wanted, shown when they can be, closed when their window is gone.
         for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
@@ -946,10 +967,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // Bound, but missing from this read (WindowBinder keeps it for a moment): kept where it is, unseen.
             if absent.contains(number) { overlay.conceal(); continue }
             guard let server = byNumber[number] else { overlay.hide("its window is gone from the window server"); continue }
+            // Kept where it is over its window in its own Space: shown over this window, at its size (a slide
+            // moves the window, it doesn't resize it).
+            let keptInSpace = overlay.ownSpace && overlay.isShown && overlay.aboveWindow == number && overlay.windowFrame.map { Shell.sameSize($0, server.bounds) } == true
             if !server.onScreen {
                 // In its window's own Space, which isn't showing: left there, so it slides back in with
-                // the window, already drawn (nothing to show again when the Space returns).
-                if overlay.ownSpace, overlay.isShown, overlay.aboveWindow == number, overlay.windowFrame == server.bounds {
+                // the window, already drawn (nothing to show again when the Space returns). (Read off screen
+                // at the end of a slide, a window may still be listed a little offset: the same window.)
+                if keptInSpace {
                     overlay.reveal()
                     // But on screen itself while its window isn't (macOS kept it in the Space showing): put away,
                     // and back to every Space if a later read still says so (judgeOwnSpace: a closing window
@@ -966,6 +991,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
                 continue
             }
             guard options.harness || options.windowedToo || fillsDisplay(server.bounds) else {
+                // On screen at its size but offset: its Space sliding in or out (a swipe between full-screen
+                // windows, Tirth's log 2026-11-06 23:30:19). An overlay in its window's own Space slides with it:
+                // left as it is, not moved (macOS moves it with the Space), so the layout comes and goes with
+                // the window instead of being put away for the slide and shown after it.
+                if keptInSpace { continue }
                 overlay.hide("its window doesn't fill its display (going into or out of full screen)")
                 continue
             }
@@ -986,7 +1016,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             // Below the window's full-screen toolbar (its own window), so it slides over Margin too.
             let toolbar = WindowMatcher.fullScreenToolbar(list, browser: server)?.number
             let showed = overlay.show(over: number, frame: frame, toolbar: toolbar, why: spaceChanged ? "its window is on screen after the Space changed" : "its window is on screen")
-            if showed, wasShown, !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar) {
+            if showed, wasShown, !WindowMatcher.stackedAbove(list, overlay: overlay.windowNumber, browser: number, toolbar: toolbar, own: overlay.catcherWindowNumbers) {
                 overlay.reorder()
             }
             if showed, !wasShownAnywhere { appeared(overlay, w, list: list) }
@@ -1026,11 +1056,13 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             guard let number = overlay.aboveWindow else { continue }
             let why: String?
             if let server = byNumber[number] {
+                // (In its window's own Space, at its size: left there, as track() leaves it, through a slide too.)
+                let inSpace = overlay.ownSpace && overlay.windowFrame.map { Shell.sameSize($0, server.bounds) } == true
                 if !server.onScreen {
-                    why = overlay.ownSpace && overlay.windowFrame == server.bounds ? nil : "its window isn't on screen"
-                } else if let was = overlay.windowFrame, was != server.bounds {
+                    why = inSpace ? nil : "its window isn't on screen"
+                } else if let was = overlay.windowFrame, was != server.bounds, !inSpace {
                     why = "its window moved or changed size (out of full screen?)"
-                } else if !(options.harness || options.windowedToo || ScreenGeometry.fillsDisplay(server.bounds)) {
+                } else if !inSpace, !(options.harness || options.windowedToo || ScreenGeometry.fillsDisplay(server.bounds)) {
                     why = "its window doesn't fill its display"
                 } else {
                     why = nil
@@ -1046,13 +1078,16 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // bound (and wanted), off after the grace (a timer per window looks again then), off at once for a
     // closed window that was on. A link held (no state yet, reconnecting) says nothing meanwhile.
     private var drawnTimers: [WindowKey: (due: TimeInterval, timer: Timer)] = [:]
-    private func updateDrawn(_ ext: [WindowKey: (ExtWindow, Link)]) {
+    private func updateDrawn(_ ext: [WindowKey: (ExtWindow, Link)], free: [String: [ServerWindow]] = [:]) {
         let now = Diagnostics.now()
         for (key, (w, entry)) in ext.sorted(by: { $0.key < $1.key }) {
             // A parked window's pages keep their box (at its full-screen insets), and the switch's target
             // is wanted for its whole entry, however late its copy reports (§2.4).
             let wanted = (w.state == "fullscreen" || options.windowedToo || isParkedKey(key) || (switcher.run != nil && switcher.isTarget(key))) && entry.theme != nil
-            let r = entry.drawn.offer(windowId: key.windowId, now: now, bound: matches[key] != nil, wanted: wanted)
+            // Not bound yet, a full-screen window whose only candidates are off screen (DrawnOutbox.offer `pending`).
+            let same = w.bounds.map { b in (free[entry.connection.hello.browser] ?? []).filter { WindowMatcher.close($0.bounds, b) } } ?? []
+            let pending = matches[key] == nil && w.state == "fullscreen" && !same.isEmpty && same.allSatisfy { !$0.onScreen }
+            let r = entry.drawn.offer(windowId: key.windowId, now: now, bound: matches[key] != nil, wanted: wanted, pending: pending)
             if let on = r.send { sendDrawn(entry, key, on, r.why) }
             if let due = r.due {
                 if drawnTimers[key]?.due != due {

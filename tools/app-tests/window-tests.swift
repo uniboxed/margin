@@ -760,6 +760,37 @@ extension Tests {
       check("visible: no focus change needed (none heard)", !w.said.contains("focus moved"), w.said)
     }
     do {
+      // Tirth's log, 2026-11-06 23:30:19-29: from the bound window to one not bound yet, slowly: both windows
+      // offset as they slide, the new page saying it's shown as it starts to slide in, macOS saying the Space
+      // changed only once the slide is over. Bound as it slides in, not left unbound after it.
+      let w = threeShown { _, visible in visible ? 0.05 : 0.15 }
+      w.pages = true
+      w.run(3) // (their bounds settled: a window offset in the slide is weighed by them)
+      let start = w.binder.numbers
+      w.show(18342, also: [18285])
+      for step in 1...12 {
+        let dx = CGFloat(step) * 120
+        w.move(18342, screen.offsetBy(dx: screen.width - dx, dy: 0)); w.move(18285, screen.offsetBy(dx: -dx, dy: 0))
+        w.read(0.1)
+      }
+      let sliding = w.binder.numbers[k(C, 795)]
+      w.move(18342, screen); w.move(18285, screen); w.show(18342); w.read(0.033); w.spaceChanged()
+      w.run(1, every: 0.1)
+      check("visible at once: a window not bound yet bound as it slides in (offset, before macOS says the Space changed), by its page's word since it came on screen",
+            start == [k(B, 153): 18285] && sliding == 18342 && w.wrong.isEmpty && w.said.contains("safari:C#795 is window 18342: visible at once: its page alone says it's shown"), "\(start) \(String(describing: sliding)) \(w.wrong.prefix(2))\n\(w.said)")
+      check("visible at once: and the last one by elimination", w.binder.numbers == w.truth && w.wrong.isEmpty, "\(w.binder.numbers)\n\(w.said)")
+      // The same with the bound window's page slow to say it's hidden (3 s): its window is on screen as the slide
+      // starts, so its word explains itself; the new one is still bound as it slides in.
+      let v = threeShown { key, visible in visible ? 0.05 : (key == k(B, 153) ? 3 : 0.15) }
+      v.pages = true
+      v.run(3)
+      v.show(18342, also: [18285]); v.run(0.3, every: 0.033)
+      let early = v.binder.numbers[k(C, 795)]
+      v.show(18342); v.read(0.033); v.spaceChanged(); v.run(4, every: 0.1)
+      check("visible at once: the bound window's page slow to say it's hidden: still bound as it slides in, never wrong", early == 18342 && v.binder.numbers == v.truth && v.wrong.isEmpty,
+            "\(String(describing: early)) \(v.binder.numbers) \(v.wrong.prefix(2))\n\(v.said)")
+    }
+    do {
       // The pages lagging the window server by up to 0.6 s, Spaces switched back and forth quickly, then calmly.
       for seed in 1...40 {
         var r = Seeded(state: UInt64(seed * 7919))

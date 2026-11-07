@@ -117,8 +117,26 @@ final class WorkspaceApps: AppWatch {
 
     var frontPid: pid_t? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
 
+    // NSRunningApplication's list once came back empty for a read while Safari ran on (Tirth's log, 2026-11-06
+    // 23:30:49: every binding dropped as "the browser isn't running", Safari's windows listed again a second
+    // later, nothing drawn until they were told apart again). The last processes it gave are kept, and used
+    // while that list is empty and they're still running (kill 0).
+    private var lastPids: [String: Set<pid_t>] = [:]
+    private var emptySaid: Set<String> = []
     func pids(of bundleId: String) -> Set<pid_t> {
-        Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).filter { !$0.isTerminated }.map(\.processIdentifier))
+        let now = Set(NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).filter { !$0.isTerminated }.map(\.processIdentifier))
+        if !now.isEmpty {
+            lastPids[bundleId] = now
+            emptySaid.remove(bundleId)
+            return now
+        }
+        let alive = (lastPids[bundleId] ?? []).filter { kill($0, 0) == 0 || errno == EPERM }
+        lastPids[bundleId] = alive.isEmpty ? nil : alive
+        if !alive.isEmpty, !emptySaid.contains(bundleId) {
+            emptySaid.insert(bundleId)
+            Diagnostics.note("\(bundleId): the running apps' list has none, but its process \(alive.sorted().map(String.init).joined(separator: ", ")) still runs: taken as running")
+        }
+        return alive
     }
 
     func start() {

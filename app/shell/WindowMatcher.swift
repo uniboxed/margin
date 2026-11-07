@@ -167,7 +167,8 @@ nonisolated enum WindowMatcher {
     /// both on screen, the overlay nearer the front, and no other normal or
     /// higher window (any app's, another overlay) between them.
     /// And below the browser window's full-screen toolbar (`toolbar`, fullScreenToolbar), when it has one.
-    static func stackedAbove(_ list: [ServerWindow], overlay: Int, browser: Int, toolbar: Int? = nil) -> Bool {
+    /// `own`: the overlay's own windows that go between it and the browser window (its catcher, Overlay.swift).
+    static func stackedAbove(_ list: [ServerWindow], overlay: Int, browser: Int, toolbar: Int? = nil, own: Set<Int> = []) -> Bool {
         if let toolbar {
             let all = list.sorted { $0.order < $1.order }
             if let t = all.firstIndex(where: { $0.number == toolbar }), let o = all.firstIndex(where: { $0.number == overlay }), t > o { return false }
@@ -176,7 +177,7 @@ nonisolated enum WindowMatcher {
         guard let o = shown.firstIndex(where: { $0.number == overlay }), let b = shown.firstIndex(where: { $0.number == browser }), o < b else { return false }
         let browserPid = shown[b].pid
         // The browser's own small windows (a popover above its window) don't count.
-        return !shown[(o + 1)..<b].contains { $0.layer >= 0 && $0.alpha > 0 && !($0.pid == browserPid && $0.layer > 0) && $0.bounds.intersects(shown[b].bounds) }
+        return !shown[(o + 1)..<b].contains { !own.contains($0.number) && $0.layer >= 0 && $0.alpha > 0 && !($0.pid == browserPid && $0.layer > 0) && $0.bounds.intersects(shown[b].bounds) }
     }
 
     static func describe(_ r: CGRect) -> String { "\(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))×\(Int(r.height))" }
@@ -246,6 +247,10 @@ final class WindowBinder {
         var hiddenDrop: Double = 2.0
         // ...but not this soon after a Space change.
         var hiddenQuiet: Double = 1.0
+        // Visible at once: a page's word that it's shown counts for a window come on screen if it was said no
+        // more than this before the read the window was first seen on screen after (the two clocks, the page's
+        // and the app's, are the same machine's).
+        var visibleFresh: Double = 0.1
     }
 
     struct Binding: Equatable {
@@ -340,6 +345,11 @@ final class WindowBinder {
     private var lastSpaceChange: Double = -.infinity
     // The browser's windows on screen in the last read that told something.
     private var lastOnScreen: Set<Int> = []
+    // Since when each of them has been on screen (the read before it was first seen there; -infinity: on screen
+    // at the first read), and the latest each may have been on screen (the read it was last seen there, or the
+    // first one that saw it gone): for the visible rule at once.
+    private var onScreenSince: [Int: Double] = [:]
+    private var lastOn: [Int: Double] = [:]
     // The visible rule's evidence for each free window on screen, held since; why it didn't bind (said once).
     private var seeing: [Int: (key: WindowKey, since: Double)] = [:]
     private var visibleSaid: [Int: String] = [:]
@@ -556,6 +566,10 @@ final class WindowBinder {
                     }
                 }
             }
+            for n in onNow where onScreenSince[n] == nil { onScreenSince[n] = first ? -.infinity : after }
+            for n in Array(onScreenSince.keys) where !onNow.contains(n) { onScreenSince[n] = nil }
+            for n in onNow.union(lastOnScreen) { lastOn[n] = now }
+            lastOn = lastOn.filter { present[$0.key] != nil || missing($0.key) }
             lastOnScreen = onNow
         }
 
@@ -879,6 +893,40 @@ final class WindowBinder {
             }
         }
         eliminate()
+
+        // ---- visible at once: a window come on screen, and the one page that newly says it's shown ----
+        // (Tirth's log, 2026-11-06 23:30:19-29: three profiles' full-screen windows, swiped between: macOS says
+        // the Space changed only once a slide is over, and a page says it's shown as its window starts sliding
+        // in, so the rule below took every word as from before the change, and the two windows not on screen at
+        // the start stayed unbound for 10 s, nothing drawn over them.) WebKit says a page is shown only while its
+        // window is on screen. So a free window `w` on screen is bound to the free page with its bounds that said
+        // it's shown since `w` came on screen (`visibleFresh` before the read before it was seen there), when:
+        // that page is the only free one saying it's shown, every other free page with those bounds said it's
+        // hidden (its last word), no other free window with those bounds has been on screen within `visibleLag`
+        // before that page's word (its page could be the one that said it, late), `w` is the only free window on
+        // screen with them, every window with them is a reported one, no link is held, the read misses nothing,
+        // and no bound window's page says it's shown while its window isn't on screen (the pages unsettled).
+        // A window offset in a slide is weighed by the bounds it settled in, so it's bound as it slides in.
+        // Only a window seen coming on screen: one on screen since before Margin.app's first read is left to the
+        // rule below (when it came isn't known, so no word can be told newer than it).
+        if browserInFront, held.isEmpty, !lostSome, !unlisted.keys.contains(where: { missing($0) && !retired.contains($0) }) {
+            for w in freeServer().filter(\.onScreen) {
+                guard !bound.contains(w.number), let since = onScreenSince[w.number], since > -.infinity else { continue }
+                let r: CGRect
+                if !extFitting(w.bounds).isEmpty { r = w.bounds } else if let s = settledBounds[w.number], !extFitting(s).isEmpty { r = s } else { continue }
+                let rivals = freeServer().filter { $0.number != w.number && has($0.number, r) }
+                guard !rivals.contains(where: \.onScreen) else { continue }
+                let group = extFitting(r)
+                guard serverHaving(r) == group.count else { continue }
+                let free = group.filter { bindings[$0.key] == nil }
+                let fresh = free.filter { $0.visible == true && ($0.visibleAt ?? -.infinity) >= since - T.visibleFresh }
+                guard fresh.count == 1, let x = fresh.first, let said = x.visibleAt else { continue }
+                guard free.allSatisfy({ $0.key == x.key || $0.visible == false }) else { continue }
+                guard rivals.allSatisfy({ (lastOn[$0.number] ?? -.infinity) < said - T.visibleLag }) else { continue }
+                guard group.allSatisfy({ e in e.visible != true || e.key == x.key || bindings[e.key].map { present[$0.number]?.onScreen == true } == true }) else { continue }
+                bind(x.key, w.number, now, "visible at once: its page alone says it's shown (since \(WindowMatcher.clock(said))), window \(w.number) on screen since \(WindowMatcher.clock(since)) the only free one with its bounds (\(WindowMatcher.describe(r)); \(group.count) window(s) with them, all reported), the other free pages hidden")
+            }
+        }
 
         // ---- visible: the only page with its bounds that says it's shown, the only window on screen with them ----
         // Each copy knows its own windows only, and their pages say whether they're shown (WebKit marks the

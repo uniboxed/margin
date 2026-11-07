@@ -428,6 +428,13 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("drawn: a palette for it couldn't be shown: off now", d.notShown(windowId: 4, now: 21))
     check("drawn: and nothing more to say, nor again", d.offer(windowId: 4, now: 23.6, bound: false, wanted: true).send == nil && !d.notShown(windowId: 4, now: 24))
     check("drawn: bound again: on", d.offer(windowId: 4, now: 25, bound: true, wanted: true).send == true)
+    // Not bound yet, its window one of the same-bounds windows off screen (another Space's): on, so its pages have
+    // their box as it slides in; once on screen unbound, off after the never-bound grace.
+    let pending = d.offer(windowId: 5, now: 30, bound: false, wanted: true, pending: true)
+    check("drawn: off screen, not told apart yet: on at once, and why", pending.send == true && pending.why.contains("not bound yet"), "\(pending)")
+    check("drawn: on screen still unbound: nothing for 1.5 s, then off", d.offer(windowId: 5, now: 31, bound: false, wanted: true).send == nil
+          && d.offer(windowId: 5, now: 32.5, bound: false, wanted: true).send == false)
+    check("drawn: pending and not in full screen: nothing on", d.offer(windowId: 6, now: 30, bound: false, wanted: false, pending: true).send == nil)
   }
 
   static func stacking() {
@@ -442,6 +449,9 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a window between them that doesn't cover the browser's: fine", WindowMatcher.stackedAbove([above, elsewhere, browser], overlay: 900, browser: 100))
     let popover = ServerWindow(number: 52, pid: 1, layer: 101, bounds: CGRect(x: 10, y: 10, width: 200, height: 200), order: 2)
     check("the browser's own popover between them: fine", WindowMatcher.stackedAbove([above, popover, browser], overlay: 900, browser: 100))
+    let catcher = ServerWindow(number: 901, pid: 9, bounds: browser.bounds, order: 2)
+    check("its own catcher between them: fine; another of the app's windows: not", WindowMatcher.stackedAbove([above, catcher, browser], overlay: 900, browser: 100, own: [901])
+          && !WindowMatcher.stackedAbove([above, catcher, browser], overlay: 900, browser: 100))
     check("the overlay not on screen: not", !WindowMatcher.stackedAbove([ServerWindow(number: 900, pid: 9, bounds: browser.bounds, onScreen: false, order: 2), browser], overlay: 900, browser: 100))
   }
 
@@ -466,6 +476,17 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("a button held keeps what it was: a drag from the page stays the page's", PassThrough.decide(CGPoint(x: 200, y: 400), slot, buttonsDown: true, ignoring: true))
     check("a drag from Margin stays Margin's", !PassThrough.decide(CGPoint(x: 800, y: 400), slot, buttonsDown: true, ignoring: false))
     check("let go: decided again", PassThrough.decide(CGPoint(x: 800, y: 400), slot, buttonsDown: false, ignoring: false))
+    // What the overlay's fill and its catcher take whatever the pointer-following says (CatchRegion): exactly what isn't the page's.
+    let region = CatchRegion.of(frame: frame, slot: slot)
+    let local = { (p: CGPoint) in CGPoint(x: p.x - frame.minX, y: p.y - frame.minY) }
+    let probes = [CGPoint(x: 800, y: 400), CGPoint(x: 200, y: 400), CGPoint(x: 800, y: 54), CGPoint(x: 361, y: 59), CGPoint(x: 364, y: 62), CGPoint(x: 361, y: 400), CGPoint(x: 1300, y: 845)]
+    check("caught: the sidebar and the frame, never the page (the same as the pointer-following's answer)", !region.all
+          && probes.allSatisfy { region.contains(local($0), in: frame.size) == !PassThrough.pageGets($0, slot) }
+          && region.contains(local(CGPoint(x: 200, y: 400)), in: frame.size) && !region.contains(local(CGPoint(x: 800, y: 400)), in: frame.size), "\(region)")
+    let paletteRegion = CatchRegion.of(frame: frame, slot: palette)
+    check("caught: the palette drawn over the page too", paletteRegion.contains(local(CGPoint(x: 600, y: 200)), in: frame.size) && !paletteRegion.contains(local(CGPoint(x: 1200, y: 600)), in: frame.size))
+    check("caught: everything before the page says where the slot is, or when it asks for the whole window", CatchRegion.of(frame: frame, slot: nil).all && CatchRegion.of(frame: frame, slot: all).all)
+    check("caught: nothing outside the overlay", !region.contains(CGPoint(x: -1, y: 10), in: frame.size))
   }
 
   static func shortcuts() {
