@@ -499,6 +499,7 @@ extension Shell: SwitchWorld {
         guard options.safariAX, SafariAX.trusted, profile.hasPrefix("safari:"),
               let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").first?.processIdentifier,
               case let name = profilesOf("safari").browserNames[SwitchNotice.profileId(profile)]?.name ?? profileName(profile), !name.isEmpty else { return false }
+        openedFor[profile] = (pid, axWindows(of: profile))
         safariAX.newWindow(pid: pid, profileName: name) { [weak self] pressed in
             guard let self else { return }
             Diagnostics.note(pressed ? "asked Safari for a new window of \(profile) (File › New Window)" : "Safari's File › New Window has no item for \(profile): the person is told to open one")
@@ -548,9 +549,23 @@ extension Shell: SwitchWorld {
         let words: String?
         switch event {
         case .started: words = nil
-        case .done: words = nil
+        case .done(let t): words = nil; openedFor[t.profile] = nil
         case .needsProfile(let t): words = "\(profileName(t.profile)) isn’t open in Safari. Open one of its windows (File › New Window › New \(profileName(t.profile)) Window) and Margin shows the space there."
-        case .failed(let t, let why): words = "Couldn’t switch to \(profileName(t.profile)): \(why). Nothing was closed."
+        case .failed(let t, let why):
+            // Margin opened the profile's window, but its copy never linked: Margin is off in that profile (Safari
+            // turned it off, or the person did). Told so, and the window Margin opened is closed again.
+            if let opened = openedFor.removeValue(forKey: t.profile) {
+                let name = profileName(t.profile)
+                for n in Set(axWindows(of: t.profile)).subtracting(opened.before) { safariAX.closeWindow(pid: opened.pid, number: n) }
+                let id = SwitchNotice.profileId(t.profile)
+                if SafariAX.marginEnabled(profile: id) == false {
+                    words = "Margin is turned off in \(name). Turn it on in Safari › Settings › Extensions (with \(name) chosen at the top), then switch again."
+                } else {
+                    words = "Margin didn’t start in \(name)’s window. Check that Margin is on in Safari › Settings › Extensions for \(name), then switch again."
+                }
+            } else {
+                words = "Couldn’t switch to \(profileName(t.profile)): \(why). Nothing was closed."
+            }
         case .cancelled: words = nil
         }
         switchNotice = words.map { ["notice": $0] }

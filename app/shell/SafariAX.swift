@@ -132,6 +132,46 @@ final class SafariAX: @unchecked Sendable {
         }
     }
 
+    /// A window Margin opened itself (newWindow) closed again by its close button, on the Accessibility queue.
+    func closeWindow(pid: pid_t, number: Int) {
+        guard Self.trusted else { return }
+        queue.async { [self] in
+            if pid != elementsPid { return }
+            guard let w = elements[number] else { return }
+            var button: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(w, kAXCloseButtonAttribute as CFString, &button) == .success, let b = button else { return }
+            _ = AXUIElementPerformAction(b as! AXUIElement, kAXPressAction as CFString)
+        }
+    }
+
+    /// Whether Margin's extension is turned on in a Safari profile, as Safari's own settings say (needs Full Disk
+    /// Access): `profile` the copy's id ("s-default" or "s-" and the profile's identifier). Nil: not readable.
+    static func marginEnabled(profile: String) -> Bool? {
+        let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Containers/com.apple.Safari/Data/Library/Safari")
+        func entries(_ url: URL) -> [String: Any]? {
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any]
+        }
+        func enabled(_ list: [String: Any], matching: (([String: Any]) -> Bool)?) -> Bool? {
+            let margin = list.filter { $0.key.hasPrefix("io.tirth.margin.Extension (") }.compactMap { k, v -> (String, [String: Any])? in (v as? [String: Any]).map { (k, $0) } }
+            let signed = margin.filter { !$0.0.contains("(UNSIGNED)") }
+            let pick = (signed.isEmpty ? margin : signed).filter { matching?($0.1) ?? true }
+            guard !pick.isEmpty else { return nil }
+            return pick.contains { $0.1["Enabled"] as? Bool == true }
+        }
+        if profile == "s-default" {
+            return entries(root.appendingPathComponent("WebExtensions/Extensions.plist")).flatMap { enabled($0, matching: nil) }
+        }
+        let id = profile.hasPrefix("s-") ? String(profile.dropFirst(2)).uppercased() : profile.uppercased()
+        let dirs = (try? FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("Profiles"), includingPropertiesForKeys: nil)) ?? []
+        for d in dirs {
+            guard let list = entries(d.appendingPathComponent("WebExtensions/Extensions.plist")),
+                  let on = enabled(list, matching: { ($0["ProfileIdentifier"] as? String)?.uppercased() == id }) else { continue }
+            return on
+        }
+        return nil
+    }
+
     /// The profile a window's title names: the named profile whose "<name> — " starts it, else the default
     /// profile's. `names`: profile id (as in a link, "s-…") → its name in Safari; `defaultId`: the default's id.
     static func profile(ofTitle title: String, names: [String: String], defaultId: String?) -> String? {

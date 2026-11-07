@@ -240,6 +240,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // window's profile never changes (SafariAX.swift).
     let safariAX = SafariAX()
     private var axProfiles: [Int: String] = [:]
+    // Profiles whose window Margin asked Safari for during a switch: Safari's pid and that profile's windows before.
+    var openedFor: [String: (pid: pid_t, before: [Int])] = [:]
+    /// The window numbers Accessibility named as `link`'s.
+    func axWindows(of link: String) -> [Int] { axProfiles.filter { $0.value == link }.map(\.key).sorted() }
     // Covers over Safari's windows until their layouts are ready (ShellCovers.swift).
     var covers: [Int: SafariCover] = [:]
     var coverTimer: Timer?

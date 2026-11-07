@@ -109,6 +109,9 @@ final class ProfileSwitch {
         var frontHold: TimeInterval = 0.5 // …and still, this long after it (macOS can drop to the desktop as the old Space goes)
         var recoverTries = 2
         var profileWait: TimeInterval = 90 // for the person to open the profile's window
+        // For the profile's copy to link once Margin opened its window itself (it links in 1-2 s; longer, Margin
+        // is off in that profile, and the person is told so: ShellProfiles.switchChanged).
+        var openedProfileWait: TimeInterval = 10
         var poll: TimeInterval = 0.05
         var handoff = HandoffOptions() // the handoff's own (Handoff.swift)
     }
@@ -192,9 +195,10 @@ final class ProfileSwitch {
         world.switchChanged(.started(to))
         askDrafts()
         guard world.isLinked(to.profile) else {
-            enter(.waitingForProfile, for: options.profileWait)
             // Its copy starts with the window Margin asks Safari for; the switch goes on once it links.
-            if world.openProfileWindow(to.profile) {
+            let opened = world.openProfileWindow(to.profile)
+            enter(.waitingForProfile, for: opened ? options.openedProfileWait : options.profileWait)
+            if opened {
                 note("\(to.profile) isn't linked: asked the browser for a new window of it, waiting for its copy")
             } else {
                 note("\(to.profile) isn't linked: waiting for one of its windows")

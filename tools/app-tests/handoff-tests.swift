@@ -1045,6 +1045,17 @@ func handoffMachineTests() {
         check("its window opened by Safari: shown, A parked", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.registry.isParked(1010), "\(w.events) \(s.history.suffix(3))")
         handoffInvariants("waitingForProfile, opened by Margin", w, s, [hA, hC])
     }
+    do {
+        // Margin opened the profile's window, but its copy never links (Margin off in that profile): given up
+        // after 10 s, not 90, with A back in front (the shell tells the person why and closes that window).
+        let (w, s) = handoffSetup { $0.linked.remove(hC); $0.opensWindows = true }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 9)
+        check("Margin's own window asked for: still waiting at 9 s", s.phase == .waitingForProfile, "\(s.phase)")
+        handoffRun(w, 2)
+        check("given up at 10 s, A in front", !s.busy && failed(w.events.last) && w.fullAndInFront(hKA), "\(w.events)")
+        handoffInvariants("waitingForProfile, Margin off there", w, s, [hA])
+    }
     // ---- the watchdog's three states, and step 5's latest start ----
     do {
         // B ready, A settling: revealed by the watchdog; the steps go on, A parked.
