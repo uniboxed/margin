@@ -61,9 +61,9 @@ const GRADIENTS = [
 ];
 const step = (a, b) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
 
-test('a body\'s gradient background fills the box, with no seam at its right edge or bottom', {
-  todo: 'content/page/box.js: the root background stays tiled from the window\'s origin at the box\'s size, not moved with the root (DECISIONS.md, the e2e suite\'s bugs found)',
-}, async (t) => {
+// Found by this suite (2026-11-06), fixed: the body's background was the canvas's, laid out from
+// the window's corner at the box's size (content/page/box.js checkBackground).
+test('a body\'s gradient background fills the box, with no seam at its right edge or bottom', async (t) => {
   const s = await slot(ui);
   const page = await m.context.newPage();
   const seams = [];

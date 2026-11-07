@@ -2854,10 +2854,9 @@ On `test/e2e-rewrite` (from `feat/margin-app`). Tirth asked for the e2e suite to
 
 **The old suite.** `enhancements`, `loader`, `platform`, `scroll` and `smoke` went with `helpers.js`. Their tests are in `scroll`, `navigation`, `loading` and `chrome-build`. One was dropped: upgrading to the Safari build moves the ⌃⌘ shortcut defaults. `tests/model.test.js` covers it, and stopping Chromium's worker tests nothing Safari does.
 
-**Bugs found, kept as `todo`** (nine in all; the first four are the first half's, noted in their files):
+**Bugs found, kept as `todo`** (nine in all; the first four are the first half's, noted in their files; five fixed since, below, four left):
 
 - `newtab.html#launcher` gets no launcher, and the page says "Margin.app isn't running" while linked (`archive`, `newtab`).
-- New, from review: a body with a gradient background is drawn wrong in the box. The root's background stays tiled from the window's origin at the box's size (1172 × 884), not moved with the root. There's a hard step at x 1172 and a band along the bottom (the timer and the podcast). Both pages look right on their own. The fix is in `content/page/box.js`: give the root background the box's offset, or paint it on the moved root (`page-box`).
 - New, from review: Arcadia draws a short notice one word per line. `.notice { width: min-content }` shrinks it to its longest word, so "That tab is no longer open." is a 58 px column over the space's name. `width: max-content` with the existing `max-width` fixes it (`themes`). For Phase 6.
 - New, from review: Neo-brutalism's address field shows the extension's id over Margin's own new-tab page (`tab.host` of the page's address). In Safari it would be the extension's UUID. It should be empty or say New Tab (`themes`). For Phase 6. The same host gives a start page kept as a row its letter icon (a "J" from the id, seen in `spaces` after a delete).
 
@@ -2867,6 +2866,7 @@ On `test/e2e-rewrite` (from `feat/margin-app`). Tirth asked for the e2e suite to
 - A tab open before the app's set came in kept the default space the set removed, and no row showed it. `stateFromDataSet` (`shared/data-set.js`) now moves a tab whose space the set took away to its window's space, or the first (`tabs`; unit: `data-set`).
 - The iCloud Tabs folder pressed twice before the app's word came back stayed closed: the next press's request was made from the stored state. `ui/runtime.js` dispatch now makes requests from `viewState` (what's drawn), for the folder, a device's fold and Keep open alike (`cloud-tabs`; theme harness: `tests/theme/cloud.test.js`).
 - `vw` inside a `font` shorthand that also has a `var()` wasn't moved to the box: its longhands read empty while the `var()` is pending. `shiftStyle` (`shared/page-css.js`, used by `content/page/sheets.js` for rules and style attributes) now sets such a shorthand again as a whole, putting back the longhands set apart from it (`page-box`; unit: `page-css`).
+- A body with a gradient background was drawn wrong in the box (Chromium: a step at the box's width and a band along its bottom). With nothing on `<html>`, `<body>`'s background is the canvas's, laid out at `<html>`'s size from the window's corner. `content/page/box.js` (`checkBackground`, the CSS from `shared/page-box.js` `bodyBackgroundCss`) now gives `<html>` a background with no weight when `<body>`'s has an image, so it stays on `<body>`, which fills the box; the canvas keeps `<body>`'s color. WebKit drew the box right before but tiled the gradient outside it; a body with a transparent color now shows the default canvas there (`page-box`; unit: `page-css`; WebKit host: `body-background`).
 
 **Seen, not a bug:** with `storage.local` wiped but `storage.session` kept, the background links on its kept link and never asks the handler, so it says hello under a profile id of its own making. Safari wipes both at once (the extension loads again), so the test wipes both.
 

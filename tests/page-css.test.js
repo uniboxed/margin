@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksSize, declaredNames, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../extension/shared/page-css.js';
 import { readFileSync } from 'node:fs';
-import { FITTED_BODY, HOLD_ELEMENT, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
+import { FITTED_BODY, HOLD_ELEMENT, bodyBackgroundCss, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
 
 test('a query about the window\'s size moves by the room the page doesn\'t have', () => {
   assert.equal(shiftQuery('(max-width: 900px)', 268, 16), '(max-width: 1168px)');
@@ -152,4 +152,12 @@ test('shiftStyle: vw in a font shorthand with a var() is moved too; a longhand s
   const plain = fakeStyle([['padding', '4vw']]);
   shiftStyle(plain);
   assert.equal(plain.getPropertyValue('padding-left'), shiftUnits('4vw'));
+});
+
+test('a body\'s background image is kept on <body>, which fills the box, not the window\'s canvas; a color alone is left to the canvas', () => {
+  assert.equal(bodyBackgroundCss({ backgroundImage: 'none', backgroundColor: 'rgb(0, 0, 0)' }), '');
+  const css = bodyBackgroundCss({ backgroundImage: 'linear-gradient(red, blue)', backgroundColor: 'rgb(1, 2, 3)' });
+  assert.match(css, /^@media screen \{ :where\(html\) \{/, 'no weight: a page\'s own rule on <html> wins');
+  assert.match(css, /background-color: rgb\(1, 2, 3\)/, 'the canvas keeps <body>\'s color');
+  assert.match(css, /background-image: linear-gradient\(transparent, transparent\)/, 'something on <html> stops it going to the canvas');
 });
