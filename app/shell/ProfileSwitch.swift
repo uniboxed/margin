@@ -47,6 +47,13 @@ protocol SwitchWorld: AnyObject {
     func inFront(_ profile: String, windowId: Int) -> Bool
     // Something to tell the person (ProfileSwitch.Event).
     func switchChanged(_ event: ProfileSwitch.Event)
+    // Asks the browser for a new window in `profile` itself (Safari's File › New Window menu, through
+    // Accessibility: SafariAX.swift), for a profile whose copy isn't running. False: it can't.
+    func openProfileWindow(_ profile: String) -> Bool
+}
+
+extension SwitchWorld {
+    func openProfileWindow(_ profile: String) -> Bool { false }
 }
 
 protocol SwitchClock {
@@ -186,8 +193,13 @@ final class ProfileSwitch {
         askDrafts()
         guard world.isLinked(to.profile) else {
             enter(.waitingForProfile, for: options.profileWait)
-            note("\(to.profile) isn't linked: waiting for one of its windows")
-            world.switchChanged(.needsProfile(to))
+            // Its copy starts with the window Margin asks Safari for; the switch goes on once it links.
+            if world.openProfileWindow(to.profile) {
+                note("\(to.profile) isn't linked: asked the browser for a new window of it, waiting for its copy")
+            } else {
+                note("\(to.profile) isn't linked: waiting for one of its windows")
+                world.switchChanged(.needsProfile(to))
+            }
             return poll()
         }
         if let w = ownWindow(to.profile) {

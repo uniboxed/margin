@@ -106,6 +106,32 @@ final class SafariAX: @unchecked Sendable {
         return out
     }
 
+    /// Safari's File › New Window › "New <name> Window" pressed (the menu Safari has for each profile), on the
+    /// Accessibility queue. `done(true)` on the main thread once pressed; false if the item isn't there.
+    func newWindow(pid: pid_t, profileName: String, done: @escaping @MainActor (Bool) -> Void) {
+        guard Self.trusted else { DispatchQueue.main.async { MainActor.assumeIsolated { done(false) } }; return }
+        queue.async {
+            func attr(_ e: AXUIElement, _ a: String) -> AnyObject? { var v: AnyObject?; return AXUIElementCopyAttributeValue(e, a as CFString, &v) == .success ? v : nil }
+            func kids(_ e: AXUIElement) -> [AXUIElement] { (attr(e, kAXChildrenAttribute) as? [AXUIElement]) ?? [] }
+            func title(_ e: AXUIElement) -> String { (attr(e, kAXTitleAttribute) as? String) ?? "" }
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, 1)
+            var pressed = false
+            if let bar = attr(app, kAXMenuBarAttribute) {
+                // (The menu's names are English in an English Safari; the File menu is the second in any language.)
+                let menus = kids(bar as! AXUIElement)
+                let file = menus.first { title($0) == "File" } ?? (menus.count > 1 ? menus[1] : nil)
+                let items = file.map { kids($0).flatMap(kids) } ?? []
+                let want = "New \(profileName) Window"
+                let sub = items.flatMap { kids($0).flatMap(kids) }
+                if let item = (sub + items).first(where: { title($0) == want }) {
+                    pressed = AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+                }
+            }
+            DispatchQueue.main.async { MainActor.assumeIsolated { done(pressed) } }
+        }
+    }
+
     /// The profile a window's title names: the named profile whose "<name> — " starts it, else the default
     /// profile's. `names`: profile id (as in a link, "s-…") → its name in Safari; `defaultId`: the default's id.
     static func profile(ofTitle title: String, names: [String: String], defaultId: String?) -> String? {

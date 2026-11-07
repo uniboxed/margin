@@ -359,9 +359,11 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         options.privateResolver = RealPrivateResolver()
         options.privateCallsDefaults = .standard
         // The handoff: off until its gates pass (HANDOFF.md §10.4), unless MarginHandoff is set for their runs.
-        options.handoff = UserDefaults.standard.bool(forKey: "MarginHandoff")
-        Diagnostics.note(options.handoff ? "handoff: on (MarginHandoff is set): profile switches hand off when the private calls allow"
-                         : "handoff: off until its gates pass (MarginHandoff isn't set): every profile switch is the close-based one")
+        // On by default since 2026-11-07 (Tirth: the switch to another profile without Safari's slide, its window
+        // parked); `defaults write io.tirth.margin MarginHandoff -bool NO` turns it off (the close-based switch).
+        options.handoff = UserDefaults.standard.object(forKey: "MarginHandoff") as? Bool ?? true
+        Diagnostics.note(options.handoff ? "handoff: on: profile switches hand off when the private calls allow"
+                         : "handoff: off (MarginHandoff is NO): every profile switch is the close-based one")
         options.devHooksOn = { DevHooks.appDefault() } // DEV-HOOK
         options.safariAX = true
         SafariAX.askOnce()

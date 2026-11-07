@@ -438,6 +438,20 @@ extension Shell: SwitchWorld {
 
     // ---- SwitchWorld ----
 
+    // A profile with no window (its copy not running): Safari's own menu opens one, through Accessibility. Its
+    // copy starts with it and links; the switch goes on then (ProfileSwitch waitingForProfile).
+    func openProfileWindow(_ profile: String) -> Bool {
+        guard options.safariAX, SafariAX.trusted, profile.hasPrefix("safari:"),
+              let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Safari").first?.processIdentifier,
+              let name = profilesOf("safari").browserNames[SwitchNotice.profileId(profile)]?.name, !name.isEmpty else { return false }
+        safariAX.newWindow(pid: pid, profileName: name) { [weak self] pressed in
+            guard let self else { return }
+            Diagnostics.note(pressed ? "asked Safari for a new window of \(profile) (File › New Window)" : "Safari's File › New Window has no item for \(profile): the person is told to open one")
+            if !pressed, let t = self.switcher.target, t.profile == profile { self.switchChanged(.needsProfile(t)) }
+        }
+        return true
+    }
+
     func isLinked(_ profile: String) -> Bool {
         guard let entry = links[profile] else { return false }
         return entry.connection.isUp && entry.mirror.hasState
