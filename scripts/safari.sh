@@ -127,6 +127,8 @@ register_app() {
 safari_running() { pgrep -x Safari >/dev/null 2>&1; }
 # In the background, never hidden (-j): a hidden Margin.app's overlays never show.
 open_app() { open -g "$1" --args --background; }
+# Waiting for a browser to open (no shell until then): the login item's way.
+open_watch() { open -g "$1" --args --background --watch; }
 swap_app "$DEST.new" "$DEST"
 [ "$REGISTERED" = true ] || echo "warning: the system doesn't list Margin's extension; open $DEST once so Safari sees it." >&2
 # Only this copy: one Xcode left elsewhere (its own build folder) would be a

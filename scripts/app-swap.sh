@@ -102,6 +102,9 @@ swap_app() {
       tries=$((tries - 1))
     done
     open_app "$dest" && echo "started the new Margin.app in the background"
+  elif [ $# -gt 0 ] && command -v open_watch >/dev/null 2>&1; then
+    # Running with no Safari (waiting for a browser to open, as a login item): the new one waits the same way.
+    open_watch "$dest" && echo "started the new Margin.app, waiting for a browser to open"
   fi
   return 0
 }
