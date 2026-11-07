@@ -8,7 +8,7 @@
 // - JS tests (tests/*.test.js, tests/security/, tests/theme/): those whose imports reach a
 //   changed file, followed through every relative import; tests that name a changed non-JS
 //   file (a theme's HTML or CSS, the new-tab page); every theme test when a theme changed;
-//   and any changed test file itself (theme tests four at a time: 35 s for all of them, not 95);
+//   and any changed test file itself (theme tests three at a time: four made the drag tests flaky);
 // - Swift (app/shell, app/safari, tools/app-tests): the app's unit checks (compiled on every
 //   core; the randomized runs cut to 50 and 80 from 300 and 1000; the gate runs them all);
 // - e2e test files that changed, run on their own (source changes leave e2e to the gate);
@@ -150,7 +150,7 @@ const quiet = ['--test-reporter=dot'];
 let ok = step('build', node, [join(ROOT, 'scripts/build.js')]);
 ok = step('type check', node, [join(ROOT, 'node_modules/typescript/bin/tsc'), '-p', '.']) && ok;
 if (plan.unit.length) ok = step(`unit (${plan.unit.length} files)`, node, ['--test', ...quiet, ...plan.unit.map(rel)]) && ok;
-if (plan.theme.length) ok = step(`theme (${plan.theme.length} files)`, node, ['--test', ...quiet, '--test-concurrency=4', ...plan.theme.map(rel)]) && ok;
+if (plan.theme.length) ok = step(`theme (${plan.theme.length} files)`, node, ['--test', ...quiet, '--test-concurrency=3', ...plan.theme.map(rel)]) && ok;
 if (plan.swift) ok = step('Swift unit checks', join(ROOT, 'tools/app-tests/run.sh'), ['unit'], { WINDOW_RUNS: process.env.WINDOW_RUNS ?? '50', VISIBLE_RUNS: process.env.VISIBLE_RUNS ?? '80' }) && ok;
 if (plan.e2e.length) ok = step(`e2e (${plan.e2e.length} changed files)`, node, ['--test', ...quiet, '--test-concurrency=2', ...plan.e2e.map(rel)]) && ok;
 
