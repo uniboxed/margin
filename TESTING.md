@@ -12,7 +12,7 @@ npm run test:e2e    # builds dist/, then the e2e suite: headless Chromium and We
 **The quick tier** (`scripts/quick-test.mjs`) compares the branch with `main` (its commits since it left `main`, plus anything staged, unstaged or untracked). It always runs the build and the type check. It runs:
 - the JS tests whose imports reach a changed file, followed through every relative import;
 - the tests that name a changed theme, page or fixture file;
-- every theme test when a theme or the UI runtime changed (three at a time);
+- every theme test when a theme or the UI runtime changed (two at a time: more made the drag tests flaky);
 - the Swift unit checks when `app/shell`, `app/safari` or `tools/app-tests` changed (compiled on every core; the randomized runs cut to 50 and 80);
 - any e2e file that itself changed.
 

@@ -449,6 +449,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         entry.mirror.begin(connection.hello)
         links[connection.key] = entry
         data.linkUp(connection)
+        // A switch on its way to this profile: given the leaving window's settings as soon as its copy is here.
+        if switcher.busy, switcher.target?.profile == connection.key {
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.carrySettings(to: connection.key) } }
+        }
         if let timer = reconnecting.removeValue(forKey: connection.key) {
             timer.invalidate()
             if let kept = keptForReconnect.removeValue(forKey: connection.key) { (entry.theme, entry.themeId, entry.keys) = (kept.theme, kept.themeId, kept.keys) }

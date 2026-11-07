@@ -548,7 +548,7 @@ extension Shell: SwitchWorld {
     func switchChanged(_ event: ProfileSwitch.Event) {
         let words: String?
         switch event {
-        case .started: words = nil
+        case .started(let t): words = nil; carrySettings(to: t.profile)
         case .done(let t): words = nil; openedFor[t.profile] = nil
         case .needsProfile(let t): words = "\(profileName(t.profile)) isn’t open in Safari. Open one of its windows (File › New Window › New \(profileName(t.profile)) Window) and Margin shows the space there."
         case .failed(let t, let why):
@@ -577,6 +577,24 @@ extension Shell: SwitchWorld {
             if words != nil { Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { [weak self] _ in MainActor.assumeIsolated { if self?.switcher.busy == false { self?.pushAcross() } } } }
         }
         burst("profile switch")
+    }
+
+    // The window a switch leaves, as it looks, given to the profile it goes to before its window shows (Tirth,
+    // 2026-11-07: "it should match all the configuration of the previous window like a snapshot"): Keep open,
+    // the frame when the sidebar is hidden, the theme and the themes' settings (the sidebar's width). Written to
+    // that profile's settings by its copy (`updateSettings`), only when they differ; again when its copy links
+    // during the switch (a profile whose window Margin just opened).
+    static let carriedSettings = ["sidebarPinnedOpen", "frameWhenHidden", "theme", "themes"]
+    func carrySettings(to link: String) {
+        guard let from = switcher.from?.profile, from != link, let a = links[from], let b = links[link], b.connection.isUp,
+              let settings = a.mirror.value("settings") as? JSONObject else { return }
+        var patch: JSONObject = [:]
+        for k in Self.carriedSettings { if let v = settings[k] { patch[k] = v } }
+        guard !patch.isEmpty else { return }
+        if let current = b.mirror.value("settings") as? JSONObject,
+           NSDictionary(dictionary: current.filter { patch[$0.key] != nil }).isEqual(to: patch) { return }
+        Diagnostics.note("profile switch: \(link) given the sidebar and theme settings of the window it comes from (\(from))")
+        Task { _ = try? await b.connection.request(type: "updateSettings", payload: ["patch": patch], windowId: nil) }
     }
 
     private func profileName(_ link: String) -> String {
