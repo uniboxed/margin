@@ -351,6 +351,9 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     /// frame on a display).
     /// `toolbar`: the window's full-screen toolbar (WindowMatcher.fullScreenToolbar): the overlay goes
     /// just below it, so it still slides over Margin as over the page.
+    /// When it was last shown (put away and shown again: a new time). The own-Space check judges only an overlay
+    /// shown since before it was asked (Shell.checkOwnSpace).
+    private(set) var shownAt: Double = .infinity
     @discardableResult
     func show(over number: Int, frame: CGRect, toolbar: Int? = nil, why: String = "its window is on screen") -> Bool {
         guard isReady, crashBudgetOK else { return false }
@@ -371,6 +374,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
         if ordered { orderInPlace() }
         if !isShown {
             isShown = true
+            shownAt = Diagnostics.now()
             Diagnostics.note("overlay shown over \(key) (window \(number)): \(why)")
         }
         placeCatcher(restack: ordered)

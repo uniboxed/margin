@@ -764,11 +764,17 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private(set) var ownSpaceFellBack = false
     private let ownSpaceWanted: Bool // options.overlay.ownSpace as the shell started
     private var ownSpaceChecks: Bool { !options.harness || options.harnessOwnSpaceCheck }
+    // Only for an overlay just shown, and judged only if it's been shown since then: a check asked for an
+    // overlay that couldn't be shown yet (its page not drawn: every read while Safari opens) would otherwise
+    // judge it the moment it's shown, before macOS lists it on screen, and every overlay would join every Space
+    // for the rest of that run of Safari (Tirth's log 2026-11-07, at each launch: the sidebar then put away for
+    // every swipe and back 1.5-5 s later).
     private func checkOwnSpace(_ overlay: OverlayController, browser number: Int) {
-        guard !ownSpaceFellBack, ownSpaceChecks else { return }
+        guard !ownSpaceFellBack, ownSpaceChecks, overlay.isShown else { return }
+        let asked = Diagnostics.now()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak overlay] in
             MainActor.assumeIsolated {
-                guard let self, let overlay, overlay.isShown, overlay.aboveWindow == number, overlay.ownSpace else { return }
+                guard let self, let overlay, overlay.isShown, overlay.shownAt <= asked, overlay.aboveWindow == number, overlay.ownSpace else { return }
                 let list = self.windowSource.windows(of: [ProcessInfo.processInfo.processIdentifier, overlay.browserPid])
                 let mine = list.first { $0.number == overlay.windowNumber }
                 let browser = list.first { $0.number == number }
@@ -810,18 +816,30 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         Diagnostics.note("\(overlay.key): its overlay (window \(overlay.windowNumber)) reads on screen while its window \(number) is listed off screen (\(since)): put away; looked at again in \(Int(Shell.ownSpaceWait * 1000)) ms before overlays join every Space")
     }
 
+    /// Why a suspicion (an overlay read on screen while its window `number` wasn't) is dropped, or nil to keep it.
+    static func ownSpaceCleared(number: Int, linkUp: Bool, parkedOrMoving: Bool, inCopy: Bool, bound: Int?, spaceChanged: Bool,
+                                shownAgain: Bool, server: ServerWindow?) -> String? {
+        if !linkUp { return "its link went down" }
+        if parkedOrMoving { return "its window is parked, or a switch is moving it" }
+        if !inCopy { return "its copy no longer has the window (closed)" }
+        if bound != number { return "it's no longer bound to window \(number)" }
+        if spaceChanged { return "the active Space changed since" }
+        // Put away as suspect and shown again since: placed in its window's Space ahead of a visit (a placement of
+        // its own, with its own check: Overlay.aheadPending), or on screen with its window. The old read says
+        // nothing of where it is now.
+        if shownAgain { return "its overlay was placed again since" }
+        guard let server else { return "window \(number) left the window server's list (closed, or the browser quit)" }
+        return server.onScreen ? "window \(number) is on screen again" : nil
+    }
+
     // Each suspicion, on a read that told something: dropped, kept for a later read, or the fallback.
     private func judgeOwnSpace(_ ext: [WindowKey: (ExtWindow, Link)], _ byNumber: [Int: ServerWindow]) {
         let now = Diagnostics.now()
         for (key, s) in ownSpaceSuspects.sorted(by: { $0.key < $1.key }) {
-            let cleared: String?
-            if links[key.link] == nil { cleared = "its link went down" }
-            else if isParkedKey(key) || inSwitch(key) { cleared = "its window is parked, or a switch is moving it" }
-            else if ext[key] == nil { cleared = "its copy no longer has the window (closed)" }
-            else if matches[key] != s.number { cleared = "it's no longer bound to window \(s.number)" }
-            else if spaceChangedAt > s.at { cleared = "the active Space changed since" }
-            else if let server = byNumber[s.number] { cleared = server.onScreen ? "window \(s.number) is on screen again" : nil }
-            else { cleared = "window \(s.number) left the window server's list (closed, or the browser quit)" }
+            let o = overlays[key]
+            let cleared = Shell.ownSpaceCleared(number: s.number, linkUp: links[key.link] != nil, parkedOrMoving: isParkedKey(key) || inSwitch(key),
+                                                inCopy: ext[key] != nil, bound: matches[key], spaceChanged: spaceChangedAt > s.at,
+                                                shownAgain: o.map { $0.isShown && $0.shownAt > s.at } ?? false, server: byNumber[s.number])
             if let cleared {
                 ownSpaceSuspects[key] = nil
                 Diagnostics.note("\(key): no own-Space fallback: \(cleared)")
@@ -1140,7 +1158,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             if showed, !wasShownAnywhere || overlay.aheadPending { overlay.arrived(); appeared(overlay, w, list: list) }
             if showed { deliverHeldPalette(overlay) }
-            if !wasShown, overlay.ownSpace, !inSwitch(key) { checkOwnSpace(overlay, browser: number) }
+            if showed, !wasShown, overlay.ownSpace, !inSwitch(key) { checkOwnSpace(overlay, browser: number) }
             if let layout = overlay.layout { layoutChanged(overlay, layout) }
         }
         releaseHeldWindows()

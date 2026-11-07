@@ -1657,6 +1657,21 @@ extension Tests {
     }
   }
 
+  // The own-Space suspicion (Shell.judgeOwnSpace): what drops it before every overlay joins every Space.
+  static func ownSpaceJudge() {
+    let off = ServerWindow(number: 5, pid: 1, bounds: CGRect(x: 0, y: 0, width: 100, height: 100), onScreen: false)
+    func judge(shownAgain: Bool = false, server: ServerWindow? = off, spaceChanged: Bool = false) -> String? {
+      Shell.ownSpaceCleared(number: 5, linkUp: true, parkedOrMoving: false, inCopy: true, bound: 5, spaceChanged: spaceChanged, shownAgain: shownAgain, server: server)
+    }
+    check("its window still listed off screen, nothing else changed: kept (the fallback after 0.3 s)", judge() == nil)
+    check("its window on screen again, gone, or the Space changed: dropped", judge(server: ServerWindow(number: 5, pid: 1, bounds: .zero, onScreen: true)) != nil
+          && judge(server: nil) != nil && judge(spaceChanged: true) != nil)
+    // Tirth's log 2026-11-07 10:55:41: put away as suspect, placed in its window's Space ahead of a visit the next read
+    // (correctly), and 314 ms later the old suspicion made every overlay join every Space.
+    check("its overlay placed again since (in its window's Space, ahead of a visit): dropped, no fallback for every overlay",
+          judge(shownAgain: true) != nil, "\(judge(shownAgain: true) ?? "kept")")
+  }
+
   static func axBinding() {
     let A = "safari:s-default", B = "safari:s-b", C = "safari:s-c"
     let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)

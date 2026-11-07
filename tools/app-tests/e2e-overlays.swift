@@ -40,7 +40,16 @@ func overlaysScenario() async {
   let shell = Shell(link: link, windows: windows, apps: apps, hotKeys: FakeKeys(), options: options)
   windows.shell = shell
   var stuck = false
-  windows.overlayOnScreen = { w in w.onScreen || stuck }
+  // macOS lists an overlay just ordered in as on screen a moment later, not at once (`lag`: 150 ms after it's
+  // first listed over its window; Tirth's log 2026-11-07 10:44:49, 10:52:17: the check judged it 5 ms after).
+  var lag = false
+  var firstListed: [Int: Date] = [:]
+  windows.overlayOnScreen = { w in
+    let first = firstListed[w.number] ?? Date()
+    firstListed[w.number] = first
+    if lag, Date().timeIntervalSince(first) < 0.15 { return false }
+    return w.onScreen || stuck
+  }
   shell.start()
   guard await until(3, { link.port != nil }) else { return check("listening", false) }
   fake.tell(["do": "wantLink"])
@@ -208,9 +217,16 @@ func overlaysScenario() async {
   check("the fallback ends with them", !shell.ownSpaceFellBack && said.contains("no link and no overlay left: overlays join only their window's Space again"))
   (w1, w2) = newWindows()
   place([(w1, r1, true)])
+  // (Its page drawn only after several reads, as when Safari opens: each read before tried to show it.)
+  lag = true
   check("Safari open again", await connect("D", copy: "copy-4", [win(1, r1, focused: true)]))
   apps.bringToFront(browserPid)
   check("its overlay shown, in its window's own Space", await until(15, { shell.overlays[k1]?.isShown == true }) && shell.overlays[k1]?.panel.collectionBehavior == OverlayController.ownSpaceBehavior)
+  try? await Task.sleep(nanoseconds: 600_000_000)
+  check("a check asked before it could be shown doesn't judge it the moment it's shown: no fallback (macOS lists it on screen 150 ms later)",
+        !shell.ownSpaceFellBack && shell.overlays[k1]?.isShown == true && shell.overlays[k1]?.panel.collectionBehavior == OverlayController.ownSpaceBehavior,
+        "fell back: \(shell.ownSpaceFellBack)")
+  lag = false
 
   var stopped = false
   shell.stop { stopped = true }
