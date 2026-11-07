@@ -110,11 +110,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .cmp input { accent-color: var(--violet); }
 .exp { background: var(--violet) !important; color: #fff !important; border-color: var(--violet) !important; }
 .tools img { border-radius: 50%; margin-left: 4px; }
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .kpi, .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(20, 20, 43, .03); }
 .kpi span { color: var(--dim); font-weight: 500; }
 .kpi b { display: block; font-size: 24px; color: var(--ink); letter-spacing: -.02em; margin: 4px 0 6px; }
-.kr { display: flex; justify-content: space-between; align-items: end; }
+.kr { display: flex; justify-content: space-between; align-items: end; gap: 10px; }
+.kr svg { flex: 0 1 120px; min-width: 0; }
 .kr em { font-style: normal; font-weight: 700; font-size: 13px; padding: 2px 8px; border-radius: 999px; }
 .up { color: #148a6c; background: #e2f7f1; }
 .down { color: #d13c3c; background: #ffeaea; }
@@ -150,7 +151,7 @@ td:first-child { position: relative; padding-left: 8px; }
 .pbar { position: absolute; left: 0; top: 3px; bottom: 3px; width: calc(var(--f) * 92%); background: #f0eeff; border-radius: 6px; }
 td span { position: relative; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
 @media (max-width: 1280px) { .row.three { grid-template-columns: 1fr 1fr; } .row.three .card:first-child { grid-column: span 2; } }
-@media (max-width: 1000px) { .kpis { grid-template-columns: repeat(2, 1fr); } .row, .row.three { grid-template-columns: 1fr; } .row.three .card:first-child { grid-column: auto; } }
+@media (max-width: 1000px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .row, .row.three { grid-template-columns: 1fr; } .row.three .card:first-child { grid-column: auto; } }
 @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } .nav { display: none; } }
 `;
 

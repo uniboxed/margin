@@ -99,10 +99,16 @@ test('a not-open tab opens again at its address when clicked, and the draft is s
   await ui.click(tabRow(row.key));
   const tab = await m.until(async () => { const f = await m.front(); return f?.url === m.url('shop.test', '/p/canvas-tote') && f.status === 'complete' && f; }, { timeout: 8000, what: 'the product open again, in front' });
   await m.until(async () => (await sidebar(ui)).tabs.find((r) => r.id === tab.id && r.active && !r.notOpen), { what: 'its row open and highlighted' });
-  // One row for it, not two (its title comes with the page).
-  await m.until(async () => (await rowsByTitle(/^Canvas Tote/)).length === 1, { what: 'one row titled Canvas Tote' });
-  await new Promise((r) => setTimeout(r, 300));
-  assert.equal((await rowsByTitle(/^Canvas Tote/)).length, 1, 'one row for it, not two');
+  // One row for it, not two: the kept row gave way to the open tab's (whatever title the tab shows
+  // while it loads), for good.
+  await m.until(async () => (await m.tabs()).find((x) => x.id === tab.id)?.title.startsWith('Canvas Tote'), { what: 'its title back' });
+  await m.until(async () => { const r = await rowsByTitle(/^Canvas Tote/); return r.length === 1 && r[0].id === tab.id; }, { what: 'one row titled Canvas Tote, the open tab\'s' });
+  for (let i = 0; i < 6; i++) {
+    const rows = (await sidebar(ui)).tabs;
+    assert.ok(!rows.some((r) => r.key === row.key), 'the kept row gone');
+    assert.equal(rows.filter((r) => r.id === tab.id).length, 1, 'one row for the open tab');
+    await new Promise((r) => setTimeout(r, 50));
+  }
   assert.equal((await m.state()).tabSpace[tab.id], 'sp-home', 'in its space');
   await m.shoot(t, 'woken');
 

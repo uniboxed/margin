@@ -1,8 +1,9 @@
 // Spaces in the overlay: chips switch the window's space and its tabs, new
 // tabs join the space in front, the menus and the editor make, rename,
-// colour and delete spaces, a tab moves to another space, each window has
-// its own space, and another profile's chip asks the app. (The old
-// spaces.test.js drove the in-page sidebar.)
+// colour and delete spaces (a deleted space's tabs go to the first), a tab
+// moves to another space, each window has its own space, and another
+// profile's chip asks the app. (The old spaces.test.js drove the in-page
+// sidebar.)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin } from './harness/margin.js';
@@ -89,6 +90,13 @@ test('a space made from +, renamed in place, coloured in the editor, and deleted
   await m.until(async () => (await m.state()).spaces.find((s) => s.id === made.id)?.name === 'Weekend reads', { what: 'renamed in place' });
   await m.shoot(t, 'renamed');
 
+  // A page opened now is the new space's: deleting the space moves it to the first space.
+  const windowId = m.shell.frontWindowId();
+  await m.open('focus.test', '/');
+  const timer = await frontId();
+  await m.until(async () => (await m.state()).tabSpace[timer] === made.id, { what: 'the timer in the new space' });
+  await m.until(async () => (await view()).tabs.some((r) => r.id === timer), { what: 'its row in the new space' });
+
   // Delete: the first press asks, the second deletes.
   await ui.click(chip(made.id), { button: 'right' });
   await m.until(async () => (await view()).menu.includes('Delete Space'), { what: 'the space\'s menu' });
@@ -98,6 +106,11 @@ test('a space made from +, renamed in place, coloured in the editor, and deleted
   await menuItem(ui, 'Really delete?');
   await m.until(async () => !(await m.state()).spaces.some((s) => s.id === made.id), { what: 'deleted' });
   await m.until(async () => (await view()).chips.length === 3, { what: 'three chips again' });
+  assert.equal((await m.state()).tabSpace[timer], 'sp-home', 'its tab moved to the first space');
+  await m.until(async () => (await spaceOfWindow(windowId)) === 'sp-home' && (await view()).space === 'Home', { what: 'the window on Home' });
+  await m.until(async () => (await view()).tabs.some((r) => r.id === timer), { what: 'the tab\'s row drawn in Home' });
+  assert.ok((await m.tabs()).some((x) => x.id === timer), 'the tab still open');
+  await m.shoot(t, 'deleted');
 });
 
 test('each window has its own space', async (t) => {

@@ -53,3 +53,21 @@ export async function shoot(m, t, label, { windowId = m.shell.frontWindowId(), p
 
 /** The composer's page goes with its browser (margin.js closes WebKit). */
 export function forgetComposer() { composer = null; }
+
+/**
+ * The colours of a few points of a screenshot ([r, g, b] each), read in the
+ * composer's page (WebKit, outside Margin's browser).
+ * @param {any} m @param {Buffer} png @param {Array<[number, number]>} points
+ */
+export async function pixels(m, png, points) {
+  composer ??= await m.webkit.newContext({ viewport: { width: 1440, height: 900 } }).then((c) => c.newPage());
+  return composer.evaluate(async ([b64, at]) => {
+    const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = `data:image/png;base64,${b64}`; });
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    return at.map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]);
+  }, [png.toString('base64'), points]);
+}

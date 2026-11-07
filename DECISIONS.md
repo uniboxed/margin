@@ -2852,16 +2852,30 @@ On `test/e2e-rewrite` (from `feat/margin-app`). Tirth asked for the e2e suite to
 
 **The old suite.** `enhancements`, `loader`, `platform`, `scroll` and `smoke` went with `helpers.js`. Their tests are in `scroll`, `navigation`, `loading` and `chrome-build`. One was dropped: upgrading to the Safari build moves the ⌃⌘ shortcut defaults. `tests/model.test.js` covers it, and stopping Chromium's worker tests nothing Safari does.
 
-**Bugs found, kept as `todo`** (six in all; the first four are the first half's, noted in their files):
+**Bugs found, kept as `todo`** (nine in all; the first four are the first half's, noted in their files):
 
 - `newtab.html#launcher` gets no launcher, and the page says "Margin.app isn't running" while linked (`archive`, `newtab`).
 - Linked, the new-tab page's hidden notice is drawn: `main { display: grid }` beats `[hidden]` (`newtab`).
 - A tab open before the app's set came in keeps the default space the set removed, and no row shows it (`tabs`).
 - New: `vw` inside a `font` shorthand that also has a `var()` isn't moved to the box. The docs' `h1` stays 44 px in a 1172 px box (3.2vw of it is 37.5 px). `content/page/sheets.js` walks a rule's longhands, which read empty while a `var()` is pending, so `shiftUnits` never sees it (`page-box`).
 - New: the iCloud Tabs folder pressed twice before the app's word comes back stays closed. It's drawn closed at once (the runtime's pending settings), but the next press's request is made from the stored state (`ui/runtime.js` dispatch reads `host.getState()`, not `viewState`), which still says open: it asks to close again. The same code serves a device's fold and Keep open. Seen once under load, then held in a test by keeping the app's word back between the presses (`cloud-tabs`).
+- New, from review: a body with a gradient background is drawn wrong in the box. The root's background stays tiled from the window's origin at the box's size (1172 × 884), not moved with the root. There's a hard step at x 1172 and a band along the bottom (the timer and the podcast). Both pages look right on their own. The fix is in `content/page/box.js`: give the root background the box's offset, or paint it on the moved root (`page-box`).
+- New, from review: Arcadia draws a short notice one word per line. `.notice { width: min-content }` shrinks it to its longest word, so "That tab is no longer open." is a 58 px column over the space's name. `width: max-content` with the existing `max-width` fixes it (`themes`). For Phase 6.
+- New, from review: Neo-brutalism's address field shows the extension's id over Margin's own new-tab page (`tab.host` of the page's address). In Safari it would be the extension's UUID. It should be empty or say New Tab (`themes`). For Phase 6. The same host gives a start page kept as a row its letter icon (a "J" from the id, seen in `spaces` after a delete).
 
 **Seen, not a bug:** with `storage.local` wiped but `storage.session` kept, the background links on its kept link and never asks the handler, so it says hello under a profile id of its own making. Safari wipes both at once (the extension loads again), so the test wipes both.
 
+**Review fixes** (the suite only; no product change):
+
+- Every file now fails on a leak, an overlay load from the web or an overlay error: `m.close()` checks all three. Before, four files checked `m.leaks` and three the overlay.
+- "A switch by hand starts a new chain" presses inside the chain's 1.5 s, so it fails without the reset. The new-tab page's next-tab key has a test.
+- Checks that only read the stand-in shell now read the copy's stored link state (`appLink`: off, nothing drawn; a window drawn).
+- Deleting a space deletes one with a tab: the tab and the window go to the first space.
+- The site: the dashboard's KPI cards stay in their columns (the site test checks no grid item spills); the shop's filters are all off, so the grid matches them.
+- Pictures: the notice is waited out before the next theme's, and the peek and wide sidebar are taken after their transitions.
+- Sleep: "one row, not two" no longer counts rows by title after a fixed pause (it saw 0 once under load).
+- Start on the new-tab page waits for the copy's link to start before the press. Once, under load, the press came first: the page said "Margin can't reach Margin.app from here" (`askNow` is false until the copy owns the state), then "didn't answer, try again" at once. A second press works. Worth a look later: the page could wait for the link instead.
+
 **Not covered here:** the window server, Spaces, pass-through and hot keys; WebKit's extension engine; the app's files and its Swift link. `npm run test:app` and `npm run test:webkit` have them.
 
-**Time.** The whole suite: 129 and 131 s in two runs on Tirth's Mac, the build included (target: under 4 minutes). 119 tests: 113 pass, 6 `todo`, none skipped.
+**Time.** The whole suite: 129 and 131 s in two runs on Tirth's Mac, the build included (target: under 4 minutes). 119 tests: 113 pass, 6 `todo`, none skipped. After the review: 123 tests, 114 pass, 9 `todo`, none skipped; 132 s in each of three runs in a row (138 to 205 s while the Mac was busy with other work, load 15 to 44).

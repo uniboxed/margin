@@ -10,7 +10,9 @@
 //
 // Nothing leaves the Mac: `.test` hosts go to the site, every other host
 // fails to resolve (and is recorded: `m.leaks`), search engines' addresses
-// are answered by the site's local results page.
+// are answered by the site's local results page. `m.close()` (every file's
+// `after`) fails the file on any leak, any overlay load from the web
+// (`shell.blocked`) and any overlay error (`shell.pageErrors`).
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,7 +24,7 @@ import { testBuild } from './build.js';
 import { startRelay } from './relay.js';
 import { startShell } from './shell.js';
 import { seedSet } from './seed.js';
-import { shoot, forgetComposer } from './shots.js';
+import { shoot, pixels, forgetComposer } from './shots.js';
 
 const require = createRequire(import.meta.url);
 const { chromium, webkit } = require('playwright');
@@ -189,11 +191,23 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
     fullscreen: (windowId) => goFullscreen(m, windowId),
     /** Screenshots for a person to look at: page.png, overlay.png, window.png. */
     shoot: (t, label, options = {}) => shoot(m, t, label, options),
+    /** The colours ([r, g, b]) of points of a screenshot. */
+    pixels: (png, points) => pixels(m, png, points),
     /** The app's set sent again (the seed, or another), as the app would after a change elsewhere. */
     reseed(next = seed) {
       shell.seed(seedSet(typeof next === 'function' ? next(site.url) : next), { now: true });
     },
+    /** What the guards caught so far: requests that left the test site, overlay loads from the web, overlay errors. */
+    problems() {
+      return [
+        ...leaks.map((u) => `a request left the test site: ${u}`),
+        ...shell.blocked.map((u) => `the overlay asked for something from the web: ${u}`),
+        ...shell.pageErrors.map((e) => `an error in the overlay of window ${e.windowId}: ${e.message}`),
+      ];
+    },
+    /** Closes everything, then fails the file (its `after` hook) if a guard caught anything. */
     async close() {
+      const problems = m.problems();
       await context.close().catch(() => {});
       await shell.close().catch(() => {});
       await wk.close().catch(() => {});
@@ -202,6 +216,7 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
       await overlayServer.close().catch(() => {});
       await site.close().catch(() => {});
       rmSync(root, { recursive: true, force: true });
+      if (problems.length) throw new Error(`${name}: the guards caught ${problems.length}:\n${problems.slice(0, 20).join('\n')}`);
     },
   };
 

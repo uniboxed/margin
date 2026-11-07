@@ -9,7 +9,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin } from './harness/margin.js';
 import { SPACES } from './harness/seed.js';
-import { pageBox, slot } from './harness/ui.js';
+import { pageBox, slot, settled } from './harness/ui.js';
 
 let m;
 let ui;
@@ -53,6 +53,38 @@ test('every site sits in the slot, laid out at the slot\'s width', async (t) => 
   await page.close();
 });
 
+// A body's gradient background (a full-height timer, a podcast's glow) is drawn for the whole box:
+// no step at the box's right edge or along its bottom. Each point: on the page's background only.
+const GRADIENTS = [
+  { host: 'focus.test', path: '/', row: 760, column: 700 },
+  { host: 'radio.test', path: '/', row: 95, column: 700 },
+];
+const step = (a, b) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+
+test('a body\'s gradient background fills the box, with no seam at its right edge or bottom', {
+  todo: 'content/page/box.js: the root background stays tiled from the window\'s origin at the box\'s size, not moved with the root (DECISIONS.md, the e2e suite\'s bugs found)',
+}, async (t) => {
+  const s = await slot(ui);
+  const page = await m.context.newPage();
+  const seams = [];
+  for (const { host, path, row, column } of GRADIENTS) {
+    await page.goto(m.url(host, path), { waitUntil: 'load' });
+    await boxIs(page, s, host);
+    const { width: w, height: h } = await pageBox(page);
+    assert.ok(s.bottom >= 6, `room below the box's height to look at (${s.bottom})`);
+    const png = await page.screenshot();
+    // Across the box's width, and two steps further right (the gradient's own change); the same down its height.
+    const [a, b, c, d, e, f] = await m.pixels(png, [[w - 6, row], [w + 6, row], [w + 18, row], [column, h - 18], [column, h - 6], [column, h + 4]]);
+    const across = { seam: step(a, b), gradient: step(b, c) };
+    const down = { seam: step(e, f), gradient: step(d, e) };
+    if (across.seam > across.gradient + 6) seams.push(`${host}: a step of ${across.seam} at x ${w} (the gradient ${across.gradient}): ${a} | ${b}`);
+    if (down.seam > down.gradient + 6) seams.push(`${host}: a step of ${down.seam} at y ${h} (the gradient ${down.gradient}): ${e} | ${f}`);
+    await m.shoot(t, host, { page });
+  }
+  await page.close();
+  assert.deepEqual(seams, [], 'no seam in the background');
+});
+
 test('?fp pages are in their box from their first frame: the streamed report, the dark portfolio, the travel page', async (t) => {
   const s = await slot(ui);
   for (const [host, path] of [['slow.test', '/report?fp&ms=1500'], ['noir.test', '/?fp'], ['harbor.test', '/?fp']]) {
@@ -82,6 +114,7 @@ test('Keep open off and on, and a wider sidebar, move the box live; a peek doesn
   await m.until(() => ui.locator('.keep-open[aria-pressed="false"]').isVisible(), { what: 'the sidebar out over the page' });
   assert.deepEqual(await slot(ui), hidden, 'the slot doesn\'t move for a peek');
   assert.deepEqual(sides(await pageBox(page)), hidden);
+  await settled(ui);
   await m.shoot(t, 'peek');
 
   // Keep open from the sidebar's own button: docked again, the box back beside it.
@@ -92,6 +125,7 @@ test('Keep open off and on, and a wider sidebar, move the box live; a peek doesn
   assert.equal((await setTheme({ sidebarWidth: 400 })).ok, true);
   const wide = await m.until(async () => { const x = await slot(ui); return x.left > open.left + 100 && x; }, { what: 'a wider sidebar' });
   await boxIs(page, wide, 'the docs beside the wider sidebar');
+  await settled(ui);
   await m.shoot(t, 'wide');
   await setTheme({ sidebarWidth: 260 });
   await boxIs(page, open, 'the docs, the width back');

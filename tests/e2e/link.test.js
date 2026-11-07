@@ -39,7 +39,7 @@ test('linking at start: hello, snapshot, theme, keys, the data set, and the over
 
   // drawn on before the first layout, and the layout is where the theme put the page.
   const windowId = shell.frontWindowId();
-  assert.ok(shell.drawnSent.some((d) => d.windowId === windowId && d.on), 'the copy was told the app draws over the window');
+  await m.until(async () => (await m.stored('appLink')).appLink?.drawn?.[windowId] === true, { what: 'the copy\'s word that the app draws over the window' });
   const layout = await m.until(() => shell.layoutsSent.findLast((l) => l.windowId === windowId), { what: 'a setLayout' });
   const s = await slot(ui);
   assert.deepEqual(layout.insets, { left: s.left, top: s.top, right: s.right, bottom: s.bottom });
@@ -112,6 +112,8 @@ test('Start on Margin\'s new-tab page: the handler starts the app, and the copy 
     const page = await late.context.newPage();
     await page.goto(late.newTabUrl());
     await page.waitForSelector('#start:not([hidden])');
+    // The copy's link started (it owns the state): a press before that says it can't reach the app.
+    await late.until(() => late.relay.logs.some((l) => /^background started/.test(l.line)), { timeout: 10_000, what: 'the copy\'s link started' });
     late.shell.setRunning(false, { starting: true });
     const asked = late.relay.asks.length;
     await page.click('#start');

@@ -73,6 +73,14 @@ test('every page loads whole: its title, its pictures, no errors, nothing outsid
     const broken = await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src));
     assert.deepEqual(broken, [], `${s.host}${path} pictures`);
     assert.deepEqual(errors, [], `${s.host}${path} errors`);
+    // Nothing spills out of its grid column (a card pushed wide by its chart, say).
+    const spills = await page.evaluate(() => [...document.querySelectorAll('*')].filter((el) => getComputedStyle(el).display.endsWith('grid')).flatMap((grid) => {
+      const g = grid.getBoundingClientRect();
+      const right = g.right - parseFloat(getComputedStyle(grid).paddingRight);
+      return [...grid.children].filter((c) => getComputedStyle(c).position !== 'absolute' && getComputedStyle(c).position !== 'fixed' && c.getBoundingClientRect().width > 0 && c.getBoundingClientRect().right > right + 1)
+        .map((c) => `${grid.className || grid.localName} > ${c.className || c.localName}: ${Math.round(c.getBoundingClientRect().right)} > ${Math.round(right)}`);
+    }));
+    assert.deepEqual(spills, [], `${s.host}${path}: grid items inside their grid`);
     await page.close();
   }
   assert.deepEqual(leaks, []);

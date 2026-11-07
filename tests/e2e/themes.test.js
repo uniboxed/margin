@@ -10,7 +10,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin } from './harness/margin.js';
 import { SPACES, cloudTabsOf } from './harness/seed.js';
-import { pageBox, slot } from './harness/ui.js';
+import { pageBox, slot, settled } from './harness/ui.js';
 import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../../extension/themes/packages.js';
 
 let m;
@@ -41,6 +41,8 @@ const text = () => ui.evaluate(() => document.body.innerText.toLowerCase());
 const row = (title) => ui.locator('.tab:not(.pin)', { hasText: title }).first();
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const sides = (b) => b && { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+// What each theme drew, for the checks after the pictures (kept as todo while a theme has it wrong).
+const drawnBy = {};
 
 before(async () => {
   m = await startMargin({ name: 'themes', seed: SEED });
@@ -78,6 +80,8 @@ for (const id of ORDER) {
     // The launcher drawn by the new theme, with the archive.
     await m.until(async () => (await ui.locator('.launcher .archive-row').count()) >= 2, { what: 'the archive in the launcher' });
     assert.match(await ui.locator('.launcher').innerText(), /Sign in · Accounts/i);
+    // An address field, where the theme draws one, over Margin's own page.
+    drawnBy[id] = { address: await ui.evaluate(() => [...document.querySelectorAll('.address')].map((el) => el.textContent.trim()).join(' ')) };
     await shot('launcher', { page: nt });
     await nt.close();
 
@@ -131,21 +135,33 @@ for (const id of ORDER) {
       await m.until(async () => !(await m.tabs()).some((x) => x.id === noir), { what: 'the portfolio closed' });
       await row('NOIR').click();
       await m.until(async () => /no longer open/i.test(await ui.locator('.notice').innerText().catch(() => '')), { what: 'the notice' });
+      await settled(ui);
+      drawnBy[id].notice = await ui.evaluate(() => {
+        const text = document.querySelector('.notice .text') ?? document.querySelector('.notice');
+        const r = text.getBoundingClientRect();
+        const cs = getComputedStyle(text);
+        const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
+        return { width: Math.round(document.querySelector('.notice').getBoundingClientRect().width), lines: Math.round(r.height / line) };
+      });
       await shot('notice');
     } finally {
       m.shell.hold(false);
     }
     await m.until(async () => (await row('NOIR').count()) === 0, { what: 'the row gone' });
+    // The notice goes on its own (4 s): not in the next pictures.
+    await m.until(async () => (await ui.locator('.notice').count()) === 0, { timeout: 8000, interval: 100, what: 'the notice gone' });
 
     // ---- the hidden sidebar and its peek ---------------------------------------------------------
     m.shell.key('toggle-sidebar');
     const hidden = await m.until(() => { const l = m.shell.layoutsSent.findLast((x) => x.windowId === windowId); return l.insets.left < s.left && l.insets; }, { what: 'the hidden sidebar\'s layout' });
     await m.until(async () => JSON.stringify(sides(await pageBox(page))) === JSON.stringify(hidden), { what: 'the page widened' });
-    await pause(300);
+    await pause(100);
+    await settled(ui);
     await shot('hidden');
     m.shell.key('toggle-sidebar');
     await m.until(async () => (await text()).includes('inbox — post'), { what: 'the sidebar out over the page' });
-    await pause(300);
+    await pause(100);
+    await settled(ui);
     assert.deepEqual(sides(await pageBox(page)), hidden, 'the page stays where it is for a peek');
     await shot('peek');
     m.shell.key('toggle-sidebar');
@@ -156,3 +172,23 @@ for (const id of ORDER) {
     assert.deepEqual(m.shell.blocked, [], 'the overlay loaded nothing from the web');
   });
 }
+
+test('a short notice is drawn on a line or two, not a word per line', {
+  todo: 'Arcadia: .notice { width: min-content } draws "That tab is no longer open." one word per line (extension/themes/arcadia/theme.css)',
+}, () => {
+  for (const id of ORDER) {
+    const n = drawnBy[id]?.notice;
+    assert.ok(n, `${id}: its notice measured`);
+    assert.ok(n.lines <= 2 && n.width >= 160, `${id}: ${n.lines} lines, ${n.width} px wide`);
+  }
+});
+
+test('over Margin\'s new-tab page, an address field shows no extension id', {
+  todo: 'Neo-brutalism: the field shows the new-tab page\'s host, the extension\'s id (tab.host, extension/ui/view-model.js face)',
+}, () => {
+  for (const id of ORDER) {
+    const address = drawnBy[id]?.address;
+    assert.ok(address != null, `${id}: read`);
+    assert.ok(!address.includes(m.extensionId), `${id}: "${address}"`);
+  }
+});

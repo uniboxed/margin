@@ -30,6 +30,17 @@ export function sidebar(ui) {
   });
 }
 
+/**
+ * Waits for the overlay's transitions and animations that end (a sidebar
+ * sliding out, an edge moving) to finish, for a picture of where they land.
+ * @param {any} ui
+ */
+export function settled(ui) {
+  return ui.evaluate(() => Promise.all(document.getAnimations()
+    .filter((a) => Number.isFinite(Number(a.effect?.getComputedTiming().endTime)))
+    .map((a) => a.finished.catch(() => {}))).then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))));
+}
+
 /** The palette as drawn: its rows (id, title, section, selected), its field's text and focus. @param {any} ui */
 export function palette(ui) {
   return ui.evaluate(() => {

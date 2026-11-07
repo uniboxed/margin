@@ -44,6 +44,8 @@ await m.close();
 - `m.shell.setCloudTabs(…)`, `setAcross(…)`: the app's own data for its overlays.
 - `m.shell.requests`, `performs`, `layoutsSent`, `drawnSent`, `overlayLogs`, `received`: what happened, for checks.
 - `m.leaks`: requests to any host that isn't `.test` or `127.0.0.1`. Search engines are answered locally.
+- `m.close()` fails the file (its `after` hook) if `m.leaks`, `m.shell.blocked` or `m.shell.pageErrors` has anything. `m.problems()` lists them sooner.
+- `m.pixels(png, points)`: the colours of a screenshot's points. `settled(ui)` (`ui.js`) waits for the overlay's transitions, before a picture.
 - `m.worker`, `m.bg(fn)`: the background. They follow it when it stops and starts again.
 - `cloudTabsOf(m.url)` (`seed.js`): iCloud Tabs of made-up devices, with this site's pages.
 

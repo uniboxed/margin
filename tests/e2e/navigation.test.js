@@ -2,9 +2,10 @@
 // `navigate`, as Shortcuts.swift sends it), in the sidebar's order and
 // wrapping, fast presses chained, a switch by hand starting a new chain;
 // linked, the page's own keys and the extension's commands do nothing but
-// say so; Back, Forward and Reload from the overlay's buttons; addresses a
-// site changes itself (pushState, a hash) stored at once; and a slow
-// same-page navigation (the Navigation API) drawn as loading.
+// say so, and Margin's new-tab page takes the same keys; Back, Forward and
+// Reload from the overlay's buttons; addresses a site changes itself
+// (pushState, a hash) stored at once; and a slow same-page navigation (the
+// Navigation API) drawn as loading.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startMargin } from './harness/margin.js';
@@ -72,12 +73,44 @@ test('fast presses all count: each goes on from the one before, told to the over
 
 test('a switch by hand starts a new chain', async () => {
   const rows = await order();
-  await m.shell.navigate('next-tab');
-  await ui.click(tabRow(rows[0]));
-  await m.until(async () => (await frontId()) === rows[0], { what: 'the clicked row in front' });
-  await new Promise((r) => setTimeout(r, 1600));
-  await m.shell.navigate('next-tab');
-  await m.until(async () => (await frontId()) === rows[1], { what: 'one down from the clicked row' });
+  // A chain to the last row, then a click on the first and a press, all inside the chain's 1.5 s.
+  // Kept going, the chain would go on from the last row: wrapping to the first, the one clicked.
+  // A machine too slow to fit it in that time tries again (the chain ran out: nothing proved).
+  for (let attempt = 1; ; attempt++) {
+    await show(rows[2]);
+    await m.shell.navigate('next-tab');
+    const t0 = Date.now();
+    await m.shell.navigate('next-tab');
+    await m.until(async () => (await frontId()) === rows[4], { what: 'two rows down, the last row' });
+    await ui.click(tabRow(rows[0]));
+    // In front, and the copy's state says so (what the next press counts from).
+    await m.until(async () => (await frontId()) === rows[0] && (await m.state()).tabs[rows[0]]?.active === true, { what: 'the clicked row in front' });
+    await m.shell.navigate('next-tab');
+    const elapsed = Date.now() - t0;
+    if (elapsed >= 1400 && attempt < 3) continue;
+    assert.ok(elapsed < 1400, `pressed inside the chain's time (${elapsed} ms after the chain's last press)`);
+    await m.until(async () => (await frontId()) === rows[1], { what: 'one down from the clicked row' });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(await frontId(), rows[1], 'exactly one row down');
+    return;
+  }
+});
+
+test('Margin\'s new-tab page takes the same next-tab key as web pages', async () => {
+  const rows = await order();
+  const nt = await m.context.newPage();
+  await nt.goto(m.newTabUrl());
+  await m.until(async () => (await m.front())?.url.startsWith(m.newTabUrl()), { what: 'the new-tab page in front' });
+  // It has no row of its own (the sidebar's New Tab row is lit): the next tab is the first row.
+  await m.until(async () => (await view()).newTabActive, { what: 'the New Tab row lit' });
+  assert.deepEqual(await order(), rows, 'no row for the new-tab page');
+  const key = (await m.stored('settings')).settings.shortcuts.nextTab;
+  await nt.bringToFront();
+  await nt.keyboard.press(key.replace(/\bCtrl\b/, 'Control'));
+  await m.until(async () => (await frontId()) === rows[0], { what: 'the first row, from the new-tab page' });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(await frontId(), rows[0], 'exactly one');
+  await nt.close();
 });
 
 test('next and previous space, wrapping', async (t) => {

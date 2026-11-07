@@ -14,6 +14,8 @@ let m;
 let page;
 
 const sides = (b) => b && { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+// The copy's own word on the link, as its pages read it (background/link.js writePageState).
+const stored = async () => (await m.stored('appLink')).appLink ?? null;
 const hellos = () => m.shell.received.filter((x) => x.k === 'hello').length;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 // The new app says it's up (the handler's `appUp`): linked once the copy says hello to it.
@@ -72,7 +74,7 @@ test('the app gone past 6 s: no box, the new-tab page says so; a new app links a
   const after = Date.now() - t0;
   assert.ok(after >= 5500, `the box held through the grace (${after} ms)`);
   assert.equal(await page.evaluate(() => innerWidth), 1440, 'the page has the whole window');
-  await m.until(() => m.shell.overlays.size === 0, { what: 'the overlays closed' });
+  await m.until(async () => { const l = await stored(); return l?.state === 'off' && Object.keys(l.drawn ?? {}).length === 0; }, { what: 'the copy\'s link off, no window drawn' });
   const nt = await m.context.newPage();
   await nt.goto(m.newTabUrl());
   await nt.waitForSelector('#notice:not([hidden])');
@@ -95,7 +97,9 @@ test('the app\'s goodbye: off at once, no waiting out the grace', async () => {
   m.shell.bye('quitting');
   await m.until(async () => (await pageBox(page)) === null, { timeout: 3000, interval: 50, what: 'no box' });
   assert.ok(Date.now() - t0 < 2500, `off in ${Date.now() - t0} ms`);
-  assert.equal(m.shell.overlays.size, 0, 'the overlays closed at once');
+  const off = await stored();
+  assert.equal(off?.state, 'off', 'the copy\'s link off at once');
+  assert.deepEqual(off.drawn ?? {}, {}, 'no window drawn');
   await m.shell.restart();
   await appUp();
   await m.shell.overlay();

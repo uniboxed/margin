@@ -16,11 +16,11 @@ Everything below "The e2e suite" is **manual, in Safari on macOS**. The automate
 - **Margin:** the Safari build's profile with Chrome's manifest, in headless Chromium (`--headless=new`). Its real link client, page scripts and background.
 - **Margin.app:** a stand-in in Node (`tests/e2e/harness/shell.js`). The real overlay page (`dist/app/overlay.html`) runs in headless WebKit, one per full-screen window, served with the app's content policy.
 - **Safari's extension handler:** a native messaging relay (`harness/native-host.mjs`, `relay.js`). Its manifest sits in the test's own temporary profile.
-- **The pages:** a local site of 20 realistic pages on 17 made-up `.test` sites (`tests/e2e/site/`). Nothing leaves the Mac: other hosts don't resolve, search engines are answered locally, and a test fails on any request outside the site.
+- **The pages:** a local site of 20 realistic pages on 17 made-up `.test` sites (`tests/e2e/site/`). Nothing leaves the Mac: other hosts don't resolve, search engines are answered locally, and a file fails on any request outside the site, anything the overlay loads from the web, or any error in the overlay (`m.close()`).
 
 How to run it:
 
-- `npm run test:e2e`: the build, then every file, two at a time. About 2 minutes on Tirth's Mac (129 and 131 s in two runs on 2026-11-06, the build included).
+- `npm run test:e2e`: the build, then every file, two at a time. About 2 minutes on Tirth's Mac (132 s in three runs in a row on 2026-11-06, the build included).
 - One file: `node scripts/build.js && node --test tests/e2e/sleep.test.js`.
 - One test: add `--test-name-pattern="pulling down"`.
 - Headless only. Nothing shows on screen. Never run `playwright install`: Chromium and WebKit are installed.

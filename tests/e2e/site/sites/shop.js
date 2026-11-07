@@ -95,13 +95,13 @@ function grid() {
   </section>
   <div class="layout">
     <aside class="filters">
-      <div class="f-head"><b>${icon('filter', { size: 16 })} Filters</b><a href="/">Clear all</a></div>
-      <details open><summary>Category</summary>${cats.map((c, i) => `<label><input type="checkbox" ${i === 1 ? 'checked' : ''}> ${c}<span>${PRODUCTS.filter((p) => p.cat === c).length}</span></label>`).join('')}</details>
-      <details open><summary>Price</summary><div class="range"><input type="range" min="0" max="200" value="140" aria-label="Most"><div class="range-l"><span>$0</span><span>$140</span></div></div></details>
-      <details open><summary>Colour</summary><div class="sw">${swatches.map((c, i) => `<button style="--c:${c}" class="${i === 0 ? 'on' : ''}" aria-label="Colour ${i + 1}"></button>`).join('')}</div></details>
-      <details open><summary>Size</summary><div class="sizes">${['XS', 'S', 'M', 'L', 'XL', 'One size'].map((s, i) => `<button class="${i === 2 ? 'on' : ''}">${s}</button>`).join('')}</div></details>
+      <div class="f-head"><b>${icon('filter', { size: 16 })} Filters</b><a href="/" class="off" aria-disabled="true">Clear all</a></div>
+      <details open><summary>Category</summary>${cats.map((c, i) => `<label><input type="checkbox"> ${c}<span>${PRODUCTS.filter((p) => p.cat === c).length}</span></label>`).join('')}</details>
+      <details open><summary>Price</summary><div class="range"><input type="range" min="0" max="200" value="200" aria-label="Most"><div class="range-l"><span>$0</span><span>$200+</span></div></div></details>
+      <details open><summary>Colour</summary><div class="sw">${swatches.map((c, i) => `<button style="--c:${c}" aria-label="Colour ${i + 1}"></button>`).join('')}</div></details>
+      <details open><summary>Size</summary><div class="sizes">${['XS', 'S', 'M', 'L', 'XL', 'One size'].map((s) => `<button>${s}</button>`).join('')}</div></details>
       <details><summary>Material</summary>${['Cotton canvas', 'Stoneware', 'Recycled', 'Wool'].map((m) => `<label><input type="checkbox"> ${m}</label>`).join('')}</details>
-      <label class="toggle"><input type="checkbox" checked><i></i> In stock only</label>
+      <label class="toggle"><input type="checkbox"><i></i> In stock only</label>
     </aside>
     <section>
       <div class="bar"><span>${PRODUCTS.length} goods</span><label>Sort by <select><option>Featured</option><option>Newest</option><option>Price, low to high</option><option>Price, high to low</option></select></label></div>
@@ -188,6 +188,7 @@ img { display: block; max-width: 100%; }
 .f-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .f-head b { display: flex; gap: 6px; align-items: center; }
 .f-head a { color: var(--muted); text-decoration: underline; font-size: 13px; }
+.f-head a.off { opacity: .5; pointer-events: none; text-decoration: none; }
 details { border-bottom: 1px solid var(--line); padding: 12px 0; }
 summary { font-weight: 600; cursor: pointer; list-style: none; display: flex; justify-content: space-between; }
 summary::after { content: "+"; color: var(--muted); font-weight: 400; }
