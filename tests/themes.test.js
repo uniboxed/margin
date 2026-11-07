@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import * as M from '../extension/state/model.js';
+import { fromStorage, storedName } from '../extension/shared/stored.js';
+import { dataSetFromStorage } from '../extension/shared/data-set.js';
 import { THEMES, DEFAULT_THEME, themeFor } from '../extension/themes/index.js';
 import arcadia, { WIDTH, snapWidth, clampWidth, sidebarWidth } from '../extension/themes/arcadia/theme.js';
 
@@ -36,7 +38,10 @@ test('settings: the active theme and each theme\'s own settings', () => {
   assert.equal(s.settings.theme, 'arcadia');
   assert.deepEqual(s.settings.themes, { arcadia: { sidebarWidth: 260 } });
   assert.notEqual(s.settings.themes.arcadia, M.DEFAULT_SETTINGS.themes.arcadia, 'a copy, not the frozen default');
-  assert.equal(M.normalizeState({ settings: { theme: 'gone' } }).settings.theme, 'arcadia');
+  // Not a theme id at all: Arcadia. An id an imported theme may have is kept
+  // (the index isn't read here; what draws the theme falls back to Arcadia).
+  for (const bad of ['Gone', '../x', '', 42, null, 'x'.repeat(42), 'toString']) assert.equal(M.normalizeState({ settings: { theme: bad } }).settings.theme, 'arcadia', String(bad));
+  assert.equal(M.normalizeState({ settings: { theme: 'gone' } }).settings.theme, 'gone');
   // A theme this build doesn't have keeps its saved settings.
   assert.deepEqual(M.normalizeState({ settings: { themes: { other: { x: 1 } } } }).settings.themes.other, { x: 1 });
 });
@@ -86,4 +91,17 @@ test('Arcadia\'s package\'s earlier name (arcadia-2): its settings join Arcadia\
   assert.ok(!('sidebarWidth' in s), 'the top-level key is dropped');
   // Other themes' settings stay as saved.
   assert.deepEqual(norm({ themes: { 'arcadia-2': { sidebarWidth: 300 }, 'neo-brutalism': { sidebarWidth: '300px' } } }).themes['neo-brutalism'], { sidebarWidth: '300px' });
+});
+
+test('an imported theme chosen in Settings survives every fresh read of the state (a background started again, the converter)', () => {
+  // What storage.local holds after Use Theme: the app's index and settings.theme naming it.
+  const raw = { [storedName('settings')]: { ...M.defaultState().settings, theme: 'my-theme', themes: { 'my-theme': { accent: '#ff3366' } } }, userThemes: [{ id: 'my-theme', name: 'Mine', version: '1.0.0', author: '' }] };
+  const once = M.normalizeState(fromStorage(raw));
+  assert.equal(once.settings.theme, 'my-theme');
+  assert.deepEqual(once.settings.themes['my-theme'], { accent: '#ff3366' });
+  // Read again from what that read would write back.
+  const again = M.normalizeState(fromStorage({ ...raw, [storedName('settings')]: once.settings }));
+  assert.equal(again.settings.theme, 'my-theme', 'still the imported theme after a second start');
+  const set = dataSetFromStorage(raw, { now: 1 });
+  assert.equal(set.items.settings.theme.value, 'my-theme', 'the data set the app adopts keeps it too');
 });

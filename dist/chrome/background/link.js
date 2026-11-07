@@ -140,6 +140,8 @@ export const APP_REQUESTS = new Set([
   'openSpaceWindow', 'closeWindow', 'focusWindow', 'orderSpaces',
   // A palette the app couldn't show over a window (no overlay shown there): ⌘T's hand-off undone.
   'paletteDropped',
+  // Margin.app's index of the person's imported themes (app/shell/ShellThemes.swift).
+  'userThemes',
 ]);
 
 // A time as Margin.app's log shows its own (local, to the millisecond), for lines sent there.

@@ -1,20 +1,26 @@
-// The runtime's behaviors (extension/ui/behaviors/) with Neo-brutalism in
-// real engines, Playwright's WebKit and Chromium, headless, on a blank page
+// The runtime's behaviors (extension/ui/behaviors/) with Neo-brutalism and
+// Pixel (the built-in themes that share the sidebar's classes) in real engines, Playwright's WebKit and Chromium, headless, on a blank page
 // whose every network request is refused; real pointer, wheel and keyboard
 // input through Playwright. The host is the mock (ui/host.js): each test
 // checks the messages it received. `npm run test:theme`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { harnessScript, themeForPage } from './package.js';
+import { harnessScript, themeForPage, NEO, PIXEL } from './package.js';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const script = harnessScript();
-const pkg = themeForPage();
+// Each theme's sidebar: its root, the page's left inset docked, and its
+// width setting's default, bounds and a 50 px drag (snapped to its step).
+const THEMES = [
+  ['neo-brutalism', NEO, { root: '.nb', docked: 291, def: 256, min: 200, max: 400, dragged: 306 }],
+  ['pixel', PIXEL, { root: '.pixel', docked: 286, def: 252, min: 200, max: 360, dragged: 304 }],
+];
 const SCROLL = /^(sidebarScroll|setSidebarScroll)$/;
 
-for (const [name, engine] of ENGINES) {
-  test(`behaviors in ${name}`, async (t) => {
+for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
+  const gap = th.docked - th.def; // the page's left inset less the sidebar's width
+  test(`behaviors in ${themeId}, ${name}`, async (t) => {
     const browser = await engine.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
@@ -25,7 +31,7 @@ for (const [name, engine] of ENGINES) {
     await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
     await page.addScriptTag({ content: script });
     const ev = (fn, arg) => page.evaluate(fn, arg);
-    assert.equal((await ev((p) => T.loadBuiltin(p), pkg)).ok, true);
+    assert.equal((await ev(([p, i]) => T.loadBuiltin(p, i), [themeForPage(dir), themeId])).ok, true);
 
     const mount = (options = {}) => ev((o) => T.mountRuntime(o), options);
     const sent = async ({ scroll = false } = {}) => (await ev(() => T.rtSent())).filter(([type]) => scroll || !SCROLL.test(type));
@@ -156,40 +162,40 @@ for (const [name, engine] of ENGINES) {
       await t.test('resize: the handle drags the width within the theme\'s bounds, live layouts, saved as the theme\'s setting', async () => {
         await mount();
         await wait(() => T.rtLayoutsAll().length > 0);
-        assert.equal((await ev(() => T.rtLayoutsAll())).at(-1), 291);
+        assert.equal((await ev(() => T.rtLayoutsAll())).at(-1), th.docked);
         const handle = await rect('.resizer');
         await page.mouse.move(handle.x, handle.y);
         await page.mouse.down();
         await page.mouse.move(handle.x + 20, handle.y, { steps: 2 });
         await page.waitForTimeout(50);
-        assert.ok((await ev(() => T.rtClasses('.nb'))).includes('m-resizing'));
+        assert.ok((await ev((r) => T.rtClasses(r), th.root)).includes('m-resizing'));
         await page.mouse.move(handle.x + 50, handle.y, { steps: 3 });
-        await wait(() => T.rtLayoutsAll().at(-1) === 341);
+        await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked + 50);
         const live = await ev(() => T.rtLayoutsAll());
-        assert.ok(live.filter((l) => l > 291 && l < 341).length >= 1, `layouts while dragging: ${live.join(', ')}`);
+        assert.ok(live.filter((l) => l > th.docked && l < th.docked + 50).length >= 1, `layouts while dragging: ${live.join(', ')}`);
         assert.equal(await lastSent('updateThemeSettings'), null, 'nothing saved while dragging');
         await page.mouse.up();
-        assert.deepEqual(await lastSent('updateThemeSettings'), ['updateThemeSettings', { themeId: 'neo-brutalism', patch: { sidebarWidth: '306px' } }]);
-        assert.equal((await vm()).settings.sidebarWidth, '306px', 'shown before the state says so');
-        // Past the theme's maximum (layout.sidebarMax 400) and minimum (200).
+        assert.deepEqual(await lastSent('updateThemeSettings'), ['updateThemeSettings', { themeId, patch: { sidebarWidth: `${th.dragged}px` } }]);
+        assert.equal((await vm()).settings.sidebarWidth, `${th.dragged}px`, 'shown before the state says so');
+        // Past the theme's maximum (layout.sidebarMax) and minimum.
         const h2 = await rect('.resizer');
         await page.mouse.move(h2.x, h2.y);
         await page.mouse.down();
         await page.mouse.move(h2.x + 600, h2.y, { steps: 4 });
         await page.mouse.up();
-        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: '400px' });
-        await wait(() => T.rtLayoutsAll().at(-1) === 435);
+        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: `${th.max}px` });
+        await wait((x) => T.rtLayoutsAll().at(-1) === x, th.max + gap);
         const h3 = await rect('.resizer');
         await page.mouse.move(h3.x, h3.y);
         await page.mouse.down();
         await page.mouse.move(h3.x - 600, h3.y, { steps: 4 });
         await page.mouse.up();
-        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: '200px' });
+        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: `${th.min}px` });
         // Double-click: the default.
         const h4 = await rect('.resizer');
         await page.mouse.dblclick(h4.x, h4.y);
-        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: '256px' });
-        await wait(() => T.rtLayoutsAll().at(-1) === 291);
+        assert.deepEqual((await lastSent('updateThemeSettings'))[1].patch, { sidebarWidth: `${th.def}px` });
+        await wait((x) => T.rtLayoutsAll().at(-1) === x, th.docked);
       });
 
       await t.test('menus: a right-click opens the theme\'s menu part; items run checked actions, two-value ones too', async () => {

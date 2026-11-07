@@ -4,7 +4,7 @@
 // background can write only the keys that changed.
 import { platform, PROFILES } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
-import { PACKAGE_THEMES } from '../themes/packages.js';
+import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.js';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.js';
 /** @import { State } from '../../types/margin' */
 
@@ -124,7 +124,7 @@ function normalizeState(raw = {}) {
       neverSleepSites: siteList(raw.settings?.neverSleepSites ?? []),
       shortcuts: normalizeShortcuts(raw.settings, base.settings),
       shortcutDefaults: base.settings.shortcutDefaults,
-      theme: THEMES[raw.settings?.theme] || PACKAGE_THEMES.includes(raw.settings?.theme) ? raw.settings.theme : DEFAULT_THEME,
+      theme: themeId(raw.settings?.theme),
       themes: normalizeThemes(raw.settings),
     },
     ...withTabIds(raw.tabs, raw.keptTabs, raw.lostTabs),
@@ -488,6 +488,17 @@ const withoutKeys = (obj, keys) => Object.fromEntries(Object.entries(obj ?? {}).
 // sidebarWidth first, then the package's, then a top-level one from before
 // themes (theme.js settingsOf snaps it to 10 px, 160–500).
 const OLD_NAMES = Object.freeze({ arcadia: ['arcadium', 'arcadia-2'] });
+// The active theme's id as saved: a built-in's (an earlier name of one: that
+// one), or any id an imported theme may have. The index of those (storage.local
+// userThemes) isn't read here, and what draws the theme (Margin.app, the
+// overlay, Settings) falls back to Arcadia for one that isn't listed.
+/** @param {unknown} id */
+function themeId(id) {
+  if (typeof id !== 'string') return DEFAULT_THEME;
+  const renamed = Object.entries(OLD_NAMES).find(([, names]) => names.includes(id))?.[0];
+  if (renamed) return renamed;
+  return Object.hasOwn(THEMES, id) || PACKAGE_THEMES.includes(id) || USER_THEME_ID.test(id) ? id : DEFAULT_THEME;
+}
 const objectOr = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
 function normalizeThemes(rawSettings) {
   const saved = objectOr(rawSettings?.themes) ?? {};

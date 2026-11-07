@@ -658,6 +658,21 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] Change something (or `git pull`), `npm run safari` again: Margin stays on, and pages show the new build as you switch to them.
 - [ ] Run `npm run safari` again: right after it, Safari → Settings → Extensions still lists Margin, turned on (the script adds it again until the system lists it; it warns if it never does).
 
+## Margin 2 Phase 6: user themes (2026-11-06)
+
+Build with `npm run safari`. Use a copy of a theme to import, never one of Margin's folders as it is: `cp -R extension/themes/neo-brutalism ~/Desktop/my-neo`, then in `~/Desktop/my-neo/theme.json` set `"id": "my-neo"` and `"name": "My Neo"`, and delete `first-paint.css`. Check it first: `MARGIN_THEMES=~/Desktop/my-neo npm run test:security`. Make a `.margintheme` too: `npm run theme:pack ~/Desktop/my-neo ~/Desktop/my-neo.margintheme`.
+
+1. **Import a folder over full screen.** Safari in full screen, Margin's new-tab page, Settings › Import Theme…. The file panel shows over full-screen Safari, not on another Space. Choose `my-neo`. The window draws My Neo at once, with a dark bar at the top: "Previewing “My Neo” 1.0.0 by Margin. Use this theme?". The pages move to My Neo's box.
+2. **Cancel.** Press Cancel: the theme from before comes back. Import again and press Escape: the same. Import again and wait 30 s: it ends by itself and Settings says so.
+3. **Use it.** Import again, press Use Theme. Settings lists “My Neo” 1.0.0 with Remove, and the Theme menu shows My Neo. Other profiles keep their theme; their Settings list My Neo too.
+4. **The `.margintheme` file.** Change the version in `theme.json` to 1.1.0, pack it again, import the file: the bar says "Replaces version 1.0.0". Use it.
+5. **A broken theme.** Add an `evil.js` file to the folder and import it: nothing previews, Settings says it can't use it and names `evil.js`. Finder's Compress on the folder, renamed `.margintheme`: imports like the folder.
+6. **The theme's own settings.** With My Neo in use, Settings shows "Settings of “My Neo”" with its sidebar width. Change it: the sidebar follows.
+7. **Remove while in use.** Remove “My Neo” and confirm. The window goes back to Arcadia at once. A second profile that used it goes back to Arcadia too.
+8. **Fallback.** Hard to make by hand: skip unless a theme goes blank. A theme Margin can't draw shows Arcadia with "Margin couldn’t draw the theme you chose…" and Settings and OK.
+9. **After an import, resize the window** (or dock the Web Inspector): the pages still follow the box. (In the off-screen app tests an overlay that had the keyboard got no resize events; on screen it should.)
+10. Light and dark system modes: the bar looks the same in both.
+
 ## Margin 2: Safari reliability (2026-11-05)
 
 `npm run safari` from `fix/safari-reliability`, then `npm run log:app` (or `scripts/margin-log.sh 5`) in a terminal to watch Margin.app's log.

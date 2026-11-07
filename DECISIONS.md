@@ -2895,3 +2895,128 @@ On `test/e2e-rewrite` (from `feat/margin-app`). Tirth asked for the e2e suite to
 **Not covered here:** the window server, Spaces, pass-through and hot keys; WebKit's extension engine; the app's files and its Swift link. `npm run test:app` and `npm run test:webkit` have them.
 
 **Time.** The whole suite: 129 and 131 s in two runs on Tirth's Mac, the build included (target: under 4 minutes). 119 tests: 113 pass, 6 `todo`, none skipped. After the review: 123 tests, 114 pass, 9 `todo`, none skipped; 132 s in each of three runs in a row (138 to 205 s while the Mac was busy with other work, load 15 to 44).
+
+## Margin 2, Phase 6 plan: Pixel, Neo-brutalism, user themes (2026-11-06)
+
+On `feat/pixel-user-themes`. The plan is `docs/phase6-themes.md`; the boards, a renderer for them (`tools/boards/`) and reference shots are in `docs/phase6/`. Choices the plan makes, for Tirth to confirm before they're built:
+
+- **User themes belong to the Mac, not a profile.** Margin.app keeps each one in `~/Library/Application Support/Margin/themes/<id>.json` with an index. Each profile's data set gets only the index (`userThemes`, a few hundred bytes), never a package: a package can be 4.5 MB, over the link's 1 MB cap.
+- **Import goes through the app.** The overlay can't open a file picker, so Settings asks the app (`perform theme.import`), which shows `NSOpenPanel` over full screen and reads a folder or a `.margintheme` zip within the package caps. The checks run once, in JS, with the same code as every load: the zip is read in the overlay, not in Swift.
+- **Preview before use,** under a bar of Margin's own in the top layer that no theme can style or cover, and that cancels by itself after 30 s.
+- **Arcadia is the fallback,** bundled with the app's overlay, for a theme that's refused, missing, or leaves no usable page. Removing the active theme puts Arcadia back in every profile that used it.
+- **User themes get a plain first paint** (the box, nothing around it), not Arcadia's frame.
+- **Pixel and Neo-brutalism keep one look in both system modes,** as their boards have one each.
+- **A space's number** (`number`, from 1) joins the view model, for Pixel's "WORLD 2-1" and numbered chips; templates have no arithmetic.
+- **Bundled SVG images stay unsanitized:** they're only ever drawn as images (an `img` or a CSS image), where WebKit runs no script and loads nothing. A payload test keeps that true.
+- **`npm run test:security`** gathers the sanitizer, guard, package and import payloads, every built-in theme, and any packages named in `MARGIN_THEMES`. No CI is added; the plan says how a macOS runner would run it later.
+
+## Margin 2, Phase 6: the first review of themes (2026-11-06)
+
+On `feat/pixel-user-themes`. Fourteen findings; all fixed but parts of the last.
+
+- **The theme choice shows its status** in all three built-ins (why Margin fell back to Arcadia). The guide's example draws `status` under a choice and a button.
+- **The theme's own settings come after Margin's,** right before "Keyboard shortcuts". Import Theme… and the imported themes stay under the theme choice. Margin's rows no longer sit under "Settings of “Name”".
+- **An imported theme's id survives every fresh read.** `normalizeState` keeps any id an imported theme may have (`USER_THEME_ID`, the same rule as `ThemeStore.idOK`). It doesn't read the index: Margin.app, the overlay and Settings already fall back to Arcadia for an id that isn't listed. Earlier names of a built-in (`arcadium`, `arcadia-2`) still become it.
+- **A zip entry of a kind no package holds is refused before it's inflated.** Every inflate stops at the least of its declared size, its kind's cap and what's left of the 3 MB package. A 1 GB entry in a small zip is refused at once.
+- **The overlay remembers what it draws,** Arcadia standing in included. Cancel, Escape, the 30 s timeout and a preview that fails put that back (Arcadia as the fallback again, still saying why).
+- **Use Theme keeps the theme from before until the app's package comes.** A refusal (`themeSaved` not ok), a package that can't be stored, or no package within 10 s put it back. Settings says "Saving…", then "Saved.", or why not. No change in `app/shell`.
+- **The fallback package is read only as the script's own property** of the window, with its shape checked, and a bad result isn't cached. The sanitizer removes `marginFallbackTheme` and any id that is `margin` and then a letter, digit or `_` (Margin's globals are named so; Arcadia's `margin-results` stays).
+- **An imported theme must have its ways back out:** the `launcher`, `settings`, `prompt` and `notice` parts, `<m-launcher>`, `<m-prompt>` and `<m-notice>` in the window's tree, and `<m-settings>` in the launcher part. The sanitizer reports where parts and slots are; `checkImport` refuses one that lacks them and says what's missing. Built-in themes aren't held to it (they have them all).
+  - **Not covered:** a theme can still hide those with CSS. The preview shows it first, under Margin's own bar. The set-up window's "Use Arcadia in every profile" is still to build.
+- **Neo-brutalism's palette tags** take the row's own space's colour (`spaceColor` in the view model; white for Archived, Search, Open, iCloud), and all have one width (92 px), so the icons and titles line up.
+- **Search and Open rows have drawn icons** in Neo-brutalism and Pixel (`isSearch`, `isOpen` in the view model): the fonts' ⌕ and ↗ drew as specks.
+- **Neo-brutalism's loose pins** line up with folder rows (4 px plus the folder's 2.5 px border).
+- **Many spaces:** Neo-brutalism's chips keep 34 px and scroll sideways; Pixel's keep their size, stay centred while they fit (`safe center`) and scroll inside the bar.
+
+## Margin 2, Phase 6: Pixel (2026-11-06)
+
+Built on `feat/pixel-user-themes`: `extension/themes/pixel/`, from the "Sidebar · Pixel / 8-bit" board (`docs/phase6/boards/Pixel.dc.html`). Work items 3 and 4 of `docs/phase6-themes.md` in one commit: the sidebar, the page and every other part.
+
+- **The package.** `theme.json`, `theme.html`, `theme.css`, `first-paint.css`, and Press Start 2P and Pixelify Sans (latin and latin-ext woff2, fetched once from Google Fonts on 2026-11-06, unmodified) with their SIL OFL texts and `fonts/SOURCES.txt`. Press Start 2P has a Reserved Font Name; the files are as served, so the name stays.
+- **As the board:** the PICO-8 colors, the dotted night ground, notched pixel borders (four hard shadows), the 252 px sidebar, 16 px gutters and an 18 px gap, `WORLD n-1`, folders with a count, the ▶ cursor, TODAY and CLEAR, `+ New tab ⌘T`, "STAGE CLEAR!", the chest, numbered chips, `SELECT DESTINATION`. Hidden: the page from the gutter; peek: a floating card 14 px from the edges.
+- **Left out, as `PLAN.md` §9 says:** the favorites tiles, the `?` Ask button and box, the BGM player. The address takes the full width and the space's header moves up.
+- **Differs from the board, on purpose:**
+  - The palette is centred. The board's sits 18 px right of centre (`left: 50%` less 330 px for a 696 px box).
+  - The palette's selected row is lit (`#3b3870`): the keyboard needs it. The board has no selection.
+  - Palette rows keep Margin's badge (the space's name), as small muted tags. The board has none.
+  - At most eight palette rows show; past them the list scrolls.
+  - The ▶, ▷ and ▼ marks are pixel svgs, not text, everywhere: guarded parts can't hold theme text, and an svg is the same in both engines (the board's glyphs come from the system's fonts).
+- **Margin's states the board doesn't draw:** active (yellow on `#3b3870`), behind (a hollow, still ▷), asleep (the title at 55 % and a blue "z"), playing (the board's green bars), loading (the icon box blinks yellow), not open (dimmed, the icon dashed), × on hover (tabs, and pins open in a tab), profile marks and foreign chips (dashed, dimmer), a chip being switched to blinks.
+- **The other parts in its style:** menus, the space editor, notices and prompts (the board's RPG text box, with a blinking ▼), Settings (dark fields, pixel-box toggles, a stepped ▼ on selects), the new-tab page as a title screen, iCloud Tabs (a pixel cloud, device tags in Press Start 2P), gesture badges, drag and drop marks, the resize handle, a stepped loading bar along the card's top border, and three square window controls after the board's "Glass on dark" set.
+- **Settings:** `sidebarWidth` (200–360 px, step 4, 252 by default) and `blink` (on by default). With `blink` off, or reduced motion, nothing blinks.
+- **One look in both system modes:** dark, as the board.
+- **Its slots for notices, prompts and the editor are `display: contents`.** As flex items of the root they took a gap and narrowed the page while shown.
+- **The view model has `number`** on `space` and each `spaces[]` chip: the place counted from 1.
+- **Tests:** `tests/theme/pixel.test.js` (WebKit and Chromium: nothing removed, the fonts from bytes, the board's sidebar and its states, the page's box in every sidebar state, nothing painted over the page's box (checked on screen), the palette's cap and keys, every part's words, windowed controls, blinking, both system modes, the first paint on screen). `cloud.test.js` and `feedback.test.js` now run Pixel too, and `behaviors.test.js` runs Neo-brutalism and Pixel (Arcadia's classes differ).
+
+## Margin 2, Phase 6: Neo-brutalism to its board (2026-11-06)
+
+Work item 5 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`. Compared with the board (`docs/phase6/boards/Main.dc.html`) side by side, in WebKit and Chromium.
+
+- **Folder heads show no count,** as the board's (the plan's open question, answered as proposed). iCloud Tabs keeps its count: it's a live folder, and the count says how much is there.
+- **The palette shows eight rows at most,** then the list scrolls (`m-scroll="palette"`); the selected row stays in view. The box stays in the window: it sits at 150 px (17 % in a short window) and never runs past the bottom. With 200 tabs it used to.
+- **Palette tags in the board's style:** the space's colour (the board's `TAB` tag takes the space's colour too), a 2 px ink border, capitals. They hold Margin's badge (the space, the folder, Archived, iCloud, Search, Open); the board's `TAB` and `ASK` aren't data Margin has.
+- **Palette rows have their icon box** after the tag: the site's icon, its letter, or the row's emoji. The board has none; every other theme has one, and it tells rows apart.
+- **Rows get Arcadia's parts:** a close button on hover (an ink × in a 20 px bordered box; tabs, and pins open in a tab), a speaker after the title while a tab plays sound (gone under the ×), and a dashed outline on the tab shown while a new tab is on its way (`behind`).
+- **Rows are links (`a`) that hold their close button,** as Arcadia's and Pixel's: a button can't hold a button. A wrapper around a button row and its close was tried and dropped: the dragged copy goes into the row's parent, so it landed inside the wrapper, and the wrapper's `content-visibility` moved and clipped it.
+- **Loose pins** (outside folders) sit in a borderless white card (`loose-card`), the board's folder rows without the head; pins side by side share one card. Their open state is bound.
+- **"With the sidebar hidden, keep the frame around pages"** is honoured: off, with the sidebar hidden or peeking, the page fills the window, square, with no border and no ground; the loading stripe runs along the page's top edge.
+- **Notices, prompts and the space editor no longer narrow the page.** Their slots were flex items of the root and took a 16 px gap while shown; now they're `display: contents`, as Pixel's.
+- **The first paint draws the card's border and shadow outside the box.** The border was an inset shadow, 3 px over the page's edge until Margin's content script took over.
+- **One look in light and dark system modes** (`color-scheme: light`, so Margin's selects, fields and scrollbars stay light too). Settings' toggles are Neo switches (a bordered pill, the knob right on yellow when on); buttons stay on one line.
+- **Differs from the board, on purpose:** no favorites, Ask or mini player (`PLAN.md` §9); the palette label says "SEARCH OR TYPE A URL" until Ask exists; the selected palette row keeps an 8 % ink fill for the keyboard; real site icons in square boxes rather than the board's letter tiles (round tiles aren't data Margin has).
+- **Tests:** `tests/theme/neo-brutalism.test.js` (WebKit and Chromium: nothing removed, folder heads, close, speaker and behind, loose pins, the palette's cap, tags and icons with 200 tabs and in a 600 px window, the page's box with and without the frame, notices moving nothing, nothing painted over the page's box on screen, both system modes, the first paint on screen).
+
+## Margin 2, Phase 6: user themes and the security suite (2026-11-06)
+
+Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`.
+
+### The security suite
+
+- **One command: `npm run test:security`.** It runs the sanitizer and guard payloads, the new payloads (`tests/security/`), every built-in theme through the checks an import goes through, and the live part in WebKit and Chromium (`tests/theme/security.test.js`). The Node parts stay in `npm test`, the live part in `npm run test:theme`.
+- **`MARGIN_THEMES`** (folders, `:` between them) adds a theme of anyone's to the same checks, before it's shared.
+- **New rules, found by the new payloads:**
+  - An svg `<use>` inside a guarded part is removed. It could draw svg `<text>` from a `<symbol>` outside the part: theme words in a menu.
+  - Ids named like the globals Margin's code reads (`browser`, `chrome`, `webkit`, `marginApp`, `Margin`, `T`, `top`…, any case) are removed. The overlay's container is its document, so a theme's ids are the window's names; `shared/platform.js` reads `globalThis.browser ?? globalThis.chrome`.
+  - A second template for one part is removed (the renderer uses the first; a second is a decoy).
+  - `checkPackage` checks each file's first bytes against its kind, and refuses two paths that differ only by case (one file on the Mac's disk).
+  - `theme.json` with a key twice in one object is refused (`JSON.parse` keeps the last; a reader that takes the first sees another id). Names, authors and labels with bidi controls or zero-width characters are refused.
+- **Kept on purpose:** a `data:` font in `@font-face` loads nothing and stays capped at 128 KB, so it stays allowed (fonts in `theme.json` remain the way the README teaches).
+- **The overlay's policy is tested on its own:** a page served with `OverlaySchemeHandler.policy` (read from the Swift source) and every payload put in raw, with no sanitizer, runs none of them and makes no request. A control run without the policy shows the same page does run and load them. The policy string is checked against `PLAN.md` §4's.
+
+### Falling back to Arcadia
+
+- **The app bundles Arcadia** beside the overlay as `dist/app/arcadia.js`, not `arcadia.json` as the plan said: the overlay's policy has `connect-src 'none'`, so it can't fetch a file, but it may run Margin's own scripts from its folder. The script sets one global with the package, and is loaded only when it's needed.
+- **When:** the package is refused, missing or unreadable, or its `<m-page>` is under 200 × 150 pt or reaches outside the window (judged only in windows at least twice that size).
+- **What shows:** Arcadia, drawn and said ready as usual, and a notice of the overlay's own, `theme-failed`. It doesn't name the theme (its name may be what's broken). Its buttons stay in the overlay: Settings opens Margin's Settings in that window, OK closes it. The copy can't push it and can't run its buttons (`isNoticeAction` refuses the overlay's own kinds).
+- **`settings.theme` is kept,** so the copy's next package is tried again.
+- **The log** says the theme's id and the kinds of what was wrong (`refused: 2 problem(s) in its theme.html`), never its files' text.
+
+### Reading an imported theme
+
+- **`ui/theme-import.js`** turns a folder's files or a `.margintheme` zip into the package every load takes, then checks it as every load does (`checkPackage`, `sanitizeTheme`) and refuses a built-in's id. Pure JS, so the overlay, the tests and `npm run theme:pack` share it.
+- **The zip is read by hand, strictly:** one directory at the end, nothing before the first entry or between the entries and the directory, no zip64, no encryption, no links or special files, stored or deflated only, each local header agreeing with the directory, no two entries with one name in any case or sharing bytes, inflated with `DecompressionStream('deflate-raw')` while counting (never past what the entry says it holds, nor the kind's cap), and its CRC-32 checked. macOS's own zip and Finder's Compress make files it reads.
+- **Folder rules:** at most 70 files, two folders deep, names of letters, digits, `.`, `_` and `-` only (no `..`, no absolute paths, no backslashes, no look-alike letters), no two names differing by case (`Theme.json` beside `theme.json` is refused). Finder's `__MACOSX/` and `.DS_Store` are skipped; hidden folders (`.git/`) are left out by the readers of folders on disk.
+- **What was removed is said by count and kind,** with the theme's own words taken out of the reasons ("2 declarations removed from theme.css: url() is not a bundled file…").
+- **`npm run theme:pack <folder> [out]`** writes the zip (sorted, dated 1 January 2026, so the same folder makes the same file), after the same checks. It leaves out what a package doesn't hold (a built-in's `first-paint.css`, Arcadia's `theme.js`) and says so. All three built-ins go through it and back unchanged (`tests/theme-import.test.js`).
+- **`MARGIN_THEMES`** takes `.margintheme` files too, read as an import is.
+
+### Margin.app keeps the imported themes
+
+- **For the whole Mac, outside the data sets:** `app/shell/ThemeStore.swift` keeps `~/Library/Application Support/Margin/themes/<id>.json` and `index.json`, written as `DataStore` writes. In a test the folder is a temporary one.
+- **Copies get the index by a request (`req userThemes`), not through the data set** as the plan said. The themes aren't a profile's, so a per-profile collection would hold the same list once per profile and need merging for nothing. The request goes after each snapshot and on every change. The `userThemes` collection stays in the data set's list, unused.
+- **The app chooses the package:** the stored one when a profile's `settings.theme` is in the index, the copy's otherwise. The copy still sends Arcadia for an id it doesn't ship, so an overlay always has something to draw.
+- **Removing** a theme asks every linked copy that used it to go back to Arcadia. A copy that isn't linked keeps the old id in `settings.theme`: it gets Arcadia from its own package (the id isn't one it ships), and the next index tells its `updateSettings` the id is gone. Its `settings.themes[id]` is left: a few plain values, unused.
+- **The picker** is `NSOpenPanel` (folders and any file; a chosen file must be named `.margintheme`), opened with the app activated and `.fullScreenAuxiliary`, `.moveToActiveSpace`, so it shows over full-screen Safari. The harness answers for it (`UserThemes.pick`).
+- **Not built yet:** a plain first paint for a user theme's pages (they get Arcadia's frame before the overlay draws), the set-up window's "Use Arcadia in every profile".
+- **`Shell.swift` changes by small hooks only:** one stored property, a `case` in `perform`, the theme chosen in the hello and on a new package, the index after a snapshot and the package checked after a settings change. The rest is in `ShellThemes.swift` and `ThemeStore.swift`.
+
+### Settings for themes, and the preview
+
+- **Settings › Theme** lists the built-ins, then the imported themes by name. In Margin.app: Import Theme… (with the last import's status under it), each imported theme as "“Name” 1.0.0 · by Author" with Remove, and the active theme's own settings under "Settings of “Name”" (after Margin's own settings: see the first review). Why Margin fell back to Arcadia shows under the theme choice.
+- **A theme's own words in Margin's form** (its name, author, setting labels) are shown, as the plan proposed: capped at 40 characters, with bidi controls and zero-width characters taken out, inside Margin's words ("Settings of …", "Remove …"), and with `fromTheme` so a theme can mark them. They only ever save that theme's settings (`updateThemeSettings`, checked against its spec).
+- **Lengths are number inputs** saved with their default's unit (`252` → `252px`). **Colours** are a new input, `m-input="setting-color"`: Margin makes it a colour well and sets its value; a colour that isn't `#rgb` or `#rrggbb` shows as black until changed. All three built-in themes draw it (Pixel's row is in its uncommitted files, beside the Pixel work).
+- **Remove asks first** in Margin's prompt part: "Remove “Name”? Windows using it go back to Arcadia." Only its Remove button reaches the app.
+- **The preview** draws the imported theme over the live window (its layout goes to the pages, so they fit it) under a bar of Margin's own: in the top layer (`popover="manual"`), in a closed shadow root, its host reset with `all: initial !important` both in its style attribute and from inside its shadow root (an inner `!important` beats the theme's), its `::before` and `::after` switched off, hung off `<html>` (a theme can hide `<body>`). A browser test throws a hostile stylesheet and a full-window element at it: it stays on top and takes the press. The bar's rectangle joins the overlay's hits, so the press reaches it. Escape cancels; 30 s with no answer cancels.
+- **Use Theme** hands the checked package to the app as `encodeStoredTheme` makes it; the app stores it and sets the profile's theme. Cancel puts the package from before back (one the copy sent meanwhile is drawn instead).
+- **Seen in the app's tests:** an off-screen overlay that took and gave back the keyboard gets no `resize` events afterwards in the harness (WebKit doesn't render it), so the import scenario runs after the window-size checks. On screen the overlay renders, so it doesn't apply there; worth a look in Tirth's Safari check.

@@ -122,7 +122,7 @@ const kinds = (kind) => pushed.filter((p) => p.msg.type === 'notice' && p.msg.ki
 // ---- the words ------------------------------------------------------------------
 
 test('notices: Margin\'s words, each kind\'s buttons; a switch that didn\'t happen gets the notice for why', () => {
-  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'tab-gone', 'updated-while-open']);
+  assert.deepEqual(Object.keys(words.NOTICES).sort(), ['new-tab-setting', 'no-answer', 'not-responding', 'not-shown', 'tab-gone', 'theme-failed', 'updated-while-open']);
   assert.match(words.NOTICES['not-responding'].text, /isn’t responding on this page/);
   assert.deepEqual(words.NOTICES['not-responding'].actions.map((a) => a.id), ['reload', 'later']);
   assert.match(words.NOTICES['updated-while-open'].text, /Quit and reopen Safari/);
@@ -451,4 +451,21 @@ test('viewport: the page\'s word goes to the link with `measured` only when a po
   } finally {
     appLink.viewport = was;
   }
+});
+
+test('the overlay\'s own notice: a theme it couldn\'t draw; the copy can\'t push it, and its buttons stay in the overlay', () => {
+  const ran = [];
+  const shown = [];
+  const sent = [];
+  const n = createAppNotices({ show: (v) => shown.push(v), send: (t, p) => sent.push([t, p]), local: (kind, action) => ran.push([kind, action]), setTimer: () => 0, clearTimer: () => {} });
+  assert.equal(n.push({ type: 'notice', kind: 'theme-failed' }), false, 'not the copy\'s to say');
+  assert.equal(words.isNoticeAction('theme-failed', 'ok'), false, 'nor its to run');
+  assert.equal(n.say('not-responding'), false, 'only the overlay\'s own kinds');
+  assert.equal(n.say('theme-failed'), true);
+  const v = shown.at(-1);
+  assert.match(v.text, /couldn’t draw the theme you chose, so it’s using Arcadia/);
+  assert.deepEqual(v.actions.map((a) => a.label), ['Settings', 'OK']);
+  assert.equal(n.run({ id: v.id, action: 'settings' }), true);
+  assert.deepEqual(ran, [['theme-failed', 'settings']]);
+  assert.deepEqual(sent, [], 'nothing went to the copy');
 });

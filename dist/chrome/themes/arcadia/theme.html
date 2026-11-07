@@ -395,9 +395,13 @@
         </m-if>
         <m-if test="f.isChoice">
           <label class="setting"><span class="label">{{f.label}}</span><select class="choice" m-input="setting-choice"></select></label>
+          <m-if test="f.hasStatus"><p class="help" role="status" m-class:error="{{f.error}}">{{f.status}}</p></m-if>
         </m-if>
         <m-if test="f.isList">
           <label class="setting stacked"><span class="label">{{f.label}}</span><textarea class="list" m-input="setting-list" rows="3" spellcheck="false" autocomplete="off"></textarea></label>
+        </m-if>
+        <m-if test="f.isColor">
+          <label class="setting" m-class:theme-own="{{f.fromTheme}}"><span class="label">{{f.label}}</span><input class="color" m-input="setting-color"></label>
         </m-if>
         <m-if test="f.isShortcut">
           <label class="setting"><span class="label">{{f.label}}</span><input class="shortcut" m-input="setting-shortcut" m-class:recording="{{f.recording}}"></label>

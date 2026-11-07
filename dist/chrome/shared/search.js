@@ -164,6 +164,7 @@ function paletteItems(state, ctx) {
       url: t.url,
       favIconUrl: V.iconFor(state, t),
       badge: space?.name ?? '', // Arc-style: the row shows which space it's in
+      spaceColor: space?.color ?? '',
       boost: (space?.id === spaceId ? 30 : 10) + (t.id === ctx.tabId ? -25 : 0),
       recency: t.lastActive ?? 0,
       action: { type: 'activateTab', tabId: t.id },
@@ -181,6 +182,7 @@ function paletteItems(state, ctx) {
       url: k.url,
       favIconUrl: V.iconFor(state, k),
       badge: space?.name ?? '',
+      spaceColor: space?.color ?? '',
       boost: space?.id === spaceId ? 25 : 8,
       recency: k.lastActive ?? 0,
       action: { type: 'activateTab', tabId: k.id, ...(ctx.windowId != null ? { windowId: ctx.windowId } : {}) },
@@ -197,6 +199,7 @@ function paletteItems(state, ctx) {
       url: p.url,
       favIconUrl: V.iconFor(state, p),
       badge: folder ? `${folder.name} · ${space?.name ?? 'Pinned'}` : space?.name ?? 'Pinned',
+      spaceColor: space?.color ?? '',
       boost: p.spaceId === spaceId ? 20 : 8,
       action: { type: 'openPin', pinId: p.id, windowId: ctx.windowId },
     });
@@ -324,6 +327,7 @@ function rankPalette(state, query, ctx, limit = 40) {
       badge: isUrl ? 'Open' : 'Search',
       subtitle: isUrl ? '' : engineLabel(state.settings),
       emoji: isUrl ? '↗' : '⌕',
+      search: !isUrl,
       action: isUrl
         ? (ctx.inNewTab ? { local: 'navigate', url: target.url } : { type: 'newTab', windowId: ctx.windowId, url: target.url })
         : (ctx.inNewTab ? { local: 'search', query: target.query } : { type: 'search', query: target.query, windowId: ctx.windowId }),

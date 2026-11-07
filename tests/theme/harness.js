@@ -303,15 +303,16 @@ const T = {
 const rt = { runtime: null, host: null, mock: null, el: null, target: null, theme: null };
 
 Object.assign(T, {
-  // Neo-brutalism as a built-in theme: its files read through readFile (here
-  // from the package handed over, in the extension from its own URL).
-  async loadBuiltin(pkg, id = 'neo-brutalism') {
+  // Neo-brutalism (or another built-in theme, with its font families) as a
+  // built-in theme: its files read through readFile (here from the package
+  // handed over, in the extension from its own URL).
+  async loadBuiltin(pkg, id = 'neo-brutalism', families = ['Archivo Black', 'Space Grotesk']) {
     const p = unpack(pkg);
     const text = { 'theme.json': p.manifest, 'theme.html': p.html, 'theme.css': p.css };
     const read = [];
     const theme = await loadBuiltinTheme(id, { readFile: async (path) => { read.push(path); return text[path] ?? p.files[path]; } });
     rt.theme = theme;
-    return { ok: theme.ok, id: theme.id, read, fontErrors: theme.fontErrors, fonts: ['Archivo Black', 'Space Grotesk'].map((f) => document.fonts.check(`16px "${f}"`)) };
+    return { ok: theme.ok, id: theme.id, read, fontErrors: theme.fontErrors, fonts: families.map((f) => document.fonts.check(`16px "${f}"`)) };
   },
 
   // `replies`: what the host answers a request of each type with (values);
@@ -509,5 +510,64 @@ function target() {
   void CSS_TARGET;
   return div;
 }
+
+// --- The security suite (tests/theme/security.test.js) ------------------------
+
+Object.assign(T, {
+  // Any package (a built-in's or a user's) loaded as the overlay loads one.
+  async loadPackage(pkg) {
+    const theme = await loadTheme(unpack(pkg));
+    if (theme.ok) rt.theme = theme;
+    return { ok: theme.ok, id: theme.ok ? theme.id : null, errors: theme.report.errors, removed: theme.report.removed.length, fontErrors: theme.ok ? theme.fontErrors : [] };
+  },
+  // The mounted theme fed hostile data where the view model's text, links
+  // and icons come from: titles that are markup, addresses that are scripts,
+  // icons from elsewhere; the palette open on such a query, Settings open.
+  rtHostile() {
+    const ids = rt.runtime.vm.space.today.slice(0, 5).map((t) => t.id);
+    const [a, b, c] = ids;
+    rt.mock.tabs((tabs) => {
+      for (const id of ids) tabs[id] = { ...tabs[id], title: EVIL_VM.html, url: EVIL_VM.url, favIconUrl: EVIL_VM.remote };
+      if (b) tabs[b] = { ...tabs[b], url: 'https://evil.test/{{tab.url}}', title: EVIL_VM.moustache };
+      if (c) tabs[c] = { ...tabs[c], title: `${EVIL_VM.cls}\u202E${EVIL_VM.js}` };
+      return tabs;
+    });
+    void a;
+    rt.host.setState(rt.mock.state);
+    rt.runtime.openPalette({ newTab: false });
+    rt.runtime.setUi({ palette: { ...rt.runtime.ui.palette, query: EVIL_VM.html } });
+    return { audit: auditDom(rt.target.nodeType === 9 ? rt.target.body : rt.target), tripped: w.__tripped.slice() };
+  },
+  // Template and stylesheet payloads handed in from Node ([name, text] pairs),
+  // sanitized and rendered in the document (where ids are the window's) with
+  // the hostile view model, as runHtmlPayloads and runCssPayloads do.
+  runPayloads(manifest, templates, sheets) {
+    const mock = new MockState();
+    const vm = { ...mock.vm, evil: EVIL_VM };
+    const out = [];
+    for (const [name, fragment] of templates) {
+      const report = sanitizeTheme({ manifest, html: wrap(fragment), css: '', files: [] });
+      if (report.tree) {
+        const view = new View(document, buildTemplate(report.tree), { onAction: () => false });
+        view.update(vm);
+        state.views.push({ view, mock, el: null, target: document });
+      }
+      out.push({ name, violations: auditDom(document.body) });
+    }
+    for (const [name, css] of sheets) {
+      const r = sanitizeCss(css, { files: [] });
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(r.css);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+      const el = target();
+      el.innerHTML += '<ul class="a"><li>x</li></ul>';
+      document.body.appendChild(el);
+      out.push({ name, css: r.css.slice(0, 300) });
+    }
+    return out;
+  },
+  // The page's own globals, as the overlay reads them (a theme's ids mustn't change them).
+  globals() { return ['webkit', 'marginApp', 'browser', 'chrome', 'safari', 'Margin', 'T'].map((n) => [n, typeof w[n] === 'object' && w[n] instanceof Element ? 'element' : typeof w[n]]); },
+});
 
 w.T = T;

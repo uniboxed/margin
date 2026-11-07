@@ -11,7 +11,8 @@
 import * as S from '../shared/search.js';
 import * as shortcuts from '../shared/shortcuts.js';
 import { siteList } from '../shared/sleep.js';
-import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../themes/packages.js';
+import { PACKAGE_THEMES, PACKAGE_THEME_NAMES, USER_THEME_ID } from '../themes/packages.js';
+import { settingValueOk } from './theme-schema.js';
 
 /**
  * A field of the form. `kind` and one `is…` flag (a theme's m-if tests
@@ -20,13 +21,14 @@ import { PACKAGE_THEMES, PACKAGE_THEME_NAMES } from '../themes/packages.js';
  * (a heading). `value`: what the input shows (text); `checked` for a
  * toggle; `options` for a choice.
  * @typedef {{
- *   id: string, kind: 'number' | 'toggle' | 'choice' | 'list' | 'shortcut' | 'button' | 'info' | 'group',
+ *   id: string, kind: 'number' | 'toggle' | 'choice' | 'list' | 'shortcut' | 'color' | 'button' | 'info' | 'group',
  *   label: string, help: string, value: string, checked: boolean, disabled: boolean,
  *   min: number | null, max: number | null, step: string,
  *   options: { id: string, label: string, selected: boolean }[],
  *   status: string, error: boolean, recording: boolean, placeholder: string,
  *   isNumber: boolean, isToggle: boolean, isChoice: boolean, isList: boolean, isShortcut: boolean,
- *   isButton: boolean, isInfo: boolean, isGroup: boolean, hasHelp: boolean, hasStatus: boolean,
+ *   isColor: boolean, isButton: boolean, isInfo: boolean, isGroup: boolean, hasHelp: boolean, hasStatus: boolean,
+ *   fromTheme: boolean,
  * }} SettingsField
  */
 
@@ -67,19 +69,20 @@ function field(f) {
   return {
     ...out,
     isNumber: out.kind === 'number', isToggle: out.kind === 'toggle', isChoice: out.kind === 'choice', isList: out.kind === 'list',
-    isShortcut: out.kind === 'shortcut', isButton: out.kind === 'button', isInfo: out.kind === 'info', isGroup: out.kind === 'group',
-    hasHelp: !!out.help, hasStatus: !!out.status,
+    isShortcut: out.kind === 'shortcut', isColor: out.kind === 'color', isButton: out.kind === 'button', isInfo: out.kind === 'info', isGroup: out.kind === 'group',
+    hasHelp: !!out.help, hasStatus: !!out.status, fromTheme: !!out.fromTheme,
   };
 }
 
 /**
  * The form's fields for the stored settings, the browser's features
  * (`features`: shared/platform.js's sleepTabs ('close', 'discard' or false), blockGestures,
- * marginFullscreen, newTabHint, search; cloudTabs, Margin.app's Safari windows) and the form's own state (`ui`: the
- * shortcut being recorded, the statuses).
+ * marginFullscreen, newTabHint, search; cloudTabs, Margin.app's Safari windows; importThemes and
+ * userThemes, Margin.app's imported themes) and the form's own state (`ui`: the
+ * shortcut being recorded, the statuses, the active theme: its id, name and theme.json settings).
  * @param {any} settings
  * @param {any} features
- * @param {{ recording?: string | null, status?: Record<string, { text: string, error?: boolean }> }} [ui]
+ * @param {{ recording?: string | null, status?: Record<string, { text: string, error?: boolean }>, theme?: { id: string, name: string, settings: Record<string, any> } | null }} [ui]
  * @returns {SettingsField[]}
  */
 export function settingsFields(settings, features = {}, ui = {}) {
@@ -87,9 +90,12 @@ export function settingsFields(settings, features = {}, ui = {}) {
   const f = features ?? {};
   const status = ui.status ?? {};
   const list = [];
-  // What Margin looks like.
-  const theme = PACKAGE_THEMES.includes(s.theme) ? s.theme : PACKAGE_THEMES[0];
-  list.push(field({ id: 'theme', kind: 'choice', label: 'Theme', options: PACKAGE_THEMES.map((id) => ({ id, label: PACKAGE_THEME_NAMES[id] ?? id, selected: id === theme })), value: theme }));
+  // What Margin looks like: the built-in themes, then the ones imported (Margin.app's: `features.userThemes`).
+  const imported = userThemeList(f.userThemes);
+  const theme = PACKAGE_THEMES.includes(s.theme) || imported.some((t) => t.id === s.theme) ? s.theme : PACKAGE_THEMES[0];
+  const options = [...PACKAGE_THEMES.map((id) => ({ id, label: PACKAGE_THEME_NAMES[id] ?? id })), ...imported.map((t) => ({ id: t.id, label: t.name || t.id }))];
+  list.push(field({ id: 'theme', kind: 'choice', label: 'Theme', options: options.map((o) => ({ ...o, selected: o.id === theme })), value: theme, status: status.theme?.text ?? '', error: !!status.theme?.error }));
+  list.push(...importFields(f, status, imported));
   list.push(field({ id: 'engine', kind: 'info', label: engineText(s, f) }));
   list.push(field({ id: 'archiveAfterHours', kind: 'number', label: 'Archive tabs not used for (hours, 0 = never)', value: String(s.archiveAfterHours ?? 12), min: 0, max: 720, step: '1' }));
   if (f.sleepTabs) {
@@ -114,6 +120,8 @@ export function settingsFields(settings, features = {}, ui = {}) {
   // iCloud Tabs (Margin.app with Safari): the sidebar's live folder and the palette's section.
   if (f.cloudTabs) list.push(field({ id: 'showCloudTabs', kind: 'toggle', label: 'Show iCloud Tabs: the tabs open on your other devices, in the sidebar and the command palette', checked: s.showCloudTabs !== false }));
   if (f.newTabHint) list.push(field({ id: 'newTabHint', kind: 'toggle', label: 'Tell me when a new tab seems to open Safari’s homepage instead of Margin (Safari Settings › General › “New tabs open with” should be Margin)', checked: s.newTabHint !== false }));
+  // The active theme's own settings: after Margin's, under their own heading, so they don't read as Margin's.
+  list.push(...themeOwnFields(s, ui.theme ?? null));
   // Keyboard shortcuts: recorded by pressing them.
   list.push(field({ id: 'shortcuts', kind: 'group', label: 'Keyboard shortcuts' }));
   const keys = currentShortcuts(s);
@@ -123,6 +131,94 @@ export function settingsFields(settings, features = {}, ui = {}) {
   }
   list.push(field({ id: 'resetShortcuts', kind: 'button', label: 'Reset shortcuts', status: status.shortcuts?.text ?? SHORTCUT_HELP, error: !!status.shortcuts?.error }));
   return list;
+}
+
+// ---- themes: imported ones, and the active theme's own settings ---------------
+
+// A theme's own words (its name, author, a setting's label) inside Margin's
+// form: capped, and with no characters that reorder or hide text.
+const INVISIBLE = /[\u0000-\u001f\u007f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+/** @param {unknown} text @param {number} max */
+export const themeText = (text, max) => { const t = String(text ?? '').replace(INVISIBLE, '').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
+
+/** Margin.app's index of imported themes, as Settings shows it. @param {unknown} list */
+export function userThemeList(list) {
+  return (Array.isArray(list) ? list : []).filter((e) => e && typeof e.id === 'string' && USER_THEME_ID.test(e.id) && !PACKAGE_THEMES.includes(e.id)).slice(0, 50)
+    .map((e) => ({ id: e.id, name: themeText(e.name, 40), version: themeText(e.version, 16), author: themeText(e.author, 40) }));
+}
+
+const SETTING_PREFIX = 'themeSetting:';
+const REMOVE_PREFIX = 'removeTheme:';
+
+/** Import Theme… (Margin.app only: `features.importThemes`) and each imported theme with Remove, under the theme choice. */
+function importFields(f, status, imported) {
+  const out = [];
+  if (!f.importThemes) return out;
+  out.push(field({ id: 'themeImport', kind: 'button', label: 'Import Theme…', status: status.themeImport?.text ?? 'A theme’s folder, or a .margintheme file. You’ll see it before it’s used.', error: !!status.themeImport?.error }));
+  for (const t of imported) {
+    out.push(field({ id: `userTheme:${t.id}`, kind: 'info', label: `“${t.name || t.id}” ${t.version}${t.author ? ` · by ${t.author}` : ''}` }));
+    out.push(field({ id: `${REMOVE_PREFIX}${t.id}`, kind: 'button', label: `Remove “${t.name || t.id}”` }));
+  }
+  return out;
+}
+
+/** The active theme's own settings (`theme`: the runtime's loaded theme: id, name, its theme.json settings), under "Settings of “Name”". */
+function themeOwnFields(s, theme) {
+  const out = [];
+  const specs = theme?.settings && typeof theme.settings === 'object' ? Object.entries(theme.settings) : [];
+  // Margin's own width setting (m-resize drags it) is shown as the theme's too.
+  if (!theme || !specs.length) return out;
+  out.push(field({ id: 'themeSettings', kind: 'group', label: `Settings of “${themeText(theme.name, 40) || theme.id}”` }));
+  const saved = s.themes?.[theme.id] && typeof s.themes[theme.id] === 'object' ? s.themes[theme.id] : {};
+  for (const [key, spec] of specs.slice(0, 32)) {
+    const value = Object.hasOwn(saved, key) && settingValueOk(spec, saved[key]) ? saved[key] : spec.default;
+    const base = { id: `${SETTING_PREFIX}${key}`, label: themeText(spec.label, 40) || key, fromTheme: true };
+    switch (spec.type) {
+      case 'toggle': out.push(field({ ...base, kind: 'toggle', checked: value === true })); break;
+      case 'number': out.push(field({ ...base, kind: 'number', value: String(value), min: spec.min ?? null, max: spec.max ?? null, step: spec.step ? String(spec.step) : 'any' })); break;
+      case 'length': {
+        const m = /^(-?\d+(?:\.\d+)?)([a-z%]*)$/.exec(String(value));
+        out.push(field({ ...base, kind: 'number', value: m ? m[1] : '', min: spec.min ?? null, max: spec.max ?? null, step: spec.step ? String(spec.step) : 'any' }));
+        break;
+      }
+      case 'choice': out.push(field({ ...base, kind: 'choice', value: String(value), options: (spec.choices ?? []).map((c) => ({ id: String(c), label: themeText(c, 40), selected: String(c) === String(value) })) })); break;
+      case 'color': out.push(field({ ...base, kind: 'color', value: String(value) })); break;
+      default: break;
+    }
+  }
+  return out;
+}
+
+/**
+ * A change to one of the active theme's own settings: `updateThemeSettings`
+ * for that theme, checked against its spec. A length keeps its default's unit.
+ * @param {SettingsField} f @param {any} value @param {{ id: string, settings: Record<string, any> } | null} theme
+ */
+export function saveThemeField(f, value, theme) {
+  if (!f?.id?.startsWith(SETTING_PREFIX) || !theme) return null;
+  const key = f.id.slice(SETTING_PREFIX.length);
+  const spec = theme.settings?.[key];
+  if (!spec) return null;
+  let v = value;
+  if (spec.type === 'number') v = Number(value);
+  if (spec.type === 'length') v = `${String(value).trim()}${/[a-z%]+$/.exec(String(spec.default))?.[0] ?? 'px'}`;
+  if (spec.type === 'choice') v = spec.choices?.find((c) => String(c) === String(value));
+  if (!settingValueOk(spec, v)) return null;
+  return { type: /** @type {'updateThemeSettings'} */ ('updateThemeSettings'), payload: { themeId: theme.id, patch: { [key]: v } } };
+}
+
+/** The prompt Remove asks first (in Margin's prompt part). @param {string} fieldId @param {any[]} list */
+export function removePrompt(fieldId, list) {
+  if (!fieldId.startsWith(REMOVE_PREFIX)) return null;
+  const id = fieldId.slice(REMOVE_PREFIX.length);
+  const t = userThemeList(list).find((e) => e.id === id);
+  if (!t) return null;
+  return {
+    id: `remove-theme:${id}`,
+    title: 'Remove theme',
+    text: `Remove “${t.name || t.id}”? Windows using it go back to Arcadia.`,
+    actions: [{ id: 'remove', label: 'Remove', danger: true }, { id: 'cancel', label: 'Cancel' }],
+  };
 }
 
 // ---- what a field saves ------------------------------------------------------

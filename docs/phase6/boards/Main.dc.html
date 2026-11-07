@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Neo-brutalist browser</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&amp;family=Space+Grotesk:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#111}a:hover{color:#000}
+.btn{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .08s,box-shadow .08s}
+.btn:focus-visible{outline:3px solid #111;outline-offset:3px}
+.push:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 #111 !important}
+.push:active{transform:translate(2px,2px);box-shadow:0 0 0 #111 !important}
+.row:hover{background:rgba(17,17,17,.08)}
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:square;stroke-linejoin:miter}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 16px; display: flex; gap: 16px; overflow: hidden; position: relative; font-family: 'Space Grotesk', system-ui, sans-serif; color: #111; background-color: {{bg}}; background-image: radial-gradient(rgba(17,17,17,.18) 1.2px, transparent 1.2px); background-size: 18px 18px; transition: background-color .3s">
+
+  <sc-if value="{{sidebarHidden}}" hint-placeholder-val="{{false}}">
+    <div aria-hidden="true" onMouseEnter="{{peekOn}}" style="position: absolute; left: 0; top: 0; bottom: 0; width: 14px; z-index: 6"></div>
+  </sc-if>
+
+  <!-- Sidebar -->
+  <nav aria-label="Sidebar" onMouseLeave="{{peekOff}}" style="{{sidebarWrap}}">
+    <div style="width: 256px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px">
+
+      <div style="display: flex; gap: 6px">
+        <button class="btn push" aria-label="{{sidebarToggleLabel}}" onClick="{{toggleSidebar}}" style="width: 40px; height: 40px; border: 2.5px solid #111; border-radius: 10px; background: #fff; box-shadow: 3px 3px 0 #111">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15"></rect><path d="M9.5 4.5v15"></path></svg>
+        </button>
+        <div style="flex: 1"></div>
+        <button class="btn push" aria-label="Back" style="width: 40px; height: 40px; border: 2.5px solid #111; border-radius: 10px; background: #fff; box-shadow: 3px 3px 0 #111">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+        </button>
+        <button class="btn push" aria-label="Forward" style="width: 40px; height: 40px; border: 2.5px solid #111; border-radius: 10px; background: #fff; box-shadow: 3px 3px 0 #111">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
+        </button>
+        <button class="btn push" aria-label="Reload" style="width: 40px; height: 40px; border: 2.5px solid #111; border-radius: 10px; background: #fff; box-shadow: 3px 3px 0 #111">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"></path></svg>
+        </button>
+      </div>
+
+      <!-- Address -->
+      <div style="display: flex; gap: 6px">
+        <button class="btn push" onClick="{{openCmd}}" aria-label="Address: {{url}}. Open command bar" style="flex: 1; min-width: 0; height: 44px; justify-content: flex-start; gap: 8px; padding: 0 12px; border: 2.5px solid #111; border-radius: 10px; background: #fff; box-shadow: 3px 3px 0 #111; font-size: 14px; font-weight: 500">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 15px; height: 15px; flex-shrink: 0"><rect x="5.5" y="10.5" width="13" height="9"></rect><path d="M8.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5"></path></svg>
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{host}}</span>
+        </button>
+        <button class="btn push" aria-label="Ask about this page" aria-pressed="{{assistPressed}}" onClick="{{toggleAssist}}" style="height: 44px; padding: 0 12px; border: 2.5px solid #111; border-radius: 10px; background: #5cf0a8; box-shadow: 3px 3px 0 #111; font-family: 'Archivo Black', sans-serif; font-size: 13px">ASK</button>
+      </div>
+
+      <!-- Favorites -->
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+        <sc-for list="{{favs}}" as="f" hint-placeholder-count="4">
+          <button class="btn push" aria-label="{{f.label}}" style="{{f.style}}">{{f.letter}}</button>
+        </sc-for>
+      </div>
+
+      <!-- Space name -->
+      <div style="display: flex; align-items: center; gap: 8px; padding-top: 4px">
+        <h2 style="margin: 0; flex: 1; font-family: 'Archivo Black', sans-serif; font-size: 26px; line-height: 1; text-transform: uppercase; letter-spacing: -.5px">{{spaceName}}</h2>
+        <span style="font-size: 12px; font-weight: 700; border: 2px solid #111; border-radius: 999px; padding: 2px 8px; background: #fff">{{tabCount}} TABS</span>
+      </div>
+
+      <!-- Pinned folders -->
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <sc-for list="{{folders}}" as="g" hint-placeholder-count="2">
+          <div style="border: 2.5px solid #111; border-radius: 12px; background: #fff; box-shadow: 3px 3px 0 #111; overflow: hidden">
+            <button class="btn row" aria-expanded="{{g.expanded}}" onClick="{{g.toggle}}" style="width: 100%; justify-content: flex-start; gap: 8px; height: 36px; padding: 0 10px; font-weight: 700; font-size: 13.5px; border-bottom: {{g.headBorder}}">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="{{g.chev}}"><path d="M9 6l6 6-6 6"></path></svg>
+              <span style="flex: 1; text-align: left; text-transform: uppercase; letter-spacing: .4px">{{g.name}}</span>
+            </button>
+            <sc-if value="{{g.open}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; flex-direction: column; padding: 4px">
+                <sc-for list="{{g.tabs}}" as="t" hint-placeholder-count="3">
+                  <button class="btn row" onClick="{{t.pick}}" style="{{t.style}}">
+                    <span style="{{t.fav}}">{{t.ch}}</span>
+                    <span style="flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.title}}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Divider + Clear -->
+      <div style="display: flex; align-items: center; gap: 8px">
+        <span style="flex: 1; border-top: 2.5px dashed #111"></span>
+        <sc-if value="{{hasToday}}" hint-placeholder-val="{{true}}">
+          <button class="btn push" onClick="{{clearToday}}" style="height: 26px; padding: 0 10px; border: 2px solid #111; border-radius: 999px; background: #fff; box-shadow: 2px 2px 0 #111; font-size: 11.5px; font-weight: 700">CLEAR ↓</button>
+        </sc-if>
+      </div>
+
+      <!-- New tab + today -->
+      <button class="btn push" onClick="{{openCmd}}" style="width: 100%; justify-content: flex-start; gap: 8px; height: 40px; padding: 0 12px; border: 2.5px solid #111; border-radius: 10px; background: #ffe14d; box-shadow: 3px 3px 0 #111; font-weight: 700; font-size: 14px">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        <span style="flex: 1; text-align: left">NEW TAB</span>
+        <span style="font-size: 12px">⌘T</span>
+      </button>
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{today}}" as="t" hint-placeholder-count="3">
+          <button class="btn row" onClick="{{t.pick}}" style="{{t.style}}">
+            <span style="{{t.fav}}">{{t.ch}}</span>
+            <span style="flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{t.title}}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="flex: 1"></div>
+
+      <!-- Spaces -->
+      <div style="display: flex; gap: 6px">
+        <button class="btn push" aria-label="Archive and library" style="width: 44px; height: 44px; border: 2.5px solid #111; border-radius: 10px; background: #fff; box-shadow: 3px 3px 0 #111">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4.5"></rect><path d="M5 9v11h14V9M10 13h4"></path></svg>
+        </button>
+        <div role="group" aria-label="Spaces" style="flex: 1; display: flex; gap: 6px">
+          <sc-for list="{{spaces}}" as="s" hint-placeholder-count="3">
+            <button class="btn" aria-label="{{s.label}}" aria-pressed="{{s.pressed}}" onClick="{{s.pick}}" style="{{s.style}}">{{s.short}}</button>
+          </sc-for>
+        </div>
+        <button class="btn push" aria-label="New space" style="width: 44px; height: 44px; border: 2.5px solid #111; border-radius: 10px; background: #fff; box-shadow: 3px 3px 0 #111">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Page -->
+  <main style="flex: 1; min-width: 0; position: relative; border: 3px solid #111; border-radius: 18px; background: #fffdf7; box-shadow: 6px 6px 0 #111; overflow: hidden">
+    <dc-import name="Site" tab="{{pageId}}" hint-size="100%,100%"></dc-import>
+
+    <!-- Mini player -->
+    <div style="position: absolute; left: 18px; bottom: 18px; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 6px; width: 270px; box-sizing: border-box; border: 2.5px solid #111; border-radius: 14px; background: #fff; box-shadow: 4px 4px 0 #111">
+      <div aria-hidden="true" style="width: 40px; height: 40px; border-radius: 9px; background: #ff7ad9; border: 2px solid #111; box-sizing: border-box"></div>
+      <div style="flex: 1; min-width: 0">
+        <div style="font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Late-night focus set</div>
+        <div style="font-size: 11.5px">From a tab in Studio</div>
+      </div>
+      <button class="btn push" aria-label="{{playLabel}}" onClick="{{togglePlay}}" style="width: 38px; height: 38px; border: 2px solid #111; border-radius: 9px; background: #ffe14d; box-shadow: 2px 2px 0 #111; font-weight: 700; font-size: 13px">{{playGlyph}}</button>
+    </div>
+  </main>
+
+  <!-- Ask -->
+  <sc-if value="{{assist}}" hint-placeholder-val="{{false}}">
+    <aside aria-label="Ask about this page" style="width: 330px; flex-shrink: 0; border: 3px solid #111; border-radius: 18px; background: #c9fbe2; box-shadow: 6px 6px 0 #111; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <h2 style="margin: 0; flex: 1; font-family: 'Archivo Black', sans-serif; font-size: 22px">ASK</h2>
+        <button class="btn push" aria-label="Close" onClick="{{toggleAssist}}" style="width: 36px; height: 36px; border: 2px solid #111; border-radius: 9px; background: #fff; box-shadow: 2px 2px 0 #111">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div style="font-size: 12.5px; font-weight: 500">Reads this page + the tabs in {{spaceName}}</div>
+      <div style="align-self: flex-end; max-width: 250px; padding: 10px 14px; border: 2.5px solid #111; border-radius: 14px 14px 2px 14px; background: #fff; font-size: 14.5px; font-weight: 500; box-shadow: 3px 3px 0 #111">{{q}}</div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 2.5px solid #111; border-radius: 14px; background: #fff; font-size: 14px; line-height: 1.5">
+        <sc-for list="{{answer}}" as="b" hint-placeholder-count="3">
+          <div style="display: flex; gap: 8px"><span style="font-weight: 700">→</span><span>{{b}}</span></div>
+        </sc-for>
+      </div>
+      <div style="flex: 1"></div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px">
+        <sc-for list="{{chips}}" as="ch" hint-placeholder-count="4">
+          <button class="btn push" style="height: 30px; padding: 0 10px; border: 2px solid #111; border-radius: 999px; background: #fff; box-shadow: 2px 2px 0 #111; font-size: 12.5px; font-weight: 700">{{ch}}</button>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 6px">
+        <label for="ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden">Ask about this page</label>
+        <input id="ask" placeholder="Ask anything about this tab…" style="flex: 1; min-width: 0; height: 44px; box-sizing: border-box; border: 2.5px solid #111; border-radius: 10px; padding: 0 12px; font: inherit; font-size: 14px; background: #fff; color: #111">
+        <button class="btn push" aria-label="Send" style="width: 44px; height: 44px; border: 2.5px solid #111; border-radius: 10px; background: #111; color: #fff; box-shadow: 3px 3px 0 #5cf0a8">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"></path></svg>
+        </button>
+      </div>
+    </aside>
+  </sc-if>
+
+  <!-- Command bar -->
+  <sc-if value="{{cmd}}" hint-placeholder-val="{{false}}">
+    <div style="position: absolute; inset: 0; z-index: 10">
+      <button class="btn" aria-label="Close command bar" onClick="{{closeCmd}}" style="position: absolute; inset: 0; background: rgba(17,17,17,.35); cursor: default"></button>
+      <div role="dialog" aria-label="New tab" style="position: absolute; left: 50%; top: 150px; transform: translateX(-50%); width: 660px; border: 3px solid #111; border-radius: 18px; background: #fffdf7; box-shadow: 10px 10px 0 #111; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px">
+        <label for="cmdin" style="font-family: 'Archivo Black', sans-serif; font-size: 13px">SEARCH, TYPE A URL, OR ASK</label>
+        <input id="cmdin" placeholder="Go anywhere…" style="height: 56px; box-sizing: border-box; border: 3px solid #111; border-radius: 12px; padding: 0 16px; font: inherit; font-size: 20px; font-weight: 500; background: #fff; color: #111">
+        <sc-for list="{{cmdRows}}" as="r" hint-placeholder-count="3">
+          <button class="btn row" onClick="{{r.go}}" style="width: 100%; justify-content: flex-start; gap: 12px; height: 46px; padding: 0 12px; border-radius: 10px; font-size: 15px; font-weight: 500">
+            <span style="font-size: 11px; font-weight: 700; border: 2px solid #111; border-radius: 6px; padding: 2px 6px; background: {{r.tagBg}}">{{r.tag}}</span>
+            <span style="flex: 1; text-align: left">{{r.text}}</span>
+            <span style="font-size: 12px; font-weight: 700">↵</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { space: 0, assist: false, sidebar: true, peek: false, cmd: false, playing: true, closed: {}, cleared: {}, active: '0-p-0-0' };
+  }
+  renderVals() {
+    const M0 = [
+      ['The quiet return of the analog camera', 'p0', 'The quiet return of the analog camera | The Lantern', 'thelantern.example/culture/analog-return', '#b3261e', 'L', 0],
+      ['Sourdough hydration chart', 'p1', 'Sourdough Hydration Chart: Stiff to Open Crumb – Bread Notes', 'breadnotes.example/hydration-chart', '#8a5a19', 'B', 1],
+      ['Essay: slow software', 'p2', 'Slow software — Margins', 'margins.example/essays/slow-software', '#1f4e79', 'M', 0],
+      ['Weekend itinerary', 'p3', 'Lisbon in 3 days · Trip plan · Wayfarer', 'wayfarer.example/trips/lisbon-3-days', '#0f766e', 'W', 1],
+      ['Flights · SFO → LIS', 'p4', 'SFO to LIS, Fri Nov 14 | Skyroute', 'skyroute.example/flights/sfo-lis', '#0a5bd8', 'S', 0],
+      ['Weather this weekend', 'pt0', 'San Francisco, CA 10-Day Weather Forecast | Nimbus', 'nimbus.example/weather/san-francisco', '#1e4f8f', 'N', 1],
+      ['Film lab prices', 'pt1', 'Developing & Scanning Prices – Darkroom Lab', 'darkroomlab.example/prices', '#262626', 'D', 0],
+      ['Bookshops nearby', 'pt2', 'bookshops near me – Atlas Maps', 'maps.atlas.example/search/bookshops', '#d93025', 'A', 1],
+      ['Q4 roadmap: three bets, one quarter', 'w0', 'Q4 Roadmap — Draft - Pages', 'pages.example/d/q4-roadmap', '#2f6fed', 'P', 0],
+      ['Design review — notes', 'w1', 'Design review — notes - Pages', 'pages.example/d/design-review', '#2f6fed', 'P', 0],
+      ['Metrics dashboard', 'w2', 'Product overview · Gauge', 'app.gauge.example/overview', '#7c3aed', 'G', 1],
+      ['Standup board', 'w3', 'Standup – Board – Taskly', 'taskly.example/b/standup', '#0c66e4', 'T', 0],
+      ['1:1 notes', 'w4', '1:1 notes - Pages', 'pages.example/d/one-on-one', '#2f6fed', 'P', 0],
+      ['Pull request: sidebar spacing', 'wt0', 'fix(sidebar): spacing on collapsed folders by mrivera · Pull Request #482 · forge/app', 'forge.example/forge/app/pull/482', '#1d2228', 'F', 1],
+      ['Bug triage', 'wt1', 'Bug triage – Board – Taskly', 'taskly.example/b/bug-triage', '#0c66e4', 'T', 0],
+      ['Lunch order', 'wt2', 'Lunch menu · Order pickup · Green Bowl', 'greenbowl.example/order', '#2f7d32', 'G', 1],
+      ['Liquid surfaces: light that bends', 's0', 'Liquid surfaces – Pinwall', 'pinwall.example/board/liquid-surfaces', '#c8102e', 'P', 1],
+      ['Type specimen — Grotesk', 's1', 'Grotesk Typeface — Foundry North', 'foundrynorth.example/fonts/grotesk', '#111111', 'F', 0],
+      ['Late-night focus set', 's2', 'Late-night focus set — 2 hours of ambient synth for deep work - Streamly', 'streamly.example/watch?v=nightfocus', '#7c4dff', '►', 0],
+      ['Render queue', 's3', 'Render queue · Cloudrender', 'cloudrender.example/queue', '#ea580c', 'C', 1],
+      ['Color grading references', 's4', 'Color grading references – Pinwall', 'pinwall.example/board/color-grading', '#c8102e', 'P', 1],
+      ['Acrylic suppliers', 'st0', 'Frosted Acrylic Sheets | Plastics Supply Co.', 'plasticssupply.example/acrylic/frosted', '#334155', 'P', 0],
+      ['Lens flare tutorial', 'st1', 'Lens flares without plugins — practical tricks in 12 minutes - Streamly', 'streamly.example/watch?v=flares', '#7c4dff', '►', 0],
+      ['Studio booking', 'st2', 'Studio B · Thursday – Book a room | Roomly', 'roomly.example/studio-b', '#7c3aed', 'R', 1]
+    ];
+    const META = {};
+    M0.forEach((r) => { META[r[0]] = { id: r[1], t: r[2], u: r[3], bg: r[4], ch: r[5], round: r[6] }; });
+    const favIcon = (m) => 'width: 18px; height: 18px; flex-shrink: 0; box-sizing: border-box; border: 2px solid #111; border-radius: ' + (m.round ? '50%' : '5px') + '; background: ' + m.bg + '; color: #fff; font-family: Inter, sans-serif; font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center;';
+    const S = [
+      { name: 'Personal', short: 'ME', bg: '#ffd23f', url: 'fieldnotes.example/analog-return', kicker: 'Field Notes · Photography',
+        headline: 'The quiet return of the analog camera', dek: 'Why a generation raised on infinite photos is choosing 36 frames at a time.',
+        body: 'Most of the buyers at secondhand camera counters were born after the last mainstream film camera went out of production. What they describe is not nostalgia so much as friction chosen on purpose.',
+        folders: [['Reading', ['The quiet return of the analog camera', 'Sourdough hydration chart', 'Essay: slow software']], ['Lisbon', ['Weekend itinerary', 'Flights · SFO → LIS']]],
+        today: ['Weather this weekend', 'Film lab prices', 'Bookshops nearby'],
+        q: 'Summarize this and tell me what’s missing.',
+        answer: ['Film’s comeback is about chosen limits, not nostalgia.', 'Buyers are mostly younger than the cameras they buy.', 'Missing: cost per roll — most readers will ask.'] },
+      { name: 'Work', short: 'WK', bg: '#7fb3ff', url: 'roadmap.example/q4-draft', kicker: 'Planning · Q4',
+        headline: 'Q4 roadmap: three bets, one quarter', dek: 'Draft for review. Comments close Friday.',
+        body: 'Three bets: faster onboarding, an offline mode for field teams, and a rebuilt search index. If a bet can’t show something working by week four, we cut scope rather than slip the date.',
+        folders: [['Q4', ['Q4 roadmap: three bets, one quarter', 'Design review — notes', 'Metrics dashboard']], ['Team', ['Standup board', '1:1 notes']]],
+        today: ['Pull request: sidebar spacing', 'Bug triage', 'Lunch order'],
+        q: 'Which bets don’t have an owner yet?',
+        answer: ['Search index rebuild — no owner in the notes.', 'Offline mode has a lead but no demo slot.', 'Onboarding is fully staffed.'] },
+      { name: 'Studio', short: 'ST', bg: '#ff8fd8', url: 'moodboard.example/liquid-surfaces', kicker: 'Moodboard · Materials',
+        headline: 'Liquid surfaces: light that bends', dek: 'Reference set for the spring campaign. Six collections.',
+        body: 'Materials that feel wet without being glossy: frosted acrylic, water over stone, lens flares caught at the edge of a frame. Light that refracts rather than reflects.',
+        folders: [['Campaign', ['Liquid surfaces: light that bends', 'Type specimen — Grotesk', 'Late-night focus set']], ['Assets', ['Render queue', 'Color grading references']]],
+        today: ['Acrylic suppliers', 'Lens flare tutorial', 'Studio booking'],
+        q: 'Group these references by material.',
+        answer: ['Frosted acrylic — the biggest set.', 'Water over stone — best hero candidate.', 'Lens flares — mostly reflective; the brief says avoid.'] }
+    ];
+    const st = this.state;
+    const sp = S[st.space];
+    const ap = st.active.split('-');
+    const aTitle = ap[1] === 'p' ? S[+ap[0]].folders[+ap[2]][1][+ap[3]] : S[+ap[0]].today[+ap[2]];
+    const am = META[aTitle] || META[sp.folders[0][1][0]];
+    const dots = ['#111', '#ff5a36', '#3a7bff'];
+    const tabStyle = (k) => {
+      const on = st.active === k;
+      return 'width: 100%; justify-content: flex-start; gap: 9px; height: 34px; padding: 0 8px; border-radius: 8px; font-size: 13.5px; font-weight: ' + (on ? '700' : '500') + ';' +
+        (on ? ' background: #111; color: #fff;' : ' color: #111;');
+    };
+    const favStyle = (i) => 'width: 12px; height: 12px; flex-shrink: 0; border: 2px solid currentColor; box-sizing: border-box; background: ' + dots[i % 3] + ';' + (i % 2 ? ' border-radius: 50%;' : '');
+    let tabCount = 0;
+    const folders = sp.folders.map(([name, titles], gi) => {
+      const key = st.space + '-' + gi;
+      const open = !st.closed[key];
+      tabCount += titles.length;
+      return {
+        name, open, expanded: open ? 'true' : 'false', headBorder: open ? '2.5px solid #111' : '0',
+        toggle: () => this.setState({ closed: Object.assign({}, st.closed, { [key]: open }) }),
+        chev: 'width: 15px; height: 15px; transition: transform .15s;' + (open ? ' transform: rotate(90deg);' : ''),
+        tabs: titles.map((title, ti) => { const k = st.space + '-p-' + gi + '-' + ti; const m = META[title]; return { title: m.t, ch: m.ch, style: tabStyle(k), fav: favIcon(m), pick: () => this.setState({ active: k }) }; })
+      };
+    });
+    const today = st.cleared[st.space] ? [] : sp.today.map((title, ti) => { const k = st.space + '-t-' + ti; const m = META[title]; return { title: m.t, ch: m.ch, style: tabStyle(k), fav: favIcon(m), pick: () => this.setState({ active: k }) }; });
+    tabCount += today.length;
+    const spaces = S.map((s, i) => {
+      const on = i === st.space;
+      return {
+        label: 'Switch to ' + s.name + ' space', pressed: on ? 'true' : 'false', short: s.short,
+        pick: () => this.setState({ space: i, active: i + '-p-0-0' }),
+        style: 'flex: 1; height: 44px; border: 2.5px solid #111; border-radius: 10px; font-family: \'Archivo Black\', sans-serif; font-size: 13px; background: ' + s.bg + ';' +
+          (on ? ' transform: translate(3px,3px); box-shadow: inset 0 0 0 2px #fff;' : ' box-shadow: 3px 3px 0 #111;')
+      };
+    });
+    const favs = [['Inbox', 'I', '#ff5a36'], ['Calendar', 'C', '#3a7bff'], ['Messages', 'M', '#5cf0a8'], ['Notes', 'N', '#ffffff']].map(([label, letter, col]) => ({
+      label, letter, style: 'height: 50px; border: 2.5px solid #111; border-radius: 12px; background: ' + col + '; box-shadow: 3px 3px 0 #111; font-family: \'Archivo Black\', sans-serif; font-size: 18px;'
+    }));
+    const sidebarWrap = st.sidebar ? 'flex-shrink: 0; width: 256px;'
+      : (st.peek ? 'position: absolute; left: 16px; top: 16px; bottom: 16px; width: 256px; z-index: 8; padding: 12px; border: 3px solid #111; border-radius: 18px; background: ' + sp.bg + '; box-shadow: 8px 8px 0 #111;'
+        : 'width: 0; flex-shrink: 0; overflow: hidden; margin-left: -16px;');
+    return {
+      bg: sp.bg, favs, folders, today, spaces, tabCount,
+      hasToday: today.length > 0,
+      clearToday: () => this.setState({ cleared: Object.assign({}, st.cleared, { [st.space]: true }) }),
+      spaceName: sp.name, url: am.u, host: am.u.split('/')[0], pageId: am.id,
+      q: sp.q, answer: sp.answer, chips: ['SUMMARIZE', 'COMPARE TABS', 'KEY POINTS', 'TRANSLATE'],
+      cmd: st.cmd,
+      cmdRows: [
+        { tag: 'TAB', tagBg: sp.bg, text: META[sp.folders[0][1][1]].t, go: () => this.setState({ cmd: false }) },
+        { tag: 'TAB', tagBg: sp.bg, text: META[sp.folders[1][1][0]].t, go: () => this.setState({ cmd: false }) },
+        { tag: 'ASK', tagBg: '#5cf0a8', text: sp.q, go: () => this.setState({ cmd: false, assist: true }) }
+      ],
+      openCmd: () => this.setState({ cmd: true, peek: false }),
+      closeCmd: () => this.setState({ cmd: false }),
+      sidebarWrap, sidebarHidden: !st.sidebar,
+      sidebarToggleLabel: st.sidebar ? 'Hide sidebar' : 'Keep sidebar open',
+      toggleSidebar: () => this.setState({ sidebar: !st.sidebar, peek: false }),
+      peekOn: () => this.setState({ peek: true }),
+      peekOff: () => { if (!this.state.sidebar) this.setState({ peek: false }); },
+      assist: st.assist, assistPressed: st.assist ? 'true' : 'false',
+      toggleAssist: () => this.setState({ assist: !st.assist }),
+      playLabel: st.playing ? 'Pause' : 'Play', playGlyph: st.playing ? 'II' : '▶',
+      togglePlay: () => this.setState({ playing: !st.playing })
+    };
+  }
+}
+</script>
+</body>
+</html>

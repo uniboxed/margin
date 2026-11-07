@@ -16,7 +16,9 @@
 // in the theme's guarded notice part, their buttons going back to the copy;
 // the trackpad gestures' feedback; which tabs are loading (through the host).
 import { createRuntime } from '../../extension/ui/runtime.js';
-import { loadTheme } from '../../extension/ui/theme-loader.js';
+import { loadTheme, encodeStoredTheme } from '../../extension/ui/theme-loader.js';
+import { readThemeFile } from '../../extension/ui/theme-import.js';
+import { createPreviewBar } from '../../extension/ui/theme-preview.js';
 import { createAppHost, hitRects } from '../../extension/ui/host-app.js';
 import { createAppNotices, createGestureFeedback } from '../../extension/ui/app-feedback.js';
 import { backgroundSwitches, describeSwitchRun } from '../../extension/shared/switching.js';
@@ -41,6 +43,8 @@ const notices = createAppNotices({
   show: (notice) => runtime?.setUi({ notice }),
   send: (type, payload) => host?.send(type, payload),
   frontTab: () => host?.frontTabId ?? null,
+  // The overlay's own notice (a theme it couldn't draw): Settings opens Margin's Settings in this window.
+  local: (kind, action) => { if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true }); },
 });
 const gestures = createGestureFeedback({ set: (gesture) => runtime?.setUi({ gesture }) });
 // The copy's own switches in this window ('switching', then 'switch-done' or 'switch-failed').
@@ -115,6 +119,9 @@ function reportHits() {
   stats.hits++;
   stats.hitsMs += ms;
   stats.hitsMaxMs = Math.max(stats.hitsMaxMs, ms);
+  // The preview's bar (Margin's own, outside the theme) takes the pointer too.
+  const bar = preview.bar.rect();
+  if (bar && !all) rects.push(bar);
   const key = JSON.stringify([rects, all]);
   if (key === lastHits) return;
   lastHits = key;
@@ -165,13 +172,101 @@ addEventListener('resize', () => { measureNow(); hitsSoon(); });
 
 // ---- the theme --------------------------------------------------------------------------
 
-/** @param {any} pkg the theme package (background/theme-package.js ThemeMessage) */
-async function mount(pkg) {
-  if (!host || !pkg || typeof pkg !== 'object' || typeof pkg.id !== 'string') return;
-  const files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))]));
-  const loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
-  if (!loaded.ok) return log('error', `theme ${pkg.id} refused:`, /** @type {any} */ (loaded).report.errors);
-  const keep = { ...(runtime ? { palette: runtime.ui.palette } : {}), notice: notices.view(), gesture: gestures.shown };
+// ---- falling back to Arcadia --------------------------------------------------------------
+// A theme refused (loadTheme), missing or broken, or one whose page slot
+// isn't usable (under 200 × 150 pt, or outside the window) is replaced by
+// Arcadia, bundled with the app (dist/app/arcadia.js: scripts/build.js
+// fallbackPackage), and the overlay says so (the `theme-failed` notice).
+// The profile's settings.theme stays: the theme is tried again the next time
+// it comes. The log says the theme's id and the kinds of what was wrong,
+// nothing from its files.
+const MIN_PAGE = { width: 200, height: 150 };
+/** @type {{ id: string, why: string } | null} */
+let themeFailure = null;
+/** What kinds of things were wrong, from the checks' errors (never their text). @param {string[]} errors */
+function reasonKinds(errors) {
+  const kinds = new Set();
+  for (const e of errors ?? []) {
+    const head = String(e).split(':')[0];
+    kinds.add(head === 'package' ? 'its size or its files' : head === 'theme.json' ? 'its theme.json' : head === 'template' ? 'its theme.html' : head === 'css' ? 'its theme.css' : 'a bundled file');
+  }
+  return [...kinds].join(', ') || 'not known';
+}
+/** Is the theme's page slot one a page can be shown in? */
+function usableLayout() {
+  const g = runtime?.measure();
+  if (!g) return true; // not measurable yet: nothing to judge
+  const { insets, container } = g;
+  if (container.width < MIN_PAGE.width * 2 || container.height < MIN_PAGE.height * 2) return true; // a window too small to judge
+  const w = container.width - insets.left - insets.right;
+  const h = container.height - insets.top - insets.bottom;
+  const inside = [insets.left, insets.top, insets.right, insets.bottom].every((v) => Number.isFinite(v) && v >= 0);
+  return inside && w >= MIN_PAGE.width && h >= MIN_PAGE.height;
+}
+/**
+ * Arcadia's package, from the script beside this page (loaded when first
+ * needed). Read only as the script's own property of the window, and only as
+ * a package: a theme's element with that id is also `window.marginFallbackTheme`
+ * (named access, from the window's prototype chain), and the sanitizer
+ * removes such ids too. Nothing wrong is kept: the next fallback tries again.
+ */
+let fallbackLoad = /** @type {Promise<any> | null} */ (null);
+function fallbackFromScript() {
+  if (!Object.hasOwn(globalThis, 'marginFallbackTheme')) return null;
+  const p = /** @type {any} */ (globalThis).marginFallbackTheme;
+  const plain = p && typeof p === 'object' && Object.getPrototypeOf(p) === Object.prototype;
+  return plain && p.id === 'arcadia' && ['manifest', 'html', 'css'].every((k) => typeof p[k] === 'string') && p.files && typeof p.files === 'object' ? p : null;
+}
+function fallbackPackage() {
+  fallbackLoad ??= new Promise((resolve) => {
+    const have = fallbackFromScript();
+    if (have) return resolve(have);
+    const el = document.createElement('script');
+    el.src = 'arcadia.js';
+    el.onload = () => resolve(fallbackFromScript());
+    el.onerror = () => resolve(null);
+    document.head.append(el);
+  }).then((pkg) => { if (!pkg) fallbackLoad = null; return pkg; });
+  return fallbackLoad;
+}
+/** @param {string} id @param {string} why */
+async function fallBack(id, why) {
+  themeFailure = { id, why };
+  log('warn', `theme ${JSON.stringify(id.slice(0, 64))} couldn't be drawn (${why}): Arcadia instead`);
+  const arcadia = await fallbackPackage();
+  if (!arcadia) return log('error', 'Arcadia, the fallback theme, is missing beside the overlay');
+  await mount(arcadia, { fallback: true });
+  notices.say('theme-failed');
+  return false;
+}
+
+/**
+ * @param {any} pkg the theme package (background/theme-package.js ThemeMessage)
+ * @param {{ fallback?: boolean }} [options] `fallback`: it's Arcadia standing in (never falls back again)
+ */
+async function mount(pkg, { fallback = false, preview: previewing = false } = {}) {
+  if (!host) return false;
+  const id = typeof pkg?.id === 'string' ? pkg.id : '(no id)';
+  let loaded = null;
+  let why = null;
+  if (!pkg || typeof pkg !== 'object' || typeof pkg.id !== 'string') why = 'no package';
+  else {
+    let files = null;
+    try { files = Object.fromEntries(Object.entries(pkg.files ?? {}).map(([p, b64]) => [p, decode(String(b64))])); } catch { why = 'its files aren\'t readable'; }
+    if (files) {
+      loaded = await loadTheme({ manifest: pkg.manifest, html: pkg.html, css: pkg.css, files }, { document, settings: host.getState()?.settings?.themes?.[pkg.id] ?? null });
+      if (!loaded.ok) why = `refused: ${/** @type {any} */ (loaded).report.errors.length} problem(s) in ${reasonKinds(/** @type {any} */ (loaded).report.errors)}`;
+    }
+  }
+  if (why) {
+    if (previewing) return previewFailed(`Margin couldn’t draw it: ${why}.`);
+    if (fallback) return void log('error', `Arcadia, the fallback theme, couldn't be drawn either (${why})`);
+    return fallBack(id, why);
+  }
+  if (!fallback && !previewing) themeFailure = null;
+  // What a preview puts back: this, Arcadia standing in included.
+  if (!previewing) drawn = { pkg, fallback };
+  const keep = { ...(runtime ? { palette: runtime.ui.palette, settingsOpen: runtime.ui.settingsOpen, settingsStatus: runtime.ui.settingsStatus } : {}), notice: notices.view(), gesture: gestures.shown };
   watcher.disconnect();
   runtime?.destroy();
   theme?.unload?.();
@@ -192,6 +287,10 @@ async function mount(pkg) {
   lastLayout = '';
   lastWant = '';
   measureNow();
+  if (previewing && !usableLayout()) { previewFailed('Margin couldn’t use it: its page is too small to show, or outside the window.'); return false; }
+  if (!fallback && !usableLayout()) return fallBack(id, 'its page slot is too small or outside the window');
+  // Settings says why Margin fell back to Arcadia (the theme field's status), until a theme draws.
+  runtime.setUi({ settingsStatus: { ...(runtime.ui.settingsStatus ?? {}), theme: themeFailure ? { text: `Margin couldn’t draw the theme chosen here (${themeFailure.why}), so it’s using Arcadia.`, error: true } : undefined } });
   hitsSoon();
   reportWant();
   if (!saidReady && host.getState()) {
@@ -199,6 +298,7 @@ async function mount(pkg) {
     saidReady = true;
     void post('ready').catch(() => {});
   }
+  return true;
 }
 
 // The palette opened: drawn how long after the word came (work, then frames until it's on screen), one line each time.
@@ -230,12 +330,140 @@ function openPaletteTimed(options, by) {
   setTimeout(() => say(null), 500);
 }
 
+// ---- previewing an imported theme (docs/phase6-themes.md §3) ----------------------------------
+// Settings' Import Theme… asks the app for its file picker (`perform theme.import`); what was
+// chosen comes back as `themeFile` (a folder's files or a .margintheme's bytes), is read and
+// checked here (ui/theme-import.js: the same checks as every load), and drawn over the live
+// window under Margin's own bar (ui/theme-preview.js). Use Theme hands the checked package to the
+// app (`perform theme.save`), which keeps it and sets the profile's theme; Cancel, Escape, or 30 s
+// with no answer put the theme from before back. After Use Theme the previewed theme stays drawn,
+// and the theme from before is kept, until the app's package for it comes (`theme`): a refusal
+// (`themeSaved` not ok), a package that can't be stored, or no package within SAVE_WAIT_MS put
+// the theme from before back.
+/**
+ * What's drawn now (not a preview): the profile's package, or Arcadia standing in for it (`fallback`).
+ * @type {{ pkg: any, fallback: boolean } | null}
+ */
+let drawn = null;
+const SAVE_WAIT_MS = 10_000;
+/** Use Theme pressed, the app's word not in yet: the theme's id, and what to put back. @type {{ id: string, before: { pkg: any, fallback: boolean } | null, timer: any } | null} */
+let saving = null;
+/** The theme from before, drawn again (Arcadia again, as the fallback, if it was standing in). @param {{ pkg: any, fallback: boolean } | null} before */
+function putBack(before) {
+  if (!before) return mounting;
+  return (mounting = mounting.then(() => mount(before.pkg, { fallback: before.fallback })));
+}
+const preview = {
+  /** @type {any} */ pkg: null,
+  /** @type {any} */ before: null,
+  bar: createPreviewBar({
+    onUse: () => usePreview(),
+    onCancel: (why) => { void endPreview(why === 'timeout' ? 'The preview ended by itself after 30 seconds; nothing changed.' : null); },
+  }),
+};
+/** @param {string | null} text @param {boolean} [error] */
+function importStatus(text, error = false) {
+  runtime?.setUi({ settingsStatus: { ...(runtime.ui.settingsStatus ?? {}), themeImport: text == null ? undefined : { text, error } } });
+}
+/** @param {string} text */
+function previewFailed(text) {
+  preview.bar.hide();
+  setKeys(editable(document.activeElement));
+  const before = preview.before;
+  preview.pkg = null;
+  preview.before = null;
+  if (before) putBack(before).then(() => importStatus(text, true));
+  else importStatus(text, true);
+  return false;
+}
+const toBase64 = (/** @type {Uint8Array} */ bytes) => { let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+/** What the app read from the picker's choice. @param {any} msg */
+async function themeFile(msg) {
+  const read = await readThemeFile(msg);
+  if (!read.ok) {
+    log('note', `import: refused (${read.errors?.length ?? 0} problem(s))`);
+    return importStatus(`Margin can’t use that theme: ${read.errors.slice(0, 2).map((e) => String(e).slice(0, 160)).join('; ')}.`, true);
+  }
+  const m = read.manifest;
+  const message = { id: m.id, manifest: read.pkg.manifest, html: read.pkg.html, css: read.pkg.css, files: Object.fromEntries(Object.entries(read.pkg.files).map(([p, b]) => [p, toBase64(b)])) };
+  preview.before ??= drawn;
+  preview.pkg = read.pkg;
+  log('note', `import: previewing (${Object.keys(read.pkg.files).length} files, ${read.removed.length} kind(s) of thing removed)`);
+  const shown = await (mounting = mounting.then(() => mount(message, { preview: true })));
+  if (!shown || preview.pkg !== read.pkg) return;
+  const installed = (host?.userThemes ?? []).find((e) => e?.id === m.id);
+  preview.bar.show({ name: m.name, version: m.version, author: m.author, replaces: installed && installed.version !== m.version ? String(installed.version) : null });
+  setKeys(true);
+  hitsSoon();
+  importStatus(read.removed.length ? `Previewing. Margin removed: ${read.removed.join('; ')}.` : 'Previewing. Use it or cancel from the bar at the top.');
+}
+function usePreview() {
+  const pkg = preview.pkg;
+  const before = preview.before;
+  preview.pkg = null;
+  preview.before = null;
+  setKeys(editable(document.activeElement));
+  hitsSoon();
+  if (!pkg) return;
+  let stored;
+  try { stored = encodeStoredTheme(pkg).value; } catch (err) {
+    void putBack(before);
+    return importStatus(`Margin couldn’t keep that theme (${String(err?.message ?? err).slice(0, 160)}).`, true);
+  }
+  const id = String(stored.id);
+  if (saving) clearTimeout(saving.timer);
+  saving = { id, before, timer: setTimeout(() => saveUnanswered(id), SAVE_WAIT_MS) };
+  host?.perform('theme.save', { value: stored });
+  importStatus('Saving…');
+}
+/** No package for the theme came in time: the theme from before back, and why. @param {string} id */
+function saveUnanswered(id) {
+  if (saving?.id !== id) return;
+  const { before } = saving;
+  saving = null;
+  const kept = (host?.userThemes ?? []).some((e) => e?.id === id);
+  log('note', `import: no package for the saved theme within ${SAVE_WAIT_MS / 1000} s (${kept ? 'kept' : 'not kept'}): the theme from before back`);
+  void putBack(before).then(() => importStatus(kept ? 'Margin kept the theme, but this profile didn’t switch to it. Choose it under Theme.' : 'Margin couldn’t keep that theme: Margin.app didn’t answer.', true));
+}
+/** @param {string | null} text */
+async function endPreview(text) {
+  const before = preview.before;
+  preview.pkg = null;
+  preview.before = null;
+  setKeys(editable(document.activeElement));
+  hitsSoon();
+  if (before) await putBack(before);
+  importStatus(text);
+}
+
 // ---- what the app sends -------------------------------------------------------------------
 
 /** @param {any} msg */
 function onMessage(msg) {
   switch (msg.type) {
+    case 'themeFile':
+      void themeFile(msg);
+      return;
+    case 'themeSaved':
+      if (msg.ok !== false) return;
+      // Refused by the app: the theme from before back (the previewed one stays drawn otherwise).
+      if (saving) {
+        const { before } = saving;
+        clearTimeout(saving.timer);
+        saving = null;
+        void putBack(before).then(() => importStatus(String(msg.error ?? 'Margin couldn’t keep that theme.').slice(0, 300), true));
+      } else importStatus(String(msg.error ?? 'Margin couldn’t keep that theme.').slice(0, 300), true);
+      return;
     case 'theme':
+      // A new package while previewing: drawn once the preview ends.
+      if (preview.pkg) { pendingTheme = msg.theme; preview.before = { pkg: msg.theme, fallback: false }; return; }
+      // The app's package after Use Theme: the save went through (another theme: drawn, as any).
+      if (saving) {
+        const ok = msg.theme?.id === saving.id;
+        clearTimeout(saving.timer);
+        saving = null;
+        if (ok) importStatus('Saved. This profile uses it now; choose it in other profiles’ Settings.');
+      }
       pendingTheme = msg.theme;
       if (host?.getState()) mounting = mounting.then(() => mount(msg.theme));
       return;
@@ -316,7 +544,7 @@ const setKeys = (/** @type {boolean} */ on) => {
   void post('focus', { on }).catch(() => {});
 };
 document.addEventListener('focusin', (e) => { if (editable(e.target)) setKeys(true); });
-document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) setTimeout(() => setKeys(editable(document.activeElement)), 0); });
+document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) setTimeout(() => setKeys(editable(document.activeElement) || preview.bar.shown), 0); });
 
 // ---- start ----------------------------------------------------------------------------------
 
@@ -345,6 +573,15 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
+  // The theme the overlay couldn't draw, if it fell back to Arcadia (the app's tests read it).
+  themeFailure: () => (themeFailure ? { ...themeFailure } : null),
+  // The preview's bar, for the app's tests: what it says, and a press of one of its buttons.
+  preview: () => ({ shown: preview.bar.shown, text: preview.bar.text(), rect: preview.bar.rect() }),
+  previewPress: (/** @type {'use' | 'cancel'} */ which) => preview.bar.press(which),
+  // What Settings says about the last import (the app's tests read it).
+  importStatus: () => runtime?.ui.settingsStatus?.themeImport ?? null,
+  // Use Theme pressed and the app's word not in yet (the app's tests read it).
+  saving: () => (saving ? saving.id : null),
 };
 /** @type {any} */
 let pendingTheme = null;

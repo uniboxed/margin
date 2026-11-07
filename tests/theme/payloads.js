@@ -194,3 +194,81 @@ export const ACTION_PAYLOADS = [
   ['no such folder', 'folder.toggle', 'personal-f9'],
   ['no such archived entry', 'archive.restore', 'a9'],
 ];
+
+// ---------------------------------------------------------------------------
+// Phase 6 (docs/phase6-themes.md §4): the payloads PLAN.md §4's rules called
+// for that the lists above lacked. Each is refused or removed; none loads,
+// runs or shows a theme's words in Margin's guarded parts.
+
+// [name, template fragment, what the sanitizer must say (a RegExp over its
+// errors and removed reasons)]
+export const TEMPLATE_PAYLOADS_2 = [
+  ['svg <use> in a guarded part pointing at <text> outside it', `<svg style="display:none"><symbol id="fake"><text x="0" y="9">Delete everything</text></symbol></svg><template m-part="menu"><div class="menu"><m-for each="menu.items" as="i"><button m-action="menu.run" m-arg="{{i.id}}">{{i.label}}</button></m-for><svg viewBox="0 0 10 10"><use href="#fake"/></svg></div></template>`, /svg use: inside Margin's "menu" part/],
+  ['ids named like the overlay\'s globals (DOM clobbering)', `<div id="webkit"></div><div id="marginApp"></div><div id="T"></div><div id="browser"></div><div id="chrome"></div><svg id="safari"></svg><div id="Margin"></div>`, /id: value "webkit" not allowed[\s\S]*named like a global/],
+  ['49 levels deep', `${'<div>'.repeat(49)}${'</div>'.repeat(49)}`, /nested deeper than 48/],
+  ['49 attributes on an element', `<div ${Array.from({ length: 49 }, (_, i) => `data-a${i}="x"`).join(' ')}>x</div>`, /more than 48 attributes/],
+  ['a 4 KB attribute value', `<div title="${'x'.repeat(4097)}">x</div>`, /value too long/],
+  ['m-for nested 4 deep', `<m-for each="a" as="b"><m-for each="b.c" as="d"><m-for each="d.e" as="f"><m-for each="f.g" as="h"><i>x</i></m-for></m-for></m-for></m-for>`, /<m-for> nested deeper than 3/],
+  ['the same part twice (a decoy second menu)', `<template m-part="menu"><div class="menu">{{menu.title}}</div></template><template m-part="menu"><div class="menu-decoy">{{menu.title}}</div></template>`, /a second template for this part/],
+  ['an unknown part name', `<template m-part="evil"><div>x</div></template>`, /unknown part/],
+  ['<m-page> inside a part', `<template m-part="palette"><m-page></m-page></template>`, /<m-page> inside <m-for> or <template>/],
+];
+
+// [name, css, true if the rule is kept (it loads nothing)]
+export const CSS_PAYLOADS_2 = [
+  ['url() in clip-path', `.a{clip-path:url(https://evil.test/clip.svg#c)}`],
+  ['url() in offset-path', `.a{offset-path:url(https://evil.test/offset.svg#o)}`],
+  ['url() in marker-start', `.a{marker-start:url(https://evil.test/marker.svg#m)}`],
+  ['url() in mask-border-source', `.a{mask-border-source:url(https://evil.test/mask-border.png)}`],
+  ['url() in list-style-image', `.a{list-style-image:url(https://evil.test/list-image.png)}`],
+  ['url() in -webkit-box-reflect', `.a{-webkit-box-reflect:below 0 url(https://evil.test/reflect.png)}`],
+  ['url() inside @scope', `@scope (.a){.b{background:url(https://evil.test/scope.png)}}`],
+  ['url() inside @starting-style', `@starting-style{.a{background:url(https://evil.test/starting.png)}}`],
+  ['url() inside @layer', `@layer x{.a{background:url(https://evil.test/layer.png)}}`],
+  ['an escaped property name: \\62 ackground', `.a{\\62 ackground:url(https://evil.test/escaped-prop.png)}`],
+  ['@counter-style spelling words', `@counter-style evil{system:cyclic;symbols:"D" "e" "l" "e" "t" "e";} .a{list-style:evil}`],
+  ['a data: font in @font-face over the cap', `@font-face{font-family:big;src:url(data:font/woff2;base64,${'d09GMg'.repeat(30000)})} .a{font-family:big}`],
+];
+// Kept on purpose: a data: font under the cap loads nothing (checked live).
+export const CSS_KEPT_2 = [
+  ['a data: font in @font-face (no request; capped at LIMITS.dataUrl)', `@font-face{font-family:inert;src:url(data:font/woff2;base64,d09GMgABAAAAAA==)} .a{font-family:inert}`],
+];
+
+// [name, theme.json text, RegExp over the errors]
+export const MANIFEST_PAYLOADS = [
+  ['a key twice (the id a first-key reader sees differs)', `{"format":2,"id":"mine","id":"arcadia","name":"X","version":"1.0.0"}`, /appears twice/],
+  ['a name with a bidi override', `{"format":2,"id":"mine","name":"Safe\u202Etxt.exe","version":"1.0.0"}`, /bad name/],
+  ['an author with an isolate and a zero-width space', `{"format":2,"id":"mine","name":"Mine","version":"1.0.0","author":"Mar\u2066gin\u200b"}`, /bad author/],
+  ['not an object', `["format",2]`, /not an object/],
+];
+// [name, theme.json text, RegExp over the removed reasons]: the theme loads, the bad part removed.
+export const MANIFEST_REMOVED = [
+  ['__proto__ keys', `{"format":2,"id":"mine","name":"Mine","version":"1.0.0","__proto__":{"polluted":1},"settings":{"__proto__":{"type":"toggle","default":true}}}`, /__proto__: unknown field[\s\S]*settings\.__proto__: bad name/],
+  ['deep nesting in an unknown field', `{"format":2,"id":"mine","name":"Mine","version":"1.0.0","extra":${'['.repeat(400)}${']'.repeat(400)}}`, /extra: unknown field/],
+];
+
+const bytes = (...parts) => {
+  const out = [];
+  for (const p of parts) for (const b of typeof p === 'string' ? [...p].map((c) => c.charCodeAt(0)) : p) out.push(b);
+  return new Uint8Array(out);
+};
+// [name, files, RegExp over checkPackage's errors]
+export const FILE_PAYLOADS = [
+  ['a "font" that is a script', { 'fonts/evil.woff2': bytes("__trip('font')") }, /isn't a woff2 font/],
+  ['a png that is html', { 'images/evil.png': bytes('<html><script>__trip(1)</script>') }, /isn't a png image/],
+  ['a jpg that is a png', { 'images/evil.jpg': bytes([0x89], 'PNG\r\n\x1a\n') }, /isn't a jpg image/],
+  ['an svg image that is an html page', { 'images/evil.svg': bytes('<html><body><script>__trip(1)</script></body></html>') }, /isn't a svg image/],
+  ['an svg image that is not UTF-8', { 'images/evil.svg': bytes('<svg>', [0xff, 0xfe, 0x00], '</svg>') }, /isn't a svg image/],
+  ['a note with NUL bytes', { 'NOTES.txt': bytes('hello', [0], 'world') }, /isn't a txt note/],
+  ['a note over the cap', { 'NOTES.md': bytes('x'.repeat(64 * 1024 + 1)) }, /note larger than/],
+  ['two names that differ by case', { 'images/a.png': bytes([0x89], 'PNG\r\n\x1a\n'), 'images/A.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /same name but for case/],
+  ['a parent segment', { 'images/../../evil.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
+  ['an absolute path', { '/etc/evil.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
+  ['a backslash', { 'images\\evil.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
+  ['a drive letter', { 'C:/evil.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
+  ['a dot segment', { 'images/./evil.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
+  ['a NUL in the path', { 'images/evil\u0000.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
+  ['look-alike Unicode (Cyrillic а)', { 'im\u0430ges/evil.png': bytes([0x89], 'PNG\r\n\x1a\n') }, /bad path/],
+  ['a hidden file', { '.git/config': bytes('[core]') }, /bad path|not a file a theme may bundle/],
+  ['a file a theme may not bundle', { 'evil.js': bytes("__trip('js')") }, /not a file a theme may bundle/],
+];

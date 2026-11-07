@@ -24,7 +24,7 @@
 //   { do: 'windows', id, list } → a window list numbered next;
 //   { do: 'retitle', id, tabId, title } → a delta of the open tabs with that
 //     tab's title changed (how a copy stores tabs: `openTabs`);
-//   { do: 'theme', id, theme, chunkBytes?, corrupt? } → a theme again
+//   { do: 'theme', id, theme, chunkBytes?, corrupt?, edit? } → a theme again (`edit`: { manifest?, html?, css? } in place of its own)
 //     (`corrupt`: one piece's bytes changed);
 //   { do: 'send', id, msg } → msg as is, its epoch filled in;
 //   { do: 'mute', id, on } → ticks no longer answered; { do: 'close', id }.
@@ -108,8 +108,10 @@ async function themeMessage(id) {
   return themes.get(id);
 }
 
-async function sendTheme(s, id, chunkBytes = 512 * 1024, corrupt = false) {
-  const whole = Buffer.from(JSON.stringify(await themeMessage(id)), 'utf8');
+// `edit`: changes to the package before it's sent ({ manifest, html, css }: text put in their place;
+// a broken theme for the overlay's fallback to Arcadia).
+async function sendTheme(s, id, chunkBytes = 512 * 1024, corrupt = false, edit = null) {
+  const whole = Buffer.from(JSON.stringify({ ...(await themeMessage(id)), ...(edit ?? {}) }), 'utf8');
   const transfer = createHash('sha256').update(whole).digest('hex');
   const parts = Math.max(1, Math.ceil(whole.length / chunkBytes));
   for (let part = 0; part < parts; part++) {
@@ -348,7 +350,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       s.send({ k: 'windows', seq: ++s.seq, list: c.list });
       return say({ ev: 'sent', id: c.id, what: 'windows', seq: s.seq });
     case 'theme':
-      return void sendTheme(s, c.theme, c.chunkBytes, c.corrupt);
+      return void sendTheme(s, c.theme, c.chunkBytes, c.corrupt, c.edit);
     case 'send':
       s.send(c.msg);
       return say({ ev: 'sent', id: c.id, what: c.msg.k });

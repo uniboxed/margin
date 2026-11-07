@@ -20,15 +20,16 @@
    (data-margin-at, set by the page's world: content/page/main.js), so a
    registration WebKit keeps applying after it was dropped paints nothing.
    The card as theme.css's .page (its border, its hard shadow, the corner
-   from the layout); the ground the default space colour (--space): which
-   space the window shows isn't known before Margin's scripts run. */
+   from the layout), all outside the box: <html> is the box, and nothing
+   paints over the page; the ground the default space colour (--space):
+   which space the window shows isn't known before Margin's scripts run. */
 @media screen {
   html[data-margin-at="neo-brutalism"]::after {
     content: "" !important;
     position: fixed !important;
     inset: 0 !important;
     border-radius: var(--margin-at-radius) !important;
-    box-shadow: inset 0 0 0 3px #111, 6px 6px 0 #111, 0 0 0 100vmax #ffd23f !important;
+    box-shadow: 0 0 0 3px #111, 6px 6px 0 3px #111, 0 0 0 100vmax #ffd23f !important;
     pointer-events: none !important;
     z-index: 2147483646 !important;
   }
