@@ -104,7 +104,8 @@ extension Shell {
         let exact = safariExact(list: list, pids: pids)
         // (The map kept from this read too while covers are wanted: the trace has Safari's launch.)
         if !started || !covers.isEmpty {
-            let changes = windowMap.update(now: now, list: list, browserPids: pids, marginPid: ProcessInfo.processInfo.processIdentifier, front: apps.frontPid, ax: ax)
+            let changes = windowMap.update(now: now, list: list, browserPids: pids, marginPid: ProcessInfo.processInfo.processIdentifier, front: apps.frontPid, ax: ax,
+                                           parked: parking?.numbers ?? [])
             options.trace?.map(windowMap.snapshot, changes)
         }
         var facts = CoverPlan.Facts()

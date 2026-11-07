@@ -34,6 +34,7 @@ nonisolated struct MapWindow: Equatable, Sendable, Codable {
     var display: String? // the display holding its centre
     var fullScreen: Bool? // Accessibility's (Safari's windows)
     var link: String? // the profile its title named (Safari's windows)
+    var parked: Bool? // parked by Margin (a profile switch's old window, kept in a private Space); nil in older traces
 }
 
 nonisolated struct MapDisplay: Equatable, Sendable, Codable {
@@ -64,6 +65,7 @@ nonisolated enum MapChange: Equatable, Sendable {
     case display(Int, String?)
     case fullScreen(Int, Bool?)
     case link(Int, String?)
+    case parked(Int, Bool?)
     case front(pid_t?)
     case displays([MapDisplay])
 }
@@ -87,7 +89,7 @@ final class WindowMap {
     /// owns what and what Accessibility knows. The changes, in a stable order.
     @discardableResult
     func update(now: Double, list: [ServerWindow]?, browserPids: Set<pid_t>, marginPid: pid_t, front: pid_t?,
-                ax: AXKnown = AXKnown()) -> [MapChange] {
+                ax: AXKnown = AXKnown(), parked: Set<Int> = []) -> [MapChange] {
         let before = snapshot
         var next = WindowSnapshot(at: now, windows: before.windows, displays: before.displays, frontPid: front)
         if let list {
@@ -97,7 +99,7 @@ final class WindowMap {
                 let old = before.windows[w.number]
                 var m = MapWindow(number: w.number, pid: w.pid, owner: owner, layer: w.layer, bounds: w.bounds, onScreen: w.onScreen, order: w.order,
                                   spaces: old?.spaces, display: old?.display, fullScreen: nil, link: nil)
-                if owner == .browser { m.fullScreen = ax.fullScreen[w.number]; m.link = ax.profiles[w.number] }
+                if owner == .browser { m.fullScreen = ax.fullScreen[w.number]; m.link = ax.profiles[w.number]; m.parked = parked.contains(w.number) }
                 windows[w.number] = m
             }
             next.windows = windows
@@ -149,6 +151,7 @@ final class WindowMap {
                 if w.display != nil { out.append(.display(n, w.display)) }
                 if w.fullScreen != nil { out.append(.fullScreen(n, w.fullScreen)) }
                 if w.link != nil { out.append(.link(n, w.link)) }
+                if w.parked == true { out.append(.parked(n, true)) }
             case (_?, nil):
                 out.append(.gone(n))
             case (let o?, let w?):
@@ -158,6 +161,7 @@ final class WindowMap {
                 if o.display != w.display { out.append(.display(n, w.display)) }
                 if o.fullScreen != w.fullScreen { out.append(.fullScreen(n, w.fullScreen)) }
                 if o.link != w.link { out.append(.link(n, w.link)) }
+                if (o.parked ?? false) != (w.parked ?? false) { out.append(.parked(n, w.parked)) }
             case (nil, nil):
                 break
             }

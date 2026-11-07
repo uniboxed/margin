@@ -3103,3 +3103,7 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Why.** With "Displays have separate Spaces" on, each display shows its own Space. SkyLight's active Space (`SLSGetActiveSpace`) is the display last used, not necessarily the switch's window's. Every remaining use of it was in the profile switch: the Space at the freeze, the freeze's Space rule, R1, A left its Space, B in front, the landed key, the recovery, and the bridge's show of a parked window.
 - **Now** `SpaceReads.showing(onDisplayOf:)` gives the Space showing on the display holding a window (by its centre), and `showingAll()` every display's. With one display, separate Spaces off, or a window or display that doesn't read, they give the active Space as before, so a single display behaves exactly as it did. The planner, the placer and the map already work per display (`WindowSnapshot.showing`).
 - **Tests** (`window-tests.swift` `showingPerDisplay`): two displays with the active Space on the other, a window not read, one display. Checked on two real displays: not yet (Tirth has a second display to test with).
+
+### Parking on the window map (2026-11-07)
+
+- The map keeps which of the browser's windows Margin has parked (`MapWindow.parked`, from the parking registry, fed by both the shell's reads and the covers'). A park or show is a map change (`.parked`), so the trace has each one and a replay sees it. The field is optional: traces from before it read (nil). Tests: `window-tests.swift` `windowMap` (parked, shown again, an older trace's window).

@@ -1705,7 +1705,12 @@ extension Tests {
     check("map: a second on, Spaces read again", later == [.spaces(200, [2])], "\(later)")
     let gone = map.update(now: 2.4, list: list2.filter { $0.number != 101 }, browserPids: [50], marginPid: 7, front: nil, ax: ax)
     check("map: a window closed, nothing in front", gone == [.front(nil), .gone(101)], "\(gone)")
-    let none = map.update(now: 2.5, list: nil, browserPids: [50], marginPid: 7, front: nil, ax: ax)
+    let parkedNow = map.update(now: 2.45, list: list2.filter { $0.number != 101 }, browserPids: [50], marginPid: 7, front: nil, ax: ax, parked: [200])
+    check("map: a window parked by Margin: said, and kept on it", parkedNow == [.parked(200, true)] && map.snapshot.windows[200]?.parked == true, "\(parkedNow)")
+    let shownNow = map.update(now: 2.46, list: list2.filter { $0.number != 101 }, browserPids: [50], marginPid: 7, front: nil, ax: ax, parked: [])
+    check("map: shown again", shownNow == [.parked(200, false)] && map.snapshot.windows[200]?.parked == false, "\(shownNow)")
+    check("map: a trace from before parking was kept reads (no `parked`)", (try? JSONDecoder().decode(MapWindow.self, from: Data(#"{"number":1,"pid":2,"owner":"browser","layer":0,"bounds":[[0,0],[10,10]],"onScreen":true,"order":0}"#.utf8)))?.parked == nil)
+    let none = map.update(now: 2.5, list: nil, browserPids: [50], marginPid: 7, front: nil, ax: ax, parked: [])
     check("map: a read with no list keeps the windows", none.isEmpty && map.snapshot.windows.count == 4)
     // Without SkyLight: Spaces unknown, never guessed.
     let blind = WindowMap()

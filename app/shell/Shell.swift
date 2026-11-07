@@ -1159,7 +1159,8 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         matches = next
         // The map, from this read (and the trace, when there's one: what changed, and what the copies said).
         windowMap.reads = spaceReads
-        let mapChanges = windowMap.update(now: Diagnostics.now(), list: read, browserPids: readPids, marginPid: ProcessInfo.processInfo.processIdentifier, front: front, ax: ax)
+        let mapChanges = windowMap.update(now: Diagnostics.now(), list: read, browserPids: readPids, marginPid: ProcessInfo.processInfo.processIdentifier, front: front, ax: ax,
+                                          parked: parking?.numbers ?? [])
         checkPlacements()
         if let trace = options.trace {
             trace.map(windowMap.snapshot, mapChanges)

@@ -77,7 +77,7 @@ final class WindowTrace: @unchecked Sendable {
         var changed = Set<Int>(), gone: [Int] = []
         for c in changes {
             switch c {
-            case .appeared(let n), .onScreen(let n, _), .bounds(let n, _), .spaces(let n, _), .display(let n, _), .fullScreen(let n, _), .link(let n, _): changed.insert(n)
+            case .appeared(let n), .onScreen(let n, _), .bounds(let n, _), .spaces(let n, _), .display(let n, _), .fullScreen(let n, _), .link(let n, _), .parked(let n, _): changed.insert(n)
             case .gone(let n): gone.append(n)
             case .front(let pid): line.front = pid ?? -1
             case .displays(let d): line.d = d
