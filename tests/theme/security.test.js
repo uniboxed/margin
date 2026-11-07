@@ -18,13 +18,13 @@ import { readFileSync } from 'node:fs';
 import { chromium, webkit } from 'playwright';
 import { harnessScript } from './package.js';
 import { HTML_PAYLOADS, CSS_PAYLOADS, TEMPLATE_PAYLOADS_2, CSS_PAYLOADS_2, CSS_KEPT_2 } from './payloads.js';
-import { suitePackages } from '../security/packages.js';
+import { readSuitePackages } from '../security/packages.js';
 
 const ENGINES = [['webkit', webkit], ['chromium', chromium]];
 const MANIFEST = JSON.stringify({ format: 2, id: 'payload', name: 'Payload', version: '1.0.0' });
 const script = harnessScript();
 const b64 = (pkg) => ({ ...pkg, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, Buffer.from(v).toString('base64')])) });
-const packages = suitePackages().map((p) => ({ label: p.label, pkg: b64(p.read()) }));
+const packages = (await readSuitePackages()).map((p) => ({ label: p.label, pkg: b64(p.pkg) }));
 const swift = readFileSync(new URL('../../app/shell/OverlayWebView.swift', import.meta.url), 'utf8');
 const POLICY = /static let policy = "([^"]+)"/.exec(swift)?.[1];
 

@@ -2881,3 +2881,12 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **What shows:** Arcadia, drawn and said ready as usual, and a notice of the overlay's own, `theme-failed`. It doesn't name the theme (its name may be what's broken). Its buttons stay in the overlay: Settings opens Margin's Settings in that window, OK closes it. The copy can't push it and can't run its buttons (`isNoticeAction` refuses the overlay's own kinds).
 - **`settings.theme` is kept,** so the copy's next package is tried again.
 - **The log** says the theme's id and the kinds of what was wrong (`refused: 2 problem(s) in its theme.html`), never its files' text.
+
+### Reading an imported theme
+
+- **`ui/theme-import.js`** turns a folder's files or a `.margintheme` zip into the package every load takes, then checks it as every load does (`checkPackage`, `sanitizeTheme`) and refuses a built-in's id. Pure JS, so the overlay, the tests and `npm run theme:pack` share it.
+- **The zip is read by hand, strictly:** one directory at the end, nothing before the first entry or between the entries and the directory, no zip64, no encryption, no links or special files, stored or deflated only, each local header agreeing with the directory, no two entries with one name in any case or sharing bytes, inflated with `DecompressionStream('deflate-raw')` while counting (never past what the entry says it holds, nor the kind's cap), and its CRC-32 checked. macOS's own zip and Finder's Compress make files it reads.
+- **Folder rules:** at most 70 files, two folders deep, names of letters, digits, `.`, `_` and `-` only (no `..`, no absolute paths, no backslashes, no look-alike letters), no two names differing by case (`Theme.json` beside `theme.json` is refused). Finder's `__MACOSX/` and `.DS_Store` are skipped; hidden folders (`.git/`) are left out by the readers of folders on disk.
+- **What was removed is said by count and kind,** with the theme's own words taken out of the reasons ("2 declarations removed from theme.css: url() is not a bundled file…").
+- **`npm run theme:pack <folder> [out]`** writes the zip (sorted, dated 1 January 2026, so the same folder makes the same file), after the same checks. It leaves out what a package doesn't hold (a built-in's `first-paint.css`, Arcadia's `theme.js`) and says so. All three built-ins go through it and back unchanged (`tests/theme-import.test.js`).
+- **`MARGIN_THEMES`** takes `.margintheme` files too, read as an import is.

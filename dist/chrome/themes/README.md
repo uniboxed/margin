@@ -16,6 +16,7 @@ my-theme/
   theme.html   the template: one root element, exactly one <m-page>
   theme.css    the styles
   fonts/*.woff2, images/*   bundled files (only what theme.json names)
+  *.txt, *.md               licences and notes (kept, never loaded)
 ```
 
 `theme.json` (format 2, schema in `ui/theme-schema.js`):
@@ -41,6 +42,45 @@ my-theme/
   `sidebarWidth` is the one `m-resize` drags.
 - `layout` is what Margin needs before rendering: the edge a hidden sidebar
   comes from and its widths.
+
+## Making and importing a theme
+
+1. **Start from a copy** of `neo-brutalism/` (it uses every binding,
+   behavior and part) or `arcadia/`.
+2. **Give it your own `id`** in `theme.json`: lower-case letters, digits
+   and dashes, not a built-in's. Bump `version` each time you change it.
+3. **Keep the folder's layout:** `theme.json`, `theme.html` and
+   `theme.css` at the top, fonts in `fonts/`, images in `images/`,
+   licences and notes as `.txt` or `.md`. Two folders deep at most, 64
+   files at most. Nothing else goes in: no scripts, no other kinds of file.
+4. **Fonts:** woff2 only, each with its licence text beside it (the SIL OFL
+   for Google Fonts). No font services, no addresses anywhere.
+5. **Check it** before you share it, as Margin will:
+   `MARGIN_THEMES=~/my-theme npm run test:security`.
+6. **Share it** as one file: zip the folder and name it
+   `my-theme.margintheme`. Finder's Compress works (rename the `.zip`), and
+   so does `npm run theme:pack ~/my-theme` (it also checks it, and says what
+   it left out).
+7. **Import it:** in Margin, Settings › Theme › Import Theme…, pick the
+   folder or the `.margintheme` file, look at the preview, and choose Use
+   Theme. Importing the same `id` again replaces it. Remove it from the
+   same place.
+
+What Margin does with it:
+
+- It checks the theme when it's imported and every time it loads, with the
+  rules under "Security rules" below. What it removed is listed in the
+  preview, by count and kind.
+- A `.margintheme` file must be a plain zip: stored or deflated entries, no
+  links, no encryption, no zip64, at most 4 MB and 70 entries, nothing
+  before the first entry. If everything is in one top folder
+  (`my-theme/theme.json`), that folder is the theme. Finder's `__MACOSX/`
+  and `.DS_Store` are skipped.
+- Imported themes belong to the Mac: Margin.app keeps them (in
+  `~/Library/Application Support/Margin/themes/`), and every profile and
+  browser can use them. Each profile picks its own theme.
+- If Margin can't draw your theme (it's refused, or its page is too small
+  to use), it draws Arcadia and says so; Settings says why.
 
 ## The template
 

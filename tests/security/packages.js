@@ -1,36 +1,21 @@
 // The packages the security suite checks (npm run test:security): every
-// built-in theme, and any named in MARGIN_THEMES (colon-separated folders,
-// so a theme can be checked before it's shared:
-// `MARGIN_THEMES=~/my-theme npm run test:security`).
-import { readFileSync, readdirSync, lstatSync, existsSync } from 'node:fs';
+// built-in theme, and any named in MARGIN_THEMES (colon-separated folders or
+// .margintheme files, read as Margin reads an import: ui/theme-import.js), so
+// a theme can be checked before it's shared:
+// `MARGIN_THEMES=~/my-theme npm run test:security`.
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PACKAGE_THEMES } from '../../extension/themes/packages.js';
 import { readTheme } from '../theme/package.js';
+import { packageFromFiles, packageFromZip } from '../../extension/ui/theme-import.js';
+import { folderFiles } from '../../scripts/pack-theme.js';
 
 const THEMES = fileURLToPath(new URL('../../extension/themes/', import.meta.url));
-const TEXTS = new Set(['theme.json', 'theme.html', 'theme.css']);
-
-/** A user's folder as Margin reads one: every regular file but the three, two levels deep at most, links refused. */
-export function readFolder(dir) {
-  const files = {};
-  const walk = (sub, depth) => {
-    for (const name of readdirSync(join(dir, sub))) {
-      if (name === '.DS_Store') continue;
-      const rel = sub ? `${sub}/${name}` : name;
-      const st = lstatSync(join(dir, rel));
-      if (st.isSymbolicLink()) throw new Error(`${rel}: a link (refused)`);
-      if (st.isDirectory()) { if (depth >= 2) throw new Error(`${rel}: deeper than two folders`); walk(rel, depth + 1); }
-      else if (st.isFile() && !TEXTS.has(rel)) files[rel] = new Uint8Array(readFileSync(join(dir, rel)));
-    }
-  };
-  walk('', 0);
-  const text = (f) => readFileSync(join(dir, f), 'utf8');
-  return { manifest: text('theme.json'), html: text('theme.html'), css: text('theme.css'), files };
-}
 
 /**
- * @returns {{ label: string, builtin: boolean, id: string | null, dir: string | null, read: () => { manifest: string, html: string, css: string, files: Record<string, Uint8Array> } }[]}
+ * @returns {{ label: string, builtin: boolean, id: string | null, dir: string | null, read: (() => Pkg) | null, readAsync?: (() => Promise<Pkg>) | null }[]}
+ * @typedef {{ manifest: string, html: string, css: string, files: Record<string, Uint8Array> }} Pkg
  */
 export function suitePackages(env = process.env.MARGIN_THEMES) {
   const out = PACKAGE_THEMES.map((id) => ({
@@ -40,7 +25,21 @@ export function suitePackages(env = process.env.MARGIN_THEMES) {
   for (const raw of (env ?? '').split(':').map((s) => s.trim()).filter(Boolean)) {
     const path = resolve(raw.replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
     if (!existsSync(path)) throw new Error(`MARGIN_THEMES: ${raw} doesn't exist`);
-    out.push({ label: `MARGIN_THEMES ${raw}`, builtin: false, id: null, dir: path, read: () => readFolder(path) });
+    const asImport = (r) => { if (!r.ok) throw new Error(`${raw}: ${r.errors.join('; ')}`); return r.pkg; };
+    const zip = /\.margintheme$/i.test(path);
+    out.push({
+      label: `MARGIN_THEMES ${raw}`, builtin: false, id: null, dir: zip ? null : path,
+      // A folder as Margin.app reads one (scripts/pack-theme.js folderFiles: links refused, hidden folders left out).
+      read: zip ? null : () => asImport(packageFromFiles(folderFiles(path).files)),
+      readAsync: zip ? async () => asImport(await packageFromZip(new Uint8Array(readFileSync(path)))) : null,
+    });
   }
+  return out;
+}
+
+/** Every package of the suite, read. */
+export async function readSuitePackages(env) {
+  const out = [];
+  for (const p of suitePackages(env)) out.push({ ...p, pkg: p.read ? p.read() : await p.readAsync() });
   return out;
 }

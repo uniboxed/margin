@@ -10,19 +10,21 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkPackage, sanitizeTheme } from '../../extension/ui/theme-loader.js';
 import { auditTree } from '../theme/audit.js';
-import { suitePackages } from './packages.js';
+import { checkImport } from '../../extension/ui/theme-import.js';
+import { readSuitePackages } from './packages.js';
 
 const ADDRESS = /https?:\/\/|\/\/[a-z0-9-]+\.[a-z]|fonts\.googleapis|fonts\.gstatic|typekit|use\.fontawesome|cdn\.|@import/i;
 
-for (const p of suitePackages()) {
+for (const p of await readSuitePackages()) {
   test(`${p.label}: passes every check an imported theme goes through`, () => {
-    const pkg = p.read();
+    const { pkg } = p;
     assert.deepEqual(checkPackage(pkg), [], 'caps, file kinds and first bytes');
     const r = sanitizeTheme({ ...pkg, files: Object.keys(pkg.files) });
     assert.deepEqual(r.errors, []);
     assert.deepEqual(r.removed, [], 'nothing removed');
     assert.deepEqual(auditTree(r.tree), []);
     if (p.builtin) assert.equal(r.manifest.id, p.id, 'its id is its folder\'s');
+    else assert.deepEqual(checkImport(pkg).errors, [], 'importable: its id isn\'t a built-in\'s');
     // Fonts: woff2 only, each folder of them with a licence text (and, built in, where they came from).
     const fonts = Object.keys(pkg.files).filter((f) => /\.woff2$/i.test(f));
     for (const f of r.manifest.fonts) assert.ok(fonts.includes(f.file), `${f.file} is bundled`);
