@@ -603,6 +603,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
 let pendingTheme = null;
 
 // ---- the link dropped ----------------------------------------------------------------------
+// (Still clickable and hovered: a link back in a moment is the usual case; the dim and the note come only after
+// 1.5 s, overlay.html. A press meanwhile that needs the copy is lost, as one in a dropped link always was.)
 // Dimmed with a note (not the theme's: Margin's own, over everything) while
 // the app waits for the copy to come back (app/shell/Shell.swift).
 /** @type {HTMLElement | null} */

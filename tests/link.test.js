@@ -1033,7 +1033,7 @@ test('link: a check that runs late with the app silent drops within DEAD of the 
     assert.ok(await until(() => changed.includes('reconnecting'), 1000), 'dropped');
     const after = Date.now() - resumed;
     assert.ok(after >= 380 && after <= 900, `within DEAD (400 ms) of the probe, not before: ${after} ms`);
-    assert.ok(logLines(api).includes('dropped: no word from the app for 12 s'));
+    assert.ok(logLines(api).includes('dropped: no word from the app for 40 s'));
   } finally {
     if (ticking) clearInterval(ticking);
     link.stop();

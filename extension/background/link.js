@@ -77,7 +77,7 @@ import { switchLog } from './switch-log.js';
 const APP = 'io.tirth.margin';
 const VERSION = 2;
 export const PING_MS = 20_000; // the native port, used at least this often (Spike 3)
-export const DEAD_MS = 12_000; // no tick for this long: the link is gone (app/PROTOCOL.md Liveness)
+export const DEAD_MS = 40_000; // no tick for this long: the link is gone (app/PROTOCOL.md Liveness; 40 s, not 12, since 2026-11-07: Safari slows a background page while it isn't in front)
 const CHECK_MS = 2000;
 const LINK_WAIT_MS = 2000; // the app's `link` after wantLink
 const OPEN_WAIT_MS = 2000; // a socket opening, and the app's welcome
@@ -828,7 +828,7 @@ export function createLink({
     // app's quiet counted from that probe, never from before the pause.
     let lastCheck = now();
     const judge = () => {
-      if (ws === socket && now() - Math.max(lastHeard, resumedAt) > T.dead) drop('no word from the app for 12 s');
+      if (ws === socket && now() - Math.max(lastHeard, resumedAt) > T.dead) drop(`no word from the app for ${Math.round(DEAD_MS / 1000)} s`);
     };
     timers = [
       setInterval(() => {
