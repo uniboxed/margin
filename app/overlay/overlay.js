@@ -616,6 +616,8 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
   },
   // The counts above (the app's tests read them).
   stats: () => JSON.parse(JSON.stringify(stats)),
+  // The window this page draws for (a switch's hand-over changes it: host-app.js `rekey`). The app's tests read it.
+  windowId: () => host?.windowId ?? null,
   // The theme the overlay couldn't draw, if it fell back to Arcadia (the app's tests read it).
   themeFailure: () => (themeFailure ? { ...themeFailure } : null),
   // The preview's bar, for the app's tests: what it says, and a press of one of its buttons.

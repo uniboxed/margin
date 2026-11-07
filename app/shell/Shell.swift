@@ -1657,7 +1657,9 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     func shownSpace(_ overlay: OverlayController, _ said: JSONObject) {
         let space = said["space"] as? String ?? "-"
         let windowId = said["windowId"] as? Int
-        let copy = (links[overlay.key.link]?.mirror.value("activeSpaceByWindow") as? JSONObject)?[String(overlay.key.windowId)] as? String
+        // (Stored inside the copy's `openTabs` record: shared/stored.js OPEN_TABS_KEYS.)
+        let open = links[overlay.key.link]?.mirror.value("openTabs") as? JSONObject
+        let copy = (open?["activeSpaceByWindow"] as? JSONObject)?[String(overlay.key.windowId)] as? String
         let agree = copy == space
         Diagnostics.note("\(overlay.key): its sidebar shows space \(space)\(said["foreign"] as? Bool == true ? " (another profile's)" : "")\(windowId.map { $0 == overlay.key.windowId ? "" : " for window \($0)" } ?? "") — its copy says \(copy ?? "-")\(agree ? "" : " (differs)")")
         options.trace?.event("shownSpace \(overlay.key) \(space) copy \(copy ?? "-")", at: Diagnostics.now())

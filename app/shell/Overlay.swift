@@ -496,10 +496,12 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     // A message to the page (marginApp.receive), as JSON text.
     /// Handed to another window by a profile switch (Shell.handOverOverlay): its key changes, and its page, if drawn,
     /// takes that window's hello in place (host-app.js `rekey`); one still loading asks for it as it starts.
-    func rekey(_ to: WindowKey, hello: String) {
+    /// (Its hello is asked for after the key changes: one built before it, as an argument, was its old window's, and the
+    /// page went on drawing that window: Tirth, 2026-11-07, the sidebar showing another space after a switch.)
+    func rekey(_ to: WindowKey) {
         Diagnostics.note("overlay for \(key) handed to \(to)")
         key = to
-        guard isReady else { return }
+        guard isReady, let hello = delegate?.hello(for: self) else { return }
         pushJSON(#"{"type":"rekey","hello":"# + hello + "}")
     }
 

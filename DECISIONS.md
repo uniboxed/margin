@@ -3127,3 +3127,11 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - Removed: `content/pinch.js`; the gesture guard's `own` mode, `onPinch`, `onWheelFirst` and its gesturechange/gestureend handlers (`shared/gestures.js`); `trackpad.js`'s pinch routing and pan; `page-link.js` `setZoom`; `page/box.js`'s zoom sheet, `setZoom` and the `scale` field in its bridge messages (an older content script's are ignored); `Margin.content.pinched`.
 - Kept: the gesture guard (no swipe back/forward, no all-tabs pinch, no bounce), the `blockGestures` setting (its label no longer says "pinch zooms the page"), and pull-to-refresh and swipe, which now stand aside while Safari has the page magnified (`visualViewport.scale`).
 - Tests: `gestures.test.js` (only the first gesture event is looked at, `block` and `native`), WebKit host `pinch-box` rewritten (Safari's magnification on a boxed page, the box in place, the area told as the whole window, the all-tabs pinch cancelled), `pinch` and `pinch-native` unchanged. README, SPEC (file list) and TESTING updated.
+
+### The kept sidebar drew its old window (2026-11-07)
+
+- **What Tirth saw:** after a profile switch, the sidebar showed the new space's tabs, then another space's once the tab's page appeared.
+- **Why** (the new log line, `Shell.shownSpace`: "its sidebar shows space personal for window 228" from window 219's sidebar): `oa.rekey(b, hello: hello(for: oa))` built the page's new hello before `rekey` changed the key, so it was the old window's. The page took the old window's id and state, and once the switch's own view ended it drew that window's space.
+- **Now** `OverlayController.rekey(_:)` asks for the hello after the key changes.
+- **Test** (`e2e-profiles.swift` switch 1): the kept sidebar's page draws for window 8 (`marginApp.windowId()`, a test hook), not 7. It failed before the fix ("7") and passes after. The earlier check by space id passed by chance: both test profiles have a space `home`. Switch 1 now goes to P2's second space.
+- **The log line** reads the copy's `activeSpaceByWindow` inside its stored `openTabs` record (it read "-" before).

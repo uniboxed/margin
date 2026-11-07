@@ -393,7 +393,10 @@ func handoffScenario() async {
         await until(5, { shell.overlays[k8]?.isShown == true }) && shell.overlays[k8] === o7 && o7.key == k8 && shell.overlays[k7].map { !$0.isShown && $0.key == k7 } ?? true,
         "\(String(describing: shell.overlays[k8]?.key)) \(String(describing: shell.overlays[k7]?.isShown))")
   check("1: its page took B's window in place, not loaded again", await waitJS(o7.webView, "return window.marginApp && document.querySelectorAll('.chip').length > 0") && o7.isReady)
-  // Tirth, 2026-11-07: after a switch the sidebar showed the new space's tabs, then another space's.
+  // Tirth, 2026-11-07: after a switch the sidebar showed the new space's tabs, then another space's: the handed page
+  // was given the old window's hello (built before its key changed), and went on drawing window 7.
+  let drawsFor = await js(o7.webView, "return marginApp.windowId()") as? Int
+  check("1: the kept sidebar's page draws for B's window (8) now, not A's (7)", drawsFor == 8, "\(String(describing: drawsFor))")
   let activeChip = "const c = document.querySelector('.chip.active'); return c ? (c.classList.contains('foreign') ? 'foreign ' : '') + c.getAttribute('data-space-id') : null"
   let chip1 = await js(o7.webView, activeChip) as? String
   try? await Task.sleep(nanoseconds: 1_500_000_000)

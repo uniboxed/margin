@@ -112,8 +112,8 @@ extension Shell: HandoffWorld {
         let ob = overlays[b]
         overlays[b] = oa
         overlays[a] = ob
-        oa.rekey(b, hello: hello(for: oa))
-        if let ob { ob.rekey(a, hello: hello(for: ob)) }
+        oa.rekey(b)
+        ob?.rekey(a)
         forgetOverlayState(a)
         forgetOverlayState(b)
         // Put away under the freeze; the next read shows it over B (the switch's target), which orders it into B's
