@@ -647,6 +647,15 @@ final class FakeHandoffWorld: HandoffWorld {
     func browserWindows(of link: String) -> [ServerWindow] {
         reads.windows.keys.sorted().compactMap { reads.window($0) } + dialogs
     }
+    // The sidebar handed to the switch's target (Shell.handOverOverlay): whether this world can, and what was asked.
+    var handsOver = false
+    var handedOver: [(from: WindowKey, to: WindowKey, frozen: Bool)] = []
+    func handOverOverlay(from a: WindowKey, to b: WindowKey) -> Bool {
+        guard handsOver else { return false }
+        handedOver.append((a, b, freezer.isLive))
+        requests.append(Req(link: a.link, type: "overlay handed", payload: ["windowId": a.windowId, "to": b.windowId], at: clock.now(), frozen: freezer.isLive))
+        return true
+    }
     func orderOutOverlay(_ key: WindowKey) {
         outOverlays.append(key)
         requests.append(Req(link: key.link, type: "overlay out", payload: ["windowId": key.windowId], at: clock.now(), frozen: freezer.isLive))
@@ -766,6 +775,27 @@ func handoffMachineTests() {
         check("handoff: one line: modes, numbers and milliseconds", line.hasPrefix("handoff: safari:A#10 → safari:B#20 (park+freeze, parked target), frozen ") && line.contains("A parked") && line.contains("focus ok"), line)
         check("handoff: frozen less than the watchdog", w.freezer.reports.contains { if case .revealed(_, .ready, let ms) = $0 { return ms < 1700 }; return false })
         handoffInvariants("handoff", w, s)
+    }
+    // ---- the sidebar kept through the switch: A's handed to B under the freeze, before A's goes out ----
+    do {
+        let (w, s) = handoffSetup()
+        w.handsOver = true
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { !s.busy }
+        let handed = w.requests.firstIndex { $0.type == "overlay handed" }
+        let out = w.requests.firstIndex { $0.type == "overlay out" && $0.link == hA }
+        check("handoff, same sidebar: A's handed to B once, under the freeze", w.handedOver.count == 1 && w.handedOver.first?.from == hKA && w.handedOver.first?.to == hKB
+              && w.handedOver.first?.frozen == true, "\(w.handedOver)")
+        check("handoff, same sidebar: handed before A's window's overlay goes out", handed != nil && out != nil && handed! < out!)
+        check("handoff, same sidebar: the switch done as before", w.events == [.started(toB), .done(toB)] && w.fullAndInFront(hKB) && w.registry.isParked(1010))
+        handoffInvariants("handoff, same sidebar", w, s)
+    }
+    do {
+        let (w, s) = handoffSetup { $0.noFreezer = true }
+        w.handsOver = true
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("handoff, same sidebar: not without a freeze (the hand-over would be seen)", w.handedOver.isEmpty && w.events.last == .done(toB))
     }
     // ---- park without a freeze: the same steps, seen ----
     do {

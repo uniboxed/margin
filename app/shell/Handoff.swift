@@ -80,6 +80,9 @@ protocol HandoffWorld: SwitchWorld {
     func fillsDisplay(_ bounds: CGRect) -> Bool
     // The window server's list of this link's browser's windows (every layer), for §1.10.
     func browserWindows(of link: String) -> [ServerWindow]
+    // The sidebar the person is looking at (A's) handed to the switch's target (B), under the freeze: the same page,
+    // already drawn, given B's window in place; B's own (if any) becomes A's. False: not done (none shown, or not drawn).
+    func handOverOverlay(from a: WindowKey, to b: WindowKey) -> Bool
     // The window's overlay and its edge panel ordered out (never revealed: §2.3), before A's Space goes.
     func orderOutOverlay(_ key: WindowKey)
     func overlayOffScreen(_ key: WindowKey) -> Bool
@@ -93,6 +96,7 @@ protocol HandoffWorld: SwitchWorld {
 
 extension HandoffWorld {
     var handoffOn: Bool { true }
+    func handOverOverlay(from a: WindowKey, to b: WindowKey) -> Bool { false }
     func devHookAllows(_ a: String, _ b: String) -> Bool { false } // DEV-HOOK
 }
 
@@ -198,6 +202,7 @@ final class HandoffRun {
     // the freeze
     var handle: Int32?
     var live = false
+    var handedOver = false // A's sidebar offered to B (Handoff.handOver)
     var freezeAt: Double?
     var lateAt: Double? // the watchdog revealed
     var lateWaiting: String? // what the watchdog's reveal found still to do
@@ -744,6 +749,7 @@ extension ProfileSwitch: FreezerDelegate {
             case .frozen(let handle):
                 run.handle = handle
                 run.live = true
+                handOver(run, hw)
             case .failed(let result):
                 note("freeze answered \(result): this switch runs without one")
             case .unavailable(let why):
@@ -1015,7 +1021,20 @@ extension ProfileSwitch: FreezerDelegate {
             run.steady = 0
             run.lastBounds = nil
         }
-        if r1, run.steady >= ho.steadyPolls, run.r2At == nil { run.r2At = now }
+        if r1, run.steady >= ho.steadyPolls, run.r2At == nil {
+            run.r2At = now
+            handOver(run, hw) // (a window made by the switch: B known only now)
+        }
+    }
+
+    // The same sidebar through the switch (Tirth, 2026-11-07): as the freeze starts (A's sidebar showing the switch's
+    // cover and the target space, B not shown yet), A's sidebar is handed to B, and the shell shows it over B once B is
+    // in place; B's own (if any) is A's now, and goes out with A's (outA). Once per switch, only under a freeze (the
+    // hand-over would be seen otherwise); B not known yet (a window the switch makes): at R2.
+    private func handOver(_ run: HandoffRun, _ hw: HandoffWorld) {
+        guard run.live, !run.handedOver, let a = run.a, let b = run.b, a != b else { return }
+        run.handedOver = true
+        if hw.handOverOverlay(from: a, to: b) { note("A's sidebar handed to \(b)") }
     }
 
     private func probe(_ run: HandoffRun, _ hw: HandoffWorld, _ b: WindowKey, _ n: Int) {

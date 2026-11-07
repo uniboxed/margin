@@ -107,6 +107,21 @@ extension Shell: HandoffWorld {
         return windowSource.windows(of: pids).filter { pids.contains($0.pid) }
     }
 
+    func handOverOverlay(from a: WindowKey, to b: WindowKey) -> Bool {
+        guard let oa = overlays[a], oa.isShown, oa.isReady, overlays[b]?.isShown != true else { return false }
+        let ob = overlays[b]
+        overlays[b] = oa
+        overlays[a] = ob
+        oa.rekey(b, hello: hello(for: oa))
+        if let ob { ob.rekey(a, hello: hello(for: ob)) }
+        forgetOverlayState(a)
+        forgetOverlayState(b)
+        // Put away under the freeze; the next read shows it over B (the switch's target), which orders it into B's
+        // Space and tells its page it's shown (its `framed` is R4).
+        oa.hide("handed to \(b) for the switch")
+        return true
+    }
+
     func orderOutOverlay(_ key: WindowKey) {
         heldOut.insert(key)
         overlays[key]?.hide("its window leaves full screen for a switch")

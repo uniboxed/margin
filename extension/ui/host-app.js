@@ -130,7 +130,8 @@ export function hitRects(root, slot, { limit = 64, getStyle = (el) => /** @type 
  * @returns {Host & { staysOnScreen: boolean, receive(msg: any): void, readonly windows: any[], readonly layout: Geometry | null, readonly settingsAsked: boolean, readonly pageTabId: number | null, readonly frontTabId: number | null, readonly loading: number[], readonly userThemes: any[], takeFailure(): { type: string, error: string } | null, destroy(): void }}
  */
 export function createAppHost({ hello, post, onMessage = () => {}, onNotice = () => {}, warn = (...args) => console.warn('[margin]', ...args) }) {
-  const windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
+  // (Its window can change: a profile switch hands the sidebar to the window it goes to, `rekey`.)
+  let windowId = Number.isInteger(hello?.windowId) ? hello.windowId : null;
   /** @type {Record<string, any> | null} */
   let raw = hello?.state && typeof hello.state === 'object' ? hello.state : null;
   /** @type {any} */
@@ -234,7 +235,7 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
 
   return {
     platform,
-    windowId,
+    get windowId() { return windowId; },
     // The overlay stays on screen through a switch (ui/runtime.js: the highlight waits for the state).
     staysOnScreen: true,
     // Not on screen as it first draws: its launcher takes the focus only when the app says (the `shown` push's `focus`).
@@ -377,6 +378,24 @@ export function createAppHost({ hello, post, onMessage = () => {}, onNotice = ()
           if (own) mode = modeOf(own);
           if (mode !== before || pageKey() !== page) emit();
           return;
+        }
+        case 'rekey': {
+          // Handed to another window and profile by a switch (app/shell Shell.handOverOverlay): that window's hello,
+          // taken in place, so the page drawn already draws the new window's state without loading again.
+          const next = msg.hello;
+          if (!next || typeof next !== 'object' || !Number.isInteger(next.windowId)) return;
+          windowId = next.windowId;
+          raw = next.state && typeof next.state === 'object' ? next.state : null;
+          windows = Array.isArray(next.windows) ? next.windows : [];
+          mode = next.mode === 'windowed' ? 'windowed' : 'fullscreen';
+          across = acrossOf(next.across);
+          cloud = cloudOf(next.cloudTabs);
+          if (Array.isArray(next.themes)) /** @type {any} */ (platform.features).userThemes = next.themes;
+          followSwitchSettings();
+          loading = new Set();
+          failure = null;
+          rebuild();
+          return emit();
         }
         case 'push':
           // The window's tabs loading (background/page-loads.js): each one's row and the tab in front.

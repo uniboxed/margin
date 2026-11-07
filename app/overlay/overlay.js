@@ -583,6 +583,16 @@ document.addEventListener('focusout', (e) => { if (!editable(e.relatedTarget)) s
     timed('taking the app\'s word', cause, () => {
       const before = !!host?.getState();
       host?.receive(msg);
+      // Handed to another window by a switch (host-app.js `rekey`): what its copy pushed before, and its theme if
+      // that profile's isn't the one drawn (settings are shared across profiles, so usually it is).
+      if (msg?.type === 'rekey' && msg.hello && host) {
+        for (const held of Array.isArray(msg.hello.held) ? msg.hello.held : []) host.receive({ type: 'push', msg: held });
+        const theme = msg.hello.theme ?? null;
+        if (theme && JSON.stringify(theme) !== JSON.stringify(pendingTheme)) {
+          pendingTheme = theme;
+          if (host.getState() && !preview.pkg) mounting = mounting.then(() => mount(theme));
+        }
+      }
       // A notice about one tab's page goes once another tab is in front.
       if (msg?.type === 'windows' || msg?.type === 'state' || msg?.type === 'changes') notices.front(host?.frontTabId ?? null);
       // The first state after a hello without one: the theme can draw now.

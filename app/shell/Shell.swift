@@ -234,7 +234,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private lazy var pages = OverlayPages(root: options.root ?? OverlayPages.appRoot)
 
     private(set) var links: [String: Link] = [:]
-    private(set) var overlays: [WindowKey: OverlayController] = [:]
+    var overlays: [WindowKey: OverlayController] = [:]
     private(set) var matches: [WindowKey: Int] = [:]
     // Each browser's window bindings (WindowMatcher.swift).
     private(set) var binders: [String: WindowBinder] = [:]
@@ -888,6 +888,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         Diagnostics.note(String(format: "slow: following the windows took %.1f ms (%d overlays)%@", s * 1000, overlays.count, slowTracksUnsaid > 0 ? "; \(slowTracksUnsaid) more since the last line" : ""))
         slowTrackSaidAt = now
         slowTracksUnsaid = 0
+    }
+
+    /// What the shell kept of an overlay for a window (what it was sent, where it was placed, its checks): forgotten
+    /// when the overlay goes to another window (a switch's hand-over), so the new one is sent and checked afresh.
+    func forgetOverlayState(_ key: WindowKey) {
+        placements[key] = nil; placementMisses[key] = nil; frameSaid[key] = nil; reorderedAt[key] = nil; joinTriedAt[key] = nil
+        aheadFailedAt[key] = nil; ownSpaceSuspects[key] = nil; lastPointerPush[key] = nil; lastPointer[key] = nil
+        acrossSent[key] = nil; cloudSent[key] = nil
     }
 
     // The placer's check (OverlayPlacer.swift): each shown overlay's placement against this read's map, fixed on the

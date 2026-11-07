@@ -124,7 +124,7 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     }
 
     weak var delegate: OverlayDelegate?
-    let key: WindowKey
+    private(set) var key: WindowKey
     let panel: OverlayPanel
     let webView: OverlayWebView
     private let pages: OverlayPages
@@ -492,6 +492,15 @@ final class OverlayController: NSObject, OverlayPageOwner, WKNavigationDelegate 
     // ---- the page ----
 
     // A message to the page (marginApp.receive), as JSON text.
+    /// Handed to another window by a profile switch (Shell.handOverOverlay): its key changes, and its page, if drawn,
+    /// takes that window's hello in place (host-app.js `rekey`); one still loading asks for it as it starts.
+    func rekey(_ to: WindowKey, hello: String) {
+        Diagnostics.note("overlay for \(key) handed to \(to)")
+        key = to
+        guard isReady else { return }
+        pushJSON(#"{"type":"rekey","hello":"# + hello + "}")
+    }
+
     func pushJSON(_ json: String) {
         guard asked else { return } // its hello, when it asks, has this already
         webView.callAsyncJavaScript("marginApp.receive(m)", arguments: ["m": json], in: nil, in: .page) { result in

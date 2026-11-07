@@ -367,7 +367,7 @@ func handoffScenario() async {
       }
       if let b = shell.overlays[k8], b.isShown, shell.switcher.run?.shownAt != nil, shell.switcher.run?.framedAt == nil { b.pageSaid("framed", ["mode": "fullscreen"]) }
       if seen.aOverlayAtNormal == nil, let r = fake.all("req", since: at).first(where: { $0["id"] as? String == "A" && ($0["msg"] as? JSONObject)?["type"] as? String == "setWindowState" }) {
-        if payload(r)["state"] as? String == "normal" { seen.aOverlayAtNormal = o7.isShown }
+        if payload(r)["state"] as? String == "normal" { seen.aOverlayAtNormal = shell.overlays[k7]?.isShown ?? false }
         at = fake.events.count
       }
       try? await Task.sleep(nanoseconds: 4_000_000)
@@ -386,12 +386,17 @@ func handoffScenario() async {
   check("1: A's drafts asked before it could be closed", !reqs("A", "windowDrafts", mark).isEmpty)
   check("1: A parked, in no user Space, B in front in full screen", shell.parking?.isParked(n7) == true && world.spaces(of: n7) == [] && world.window(n8)?.onScreen == true
         && windows.fs.contains(world.active ?? 0))
-  check("1: B's overlay shown, A's hidden but kept", await until(5, { shell.overlays[k8]?.isShown == true }) && !o7.isShown && shell.overlays[k7] === o7)
+  // The same sidebar kept through the switch (Shell.handOverOverlay): A's, handed to B under the freeze, shown over B;
+  // B's own (made for its parked window) is A's now, hidden.
+  check("1: the sidebar kept: A's handed to B and shown over it, B's own A's now and hidden",
+        await until(5, { shell.overlays[k8]?.isShown == true }) && shell.overlays[k8] === o7 && o7.key == k8 && shell.overlays[k7].map { !$0.isShown && $0.key == k7 } ?? true,
+        "\(String(describing: shell.overlays[k8]?.key)) \(String(describing: shell.overlays[k7]?.isShown))")
+  check("1: its page took B's window in place, not loaded again", await waitJS(o7.webView, "return window.marginApp && document.querySelectorAll('.chip').length > 0") && o7.isReady)
   check("1: P1's copy told its window is parked", await until(3, { parkedSaid("A", 7, true, mark) }))
   check("1: A's drawn stayed on through the park", !drawnOff("A", 7, mark))
   check("1: no layout to the parked window", fake.first("setLayout", since: mark) { $0["id"] as? String == "A" && int(($0["msg"] as? JSONObject)?["windowId"]) == 7 } == nil)
   check("1: the own-Space checks left the switch's windows alone", !seen.suspected && !shell.ownSpaceFellBack)
-  let hello = (try? JSONSerialization.jsonObject(with: Data(shell.hello(for: o7).utf8))) as? JSONObject
+  let hello = shell.overlays[k7].flatMap { (try? JSONSerialization.jsonObject(with: Data(shell.hello(for: $0).utf8))) as? JSONObject }
   check("1: the parked window's hello says full screen though its copy says normal", hello?["mode"] as? String == "fullscreen"
         && ExtWindow.parse(shell.links["safari:P1"]?.mirror.windows ?? [], link: "safari:P1").first?.state == "normal")
   // Its copy's list again (the window still normal): held from its overlay.
