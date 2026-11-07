@@ -622,9 +622,18 @@ function setReconnecting(on) {
 }
 
 // Margin's new-tab page asked with its Settings open (#settings): open here too, once per page.
+// Another of Margin's pages in front starts with its Settings closed: the overlay outlives each
+// page, and its Settings kept open (a theme chosen there: mount's `keep`) would show open over
+// the next new tab, its Settings button closing them.
 let settingsFor = null;
+let launcherFor = null;
 function followPage() {
-  const asked = host?.settingsAsked ? host.pageTabId : null;
+  const page = host?.pageTabId ?? null;
+  const asked = host?.settingsAsked ? page : null;
+  if (page != null && page !== launcherFor) {
+    launcherFor = page;
+    if (asked == null && runtime?.ui.settingsOpen) runtime.setUi({ settingsOpen: false, recording: null });
+  }
   if (asked != null && asked !== settingsFor) runtime?.setUi({ settingsOpen: true });
   settingsFor = asked;
 }

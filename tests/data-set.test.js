@@ -171,6 +171,18 @@ test('the queue: the first look starts every item at 0 (not queued); changes, ne
   assert.deepEqual(pendingChanges(metas, items, 3000).map((c) => c.id), ['p1'], 'since the last change the app took');
 });
 
+test('the queue: a change in the same millisecond as the item\'s last time (or after a time ahead of this clock) still gets a newer one', () => {
+  const s = sampleState();
+  const base = track(null, collectionFrom(s, 'pins'), 1000);
+  const renamed = (title) => collectionFrom({ ...s, pins: s.pins.map((p) => (p.id === 'p1' ? { ...p, title } : p)) }, 'pins');
+  const first = track(base, renamed('One'), 3000);
+  assert.equal(first.items.p1[0], 3000);
+  assert.equal(track(first, renamed('Two'), 3000).items.p1[0], 3001, 'the same millisecond: just after');
+  const ahead = { items: { ...first.items, p1: [9000, first.items.p1[1]] }, gone: {} };
+  assert.equal(track(ahead, renamed('Three'), 3000).items.p1[0], 9001, 'after a time ahead of now');
+  assert.equal(track(ahead, collectionFrom(M.removePin(s, 'p1'), 'pins'), 3000).gone.p1, 9001, 'a deletion too');
+});
+
 test('the queue\'s tombstones are kept TOMBSTONE_MS, at most TOMBSTONE_CAP per collection', () => {
   const gone = {};
   for (let i = 0; i < TOMBSTONE_CAP + 5; i++) gone[`x${i}`] = 10_000 + i;

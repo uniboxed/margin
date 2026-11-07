@@ -114,6 +114,12 @@ export function fingerprint(value) {
   return h.toString(16).padStart(8, '0');
 }
 
+// A change's time: now, or just after the item's last time if that isn't
+// before now (a change in the same millisecond as the last, or a time from
+// Margin.app's clock ahead of this one), so a change always has a newer time
+// than what it changed: Margin.app merges by time, and the change is told
+// (background/store.js changedItems).
+const later = (now, ...times) => Math.max(now, ...times.filter(Number.isFinite).map((t) => t + 1));
 /**
  * A collection's meta after looking at its items now: unchanged (the same
  * object) if nothing changed, else new times for the items that changed or
@@ -132,7 +138,7 @@ export function track(meta, items, now) {
     const had = before[id];
     if (had && had[1] === fp) next[id] = had;
     else {
-      next[id] = [fresh ? 0 : now, fp];
+      next[id] = [fresh ? 0 : later(now, had?.[0], gone[id]), fp];
       changed = true;
     }
     if (id in gone) {
@@ -142,7 +148,7 @@ export function track(meta, items, now) {
   }
   for (const id of Object.keys(before)) {
     if (id in items) continue;
-    gone[id] = now;
+    gone[id] = later(now, before[id]?.[0]);
     changed = true;
   }
   // Old tombstones go, and the oldest beyond the cap.

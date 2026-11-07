@@ -68,7 +68,10 @@ for (const id of ORDER) {
     const nt = await m.context.newPage();
     await nt.goto(m.newTabUrl());
     await m.until(() => ui.locator('.launcher').isVisible(), { what: 'the launcher' });
-    await ui.locator('.launcher button', { hasText: /^Settings$/ }).first().click();
+    // Closed in a new tab, though the theme before was chosen with them open (app/overlay/overlay.js followPage).
+    assert.equal(await ui.locator('m-settings select').count(), 0, 'a new tab\'s Settings start closed');
+    // (In any case: Pixel's says SETTINGS.)
+    await ui.locator('.launcher button', { hasText: /^settings$/i }).first().click();
     const picker = ui.locator('select', { has: ui.locator('option', { hasText: name }) }).first();
     await m.until(() => picker.isVisible(), { what: 'the theme picker' });
     const pieces = m.shell.received.filter((x) => x.k === 'theme').length;
