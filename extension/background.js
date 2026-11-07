@@ -17,7 +17,7 @@ import { switchLog, switchLogTo } from './background/switch-log.js';
 import { learnSearchEngine } from './background/search-engine.js';
 import { drawnChanged, handlers, newTabHandOff, newTabKey, zoomChanged, zoomStored } from './background/handlers.js';
 import * as newTabHint from './background/newtab-hint.js';
-import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits } from './background/registered.js';
+import { layoutsChanged, queueRegistrations, setLayoutSource, watchCommits, windowDrawnChanged } from './background/registered.js';
 import { archiveStale, archiveStaleThrottled, ARCHIVE_ALARM } from './background/archive.js';
 import { sleepIdle, sleepIdleThrottled } from './background/sleep.js';
 import { navActivated, navigate, NAV_ACTIONS } from './background/navigation.js';
@@ -428,19 +428,20 @@ appLink.onPageState((state) => {
 // A window's layout: its page in front gets its box at once (the rest read
 // it from storage, appLink, as they're shown or start), and new pages get it
 // at their first paint (background/registered.js: the registered layout
-// follows once layouts settle; a window with another gets its own as each
-// page commits).
+// follows at once for a lone change, once layouts settle for a burst; a
+// window with another gets its own as each page commits).
 appLink.onLayout((windowId, layout) => {
   void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout, drawn: appLink.drawn(windowId) }).catch(() => {}), () => {});
   layoutsChanged();
 });
 // Whether the app draws over a window (its `drawn`): the same way. Its pages lose their box
 // where it draws nothing (and get it back from the window's layout when it draws there again),
-// and new pages there get none from their first paint (registered.js fixUp).
+// and new pages there get none from their first paint: the registration follows at once
+// (registered.js windowDrawnChanged; until then fixUp's sheet as each page commits).
 appLink.onDrawn((windowId, drawn) => {
   drawnChanged(windowId, drawn);
   void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout: appLink.layout(windowId), drawn }).catch(() => {}), () => {});
-  layoutsChanged();
+  windowDrawnChanged();
 });
 setLayoutSource(() => appLink.view());
 watchCommits();
