@@ -42,7 +42,7 @@ const build = (raw, ui = {}) => buildViewModel({ state: { ...smallState(), acros
 // ---- the cover in the view model ----
 
 test('the cover: only while the switch gets ready or the screen is frozen, in the window it leaves', () => {
-  for (const phase of ['preparing', 'waitingForLink', 'frozen']) {
+  for (const phase of ['preparing', 'waitingForLink', 'waitingForProfile', 'frozen']) {
     const vm = build(rawAcross({ switching: switching(phase) }));
     assert.ok(vm.switchCover, phase);
     assert.equal(vm.switchCover.text, 'Switching to Work…');
@@ -52,7 +52,7 @@ test('the cover: only while the switch gets ready or the screen is frozen, in th
     assert.equal(vm.switchCover.label, 'Switching to Work… Mail');
   }
   // After the freeze, and today's close-based switch's phases: none.
-  for (const phase of ['after', 'landed', 'recovering', 'idle', 'creating', 'settling', 'closing', 'checking', 'waitingForProfile', '']) {
+  for (const phase of ['after', 'landed', 'recovering', 'idle', 'creating', 'settling', 'closing', 'checking', '']) {
     assert.equal(build(rawAcross({ switching: switching(phase) })).switchCover, null, phase || 'no phase');
   }
   assert.equal(build(rawAcross({ switching: switching('frozen') }), { windowId: OTHER_WINDOW }).switchCover, null, 'another window of this profile');
@@ -313,4 +313,32 @@ test('notices: a button of the switch\'s goes to the app; the copy\'s notices st
   assert.deepEqual(notices, []);
   host.perform('notice', { id: 'not-responding#1', action: 'reload' });
   assert.deepEqual(notices, [{ id: 'not-responding#1', action: 'reload' }]);
+});
+
+
+test('the target space drawn in the window a switch leaves, from the app\'s data: its pins, folders and tabs, the last used highlighted', () => {
+  const content = {
+    space: 'mail',
+    pins: [{ id: 'p1', title: 'Inbox', url: 'https://mail.example/', icon: '', folderId: null, pos: 1 }, { id: 'p2', title: 'Docs', url: 'https://docs.example/', folderId: 'f1', pos: 0 }],
+    folders: [{ id: 'f1', name: 'Work stuff', open: true, pos: 0 }],
+    tabs: [{ id: 't1', title: 'Report', url: 'https://r.example/', active: false }, { id: 't2', title: 'Chat', url: 'https://chat.example/', icon: 'data:image/png;base64,AAAA', active: true }],
+  };
+  for (const phase of ['preparing', 'waitingForProfile', 'frozen']) {
+    const vm = build(rawAcross({ switching: switching(phase, { content }) }));
+    assert.equal(vm.space.switching, true, phase);
+    assert.equal(vm.space.name, 'Mail');
+    assert.deepEqual(vm.space.pinned.map((p) => `${p.kind}:${p.id}`), ['folder:x:f1', 'pin:x:p1'], 'folders and loose pins by their places');
+    assert.deepEqual(vm.space.folders[0].pins.map((p) => p.title), ['Docs']);
+    assert.deepEqual(vm.space.today.map((t) => [t.id, t.title, t.active]), [['x:t1', 'Report', false], ['x:t2', 'Chat', true]]);
+    assert.equal(vm.space.today[1].icon, 'data:image/png;base64,AAAA');
+    assert.equal(vm.spaces.filter((s) => s.active).length, 1, 'one chip active: the target');
+    assert.ok(vm.spaces.find((s) => s.active)?.foreign);
+  }
+  // Not in another window, not after the freeze, not for another space's contents.
+  assert.equal(build(rawAcross({ switching: switching('frozen', { content }) }), { windowId: OTHER_WINDOW }).space.switching, false);
+  assert.equal(build(rawAcross({ switching: switching('after', { content }) })).space.switching, false);
+  assert.equal(build(rawAcross({ switching: switching('frozen', { content: { ...content, space: 'other' } }) })).space.switching, false);
+  // An icon that isn't a small data: image is dropped.
+  const odd = acrossOf(rawAcross({ switching: switching('frozen', { content: { ...content, tabs: [{ id: 't', title: 'x', url: 'https://x/', icon: 'javascript:alert(1)' }] } }) }));
+  assert.equal(odd.switching.content.tabs[0].icon, '');
 });

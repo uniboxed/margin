@@ -431,9 +431,14 @@ function fresh(input) {
       label: multiProfile ? `${s.name ?? ''} · ${chipOf(profileId)?.name ?? ''}` : s.name ?? '',
     };
   });
+  // A switch to another profile's space started from this window: that space drawn here, from Margin.app's data
+  // for it, as the one shown (its chip active), while the switch runs (Tirth, 2026-11-07: the sidebar slides to
+  // the other profile's space and shows its tabs at once; the window that takes over shows the same).
+  const foreign = foreignSpace(across, windowId);
+  if (foreign) for (const s of spaces) s.active = s.switching;
   const chip = spaces.find((s) => s.active) ?? spaces.find((s) => !s.foreign) ?? spaces[0];
   /** @type {SpaceView} */
-  const space = {
+  const space = foreign && chip?.switching ? { ...chip, ...foreign, newTab: { active: false } } : {
     ...chip,
     pinned,
     folders,
@@ -617,11 +622,49 @@ function fresh(input) {
 }
 
 // ---------------------------------------------------------------------------
+// The target space of a switch started from this window, as rows (shared/across.js `content`): its pins (in
+// folders and not), its tabs newest first, the one used last highlighted. Ids `x:`-prefixed (never this copy's).
+const FOREIGN_PHASES = new Set(['preparing', 'waitingForLink', 'waitingForProfile', 'frozen']);
+/** @param {any} across @param {number | null} windowId */
+function foreignSpace(across, windowId) {
+  const sw = across?.switching;
+  const c = sw?.content;
+  if (!sw || !c || c.space !== sw.space || !FOREIGN_PHASES.has(sw.phase) || !isWindow(sw.from, across.profile, windowId)) return null;
+  const faceOf = (r) => {
+    const host = hostOf(r.url);
+    const { letter, color } = V.letterAvatar(host || r.title || '?');
+    return { title: r.title || r.url || '', url: r.url, host, icon: r.icon && checkIconUrl(r.icon) ? r.icon : null, letter, color };
+  };
+  const pinOf = (r, nested) => ({
+    kind: 'pin', isFolder: false, id: `x:${r.id}`, ...faceOf(r), folderId: r.folderId ? `x:${r.folderId}` : null, nested,
+    tabId: null, open: false, active: false, behind: false, audible: false, asleep: false, loading: false, pinned: true,
+  });
+  const byPos = (a, b) => a.pos - b.pos;
+  const folders = c.folders.slice().sort(byPos).map((f) => {
+    const inside = c.pins.filter((p) => p.folderId === f.id).sort(byPos).map((p) => pinOf(p, true));
+    return { kind: 'folder', isFolder: true, id: `x:${f.id}`, name: f.name, open: f.open, count: inside.length, pins: inside, shown: f.open ? inside : [], hasShown: f.open && inside.length > 0, pos: f.pos };
+  });
+  const loose = c.pins.filter((p) => !p.folderId || !c.folders.some((f) => f.id === p.folderId)).sort(byPos);
+  const pins = loose.map((p) => ({ ...pinOf(p, false), pos: p.pos }));
+  const pinned = [...folders, ...pins].sort(byPos).map(({ pos, ...item }) => item);
+  const today = c.tabs.map((t) => ({
+    kind: 'tab', id: `x:${t.id}`, ...faceOf(t), active: t.active, behind: false, audible: false, asleep: false, loading: false, pinned: false, open: true, notOpen: false,
+  }));
+  return {
+    pinned,
+    folders: pinned.filter((p) => p.kind === 'folder'),
+    pins: pinned.filter((p) => p.kind === 'pin'),
+    today,
+    hasToday: today.length > 0,
+    hasPinned: pinned.length > 0,
+  };
+}
+
 // The cross-profile switch (Margin.app: shared/across.js `switching`).
 
 // The phases before and under the freeze (app/HANDOFF.md §1.2): the cover is
 // up only then. Today's close-based switch has none of them, so it never shows one.
-const COVER_PHASES = new Set(['preparing', 'waitingForLink', 'frozen']);
+const COVER_PHASES = new Set(['preparing', 'waitingForLink', 'waitingForProfile', 'frozen']);
 
 /**
  * The cover, in the overlay of the window the switch leaves only.

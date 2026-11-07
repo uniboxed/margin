@@ -23,7 +23,7 @@
  * notice, either Margin's words as text (`notice`) or one of the switch's
  * notice kinds (`noticeKind`, SWITCH_NOTICES, about profile `noticeProfile`),
  * shown only in the overlay of `noticeIn` when it names one.
- * @typedef {{ profile: string, space: string, phase: string, notice: string, noticeKind: string, noticeProfile: string, from: AcrossWindow | null, noticeIn: AcrossWindow | null }} AcrossSwitching
+ * @typedef {{ profile: string, space: string, phase: string, notice: string, noticeKind: string, noticeProfile: string, from: AcrossWindow | null, noticeIn: AcrossWindow | null, content?: any }} AcrossSwitching
  * The switch's settings, one for the whole browser (data/<browser>/browser.json
  * `switching`): `closeWindows`, "Close windows to save memory" (app/HANDOFF.md §5).
  * @typedef {{ closeWindows: boolean }} SwitchSettings
@@ -51,11 +51,33 @@ export function acrossOf(raw) {
   const switching = sw ? {
     profile: text(sw.profile, 64), space: text(sw.space, 64), phase: text(sw.phase, 32), notice: text(sw.notice, 400),
     noticeKind: Object.hasOwn(SWITCH_NOTICES, sw.noticeKind) ? sw.noticeKind : '', noticeProfile: text(sw.noticeProfile, 64),
-    from: windowOf(sw.from), noticeIn: windowOf(sw.noticeIn),
+    from: windowOf(sw.from), noticeIn: windowOf(sw.noticeIn), content: contentOf(sw.content),
   } : null;
   const ss = raw.switchSettings && typeof raw.switchSettings === 'object' ? raw.switchSettings : null;
   const switchSettings = ss ? { closeWindows: ss.closeWindows === true } : null;
   return { profile: raw.profile, profiles, spaces, switching, switchSettings };
+}
+
+// The target space's contents, from Margin.app's data for its profile (ShellProfiles.swift spaceContent): what
+// the window a switch starts from draws in its sidebar while the switch runs, so the space is there at once and
+// the window that takes over shows the same (ui/view-model.js foreignSpace). Strings capped; icons only small
+// `data:` images; ids as the app gave them.
+/** @typedef {{ id: string, title: string, url: string, icon: string, folderId: string | null, pos: number, active: boolean }} AcrossRow */
+/** @typedef {{ space: string, pins: AcrossRow[], folders: { id: string, name: string, open: boolean, pos: number }[], tabs: AcrossRow[] }} AcrossContent */
+const ICON = /^data:image\/(png|jpeg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+=*$/;
+/** @returns {AcrossContent | null} */
+function contentOf(c) {
+  if (!c || typeof c !== 'object' || typeof c.space !== 'string') return null;
+  const row = (r) => (r && typeof r === 'object' && typeof r.id === 'string' ? {
+    id: text(r.id, 64), title: text(r.title, 300), url: text(r.url, 2048),
+    icon: typeof r.icon === 'string' && r.icon.length <= 16384 && ICON.test(r.icon) ? r.icon : '',
+    folderId: typeof r.folderId === 'string' && r.folderId ? text(r.folderId, 64) : null,
+    pos: Number(r.pos) || 0, active: r.active === true,
+  } : null);
+  const list = (v, n) => (Array.isArray(v) ? v : []).slice(0, n).map(row).filter(Boolean);
+  const folders = (Array.isArray(c.folders) ? c.folders : []).slice(0, 50).filter((f) => f && typeof f.id === 'string')
+    .map((f) => ({ id: text(f.id, 64), name: text(f.name, 60), open: f.open !== false, pos: Number(f.pos) || 0 }));
+  return { space: text(c.space, 64), pins: list(c.pins, 200), folders, tabs: list(c.tabs, 80) };
 }
 
 /** A window as the app names it, or null. @returns {AcrossWindow | null} */

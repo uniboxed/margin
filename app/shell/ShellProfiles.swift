@@ -245,8 +245,47 @@ extension Shell: SwitchWorld {
         var out: JSONObject = ["profile": SwitchNotice.profileId(t.profile), "space": t.space, "phase": switcher.phase.rawValue]
         // The window it leaves: its overlay draws the cover (ui/view-model.js switchCover).
         if let from = switcher.from, let w = from.windowId { out["from"] = ["profile": SwitchNotice.profileId(from.profile), "windowId": w] }
+        // The target space's contents, drawn in that window's sidebar while the switch runs (ui/view-model.js foreignSpace).
+        if let content = spaceContent(t.profile, t.space) { out["content"] = content }
         if let n = switchNotice { out.merge(SwitchNotice.sent(n)) { _, new in new } }
         return out
+    }
+
+    // A space's pins, folders and Margin tabs from the app's data set for its profile (DATA.md "The data set"):
+    // up to 200 pins, 50 folders, 80 tabs (newest first, the one used last marked active); an icon only a small
+    // `data:` image, its own or its site's. Titles and addresses go to the overlay only, never to the log.
+    private func spaceContent(_ link: String, _ space: String) -> JSONObject? {
+        let parts = link.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2, !space.isEmpty else { return nil }
+        let p = DataProfile(browser: parts[0], profile: parts[1])
+        let siteIcons = data.values("siteIcons", of: p)
+        func icon(_ url: String, _ own: Any?) -> String {
+            if let own = own as? String, own.hasPrefix("data:image/"), own.count <= 16000 { return own }
+            guard let u = URL(string: url), let scheme = u.scheme, let host = u.host else { return "" }
+            let origin = "\(scheme)://\(host)" + (u.port.map { ":\($0)" } ?? "")
+            if let d = (siteIcons[origin] as? JSONObject)?["data"] as? String, d.hasPrefix("data:image/"), d.count <= 16000 { return d }
+            return ""
+        }
+        func inSpace(_ collection: String) -> [(String, JSONObject)] {
+            data.values(collection, of: p).compactMap { id, v in
+                guard let o = v as? JSONObject, o["spaceId"] as? String == space else { return nil }
+                return (id, o)
+            }
+        }
+        let pins: [JSONObject] = inSpace("pins").prefix(200).map { id, o in
+            let url = o["url"] as? String ?? ""
+            return ["id": id, "title": o["title"] as? String ?? "", "url": url, "icon": icon(url, nil), "folderId": o["folderId"] as? String ?? NSNull(), "pos": num(o["pos"]) ?? 0]
+        }
+        let folders: [JSONObject] = inSpace("folders").prefix(50).map { id, o in
+            ["id": id, "name": o["name"] as? String ?? "", "open": o["open"] as? Bool ?? true, "pos": num(o["pos"]) ?? 0]
+        }
+        let sorted = inSpace("tabs").sorted { (num($0.1["order"]) ?? 0) > (num($1.1["order"]) ?? 0) }.prefix(80)
+        let last = sorted.max { (num($0.1["lastUsed"]) ?? 0) < (num($1.1["lastUsed"]) ?? 0) }?.0
+        let tabs: [JSONObject] = sorted.map { id, o in
+            let url = o["url"] as? String ?? ""
+            return ["id": id, "title": o["title"] as? String ?? "", "url": url, "icon": icon(url, o["icon"]), "active": id == last]
+        }
+        return ["space": space, "pins": pins, "folders": folders, "tabs": tabs]
     }
 
     // One of the switch's notices, up for its time (or until a button, or another notice, takes its place).
