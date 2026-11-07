@@ -2865,13 +2865,13 @@ On `test/e2e-rewrite` (from `feat/margin-app`). Tirth asked for the e2e suite to
 
 **The old suite.** `enhancements`, `loader`, `platform`, `scroll` and `smoke` went with `helpers.js`. Their tests are in `scroll`, `navigation`, `loading` and `chrome-build`. One was dropped: upgrading to the Safari build moves the ⌃⌘ shortcut defaults. `tests/model.test.js` covers it, and stopping Chromium's worker tests nothing Safari does.
 
-**Bugs found, kept as `todo`** (nine in all; the first four are the first half's, noted in their files; five fixed since, below, four left):
+**Bugs found, kept as `todo`** (nine in all; the first four are the first half's, noted in their files; seven fixed since, below, two left: the new-tab page's link bugs):
 
 - `newtab.html#launcher` gets no launcher, and the page says "Margin.app isn't running" while linked (`archive`, `newtab`).
-- New, from review: Arcadia draws a short notice one word per line. `.notice { width: min-content }` shrinks it to its longest word, so "That tab is no longer open." is a 58 px column over the space's name. `width: max-content` with the existing `max-width` fixes it (`themes`). For Phase 6.
-- New, from review: Neo-brutalism's address field shows the extension's id over Margin's own new-tab page (`tab.host` of the page's address). In Safari it would be the extension's UUID. It should be empty or say New Tab (`themes`). For Phase 6. The same host gives a start page kept as a row its letter icon (a "J" from the id, seen in `spaces` after a delete).
 
 **Fixed since** (`fix/e2e-found-bugs`; each test is a normal one now):
+- Arcadia's notice a word per line: `width: max-content` under its `max-width` (`themes`).
+- An extension id shown as a host: `face()` in `ui/view-model.js` gives Margin's own pages no host, so the address field is empty and a kept start page gets its title's letter (`themes`, `tests/ui-view-model.test.js`).
 
 - The new-tab page's hidden notice was drawn while linked: `main { display: grid }` beat `[hidden]`. `newtab.html` now has `[hidden] { display: none !important }` (`newtab`; unit: `newtab-page`).
 - A tab open before the app's set came in kept the default space the set removed, and no row showed it. `stateFromDataSet` (`shared/data-set.js`) now moves a tab whose space the set took away to its window's space, or the first (`tabs`; unit: `data-set`).

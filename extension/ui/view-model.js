@@ -258,7 +258,8 @@ export function abbreviate(name) {
 /** @param {State} state @param {{ url?: string, title?: string, favIconUrl?: string }} item @param {string} title @returns {Face} */
 function face(state, item, title) {
   const url = item.url ?? '';
-  const host = hostOf(url);
+  // Margin's own pages (the new-tab page, the start page) have the extension's id for a host: never shown.
+  const host = /^[a-z-]*-extension:/i.test(url) ? '' : hostOf(url);
   const icon = V.iconFor(state, item);
   const { letter, color } = V.letterAvatar(host || title || '?');
   return { title, url, host, icon: checkIconUrl(icon) ? icon : null, letter, color };

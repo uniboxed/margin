@@ -173,9 +173,7 @@ for (const id of ORDER) {
   });
 }
 
-test('a short notice is drawn on a line or two, not a word per line', {
-  todo: 'Arcadia: .notice { width: min-content } draws "That tab is no longer open." one word per line (extension/themes/arcadia/theme.css)',
-}, () => {
+test('a short notice is drawn on a line or two, not a word per line', () => {
   for (const id of ORDER) {
     const n = drawnBy[id]?.notice;
     assert.ok(n, `${id}: its notice measured`);
@@ -183,9 +181,7 @@ test('a short notice is drawn on a line or two, not a word per line', {
   }
 });
 
-test('over Margin\'s new-tab page, an address field shows no extension id', {
-  todo: 'Neo-brutalism: the field shows the new-tab page\'s host, the extension\'s id (tab.host, extension/ui/view-model.js face)',
-}, () => {
+test('over Margin\'s new-tab page, an address field shows no extension id', () => {
   for (const id of ORDER) {
     const address = drawnBy[id]?.address;
     assert.ok(address != null, `${id}: read`);

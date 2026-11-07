@@ -267,3 +267,15 @@ test('the window\'s frame when hidden, and the new-tab launcher: the space\'s pi
   assert.deepEqual([all.launcher.archive.length, all.launcher.moreLabel], [14, 'Show fewer']);
   assert.equal(all.archive.at(-1).ago, '14h ago');
 });
+
+test('Margin\'s own pages show no host: never the extension\'s id, and a letter from the title', () => {
+  const state = smallState();
+  const t = state.tabs[14];
+  for (const url of ['safari-web-extension://4F1E2D3C-AAAA-BBBB-CCCC-123456789ABC/newtab/newtab.html', 'chrome-extension://abcdefghijklmnop/newtab/newtab.html']) {
+    state.tabs[14] = { ...t, url, title: 'New Tab' };
+    const vm = build(state);
+    const r = vm.space.today.find((x) => x.id === 14);
+    assert.equal(r.host, '', url);
+    assert.equal(r.letter, 'N', 'the letter comes from the title');
+  }
+});
