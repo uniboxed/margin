@@ -273,6 +273,11 @@ final class OffScreenWindow: NSWindow {
     if type == "wantLink", let nonce = body?["nonce"] as? String, appLink.running {
       log("native: wantLink (to the app)")
       appLink.tell(["wantLink": nonce])
+      if appLink.loseAnswers > 0 {
+        appLink.loseAnswers -= 1
+        appLink.lost.append(replyHandler) // never called
+        return log("native: wantLink: its answer lost")
+      }
     } else if type == "wantLink", appLink.onDemand {
       log("native: wantLink: the app isn't running, started (launching)")
       appLink.onDemand = false
@@ -450,6 +455,10 @@ var retiredViews: [WKWebView] = []
   var mark = 0
   var onDemand = false
   var onDemandLayout: [Double]?
+  // `appLoseAnswers`: this many wantLinks passed on to the app but never answered, as Safari 27.2
+  // answers only one of several sent at once (DECISIONS.md "Every profile's copy links again").
+  var loseAnswers = 0
+  var lost: [(Any?, (any Error)?) -> Void] = []
   var running: Bool { process?.isRunning == true }
   // `layout`: the page slot's insets the app reports (left, top, right, bottom; link-server/).
   func start(layout: [Double]? = nil) {
@@ -754,6 +763,8 @@ Task { @MainActor in
       let on = step["on"] as? Bool ?? true
       appLink.tell(["drawn": on]); log("appDrawn \(on)")
     case "appQuit": appLink.tell(["bye": true]); log("appQuit")
+    case "appLoseAnswers": // { op: 'appLoseAnswers', count? }: the next wantLinks to the app never answered
+      appLink.loseAnswers = (step["count"] as? Int) ?? 1; log("appLoseAnswers \(appLink.loseAnswers)")
     case "appRefuse": // { op: 'appRefuse', refuse? }: the app's dispatches refused (as Safari's SFErrorDomain 1) or, refuse false, passed on again
       let refuse = step["refuse"] as? Bool ?? true
       appLink.tell(["refuse": refuse]); log("appRefuse \(refuse)")

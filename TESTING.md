@@ -770,6 +770,14 @@ Quit and reopen Safari with several tabs in a few spaces (Safari brings them bac
 - [ ] While holding ⌃⌘↓ for a few seconds, the log gets at most one `windows report at …` line a second from that profile, not one per tab.
 - [ ] Right after a sidebar disappears (or in a window you just put in full screen, before its sidebar shows), press ⌘T: within about 2 s Margin's new-tab page opens in that window, with its address field and a note that Margin.app hasn't placed the window. The log says `palette push for window N (…) dropped: …; its copy asked to open Margin's new-tab page there`, then from the copy `the app couldn't show the palette over window N: Margin's new-tab page opened there`. Once the sidebar is back, ⌘T opens the palette again.
 
+## Every profile links again after Margin.app restarts (2026-11-06)
+
+Before: after an update or a quick quit and restart of Margin.app, often only the profile that asked last (usually Work) linked; the others stayed unlinked until Safari restarted, and the toolbar button and new pages didn't help. Checked on Test A and Test B already (`DECISIONS.md`, same title). What's left for you:
+
+- [ ] With windows open in three or more profiles, run `npm run safari`. Within about 5 s every profile's window has Margin drawn again. In `npm run log:app` there's one `hello: safari:…` per profile.
+- [ ] Quit Margin.app from its menu and open it again, once with each profile's window in front and once with another app in front. Every profile links within about 4 s each time.
+- [ ] Lines like `wantLink: no answer from the extension handler within 3000 ms …` are fine (Safari lost that answer; the copy asks again). Send me any `the link's try has been under way N s …` or `unlinked with no try under way or to come …` line, with the time.
+
 ## Margin 2: iCloud Tabs (2026-11-05)
 
 `npm run safari` from `feat/icloud-tabs` (Margin.app changes; the Xcode project is made again because shell files were added). Margin.app has Full Disk Access. Have Safari open on at least one other device signed in to the same Apple Account (an iPhone with a few tabs is enough), and keep `npm run log:app -- --stream` open.
