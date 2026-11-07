@@ -422,8 +422,8 @@ appLink.onPageState((state) => {
 // A window's layout: its page in front gets its box at once (the rest read
 // it from storage, appLink, as they're shown or start), and new pages get it
 // at their first paint (background/registered.js: the registered layout
-// follows once layouts settle; a window with another gets its own as each
-// page commits).
+// follows at once for a lone change, once layouts settle for a burst; a
+// window with another gets its own as each page commits).
 appLink.onLayout((windowId, layout) => {
   void api.tabs.query({ active: true, windowId }).then(([tab]) => tab && api.tabs.sendMessage(tab.id, { type: 'appLayout', windowId, layout, drawn: appLink.drawn(windowId) }).catch(() => {}), () => {});
   layoutsChanged();

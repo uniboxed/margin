@@ -139,11 +139,9 @@ const firstBare = (tab, label) => checkPage(tab, `${tab}: ${label}`, `const fp =
 const firstLog = (tab) => ({ op: 'page', in: tab, js: `const fp = window.__fp; return '${tab} first frame ' + JSON.stringify(fp.frames[0]) + ', ' + fp.frames.filter((f) => f.t < ${LATE}).length + ' frames before Margin spoke (' + fp.held + ' word(s) held back)'` });
 // Margin.app's layout settled, and registered (background/registered.js LAYOUT_SETTLE_MS, then a sync).
 const settledLayout = wait(3000);
-// A layout the app sent has reached the copy (its appLink, written a moment after the background
-// had it): the link server's `setLayout` takes up to 200 ms to get there (the host's background
-// page runs its socket's messages in turns about 200 ms apart), and a page opened at once could
-// commit before the background knows it. What a page that commits once it does gets is the test.
-const layoutLanded = (tab, [l, t, r, b]) => check(tab, `${tab}: the copy has the app's layout ${l}/${t}/${r}/${b}`, `const { appLink } = await browser.storage.local.get('appLink'); return Object.values(appLink?.layouts ?? {}).some(({ insets: i } = {}) => i?.left === ${l} && i?.top === ${t} && i?.right === ${r} && i?.bottom === ${b})`, 3000);
+// The registration is at left/top/right/bottom, as an open page has it (WebKit gives a registration's
+// update to the pages it applies to: the variables its digit files add up to), within `timeout`.
+const registeredAt = (tab, [l, t, r, b], label, timeout) => checkPage(tab, `${tab}: registered at ${l}/${t}/${r}/${b} ${label}`, `const s = getComputedStyle(document.documentElement); const sum = (side) => { const v = s.getPropertyValue('--margin-at-' + side).trim(); return v.startsWith('calc(') ? (v.match(/[0-9.]+(?=px)/g) ?? []).reduce((a, n) => a + Number(n), 0) : NaN; }; return sum('left') === ${l} && sum('top') === ${t} && sum('right') === ${r} && sum('bottom') === ${b}`, timeout);
 const pages = (prefix, n, layout, options) => Array.from({ length: n }, (_, i) => [fresh(`${prefix}${i}`), firstFrame(`${prefix}${i}`, layout, options), firstLog(`${prefix}${i}`)]).flat();
 
 export const SCENARIOS = {
@@ -1367,18 +1365,26 @@ Object.assign(SCENARIOS, {
   // The first paint at any layout (Margin 2 Phase 3, PLAN.md §14): fresh pages
   // in their box from their first frame, before Margin's content script has
   // said anything (held back 400 ms, as Safari runs it late). Margin.app's
-  // layout registered as digit files; a window whose layout isn't the one
-  // registered yet gets its own sheet as each page commits; back to a layout
-  // registered before (WebKit keeps every registration's CSS applying: the
-  // newest must win); a layout with no box at any edge: no box from the first
-  // frame, none of Margin's page scripts.
+  // layout registered as digit files; a lone layout change registered at once
+  // (background/registered.js layoutsChanged: until 2026-11-06 it waited the
+  // 2 s settle, leaving pages opened meanwhile to the sheet put in as each
+  // commits, which a busy background put in after their first frames: W0
+  // failed about 1 run in 5), so W's pages get it from the registration; a
+  // drag (a burst of layouts) registers the one it ends at once it settles;
+  // back to a layout registered before (WebKit keeps every registration's CSS
+  // applying: the newest must win); a layout with no box at any edge: no box
+  // from the first frame, none of Margin's page scripts.
   'first-paint': [
     appWith(260), { op: 'open', name: 'A', url: '/p/A', active: true }, wait(800), { op: 'install' }, linked('A'), boxed('A'), settledLayout,
     ...pages('K', 3, [260, 8, 8, 8]),
-    { op: 'appLayout', layout: [300, 12, 16, 20] }, layoutLanded('A', [300, 12, 16, 20]),
-    ...pages('W', 2, [300, 12, 16, 20], { how: 'own' }),
+    { op: 'appLayout', layout: [300, 12, 16, 20] }, registeredAt('A', [300, 12, 16, 20], 'at once (a lone change: within 1.8 s, under the 2 s settle)', 1800),
+    ...pages('W', 2, [300, 12, 16, 20]),
     settledLayout,
     ...pages('R', 3, [300, 12, 16, 20]),
+    // A drag: layouts 100 ms apart, then none; the registration ends at the last.
+    layoutAt(310, 12, 16, 20), wait(100), layoutAt(320, 12, 16, 20), wait(100), layoutAt(330, 12, 16, 20), wait(100), layoutAt(340, 12, 16, 20),
+    registeredAt('A', [340, 12, 16, 20], 'once the drag settled (the layout it ended at)', 5000), settledLayout,
+    ...pages('D', 2, [340, 12, 16, 20]),
     { op: 'appLayout', layout: [8, 8, 8, 8] }, settledLayout,
     ...pages('F', 3, [8, 8, 8, 8]),
     { op: 'appLayout', layout: [260, 8, 8, 8] }, settledLayout,
