@@ -555,6 +555,18 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     },
     cancel(id) { clearTimeout(id); timers.delete(id); },
     get destroyed() { return destroyed; },
+    /** The model with space `id` shown in this window (one of vm.spaces: this profile's, or another profile's from
+     *  the app's data for it), for a swipe drawing it beside the current one; null if it isn't one. */
+    spaceView(id) {
+      const entry = vm?.spaces?.find((s) => s.id === id);
+      if (!entry) return null;
+      let state = viewState(host.getState());
+      if (!state) return null;
+      const w = fullUi().windowId;
+      if (!entry.foreign) state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [w]: id } };
+      const out = buildViewModel({ state, ui: { ...fullUi(), showSpace: entry.foreign ? id : null, palette: {}, editing: null, notice: null, prompt: null, gesture: null }, platform: host.platform, settings });
+      return out.space?.id === id ? out : null;
+    },
   };
   /** @type {Record<string, any>} */
   const behaviors = {};

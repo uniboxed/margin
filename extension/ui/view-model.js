@@ -52,6 +52,7 @@ export const VM_VERSION = 1;
  *   recording?: string | null,
  *   settingsStatus?: Record<string, { text: string, error?: boolean }>,
  *   switchingTo?: number | null,
+ *   showSpace?: string | null,
  *   justShown?: boolean,
  *   inNewTab?: boolean,
  *   launcherPage?: boolean,
@@ -434,7 +435,10 @@ function fresh(input) {
   // A switch to another profile's space started from this window: that space drawn here, from Margin.app's data
   // for it, as the one shown (its chip active), while the switch runs (Tirth, 2026-11-07: the sidebar slides to
   // the other profile's space and shows its tabs at once; the window that takes over shows the same).
-  const foreign = foreignSpace(across, windowId);
+  // (A space drawn for a swipe's neighbour, ui.showSpace: another profile's, from the app's data for it.)
+  const shown = ui.showSpace ? orderedSpaces(state.spaces, across).find((o) => !o.own && o.key === ui.showSpace) : null;
+  const foreign = foreignSpace(across, windowId) ?? (shown ? spaceRows(across?.contents?.[`${shown.entry.profile}\u0000${shown.entry.id}`]) : null);
+  if (shown && foreign) for (const s of spaces) s.switching = s.id === ui.showSpace;
   if (foreign) for (const s of spaces) s.active = s.switching;
   const chip = spaces.find((s) => s.active) ?? spaces.find((s) => !s.foreign) ?? spaces[0];
   /** @type {SpaceView} */
@@ -630,6 +634,11 @@ function foreignSpace(across, windowId) {
   const sw = across?.switching;
   const c = sw?.content;
   if (!sw || !c || c.space !== sw.space || !FOREIGN_PHASES.has(sw.phase) || !isWindow(sw.from, across.profile, windowId)) return null;
+  return spaceRows(c);
+}
+/** A space's rows from its contents (shared/across.js AcrossContent), or null. @param {any} c */
+function spaceRows(c) {
+  if (!c) return null;
   const faceOf = (r) => {
     const host = hostOf(r.url);
     const { letter, color } = V.letterAvatar(host || r.title || '?');

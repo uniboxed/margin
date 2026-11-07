@@ -208,18 +208,20 @@ extension Shell: SwitchWorld {
     }
 
     func pushAcross() {
-        var made: [String: (BrowserProfiles, [String: [String: JSONObject]], [String: [String: Int]], Set<String>)] = [:]
+        var made: [String: (BrowserProfiles, [String: [String: JSONObject]], [String: [String: Int]], Set<String>, [JSONObject])] = [:]
         for browser in Set(links.values.map(\.connection.hello.browser)) {
             let (ids, values) = ownSpaces(browser)
             let linked = linkedProfiles(browser)
             let profiles = profilesOf(browser)
             profiles.refresh(spaces: ids, linked: linked)
-            made[browser] = (profiles, values, tabCounts(browser, Array(ids.keys)), linked)
+            made[browser] = (profiles, values, tabCounts(browser, Array(ids.keys)), linked, spaceContents(browser, ids))
         }
         for (key, overlay) in overlays {
-            guard let entry = links[key.link], let (profiles, values, counts, linked) = made[entry.connection.hello.browser] else { continue }
-            guard let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: counts, linked: linked, switching: switchingJSON(),
-                                                        switchSettings: switchSettingsShown(entry.connection.hello.browser), symbol: { ProfileSymbols.dataURL($0) })) else { continue }
+            guard let entry = links[key.link], let (profiles, values, counts, linked, contents) = made[entry.connection.hello.browser] else { continue }
+            var across = profiles.across(for: entry.connection.hello.profile, spaces: values, counts: counts, linked: linked, switching: switchingJSON(),
+                                         switchSettings: switchSettingsShown(entry.connection.hello.browser), symbol: { ProfileSymbols.dataURL($0) })
+            across["contents"] = contents.filter { $0["profile"] as? String != entry.connection.hello.profile }
+            guard let json = jsonString(across) else { continue }
             if acrossSent[key] == json { continue }
             acrossSent[key] = json
             overlay.push(raw: #"{"type":"across","across":"# + json + "}")
@@ -234,8 +236,10 @@ extension Shell: SwitchWorld {
         let linked = linkedProfiles(browser)
         let profiles = profilesOf(browser)
         profiles.refresh(spaces: ids, linked: linked)
-        let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: tabCounts(browser, Array(ids.keys)), linked: linked, switching: switchingJSON(),
-                                              switchSettings: switchSettingsShown(browser), symbol: { ProfileSymbols.dataURL($0) }))
+        var across = profiles.across(for: entry.connection.hello.profile, spaces: values, counts: tabCounts(browser, Array(ids.keys)), linked: linked, switching: switchingJSON(),
+                                     switchSettings: switchSettingsShown(browser), symbol: { ProfileSymbols.dataURL($0) })
+        across["contents"] = spaceContents(browser, ids).filter { $0["profile"] as? String != entry.connection.hello.profile }
+        let json = jsonString(across)
         acrossSent[overlay.key] = json
         return json
     }
@@ -254,16 +258,28 @@ extension Shell: SwitchWorld {
     // A space's pins, folders and Margin tabs from the app's data set for its profile (DATA.md "The data set"):
     // up to 200 pins, 50 folders, 80 tabs (newest first, the one used last marked active); an icon only a small
     // `data:` image, its own or its site's. Titles and addresses go to the overlay only, never to the log.
-    private func spaceContent(_ link: String, _ space: String) -> JSONObject? {
+    // Every space's contents of each profile (smaller caps), for the other profiles' layouts: a swipe draws the
+    // neighbouring space beside the current one, another profile's too (ui/behaviors/swipe.js, view-model.js).
+    private func spaceContents(_ browser: String, _ ids: [String: [String]]) -> [JSONObject] {
+        var out: [JSONObject] = []
+        for (p, spaces) in ids.sorted(by: { $0.key < $1.key }) {
+            for s in spaces.sorted() {
+                if let c = spaceContent("\(browser):\(p)", s, maxTabs: 30, maxIcon: 6000) { out.append(["profile": p, "space": s, "content": c]) }
+            }
+        }
+        return out
+    }
+
+    private func spaceContent(_ link: String, _ space: String, maxTabs: Int = 80, maxIcon: Int = 16000) -> JSONObject? {
         let parts = link.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2, !space.isEmpty else { return nil }
         let p = DataProfile(browser: parts[0], profile: parts[1])
         let siteIcons = data.values("siteIcons", of: p)
         func icon(_ url: String, _ own: Any?) -> String {
-            if let own = own as? String, own.hasPrefix("data:image/"), own.count <= 16000 { return own }
+            if let own = own as? String, own.hasPrefix("data:image/"), own.count <= maxIcon { return own }
             guard let u = URL(string: url), let scheme = u.scheme, let host = u.host else { return "" }
             let origin = "\(scheme)://\(host)" + (u.port.map { ":\($0)" } ?? "")
-            if let d = (siteIcons[origin] as? JSONObject)?["data"] as? String, d.hasPrefix("data:image/"), d.count <= 16000 { return d }
+            if let d = (siteIcons[origin] as? JSONObject)?["data"] as? String, d.hasPrefix("data:image/"), d.count <= maxIcon { return d }
             return ""
         }
         func inSpace(_ collection: String) -> [(String, JSONObject)] {
@@ -279,7 +295,7 @@ extension Shell: SwitchWorld {
         let folders: [JSONObject] = inSpace("folders").prefix(50).map { id, o in
             ["id": id, "name": o["name"] as? String ?? "", "open": o["open"] as? Bool ?? true, "pos": num(o["pos"]) ?? 0]
         }
-        let sorted = inSpace("tabs").sorted { (num($0.1["order"]) ?? 0) > (num($1.1["order"]) ?? 0) }.prefix(80)
+        let sorted = inSpace("tabs").sorted { (num($0.1["order"]) ?? 0) > (num($1.1["order"]) ?? 0) }.prefix(maxTabs)
         let last = sorted.max { (num($0.1["lastUsed"]) ?? 0) < (num($1.1["lastUsed"]) ?? 0) }?.0
         let tabs: [JSONObject] = sorted.map { id, o in
             let url = o["url"] as? String ?? ""

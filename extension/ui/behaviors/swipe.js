@@ -12,6 +12,7 @@
 // (renaming, a menu, a drag).
 import { canScrollX } from '../../shared/gestures.js';
 import { createSpaceSwipe, settle, rubberBand, DEFAULTS as SWIPE } from '../../shared/space-swipe.js';
+import { View } from '../render.js';
 
 export const SETTLE_MS = 220;
 
@@ -19,8 +20,48 @@ export const SETTLE_MS = 220;
 export function installSwipe(rt) {
   const { view, doc, container } = rt;
   const tracker = createSpaceSwipe();
-  /** @type {{ el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number } | null} */
+  /** @type {{ el: HTMLElement, neighbours: Record<string, string | undefined>, width: number, base: { offset: number, events: number }, settling: boolean, frame: number, offset: number, panes: HTMLElement[], bases: { left: number, top: number, width: number, height: number }[], ghosts: Record<string, HTMLElement[] | null>, position: string, overflow: string, target: string | null, dispatched: boolean } | null} */
   let swiping = null;
+
+  // The neighbouring spaces drawn beside the one shown, as Arc does (Tirth, 2026-11-07): the theme's own sidebar
+  // rendered off screen with that space shown (rt.spaceView), its moving part (`data-swipe-pane`, else
+  // `.space-pane` or `.swipes`) copied, inert, beside the real one, so the theme's own swipe rule moves both.
+  // (A theme may move several parts: Neo-brutalism and Pixel move the space's head and its list, each `.swipes`.)
+  const panesOf = (root) => /** @type {HTMLElement[]} */ ([...root.querySelectorAll('[data-swipe-pane]')].length
+    ? [...root.querySelectorAll('[data-swipe-pane]')] : [...root.querySelectorAll('.space-pane, .swipes')]);
+  function ghost(s, dir) {
+    if (s.ghosts[dir] !== undefined) return;
+    s.ghosts[dir] = null;
+    const id = s.neighbours[dir];
+    if (!id || !s.panes.length) return;
+    const model = rt.spaceView?.(id);
+    if (!model) return;
+    /** @type {HTMLElement[]} */
+    let sources = [];
+    try {
+      const holder = doc.createElement('div');
+      const root = holder.attachShadow({ mode: 'open' });
+      const v = new View(root, rt.theme.template, {});
+      v.update(model);
+      sources = panesOf(root).map((n) => /** @type {HTMLElement} */ (n.cloneNode(true)));
+      v.destroy?.();
+    } catch { sources = []; }
+    if (sources.length !== s.panes.length) return;
+    const copies = [];
+    s.panes.forEach((p, i) => {
+      const copy = sources[i];
+      if (!p.parentNode) return;
+      copy.removeAttribute('id');
+      copy.setAttribute('aria-hidden', 'true');
+      copy.setAttribute('inert', '');
+      copy.classList.add('m-swipe-ghost');
+      const b = s.bases[i];
+      Object.assign(copy.style, { position: 'absolute', top: `${b.top}px`, left: `${b.left + Number(dir) * s.width}px`, width: `${b.width}px`, height: `${b.height}px`, margin: '0', pointerEvents: 'none' });
+      s.el.append(copy);
+      copies.push(copy);
+    });
+    s.ghosts[dir] = copies;
+  }
   let endTimer = null;
 
   // A mouse wheel, not a trackpad (sidebar.js mouseWheel): WebKit and
@@ -44,21 +85,44 @@ export function installSwipe(rt) {
     if (!s) return;
     const toward = offset > 0 ? -1 : 1;
     const shown = s.neighbours[toward] ? Math.max(-s.width, Math.min(s.width, offset)) : rubberBand(offset, s.width * 0.2);
+    if (s.neighbours[toward]) ghost(s, String(toward));
     s.el.style.setProperty('--m-swipe-offset', `${Math.round(shown * 10) / 10}px`);
+    // How far toward the neighbour (0 to 1), for a theme that blends the two spaces' colours.
+    s.el.style.setProperty('--m-swipe-progress', `${Math.round(Math.min(1, Math.abs(shown) / s.width) * 1000) / 1000}`);
   }
   function begin(el) {
     const spaces = rt.vm?.spaces ?? [];
     const at = spaces.findIndex((s) => s.id === rt.vm?.space?.id);
-    swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: el.getBoundingClientRect().width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0 };
+    // The copies are placed in the swiping part itself, which clips them until they slide in: it's made their
+    // containing block for the swipe (a positioned element), and each moving part's place in it is read at rest.
+    const position = el.style.position;
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    const er = el.getBoundingClientRect();
+    const panes = panesOf(el);
+    const bases = panes.map((p) => {
+      const r = p.getBoundingClientRect();
+      return { left: r.left - er.left - el.clientLeft + el.scrollLeft, top: r.top - er.top - el.clientTop + el.scrollTop, width: p.offsetWidth, height: p.offsetHeight };
+    });
+    swiping = { el, neighbours: { [-1]: spaces[at - 1]?.id, [1]: spaces[at + 1]?.id }, width: er.width || 1, base: { offset: 0, events: 0 }, settling: false, frame: 0, offset: 0,
+      panes, bases, ghosts: {}, overflow: el.style.overflow, position, target: null, dispatched: false };
+    el.style.overflow = 'clip'; // the neighbours sit outside it until they slide in
     el.classList.add('m-swiping');
   }
+  // Still "active" this long after a switch it sent (the runtime keeps the space it asked for shown meanwhile:
+  // runtime.js viewState), as it was when the switch went at the settle's start.
+  let holdUntil = 0;
   function finish() {
     const s = swiping;
     if (!s) return;
     swiping = null;
+    if (s.dispatched) holdUntil = Date.now() + SETTLE_MS;
     cancelAnimationFrame(s.frame);
     s.el.classList.remove('m-swiping', 'm-settling');
     s.el.style.removeProperty('--m-swipe-offset');
+    s.el.style.removeProperty('--m-swipe-progress');
+    s.el.style.overflow = s.overflow;
+    s.el.style.position = s.position;
+    for (const list of Object.values(s.ghosts)) for (const g of list ?? []) g.remove();
   }
   function release({ offset, speed, events }) {
     const s = swiping;
@@ -68,8 +132,19 @@ export function installSwipe(rt) {
     s.settling = true;
     s.el.classList.add('m-settling');
     s.el.style.setProperty('--m-swipe-offset', `${dir ? -dir * s.width : 0}px`);
-    if (dir) rt.dispatch('space.switch', s.neighbours[dir], 'behavior');
-    rt.later(() => { if (swiping === s) finish(); }, SETTLE_MS);
+    s.el.style.setProperty('--m-swipe-progress', dir ? '1' : '0');
+    s.target = dir ? s.neighbours[dir] ?? null : null;
+    // The neighbour slides fully in first; then the space is switched to, and the copy goes in the same frame the
+    // real sidebar shows it (afterRender), so nothing jumps. Another profile's: the copy stays until the switch's
+    // view of it is drawn here (ui/view-model.js foreignSpace), or 1.5 s.
+    rt.later(() => {
+      if (swiping !== s) return;
+      if (!s.target) return finish();
+      s.dispatched = true;
+      rt.dispatch('space.switch', s.target, 'behavior');
+      if (swiping === s && rt.vm?.space?.id === s.target) finish();
+      rt.later(() => { if (swiping === s) finish(); }, 1500);
+    }, SETTLE_MS);
   }
 
   rt.listen(container, 'wheel', (/** @type {WheelEvent} */ e) => {
@@ -110,9 +185,11 @@ export function installSwipe(rt) {
 
   const api = {
     busy: () => swiping != null && !swiping.settling,
-    /** Moving or settling. */
-    active: () => swiping != null,
+    /** Moving or settling (or just switched space by a swipe). */
+    active: () => swiping != null || Date.now() < holdUntil,
     destroy() { clearTimeout(endTimer); finish(); },
+    /** The space switched to after a settle is drawn: the copy beside it goes, the offset with it. */
+    afterRender(vm) { if (swiping?.dispatched && vm?.space?.id === swiping.target) finish(); },
   };
   return api;
 }

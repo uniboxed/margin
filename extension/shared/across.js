@@ -27,7 +27,7 @@
  * The switch's settings, one for the whole browser (data/<browser>/browser.json
  * `switching`): `closeWindows`, "Close windows to save memory" (app/HANDOFF.md §5).
  * @typedef {{ closeWindows: boolean }} SwitchSettings
- * @typedef {{ profile: string, profiles: AcrossProfile[], spaces: AcrossSpace[], switching: AcrossSwitching | null, switchSettings: SwitchSettings | null }} Across
+ * @typedef {{ profile: string, profiles: AcrossProfile[], spaces: AcrossSpace[], switching: AcrossSwitching | null, switchSettings: SwitchSettings | null, contents?: Record<string, any> }} Across
  */
 
 const text = (v, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
@@ -55,7 +55,16 @@ export function acrossOf(raw) {
   } : null;
   const ss = raw.switchSettings && typeof raw.switchSettings === 'object' ? raw.switchSettings : null;
   const switchSettings = ss ? { closeWindows: ss.closeWindows === true } : null;
-  return { profile: raw.profile, profiles, spaces, switching, switchSettings };
+  // Every other profile's spaces' contents (the app's data), by `${profile}\u0000${space}`: a swipe draws the
+  // neighbouring space beside this one (ui/behaviors/swipe.js), another profile's too.
+  /** @type {Record<string, AcrossContent>} */
+  const contents = {};
+  for (const e of (Array.isArray(raw.contents) ? raw.contents : []).slice(0, 128)) {
+    if (!e || typeof e.profile !== 'string' || typeof e.space !== 'string') continue;
+    const c = contentOf(e.content);
+    if (c && c.space === e.space) contents[`${text(e.profile, 64)}\u0000${text(e.space, 64)}`] = c;
+  }
+  return { profile: raw.profile, profiles, spaces, switching, switchSettings, contents };
 }
 
 // The target space's contents, from Margin.app's data for its profile (ShellProfiles.swift spaceContent): what
