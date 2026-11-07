@@ -190,12 +190,23 @@ final class ProfileSwitch {
             world.switchChanged(.needsProfile(to))
             return poll()
         }
-        if let w = world.windows(of: to.profile).first {
+        if let w = ownWindow(to.profile) {
             adopt(w.id, fullScreen: w.state == "fullscreen")
         } else {
             create()
         }
         poll()
+    }
+
+    // The profile's window to show: the first its copy lists, never one the handoff has parked (this
+    // switch can't bring it out of its private Space, and its registry entry would be left saying parked).
+    private func ownWindow(_ profile: String) -> (id: Int, state: String)? {
+        guard let world else { return nil }
+        let parked = handoffWorld?.parking?.numbers ?? []
+        return world.windows(of: profile).first { w in
+            guard !parked.isEmpty, let hw = handoffWorld, let n = hw.number(of: WindowKey(link: profile, windowId: w.id)) else { return true }
+            return !parked.contains(n)
+        }
     }
 
     // In a HandoffWorld, the old window's drafts before it may be closed (HANDOFF.md §1.1): asked now,
@@ -270,7 +281,7 @@ final class ProfileSwitch {
         case .idle, .waitingForLink, .preparing, .frozen, .after, .landed, .recovering:
             return
         case .waitingForProfile:
-            if world.isLinked(to.profile), let w = world.windows(of: to.profile).first {
+            if world.isLinked(to.profile), let w = ownWindow(to.profile) {
                 note("\(to.profile) linked with window \(w.id)")
                 return adopt(w.id, fullScreen: w.state == "fullscreen")
             }
@@ -373,6 +384,14 @@ final class ProfileSwitch {
             }
         }
         let next = queued
+        // The close-based switch in a HandoffWorld landed: its window is the shown one now (§13.8 judges a
+        // close against it) and its profile's home window.
+        if run == nil, case .done(let t) = event, let id = newWindow, let hw = handoffWorld {
+            let key = WindowKey(link: t.profile, windowId: id)
+            let n = hw.number(of: key)
+            session.shown = (key, n)
+            if let n { hw.parking?.noteShown(link: t.profile, number: n) }
+        }
         gen += 1
         phase = .idle
         run = nil

@@ -70,6 +70,7 @@ final class FreezeListener: FreezerDelegate {
 func handoffTests() {
     freezerTests()
     handoffMachineTests() // the switch's machine (Handoff.swift), below
+    handoffReviewTests() // what a review of the machine found, each case failing before its fix
 }
 
 func freezerTests() {
@@ -334,6 +335,8 @@ final class FakeHandoffWorld: HandoffWorld {
     var fs: [UInt64] = [] // the full-screen Spaces, on the main display
     var nextFs: UInt64 = 100
     var displays = 1 { didSet { updateDisplays() } }
+    var displaysUnread = false { didSet { updateDisplays() } } // SLSCopyManagedDisplaySpaces answers nothing
+    var slides = false // a window asked into full screen from a Space that isn't the active one: macOS slides there first
     var linked: Set<String> = []
     var wins: [String: [Win]] = [:]
     var nextId = 50
@@ -421,6 +424,7 @@ final class FakeHandoffWorld: HandoffWorld {
     }
 
     func updateDisplays() {
+        guard !displaysUnread else { reads.displayList = nil; return }
         var list = [DisplaySpaces(display: "Main", current: reads.active, spaces: [ManagedSpace(id: desktop, type: 0)] + fs.map { ManagedSpace(id: $0, type: 4) })]
         for i in 1..<max(displays, 1) { list.append(DisplaySpaces(display: "D\(i)", current: UInt64(900 + i), spaces: [ManagedSpace(id: UInt64(900 + i), type: 0)])) }
         reads.displayList = list
@@ -462,6 +466,8 @@ final class FakeHandoffWorld: HandoffWorld {
             focus(key)
             return done(true)
         }
+        // Focusing a window on another Space (its Desktop) makes that Space the active one at once.
+        if slides, let active = reads.active, !spacesOf(key).contains(active), let there = spacesOf(key).first { setActive(there) }
         if noFullScreen.contains(key) { return }
         later(enterLag[key.link] ?? 0.8) { [self] in
             guard let w = self.win(key) else { return done(false) }
@@ -1567,4 +1573,202 @@ func handoffMachineTests() {
     }
     // ---- nothing logged but ids and numbers ----
     check("log: no addresses or titles in the machine's lines", !said.contains { $0.contains("http") || $0.contains("title") }, "\(said.filter { $0.contains("http") })")
+}
+
+// ---- what a review of the machine found (each case fails before its fix) ----
+
+func handoffReviewTests() {
+    let echo = Diagnostics.echo
+    Diagnostics.echo = { _ in }
+    defer { Diagnostics.echo = echo }
+    let toB = ProfileSwitch.Target(profile: hB, space: "b1")
+    let toC = ProfileSwitch.Target(profile: hC, space: "c1")
+    func failed(_ e: ProfileSwitch.Event?) -> Bool { if case .failed? = e { return true }; return false }
+    let unboundB = { (w: FakeHandoffWorld) in
+        // A new copy of Margin in B's profile: its window has a new id, the binder hasn't bound it.
+        w.update(hKB) { $0.id = 25 }
+        w.unbound = [2020]
+        _ = w.registry.sweep(SweepRead(pids: [w.pid], ext: w.copyWindows(hA) + w.copyWindows(hB), reporting: [hA, hB]))
+    }
+
+    do {
+        // A's normal times out (a hung tab), then lands while the switch still owns A: parked by the
+        // switch's own steps, never raced by the aftercare into a busy park that turns parking off.
+        let (w, s) = handoffSetup { $0.slowExit[hKA] = 4.5 }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 12)
+        check("review: A's normal timed out, then landed mid-switch: parked, parking still on, A not closed",
+              s.session.parkOff == nil && w.registry.isParked(1010) && w.win(hKA) != nil && w.types(hA, "closeWindow").isEmpty && w.events.last == .done(toB),
+              "\(String(describing: s.session.parkOff)) \(w.events) \(s.history.suffix(4))")
+        handoffInvariants("review, late normal mid-switch", w, s)
+    }
+    do {
+        // The clock moves on while the abort reveals and recovers (it always does outside the tests): B's
+        // full-screen request landing after the person's swipe is still no late landing.
+        let (w, s) = handoffSetup()
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 1) { !w.types(hB, "setWindowState").isEmpty }
+        handoffRun(w, 0.2)
+        w.freezer.onReveal = { why in if why == .aborted { w.clock.t += 0.001 } } // the reveal takes its time
+        w.setActive(w.desktop)
+        handoffRun(w, 4)
+        check("review: a swipe's abort, the clock moving in its recovery: B's late full screen not adopted",
+              !w.notices.contains { $0.kind == .lateLanding } && w.fullAndInFront(hKA) && w.registry.isParked(2020), "\(w.notices) \(s.history.suffix(4))")
+        handoffInvariants("review, abort with time passing", w, s)
+    }
+    do {
+        // The window left is one the person opened (its profile's own is parked): a recovered switch never
+        // makes it the shown window, so B landing late leaves it alone.
+        let ka2 = WindowKey(link: hA, windowId: 11)
+        let (w, s) = handoffSetup { w in
+            w.add(hA, id: 11, number: 1111, state: "normal")
+            w.park(ka2) // A's own window is 1111
+            w.focus(hKA)
+            w.hung = [hKB]
+        }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 7)
+        check("review: the person's own window left, the switch recovered: not made the shown window",
+              failed(w.events.last) && s.session.shown?.key != hKA && w.fullAndInFront(hKA), "\(w.events) \(String(describing: s.session.shown))")
+        w.unhang(hKB)
+        handoffRun(w, 4)
+        check("review: … B landing late: the person's own window left in full screen, never set normal or parked",
+              w.win(hKA)?.state == "fullscreen" && !w.registry.isParked(1010) && w.types(hA, "setWindowState").allSatisfy { $0.state != "normal" }, "\(s.history.suffix(4))")
+        handoffInvariants("review, the person's window", w, s)
+    }
+    do {
+        // B's show didn't land and its drafts never answer: when the switch gives up, B (in no Space, its
+        // own destroyed) goes back to its Desktop by number.
+        let (w, s) = handoffSetup { $0.silentDrafts = true }
+        w.onRequest = { r in if r.link == hB, r.type == "setSpace" { w.reads.dropNext = 4 } }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 9)
+        check("review: B's show didn't land, no drafts answer: back on its Desktop, not left in no Space",
+              w.reads.spaces(of: 2020)?.isEmpty == false && !w.registry.isParked(2020) && failed(w.events.last) && w.fullAndInFront(hKA),
+              "\(String(describing: w.reads.spaces(of: 2020))) \(w.registry.entries[2020].map { "\($0.phase)" } ?? "-") \(s.history.suffix(4))")
+        handoffInvariants("review, show not landed", w, s)
+    }
+    do {
+        // A normal window of its own and no bridge (parking off): run unfrozen, since macOS slides to its
+        // Desktop as it's asked into full screen and the freeze's Space rule would abort.
+        let kc = WindowKey(link: hC, windowId: 30)
+        let (w, s) = handoffSetup { w in
+            w.slides = true
+            w.parkingOnFlag = false
+            w.add(hC, id: 30, number: 3030, state: "normal")
+        }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 6)
+        check("review: a normal target with no bridge: unfrozen, done, never aborted", w.events.last == .done(toC) && w.fullAndInFront(kc) && w.freezer.calls.isEmpty
+              && !s.history.contains { $0.contains("aborted") }, "\(w.events) \(w.freezer.calls) \(s.history.suffix(4))")
+        handoffInvariants("review, show with no bridge", w, s, [hA, hC])
+    }
+    do {
+        // A parked target with no copy id, bound 1.6 s after its show: its space set and its full screen
+        // asked from the bind (not from a freeze it never had), so it lands.
+        let kb5 = WindowKey(link: hB, windowId: 25)
+        let (w, s) = handoffSetup(unboundB)
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 1) { s.run?.shownAt != nil }
+        handoffRun(w, 1.6)
+        w.unbound = []
+        handoffRun(w, 4)
+        check("review: an unbound target bound 1.6 s after its show: done, not refused as late", w.events.last == .done(toB) && w.fullAndInFront(kb5), "\(w.events) \(s.history.suffix(4))")
+        check("review: … its space set once it was bound", w.types(hB, "setSpace").contains { int($0.payload["windowId"]) == 25 && $0.payload["spaceId"] as? String == "b1" },
+              "\(w.types(hB, "setSpace").map(\.payload))")
+        handoffInvariants("review, bound late", w, s)
+    }
+    do {
+        // Never bound: parked again under its own profile, so it's rebound and found again.
+        let (w, s) = handoffSetup(unboundB)
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("review: an unbound target never bound: parked again with its profile's link", failed(w.events.last) && w.registry.entries[2020]?.link == hB
+              && w.registry.entries(of: hB).map(\.number) == [2020], "\(w.registry.entries[2020].map(\.link) ?? "-")")
+        handoffInvariants("review, never bound", w, s)
+    }
+    do {
+        // Close mode, a late landing: the window shown before is closed by its copy (drafts permitting),
+        // not left a normal window on the Desktop.
+        let (w, s) = handoffSetup { $0.closeWindows = true; $0.hung = [hKB] }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 7)
+        w.unhang(hKB)
+        handoffRun(w, 4)
+        check("review: close mode, a late landing: the window shown before closed, never set normal", w.fullAndInFront(hKB) && w.win(hKA) == nil
+              && w.types(hA, "setWindowState").allSatisfy { $0.state != "normal" }, "\(w.win(hKA).map(\.state) ?? "gone") \(s.history.suffix(4))")
+        handoffInvariants("review, close mode late landing", w, s)
+    }
+    do {
+        // The displays don't read and the target has a parked window: refused, the window still parked;
+        // never adopted by the close-based switch out of its private Space.
+        let (w, s) = handoffSetup { $0.displaysUnread = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 3)
+        check("review: the displays unread, B parked: refused, B still parked, nothing asked of it", failed(w.events.last) && !s.busy && w.registry.isParked(2020)
+              && w.types(hB).filter { ["focusWindow", "openSpaceWindow", "setWindowState"].contains($0.type) }.isEmpty && w.fullAndInFront(hKA), "\(w.events) \(w.types(hB).map(\.type))")
+    }
+    do {
+        // The close-based switch in a handoff world: its window becomes the shown one (§13.8 judges a close
+        // against it) and its profile's home window.
+        let (w, s) = handoffSetup { $0.noFreezer = true; $0.closeWindows = true }
+        s.start(toC, from: hA, windowId: 10)
+        handoffRun(w, 5)
+        check("review: the close-based switch landed: its window the shown one, its profile's home window", w.events.last == .done(toC)
+              && s.session.shown?.key == WindowKey(link: hC, windowId: 50) && s.session.shown?.number == 5000 && w.registry.lastShown[hC] == 5000,
+              "\(String(describing: s.session.shown))")
+    }
+    do {
+        // ⌘W on B in `after`, a switch queued meanwhile: the switch ends there with B the shown window (the
+        // shell's §13.8 judges it once idle), and nothing starts from the closed window.
+        let (w, s) = handoffSetup()
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { s.phase == .after }
+        s.start(toC, from: hA, windowId: 10)
+        w.close(hKB)
+        handoffRun(w, 4)
+        check("review: B closed in after: cancelled, B still the shown window, the queued switch dropped", w.events.last == .cancelled(toB)
+              && !w.events.contains(.started(toC)) && s.session.shown?.key == hKB && !s.busy && w.registry.isParked(1010), "\(w.events) \(String(describing: s.session.shown))")
+    }
+    do {
+        // Going to sleep before the freeze: the switch given up with nothing touched, and no freeze until
+        // the Mac wakes.
+        let (w, s) = handoffSetup { $0.coverOn = false }
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 0.1)
+        s.revealNow(.sleep)
+        handoffRun(w, 3)
+        check("review: sleep before the freeze: given up, nothing frozen or touched", w.freezer.calls.isEmpty && w.events.last == .cancelled(toB) && w.registry.isParked(2020)
+              && w.fullAndInFront(hKA), "\(w.freezer.calls) \(w.events)")
+        s.start(toB, from: hA, windowId: 10)
+        handoffRun(w, 4)
+        check("review: … still asleep: a switch runs, without a freeze", w.freezer.calls.isEmpty && w.events.last == .done(toB), "\(w.freezer.calls) \(w.events)")
+        s.woke()
+        let toA = ProfileSwitch.Target(profile: hA, space: "a1")
+        s.start(toA, from: hB, windowId: 20)
+        handoffRun(w, 4)
+        check("review: … woke: frozen again", w.freezer.calls.first == "freeze 1.7 s: 0" && w.events.last == .done(toA), "\(w.freezer.calls)")
+        handoffInvariants("review, sleep", w, s)
+    }
+    do {
+        // Margin quitting after B's reveal in close mode: no second freeze for the close, and nothing queued starts.
+        let (w, s) = handoffSetup { $0.closeWindows = true }
+        s.start(toB, from: hA, windowId: 10)
+        handoffUntil(w, max: 3) { s.phase == .after }
+        s.start(toC, from: hA, windowId: 10)
+        s.revealNow(.quit)
+        handoffRun(w, 4)
+        check("review: quitting after the reveal: never frozen again, the queued switch dropped", w.freezer.calls == ["freeze 1.7 s: 0", "reveal 1 ready: 0"]
+              && !w.events.contains(.started(toC)) && !s.busy, "\(w.freezer.calls) \(w.events)")
+    }
+    do {
+        // The keys (§1.7): the switch's while it moves windows; not while it waits for a profile's copy.
+        let (w, s) = handoffSetup { $0.linked.remove(hC) }
+        s.start(toC, from: hA, windowId: 10)
+        check("review: waiting for a profile's copy: the keys aren't the switch's", s.phase == .waitingForProfile && !s.keysMidSwitch)
+        let (w2, s2) = handoffSetup()
+        s2.start(toB, from: hA, windowId: 10)
+        check("review: preparing: the keys are the switch's", s2.phase == .preparing && s2.keysMidSwitch)
+        withExtendedLifetime((w, w2)) {} // the switch's world is weak
+    }
 }

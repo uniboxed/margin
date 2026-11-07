@@ -183,6 +183,7 @@ final class HandoffRun {
     let aNumber: Int?
     let asked: WindowKey?
     let startedAt: Double
+    var aExtra = false // A is a window the person opened themselves (§13.11): never the shown one
     var choice = HandoffChoice(freeze: false, old: .keep)
     var way = Way.create
     var b: WindowKey?
@@ -228,6 +229,7 @@ final class HandoffRun {
     var framedAt: Double?
     var r4At: Double?
     var bReplaced = false // its show didn't land: closed, and the switch went on as a create
+    var bClosed = false // closed by the person after the reveal (in after or landed): the switch ends there
 
     // A
     var aOverlayOut = false
@@ -239,6 +241,7 @@ final class HandoffRun {
     var aParkAsked = false
     var aParkedAt: Double?
     var aParkFailed = false
+    var aParkBusy = false // its park answered busy (said once)
     var aCloseAsked = false
     var aClosedAt: Double?
     var aKept: String?
@@ -304,6 +307,7 @@ struct AftercareWatch {
     var sawNotFull = false
     var parked = false // parked again; a B that may land late is still watched
     var cause: Cause
+    var link: String? = nil // its profile's, for a window whose copy id isn't known (parked again by number)
 }
 
 // What lasts the session (until Margin.app quits).
@@ -318,6 +322,8 @@ struct HandoffSession {
     var shown: (key: WindowKey, number: Int?)? // where the last switch landed
     var lines: [String] = [] // each switch's summary, the last 5
     var closeParkedAsked = false // §5: the setting turned on while a switch ran: its parked windows closed after it
+    // No freeze from now on: the Mac going to sleep (until it wakes), or Margin quitting (for good).
+    var noFreeze: RevealWhy?
     var dev = DevHookState() // DEV-HOOK: the dev-only hook's caps and faults (DevHooks.swift)
 }
 
@@ -350,14 +356,35 @@ extension ProfileSwitch: FreezerDelegate {
     // A key or a click in Margin: a late landing is no longer the person's choice (§1.9).
     func personActed() { session.personAt = clock.now() }
 
+    // Whether Margin's keys are the switch's (§1.7): only while it moves windows, from `preparing` on.
+    // Waiting for a profile's copy (up to 90 s, no cover) leaves them as they are without a switch.
+    var keysMidSwitch: Bool { run != nil && busy && phase != .waitingForProfile }
+
     // Reveal at once: the Mac going to sleep, Safari quitting, Margin quitting (§4.3). The switch
-    // recovers to a visible window, unfrozen.
+    // recovers to a visible window, unfrozen. Going to sleep, nothing freezes again until the Mac
+    // wakes; quitting, never again (and nothing queued starts). A switch not frozen yet is given up
+    // with nothing touched, so its next step can't freeze the screen as the Mac sleeps or Margin goes.
     func revealNow(_ why: RevealWhy) {
+        if why == .sleep, session.noFreeze == nil { session.noFreeze = .sleep }
+        if why == .quit {
+            session.noFreeze = .quit
+            queued = nil
+        }
         guard let run, let hw = handoffWorld else { return }
         if run.live { reveal(run, hw, why) }
         if run.closeLive { revealClose(run, hw, why) }
-        if [.preparing, .waitingForLink].contains(phase) { return }
+        if [.preparing, .waitingForLink].contains(phase) {
+            guard why != .safariQuit else { return } // its copies go: the steps see it
+            return finish(.cancelled(run.target), "\(why.rawValue) before the freeze: nothing done", landed: run.a.map { ($0.link, $0.windowId) })
+        }
         if [.frozen].contains(phase), why != .quit { recover(run, hw, "the switch was interrupted (\(why.rawValue))") }
+    }
+
+    // The Mac woke: the freeze may run again (unless Margin is quitting).
+    func woke() {
+        guard session.noFreeze == .sleep else { return }
+        session.noFreeze = nil
+        note("the Mac woke: the freeze may run again")
     }
 
     // ---- the freezer's reports (FreezeRules, and the watchdog) ----
@@ -401,8 +428,15 @@ extension ProfileSwitch: FreezerDelegate {
             hw.request(fromProfile, "setSpace", ["windowId": windowId ?? NSNull(), "spaceId": to.space], windowId: windowId) { _, _ in }
             return true
         }
-        // The display count decides the freeze: unread, nothing is guessed.
+        // The display count decides the freeze: unread, nothing is guessed. The close-based switch can't
+        // show a parked window (and its Desktop can't be found without the displays either): with one
+        // for the target, this switch is refused, and the window stays parked for the next one.
         guard let displays = reads.managedDisplayCount(), displays > 0 else {
+            if !(hw.parking?.entries(of: to.profile).isEmpty ?? true) {
+                note("the displays don't read and \(to.profile) has a parked window: not switched")
+                world?.switchChanged(.failed(to, "macOS’s Spaces didn’t read"))
+                return true
+            }
             note("the displays don't read: the close-based switch")
             return false
         }
@@ -415,7 +449,7 @@ extension ProfileSwitch: FreezerDelegate {
            parking?.isParked(home) == true || reads.window(home) != nil {
             aExtra = true
         }
-        let facts = HandoffChoice.Facts(freezeOn: hw.handoffFreezer != nil && session.rules.on,
+        let facts = HandoffChoice.Facts(freezeOn: hw.handoffFreezer != nil && session.rules.on && session.noFreeze == nil,
                                         parkOn: hw.parkingOn && parking != nil && session.parkOff == nil,
                                         closeSetting: hw.closesWindows(to.profile), displays: displays,
                                         hasA: a != nil, aLinked: a.map { hw.isLinked($0.link) } ?? false, aExtra: aExtra)
@@ -437,6 +471,7 @@ extension ProfileSwitch: FreezerDelegate {
         }
         gen += 1
         let run = HandoffRun(gen: gen, target: to, a: a, aNumber: aNumber, asked: asked, startedAt: clock.now())
+        run.aExtra = aExtra
         run.choice = choice
         run.devTest = devTest // DEV-HOOK
         if devCapped { run.devUsed.append("cap") } // DEV-HOOK
@@ -690,7 +725,13 @@ extension ProfileSwitch: FreezerDelegate {
             run.choice.freeze = false
             note("window \(run.bNumber.map(String.init) ?? "-") has no copy id yet: no freeze")
         }
-        if run.choice.freeze, session.rules.on, let freezer = hw.handoffFreezer {
+        // A normal window on another Space with no bridge to bring it here: its full-screen request makes
+        // macOS slide to its Desktop first, which the freeze's Space rule would abort. Seen instead.
+        if run.way == .show, run.choice.freeze, !bridgeShows(run, hw) {
+            run.choice.freeze = false
+            note("window \(run.bNumber.map(String.init) ?? "-") can't be shown by the bridge: no freeze")
+        }
+        if run.choice.freeze, session.rules.on, session.noFreeze == nil, let freezer = hw.handoffFreezer {
             freezer.delegate = self
             switch freezer.freeze() {
             case .frozen(let handle):
@@ -722,7 +763,7 @@ extension ProfileSwitch: FreezerDelegate {
                 guard let self, let run, self.run === run else { return }
                 guard self.phase == .frozen else {
                     // Shown after the switch gave up: parked again once it's normal (it is).
-                    if o.ok { self.addWatch(AftercareWatch(key: run.b, number: n, kind: .parkWhenNormal, since: self.clock.now(), until: self.clock.now() + self.ho.aftercareFor, runs: self.session.runs, cause: .recovery)) }
+                    if o.ok { self.addWatch(AftercareWatch(key: run.b, number: n, kind: .parkWhenNormal, since: self.clock.now(), until: self.clock.now() + self.ho.aftercareFor, runs: self.session.runs, cause: .recovery, link: run.target.profile)) }
                     return
                 }
                 if o.ok { return self.bShown(run, hw) }
@@ -732,12 +773,16 @@ extension ProfileSwitch: FreezerDelegate {
                 self.showFailed(run, hw, n, o)
             }
         case .show:
-            if let n = run.bNumber, let parker = hw.parker, parker.isAvailable, hw.parkingOn, session.parkOff == nil {
+            if bridgeShows(run, hw), let n = run.bNumber, let parker = hw.parker {
                 run.showAsked = true
                 parker.show(n) { [weak self, weak run] o in
                     guard let self, let run, self.run === run, self.phase == .frozen else { return }
-                    // A normal window on another Space: its full-screen request brings it anyway.
-                    if !o.ok { self.note("window \(n) not shown by the bridge (\(ParkSelfTest.describe(o.failure))): asked for full screen as it is") }
+                    // A normal window on another Space: its full-screen request brings it anyway, but by
+                    // macOS's slide to its Desktop, which the freeze would abort: revealed, then seen.
+                    if !o.ok {
+                        self.note("window \(n) not shown by the bridge (\(ParkSelfTest.describe(o.failure))): asked for full screen as it is\(run.live ? ", revealed first" : "")")
+                        self.reveal(run, hw, .failed)
+                    }
                     self.bShown(run, hw)
                 }
             } else {
@@ -749,6 +794,11 @@ extension ProfileSwitch: FreezerDelegate {
             run.createAskedAt = now
             askCreate(run, hw)
         }
+    }
+
+    // The show variant's window can go through the bridge (§1.5 rule 5): known, and parking on.
+    private func bridgeShows(_ run: HandoffRun, _ hw: HandoffWorld) -> Bool {
+        run.bNumber != nil && hw.parker?.isAvailable == true && hw.parkingOn && session.parkOff == nil
     }
 
     private func bShown(_ run: HandoffRun, _ hw: HandoffWorld) {
@@ -774,7 +824,8 @@ extension ProfileSwitch: FreezerDelegate {
             return recover(run, hw, "its window didn’t come back")
         }
         hw.request(b.link, "windowDrafts", HandoffRequest.windowDrafts(windowId: b.windowId).payload, windowId: b.windowId) { [weak self, weak run] result, _ in
-            guard let self, let run, self.run === run, self.phase == .frozen else { return }
+            // Answered after the switch gave up: B is in no Space now, whatever its drafts say.
+            guard let self, let run, self.run === run, self.phase == .frozen else { self?.returnUnshownB(n, hw); return }
             guard result.flatMap({ WindowDrafts($0) })?.mayClose == true else {
                 hw.parking?.returnToDesktop(number: n, cause: .recovery)
                 self.notices.append(SwitchNotice(.windowKeptDraft, profile: b.link, shownIn: run.a, kept: b))
@@ -792,6 +843,14 @@ extension ProfileSwitch: FreezerDelegate {
         }
     }
 
+    // A B whose show didn't land, its private Space destroyed, and in no user Space: back to its
+    // Desktop by number, whatever else is going on (§4.4: never left where nothing reaches it).
+    private func returnUnshownB(_ n: Int, _ hw: HandoffWorld) {
+        guard let e = hw.parking?.entries[n], e.phase == .out, hw.spaceReads?.spaces(of: n)?.isEmpty == true else { return }
+        note("window \(n) wasn't shown and is in no user Space: returned to its Desktop")
+        hw.parking?.returnToDesktop(number: n, cause: .recovery)
+    }
+
     // §1.3 step 3: B full screen and focused, once (§3.4).
     private func askB(_ run: HandoffRun, _ hw: HandoffWorld) {
         guard let b = run.b, run.stateAskedAt == nil else { return }
@@ -801,7 +860,9 @@ extension ProfileSwitch: FreezerDelegate {
             run.stateAnswer = .timedOut(windowId: b.windowId, state: "fullscreen")
             return
         }
-        let notAfter = ((run.freezeAt ?? clock.now()) + ho.bNotAfter) * 1000
+        // From the freeze, which it must land inside; with none (a window shown by number and bound later,
+        // seen), from now: there's no still screen to protect.
+        let notAfter = ((run.handle == nil ? clock.now() : run.freezeAt ?? clock.now()) + ho.bNotAfter) * 1000
         windowCall(hw, b, .setWindowState(windowId: b.windowId, state: .fullscreen, focused: true, notAfter: notAfter)) { [weak self, weak run] answer, error in
             guard let self, let run, self.run === run else { return }
             run.stateAnswer = answer
@@ -854,6 +915,10 @@ extension ProfileSwitch: FreezerDelegate {
                 run.b = key
                 newWindow = key.windowId
                 note("window \(n) bound to \(key) after its show")
+                // Its space, which preparing couldn't set with no id to name it by.
+                if hw.activeSpaceId(of: key) != run.target.space {
+                    hw.request(key.link, "setSpace", ["windowId": key.windowId, "spaceId": run.target.space], windowId: key.windowId) { _, _ in }
+                }
                 askB(run, hw)
             } else if now - shown >= ho.boundWait {
                 return recover(run, hw, "Margin couldn’t find its window")
@@ -877,9 +942,12 @@ extension ProfileSwitch: FreezerDelegate {
                 let since = run.foreignSince ?? now
                 run.foreignSince = since
                 if now - since >= ho.foreignFor - 1e-9 {
+                    recover(run, hw, "aborted: the active Space moved to \(active)", reveal: .aborted)
                     // A swipe or Mission Control: the person's, so B landing after it is no late landing.
-                    session.personAt = now
-                    return recover(run, hw, "aborted: the active Space moved to \(active)", reveal: .aborted)
+                    // Marked after recovery made its watches (the clock moves while it reveals), so no
+                    // watch's `since` is later than it.
+                    session.personAt = clock.now()
+                    return
                 }
             } else {
                 run.foreignSince = nil
@@ -996,6 +1064,9 @@ extension ProfileSwitch: FreezerDelegate {
     // of its Space. In keep and close modes A isn't touched here.
     private func aSteps(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
         guard let a = run.a, let n = run.aNumber, !run.aGone, !run.aDone else { return }
+        // A window the aftercare watches is its to park, not this switch's (two parks of one window would
+        // race). A switch drops its windows' watches as it starts, so this is only ever belt and braces.
+        if session.watches.contains(where: { $0.number == n }) { return }
         if run.aAskedAt == nil, !hw.isLinked(a.link) {
             // §1.8: A's copy gone after B is ready: it stays in its full-screen Space; parked once it's back.
             run.aKept = "its copy isn't linked"
@@ -1081,9 +1152,12 @@ extension ProfileSwitch: FreezerDelegate {
                 run.aKept = answer == nil ? "no answer (\(error ?? "-"))" : "\(answer!)"
                 run.aDone = true
             case .timedOut?:
-                // Safari may still carry it out: the aftercare parks it if it does.
+                // Safari may still carry it out. While the run owns A, its steps park A as it lands and its
+                // `after` hands A to the aftercare; a run already over hands it on now. A recovered run
+                // never does: A is its shown window again.
                 guard let n = run.aNumber else { return }
                 self.note("\(a)'s normal timed out")
+                guard self.run !== run, run.failure == nil, run.choice.old == .park, run.aParkedAt == nil else { return }
                 self.addWatch(AftercareWatch(key: a, number: n, kind: .parkWhenNormal, since: self.clock.now(), until: self.clock.now() + self.ho.aftercareFor, runs: self.session.runs, cause: .aftercare))
             default:
                 return
@@ -1094,6 +1168,23 @@ extension ProfileSwitch: FreezerDelegate {
     // §4.4 "A's park didn't land": A is a normal window on its Desktop (the registry returned it).
     // Parking is off for the session; A is closed now, drafts permitting, or kept there.
     private func aParkFailed(_ run: HandoffRun, _ hw: HandoffWorld, _ a: WindowKey, _ n: Int, _ r: ParkingRegistry.ParkResult) {
+        // Refused before any op went out: a step of the registry's for A is under way (asked again on the
+        // next look), or A is gone. Neither is a park that didn't land (the show path's rule, §4.3).
+        if !ParkingRegistry.mayHaveMoved(r.park) {
+            switch r.park.failure {
+            case .busy?:
+                run.aParkAsked = false
+                if run.aParkBusy { return }
+                run.aParkBusy = true
+                return note("\(a)'s park: a step for it is under way: asked again")
+            case .gone?:
+                run.aGone = true
+                run.aDone = true
+                return note("\(a) gone as it was parked: nothing to park")
+            default:
+                break
+            }
+        }
         run.aParkFailed = true
         demotePark("window \(n)'s park didn't land in \(r.park.ms) ms (\(ParkSelfTest.describe(r.park.failure)))")
         closeOrKeepA(run, hw, a)
@@ -1242,7 +1333,7 @@ extension ProfileSwitch: FreezerDelegate {
         run.closeRetryAt = nil
         run.holdSince = nil
         run.dropFocused = false
-        if run.choice.freeze, session.rules.on, cooledDown(now), let freezer = hw.handoffFreezer {
+        if run.choice.freeze, session.rules.on, session.noFreeze == nil, cooledDown(now), let freezer = hw.handoffFreezer {
             freezer.delegate = self
             switch freezer.freeze(watchdog: ho.closeWatchdog) {
             case .frozen(let handle):
@@ -1437,6 +1528,7 @@ extension ProfileSwitch: FreezerDelegate {
     }
 
     private func afterStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+        closedAfterReveal(run, hw)
         aSteps(run, hw, now)
         // §6.6: B key within 300 ms, else asked once more.
         if !run.focusDone, let b = run.b, let at = run.afterAt, now - at >= ho.focusCheck {
@@ -1454,7 +1546,7 @@ extension ProfileSwitch: FreezerDelegate {
         // Close mode (§4.5): the second freeze once B's focus is checked and the cooldown has passed (at
         // most the watchdog's, 1 s, after a watchdog reveal: within this phase).
         if run.closeDue, run.focusDone, !run.aGone {
-            if run.choice.freeze, session.rules.on, hw.handoffFreezer != nil, !cooledDown(now) { return }
+            if run.choice.freeze, session.rules.on, session.noFreeze == nil, hw.handoffFreezer != nil, !cooledDown(now) { return }
             return startClose(run, hw, now)
         }
         guard (run.aDone || run.a == nil || run.aGone) && run.focusDone || now >= deadline else { return }
@@ -1466,6 +1558,19 @@ extension ProfileSwitch: FreezerDelegate {
             }
         }
         enterLanded(run, hw)
+    }
+
+    // B closed by the person once it was shown (⌘W in `after` or `landed`): the switch ends with it as the
+    // shown window, so the shell's §13.8 sees the shown window closed once the switch is idle. A's steps
+    // go on (it's parked, then closed with the others); no focus check, no close mode's close, and
+    // nothing queued starts from a window that's gone.
+    private func closedAfterReveal(_ run: HandoffRun, _ hw: HandoffWorld) {
+        guard !run.bClosed, run.failure == nil, run.endEvent == nil, let b = run.b, bGone(run, hw, b) else { return }
+        run.bClosed = true
+        run.closeDue = false
+        run.focusDone = true
+        run.endEvent = .cancelled(run.target)
+        note("\(b) closed after it was shown")
     }
 
     private func enterLanded(_ run: HandoffRun, _ hw: HandoffWorld) {
@@ -1482,6 +1587,7 @@ extension ProfileSwitch: FreezerDelegate {
 
     // §1.2: landed once no full-screen Space has changed for 150 ms. Only then is the switch idle.
     private func landedStep(_ run: HandoffRun, _ hw: HandoffWorld, _ now: Double) {
+        closedAfterReveal(run, hw)
         let key = spacesKey(hw)
         if key != run.lastSpaces {
             run.lastSpaces = key
@@ -1492,6 +1598,10 @@ extension ProfileSwitch: FreezerDelegate {
     }
 
     private func end(_ run: HandoffRun, _ hw: HandoffWorld) {
+        if run.bClosed, queued != nil {
+            note("\(queued!) dropped: the window it would start from was closed")
+            queued = nil
+        }
         let event = run.endEvent ?? (run.failure.map { .failed(run.target, $0) } ?? .done(run.target))
         let line = summary(run, hw)
         session.lines = Array((session.lines + [line]).suffix(5))
@@ -1502,7 +1612,9 @@ extension ProfileSwitch: FreezerDelegate {
             landed = (b.link, b.windowId)
         } else {
             landed = run.a.map { ($0.link, $0.windowId) } ?? run.b.map { ($0.link, $0.windowId) }
-            if let a = run.a, !run.aGone { session.shown = (a, run.aNumber) }
+            // A is the shown window again, unless it's one the person opened themselves (§13.11: the shown
+            // window is always the profile's own), or B was shown and then closed (it stays the one).
+            if let a = run.a, !run.aGone, !run.aExtra, !run.bClosed { session.shown = (a, run.aNumber) }
         }
         finish(event, run.failure.map { "ended: \($0)" } ?? "done: \(run.b.map(\.description) ?? "-") in front", landed: landed)
     }
@@ -1559,6 +1671,7 @@ extension ProfileSwitch: FreezerDelegate {
         enter(.recovering, for: options.settleTimeout)
         let now = clock.now()
         let reads = hw.spaceReads
+        if run.way == .parked, run.showAsked, let n = run.bNumber { returnUnshownB(n, hw) }
         var aBack = false
         if let a = run.a, let n = run.aNumber, !run.aGone, reads?.window(n) != nil || hw.copyWindows(a.link).contains(where: { $0.key == a }) {
             aBack = hw.isLinked(a.link) || run.aAskedAt == nil
@@ -1573,7 +1686,8 @@ extension ProfileSwitch: FreezerDelegate {
         }
         guard let b = run.b ?? run.bNumber.flatMap({ hw.key(of: $0) }) else {
             if run.way == .parked, let n = run.bNumber, run.shownAt != nil, aBack {
-                addWatch(AftercareWatch(key: nil, number: n, kind: .parkWhenNormal, since: now, until: now + ho.aftercareFor, runs: session.runs, cause: .recovery))
+                // Its profile kept with it: parked again with no id, it's rebound like any of a new copy's (§2.2).
+                addWatch(AftercareWatch(key: nil, number: n, kind: .parkWhenNormal, since: now, until: now + ho.aftercareFor, runs: session.runs, cause: .recovery, link: run.target.profile))
             }
             return
         }
@@ -1692,8 +1806,12 @@ extension ProfileSwitch: FreezerDelegate {
                 } else {
                     session.watches.remove(at: i)
                 }
+                guard let link = key?.link ?? w.link else {
+                    note("aftercare: window \(w.number) normal, but its profile isn't known: left as it is")
+                    continue
+                }
                 note("aftercare: window \(w.number) normal: parked again")
-                parking.park(number: w.number, link: key?.link ?? "?", windowId: key?.windowId, pid: server.pid, bounds: server.bounds, cause: w.cause)
+                parking.park(number: w.number, link: link, windowId: key?.windowId, pid: server.pid, bounds: server.bounds, cause: w.cause)
             }
         }
     }
@@ -1717,7 +1835,7 @@ extension ProfileSwitch: FreezerDelegate {
             }
             windowCall(hw, key, .setWindowState(windowId: key.windowId, state: .normal, notAfter: msNow(options.settleTimeout)), cause: .aftercare) { _, _ in }
             // It took the front as it landed: the window shown back in front.
-            if let shown = session.shown, shown.key != key, hw.isLinked(shown.key.link) {
+            if let shown = session.shown, shown.key != key, hw.isLinked(shown.key.link), shown.number.map({ hw.parking?.isParked($0) != true }) ?? true {
                 windowCall(hw, shown.key, .setWindowState(windowId: shown.key.windowId, state: .fullscreen, focused: true, notAfter: msNow(options.settleTimeout)), cause: .aftercare) { _, _ in }
             }
             return
@@ -1730,13 +1848,33 @@ extension ProfileSwitch: FreezerDelegate {
         session.shown = (key, w.number)
         hw.showSwitchNotice(SwitchNotice(.lateLanding, profile: key.link, shownIn: key))
         guard let before, before.key != key, hw.isLinked(before.key.link), let n = before.number else { return }
+        // Only its profile's own window, and only one that's out (§13.11): a window the person opened, or
+        // one parked already, is left as it is.
+        if hw.parking?.isParked(n) == true { return }
+        if let home = hw.parking?.lastShown[before.key.link], home != n { return note("aftercare: \(before.key) isn't its profile's own window: left as it is") }
         hw.orderOutOverlay(before.key)
         if hw.parkingOn, session.parkOff == nil, !hw.closesWindows(before.key.link) {
             var park = AftercareWatch(key: before.key, number: n, kind: .parkWhenNormal, since: now, until: now + ho.aftercareFor, runs: session.runs, cause: .aftercare)
             park.normalAsked = true
             addWatch(park)
+            windowCall(hw, before.key, .setWindowState(windowId: before.key.windowId, state: .normal, notAfter: msNow(options.settleTimeout)), cause: .aftercare) { _, _ in }
+        } else if hw.closesWindows(before.key.link) {
+            // Close mode: closed by its copy, drafts permitting (§4.5); a draft keeps it in its own
+            // full-screen Space, and the person is told.
+            let old = before.key
+            hw.request(old.link, "windowDrafts", HandoffRequest.windowDrafts(windowId: old.windowId).payload, windowId: old.windowId) { [weak self] result, _ in
+                guard let self, hw.isLinked(old.link) else { return }
+                guard let drafts = result.flatMap({ WindowDrafts($0) }), drafts.mayClose else {
+                    self.note("aftercare: \(old) kept open: \(result.flatMap { WindowDrafts($0) }.map { "\($0.drafts.count) with drafts, \($0.unknown.count) unknown" } ?? "no drafts answer")")
+                    return hw.showSwitchNotice(SwitchNotice(.windowKeptDraft, profile: old.link, shownIn: key, kept: old))
+                }
+                self.note("aftercare: \(old) closed: close windows to save memory")
+                self.windowCall(hw, old, .closeWindow(windowId: old.windowId, notAfter: self.msNow(self.options.closeTimeout)), cause: .aftercare) { _, _ in }
+            }
+        } else {
+            // Parking off: it stays in its own full-screen Space, as `keep` leaves a window.
+            note("aftercare: \(before.key) kept in its full-screen Space (parking off)")
         }
-        windowCall(hw, before.key, .setWindowState(windowId: before.key.windowId, state: .normal, notAfter: msNow(options.settleTimeout)), cause: .aftercare) { _, _ in }
     }
 
     // ---- the windows calls ----

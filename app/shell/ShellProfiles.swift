@@ -218,7 +218,8 @@ extension Shell: SwitchWorld {
         }
         for (key, overlay) in overlays {
             guard let entry = links[key.link], let (profiles, values, counts, linked) = made[entry.connection.hello.browser] else { continue }
-            guard let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: counts, linked: linked, switching: switchingJSON(), symbol: { ProfileSymbols.dataURL($0) })) else { continue }
+            guard let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: counts, linked: linked, switching: switchingJSON(),
+                                                        switchSettings: switchSettingsShown(entry.connection.hello.browser), symbol: { ProfileSymbols.dataURL($0) })) else { continue }
             if acrossSent[key] == json { continue }
             acrossSent[key] = json
             overlay.push(raw: #"{"type":"across","across":"# + json + "}")
@@ -233,7 +234,8 @@ extension Shell: SwitchWorld {
         let linked = linkedProfiles(browser)
         let profiles = profilesOf(browser)
         profiles.refresh(spaces: ids, linked: linked)
-        let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: tabCounts(browser, Array(ids.keys)), linked: linked, switching: switchingJSON(), symbol: { ProfileSymbols.dataURL($0) }))
+        let json = jsonString(profiles.across(for: entry.connection.hello.profile, spaces: values, counts: tabCounts(browser, Array(ids.keys)), linked: linked, switching: switchingJSON(),
+                                              switchSettings: switchSettingsShown(browser), symbol: { ProfileSymbols.dataURL($0) }))
         acrossSent[overlay.key] = json
         return json
     }

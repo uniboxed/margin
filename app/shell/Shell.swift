@@ -298,6 +298,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     var activitySaid: Set<WindowKey> = [] // a person's return already logged as waiting
     var lastExtKeys: Set<WindowKey> = [] // the copies' windows at the last read (a closed shown window, §13.8)
     var marginCloses: Set<WindowKey> = [] // windows Margin itself asked to close outside a switch
+    var shownGone = ShownCloseWatch() // windows gone from their copies' lists, judged once no switch runs (§13.8)
     var safariActivated = false // Safari came to the front: §6.2's check is due
     var everyParkedSince: TimeInterval? // §6.2: a read with Safari in front and every window parked
     var parkedEnding = false // §13.8: the shown window was closed, its parked windows closing
@@ -1191,7 +1192,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         // Mid-handoff no overlay may be shown over the front window (B is on top, its own not up yet):
         // the keys stay the app's with Safari or Margin in front, and `run` gives them to the switch (§1.7).
         let ownPid = ProcessInfo.processInfo.processIdentifier
-        let midSwitch = switcher.run != nil && switcher.busy && apps.frontPid.map { allPids.contains($0) || $0 == ownPid } == true
+        let midSwitch = switcher.keysMidSwitch && apps.frontPid.map { allPids.contains($0) || $0 == ownPid } == true
         shortcuts.set(active: ShortcutSet.active(frontPid: apps.frontPid, linkedPids: allPids, frontWindowHasOverlay: has) || midSwitch)
     }
 
@@ -1275,7 +1276,7 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     // `isRepeat`: a held key's repeat (AppShortcuts), not a press.
     func run(_ command: AppCommand, isRepeat: Bool = false) {
         switcher.personActed()
-        if switcher.run != nil, switcher.busy { return runMidSwitch(command, isRepeat: isRepeat) }
+        if switcher.keysMidSwitch { return runMidSwitch(command, isRepeat: isRepeat) }
         guard let overlay = frontOverlay(), let entry = links[overlay.key.link] else { return }
         switch command {
         case .palette:

@@ -257,6 +257,7 @@ final class FakeFreezer: Freezer {
     var releaseResults: [Int32] = []
     private(set) var calls: [String] = [] // "freeze 1 (1.7 s)", "reveal 1 ready", "release 1", in order
     private(set) var reports: [FreezeReport] = []
+    var onReveal: ((RevealWhy) -> Void)? // each reveal asked, as it's made (a test's clock can move in it, as time does in the real call)
 
     private let clock: SwitchClock
     private var live: (handle: Int32, at: Double, timer: SwitchTimer)?
@@ -291,6 +292,7 @@ final class FakeFreezer: Freezer {
     }
 
     @discardableResult func reveal(_ why: RevealWhy) -> RevealResult {
+        onReveal?(why)
         let (result, report) = take(why)
         if let report { tell(report) }
         return result

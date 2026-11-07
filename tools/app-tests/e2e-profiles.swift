@@ -450,10 +450,13 @@ func handoffScenario() async {
   world.comeBack(n8, to: windows.desktop)
   shell.burst("test: a wake")
   check("3: back after a wake: parked again, quietly", await until(3, { world.spaces(of: n8) == [] && shell.parking?.entries[n8]?.phase == .parked }))
+  // Its copy heard focus on it as macOS brought it back: the system's too, so no handoff either (§2.6).
+  fake.tell(["do": "send", "id": "B", "msg": ["k": "push", "windowId": 8, "msg": ["type": "parkedActivity", "windowId": 8, "why": "focus"]]])
   try? await Task.sleep(nanoseconds: 300_000_000)
   check("3: no handoff for it", shell.switcher.session.runs == runs3 && !shell.switcher.busy && reqs("B", "setWindowState", mark).isEmpty)
 
   // ---- 4. a parked window used: none while a switch is busy, then one handoff to it ----
+  check("4: the wake's 3 s over", await until(4, { shell.parking?.inSystemWindow == false }))
   shell.switcher.start(.init(profile: "safari:P9", space: "x"), from: "safari:P1", windowId: 7) // waits for a profile that isn't open
   check("4: a switch waiting for a profile", shell.switcher.phase == .waitingForProfile)
   fake.tell(["do": "send", "id": "B", "msg": ["k": "push", "windowId": 8, "msg": ["type": "parkedActivity", "windowId": 8, "why": "focus"]]])
@@ -480,10 +483,15 @@ func handoffScenario() async {
 
   // ---- 6. the shown window closed by the person: every parked window closes too (§13.8) ----
   mark = fake.events.count
+  let runs6 = shell.switcher.session.runs
   fake.tell(["do": "windows", "id": "B", "list": [JSONObject]()])
   windows.remove(n8)
   numbers["B#8"] = nil
+  check("6: ⌘W on the shown window: its parked windows closing", await until(3, { shell.parkedEnding }))
+  // The parked window made key as the shown one went (§6.6): its copy says it was used. Not handed off to.
+  fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 7, "msg": ["type": "parkedActivity", "windowId": 7, "why": "focus"]]])
   check("6: ⌘W on the shown window: the parked one closed by its copy", await until(4, { reqs("A", "closeWindow", mark).contains { int(payload($0)["windowId"]) == 7 } }))
+  check("6: … and its use meanwhile started no handoff", shell.switcher.session.runs == runs6 && reqs("A", "setWindowState", mark).isEmpty, "\(shell.switcher.history.suffix(3))")
   check("6: nothing parked any more", await until(3, { shell.parking?.entries.isEmpty == true && world.windows[n7] == nil }))
 
   // ---- 7. a new window, then a switch to a profile with none: the create variant; then quit ----

@@ -972,4 +972,33 @@ func parkingRegistryTests() {
         check("registry: no marker read: nothing", s.registry.takeMarker(running: { _ in false }) == nil)
         said = []
     }
+    do {
+        // The windows came back by themselves and the person went on in one: it's the one in front on
+        // screen, so it's left as it is; the other is parked again.
+        let s = Setup([21: boundsA, 22: boundsB, 25: boundsC], pid: safari)
+        s.world.active = 1 // the Desktop: the windows that came back are on screen
+        let window = { (n: Int, b: CGRect) in ParkingMarker.Window(number: n, link: "safari:a", windowId: n, copy: nil, pid: safari, bounds: [b.minX, b.minY, b.width, b.height].map(Double.init)) }
+        let crashed = ParkingMarker(pid: 99999, build: nil, at: 1, count: 2, windows: [window(21, boundsA), window(22, boundsB)], shown: [ParkingMarker.Shown(link: "safari:e", number: 25)])
+        let front = [21, 22, 25].enumerated().map { i, n in ServerWindow(number: n, pid: safari, bounds: s.world.windows[n]!.bounds, onScreen: true, order: i) }
+        var parked: Int?
+        s.registry.adoptAfterCrash(crashed, safariPids: [safari], front: front) { parked = $0 }
+        check("registry: after a crash, the window in front left as it is (the person's), the other parked again",
+              said.last == "handoff: Margin.app didn't quit cleanly with 2 parked windows: 1 parked again, left as normal windows: 1 in front", "\(said)")
+        s.clock.advance(1)
+        check("registry: … only that one parked", parked == 1 && s.registry.numbers == [22] && s.world.spaces(of: 21) == [1])
+        said = []
+    }
+    do {
+        // The shown window closed since, and nothing else of Safari's in a user Space: the one most in front stays.
+        let s = Setup([21: boundsA, 22: boundsB], pid: safari)
+        let window = { (n: Int, b: CGRect) in ParkingMarker.Window(number: n, link: "safari:a", windowId: n, copy: nil, pid: safari, bounds: [b.minX, b.minY, b.width, b.height].map(Double.init)) }
+        let crashed = ParkingMarker(pid: 99999, build: nil, at: 1, count: 2, windows: [window(21, boundsA), window(22, boundsB)], shown: [ParkingMarker.Shown(link: "safari:e", number: 25)])
+        let front = [22, 21].enumerated().map { i, n in ServerWindow(number: n, pid: safari, bounds: s.world.windows[n]!.bounds, onScreen: false, order: i) }
+        var parked: Int?
+        s.registry.adoptAfterCrash(crashed, safariPids: [safari], front: front) { parked = $0 }
+        s.clock.advance(1)
+        check("registry: after a crash with no other window to show: the one most in front left, the rest parked",
+              parked == 1 && s.registry.numbers == [21] && s.world.spaces(of: 22) == [1] && said.contains { $0.hasSuffix("left as normal windows: 1 kept so a window shows") }, "\(said)")
+        said = []
+    }
 }

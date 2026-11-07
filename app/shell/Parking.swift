@@ -202,7 +202,7 @@ final class ParkingRegistry {
     private var verifiedOut: Set<Int> = [] // shown or returned, verified: may be forgotten
     private var lastCall: [Int: (cause: Cause, at: Double)] = [:]
     private var systemUntil: Double = -.infinity
-    private var systemWhy = ""
+    private(set) var systemWhy = ""
     // Numbers their own copy has listed since they were parked. Until it has, a list without the
     // window may only lag (a window made a moment before its park): it must miss it for copyLag.
     private var copyListed: Set<Int> = []
@@ -242,6 +242,9 @@ final class ParkingRegistry {
         systemUntil = clock.now() + options.systemWindow
         systemWhy = why
     }
+
+    // In those 3 s: a parked window's focus now is the system's too (§2.6), never the person's.
+    var inSystemWindow: Bool { clock.now() < systemUntil }
 
     // ---- Margin's steps ----
 
@@ -792,16 +795,32 @@ final class ParkingRegistry {
     // §13.2: each window of the marker that's still there in the same Safari process, with the
     // bounds it had, is parked again (no freeze, no handoff). Safari restarted, gone or moved: left
     // as a normal window. Parking off: all left. `done` gets how many were parked again.
-    func adoptAfterCrash(_ marker: ParkingMarker, safariPids: Set<pid_t>, done: @escaping (Int) -> Void = { _ in }) {
-        var restarted = 0, gone = 0, moved = 0
+    // `front`: Safari's windows as the window server lists them, front first. The one in front on
+    // screen is the person's now (they may have gone on in a window that came back): left as it is.
+    // And one is always left: with no other Safari window in a user Space (the marker's shown window
+    // closed meanwhile), the one most in front stays, so Safari never has nothing to show.
+    func adoptAfterCrash(_ marker: ParkingMarker, safariPids: Set<pid_t>, front: [ServerWindow] = [], done: @escaping (Int) -> Void = { _ in }) {
+        var restarted = 0, gone = 0, moved = 0, inFront = 0, kept = 0
         var again: [ParkingMarker.Window] = []
         let on = parkingOn()
+        let safari = front.filter { safariPids.contains($0.pid) && $0.layer == 0 && $0.alpha > 0 }.sorted { $0.order < $1.order }
+        let person = safari.first { $0.onScreen }?.number
         for w in marker.windows {
             guard safariPids.contains(w.pid) else { restarted += 1; continue }
             guard let server = reads.window(w.number), server.pid == w.pid else { gone += 1; continue }
             guard w.bounds.count == 4, WindowMatcher.close(server.bounds, CGRect(x: w.bounds[0], y: w.bounds[1], width: w.bounds[2], height: w.bounds[3]),
                                                          tolerance: options.rebindWithin) else { moved += 1; continue }
+            guard w.number != person else { inFront += 1; continue }
             again.append(w)
+        }
+        let parkingNow = Set(again.map(\.number))
+        let others = Set(safari.map(\.number) + marker.shown.map(\.number)).subtracting(parkingNow)
+        let seen = others.contains { n in reads.window(n).map { safariPids.contains($0.pid) } == true && reads.spaces(of: n)?.isEmpty == false }
+        if on, !seen, !again.isEmpty {
+            let rank = { (n: Int) in safari.firstIndex { $0.number == n } ?? Int.max }
+            let stay = again.min { (rank($0.number), -$0.number) < (rank($1.number), -$1.number) }!
+            again.removeAll { $0.number == stay.number }
+            kept = 1
         }
         // The shown window stays as it is, and stays each profile's home window while Safari's the same.
         for s in marker.shown where lastShown[s.link] == nil && reads.window(s.number).map({ safariPids.contains($0.pid) }) == true {
@@ -811,6 +830,8 @@ final class ParkingRegistry {
         if restarted > 0 { left.append("\(restarted) of an earlier Safari") }
         if gone > 0 { left.append("\(gone) gone") }
         if moved > 0 { left.append("\(moved) moved") }
+        if inFront > 0 { left.append("\(inFront) in front") }
+        if kept > 0 { left.append("1 kept so a window shows") }
         if !on, !again.isEmpty { left.append("\(again.count) with parking off") }
         Diagnostics.note("handoff: Margin.app didn't quit cleanly with \(marker.count) parked window\(marker.count == 1 ? "" : "s"): "
                          + "\(on ? again.count : 0) parked again" + (left.isEmpty ? "" : ", left as normal windows: " + left.joined(separator: ", ")))
@@ -845,6 +866,7 @@ extension Shell {
             guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return false }
             return me != nil && app.bundleIdentifier == me
         }) else { return }
-        parking.adoptAfterCrash(marker, safariPids: apps.pids(of: options.bundleIds["safari"] ?? safariIdentifier))
+        let pids = apps.pids(of: options.bundleIds["safari"] ?? safariIdentifier)
+        parking.adoptAfterCrash(marker, safariPids: pids, front: windowSource.windows(of: pids))
     }
 }

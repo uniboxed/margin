@@ -23,6 +23,8 @@ func handoffUiTests() {
         let a = bp.across(for: profile, spaces: [:], counts: [:], linked: ["s-default", "s-2"])
         check("close windows: every profile's across says it (\(profile))", (a["switchSettings"] as? JSONObject)?["closeWindows"] as? Bool == true, "\(a["switchSettings"] ?? "none")")
     }
+    check("close windows: not sent when it would mean nothing (the handoff off, or parking not passed)",
+          bp.across(for: "s-default", spaces: [:], counts: [:], linked: ["s-default", "s-2"], switchSettings: false)["switchSettings"] == nil)
     check("close windows: turned off", bp.setCloseWindows(false) && !BrowserProfiles(browser: "safari", root: root).closeWindows)
     // A file from before the setting: off.
     let old = root.appendingPathComponent("old", isDirectory: true)
@@ -51,4 +53,26 @@ func handoffUiTests() {
         check("notices: \(kind) has words in across.js", across.contains("'\(kind)': {"))
     }
     check("notices: a link key's profile id", SwitchNotice.profileId("safari:s-a") == "s-a" && SwitchNotice.profileId("s-a") == "s-a")
+
+    // ---- the shell's §13.8 watch: a window gone while a switch runs is kept until it's idle ----
+    let k1 = WindowKey(link: "safari:s-a", windowId: 1), k2 = WindowKey(link: "safari:s-a", windowId: 2), k3 = WindowKey(link: "safari:s-b", windowId: 3)
+    var watch = ShownCloseWatch()
+    var closes: Set<WindowKey> = [k2]
+    watch.read(was: [k1, k2, k3], listed: [k3], numbers: [k1: 11, k2: 12, k3: 13], marginCloses: &closes)
+    check("shown closed: a window gone kept with its number; Margin's own close taken out", watch.gone == [k1: 11] && closes.isEmpty, "\(watch.gone)")
+    watch.read(was: [k3], listed: [k3], numbers: [k3: 13], marginCloses: &closes)
+    check("shown closed: … still kept on the next read (a switch still running)", watch.gone == [k1: 11])
+    let taken = watch.take()
+    check("shown closed: … taken once the switch is idle, then gone", taken.count == 1 && taken[0].key == k1 && taken[0].number == 11 && watch.gone.isEmpty)
+    watch.read(was: [k1, k3], listed: [k3], numbers: [k1: 11], marginCloses: &closes)
+    watch.read(was: [k3], listed: [k3, k1], numbers: [:], marginCloses: &closes)
+    check("shown closed: a window listed again isn't gone", watch.gone.isEmpty)
+
+    // ---- the `parked` word a copy gets (PROTOCOL.md): on once parked, kept through a park or close under way ----
+    typealias P = ParkedWindow.Phase
+    check("parked word: on once it's parked", Shell.parkedWord(.parked, told: nil) == true && Shell.parkedWord(.parked, told: false) == true && Shell.parkedWord(.parked, told: true) == nil)
+    check("parked word: a park under way says nothing yet", Shell.parkedWord(.parking, told: nil) == nil && Shell.parkedWord(.parking, told: false) == nil)
+    check("parked word: a re-park of one told on says nothing (no off and on again)", Shell.parkedWord(.parking, told: true) == nil && Shell.parkedWord(.closing, told: true) == nil)
+    check("parked word: off once it's out, only after on", Shell.parkedWord(nil, told: true) == false && Shell.parkedWord(P.showing, told: true) == false
+          && Shell.parkedWord(P.out, told: true) == false && Shell.parkedWord(nil, told: nil) == nil && Shell.parkedWord(P.returning, told: false) == nil)
 }

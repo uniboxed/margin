@@ -433,8 +433,10 @@ final class BrowserProfiles {
     // color); `counts`: profile → space → its tabs; `linked`; `switching`:
     // the cross-profile switch under way, if any.
     // `symbol`: a symbol's picture (ProfileSymbols.dataURL), for a profile with the browser's name.
+    // `switchSettings`: whether "Close windows to save memory" means anything now (the handoff on, with
+    // parking): false, it isn't sent, and Settings doesn't show it.
     func across(for profile: String, spaces: [String: [String: JSONObject]], counts: [String: [String: Int]], linked: Set<String>, switching: JSONObject? = nil,
-                symbol: (String) -> String? = { _ in nil }) -> JSONObject {
+                switchSettings: Bool = true, symbol: (String) -> String? = { _ in nil }) -> JSONObject {
         let t = now()
         let shown = profilesShown.isEmpty ? [profile] : profilesShown
         let list: [JSONObject] = (shown + (shown.contains(profile) ? [] : [profile])).map { p in
@@ -456,7 +458,8 @@ final class BrowserProfiles {
             return ["profile": k.profile, "id": k.space, "name": v["name"] as? String ?? "", "emoji": v["emoji"] as? String ?? "",
                     "color": v["color"] as? String ?? "", "tabCount": counts[k.profile]?[k.space] ?? 0]
         }
-        var out: JSONObject = ["v": 1, "profile": profile, "profiles": list, "spaces": entries, "switchSettings": ["closeWindows": closeWindows]]
+        var out: JSONObject = ["v": 1, "profile": profile, "profiles": list, "spaces": entries]
+        if switchSettings { out["switchSettings"] = ["closeWindows": closeWindows] }
         if let switching { out["switching"] = switching }
         return out
     }

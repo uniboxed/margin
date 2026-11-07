@@ -619,6 +619,8 @@ extension Shell {
             Diagnostics.note(ParkSelfTest.line(outcome, pid: test.childPid))
             // A crash's parked windows parked again, now that it's known whether parking works (§13.2).
             self.recoverParked()
+            // Settings' "Close windows to save memory" shows only with parking on (switchSettingsShown).
+            self.acrossSoon()
         }
     }
 }
