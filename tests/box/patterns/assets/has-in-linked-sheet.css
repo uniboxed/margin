@@ -1,0 +1,6 @@
+/* For patterns/has-in-linked-sheet.html: :has() rules, the one about <body>
+   (centring it, which the box reads for) inside a group rule, behind others. */
+.card { height: 20px; background: #cde; }
+.card:has(img) { color: red; }
+@media screen { @supports (display: grid) { .list:has(> li) { padding: 4px; } } }
+@media screen { body:has(.on) { max-width: 600px; margin: 33px auto 0; } }

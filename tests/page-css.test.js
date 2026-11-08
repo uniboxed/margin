@@ -1,7 +1,7 @@
 // The page's CSS spoken for its box: media queries and viewport units.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { asksSize, declaredNames, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../extension/shared/page-css.js';
+import { asksSize, declarations, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../extension/shared/page-css.js';
 import { readFileSync } from 'node:fs';
 import { FITTED_BODY, HOLD_ELEMENT, bodyBackgroundCss, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules, BOX_ROOT } from '../extension/shared/page-box.js';
 
@@ -153,6 +153,7 @@ function fakeStyle(decls) {
         if (v.includes('var(')) { shorts.set(n, v); for (const l of LONG[n]) { longs.delete(l); longs.set(l, ['', p]); } } else for (const l of LONG[n]) { longs.delete(l); longs.set(l, [v, p]); }
       } else { for (const [s, ls] of Object.entries(LONG)) if (ls.includes(n)) shorts.delete(s); longs.delete(n); longs.set(n, [v, p]); }
     },
+    set cssText(text) { if (text) throw new Error('only emptied'); longs.clear(); shorts.clear(); },
     get cssText() { return [...shorts].map(([n, v]) => `${n}: ${v};`).concat([...longs].filter(([n]) => ![...shorts.keys()].some((s) => LONG[s].includes(n))).map(([n, [v]]) => `${n}: ${v};`)).join(' '); },
     [Symbol.iterator]: () => [...longs.keys()][Symbol.iterator](),
   };
@@ -160,25 +161,50 @@ function fakeStyle(decls) {
   return style;
 }
 
-test('declaredNames: the names a block\'s text gives, shorthands too, not split inside brackets or strings', () => {
-  assert.deepEqual(declaredNames('font: 800 clamp(30px, 3.2vw, 44px) / 1.15 var(--sans); color: red; background: url("a;b.png"); content: \'x;y\''), ['font', 'color', 'background', 'content']);
-  assert.deepEqual(declaredNames(''), []);
+test('declarations: a block\'s text in its declarations, not split inside brackets or strings', () => {
+  assert.deepEqual(declarations('font: 800 clamp(30px, 3.2vw, 44px) / 1.15 var(--sans); color: red !important; background: url("a;b.png"); content: \'x;y\'; --x: { a; b }'), [
+    ['font', '800 clamp(30px, 3.2vw, 44px) / 1.15 var(--sans)', false], ['color', 'red', true], ['background', 'url("a;b.png")', false], ['content', "'x;y'", false], ['--x', '{ a; b }', false],
+  ]);
+  assert.deepEqual(declarations(''), []);
 });
 
 test('shiftStyle: vw in a font shorthand with a var() is moved too; a longhand set apart from it is kept', () => {
   const style = fakeStyle([['font', '800 clamp(30px, 3.2vw, 44px)/1.15 var(--sans)'], ['color', 'red']]);
-  shiftStyle(style);
+  shiftStyle(style, fakeStyle([]));
   assert.equal(style.getPropertyValue('font'), shiftUnits('800 clamp(30px, 3.2vw, 44px)/1.15 var(--sans)'));
   assert.match(style.getPropertyValue('font'), /--margin-box-dw/);
   assert.equal(style.getPropertyValue('color'), 'red');
   // Twice: once.
   const once = style.getPropertyValue('font');
-  shiftStyle(style);
+  shiftStyle(style, fakeStyle([]));
   assert.equal(style.getPropertyValue('font'), once);
   // Without a var(): the longhands, as before.
   const plain = fakeStyle([['padding', '4vw']]);
-  shiftStyle(plain);
+  shiftStyle(plain, fakeStyle([]));
   assert.equal(plain.getPropertyValue('padding-left'), shiftUnits('4vw'));
+});
+
+test('shiftStyle: a shorthand the text gives whole is set as its longhands, which still read', () => {
+  // The block's text says `padding: 4vw 2px` (a browser joins its longhands so).
+  const style = fakeStyle([['padding', '4vw 2px'], ['color', 'red']]);
+  shiftStyle(style, fakeStyle([]), 'padding: 4vw 2px; color: red;');
+  assert.equal(style.getPropertyValue('padding-left'), shiftUnits('4vw 2px'), 'the fake takes a shorthand\'s value for each longhand');
+  assert.ok(!style.getPropertyValue('padding'), 'not set again as a whole, which a var() would leave pending');
+});
+
+test('shiftStyle: only what has units is touched, however many custom properties a block has', () => {
+  const decls = Array.from({ length: 2000 }, (_, i) => [`--t${i}`, `${i}px`]);
+  decls.push(['--wide', '50vw']);
+  const style = fakeStyle(decls);
+  let reads = 0;
+  let writes = 0;
+  const { getPropertyValue, setProperty } = style;
+  style.getPropertyValue = (n) => (reads++, getPropertyValue(n));
+  style.setProperty = (n, v, p) => (writes++, setProperty(n, v, p));
+  shiftStyle(style, fakeStyle([]));
+  assert.equal(writes, 1);
+  assert.equal(reads, 0, 'none read one by one');
+  assert.equal(getPropertyValue('--wide'), shiftUnits('50vw'));
 });
 
 test('a body\'s background image is kept on <body>, which fills the box, not the window\'s canvas; a color alone is left to the canvas', () => {

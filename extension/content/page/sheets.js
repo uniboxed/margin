@@ -5,6 +5,10 @@
 import { asksSize, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../../shared/page-css.js';
 
 const SWEEP_FLOOR = 64;
+// Reading a sheet's selectors for :has(): slices of about this many ms, this
+// many ms apart.
+const HAS_SLICE = 4;
+const HAS_WAIT = 16;
 
 export function startSheets(box) {
   const ours = new Set(box.ours);
@@ -62,20 +66,33 @@ export function startSheets(box) {
   addEventListener('afterprint', moveToBox);
 
   // ---- walking a sheet ------------------------------------------------------
+  // Where a shorthand is taken apart into its longhands (shared/page-css.js),
+  // made when first wanted.
+  /** @type {CSSStyleDeclaration | undefined} */
+  let scratchStyle;
+  const scratch = () => (scratchStyle ??= document.createElement('div').style);
   // `units`: false where the sheet's text has none, which saves serializing
-  // every rule of it just to look.
-  function walkRules(rules, units) {
+  // every rule of it just to look. A rule's declarations are serialized, not
+  // the rules nested in it (walked on their own), nor its selector (looked
+  // through for :has() apart: hasLater).
+  function walkRules(rules, units, dw, dh) {
     for (const rule of Array.from(rules)) {
       try {
-        if (rule instanceof CSSMediaRule) moveHolder(rule, box.seenW(), box.seenH());
-        const plain = rule instanceof CSSStyleRule;
-        const style = plain ? ruleStyle.get.call(rule) : /** @type {any} */ (rule).style;
-        // One serialization for both questions.
-        const said = units && (plain ? rule.cssText : style?.cssText);
-        if (said && plain && said.includes(HAS)) noteHas(selectorText.get.call(rule));
-        if (said && hasUnits(said)) shiftStyle(style);
-        if (/** @type {any} */ (rule).cssRules?.length) walkRules(/** @type {any} */ (rule).cssRules, units);
-        if (/** @type {any} */ (rule).styleSheet) visit(/** @type {any} */ (rule).styleSheet);
+        if (rule instanceof CSSStyleRule) {
+          if (units) {
+            const style = ruleStyle.get.call(rule);
+            const said = style.cssText;
+            if (hasUnits(said)) shiftStyle(style, scratch(), said);
+          }
+        } else {
+          if (rule instanceof CSSMediaRule) moveHolder(rule, dw, dh);
+          // @font-face, @page, a keyframe, nested declarations.
+          const style = /** @type {any} */ (rule).style;
+          const said = units && style ? style.cssText : '';
+          if (said && hasUnits(said)) shiftStyle(style, scratch(), said);
+          if (/** @type {any} */ (rule).styleSheet) visit(/** @type {any} */ (rule).styleSheet);
+        }
+        if (/** @type {any} */ (rule).cssRules?.length) walkRules(/** @type {any} */ (rule).cssRules, units, dw, dh);
       } catch {}
     }
   }
@@ -90,16 +107,21 @@ export function startSheets(box) {
     seen.add(sheet);
     fresh ||= !!sheet.ownerNode; // adopted ones say so as they're set (box.js)
     // Only a <style>'s own text is watched: edits of text elsewhere cost nothing.
-    if (sheet.ownerNode?.localName === 'style') watch.observe(sheet.ownerNode, STYLE_TEXT);
+    const owner = sheet.ownerNode;
+    const inline = owner?.localName === 'style';
+    if (inline) watch.observe(owner, STYLE_TEXT);
+    const dw = box.seenW();
+    const dh = box.seenH();
     try {
-      moveHolder(sheet, box.seenW(), box.seenH());
+      moveHolder(sheet, dw, dh);
     } catch {}
     // A <style>'s text says what's in it, without a walk. Rules added later go
     // through insertRule. A sheet with neither units nor queries has nothing to do.
-    const text = sheet.ownerNode?.localName === 'style' ? sheet.ownerNode.textContent : '';
+    const text = inline ? owner.textContent : '';
     const units = !text || hasUnits(text);
-    if (units || /@(media|import)/i.test(text)) walkRules(rules, units);
-    if (text.includes(HAS)) collectHas(rules);
+    if (units || /@(media|import)/i.test(text)) walkRules(rules, units, dw, dh);
+    if (!text) hasLater(rules);
+    else if (text.includes(HAS)) collectHas(rules);
   }
   const visitRoot = (root) => {
     for (const sheet of Array.from(root.styleSheets)) visit(sheet);
@@ -296,6 +318,52 @@ export function startSheets(box) {
     hasRules.add(selector);
     box.bodyMayHaveChanged();
   }
+  // The selectors of a sheet whose text isn't known (a <link>'s, an
+  // @import's, an adopted one), looked through after the page's turn, in
+  // slices: a selector costs as much to read as a rule's declarations, and
+  // load is when a page has least time. A rule already in the sheet applied
+  // at the read its sheet brought, so only what it changes later hangs on
+  // it; one about <html> or <body> found now is read for, to be sure.
+  /** @type {[ArrayLike<CSSRule>, number][]} */
+  const unread = [];
+  let unreadTask = 0;
+  function hasLater(rules) {
+    unread.push([Array.from(rules), 0]);
+    unreadTask ||= setTimeout(readSelectors, HAS_WAIT);
+  }
+  function readSelectors() {
+    unreadTask = 0;
+    const until = performance.now() + HAS_SLICE;
+    let about = false;
+    while (unread.length) {
+      const item = unread[unread.length - 1];
+      const [rules] = item;
+      if (item[1] >= rules.length) {
+        unread.pop();
+        continue;
+      }
+      if (performance.now() > until) {
+        unreadTask = setTimeout(readSelectors, HAS_WAIT);
+        break;
+      }
+      // A run of rules between looks at the clock.
+      for (const end = Math.min(rules.length, item[1] + 64); item[1] < end; item[1]++) {
+        const rule = rules[item[1]];
+        try {
+          if (rule instanceof CSSStyleRule) {
+            const selector = selectorText.get.call(rule);
+            if (selector.includes(HAS) && !hasRules.has(selector)) {
+              hasRules.add(selector);
+              about ||= ask(withoutHas(selector)).includes('1');
+            }
+          }
+          const inner = /** @type {any} */ (rule).cssRules;
+          if (inner?.length) unread.push([Array.from(inner), 0]);
+        } catch {}
+      }
+    }
+    if (about) box.bodyMayHaveChanged();
+  }
   function collectHas(rules) {
     for (const rule of Array.from(rules)) {
       try {
@@ -319,8 +387,8 @@ export function startSheets(box) {
   const INLINE = '[style*="vw"], [style*="vh"], [style*="vmin"], [style*="vmax"]';
   function shiftInline(node) {
     const { style } = node;
-    if (!style || !hasUnits(style.cssText)) return;
-    shiftStyle(style);
+    const said = style?.cssText;
+    if (said && hasUnits(said)) shiftStyle(style, scratch(), said);
   }
   const inlineIn = (root) => {
     if (root.matches?.(INLINE)) shiftInline(root);
