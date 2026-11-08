@@ -1,0 +1,29 @@
+<!--
+case: a modal dialog and a popover sit against the box, not the window
+from: the WebKit host's `top-layer` scenario: the top layer ignores <html>'s transform, so `left: 0` landed under the sidebar
+handled-by: content/page/top-layer.js, shared/page-box.js (::backdrop)
+settle: 600
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>top-layer</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+  #tip { position: fixed; inset: auto; left: 0; top: 0; margin: 0; width: 200px; height: 60px; border: 1px solid #333; }
+  dialog { width: 320px; height: 160px; border: 0; border-radius: 12px; }
+</style>
+</head>
+<body>
+<h1>Settings</h1>
+<div id="tip" popover="manual">A tip at the top left</div>
+<dialog id="dlg"><p>Are you sure?</p></dialog>
+<script>
+  addEventListener('load', () => setTimeout(() => {
+    document.getElementById('tip').showPopover();
+    document.getElementById('dlg').showModal();
+  }, 100));
+</script>
+</body>
+</html>

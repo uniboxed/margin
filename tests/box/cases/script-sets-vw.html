@@ -1,0 +1,25 @@
+<!--
+case: viewport units a script sets on elements after load are the box's
+from: the WebKit host's `answers` scenario: inline vw and vh a script sets
+handled-by: content/page/sheets.js (style attributes, in the observer's callback, before paint)
+settle: 600
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>script-sets-vw</title>
+<style>body { margin: 0; } div { background: #cde; margin-bottom: 4px; }</style>
+</head>
+<body>
+<div id="a" style="width: 100vw; height: 20px"></div>
+<div id="b"></div>
+<div id="c"></div>
+<script>
+  addEventListener('load', () => setTimeout(() => {
+    Object.assign(document.getElementById('b').style, { width: '75vw', height: '10vh' });
+    document.getElementById('c').style.cssText = 'width: calc(100vw - 40px); height: 30px';
+  }, 100));
+</script>
+</body>
+</html>

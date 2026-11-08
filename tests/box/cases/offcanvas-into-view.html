@@ -1,0 +1,34 @@
+<!--
+case: bringing a link in an off-canvas fixed drawer into view doesn't slide the window sideways
+from: go.dev (fit-check round 1): a link in its navigation drawer (fixed, moved off the right edge with a transform) brought into view; in the box the window itself scrolled 856px to show it
+handled-by: content/page/viewport.js (the window's own scroll held at 0 while there's a box)
+settle: 600
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>offcanvas-into-view</title>
+<style>
+  body { margin: 0; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+  header { display: flex; justify-content: space-between; padding: 14px 20px; background: #007d9c; color: #fff; }
+  main { padding: 20px; }
+  .drawer { position: fixed; top: 0; right: 0; width: 300px; height: 100%; background: #fff; box-shadow: 0 0 20px #0003; transform: translateX(100%); }
+  .drawer a { display: block; padding: 10px 16px; }
+</style>
+</head>
+<body>
+<header id="top"><b>Go</b><span>Why Go · Learn · Docs</span></header>
+<aside class="drawer" id="drawer"><a href="#why" id="first">Why Go</a><a href="#learn">Learn</a><a href="#docs">Docs</a></aside>
+<main id="main"><h1>Build simple, secure, scalable systems</h1><p>An open-source programming language supported by many.</p></main>
+<p>Focused: <output id="focused"></output></p>
+<script>
+  addEventListener('load', () => setTimeout(() => {
+    const link = document.getElementById('first');
+    link.focus();
+    link.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    document.getElementById('focused').textContent = document.activeElement.id;
+  }, 100));
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!--
+case: vw and vh in a page's sheets are the box's, full-bleed sections included
+from: the frameless layout (2026-11-01); Reddit's header, a `calc(50% - 50vw)` rule rewritten twice (DECISIONS.md)
+handled-by: content/page/sheets.js, shared/page-css.js (shiftStyle)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>viewport-units</title>
+<style>
+  body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 0 16px; }
+  #full { width: 100vw; height: 40px; background: #cde; }
+  #half { width: 50vw; height: 40px; background: #dec; }
+  #tall { height: 100vh; width: 80px; background: #edc; }
+  #bleed { margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw); height: 40px; background: #ecd; }
+  #min { width: min(90vw, 2000px); height: 20px; background: #ddd; }
+</style>
+</head>
+<body>
+<div id="full"></div>
+<div id="half"></div>
+<div class="wrap"><p>Text in a centred column.</p><div id="bleed"></div><p>More text.</p></div>
+<div id="min"></div>
+<div id="tall"></div>
+</body>
+</html>

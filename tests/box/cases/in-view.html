@@ -1,0 +1,32 @@
+<!--
+case: IntersectionObserver with no root sees the box's edges, not the window's
+from: the WebKit host's `in-view` scenario: images that load ahead and lists that fetch more ask about the viewport
+handled-by: content/page/in-view.js
+settle: 600
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>in-view</title>
+<style>
+  body { margin: 0; }
+  /* Just under the box's bottom edge, though inside the window (the frame's 8px are below the box). */
+  #below { position: absolute; left: 0; top: calc(100vh + 2px); width: 40px; height: 2px; background: red; }
+  #inside { position: absolute; left: 0; top: calc(100vh - 20px); width: 40px; height: 4px; background: green; }
+  #fixed { position: fixed; right: 0; bottom: 0; width: 20px; height: 20px; background: blue; }
+</style>
+</head>
+<body>
+<div id="below"></div><div id="inside"></div><div id="fixed"></div>
+<p>below: <output id="o-below"></output>, inside: <output id="o-inside"></output>, fixed: <output id="o-fixed"></output></p>
+<script>
+  const seen = {};
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) seen[e.target.id] = e.isIntersecting;
+    for (const id of ['below', 'inside', 'fixed']) document.getElementById(`o-${id}`).textContent = String(seen[id]);
+  });
+  for (const id of ['below', 'inside', 'fixed']) io.observe(document.getElementById(id));
+</script>
+</body>
+</html>

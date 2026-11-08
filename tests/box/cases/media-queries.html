@@ -1,0 +1,40 @@
+<!--
+case: media queries about the width, in sheets and in matchMedia, ask about the box
+from: the frameless layout (2026-11-01); the docs site's table of contents, gone under 1180px (tests/e2e/page-box.test.js)
+handled-by: content/page/sheets.js (rules), content/page/media.js (matchMedia)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>media-queries</title>
+<style>
+  body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+  /* Between each engine's box and its window: the WebKit host's box is 932 wide in 1200, the e2e harness's 1172 in 1440. */
+  .cols { display: block; }
+  @media (min-width: 1050px) { .cols.a { display: grid; grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1300px) { .cols.b { display: grid; grid-template-columns: 1fr 1fr 1fr; } }
+  @media (max-width: 1049px) { #narrow-a { height: 30px; background: #cde; } }
+  .cols > div { padding: 8px; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<div class="cols a" id="a"><div>one</div><div>two</div></div>
+<div class="cols b" id="b"><div>one</div><div>two</div><div>three</div></div>
+<div id="narrow-a"></div>
+<p>1050: <output id="mq1050"></output>, 1300: <output id="mq1300"></output>, max 1049: <output id="mqmax"></output>, changes: <output id="changes"></output></p>
+<script>
+  const q = (s) => matchMedia(s);
+  const a = q('(min-width: 1050px)'), b = q('(min-width: 1300px)'), c = q('(max-width: 1049px)');
+  let changes = 0;
+  for (const m of [a, b, c]) m.addEventListener('change', () => { changes += 1; });
+  const write = () => {
+    document.getElementById('mq1050').textContent = a.matches;
+    document.getElementById('mq1300').textContent = b.matches;
+    document.getElementById('mqmax').textContent = c.matches;
+    document.getElementById('changes').textContent = String(changes > 0 ? 'some' : 'none');
+  };
+  addEventListener('load', () => setTimeout(write, 300));
+</script>
+</body>
+</html>
