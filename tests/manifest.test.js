@@ -104,7 +104,7 @@ test('the page card has the same corner radius and shadow wherever it is drawn',
   const frame = pkg.match(/\n  --frame: ([^;]+);/)[1];
   assert.equal(radius, '6.25px');
   const first = read('themes/arcadia/first-paint.css');
-  assert.equal(decl(first, 'html[data-margin-at="arcadia"]::after', 'border-radius'), 'var(--margin-at-radius)');
+  assert.equal(decl(first, 'html[data-margin-at="arcadia"]::after', 'border-radius'), 'var(--margin-box-at-radius)');
   assert.equal(decl(first, 'html[data-margin-at="arcadia"]::after', 'box-shadow'), `${shadow}, 0 0 0 100vmax ${frame}`, 'the first paint: same shadow, then the frame');
   // Plain CSS only: nothing for the browser to load (no images, no url()).
   for (const css of [first, pkg]) assert.doesNotMatch(css, /border-image|url\(/);

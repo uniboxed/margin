@@ -32,14 +32,14 @@ const OPAQUE = /(url\([^)]*\)|"[^"]*"|'[^']*')/g;
 const UNIT = /(?<![\w.#-])([-+]?(?:\d+\.?\d*|\.\d+))(s|l|d)?(vw|vh|vmin|vmax)\b/g;
 export const hasUnits = (value) => /\dd?[sl]?v(?:w|h|min|max)\b/.test(value);
 
-// `value` with vw, vh, vmin and vmax taken as the box's, through --margin-dw
-// and --margin-dh (always defined: content/page/box.js), so a value needs
+// `value` with vw, vh, vmin and vmax taken as the box's, through --margin-box-dw
+// and --margin-box-dh (always defined: content/page/box.js), so a value needs
 // rewriting only once, whatever the box does after. Already rewritten: as it is.
 export function shiftUnits(value) {
-  if (!value || !hasUnits(value) || value.includes('--margin-d')) return value;
+  if (!value || !hasUnits(value) || value.includes('--margin-box-d')) return value;
   const inUnits = (text) => text.replace(UNIT, (_, n, size = '', unit) => {
-    const width = `calc(${n}${size}vw - ${fmt(n / 100)} * var(--margin-dw))`;
-    const height = `calc(${n}${size}vh - ${fmt(n / 100)} * var(--margin-dh))`;
+    const width = `calc(${n}${size}vw - ${fmt(n / 100)} * var(--margin-box-dw))`;
+    const height = `calc(${n}${size}vh - ${fmt(n / 100)} * var(--margin-box-dh))`;
     if (unit === 'vw') return width;
     if (unit === 'vh') return height;
     return `${unit === 'vmin' ? 'min' : 'max'}(${width}, ${height})`;

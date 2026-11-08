@@ -227,7 +227,7 @@ test('frames sit in the box: the same site\'s, another site\'s, a srcdoc and a s
     inSlot(await frame.boundingBox(), s, id);
   }
   const map = page.frameLocator('#f-map');
-  const inner = await map.locator('body').evaluate(() => ({ w: innerWidth, boxed: getComputedStyle(document.documentElement).getPropertyValue('--margin-left').trim() }));
+  const inner = await map.locator('body').evaluate(() => ({ w: innerWidth, boxed: getComputedStyle(document.documentElement).getPropertyValue('--margin-box-left').trim() }));
   const outer = await page.locator('#f-map').evaluate((el) => el.clientWidth);
   assert.equal(inner.w, outer, 'a frame lays out at its own width');
   assert.equal(inner.boxed, '', 'and has no box of its own');

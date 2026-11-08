@@ -50,7 +50,7 @@ const FIRST_FRAMES = `<script>(() => {
     const html = document.documentElement;
     const s = getComputedStyle(html);
     const m = new DOMMatrix(s.transform);
-    fp.frames.push({ t: Math.round(performance.now()), x: m.e, y: m.f, w: Math.round(parseFloat(s.width)), mark: html.getAttribute('data-margin-at'), said: s.getPropertyValue('--margin-fp').trim(), left: s.getPropertyValue('--margin-at-left').trim(), frame: getComputedStyle(html, '::after').boxShadow });
+    fp.frames.push({ t: Math.round(performance.now()), x: m.e, y: m.f, w: Math.round(parseFloat(s.width)), mark: html.getAttribute('data-margin-at'), said: s.getPropertyValue('--margin-box-fp').trim(), left: s.getPropertyValue('--margin-box-at-left').trim(), frame: getComputedStyle(html, '::after').boxShadow });
     if (fp.frames.length < 40) requestAnimationFrame(look);
   };
   requestAnimationFrame(look);

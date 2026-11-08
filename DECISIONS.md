@@ -3327,3 +3327,10 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Pattern:** `tests/box/patterns/body-centred-by-offset.html`, failing in Chromium and the WebKit host before.
 - **Tests:** `body-fit` (xkcd's numbers: its column at 196 in 1172), `page-css` (top and bottom held, not left and right; the fit sheet's left and right). The WebKit host's `lock` and the other box scenarios pass as before.
 
+### The box's CSS variables are --margin-box-* (2026-11-08)
+
+- **Found by fit-check (appdome.com):** Elementor's containers lay out with `margin-left: var(--margin-left)` (and top, right, bottom). The box put its own `--margin-left: 260px` and `--margin-top: 8px` on `<html>`, so every container that set none of its own inherited them: whole sections 260px to the right and 8px down. Any page or framework using such a name met the box's values.
+- **Now:** every variable the box puts in a page is `--margin-box-*`: `--margin-box-left`, `-top`, `-shift-x`, `-shift-y`, `-out-r`, `-out-b`, `-dw`, `-dh`, the layout's `--margin-box-at-*`, and the first paint's `--margin-box-fp`. They're set in `shared/page-box.js`, `shared/page-css.js` and `background/registered.js`, with the themes' first-paint files, the tests, the WebKit host and `app/PROTOCOL.md` to match. A page's own `--margin-*` is its own again.
+- **Pattern:** `tests/box/patterns/page-css-variables.html`, failing in Chromium and the WebKit host before.
+- **An update:** pages open across it have the old copy's page script until they're loaded again, which Margin does as it updates (the `reloaded` scenario).
+

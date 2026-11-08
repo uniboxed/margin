@@ -15,7 +15,7 @@
     content: "" !important;
     position: fixed !important;
     inset: 0 !important;
-    border-radius: var(--margin-at-radius) !important;
+    border-radius: var(--margin-box-at-radius) !important;
     box-shadow: 0 0 0 3px #111, 6px 6px 0 3px #111, 0 0 0 100vmax #ffd23f !important;
     pointer-events: none !important;
     z-index: 2147483646 !important;

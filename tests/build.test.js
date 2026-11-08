@@ -55,7 +55,7 @@ test('each build loads one bundled script per context', () => {
     // place, at.css, and each built-in theme's file.
     for (const [file, css] of allLayoutFiles()) assert.equal(readFileSync(join(dir, file), 'utf8'), css, `${target}/${file}`);
     assert.deepEqual(FIRST_PAINT_THEMES, PACKAGE_THEMES, 'every built-in theme has its first paint');
-    for (const id of FIRST_PAINT_THEMES) assert.match(readFileSync(join(dir, firstPaintFile(id)), 'utf8'), new RegExp(`--margin-fp: ${id};[\\s\\S]*html\\[data-margin-at="${id}"\\]:not\\(#m#m#m#m#m\\) \\{[\\s\\S]*translate\\(var\\(--margin-at-left\\)`), `${target}: ${id}'s first paint`);
+    for (const id of FIRST_PAINT_THEMES) assert.match(readFileSync(join(dir, firstPaintFile(id)), 'utf8'), new RegExp(`--margin-box-fp: ${id};[\\s\\S]*html\\[data-margin-at="${id}"\\]:not\\(#m#m#m#m#m\\) \\{[\\s\\S]*translate\\(var\\(--margin-box-at-left\\)`), `${target}: ${id}'s first paint`);
     for (const file of layoutFiles({ left: 1023.75, top: 0, right: 8.25, bottom: 999, radius: 63.75 })) assert.ok(statSync(join(dir, file)).size > 0, `${target}/${file}: there for any layout`);
     // Safari loads none of its registrations if a path one names is missing:
     // the build before Phase 3's stay, empty, until no Safari has them.

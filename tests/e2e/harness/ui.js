@@ -69,11 +69,11 @@ export function pageBox(page) {
   return page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement);
     const num = (name) => { const v = cs.getPropertyValue(name).trim(); return v ? parseFloat(v) : null; };
-    const left = num('--margin-left');
-    const dw = num('--margin-dw');
+    const left = num('--margin-box-left');
+    const dw = num('--margin-box-dw');
     if (left == null || dw == null) return null;
-    const top = num('--margin-top') ?? 0;
-    const dh = num('--margin-dh') ?? 0;
+    const top = num('--margin-box-top') ?? 0;
+    const dh = num('--margin-box-dh') ?? 0;
     if (dw === 0 && dh === 0) return null;
     return { left, top, right: Math.round((dw - left) * 2) / 2, bottom: Math.round((dh - top) * 2) / 2, width: innerWidth, height: innerHeight };
   });
