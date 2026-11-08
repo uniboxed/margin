@@ -5,6 +5,10 @@
 //   /ref/<name>?w=..&h=..    its plain reference: the page in an iframe w×h, a
 //                            plain window of the box's size (what tests/box/rules.js
 //                            compares the boxed page with)
+//   /asset/<file>            a file a pattern's page loads (patterns/assets/: a style
+//                            sheet, a script), as a site's own files are
+// In a pattern's page, `{{other}}` is another origin serving the same files (a CDN's,
+// with no CORS): `{{other}}/asset/<file>`. Each server says what it is (`other`).
 //
 // A pattern's header is the HTML comment its file starts with, a field a line:
 //   pattern:    what pages do, and what the box keeps true for them, in a line (required)
@@ -21,6 +25,9 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 export const PATTERNS_DIR = fileURLToPath(new URL('./patterns/', import.meta.url));
+const ASSETS_DIR = join(PATTERNS_DIR, 'assets');
+const ASSET = /^[a-z0-9][a-z0-9-]*\.(css|js)$/;
+const TYPES = { css: 'text/css; charset=utf-8', js: 'text/javascript; charset=utf-8' };
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 const FIELDS = new Set(['pattern', 'from', 'handled-by', 'settle', 'allow', 'engines', 'note']);
 
@@ -57,13 +64,18 @@ export function listPatterns() {
 
 /**
  * A response for `path` (and its query), or null if it isn't one of these.
- * @param {string} path @param {URLSearchParams} query
+ * `other`: another origin's address for the same files, put in for `{{other}}`.
+ * @param {string} path @param {URLSearchParams} query @param {{ other?: string }} [options]
  * @returns {{ type: string, body: string } | null}
  */
-export function boxPage(path, query) {
+export function boxPage(path, query, { other = '' } = {}) {
   const p = /^\/pattern\/([a-z0-9-]+)$/.exec(path);
   if (p && NAME.test(p[1])) {
-    try { return { type: 'text/html; charset=utf-8', body: readFileSync(join(PATTERNS_DIR, `${p[1]}.html`), 'utf8') }; } catch { return null; }
+    try { return { type: 'text/html; charset=utf-8', body: readFileSync(join(PATTERNS_DIR, `${p[1]}.html`), 'utf8').replaceAll('{{other}}', other) }; } catch { return null; }
+  }
+  const a = /^\/asset\/([^/]+)$/.exec(path);
+  if (a && ASSET.test(a[1])) {
+    try { return { type: TYPES[a[1].split('.').pop()], body: readFileSync(join(ASSETS_DIR, a[1]), 'utf8') }; } catch { return null; }
   }
   const r = /^\/ref\/([a-z0-9-]+)$/.exec(path);
   if (r && NAME.test(r[1])) {

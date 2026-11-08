@@ -1,0 +1,20 @@
+<!--
+pattern: a style sheet loaded the asynchronous way (media print, switched as it loads) has its queries and units asked of the box
+from: springer.com (fit-check round 1, re-checked): `<link rel=stylesheet media="only print, …">` for its main sheet; none of its 150 media queries asked about the box, so its two-column hero, meant for windows 1292px and wider, ran 70px past the box
+handled-by: content/page/sheets.js (a <link>'s media changing: its sheet looked through again)
+settle: 700
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>async-stylesheet</title>
+<style>body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }</style>
+<link rel="stylesheet" href="../asset/async-stylesheet.css" media="print" onload="this.media='all'">
+</head>
+<body>
+<div class="hero a" id="a"><div>text</div><div>picture</div></div>
+<div class="hero b" id="b"><div>text</div><div>picture</div></div>
+<div class="wide" id="wide"></div>
+</body>
+</html>

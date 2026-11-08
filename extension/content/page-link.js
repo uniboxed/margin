@@ -4,6 +4,8 @@
 // open when Margin started, or the box only now came on) it's brought in; and
 // style sheets the page's world can't read are fetched for it.
 
+import { absolute, inlineImports } from '../shared/sheet-copy.js';
+
 // `send`: to the background (content/core.js).
 export function startPageLink(send) {
   const html = document.documentElement;
@@ -89,19 +91,6 @@ export function startPageLink(send) {
     links.observe(link, { attributes: true, attributeFilter: ['href', 'media', 'disabled', 'rel'] });
     if (link.parentNode) links.observe(link.parentNode, { childList: true });
   }
-  const absolute = (css, base) => css.replace(/url\(\s*(['"]?)(?!data:|#|[a-z][a-z0-9+.-]*:|\/\/)([^'")]+)\1\s*\)/gi, (_, quote, path) => {
-    try {
-      return `url(${quote}${new URL(path, base).href}${quote})`;
-    } catch {
-      return _;
-    }
-  }).replace(/@import\s+(['"])(?![a-z][a-z0-9+.-]*:|\/\/)([^'"]+)\1/gi, (_, quote, path) => {
-    try {
-      return `@import ${quote}${new URL(path, base).href}${quote}`;
-    } catch {
-      return _;
-    }
-  });
   async function replaceSheet(sheet) {
     const link = sheet.ownerNode;
     if (!link || link.localName !== 'link' || !sheet.href || sheet.href !== link.href || copies.get(link)?.href === link.href || new URL(sheet.href).origin === location.origin) return;
@@ -111,10 +100,13 @@ export function startPageLink(send) {
     } catch {}
     const copy = { href: link.href, media: link.getAttribute('media') };
     copies.set(link, copy);
-    const text = await send('fetchStyle', { url: sheet.href }, false);
-    // Replaced or taken away while it was fetched.
-    if (typeof text !== 'string' || !link.isConnected || copies.get(link) !== copy || link.href !== copy.href) return;
-    const css = absolute(text, sheet.href);
+    const fetchText = (url) => send('fetchStyle', { url }, false).then((text) => (typeof text === 'string' ? text : null), () => null);
+    const text = await fetchText(sheet.href);
+    const stale = () => !link.isConnected || copies.get(link) !== copy || link.href !== copy.href; // replaced or taken away meanwhile
+    if (typeof text !== 'string' || stale()) return;
+    // What it imports goes in with it (shared/sheet-copy.js): another origin's import would be unreadable again.
+    const css = await inlineImports(absolute(text, sheet.href), sheet.href, fetchText);
+    if (stale()) return;
     const style = document.createElement('style');
     if (link.media) style.media = link.media;
     style.textContent = css;

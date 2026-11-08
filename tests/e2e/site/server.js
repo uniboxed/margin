@@ -20,6 +20,7 @@
 //
 // `box.test` isn't a site: it serves the page patterns the box handles
 // (tests/box/serve.js), so the suites that go through every site don't go through them.
+// `box-cdn.test` serves the same files as another origin's (a CDN's, no CORS).
 //
 // Nothing is logged unless MARGIN_E2E_VERBOSE is set.
 import { createServer } from 'node:http';
@@ -56,8 +57,8 @@ export async function startSite({ port = 0, verbose = !!process.env.MARGIN_E2E_V
     const site = byHost.get(hostname) ?? (hostname === '127.0.0.1' || hostname === 'localhost' ? byHost.get('margin.test') : null);
     if (verbose) console.log(`site ${req.method} ${hostname}${u.pathname}`);
     try {
-      if (hostname === 'box.test') {
-        const out = boxPage(u.pathname, u.searchParams);
+      if (hostname === 'box.test' || hostname === 'box-cdn.test') { // box-cdn.test: another origin for the same files
+        const out = boxPage(u.pathname, u.searchParams, { other: url('box-cdn.test', '').replace(/\/$/, '') });
         return send(res, out ? { ...out, cache: false } : { status: 404, type: 'text/plain; charset=utf-8', body: 'No such pattern.' }, u);
       }
       if (!site) return send(res, { status: 404, type: 'text/plain; charset=utf-8', body: 'No such site on the test server.' });

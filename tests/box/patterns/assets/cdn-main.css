@@ -1,0 +1,2 @@
+/* For patterns/cross-origin-import.html: another origin's sheet (no CORS), minified, importing its grid by a relative address with no space after @import. */
+@import"cdn-grid.css";.page{font:16px/1.4 -apple-system,system-ui,sans-serif;margin:0}.card{background:#fff;border:1px solid #889;border-radius:8px;padding:12px;margin:8px 0}

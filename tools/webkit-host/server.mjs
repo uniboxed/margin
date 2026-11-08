@@ -223,7 +223,8 @@ createServer((req, res) => {
   // The page patterns the box handles (tests/box/serve.js): /box/pattern/<name>, /box/ref/<name>?w=&h=.
   if (req.url.startsWith('/box/')) {
     const u = new URL(req.url, 'http://127.0.0.1');
-    const out = boxPage(u.pathname.slice('/box'.length), u.searchParams);
+    // Another origin for the same files (a CDN's, no CORS): localhost, where the pages are 127.0.0.1's.
+    const out = boxPage(u.pathname.slice('/box'.length), u.searchParams, { other: `http://localhost:${PORT}/box` });
     if (out) {
       res.setHeader('content-type', out.type);
       res.setHeader('cache-control', 'no-store');

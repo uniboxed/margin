@@ -3334,3 +3334,15 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Pattern:** `tests/box/patterns/page-css-variables.html`, failing in Chromium and the WebKit host before.
 - **An update:** pages open across it have the old copy's page script until they're loaded again, which Margin does as it updates (the `reloaded` scenario).
 
+### Another origin's style sheet copied whole, its imports in it (2026-11-08)
+
+- **Found by fit-check (anu.edu.au):** its CDN sheet imports Bootstrap's grid as `@import"../../libs/bootstrap/css/bootstrap-grid.min.css"` (minified, no space). Margin's readable copy of an unreadable sheet (`content/page-link.js`) made `url()` and `@import "…"` absolute, but its pattern wanted a space after `@import`. The address stayed relative, resolved against the page and wasn't found, and the grid was lost: the site's container 1172px wide where it makes it 960.
+- **Also:** an import of another origin's in the copy is itself unreadable, so its media queries stayed the window's, even with the address right.
+- **Now:**
+  - `shared/sheet-copy.js`: `absolute` takes `@import` with a space or not.
+  - `inlineImports` puts what a copy imports into it, fetched the same way (the background's `fetchStyle`): in place, inside `@media …` for a media list, their own imports in them, 3 levels and 20 imports at most, `@charset` dropped.
+  - If any import can't go in (not fetched, in a layer, under `supports()`), none does and they stay absolute `@import`s, since an import after a rule would be dropped.
+  - `page-link.js` uses both, and checks again after the inlining that the link is still what it copied.
+- **Patterns:** `cross-origin-import.html` (a second origin, `{{other}}` in a pattern's page: `box-cdn.test` in the e2e harness, `localhost` in the WebKit host; failing in both before). `async-stylesheet.html` (a sheet loaded media print, switched as it loads: passing before too, kept as a guard, and the first guess at springer.com's overflow, which turned out to be its own `overflow: hidden` on `<body>`). `serve.js` serves a pattern's files (`patterns/assets/`).
+- **Tests:** `tests/sheet-copy.test.js`.
+

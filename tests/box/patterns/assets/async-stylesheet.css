@@ -1,0 +1,7 @@
+/* For patterns/async-stylesheet.html: queries between each engine's box and its window
+   (the WebKit host's box is 932 wide in 1200, the e2e harness's 1172 in 1440). */
+.hero { display: block; }
+.hero > div { padding: 8px; border: 1px solid #889; background: #eef; }
+@media only screen and (min-width: 1050px) { .hero.a { display: grid; grid-template-columns: 400px 600px; } }
+@media only screen and (min-width: 1300px) { .hero.b { display: grid; grid-template-columns: 500px 726px; } }
+.wide { width: 50vw; height: 20px; background: #cde; }
