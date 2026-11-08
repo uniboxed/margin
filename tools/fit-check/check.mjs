@@ -160,20 +160,35 @@ const MEASURE = () => {
 // A load's page title, to tell whether both loads were served the same page.
 const a2t = (load) => load.m?.title ?? '';
 
-// One load of `url` in `page`: what came back, how long, what the page is like, its errors.
+// The page's main-thread time, in Chromium's own counters (tasks, and in them script, style and layout), from just
+// before the load to just before it's measured: what Margin adds to a page's work, not only to its wait. Taken the
+// same way both sides; a site that moves to another process counts from there.
+const MAIN_THREAD = { TaskDuration: 'task', ScriptDuration: 'script', RecalcStyleDuration: 'style', LayoutDuration: 'layout' };
+async function mainThread(cdp) {
+  const res = cdp ? await within(5_000, 'metrics', cdp.send('Performance.getMetrics')).catch(() => null) : null;
+  if (!res) return null;
+  const out = {};
+  for (const { name, value } of res.metrics) if (MAIN_THREAD[name]) out[MAIN_THREAD[name]] = Math.round(value * 1000);
+  return out.task == null ? null : out;
+}
+
+// One load of `url` in `page`: what came back, how long, how much work, what the page is like, its errors.
 async function load(page, url) {
   const errors = [];
   const onError = (e) => { if (errors.length < 20) errors.push(short(e)); };
   page.on('pageerror', onError);
   page.on('dialog', (d) => d.dismiss().catch(() => {}));
+  const cdp = await within(5_000, 'cdp', page.context().newCDPSession(page)).catch(() => null);
+  if (cdp) await within(5_000, 'cdp', cdp.send('Performance.enable')).catch(() => {});
   const t0 = Date.now();
-  const out = { ok: false, status: null, finalHost: null, ms: null, error: null, errors, m: null, box: null };
+  const out = { ok: false, status: null, finalHost: null, ms: null, cpu: null, error: null, errors, m: null, box: null };
   try {
     const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_MS });
     out.status = res?.status() ?? null;
     await page.waitForLoadState('load', { timeout: LOAD_MS }).catch(() => {});
     await sleep(SETTLE_MS);
     out.ms = Date.now() - t0;
+    out.cpu = await mainThread(cdp);
     // A site that sends the page on by a script after its load (live.com to outlook.live.com) takes the page being
     // measured with it: measured again once the next one has loaded, twice at most.
     for (let tries = 0; ; tries += 1) {
@@ -194,6 +209,7 @@ async function load(page, url) {
     out.error = short(e);
     out.ms = Date.now() - t0;
   }
+  if (cdp) await within(5_000, 'cdp', cdp.detach()).catch(() => {});
   return out;
 }
 
@@ -332,8 +348,8 @@ async function visit(world, site) {
     }
     return {
       rank: site.rank, domain: site.domain, verdict, flags, at: new Date().toISOString(), commit: COMMIT,
-      margin: { ok: mine.ok, status: mine.status, ms: mine.ms, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box: mine.box ? { root: mine.box.root, told: mine.box.told, window: mine.box.window, scroller: mine.box.scroller, overflowX: mine.box.overflowX } : null },
-      plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m, box: theirs.box ? { root: theirs.box.root, told: theirs.box.told, overflowX: theirs.box.overflowX } : null },
+      margin: { ok: mine.ok, status: mine.status, ms: mine.ms, cpu: mine.cpu, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box: mine.box ? { root: mine.box.root, told: mine.box.told, window: mine.box.window, scroller: mine.box.scroller, overflowX: mine.box.overflowX } : null },
+      plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms, cpu: theirs.cpu, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m, box: theirs.box ? { root: theirs.box.root, told: theirs.box.told, overflowX: theirs.box.overflowX } : null },
       rules: broken, samePage,
       slot: { left: slot.left, top: slot.top, right: slot.right, bottom: slot.bottom, width, height },
       look, shots: keepShots,
