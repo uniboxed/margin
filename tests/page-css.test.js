@@ -71,7 +71,9 @@ test('the body: nothing the placeholders share, its width in a sheet of its own,
   const box = { left: 260, top: 8, right: 8, bottom: 8 };
   assert.doesNotMatch(boxRules(BOX_ROOT, box), /body/, 'the page\'s world reads what the page says with its sheets off: a placeholder can\'t be in the way');
   assert.doesNotMatch(boxCss(box), /max-width: none !important; box-sizing: border-box !important; height/);
-  assert.match(boxCss(box), /position: relative !important; inset: auto !important/);
+  assert.match(boxCss(box), /position: relative !important; top: auto !important; bottom: auto !important;/, 'a scroll lock\'s top mustn\'t move the scroller');
+  assert.doesNotMatch(boxCss(box), /inset: auto/, 'a page\'s own left or right is read (tests/box/patterns/body-centred-by-offset.html)');
+  assert.match(bodyFitCss(), /left: auto !important; right: auto !important;/, 'and held still once it\'s given back as padding');
   assert.match(bodyFitCss(), /width: auto !important; max-width: none !important/);
   assert.match(bodyFitCss(), /box-sizing: border-box !important; height: 100% !important;/);
   assert.match(bodyFitCss({ grows: true }), /box-sizing: border-box !important; height: auto !important;/);

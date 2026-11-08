@@ -83,6 +83,13 @@ test('the width equation: right to left takes what\'s over on the left', () => {
   assert.deepEqual(ltr.margins, [0, 490, 0, 10]);
 });
 
+test('the width equation: a <body> moved by its own offset (left: 50%, a negative margin) as a whole', () => {
+  // xkcd.com: absolute, left: 50%, width 780, margin-left -390: in a box 1172 wide, its column at 196.
+  const out = resolve(said(['0px', 'auto', '0px', '-390px', ...NONE, '780px', '0px', 'none', 'auto'], { whole: 1172, offset: '586px' }));
+  assert.deepEqual(out.margins, [0, 196, 0, 196]);
+  assert.deepEqual(resolve(said(['8px', '8px', '8px', '8px', ...NONE, 'auto', '0px', 'none', 'auto'], { offset: '0px' })).margins, [8, 8, 8, 8], 'no offset: as before');
+});
+
 test('the width equation: in <body>\'s own pixels under zoom, and a top margin collapsing', () => {
   assert.deepEqual(resolve(said(['0px', 'auto', '0px', 'auto', ...NONE, '300px', '0px', 'none', 'auto'], { zoom: 2 })).margins, [0, 100, 0, 100], 'the whole is 500 of its pixels');
   assert.equal(resolve(said(['10px', '0px', '0px', '0px', ...NONE, 'auto', '0px', 'none', 'auto'], { meets: true, collapses: ['24px'] })).margins[0], 0);

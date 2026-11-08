@@ -97,6 +97,9 @@ export function startBody(ctx) {
       boxSizing: seen.boxSizing,
       direction: style.direction,
       column: /flex/.test(style.display) && style.flexDirection.startsWith('column'),
+      // Where the page moves <body> sideways by its own offset (`left: 50%`, read with the fit sheet off: the used
+      // value, `right` counted in): given back with its margins (shared/body-fit.js resolve).
+      offset: style.left,
       plain: whole > 0 && computed(html).display === 'block' && block && [...lengths, ...collapses].every((length) => settled(length, parse)),
     };
   }
@@ -112,6 +115,9 @@ export function startBody(ctx) {
       const spare = parseFloat(computed(ctx.html).width) / said.zoom - margins[1] - margins[3] - (parseFloat(style.width) || 0) - inner;
       if (spare > 0.5 && style.direction !== 'rtl') margins[1] += spare;
     }
+    const shift = parseFloat(style.left) || 0; // the page's own offset sideways (readSaid `offset`)
+    margins[3] += shift;
+    margins[1] -= shift;
     margins[0] = topMargin(margins[0], said, paddings[0], parseFloat(style.width) || 0, parse);
     return { sized: wide, grows: growsIn(said), column: said.column, margins, paddings };
   }

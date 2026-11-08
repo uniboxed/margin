@@ -79,7 +79,7 @@ export function bodyFitCss({ grows = false, column = false, held = false } = {})
   const height = grows ? 'height: auto !important;' : 'height: 100% !important;';
   return `@media screen {
     html > body:where(:first-of-type) { min-height: 100% !important; max-height: 100% !important; }
-    ${FITTED_BODY} { width: auto !important; max-width: none !important; box-sizing: border-box !important; ${height} }
+    ${FITTED_BODY} { left: auto !important; right: auto !important; width: auto !important; max-width: none !important; box-sizing: border-box !important; ${height} }
     ${grows && column ? `${FITTED_BODY} > * { flex-shrink: 0 !important; flex-basis: auto !important; } ${STILL} > * { ${NO_TRANSITION} }` : ''}
     ${held ? `${STILL} * { ${NO_TRANSITION} }` : ''}
   }`;
@@ -126,9 +126,11 @@ export function boxCss(box, zoom = 1, clipY = true) {
       transform: none !important; width: ${100 / zoom}vw !important; height: ${100 / zoom}vh !important;
       --margin-left: 0px; --margin-top: 0px; --margin-shift-x: 0px; --margin-shift-y: 0px; --margin-out-r: 0px; --margin-out-b: 0px;
     }
-    /* inset: a page's scroll lock (fixed, top: -Ypx) mustn't move the scroller. */
+    /* top and bottom: a page's scroll lock (fixed, top: -Ypx) mustn't move the scroller. Not left and right: a page that
+       places <body> by its own offset (xkcd.com: absolute, left: 50%, a negative margin) has it read and given back as
+       padding (content/page/box-body.js), and the fit sheet holds the scroller still (bodyFitCss). */
     html > body:where(:first-of-type) {
-      position: relative !important; inset: auto !important;
+      position: relative !important; top: auto !important; bottom: auto !important;
       scroll-padding: inherit !important; scroll-behavior: inherit !important; scroll-snap-type: inherit !important; overscroll-behavior: inherit !important;
     }
     /* Nothing said: html clips, and a page's own value shows. A page's overflow-x: hidden (auto, scroll) alone turns

@@ -1,0 +1,23 @@
+<!--
+pattern: a <body> placed by its own offset (absolute or relative, `left: 50%` and a negative margin) sits where the page puts it
+from: xkcd.com (fit-check round 1): `body { position: absolute; left: 50%; width: 780px; margin-left: -390px }`; in the box the page's `left` was dropped, so its column started 390px left of the box
+handled-by: content/page/box-body.js (readSaid: the page's offset read with its size and margins), shared/body-fit.js (resolve), shared/page-box.js (bodyFitCss)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>body-centred-by-offset</title>
+<style>
+  html { background: #96a8c8; }
+  body { position: absolute; left: 50%; width: 600px; margin-left: -300px; margin-top: 8px; font: 16px/1.4 -apple-system, system-ui, sans-serif; text-align: center; }
+  .panel { background: #fff; border: 2px solid #333; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  #comic { height: 240px; }
+</style>
+</head>
+<body>
+<div class="panel" id="masthead">A webcomic of romance, sarcasm, math, and language</div>
+<div class="panel" id="comic"><h2 id="title">Simulation</h2><p>‹ Prev · Random · Next ›</p></div>
+<div class="panel" id="links">Archive · What If? · About</div>
+</body>
+</html>
