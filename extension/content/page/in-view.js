@@ -167,10 +167,14 @@ export function startInView(box) {
       }
     }
 
-    Object.defineProperty(self, 'root', { get: () => options?.root ?? null });
-    for (const name of OWN_GETTERS) if (name in inWindow) Object.defineProperty(self, name, { get: () => inWindow[name] });
+    // Enumerable, as the browser's are on its prototype: a page that lists an observer's properties to wrap them
+    // (Angular's zone.js, `for…in` over a sample) must find these, and an own one that isn't hides the browser's
+    // (gog.com: `observe is not a function`). Pattern: tests/box/patterns/observer-wrapped.html.
+    Object.defineProperty(self, 'root', { enumerable: true, get: () => options?.root ?? null });
+    for (const name of OWN_GETTERS) if (name in inWindow) Object.defineProperty(self, name, { enumerable: true, get: () => inWindow[name] });
     Object.defineProperties(self, {
       observe: {
+        enumerable: true,
         value(target) {
           inWindow.observe(target);
           if (targets.has(target)) return;
@@ -180,6 +184,7 @@ export function startInView(box) {
         },
       },
       unobserve: {
+        enumerable: true,
         value(target) {
           inWindow.unobserve(target);
           inBody?.unobserve(target);
@@ -187,6 +192,7 @@ export function startInView(box) {
         },
       },
       disconnect: {
+        enumerable: true,
         value() {
           inWindow.disconnect();
           inBody?.disconnect();
@@ -195,6 +201,7 @@ export function startInView(box) {
         },
       },
       takeRecords: {
+        enumerable: true,
         value: () => [...sort(inBody?.takeRecords() ?? [], true), ...sort(inWindow.takeRecords(), false)],
       },
     });

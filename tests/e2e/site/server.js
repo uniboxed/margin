@@ -59,6 +59,14 @@ export async function startSite({ port = 0, verbose = !!process.env.MARGIN_E2E_V
     try {
       if (hostname === 'box.test' || hostname === 'box-cdn.test') { // box-cdn.test: another origin for the same files
         const out = boxPage(u.pathname, u.searchParams, { other: url('box-cdn.test', '').replace(/\/$/, '') });
+        if (out?.parts?.length > 1) { // a page that arrives in parts (tests/box/serve.js partsOf)
+          res.writeHead(200, { 'content-type': out.type, 'cache-control': 'no-store' });
+          for (const part of out.parts) {
+            if (part.wait) await new Promise((r) => setTimeout(r, part.wait));
+            res.write(part.text);
+          }
+          return res.end();
+        }
         return send(res, out ? { ...out, cache: false } : { status: 404, type: 'text/plain; charset=utf-8', body: 'No such pattern.' }, u);
       }
       if (!site) return send(res, { status: 404, type: 'text/plain; charset=utf-8', body: 'No such site on the test server.' });

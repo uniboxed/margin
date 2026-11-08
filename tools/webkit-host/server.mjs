@@ -228,7 +228,15 @@ createServer((req, res) => {
     if (out) {
       res.setHeader('content-type', out.type);
       res.setHeader('cache-control', 'no-store');
-      return res.end(out.body);
+      if (!(out.parts?.length > 1)) return res.end(out.body);
+      // A page that arrives in parts (tests/box/serve.js partsOf).
+      let at = 0;
+      const next = () => {
+        const part = out.parts[at++];
+        if (!part) return res.end();
+        setTimeout(() => { res.write(part.text); next(); }, part.wait);
+      };
+      return next();
     }
   }
   const match = /^\/p\/(\w+)/.exec(req.url);

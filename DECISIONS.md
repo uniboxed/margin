@@ -3346,3 +3346,18 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Patterns:** `cross-origin-import.html` (a second origin, `{{other}}` in a pattern's page: `box-cdn.test` in the e2e harness, `localhost` in the WebKit host; failing in both before). `async-stylesheet.html` (a sheet loaded media print, switched as it loads: passing before too, kept as a guard, and the first guess at springer.com's overflow, which turned out to be its own `overflow: hidden` on `<body>`). `serve.js` serves a pattern's files (`patterns/assets/`).
 - **Tests:** `tests/sheet-copy.test.js`.
 
+### The box's IntersectionObserver lists its methods, as the browser's does (2026-11-08)
+
+- **Found by fit-check (gog.com):** 293 errors through Margin, `this.viewportEnterObserver.observe is not a function`. gog is an Angular app, and zone.js replaces `IntersectionObserver` with a wrapper whose prototype gets a method for each function it finds listing a sample instance with `for…in`. The box's stand-in (`content/page/in-view.js`) had `observe`, `unobserve`, `disconnect` and `takeRecords` as own properties that weren't enumerable, which hid the browser's (enumerable, on its prototype) from `for…in`. The wrapper had no `observe`, and nothing Angular watched came into view.
+- **Now:** the stand-in's methods and getters are enumerable. gog's Margin-only errors went from 264 to 1.
+- **Pattern:** `tests/box/patterns/observer-wrapped.html` (zone.js's patchClass, in the page), failing before.
+- **Also:**
+  - A pattern's page can arrive in parts (`<!--pause:N-->`, `serve.js partsOf`; both servers send them apart).
+  - `early-head-script.html` checks that a script early in `<head>` sees the box.
+  - The header check now takes the header's own end, so a comment quoted inside a header (which ends it early) fails.
+- **Not found yet:**
+  - simpli.fi: React's hydration errors (#418), through Margin only, in Chromium and the WebKit host. The markup before hydration is the same, and no one shim switched off makes them go. A guess at the page script's start (looking again for each node in `<head>`) made no difference and was taken back.
+  - cxense.com: blank, because Framer's script writes `translateY(-1000px)` on its fixed hero through Margin and not plain.
+  - stuff.co.nz: the site's own "something went wrong".
+  - 1und1.de: didn't load through Margin.
+

@@ -9,6 +9,8 @@
 //                            sheet, a script), as a site's own files are
 // In a pattern's page, `{{other}}` is another origin serving the same files (a CDN's,
 // with no CORS): `{{other}}/asset/<file>`. Each server says what it is (`other`).
+// `<!--pause:N-->` in a pattern's page: the server sends what's before it, then the
+// rest N ms later, as a slow site's page arrives in parts (`parts`).
 //
 // A pattern's header is the HTML comment its file starts with, a field a line:
 //   pattern:    what pages do, and what the box keeps true for them, in a line (required)
@@ -52,6 +54,20 @@ export function parseHeader(html) {
   return { title: fields.pattern, from: fields.from, handledBy: fields['handled-by'] || '', note: fields.note || '', settle, allow, engines };
 }
 
+/** A page in the parts its pauses make: [{ text, wait }], each sent `wait` ms after the one before. @param {string} body */
+export function partsOf(body) {
+  const parts = [];
+  let wait = 0;
+  let from = 0;
+  for (const m of body.matchAll(/<!--pause:(\d{1,4})-->/g)) {
+    parts.push({ text: body.slice(from, m.index), wait });
+    wait = Math.min(Number(m[1]), 5000);
+    from = m.index + m[0].length;
+  }
+  parts.push({ text: body.slice(from), wait });
+  return parts;
+}
+
 /** Every pattern, by name (its file's), in name order. */
 export function listPatterns() {
   return readdirSync(PATTERNS_DIR).filter((f) => f.endsWith('.html')).sort().map((f) => {
@@ -71,7 +87,9 @@ export function listPatterns() {
 export function boxPage(path, query, { other = '' } = {}) {
   const p = /^\/pattern\/([a-z0-9-]+)$/.exec(path);
   if (p && NAME.test(p[1])) {
-    try { return { type: 'text/html; charset=utf-8', body: readFileSync(join(PATTERNS_DIR, `${p[1]}.html`), 'utf8').replaceAll('{{other}}', other) }; } catch { return null; }
+    let body;
+    try { body = readFileSync(join(PATTERNS_DIR, `${p[1]}.html`), 'utf8').replaceAll('{{other}}', other); } catch { return null; }
+    return { type: 'text/html; charset=utf-8', body, parts: partsOf(body) };
   }
   const a = /^\/asset\/([^/]+)$/.exec(path);
   if (a && ASSET.test(a[1])) {
