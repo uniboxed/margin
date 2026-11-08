@@ -3316,3 +3316,14 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - Neither runs in a harness.
 - **Tests:** `tools/app-tests/tests.swift` checks `handsKeyboardBack` and `relayTarget`. The app tests can't press a real panel (nothing is shown or made key there), so the press itself is to be checked in Safari.
 
+### A <body> placed by its own offset sits where the page puts it (2026-11-08)
+
+- **Found by fit-check (xkcd.com):** `body { position: absolute; left: 50%; width: 780px; margin-left: -390px }`. In the box the column started 390px left of the box, the comic cut off.
+- **Why:** the box's `<body>` rule had `inset: auto !important`, so that a scroll lock's `top: -Ypx` couldn't move the scroller. It also took away the page's `left: 50%`, keeping only the width and the negative margin, which the box gave back as `margin-left: -390px`.
+- **Now:**
+  - Only `top` and `bottom` are held by the box's `<body>` rule (scroll locks).
+  - The page's sideways offset is read with its size and margins (`readSaid` `offset`: `left`'s used value, with the fit sheet off, `right` counted in). It's given back with the margins (`shared/body-fit.js resolve`, `readLaidOut`): what it adds on the left comes off the right.
+  - The fit sheet holds `left` and `right` at `auto`, as it holds the width.
+- **Pattern:** `tests/box/patterns/body-centred-by-offset.html`, failing in Chromium and the WebKit host before.
+- **Tests:** `body-fit` (xkcd's numbers: its column at 196 in 1172), `page-css` (top and bottom held, not left and right; the fit sheet's left and right). The WebKit host's `lock` and the other box scenarios pass as before.
+

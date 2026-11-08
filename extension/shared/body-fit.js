@@ -71,6 +71,11 @@ export function resolve(said, parse) {
   else if (Number.isNaN(right)) margins[1] = Math.max(0, free - left);
   else if (direction === 'rtl') margins[3] = Math.max(left, free - right);
   else margins[1] = Math.max(right, free - left);
+  // The page's own offset sideways (`left: 50%` on a positioned <body>, read as used: `offset`) moves <body> as a whole:
+  // what it adds on the left comes off the right.
+  const shift = said.offset ? pixels(said.offset, whole, parse) || 0 : 0;
+  margins[3] += shift;
+  margins[1] -= shift;
   margins[0] = topMargin(margins[0], said, paddings[0], used - extra, parse);
   return { sized: isSized(said), grows: growsIn(said), column, margins, paddings };
 }
