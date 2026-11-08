@@ -3292,3 +3292,17 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
 - **Known and let off:** `scroll-lock`. While a lock (`body { position: fixed; top: -300px }`) is on, the page is told it's still scrolled 300px (plain: 0), because Margin keeps `<body>` the scroller and doesn't let the lock move it. What's drawn is the same.
 - **Tests:** `tests/box-patterns.test.js` (unit), `tests/e2e/box-patterns.test.js` (10 patterns, Chromium), the WebKit host's `box-patterns` (10), `page-css` and `build` (the weighted selectors).
 
+### The page box split by what each part does (2026-11-08)
+
+- **Tirth:** the box's code should be easier to read and maintain.
+- **Now:** `content/page/box.js` was one 810-line function with about 60 functions sharing its variables. It's now the box itself (placing and moving it, on and off, the bridge) and five parts it starts:
+  - `box-own-sheets.js`: Margin's sheets, kept adopted.
+  - `box-locks.js`: `<body>`'s scrolling, the page's scroll locks, the background.
+  - `box-body.js`: one read of what the page says about `<body>`, and applying it.
+  - `box-chain.js`: the first children whose top margins count.
+  - `box-watch.js`: when to read again.
+  - `shared/body-fit.js`: the arithmetic, pure and tested in node.
+- **How the parts share:** what more than one part reads or writes (`html`, `sized`, `lastSaid`, `lastPage`, `pageNew`, `plainPage`, `refused`) is on one `ctx`, with each part's functions the others call. Everything else stays inside its part. The browser's own functions are still taken before `viewport.js` speaks for the box, and everything is set up in the same order as before.
+- **Not changed:** what any of it does. The code moved as it was, its comments with it. The box's functions are plain calls through `ctx`, so nothing outside the box saw a difference.
+- **Tests:** `tests/body-fit.test.js` (new: pixels, collapsing, the width equation for plain, centred, max-width and padding, right to left, zoomed). `box-patterns` in both engines, `tests/e2e/page-box.test.js`, and the WebKit host's box scenarios (`box`, `hidden-box`, `toggle`, `undrawn`, `csp`, `lock`, `late-body`, `read-limits`, `late-reads`, `read-shape`, `body-size`, `body-background`, `in-view`, `answers`, `keys`, `history`, `top-layer`, `linked-sheet`, `first-paint`, `first-paint-off`) pass as they did. Then the full gate.
+
