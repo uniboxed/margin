@@ -677,12 +677,19 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             state = "the app's hot keys were off: no app in front"
         } else if !linkedPids().values.contains(where: { $0.contains(apps.frontPid!) }) {
             state = "the app's hot keys were off: the front app isn't a linked browser"
-        } else if front == nil {
-            state = "the app's hot keys were off: the front window has no overlay shown"
         } else {
-            state = "the app's hot keys were off"
+            state = "the app's hot keys were off: \(keysOffReason(front: front))"
         }
         Diagnostics.note("\(at): \(command) reached the extension (\(from)): \(state)")
+    }
+
+    // Why the keys are off with a linked browser in front (`front`: the overlay over its front window, if any).
+    private func keysOffReason(front: OverlayController?) -> String {
+        guard let front else {
+            let shown = overlays.values.filter(\.isShown).count
+            return "the front window has no overlay shown (\(shown) shown elsewhere; the front window read: \(lastFrontWindow.map(String.init) ?? "none"))"
+        }
+        return "the overlay over the front window (\(front.key)) doesn't hold them"
     }
 
     // The copy didn't come back in time: its overlays go.
@@ -1553,14 +1560,29 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         return overlays.values.first { $0.isShown && $0.aboveWindow == top.number }
     }
 
+    // The overlay that last had the keys, and when: a moment with none matched over the front window (a window
+    // being made or moved, a Space settling) keeps them for `keysGrace` while its browser stays in front, so a press
+    // then is still Margin's, not the page's (Tirth, 2026-11-08: "sometimes … overridden by the site").
+    private var keysOverlay: (key: WindowKey, pid: pid_t, at: TimeInterval)?
+    static let keysGrace: TimeInterval = 1.0
+    // Why the keys went off, last logged (logged as it changes, a linked browser in front).
+    private var keysOffWhy: String?
+
     private func updateKeys(list: [ServerWindow], allPids: Set<pid_t>) {
         // (A read missing the front window: its overlay kept unseen over it still has the keys, frontOverlay.)
-        let front = frontOverlay(list: list)
-        // (Not while its page is in full screen: ⌘T and the rest are the page's then.)
-        let has = front.map { !$0.pageFullscreen } ?? false
+        let now = Diagnostics.now()
+        var front = frontOverlay(list: list)
+        if let f = front { keysOverlay = (f.key, f.browserPid, now) }
+        else if let last = keysOverlay, apps.frontPid == last.pid, now - last.at < Shell.keysGrace, let o = overlays[last.key], o.isShown { front = o }
+        let has = front != nil
         // The front window's copy's combinations (each profile's Settings may differ).
         // (⇧⌘L too with Safari's: its own sidebar key, Margin's sidebar's there: ShellSafariSidebar.swift.)
-        if let front { shortcuts.rebind(ShortcutSet.bindings(from: links[front.key.link]?.keys ?? [:], safari: front.key.link.hasPrefix("safari:"))) }
+        // While its page is in full screen (a video), only the tab and space keys: ⌘T and the rest are the page's then.
+        if let front {
+            var bindings = ShortcutSet.bindings(from: links[front.key.link]?.keys ?? [:], safari: front.key.link.hasPrefix("safari:"))
+            if front.pageFullscreen { bindings = bindings.filter { $0.value.repeats } }
+            shortcuts.rebind(bindings)
+        }
         // The edge stop: the front window's overlay shown over a full-screen Safari window.
         let fence = front.flatMap { o -> EdgeStop.Fence? in
             guard options.edgeStop, o.key.link.hasPrefix("safari:"), o.windowFullScreen, !o.pageFullscreen, let window = o.windowFrame else { return nil }
@@ -1575,9 +1597,16 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
         let ownPid = ProcessInfo.processInfo.processIdentifier
         let midSwitch = switcher.keysMidSwitch && apps.frontPid.map { allPids.contains($0) || $0 == ownPid } == true
         shortcuts.set(active: ShortcutSet.active(frontPid: apps.frontPid, linkedPids: allPids, frontWindowHasOverlay: has) || midSwitch)
+        // Off with a linked browser in front: why, once (a press then goes to the page: the copy's own keys take it there).
+        let why = shortcuts.isActive || !(apps.frontPid.map(allPids.contains) ?? false) ? nil : keysOffReason(front: front)
+        if why != keysOffWhy {
+            if let why { Diagnostics.note("Margin's keys are the browser's for now: \(why)") }
+            else if keysOffWhy != nil, shortcuts.isActive { Diagnostics.note("Margin's keys are the app's again") }
+            keysOffWhy = why
+        }
         shortcuts.setQuitGuard(active: Shell.guardsQuit(browserInFront: apps.frontPid.map(allPids.contains) == true,
                                                         parked: parking?.entries.count ?? 0, quitting: quittingBrowser,
-                                                        asks: has && options.asksBeforeQuit()))
+                                                        asks: has && front?.pageFullscreen != true && options.asksBeforeQuit()))
     }
 
     /// ⌘Q (or ⌥⌘Q) posted to a process, a key press and release (Accessibility lets Margin post events); if it

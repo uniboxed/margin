@@ -832,10 +832,11 @@ export const handlers = {
   // background already handed the tab off as it was created.
   // An address chosen on Margin's new-tab page, drawn by Margin.app's
   // overlay (its launcher): opened in that tab, as the page's own does.
-  // A key Margin.app holds while it draws the UI (⌘T), heard by a page
-  // anyway: nothing visible happens; the app is told, for its diagnostics.
+  // A key Margin.app holds while it draws the UI, heard by a page anyway
+  // (⌘T: left to the app; a tab or space key: done here, as the page asked
+  // with `navigate`): the app is told, for its log (why its keys were off).
   async appKeyHeard({ command }, sender) {
-    console.info(`[margin] ${command} heard in a page while Margin.app draws the UI: left to the app`);
+    console.info(`[margin] ${command} heard in a page while Margin.app draws the UI`);
     appLink.push(sender?.tab?.windowId ?? null, { type: 'keyHeard', command: String(command), from: 'page' });
   },
   // A button of one of Margin's notices, chosen in Margin.app's overlay
