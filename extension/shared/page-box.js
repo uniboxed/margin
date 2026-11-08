@@ -3,6 +3,7 @@
 // page, and <body> scrolls inside it. Plain text, shared by the page-world
 // script (content/page/box.js) and the themes' first-paint files
 // (firstPaintCss, below; scripts/build.js), so the two can't drift.
+// What the box promises, and a case for each edge it handles: tests/box/README.md.
 
 // <html>'s rules. `selector` is <html>'s. Under @media screen: paper has no box.
 // `transform-origin`: the pinch's scale starts at the box's corner. `zoom`: the
@@ -14,6 +15,12 @@
 // An inset is a number of pixels, or a CSS length (the first paint's
 // variables, below), so one sheet fits any insets.
 const len = (v) => (typeof v === 'number' ? `${v}px` : v);
+// The weight of five ids, for Margin's rules a page's mustn't beat: a page's
+// `!important` on a class or an id loses to it (`.w-100 { width: 100% !important }`
+// on <html>, islonline.net: the box went back to the window's width).
+const WEIGHT = ':not(#m#m#m#m#m)';
+/** <html>, as the box's own rules name it: outweighing whatever a page says about it. */
+export const BOX_ROOT = `html${WEIGHT}`;
 const neg = (v) => (typeof v === 'number' ? `${-v}px` : `calc(-1 * ${v})`);
 const sum = (a, b) => (typeof a === 'number' && typeof b === 'number' ? `${a + b}px` : `(${len(a)} + ${len(b)})`);
 /** @param {string} selector @param {{ left: number | string, top: number | string, right: number | string, bottom: number | string }} box @param {number} [zoom] */
@@ -53,7 +60,6 @@ export const FITTED_BODY = `${BODY}:where(${none(READ_ELEMENT)})`;
 // which would cancel a transition already running. Five ids of weight: a
 // page's `html body#b { transition: all 1s !important }` mustn't start one. Its
 // pseudo-elements with it, which can inherit what a read changes, at no cost.
-const WEIGHT = ':not(#m#m#m#m#m)';
 const STILL = `${BODY}:not(${none(HOLD_ELEMENT)})${WEIGHT}`;
 const NO_TRANSITION = 'transition-duration: 0s !important; transition-delay: 0s !important;';
 
@@ -111,12 +117,12 @@ export function boxCss(box, zoom = 1, clipY = true) {
   return `${NO_BOX_CSS}
   @media screen {
     :root { --margin-dw: ${dw}px; --margin-dh: ${dh}px; }
-    ${boxRules('html', scaled, zoom)}
+    ${boxRules(BOX_ROOT, scaled, zoom)}
     /* <html> itself in full screen (YouTube's video: Tirth, 2026-11-07, the video in the box's place, a strip on the
        left): the whole window. The browser's own full-screen rules skip the root (:not(:root):fullscreen), so the
        box's would stay; a <body> or element in full screen is the browser's, its rules outweighing these. <body>
-       stays the scroller, as Margin's world says (content/page/viewport.js). */
-    html:fullscreen {
+       stays the scroller, as Margin's world says (content/page/viewport.js). One step heavier than BOX_ROOT. */
+    ${BOX_ROOT}:fullscreen {
       transform: none !important; width: ${100 / zoom}vw !important; height: ${100 / zoom}vh !important;
       --margin-left: 0px; --margin-top: 0px; --margin-shift-x: 0px; --margin-shift-y: 0px; --margin-out-r: 0px; --margin-out-b: 0px;
     }
@@ -235,7 +241,7 @@ export const firstPaintRoot = (id) => `html[${FIRST_PAINT_MARK}="${id}"]`;
  * @param {string} id @param {string} look
  */
 export function firstPaintCss(id, look) {
-  return `/* ${id}'s first paint (scripts/build.js, from shared/page-box.js and themes/${id}/first-paint.css). */\n:root { --margin-fp: ${id}; }\n@media screen {\n  ${boxRules(firstPaintRoot(id), LAYOUT_BOX)}\n}\n${look}`;
+  return `/* ${id}'s first paint (scripts/build.js, from shared/page-box.js and themes/${id}/first-paint.css). */\n:root { --margin-fp: ${id}; }\n@media screen {\n  ${boxRules(`${firstPaintRoot(id)}${WEIGHT}`, LAYOUT_BOX)}\n}\n${look}`;
 }
 // A side's variable as computed: its places' sum, unworked ("calc(0px + 4px +
 // …)"), or a plain value. Every term is added, so its pixels add up.

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksSize, declaredNames, hasUnits, shiftQuery, shiftStyle, shiftUnits } from '../extension/shared/page-css.js';
 import { readFileSync } from 'node:fs';
-import { FITTED_BODY, HOLD_ELEMENT, bodyBackgroundCss, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules } from '../extension/shared/page-box.js';
+import { FITTED_BODY, HOLD_ELEMENT, bodyBackgroundCss, NO_BOX_CSS, READ_ELEMENT, SAID_CSS, STILL_CSS, bodyFitCss, boxCss, boxRules, BOX_ROOT } from '../extension/shared/page-box.js';
 
 test('a query about the window\'s size moves by the room the page doesn\'t have', () => {
   assert.equal(shiftQuery('(max-width: 900px)', 268, 16), '(max-width: 1168px)');
@@ -56,18 +56,20 @@ test('what isn\'t a length stays: addresses, strings, names', () => {
 test('the box: the same rules in the page and the placeholder, under @media screen, and its variables stay defined', () => {
   const box = { left: 260, top: 8, right: 8, bottom: 8 };
   const css = boxCss(box);
-  assert.ok(css.includes(boxRules('html', box)));
+  assert.ok(css.includes(boxRules(BOX_ROOT, box)));
   assert.match(css, /--margin-dw: 268px; --margin-dh: 16px/);
   assert.match(css, /transform: translate\(260px, 8px\) !important/);
   assert.match(css, /width: calc\(100vw - 268px\) !important; height: calc\(100vh - 16px\) !important/);
-  assert.ok(css.indexOf('@media screen') < css.indexOf(boxRules('html', box)));
+  assert.ok(css.indexOf('@media screen') < css.indexOf(boxRules(BOX_ROOT, box)));
   assert.ok(css.startsWith(NO_BOX_CSS), 'print and no box: 0');
-  assert.doesNotMatch(boxRules('html', box), /overflow:/, 'a page\'s own overflow stays readable (content/page/box.js)');
+  assert.doesNotMatch(boxRules(BOX_ROOT, box), /overflow:/, 'a page\'s own overflow stays readable (content/page/box.js)');
+  assert.ok(css.includes(`html:not(#m#m#m#m#m) {`), 'the box\'s <html> outweighs a page\'s `.w-100 { width: 100% !important }` (tests/box/cases/html-class-width.html)');
+  assert.ok(css.includes(`html:not(#m#m#m#m#m):fullscreen {`), '<html> in full screen outweighs the box\'s <html>');
 });
 
 test('the body: nothing the placeholders share, its width in a sheet of its own, and a body that grows stays auto', () => {
   const box = { left: 260, top: 8, right: 8, bottom: 8 };
-  assert.doesNotMatch(boxRules('html', box), /body/, 'the page\'s world reads what the page says with its sheets off: a placeholder can\'t be in the way');
+  assert.doesNotMatch(boxRules(BOX_ROOT, box), /body/, 'the page\'s world reads what the page says with its sheets off: a placeholder can\'t be in the way');
   assert.doesNotMatch(boxCss(box), /max-width: none !important; box-sizing: border-box !important; height/);
   assert.match(boxCss(box), /position: relative !important; inset: auto !important/);
   assert.match(bodyFitCss(), /width: auto !important; max-width: none !important/);
@@ -114,19 +116,21 @@ test('<html> clips both ways, and only sideways while the page says its own over
 test('<html> itself in full screen (YouTube\'s video) is the whole window, not the box', () => {
   const box = { left: 260, top: 8, right: 8, bottom: 8 };
   const css = boxCss(box);
-  const rule = css.slice(css.indexOf('html:fullscreen {'), css.indexOf('}', css.indexOf('html:fullscreen {')));
+  const head = `${BOX_ROOT}:fullscreen {`;
+  const rule = css.slice(css.indexOf(head), css.indexOf('}', css.indexOf(head)));
   assert.ok(rule.length > 0, 'a rule for it');
   assert.match(rule, /transform: none !important/);
   assert.match(rule, /width: 100vw !important; height: 100vh !important/);
   assert.match(rule, /--margin-left: 0px/);
-  // More specific than the box's own `html` rule, both !important: it wins.
-  assert.ok(css.indexOf('html:fullscreen {') > css.indexOf('transform: translate('), 'after the box\'s rule too');
-  assert.match(boxCss(box, 2), /html:fullscreen \{\s*transform: none !important; width: 50vw !important; height: 50vh !important/, 'in the page\'s zoomed pixels');
+  // More specific than the box's own <html> rule (BOX_ROOT), both !important: it wins.
+  assert.ok(css.indexOf(head) > css.indexOf('transform: translate('), 'after the box\'s rule too');
+  const zoomed = boxCss(box, 2);
+  assert.match(zoomed.slice(zoomed.indexOf(head) + head.length), /^\s*transform: none !important; width: 50vw !important; height: 50vh !important/, 'in the page\'s zoomed pixels');
 });
 
 test('the box follows a page\'s zoom on <html>', () => {
   const box = { left: 300, top: 10, right: 10, bottom: 10 };
-  assert.ok(boxRules('html', box).includes('calc(100vw - 310px)'), 'with no zoom, as ever');
+  assert.ok(boxRules(BOX_ROOT, box).includes('calc(100vw - 310px)'), 'with no zoom, as ever');
   const zoomed = boxCss(box, 2);
   assert.ok(zoomed.includes('calc(50vw - 155px)'));
   assert.ok(zoomed.includes('translate(150px, 5px)'));
