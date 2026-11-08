@@ -112,6 +112,14 @@ export function boxCss(box, zoom = 1, clipY = true) {
   @media screen {
     :root { --margin-dw: ${dw}px; --margin-dh: ${dh}px; }
     ${boxRules('html', scaled, zoom)}
+    /* <html> itself in full screen (YouTube's video: Tirth, 2026-11-07, the video in the box's place, a strip on the
+       left): the whole window. The browser's own full-screen rules skip the root (:not(:root):fullscreen), so the
+       box's would stay; a <body> or element in full screen is the browser's, its rules outweighing these. <body>
+       stays the scroller, as Margin's world says (content/page/viewport.js). */
+    html:fullscreen {
+      transform: none !important; width: ${100 / zoom}vw !important; height: ${100 / zoom}vh !important;
+      --margin-left: 0px; --margin-top: 0px; --margin-shift-x: 0px; --margin-shift-y: 0px; --margin-out-r: 0px; --margin-out-b: 0px;
+    }
     /* inset: a page's scroll lock (fixed, top: -Ypx) mustn't move the scroller. */
     html > body:where(:first-of-type) {
       position: relative !important; inset: auto !important;

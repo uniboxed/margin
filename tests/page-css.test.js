@@ -111,6 +111,19 @@ test('<html> clips both ways, and only sideways while the page says its own over
   assert.doesNotMatch(sideways, /:where\(html\) \{ overflow: clip/, 'no clip up and down to turn into hidden');
 });
 
+test('<html> itself in full screen (YouTube\'s video) is the whole window, not the box', () => {
+  const box = { left: 260, top: 8, right: 8, bottom: 8 };
+  const css = boxCss(box);
+  const rule = css.slice(css.indexOf('html:fullscreen {'), css.indexOf('}', css.indexOf('html:fullscreen {')));
+  assert.ok(rule.length > 0, 'a rule for it');
+  assert.match(rule, /transform: none !important/);
+  assert.match(rule, /width: 100vw !important; height: 100vh !important/);
+  assert.match(rule, /--margin-left: 0px/);
+  // More specific than the box's own `html` rule, both !important: it wins.
+  assert.ok(css.indexOf('html:fullscreen {') > css.indexOf('transform: translate('), 'after the box\'s rule too');
+  assert.match(boxCss(box, 2), /html:fullscreen \{\s*transform: none !important; width: 50vw !important; height: 50vh !important/, 'in the page\'s zoomed pixels');
+});
+
 test('the box follows a page\'s zoom on <html>', () => {
   const box = { left: 300, top: 10, right: 10, bottom: 10 };
   assert.ok(boxRules('html', box).includes('calc(100vw - 310px)'), 'with no zoom, as ever');
