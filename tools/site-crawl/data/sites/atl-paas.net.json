@@ -1,0 +1,118 @@
+{
+  "domain": "atl-paas.net",
+  "rank": 3758,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:27:46.069Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3758,
+    "domain": "atl-paas.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:27:46.069Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4837,
+      "error": null,
+      "finalHost": "developer.atlassian.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1583,
+        "overflowX": 411,
+        "text": 1353,
+        "visible": 23,
+        "cut": 8,
+        "cutRight": 8,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 5281
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2950,
+      "error": null,
+      "finalHost": "developer.atlassian.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1583,
+        "overflowX": 411,
+        "text": 1353,
+        "visible": 23,
+        "cut": 8,
+        "cutRight": 8,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 21.3,
+      "sdPlain": 21.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:27:46.069Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4837,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2950,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 21.3,
+        "sdPlain": 21.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

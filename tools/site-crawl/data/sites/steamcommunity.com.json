@@ -1,0 +1,118 @@
+{
+  "domain": "steamcommunity.com",
+  "rank": 430,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:07:44.403Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 430,
+    "domain": "steamcommunity.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:07:44.403Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2517,
+      "error": null,
+      "finalHost": "steamcommunity.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1158,
+        "overflowX": 0,
+        "text": 8663,
+        "visible": 44,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 100,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9960
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2474,
+      "error": null,
+      "finalHost": "steamcommunity.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1158,
+        "overflowX": 0,
+        "text": 8663,
+        "visible": 44,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 100,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9926
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 3.6,
+      "sdMargin": 38.9,
+      "sdPlain": 39.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:07:44.403Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2517,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2474,
+        "error": null
+      },
+      "look": {
+        "diff": 3.6,
+        "sdMargin": 38.9,
+        "sdPlain": 39.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

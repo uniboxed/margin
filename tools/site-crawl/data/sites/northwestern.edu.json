@@ -1,0 +1,118 @@
+{
+  "domain": "northwestern.edu",
+  "rank": 2761,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:19:15.682Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2761,
+    "domain": "northwestern.edu",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:19:15.682Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4703,
+      "error": null,
+      "finalHost": "www.northwestern.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1174,
+        "overflowX": 2,
+        "text": 4870,
+        "visible": 53,
+        "cut": 11,
+        "cutRight": 0,
+        "images": 36,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7277
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4662,
+      "error": null,
+      "finalHost": "www.northwestern.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1174,
+        "overflowX": 2,
+        "text": 4870,
+        "visible": 53,
+        "cut": 11,
+        "cutRight": 0,
+        "images": 36,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7277
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 4.6,
+      "sdMargin": 80.6,
+      "sdPlain": 81
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:19:15.682Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4703,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4662,
+        "error": null
+      },
+      "look": {
+        "diff": 4.6,
+        "sdMargin": 80.6,
+        "sdPlain": 81
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "domain": "ladies.de",
+  "rank": 1562,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow",
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:45:05.202Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1562,
+    "domain": "ladies.de",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow",
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:45:05.202Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2343,
+      "error": null,
+      "finalHost": "www.ladies.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1440,
+        "overflowX": 268,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 0
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2340,
+      "error": null,
+      "finalHost": "www.ladies.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 0
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 75.7,
+      "sdMargin": 40.8,
+      "sdPlain": 83.6
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1562-ladies.de-margin.jpg",
+      "plain": "rounds/0001/shots/1562-ladies.de-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:45:05.202Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow",
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2343,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2340,
+        "error": null
+      },
+      "look": {
+        "diff": 75.7,
+        "sdMargin": 40.8,
+        "sdPlain": 83.6
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1562-ladies.de-margin.jpg",
+        "plain": "rounds/0001/shots/1562-ladies.de-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "domain": "bb.com.br",
+  "rank": 3998,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off",
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:33:46.552Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3998,
+    "domain": "bb.com.br",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off",
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:33:46.552Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2899,
+      "error": null,
+      "finalHost": "www.bb.com.br",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2937,
+        "visible": 59,
+        "cut": 20,
+        "cutRight": 4,
+        "images": 29,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 4597
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3150,
+      "error": null,
+      "finalHost": "www.bb.com.br",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2681,
+        "visible": 33,
+        "cut": 8,
+        "cutRight": 4,
+        "images": 28,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 4538
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 61.3,
+      "sdMargin": 52.1,
+      "sdPlain": 53.4
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3998-bb.com.br-margin.jpg",
+      "plain": "rounds/0001/shots/3998-bb.com.br-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:33:46.552Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off",
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2899,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3150,
+        "error": null
+      },
+      "look": {
+        "diff": 61.3,
+        "sdMargin": 52.1,
+        "sdPlain": 53.4
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3998-bb.com.br-margin.jpg",
+        "plain": "rounds/0001/shots/3998-bb.com.br-plain.jpg"
+      }
+    }
+  ]
+}

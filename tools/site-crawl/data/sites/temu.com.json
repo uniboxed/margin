@@ -1,0 +1,139 @@
+{
+  "domain": "temu.com",
+  "rank": 429,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:07:42.682Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 429,
+    "domain": "temu.com",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T08:07:42.682Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2668,
+      "error": null,
+      "finalHost": "www.temu.com",
+      "errors": [
+        "unknown biz error",
+        "i",
+        "i"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13779,
+        "visible": 197,
+        "cut": 76,
+        "cutRight": 76,
+        "images": 109,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3341
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2625,
+      "error": null,
+      "finalHost": "www.temu.com",
+      "errors": [
+        "unknown biz error",
+        "i",
+        "i",
+        "i"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10271,
+        "visible": 176,
+        "cut": 60,
+        "cutRight": 60,
+        "images": 104,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 6.8,
+      "sdMargin": 95.2,
+      "sdPlain": 95
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/429-temu.com-margin.jpg",
+      "plain": "rounds/0001/shots/429-temu.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:07:42.682Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2668,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2625,
+        "error": null
+      },
+      "look": {
+        "diff": 6.8,
+        "sdMargin": 95.2,
+        "sdPlain": 95
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/429-temu.com-margin.jpg",
+        "plain": "rounds/0001/shots/429-temu.com-plain.jpg"
+      }
+    }
+  ]
+}

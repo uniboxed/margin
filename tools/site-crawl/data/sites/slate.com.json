@@ -1,0 +1,125 @@
+{
+  "domain": "slate.com",
+  "rank": 2509,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:11:35.131Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2509,
+    "domain": "slate.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:11:35.131Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4414,
+      "error": null,
+      "finalHost": "slate.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1187,
+        "overflowX": 15,
+        "text": 11700,
+        "visible": 59,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 25,
+        "brokenImages": 0,
+        "iframes": 18,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13196
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5158,
+      "error": null,
+      "finalHost": "slate.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Uncaught (in promise) undefined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1187,
+        "overflowX": 15,
+        "text": 11529,
+        "visible": 59,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 25,
+        "brokenImages": 0,
+        "iframes": 18,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13229
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 19.6,
+      "sdMargin": 54.7,
+      "sdPlain": 66.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:11:35.131Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4414,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5158,
+        "error": null
+      },
+      "look": {
+        "diff": 19.6,
+        "sdMargin": 54.7,
+        "sdPlain": 66.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

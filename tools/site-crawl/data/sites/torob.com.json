@@ -1,0 +1,118 @@
+{
+  "domain": "torob.com",
+  "rank": 1438,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:40:04.838Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1438,
+    "domain": "torob.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:40:04.838Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3964,
+      "error": null,
+      "finalHost": "torob.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 325,
+        "visible": 23,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3964,
+      "error": null,
+      "finalHost": "torob.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 325,
+        "visible": 23,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 8.5,
+      "sdPlain": 8.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:40:04.838Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3964,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3964,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 8.5,
+        "sdPlain": 8.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

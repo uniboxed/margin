@@ -1,0 +1,122 @@
+{
+  "domain": "mapquest.com",
+  "rank": 2869,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:22:22.416Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2869,
+    "domain": "mapquest.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:22:22.416Z",
+    "margin": {
+      "ok": true,
+      "status": 202,
+      "ms": 2359,
+      "error": null,
+      "finalHost": "www.mapquest.com",
+      "errors": [
+        "Max challenge attempts exceeded"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 70,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 202,
+      "ms": 2360,
+      "error": null,
+      "finalHost": "www.mapquest.com",
+      "errors": [
+        "Max challenge attempts exceeded"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 70,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 28
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 9.1,
+      "sdPlain": 9.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:22:22.416Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 202,
+        "ms": 2359,
+        "error": null
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2360,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 9.1,
+        "sdPlain": 9.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

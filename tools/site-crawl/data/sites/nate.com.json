@@ -1,0 +1,129 @@
+{
+  "domain": "nate.com",
+  "rank": 3285,
+  "verdict": "flagged",
+  "flags": [
+    "no-box",
+    "drawn-off-slot",
+    "wrong-width"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:34:06.040Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3285,
+    "domain": "nate.com",
+    "verdict": "flagged",
+    "flags": [
+      "no-box",
+      "drawn-off-slot",
+      "wrong-width"
+    ],
+    "at": "2026-11-08T09:34:06.040Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2759,
+      "error": null,
+      "finalHost": "chromewebdata",
+      "errors": [],
+      "m": {
+        "vw": 1440,
+        "vh": 900,
+        "scrollW": 1440,
+        "overflowX": 0,
+        "text": 105,
+        "visible": 3,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 322
+      },
+      "box": null,
+      "rootX": 0
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2721,
+      "error": null,
+      "finalHost": "chromewebdata",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 105,
+        "visible": 3,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 322
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.4,
+      "sdMargin": 6.2,
+      "sdPlain": 7.6
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3285-nate.com-margin.jpg",
+      "plain": "rounds/0001/shots/3285-nate.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:34:06.040Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "no-box",
+        "drawn-off-slot",
+        "wrong-width"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2759,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2721,
+        "error": null
+      },
+      "look": {
+        "diff": 1.4,
+        "sdMargin": 6.2,
+        "sdPlain": 7.6
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3285-nate.com-margin.jpg",
+        "plain": "rounds/0001/shots/3285-nate.com-plain.jpg"
+      }
+    }
+  ]
+}

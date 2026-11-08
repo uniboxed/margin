@@ -1,0 +1,133 @@
+{
+  "domain": "islonline.net",
+  "rank": 3663,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow",
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:25:28.333Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3663,
+    "domain": "islonline.net",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow",
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T15:25:28.333Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3250,
+      "error": null,
+      "finalHost": "islonline.net",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1440,
+        "overflowX": 268,
+        "text": 130,
+        "visible": 17,
+        "cut": 12,
+        "cutRight": 12,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 900
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3247,
+      "error": null,
+      "finalHost": "islonline.net",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 130,
+        "visible": 17,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.8,
+      "sdMargin": 65,
+      "sdPlain": 63.8
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3663-islonline.net-margin.jpg",
+      "plain": "rounds/0001/shots/3663-islonline.net-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:25:28.333Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow",
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3250,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3247,
+        "error": null
+      },
+      "look": {
+        "diff": 2.8,
+        "sdMargin": 65,
+        "sdPlain": 63.8
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3663-islonline.net-margin.jpg",
+        "plain": "rounds/0001/shots/3663-islonline.net-plain.jpg"
+      }
+    }
+  ]
+}

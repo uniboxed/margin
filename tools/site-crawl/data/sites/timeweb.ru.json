@@ -1,0 +1,130 @@
+{
+  "domain": "timeweb.ru",
+  "rank": 563,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:12:36.123Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 563,
+    "domain": "timeweb.ru",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow"
+    ],
+    "at": "2026-11-08T08:12:36.123Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4566,
+      "error": null,
+      "finalHost": "timeweb.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1959,
+        "overflowX": 787,
+        "text": 8592,
+        "visible": 34,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 15,
+        "brokenImages": 6,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14986
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6332,
+      "error": null,
+      "finalHost": "timeweb.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8654,
+        "visible": 67,
+        "cut": 8,
+        "cutRight": 5,
+        "images": 15,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 16113
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 26.1,
+      "sdMargin": 47.1,
+      "sdPlain": 74.3
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/563-timeweb.ru-margin.jpg",
+      "plain": "rounds/0001/shots/563-timeweb.ru-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:12:36.123Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4566,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6332,
+        "error": null
+      },
+      "look": {
+        "diff": 26.1,
+        "sdMargin": 47.1,
+        "sdPlain": 74.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/563-timeweb.ru-margin.jpg",
+        "plain": "rounds/0001/shots/563-timeweb.ru-plain.jpg"
+      }
+    }
+  ]
+}

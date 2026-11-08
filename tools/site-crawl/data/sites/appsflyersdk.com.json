@@ -1,0 +1,103 @@
+{
+  "domain": "appsflyersdk.com",
+  "rank": 26,
+  "verdict": "blocked",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T07:57:35.510Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 26,
+    "domain": "appsflyersdk.com",
+    "verdict": "blocked",
+    "flags": [],
+    "at": "2026-11-08T07:57:35.510Z",
+    "margin": {
+      "ok": false,
+      "status": 403,
+      "ms": 2109,
+      "error": null,
+      "finalHost": "appsflyersdk.com",
+      "errors": [],
+      "m": {
+        "vw": 1440,
+        "vh": 900,
+        "scrollW": 1440,
+        "overflowX": 0,
+        "text": 226,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 98
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 403,
+      "ms": 2102,
+      "error": null,
+      "finalHost": "appsflyersdk.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 226,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 98
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:57:35.510Z",
+      "commit": "f2231c7",
+      "verdict": "blocked",
+      "flags": [],
+      "margin": {
+        "status": 403,
+        "ms": 2109,
+        "error": null
+      },
+      "plain": {
+        "status": 403,
+        "ms": 2102,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

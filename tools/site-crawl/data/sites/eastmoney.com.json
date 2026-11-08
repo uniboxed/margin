@@ -1,0 +1,118 @@
+{
+  "domain": "eastmoney.com",
+  "rank": 4025,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:34:50.461Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4025,
+    "domain": "eastmoney.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:34:50.461Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 19544,
+      "error": null,
+      "finalHost": "www.eastmoney.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13378,
+        "visible": 288,
+        "cut": 11,
+        "cutRight": 10,
+        "images": 34,
+        "brokenImages": 2,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 7389
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 11822,
+      "error": null,
+      "finalHost": "www.eastmoney.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13412,
+        "visible": 292,
+        "cut": 12,
+        "cutRight": 11,
+        "images": 31,
+        "brokenImages": 0,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7347
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1,
+      "sdMargin": 47.2,
+      "sdPlain": 47.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:34:50.461Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 19544,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 11822,
+        "error": null
+      },
+      "look": {
+        "diff": 1,
+        "sdMargin": 47.2,
+        "sdPlain": 47.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

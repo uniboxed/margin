@@ -1,0 +1,124 @@
+{
+  "domain": "thetimes.com",
+  "rank": 3377,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:36:25.800Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3377,
+    "domain": "thetimes.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:36:25.800Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6255,
+      "error": null,
+      "finalHost": "www.thetimes.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Cannot read properties of undefined (reading 'q')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13315,
+        "visible": 120,
+        "cut": 31,
+        "cutRight": 4,
+        "images": 374,
+        "brokenImages": 1,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14191
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7507,
+      "error": null,
+      "finalHost": "www.thetimes.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Cannot read properties of undefined (reading 'q')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13315,
+        "visible": 120,
+        "cut": 31,
+        "cutRight": 4,
+        "images": 374,
+        "brokenImages": 3,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14191
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 6.5,
+      "sdMargin": 81.2,
+      "sdPlain": 78.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:36:25.800Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6255,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7507,
+        "error": null
+      },
+      "look": {
+        "diff": 6.5,
+        "sdMargin": 81.2,
+        "sdPlain": 78.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

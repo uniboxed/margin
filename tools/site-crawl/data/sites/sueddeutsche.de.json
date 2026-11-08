@@ -1,0 +1,122 @@
+{
+  "domain": "sueddeutsche.de",
+  "rank": 2821,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:20:54.773Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2821,
+    "domain": "sueddeutsche.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:20:54.773Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4142,
+      "error": null,
+      "finalHost": "www.sueddeutsche.de",
+      "errors": [
+        "Notification is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 23146,
+        "visible": 88,
+        "cut": 18,
+        "cutRight": 18,
+        "images": 217,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 38444
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4229,
+      "error": null,
+      "finalHost": "www.sueddeutsche.de",
+      "errors": [
+        "Notification is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 29729,
+        "visible": 88,
+        "cut": 18,
+        "cutRight": 18,
+        "images": 277,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 38634
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 77.6,
+      "sdPlain": 77.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:20:54.773Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4142,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4229,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 77.6,
+        "sdPlain": 77.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

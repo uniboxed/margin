@@ -1,0 +1,118 @@
+{
+  "domain": "hatena.ne.jp",
+  "rank": 2512,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:11:46.093Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2512,
+    "domain": "hatena.ne.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:11:46.093Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 10339,
+      "error": null,
+      "finalHost": "www.hatena.ne.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6253,
+        "visible": 60,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 104,
+        "brokenImages": 0,
+        "iframes": 13,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9291
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 9459,
+      "error": null,
+      "finalHost": "www.hatena.ne.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6253,
+        "visible": 60,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 104,
+        "brokenImages": 0,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 7.2,
+      "sdMargin": 34.9,
+      "sdPlain": 44.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:11:46.093Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 10339,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 9459,
+        "error": null
+      },
+      "look": {
+        "diff": 7.2,
+        "sdMargin": 34.9,
+        "sdPlain": 44.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

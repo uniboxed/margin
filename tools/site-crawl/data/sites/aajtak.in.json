@@ -1,0 +1,94 @@
+{
+  "domain": "aajtak.in",
+  "rank": 1547,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:44:25.218Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1547,
+    "domain": "aajtak.in",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T08:44:25.218Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 24653,
+      "error": "timeout: measure (8000 ms)",
+      "finalHost": "www.aajtak.in",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 16656,
+      "error": null,
+      "finalHost": "www.aajtak.in",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 13921,
+        "visible": 164,
+        "cut": 74,
+        "cutRight": 37,
+        "images": 176,
+        "brokenImages": 0,
+        "iframes": 18,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 15708
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": null
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:44:25.218Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 24653,
+        "error": "timeout: measure (8000 ms)"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 16656,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "domain": "videotron.ca",
+  "rank": 1941,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:55:23.385Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1941,
+    "domain": "videotron.ca",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:55:23.385Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3929,
+      "error": null,
+      "finalHost": "www.videotron.com",
+      "errors": [
+        "GrafanaFaroWebSdk is not defined",
+        "Cannot read properties of undefined (reading 'TracingInstrumentation')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6875,
+        "visible": 35,
+        "cut": 6,
+        "cutRight": 5,
+        "images": 49,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7271
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4478,
+      "error": null,
+      "finalHost": "www.videotron.com",
+      "errors": [
+        "GrafanaFaroWebSdk is not defined",
+        "Cannot read properties of undefined (reading 'TracingInstrumentation')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6875,
+        "visible": 35,
+        "cut": 6,
+        "cutRight": 5,
+        "images": 49,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7271
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 54.9,
+      "sdPlain": 54.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:55:23.385Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3929,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4478,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 54.9,
+        "sdPlain": 54.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

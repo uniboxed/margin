@@ -1,0 +1,118 @@
+{
+  "domain": "wattpad.com",
+  "rank": 784,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:19:11.146Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 784,
+    "domain": "wattpad.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:19:11.146Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3849,
+      "error": null,
+      "finalHost": "www.wattpad.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1729,
+        "visible": 95,
+        "cut": 39,
+        "cutRight": 39,
+        "images": 151,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5436
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4334,
+      "error": null,
+      "finalHost": "www.wattpad.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1729,
+        "visible": 95,
+        "cut": 39,
+        "cutRight": 39,
+        "images": 151,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.1,
+      "sdMargin": 50.2,
+      "sdPlain": 50.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:19:11.146Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3849,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4334,
+        "error": null
+      },
+      "look": {
+        "diff": 2.1,
+        "sdMargin": 50.2,
+        "sdPlain": 50.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

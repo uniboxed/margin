@@ -1,0 +1,73 @@
+{
+  "domain": "ozone.ru",
+  "rank": 882,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:21:46.597Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 882,
+    "domain": "ozone.ru",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:21:46.597Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 478,
+      "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://ozone.ru/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 524,
+      "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://ozone.ru/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:21:46.597Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 478,
+        "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://ozone.ru/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 524,
+        "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://ozone.ru/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

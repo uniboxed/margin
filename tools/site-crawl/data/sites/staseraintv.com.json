@@ -1,0 +1,118 @@
+{
+  "domain": "staseraintv.com",
+  "rank": 1768,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:50:55.287Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1768,
+    "domain": "staseraintv.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:50:55.287Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5709,
+      "error": null,
+      "finalHost": "staseraintv.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6415,
+        "visible": 96,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 15,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3112
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5745,
+      "error": null,
+      "finalHost": "staseraintv.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6333,
+        "visible": 94,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 17,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3096
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 36.1,
+      "sdMargin": 102.8,
+      "sdPlain": 93.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:50:55.287Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5709,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5745,
+        "error": null
+      },
+      "look": {
+        "diff": 36.1,
+        "sdMargin": 102.8,
+        "sdPlain": 93.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

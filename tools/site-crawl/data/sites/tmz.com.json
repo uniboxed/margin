@@ -1,0 +1,124 @@
+{
+  "domain": "tmz.com",
+  "rank": 3101,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:28:49.683Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3101,
+    "domain": "tmz.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:28:49.683Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4415,
+      "error": null,
+      "finalHost": "www.tmz.com",
+      "errors": [
+        "Cannot read properties of null (reading 'addGPTEventListener')",
+        "Cannot read properties of null (reading 'classList')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15522,
+        "visible": 55,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 59,
+        "brokenImages": 0,
+        "iframes": 27,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 34413
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4331,
+      "error": null,
+      "finalHost": "www.tmz.com",
+      "errors": [
+        "Cannot read properties of null (reading 'addGPTEventListener')",
+        "Cannot read properties of null (reading 'classList')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15522,
+        "visible": 55,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 59,
+        "brokenImages": 0,
+        "iframes": 27,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 34413
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 102.3,
+      "sdPlain": 102.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:28:49.683Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4415,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4331,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 102.3,
+        "sdPlain": 102.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

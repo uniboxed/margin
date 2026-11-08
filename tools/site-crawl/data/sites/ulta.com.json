@@ -1,0 +1,124 @@
+{
+  "domain": "ulta.com",
+  "rank": 4737,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:59:12.108Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4737,
+    "domain": "ulta.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:59:12.108Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 12283,
+      "error": null,
+      "finalHost": "www.ulta.com",
+      "errors": [
+        "Cannot destructure property 'coords' of 'r' as it is undefined.",
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 18281,
+        "visible": 136,
+        "cut": 45,
+        "cutRight": 45,
+        "images": 123,
+        "brokenImages": 0,
+        "iframes": 39,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8976
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4705,
+      "error": null,
+      "finalHost": "www.ulta.com",
+      "errors": [
+        "Cannot destructure property 'coords' of 'r' as it is undefined.",
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 18345,
+        "visible": 136,
+        "cut": 45,
+        "cutRight": 45,
+        "images": 123,
+        "brokenImages": 0,
+        "iframes": 25,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8998
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.8,
+      "sdMargin": 58,
+      "sdPlain": 58
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:59:12.108Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 12283,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4705,
+        "error": null
+      },
+      "look": {
+        "diff": 1.8,
+        "sdMargin": 58,
+        "sdPlain": 58
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

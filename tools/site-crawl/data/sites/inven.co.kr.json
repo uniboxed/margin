@@ -1,0 +1,118 @@
+{
+  "domain": "inven.co.kr",
+  "rank": 1168,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:30:35.468Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1168,
+    "domain": "inven.co.kr",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:30:35.468Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 10554,
+      "error": null,
+      "finalHost": "www.inven.co.kr",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10029,
+        "visible": 104,
+        "cut": 12,
+        "cutRight": 3,
+        "images": 284,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4895
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 21645,
+      "error": null,
+      "finalHost": "www.inven.co.kr",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10027,
+        "visible": 103,
+        "cut": 12,
+        "cutRight": 0,
+        "images": 284,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 4895
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 32.2,
+      "sdMargin": 88.6,
+      "sdPlain": 87.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:30:35.468Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 10554,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 21645,
+        "error": null
+      },
+      "look": {
+        "diff": 32.2,
+        "sdMargin": 88.6,
+        "sdPlain": 87.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

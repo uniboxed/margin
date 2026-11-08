@@ -1,0 +1,118 @@
+{
+  "domain": "rubiconproject.com",
+  "rank": 333,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:05:24.260Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 333,
+    "domain": "rubiconproject.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:05:24.260Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2766,
+      "error": null,
+      "finalHost": "www.magnite.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5926,
+        "visible": 150,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 46,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5778
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2621,
+      "error": null,
+      "finalHost": "www.magnite.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5910,
+        "visible": 148,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 46,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5778
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 5.4,
+      "sdMargin": 86.5,
+      "sdPlain": 86.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:05:24.260Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2766,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2621,
+        "error": null
+      },
+      "look": {
+        "diff": 5.4,
+        "sdMargin": 86.5,
+        "sdPlain": 86.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

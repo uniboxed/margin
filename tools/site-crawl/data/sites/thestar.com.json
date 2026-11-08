@@ -1,0 +1,122 @@
+{
+  "domain": "thestar.com",
+  "rank": 3992,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:33:36.895Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3992,
+    "domain": "thestar.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:33:36.895Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5567,
+      "error": null,
+      "finalHost": "www.thestar.com",
+      "errors": [
+        "[ng:btstrpd] http://errors.angularjs.org/1.2.32/ng/btstrpd?p0=%26lt%3Bhtml%20ng-app%3D%22widgetApp%22%26gt%3B"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 11056,
+        "visible": 73,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 66,
+        "brokenImages": 1,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11867
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5810,
+      "error": null,
+      "finalHost": "www.thestar.com",
+      "errors": [
+        "[ng:btstrpd] http://errors.angularjs.org/1.2.32/ng/btstrpd?p0=%26lt%3Bhtml%20ng-app%3D%22widgetApp%22%26gt%3B"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 11056,
+        "visible": 73,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 66,
+        "brokenImages": 1,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11867
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 68.7,
+      "sdPlain": 68.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:33:36.895Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5567,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5810,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 68.7,
+        "sdPlain": 68.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

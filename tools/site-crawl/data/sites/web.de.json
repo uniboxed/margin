@@ -1,0 +1,118 @@
+{
+  "domain": "web.de",
+  "rank": 2324,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:06:00.175Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2324,
+    "domain": "web.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:06:00.175Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2844,
+      "error": null,
+      "finalHost": "web.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 91,
+        "visible": 2,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3327,
+      "error": null,
+      "finalHost": "web.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 91,
+        "visible": 2,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 42,
+      "sdPlain": 42
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:06:00.175Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2844,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3327,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 42,
+        "sdPlain": 42
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

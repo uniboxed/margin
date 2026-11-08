@@ -1,0 +1,73 @@
+{
+  "domain": "samsclub.com",
+  "rank": 3432,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:37:39.086Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3432,
+    "domain": "samsclub.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:37:39.086Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 4222,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "www.samsclub.com",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 200,
+      "ms": 5293,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "www.samsclub.com",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:37:39.086Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4222,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5293,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

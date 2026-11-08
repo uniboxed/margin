@@ -1,0 +1,118 @@
+{
+  "domain": "10jqka.com.cn",
+  "rank": 3636,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:24:56.963Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3636,
+    "domain": "10jqka.com.cn",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:24:56.963Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 11525,
+      "error": null,
+      "finalHost": "www.10jqka.com.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1246,
+        "overflowX": 74,
+        "text": 6392,
+        "visible": 122,
+        "cut": 35,
+        "cutRight": 35,
+        "images": 46,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4335
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 21855,
+      "error": null,
+      "finalHost": "www.10jqka.com.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1246,
+        "overflowX": 74,
+        "text": 6251,
+        "visible": 86,
+        "cut": 38,
+        "cutRight": 35,
+        "images": 28,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 4273
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 6.9,
+      "sdMargin": 19.3,
+      "sdPlain": 17
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:24:56.963Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 11525,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 21855,
+        "error": null
+      },
+      "look": {
+        "diff": 6.9,
+        "sdMargin": 19.3,
+        "sdPlain": 17
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

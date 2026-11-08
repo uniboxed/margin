@@ -1,0 +1,128 @@
+{
+  "domain": "grammarly.com",
+  "rank": 308,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:04:34.428Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 308,
+    "domain": "grammarly.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:04:34.428Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3727,
+      "error": null,
+      "finalHost": "www.grammarly.com",
+      "errors": [
+        "Minified React error #418; visit https://reactjs.org/docs/error-decoder.html?invariant=418 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #418; visit https://reactjs.org/docs/error-decoder.html?invariant=418 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #418; visit https://reactjs.org/docs/error-decoder.html?invariant=418 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #423; visit https://reactjs.org/docs/error-decoder.html?invariant=423 for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5791,
+        "visible": 51,
+        "cut": 6,
+        "cutRight": 6,
+        "images": 64,
+        "brokenImages": 4,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8281
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3768,
+      "error": null,
+      "finalHost": "www.grammarly.com",
+      "errors": [
+        "Minified React error #418; visit https://reactjs.org/docs/error-decoder.html?invariant=418 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #418; visit https://reactjs.org/docs/error-decoder.html?invariant=418 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #418; visit https://reactjs.org/docs/error-decoder.html?invariant=418 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #423; visit https://reactjs.org/docs/error-decoder.html?invariant=423 for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5791,
+        "visible": 51,
+        "cut": 6,
+        "cutRight": 6,
+        "images": 64,
+        "brokenImages": 4,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8281
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 65.7,
+      "sdPlain": 65.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:04:34.428Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3727,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3768,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 65.7,
+        "sdPlain": 65.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

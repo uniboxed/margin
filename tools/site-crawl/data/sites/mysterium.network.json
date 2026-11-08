@@ -1,0 +1,118 @@
+{
+  "domain": "mysterium.network",
+  "rank": 3831,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:29:21.983Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3831,
+    "domain": "mysterium.network",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:29:21.983Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2574,
+      "error": null,
+      "finalHost": "www.mysterium.network",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6428,
+        "visible": 47,
+        "cut": 4,
+        "cutRight": 2,
+        "images": 35,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8939
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2680,
+      "error": null,
+      "finalHost": "www.mysterium.network",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6428,
+        "visible": 47,
+        "cut": 4,
+        "cutRight": 2,
+        "images": 35,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.1,
+      "sdMargin": 29.9,
+      "sdPlain": 29.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:29:21.983Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2574,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2680,
+        "error": null
+      },
+      "look": {
+        "diff": 1.1,
+        "sdMargin": 29.9,
+        "sdPlain": 29.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

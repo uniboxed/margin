@@ -1,0 +1,118 @@
+{
+  "domain": "osu.edu",
+  "rank": 2909,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:23:22.293Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2909,
+    "domain": "osu.edu",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:23:22.293Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4125,
+      "error": null,
+      "finalHost": "www.osu.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 5161,
+        "visible": 25,
+        "cut": 4,
+        "cutRight": 2,
+        "images": 63,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3928
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4202,
+      "error": null,
+      "finalHost": "www.osu.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 5161,
+        "visible": 25,
+        "cut": 4,
+        "cutRight": 2,
+        "images": 63,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3928
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.6,
+      "sdMargin": 92.8,
+      "sdPlain": 92.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:23:22.293Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4125,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4202,
+        "error": null
+      },
+      "look": {
+        "diff": 0.6,
+        "sdMargin": 92.8,
+        "sdPlain": 92.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

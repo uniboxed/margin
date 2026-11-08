@@ -1,0 +1,122 @@
+{
+  "domain": "freshdesk.com",
+  "rank": 3032,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:27:07.772Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3032,
+    "domain": "freshdesk.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:27:07.772Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5239,
+      "error": null,
+      "finalHost": "www.freshworks.com",
+      "errors": [
+        "window.optimizely.get is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4508,
+        "visible": 35,
+        "cut": 5,
+        "cutRight": 0,
+        "images": 60,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11477
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3231,
+      "error": null,
+      "finalHost": "www.freshworks.com",
+      "errors": [
+        "window.optimizely.get is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4552,
+        "visible": 35,
+        "cut": 6,
+        "cutRight": 1,
+        "images": 60,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11276
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 18.3,
+      "sdMargin": 109,
+      "sdPlain": 113.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:27:07.772Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5239,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3231,
+        "error": null
+      },
+      "look": {
+        "diff": 18.3,
+        "sdMargin": 109,
+        "sdPlain": 113.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

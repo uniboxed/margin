@@ -1,0 +1,124 @@
+{
+  "domain": "inmobi.com",
+  "rank": 511,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:10:38.006Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 511,
+    "domain": "inmobi.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:10:38.006Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3609,
+      "error": null,
+      "finalHost": "www.inmobi.com",
+      "errors": [
+        "Cannot read properties of null (reading 'offsetWidth')",
+        "d is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1175,
+        "overflowX": 3,
+        "text": 1698,
+        "visible": 15,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 39,
+        "brokenImages": 2,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4152
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3629,
+      "error": null,
+      "finalHost": "www.inmobi.com",
+      "errors": [
+        "Cannot read properties of null (reading 'offsetWidth')",
+        "d is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1175,
+        "overflowX": 3,
+        "text": 1698,
+        "visible": 15,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 39,
+        "brokenImages": 4,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4151
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 15.7,
+      "sdPlain": 15.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:10:38.006Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3609,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3629,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 15.7,
+        "sdPlain": 15.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

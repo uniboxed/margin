@@ -1,0 +1,118 @@
+{
+  "domain": "over-blog.com",
+  "rank": 3683,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:25:54.693Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3683,
+    "domain": "over-blog.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:25:54.693Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5852,
+      "error": null,
+      "finalHost": "www.over-blog.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9804,
+        "visible": 135,
+        "cut": 16,
+        "cutRight": 16,
+        "images": 57,
+        "brokenImages": 31,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5476
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5801,
+      "error": null,
+      "finalHost": "www.over-blog.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10665,
+        "visible": 135,
+        "cut": 22,
+        "cutRight": 22,
+        "images": 57,
+        "brokenImages": 16,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5504
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.3,
+      "sdMargin": 54.3,
+      "sdPlain": 55.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:25:54.693Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5852,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5801,
+        "error": null
+      },
+      "look": {
+        "diff": 10.3,
+        "sdMargin": 54.3,
+        "sdPlain": 55.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

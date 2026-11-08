@@ -1,0 +1,73 @@
+{
+  "domain": "vscode-cdn.net",
+  "rank": 1254,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:33:02.481Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1254,
+    "domain": "vscode-cdn.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:33:02.481Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 68,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://vscode-cdn.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 74,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://vscode-cdn.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:33:02.481Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 68,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://vscode-cdn.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 74,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://vscode-cdn.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

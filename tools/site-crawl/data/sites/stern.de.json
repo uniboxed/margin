@@ -1,0 +1,118 @@
+{
+  "domain": "stern.de",
+  "rank": 3764,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:27:59.029Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3764,
+    "domain": "stern.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:27:59.029Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5377,
+      "error": null,
+      "finalHost": "www.stern.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 24627,
+        "visible": 63,
+        "cut": 24,
+        "cutRight": 24,
+        "images": 138,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 30181
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5378,
+      "error": null,
+      "finalHost": "www.stern.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 25313,
+        "visible": 63,
+        "cut": 24,
+        "cutRight": 24,
+        "images": 138,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 30207
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 81.7,
+      "sdPlain": 81.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:27:59.029Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5377,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5378,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 81.7,
+        "sdPlain": 81.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

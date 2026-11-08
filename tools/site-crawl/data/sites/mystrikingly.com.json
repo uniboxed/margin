@@ -1,0 +1,122 @@
+{
+  "domain": "mystrikingly.com",
+  "rank": 3457,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:38:24.250Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3457,
+    "domain": "mystrikingly.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:38:24.250Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2495,
+      "error": null,
+      "finalHost": "www.strikingly.com",
+      "errors": [
+        "Identifier 'hostName' has already been declared"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1164,
+        "overflowX": 0,
+        "text": 5653,
+        "visible": 28,
+        "cut": 11,
+        "cutRight": 3,
+        "images": 34,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7124
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2494,
+      "error": null,
+      "finalHost": "www.strikingly.com",
+      "errors": [
+        "Identifier 'hostName' has already been declared"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1164,
+        "overflowX": 0,
+        "text": 5653,
+        "visible": 28,
+        "cut": 11,
+        "cutRight": 3,
+        "images": 34,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7124
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 65,
+      "sdPlain": 65
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:38:24.250Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2495,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2494,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 65,
+        "sdPlain": 65
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

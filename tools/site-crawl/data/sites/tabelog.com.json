@@ -1,0 +1,118 @@
+{
+  "domain": "tabelog.com",
+  "rank": 1110,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:28:52.426Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1110,
+    "domain": "tabelog.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:28:52.426Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5589,
+      "error": null,
+      "finalHost": "tabelog.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1260,
+        "overflowX": 88,
+        "text": 7572,
+        "visible": 37,
+        "cut": 24,
+        "cutRight": 24,
+        "images": 155,
+        "brokenImages": 1,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6361
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5589,
+      "error": null,
+      "finalHost": "tabelog.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1260,
+        "overflowX": 88,
+        "text": 7572,
+        "visible": 37,
+        "cut": 24,
+        "cutRight": 24,
+        "images": 155,
+        "brokenImages": 1,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6361
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 83.7,
+      "sdPlain": 83.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:28:52.426Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5589,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5589,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 83.7,
+        "sdPlain": 83.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

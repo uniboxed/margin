@@ -1,0 +1,130 @@
+{
+  "domain": "fpjs.io",
+  "rank": 3966,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:33:03.164Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3966,
+    "domain": "fpjs.io",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:33:03.164Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2663,
+      "error": null,
+      "finalHost": "fingerprint.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4559,
+        "visible": 36,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 13,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5621
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3659,
+      "error": null,
+      "finalHost": "fingerprint.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4865,
+        "visible": 51,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 14,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5621
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 44.9,
+      "sdMargin": 17.2,
+      "sdPlain": 86.8
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3966-fpjs.io-margin.jpg",
+      "plain": "rounds/0001/shots/3966-fpjs.io-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:33:03.164Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2663,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3659,
+        "error": null
+      },
+      "look": {
+        "diff": 44.9,
+        "sdMargin": 17.2,
+        "sdPlain": 86.8
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3966-fpjs.io-margin.jpg",
+        "plain": "rounds/0001/shots/3966-fpjs.io-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "domain": "cnet.com",
+  "rank": 756,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:18:40.101Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 756,
+    "domain": "cnet.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:18:40.101Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2639,
+      "error": null,
+      "finalHost": "www.cnet.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13070,
+        "visible": 61,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 83,
+        "brokenImages": 0,
+        "iframes": 25,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14499
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2677,
+      "error": null,
+      "finalHost": "www.cnet.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13070,
+        "visible": 61,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 83,
+        "brokenImages": 2,
+        "iframes": 24,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14166
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.2,
+      "sdMargin": 87.9,
+      "sdPlain": 87.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:18:40.101Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2639,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2677,
+        "error": null
+      },
+      "look": {
+        "diff": 1.2,
+        "sdMargin": 87.9,
+        "sdPlain": 87.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

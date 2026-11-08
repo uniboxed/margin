@@ -1,0 +1,118 @@
+{
+  "domain": "meethue.com",
+  "rank": 1127,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:29:16.632Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1127,
+    "domain": "meethue.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:29:16.632Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3039,
+      "error": null,
+      "finalHost": "www.philips-hue.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3889,
+        "visible": 50,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 92,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7087
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3175,
+      "error": null,
+      "finalHost": "www.philips-hue.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3889,
+        "visible": 50,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 92,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7086
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.3,
+      "sdMargin": 86.9,
+      "sdPlain": 86.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:29:16.632Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3039,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3175,
+        "error": null
+      },
+      "look": {
+        "diff": 0.3,
+        "sdMargin": 86.9,
+        "sdPlain": 86.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

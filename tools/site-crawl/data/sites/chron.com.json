@@ -1,0 +1,126 @@
+{
+  "domain": "chron.com",
+  "rank": 3794,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:28:44.732Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3794,
+    "domain": "chron.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:28:44.732Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 14978,
+      "error": null,
+      "finalHost": "www.chron.com",
+      "errors": [
+        "Cannot read properties of null (reading 'style')",
+        "Cannot read properties of null (reading 'style')",
+        "Cannot read properties of null (reading 'style')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7120,
+        "visible": 46,
+        "cut": 3,
+        "cutRight": 3,
+        "images": 72,
+        "brokenImages": 3,
+        "iframes": 33,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14918
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 15051,
+      "error": null,
+      "finalHost": "www.chron.com",
+      "errors": [
+        "Cannot read properties of null (reading 'style')",
+        "Cannot read properties of null (reading 'style')",
+        "Cannot read properties of null (reading 'style')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7120,
+        "visible": 46,
+        "cut": 3,
+        "cutRight": 3,
+        "images": 72,
+        "brokenImages": 3,
+        "iframes": 34,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 14918
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.5,
+      "sdMargin": 97.7,
+      "sdPlain": 97.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:28:44.732Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 14978,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 15051,
+        "error": null
+      },
+      "look": {
+        "diff": 1.5,
+        "sdMargin": 97.7,
+        "sdPlain": 97.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

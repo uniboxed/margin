@@ -1,0 +1,73 @@
+{
+  "domain": "a1q7.net",
+  "rank": 4644,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:56:31.172Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4644,
+    "domain": "a1q7.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:56:31.172Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 86,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://a1q7.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 85,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://a1q7.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:56:31.172Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 86,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://a1q7.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 85,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://a1q7.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

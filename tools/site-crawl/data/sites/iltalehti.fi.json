@@ -1,0 +1,118 @@
+{
+  "domain": "iltalehti.fi",
+  "rank": 1413,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:38:20.048Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1413,
+    "domain": "iltalehti.fi",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:38:20.048Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2739,
+      "error": null,
+      "finalHost": "www.iltalehti.fi",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1280,
+        "overflowX": 108,
+        "text": 10619,
+        "visible": 51,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 37464
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2732,
+      "error": null,
+      "finalHost": "www.iltalehti.fi",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1280,
+        "overflowX": 108,
+        "text": 10517,
+        "visible": 51,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 37872
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 82.2,
+      "sdPlain": 82.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:38:20.048Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2739,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2732,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 82.2,
+        "sdPlain": 82.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

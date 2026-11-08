@@ -1,0 +1,130 @@
+{
+  "domain": "nydailynews.com",
+  "rank": 3734,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:27:17.021Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3734,
+    "domain": "nydailynews.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:27:17.021Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 14624,
+      "error": null,
+      "finalHost": "www.nydailynews.com",
+      "errors": [
+        "Sailthru is not defined",
+        "Cannot read properties of null (reading 'querySelector')",
+        "google is not defined",
+        "Uncaught [object Object]",
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10385,
+        "visible": 212,
+        "cut": 135,
+        "cutRight": 0,
+        "images": 69,
+        "brokenImages": 3,
+        "iframes": 26,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 9935
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 14741,
+      "error": null,
+      "finalHost": "www.nydailynews.com",
+      "errors": [
+        "Sailthru is not defined",
+        "Cannot read properties of null (reading 'querySelector')",
+        "google is not defined",
+        "Uncaught [object Object]",
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10385,
+        "visible": 212,
+        "cut": 135,
+        "cutRight": 0,
+        "images": 69,
+        "brokenImages": 3,
+        "iframes": 24,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 9935
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.8,
+      "sdMargin": 73.6,
+      "sdPlain": 74.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:27:17.021Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 14624,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 14741,
+        "error": null
+      },
+      "look": {
+        "diff": 10.8,
+        "sdMargin": 73.6,
+        "sdPlain": 74.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

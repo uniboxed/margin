@@ -1,0 +1,95 @@
+{
+  "domain": "tomsguide.com",
+  "rank": 4594,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:55:35.815Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4594,
+    "domain": "tomsguide.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:55:35.815Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5462,
+      "error": null,
+      "finalHost": "www.tomsguide.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 20117,
+        "visible": 73,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 193,
+        "brokenImages": 1,
+        "iframes": 17,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 17193
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 200,
+      "ms": 23915,
+      "error": "timeout: measure (8000 ms)",
+      "finalHost": "www.tomsguide.com",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:55:35.815Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5462,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 23915,
+        "error": "timeout: measure (8000 ms)"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

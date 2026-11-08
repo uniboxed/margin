@@ -1,0 +1,114 @@
+{
+  "domain": "gdz-raketa.ru",
+  "rank": 1988,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:57:46.714Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1988,
+    "domain": "gdz-raketa.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:57:46.714Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 31081,
+      "error": null,
+      "finalHost": "gdz-raketa.ru",
+      "errors": [
+        "Cannot read properties of null (reading 'addEventListener')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1789,
+        "visible": 52,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 180,
+        "brokenImages": 2,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 8546
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 39263,
+      "error": null,
+      "finalHost": "gdz-raketa.ru",
+      "errors": [
+        "Cannot read properties of null (reading 'addEventListener')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1789,
+        "visible": 54,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 180,
+        "brokenImages": 2,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 8546
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:57:46.714Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 31081,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 39263,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

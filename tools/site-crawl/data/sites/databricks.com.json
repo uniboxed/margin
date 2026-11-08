@@ -1,0 +1,130 @@
+{
+  "domain": "databricks.com",
+  "rank": 2703,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:17:21.710Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2703,
+    "domain": "databricks.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T09:17:21.710Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4327,
+      "error": null,
+      "finalHost": "www.databricks.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4623,
+        "visible": 86,
+        "cut": 56,
+        "cutRight": 56,
+        "images": 91,
+        "brokenImages": 2,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7169
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4398,
+      "error": null,
+      "finalHost": "www.databricks.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4623,
+        "visible": 93,
+        "cut": 56,
+        "cutRight": 56,
+        "images": 91,
+        "brokenImages": 2,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7169
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 44.6,
+      "sdMargin": 96.5,
+      "sdPlain": 101.1
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/2703-databricks.com-margin.jpg",
+      "plain": "rounds/0001/shots/2703-databricks.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:17:21.710Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4327,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4398,
+        "error": null
+      },
+      "look": {
+        "diff": 44.6,
+        "sdMargin": 96.5,
+        "sdPlain": 101.1
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/2703-databricks.com-margin.jpg",
+        "plain": "rounds/0001/shots/2703-databricks.com-plain.jpg"
+      }
+    }
+  ]
+}

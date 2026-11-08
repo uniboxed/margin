@@ -1,0 +1,118 @@
+{
+  "domain": "interia.pl",
+  "rank": 2786,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:20:05.881Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2786,
+    "domain": "interia.pl",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:20:05.881Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4948,
+      "error": null,
+      "finalHost": "www.interia.pl",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1262,
+        "overflowX": 90,
+        "text": 27901,
+        "visible": 90,
+        "cut": 21,
+        "cutRight": 21,
+        "images": 408,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 22410
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5522,
+      "error": null,
+      "finalHost": "www.interia.pl",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1262,
+        "overflowX": 90,
+        "text": 27905,
+        "visible": 90,
+        "cut": 21,
+        "cutRight": 21,
+        "images": 408,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 22410
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 90.7,
+      "sdPlain": 90.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:20:05.881Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4948,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5522,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 90.7,
+        "sdPlain": 90.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

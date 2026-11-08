@@ -1,0 +1,73 @@
+{
+  "domain": "alphapolis.co.jp",
+  "rank": 1625,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:46:36.801Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1625,
+    "domain": "alphapolis.co.jp",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:46:36.801Z",
+    "margin": {
+      "ok": false,
+      "status": 202,
+      "ms": 2968,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "alphapolis.co.jp",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 202,
+      "ms": 2776,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "alphapolis.co.jp",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:46:36.801Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 202,
+        "ms": 2968,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2776,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

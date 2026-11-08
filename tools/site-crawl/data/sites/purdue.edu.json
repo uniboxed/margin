@@ -1,0 +1,118 @@
+{
+  "domain": "purdue.edu",
+  "rank": 2306,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:05:40.948Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2306,
+    "domain": "purdue.edu",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:05:40.948Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4062,
+      "error": null,
+      "finalHost": "purdue.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 7092,
+        "overflowX": 5920,
+        "text": 4167,
+        "visible": 69,
+        "cut": 38,
+        "cutRight": 36,
+        "images": 106,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4092
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4084,
+      "error": null,
+      "finalHost": "purdue.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 7092,
+        "overflowX": 5920,
+        "text": 4167,
+        "visible": 69,
+        "cut": 38,
+        "cutRight": 36,
+        "images": 105,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4021
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.8,
+      "sdMargin": 66.4,
+      "sdPlain": 66.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:05:40.948Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4062,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4084,
+        "error": null
+      },
+      "look": {
+        "diff": 2.8,
+        "sdMargin": 66.4,
+        "sdPlain": 66.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

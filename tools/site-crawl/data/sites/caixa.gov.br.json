@@ -1,0 +1,118 @@
+{
+  "domain": "caixa.gov.br",
+  "rank": 985,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:25:10.630Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 985,
+    "domain": "caixa.gov.br",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:25:10.630Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5294,
+      "error": null,
+      "finalHost": "www.caixa.gov.br",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5917,
+        "visible": 31,
+        "cut": 6,
+        "cutRight": 6,
+        "images": 55,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4025
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5520,
+      "error": null,
+      "finalHost": "www.caixa.gov.br",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5917,
+        "visible": 39,
+        "cut": 6,
+        "cutRight": 6,
+        "images": 55,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3974
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 9,
+      "sdMargin": 59.9,
+      "sdPlain": 65.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:25:10.630Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5294,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5520,
+        "error": null
+      },
+      "look": {
+        "diff": 9,
+        "sdMargin": 59.9,
+        "sdPlain": 65.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

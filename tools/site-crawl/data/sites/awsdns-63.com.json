@@ -1,0 +1,73 @@
+{
+  "domain": "awsdns-63.com",
+  "rank": 3785,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:28:14.119Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3785,
+    "domain": "awsdns-63.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:28:14.119Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 83,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awsdns-63.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 89,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awsdns-63.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:28:14.119Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 83,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awsdns-63.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 89,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awsdns-63.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

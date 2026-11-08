@@ -1,0 +1,73 @@
+{
+  "domain": "msftstatic.com",
+  "rank": 2856,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:22:02.928Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2856,
+    "domain": "msftstatic.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:22:02.928Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 3111,
+      "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://msftstatic.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 146,
+      "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://msftstatic.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:22:02.928Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 3111,
+        "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://msftstatic.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 146,
+        "error": "page.goto: net::ERR_CERT_COMMON_NAME_INVALID at https://msftstatic.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

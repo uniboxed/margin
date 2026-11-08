@@ -1,0 +1,73 @@
+{
+  "domain": "tabletcaptiveportal.com",
+  "rank": 4755,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:59:48.203Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4755,
+    "domain": "tabletcaptiveportal.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:59:48.203Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 13697,
+      "error": "page.goto: net::ERR_ABORTED at https://tabletcaptiveportal.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 13701,
+      "error": "page.goto: net::ERR_ABORTED at https://tabletcaptiveportal.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:59:48.203Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 13697,
+        "error": "page.goto: net::ERR_ABORTED at https://tabletcaptiveportal.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 13701,
+        "error": "page.goto: net::ERR_ABORTED at https://tabletcaptiveportal.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

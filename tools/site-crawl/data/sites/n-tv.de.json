@@ -1,0 +1,118 @@
+{
+  "domain": "n-tv.de",
+  "rank": 996,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:25:34.333Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 996,
+    "domain": "n-tv.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:25:34.333Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4151,
+      "error": null,
+      "finalHost": "www.n-tv.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 43811,
+        "visible": 77,
+        "cut": 31,
+        "cutRight": 31,
+        "images": 194,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 33132
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4143,
+      "error": null,
+      "finalHost": "www.n-tv.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 43811,
+        "visible": 77,
+        "cut": 31,
+        "cutRight": 31,
+        "images": 194,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 33132
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 93.5,
+      "sdPlain": 93.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:25:34.333Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4151,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4143,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 93.5,
+        "sdPlain": 93.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

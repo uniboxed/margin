@@ -1,0 +1,122 @@
+{
+  "domain": "sagepub.com",
+  "rank": 628,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:14:21.399Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 628,
+    "domain": "sagepub.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:14:21.399Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4016,
+      "error": null,
+      "finalHost": "www.sagepub.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'style')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2772,
+        "visible": 27,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 9,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4461
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5672,
+      "error": null,
+      "finalHost": "www.sagepub.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'style')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2759,
+        "visible": 27,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 9,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4461
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 60.7,
+      "sdPlain": 60.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:14:21.399Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4016,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5672,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 60.7,
+        "sdPlain": 60.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

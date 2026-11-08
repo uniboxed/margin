@@ -1,0 +1,73 @@
+{
+  "domain": "armgs.team",
+  "rank": 2683,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:16:43.151Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2683,
+    "domain": "armgs.team",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:16:43.151Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 3959,
+      "error": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://armgs.team/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 3082,
+      "error": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://armgs.team/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:16:43.151Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 3959,
+        "error": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://armgs.team/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 3082,
+        "error": "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://armgs.team/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

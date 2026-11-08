@@ -1,0 +1,122 @@
+{
+  "domain": "aliyun.com",
+  "rank": 367,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:06:22.576Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 367,
+    "domain": "aliyun.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:06:22.576Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6016,
+      "error": null,
+      "finalHost": "www.alibabacloud.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'call')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 18196,
+        "visible": 334,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 127,
+        "brokenImages": 1,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10039
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6171,
+      "error": null,
+      "finalHost": "www.alibabacloud.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'call')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 18196,
+        "visible": 334,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 127,
+        "brokenImages": 1,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10039
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 75.1,
+      "sdPlain": 75.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:06:22.576Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6016,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6171,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 75.1,
+        "sdPlain": 75.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

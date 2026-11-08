@@ -1,0 +1,139 @@
+{
+  "domain": "amazon.ca",
+  "rank": 643,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow",
+    "text-missing",
+    "elements-missing",
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:14:56.130Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 643,
+    "domain": "amazon.ca",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow",
+      "text-missing",
+      "elements-missing",
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:14:56.130Z",
+    "margin": {
+      "ok": true,
+      "status": 202,
+      "ms": 2513,
+      "error": null,
+      "finalHost": "www.amazon.ca",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1440,
+        "overflowX": 268,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": false,
+        "ready": "loading",
+        "bodyHeight": 0
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 202,
+      "ms": 2512,
+      "error": null,
+      "finalHost": "www.amazon.ca",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12354,
+        "visible": 184,
+        "cut": 46,
+        "cutRight": 31,
+        "images": 66,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3380
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 45.2,
+      "sdMargin": 72.9,
+      "sdPlain": 76.1
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/643-amazon.ca-margin.jpg",
+      "plain": "rounds/0001/shots/643-amazon.ca-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:14:56.130Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow",
+        "text-missing",
+        "elements-missing",
+        "looks-different"
+      ],
+      "margin": {
+        "status": 202,
+        "ms": 2513,
+        "error": null
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2512,
+        "error": null
+      },
+      "look": {
+        "diff": 45.2,
+        "sdMargin": 72.9,
+        "sdPlain": 76.1
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/643-amazon.ca-margin.jpg",
+        "plain": "rounds/0001/shots/643-amazon.ca-plain.jpg"
+      }
+    }
+  ]
+}

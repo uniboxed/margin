@@ -1,0 +1,81 @@
+{
+  "domain": "simplisafe.com",
+  "rank": 2980,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:25:59.685Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2980,
+    "domain": "simplisafe.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:25:59.685Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 6701,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "simplisafe.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "reCAPTCHA placeholder element must be empty",
+        "recaptcha is not defined"
+      ],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 200,
+      "ms": 6910,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "simplisafe.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "reCAPTCHA placeholder element must be empty",
+        "recaptcha is not defined"
+      ],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:25:59.685Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6701,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6910,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

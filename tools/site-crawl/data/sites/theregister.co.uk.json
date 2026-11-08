@@ -1,0 +1,118 @@
+{
+  "domain": "theregister.co.uk",
+  "rank": 4693,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:57:42.833Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4693,
+    "domain": "theregister.co.uk",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:57:42.833Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3708,
+      "error": null,
+      "finalHost": "www.theregister.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 67534,
+        "visible": 48,
+        "cut": 6,
+        "cutRight": 3,
+        "images": 273,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 31318
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3562,
+      "error": null,
+      "finalHost": "www.theregister.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 67534,
+        "visible": 48,
+        "cut": 6,
+        "cutRight": 3,
+        "images": 273,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 31498
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 26.9,
+      "sdMargin": 82.6,
+      "sdPlain": 77.1
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:57:42.833Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3708,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3562,
+        "error": null
+      },
+      "look": {
+        "diff": 26.9,
+        "sdMargin": 82.6,
+        "sdPlain": 77.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

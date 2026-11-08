@@ -1,0 +1,118 @@
+{
+  "domain": "ca.gov",
+  "rank": 582,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:13:08.534Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 582,
+    "domain": "ca.gov",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:13:08.534Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3924,
+      "error": null,
+      "finalHost": "www.ca.gov",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2569,
+        "visible": 27,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 10,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4471
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3981,
+      "error": null,
+      "finalHost": "www.ca.gov",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2569,
+        "visible": 27,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 10,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4471
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 72.3,
+      "sdPlain": 72.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:13:08.534Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3924,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3981,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 72.3,
+        "sdPlain": 72.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

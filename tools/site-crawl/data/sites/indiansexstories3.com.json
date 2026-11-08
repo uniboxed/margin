@@ -1,0 +1,49 @@
+{
+  "domain": "indiansexstories3.com",
+  "rank": 1612,
+  "verdict": "skipped",
+  "flags": [
+    "adult-word"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:46:18.567Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1612,
+    "domain": "indiansexstories3.com",
+    "verdict": "skipped",
+    "flags": [
+      "adult-word"
+    ],
+    "at": "2026-11-08T08:46:18.567Z",
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:46:18.567Z",
+      "commit": "f2231c7",
+      "verdict": "skipped",
+      "flags": [
+        "adult-word"
+      ],
+      "margin": {
+        "status": null,
+        "ms": null,
+        "error": null
+      },
+      "plain": {
+        "status": null,
+        "ms": null,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "domain": "nic.ru",
+  "rank": 151,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:00:22.722Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 151,
+    "domain": "nic.ru",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow"
+    ],
+    "at": "2026-11-08T08:00:22.722Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3058,
+      "error": null,
+      "finalHost": "www.nic.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1440,
+        "overflowX": 268,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 0
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3117,
+      "error": null,
+      "finalHost": "www.nic.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 0
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 16.8,
+      "sdMargin": 68.7,
+      "sdPlain": 72.1
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/151-nic.ru-margin.jpg",
+      "plain": "rounds/0001/shots/151-nic.ru-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:00:22.722Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3058,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3117,
+        "error": null
+      },
+      "look": {
+        "diff": 16.8,
+        "sdMargin": 68.7,
+        "sdPlain": 72.1
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/151-nic.ru-margin.jpg",
+        "plain": "rounds/0001/shots/151-nic.ru-plain.jpg"
+      }
+    }
+  ]
+}

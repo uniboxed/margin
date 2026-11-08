@@ -1,0 +1,118 @@
+{
+  "domain": "football.com",
+  "rank": 1556,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:44:53.985Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1556,
+    "domain": "football.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:44:53.985Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3915,
+      "error": null,
+      "finalHost": "www.football.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 14989,
+        "visible": 547,
+        "cut": 394,
+        "cutRight": 210,
+        "images": 1316,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11708
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4489,
+      "error": null,
+      "finalHost": "www.football.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 14989,
+        "visible": 547,
+        "cut": 394,
+        "cutRight": 210,
+        "images": 1316,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11708
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 22.3,
+      "sdPlain": 22.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:44:53.985Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3915,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4489,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 22.3,
+        "sdPlain": 22.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

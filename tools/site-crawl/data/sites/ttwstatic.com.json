@@ -1,0 +1,73 @@
+{
+  "domain": "ttwstatic.com",
+  "rank": 2968,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:25:25.775Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2968,
+    "domain": "ttwstatic.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:25:25.775Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 47,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ttwstatic.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 210,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ttwstatic.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:25:25.775Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 47,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ttwstatic.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 210,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ttwstatic.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

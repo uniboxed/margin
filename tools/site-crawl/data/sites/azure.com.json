@@ -1,0 +1,120 @@
+{
+  "domain": "azure.com",
+  "rank": 18,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T07:57:30.570Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 18,
+    "domain": "azure.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T07:57:30.570Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6949,
+      "error": null,
+      "finalHost": "azure.microsoft.com",
+      "errors": [
+        "Cannot read properties of null (reading '_runScript2')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6414,
+        "visible": 44,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 121,
+        "brokenImages": 1,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8065
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7394,
+      "error": null,
+      "finalHost": "azure.microsoft.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6414,
+        "visible": 44,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 122,
+        "brokenImages": 1,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8065
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 87.6,
+      "sdPlain": 87.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:57:30.570Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6949,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7394,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 87.6,
+        "sdPlain": 87.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

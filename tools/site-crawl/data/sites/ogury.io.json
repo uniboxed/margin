@@ -1,0 +1,73 @@
+{
+  "domain": "ogury.io",
+  "rank": 2339,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:06:12.343Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2339,
+    "domain": "ogury.io",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:06:12.343Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 758,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://ogury.io/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 847,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://ogury.io/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:06:12.343Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 758,
+        "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://ogury.io/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 847,
+        "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://ogury.io/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

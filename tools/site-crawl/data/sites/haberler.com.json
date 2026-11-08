@@ -1,0 +1,130 @@
+{
+  "domain": "haberler.com",
+  "rank": 1337,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:35:43.696Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1337,
+    "domain": "haberler.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:35:43.696Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4177,
+      "error": null,
+      "finalHost": "www.haberler.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 16639,
+        "visible": 358,
+        "cut": 151,
+        "cutRight": 148,
+        "images": 281,
+        "brokenImages": 0,
+        "iframes": 15,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 20770
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4882,
+      "error": null,
+      "finalHost": "www.haberler.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 16639,
+        "visible": 207,
+        "cut": 151,
+        "cutRight": 148,
+        "images": 281,
+        "brokenImages": 0,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 20788
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 40.1,
+      "sdMargin": 52.7,
+      "sdPlain": 63.3
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1337-haberler.com-margin.jpg",
+      "plain": "rounds/0001/shots/1337-haberler.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:35:43.696Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4177,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4882,
+        "error": null
+      },
+      "look": {
+        "diff": 40.1,
+        "sdMargin": 52.7,
+        "sdPlain": 63.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1337-haberler.com-margin.jpg",
+        "plain": "rounds/0001/shots/1337-haberler.com-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "domain": "second-ns.de",
+  "rank": 2845,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:21:43.600Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2845,
+    "domain": "second-ns.de",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:21:43.600Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 137,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://second-ns.de/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 128,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://second-ns.de/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:21:43.600Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 137,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://second-ns.de/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 128,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://second-ns.de/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "domain": "ekatox.com",
+  "rank": 3851,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:29:58.100Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3851,
+    "domain": "ekatox.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:29:58.100Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4254,
+      "error": null,
+      "finalHost": "ekatox.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 113,
+        "visible": 12,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 35,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2956
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4140,
+      "error": null,
+      "finalHost": "ekatox.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 63,
+        "visible": 4,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 35,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15494
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 79.6,
+      "sdMargin": 52.9,
+      "sdPlain": 54.6
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3851-ekatox.com-margin.jpg",
+      "plain": "rounds/0001/shots/3851-ekatox.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:29:58.100Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4254,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4140,
+        "error": null
+      },
+      "look": {
+        "diff": 79.6,
+        "sdMargin": 52.9,
+        "sdPlain": 54.6
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3851-ekatox.com-margin.jpg",
+        "plain": "rounds/0001/shots/3851-ekatox.com-plain.jpg"
+      }
+    }
+  ]
+}

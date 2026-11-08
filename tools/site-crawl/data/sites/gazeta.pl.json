@@ -1,0 +1,118 @@
+{
+  "domain": "gazeta.pl",
+  "rank": 4391,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:46:31.370Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4391,
+    "domain": "gazeta.pl",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:46:31.370Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4826,
+      "error": null,
+      "finalHost": "www.gazeta.pl",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1320,
+        "overflowX": 148,
+        "text": 33864,
+        "visible": 179,
+        "cut": 7,
+        "cutRight": 4,
+        "images": 210,
+        "brokenImages": 0,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 24693
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4973,
+      "error": null,
+      "finalHost": "www.gazeta.pl",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1320,
+        "overflowX": 148,
+        "text": 33883,
+        "visible": 179,
+        "cut": 7,
+        "cutRight": 4,
+        "images": 210,
+        "brokenImages": 0,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 885
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 53.9,
+      "sdPlain": 54
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:46:31.370Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4826,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4973,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 53.9,
+        "sdPlain": 54
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

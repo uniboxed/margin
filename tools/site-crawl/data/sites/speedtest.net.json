@@ -1,0 +1,110 @@
+{
+  "domain": "speedtest.net",
+  "rank": 479,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:09:36.539Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 479,
+    "domain": "speedtest.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:09:36.539Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3096,
+      "error": null,
+      "finalHost": "www.speedtest.net",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 900,
+        "visible": 29,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 17,
+        "brokenImages": 2,
+        "iframes": 15,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2187
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3098,
+      "error": null,
+      "finalHost": "www.speedtest.net",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 907,
+        "visible": 33,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 17,
+        "brokenImages": 2,
+        "iframes": 21,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2187
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:09:36.539Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3096,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3098,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

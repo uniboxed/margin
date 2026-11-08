@@ -1,0 +1,120 @@
+{
+  "domain": "xorgasmo.com",
+  "rank": 1671,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:48:03.574Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1671,
+    "domain": "xorgasmo.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:48:03.574Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4317,
+      "error": null,
+      "finalHost": "xorgasmo.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1192,
+        "overflowX": 20,
+        "text": 5274,
+        "visible": 83,
+        "cut": 13,
+        "cutRight": 12,
+        "images": 117,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4720
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4313,
+      "error": null,
+      "finalHost": "xorgasmo.com",
+      "errors": [
+        "Hls is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1192,
+        "overflowX": 20,
+        "text": 5255,
+        "visible": 79,
+        "cut": 14,
+        "cutRight": 13,
+        "images": 117,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4738
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.2,
+      "sdMargin": 59.9,
+      "sdPlain": 59.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:48:03.574Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4317,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4313,
+        "error": null
+      },
+      "look": {
+        "diff": 10.2,
+        "sdMargin": 59.9,
+        "sdPlain": 59.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

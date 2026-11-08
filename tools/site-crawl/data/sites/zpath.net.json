@@ -1,0 +1,79 @@
+{
+  "domain": "zpath.net",
+  "rank": 700,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:16:34.002Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 700,
+    "domain": "zpath.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:16:34.002Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 46,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zpath.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 72,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zpath.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": null
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:16:34.002Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 46,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zpath.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 72,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zpath.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": null
+      }
+    }
+  ]
+}

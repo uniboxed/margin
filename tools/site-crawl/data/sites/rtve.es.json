@@ -1,0 +1,132 @@
+{
+  "domain": "rtve.es",
+  "rank": 3184,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:31:27.058Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3184,
+    "domain": "rtve.es",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow"
+    ],
+    "at": "2026-11-08T09:31:27.058Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3940,
+      "error": null,
+      "finalHost": "www.rtve.es",
+      "errors": [
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1228,
+        "overflowX": 56,
+        "text": 36021,
+        "visible": 123,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 776,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12100
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4056,
+      "error": null,
+      "finalHost": "www.rtve.es",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 35965,
+        "visible": 123,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 776,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12224
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.6,
+      "sdMargin": 82.7,
+      "sdPlain": 82.9
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3184-rtve.es-margin.jpg",
+      "plain": "rounds/0001/shots/3184-rtve.es-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:31:27.058Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3940,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4056,
+        "error": null
+      },
+      "look": {
+        "diff": 0.6,
+        "sdMargin": 82.7,
+        "sdPlain": 82.9
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3184-rtve.es-margin.jpg",
+        "plain": "rounds/0001/shots/3184-rtve.es-plain.jpg"
+      }
+    }
+  ]
+}

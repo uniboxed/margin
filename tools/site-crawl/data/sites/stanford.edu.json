@@ -1,0 +1,118 @@
+{
+  "domain": "stanford.edu",
+  "rank": 386,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:06:46.087Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 386,
+    "domain": "stanford.edu",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:06:46.087Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3437,
+      "error": null,
+      "finalHost": "www.stanford.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8002,
+        "visible": 18,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 24,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 25311
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3378,
+      "error": null,
+      "finalHost": "www.stanford.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8002,
+        "visible": 18,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 24,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 25310
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.5,
+      "sdMargin": 43.7,
+      "sdPlain": 43.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:06:46.087Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3437,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3378,
+        "error": null
+      },
+      "look": {
+        "diff": 2.5,
+        "sdMargin": 43.7,
+        "sdPlain": 43.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

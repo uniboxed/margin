@@ -1,0 +1,109 @@
+{
+  "domain": "t2.ru",
+  "rank": 2000,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:57:28.311Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2000,
+    "domain": "t2.ru",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:57:28.311Z",
+    "margin": {
+      "ok": false,
+      "status": 503,
+      "ms": 4362,
+      "error": null,
+      "finalHost": "msk.t2.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1440,
+        "overflowX": 268,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 0
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 503,
+      "ms": 4374,
+      "error": null,
+      "finalHost": "msk.t2.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 0
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": null
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:57:28.311Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 503,
+        "ms": 4362,
+        "error": null
+      },
+      "plain": {
+        "status": 503,
+        "ms": 4374,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": null
+      }
+    }
+  ]
+}

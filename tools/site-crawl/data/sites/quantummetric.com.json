@@ -1,0 +1,124 @@
+{
+  "domain": "quantummetric.com",
+  "rank": 2226,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:03:19.947Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2226,
+    "domain": "quantummetric.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:03:19.947Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3530,
+      "error": null,
+      "finalHost": "www.quantummetric.com",
+      "errors": [
+        "Minified React error #425; visit https://react.dev/errors/425 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #422; visit https://react.dev/errors/422 for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 11947,
+        "visible": 145,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 35,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8266
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2649,
+      "error": null,
+      "finalHost": "www.quantummetric.com",
+      "errors": [
+        "Minified React error #425; visit https://react.dev/errors/425 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.",
+        "Minified React error #422; visit https://react.dev/errors/422 for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 11947,
+        "visible": 145,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 35,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8266
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 106.5,
+      "sdPlain": 106.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:03:19.947Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3530,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2649,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 106.5,
+        "sdPlain": 106.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

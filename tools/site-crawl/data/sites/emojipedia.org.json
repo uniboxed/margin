@@ -1,0 +1,118 @@
+{
+  "domain": "emojipedia.org",
+  "rank": 4229,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:41:16.442Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4229,
+    "domain": "emojipedia.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:41:16.442Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2998,
+      "error": null,
+      "finalHost": "emojipedia.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3332,
+        "visible": 65,
+        "cut": 2,
+        "cutRight": 0,
+        "images": 27,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3637
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3059,
+      "error": null,
+      "finalHost": "emojipedia.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3332,
+        "visible": 62,
+        "cut": 2,
+        "cutRight": 0,
+        "images": 27,
+        "brokenImages": 0,
+        "iframes": 38,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 8.3,
+      "sdMargin": 39.6,
+      "sdPlain": 26.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:41:16.442Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2998,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3059,
+        "error": null
+      },
+      "look": {
+        "diff": 8.3,
+        "sdMargin": 39.6,
+        "sdPlain": 26.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "domain": "kwai.com",
+  "rank": 1012,
+  "verdict": "flagged",
+  "flags": [
+    "text-missing"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:25:54.539Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1012,
+    "domain": "kwai.com",
+    "verdict": "flagged",
+    "flags": [
+      "text-missing"
+    ],
+    "at": "2026-11-08T08:25:54.539Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4848,
+      "error": null,
+      "finalHost": "www.kwai.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 786,
+        "visible": 38,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 20,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5842,
+      "error": null,
+      "finalHost": "www.kwai.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1731,
+        "visible": 38,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 20,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 22.2,
+      "sdMargin": 73.3,
+      "sdPlain": 54.3
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1012-kwai.com-margin.jpg",
+      "plain": "rounds/0001/shots/1012-kwai.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:25:54.539Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "text-missing"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4848,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5842,
+        "error": null
+      },
+      "look": {
+        "diff": 22.2,
+        "sdMargin": 73.3,
+        "sdPlain": 54.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1012-kwai.com-margin.jpg",
+        "plain": "rounds/0001/shots/1012-kwai.com-plain.jpg"
+      }
+    }
+  ]
+}

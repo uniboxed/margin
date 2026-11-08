@@ -1,0 +1,118 @@
+{
+  "domain": "eclipse.org",
+  "rank": 4409,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:46:58.800Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4409,
+    "domain": "eclipse.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:46:58.800Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2974,
+      "error": null,
+      "finalHost": "www.eclipse.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3715,
+        "visible": 31,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5924
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2972,
+      "error": null,
+      "finalHost": "www.eclipse.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3715,
+        "visible": 31,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5955
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 53.5,
+      "sdPlain": 53.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:46:58.800Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2974,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2972,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 53.5,
+        "sdPlain": 53.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

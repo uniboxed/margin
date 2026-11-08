@@ -1,0 +1,118 @@
+{
+  "domain": "sfgate.com",
+  "rank": 2729,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:18:06.607Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2729,
+    "domain": "sfgate.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:18:06.607Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 14385,
+      "error": null,
+      "finalHost": "www.sfgate.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7854,
+        "visible": 69,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 76,
+        "brokenImages": 3,
+        "iframes": 34,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11089
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 14362,
+      "error": null,
+      "finalHost": "www.sfgate.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7886,
+        "visible": 69,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 76,
+        "brokenImages": 3,
+        "iframes": 33,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11089
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 18.4,
+      "sdMargin": 39.4,
+      "sdPlain": 50.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:18:06.607Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 14385,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 14362,
+        "error": null
+      },
+      "look": {
+        "diff": 18.4,
+        "sdMargin": 39.4,
+        "sdPlain": 50.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

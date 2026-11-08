@@ -1,0 +1,122 @@
+{
+  "domain": "fao.org",
+  "rank": 1799,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:51:35.562Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1799,
+    "domain": "fao.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:51:35.562Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3586,
+      "error": null,
+      "finalHost": "www.fao.org",
+      "errors": [
+        "utility.setBreadcrumbActiveItemTitle is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7234,
+        "visible": 34,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 130,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7245
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3909,
+      "error": null,
+      "finalHost": "www.fao.org",
+      "errors": [
+        "utility.setBreadcrumbActiveItemTitle is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7234,
+        "visible": 34,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 130,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7245
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 3.9,
+      "sdMargin": 72.3,
+      "sdPlain": 71.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:51:35.562Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3586,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3909,
+        "error": null
+      },
+      "look": {
+        "diff": 3.9,
+        "sdMargin": 72.3,
+        "sdPlain": 71.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

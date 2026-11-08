@@ -1,0 +1,73 @@
+{
+  "domain": "priceline.com",
+  "rank": 4690,
+  "verdict": "blocked",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:57:37.972Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4690,
+    "domain": "priceline.com",
+    "verdict": "blocked",
+    "flags": [],
+    "at": "2026-11-08T15:57:37.972Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 403,
+      "ms": 2810,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "www.priceline.com",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 403,
+      "ms": 2946,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "www.priceline.com",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:57:37.972Z",
+      "commit": "f2231c7",
+      "verdict": "blocked",
+      "flags": [],
+      "margin": {
+        "status": 403,
+        "ms": 2810,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "plain": {
+        "status": 403,
+        "ms": 2946,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

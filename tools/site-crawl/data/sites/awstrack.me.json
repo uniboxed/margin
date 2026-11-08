@@ -1,0 +1,73 @@
+{
+  "domain": "awstrack.me",
+  "rank": 3515,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:22:07.430Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3515,
+    "domain": "awstrack.me",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:22:07.430Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 48,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awstrack.me/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 53,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awstrack.me/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:22:07.430Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 48,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awstrack.me/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 53,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://awstrack.me/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

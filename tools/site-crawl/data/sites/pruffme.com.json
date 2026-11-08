@@ -1,0 +1,122 @@
+{
+  "domain": "pruffme.com",
+  "rank": 3948,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:32:36.658Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3948,
+    "domain": "pruffme.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:32:36.658Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5504,
+      "error": null,
+      "finalHost": "pruffme.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6460,
+        "visible": 89,
+        "cut": 10,
+        "cutRight": 10,
+        "images": 62,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12711
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6057,
+      "error": null,
+      "finalHost": "pruffme.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6460,
+        "visible": 89,
+        "cut": 11,
+        "cutRight": 11,
+        "images": 62,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12711
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1,
+      "sdMargin": 99.8,
+      "sdPlain": 100
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:32:36.658Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5504,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6057,
+        "error": null
+      },
+      "look": {
+        "diff": 1,
+        "sdMargin": 99.8,
+        "sdPlain": 100
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

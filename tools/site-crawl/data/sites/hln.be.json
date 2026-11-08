@@ -1,0 +1,122 @@
+{
+  "domain": "hln.be",
+  "rank": 1272,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:33:46.597Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1272,
+    "domain": "hln.be",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:33:46.597Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4069,
+      "error": null,
+      "finalHost": "www.hln.be",
+      "errors": [
+        "Cannot read properties of undefined (reading 'push')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 36536,
+        "visible": 104,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 128,
+        "brokenImages": 1,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15695
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6223,
+      "error": null,
+      "finalHost": "www.hln.be",
+      "errors": [
+        "Cannot read properties of undefined (reading 'push')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 36536,
+        "visible": 104,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 129,
+        "brokenImages": 2,
+        "iframes": 13,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15695
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 82.5,
+      "sdPlain": 82.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:33:46.597Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4069,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6223,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 82.5,
+        "sdPlain": 82.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

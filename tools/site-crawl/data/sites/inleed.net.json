@@ -1,0 +1,124 @@
+{
+  "domain": "inleed.net",
+  "rank": 1700,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:48:55.262Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1700,
+    "domain": "inleed.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:48:55.262Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 9944,
+      "error": null,
+      "finalHost": "inleed.se",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1524,
+        "overflowX": 352,
+        "text": 15445,
+        "visible": 26,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 151,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15678
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 10098,
+      "error": null,
+      "finalHost": "inleed.se",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1524,
+        "overflowX": 352,
+        "text": 15445,
+        "visible": 26,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 151,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15678
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 39.1,
+      "sdPlain": 39
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1700-inleed.net-margin.jpg",
+      "plain": "rounds/0001/shots/1700-inleed.net-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:48:55.262Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 9944,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 10098,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 39.1,
+        "sdPlain": 39
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1700-inleed.net-margin.jpg",
+        "plain": "rounds/0001/shots/1700-inleed.net-plain.jpg"
+      }
+    }
+  ]
+}

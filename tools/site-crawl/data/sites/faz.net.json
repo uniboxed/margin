@@ -1,0 +1,126 @@
+{
+  "domain": "faz.net",
+  "rank": 2791,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:20:09.813Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2791,
+    "domain": "faz.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:20:09.813Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4584,
+      "error": null,
+      "finalHost": "www.faz.net",
+      "errors": [
+        "avenga is not defined",
+        "Failed to execute 'define' on 'CustomElementRegistry': the name \"dpc-search-widget\" has already been used with this registry",
+        "Cannot read properties of undefined (reading 'app')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 36452,
+        "visible": 51,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 180,
+        "brokenImages": 0,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 32525
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4280,
+      "error": null,
+      "finalHost": "www.faz.net",
+      "errors": [
+        "avenga is not defined",
+        "Failed to execute 'define' on 'CustomElementRegistry': the name \"dpc-search-widget\" has already been used with this registry",
+        "Cannot read properties of undefined (reading 'app')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 36452,
+        "visible": 51,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 180,
+        "brokenImages": 0,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 32608
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 39.6,
+      "sdPlain": 39.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:20:09.813Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4584,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4280,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 39.6,
+        "sdPlain": 39.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

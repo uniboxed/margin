@@ -1,0 +1,122 @@
+{
+  "domain": "rg.ru",
+  "rank": 4728,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:58:46.186Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4728,
+    "domain": "rg.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:58:46.186Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 16239,
+      "error": null,
+      "finalHost": "rg.ru",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12573,
+        "visible": 47,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 53,
+        "brokenImages": 2,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 11125
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 16234,
+      "error": null,
+      "finalHost": "rg.ru",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12573,
+        "visible": 47,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 53,
+        "brokenImages": 2,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 11125
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.3,
+      "sdMargin": 63.9,
+      "sdPlain": 63.9
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:58:46.186Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 16239,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 16234,
+        "error": null
+      },
+      "look": {
+        "diff": 0.3,
+        "sdMargin": 63.9,
+        "sdPlain": 63.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

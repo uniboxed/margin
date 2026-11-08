@@ -1,0 +1,118 @@
+{
+  "domain": "expressen.se",
+  "rank": 1757,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:50:44.789Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1757,
+    "domain": "expressen.se",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:50:44.789Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4782,
+      "error": null,
+      "finalHost": "www.expressen.se",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 22163,
+        "visible": 88,
+        "cut": 23,
+        "cutRight": 23,
+        "images": 186,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 62763
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4679,
+      "error": null,
+      "finalHost": "www.expressen.se",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 22157,
+        "visible": 88,
+        "cut": 23,
+        "cutRight": 23,
+        "images": 186,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 62797
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 42.3,
+      "sdPlain": 42.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:50:44.789Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4782,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4679,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 42.3,
+        "sdPlain": 42.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

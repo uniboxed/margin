@@ -1,0 +1,118 @@
+{
+  "domain": "pushy.io",
+  "rank": 477,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:08:57.763Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 477,
+    "domain": "pushy.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:08:57.763Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2917,
+      "error": null,
+      "finalHost": "pushy.me",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5118,
+        "visible": 25,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 66,
+        "brokenImages": 0,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7118
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2917,
+      "error": null,
+      "finalHost": "pushy.me",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5118,
+        "visible": 25,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 66,
+        "brokenImages": 0,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7118
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 13.1,
+      "sdMargin": 28.4,
+      "sdPlain": 27.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:08:57.763Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2917,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2917,
+        "error": null
+      },
+      "look": {
+        "diff": 13.1,
+        "sdMargin": 28.4,
+        "sdPlain": 27.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

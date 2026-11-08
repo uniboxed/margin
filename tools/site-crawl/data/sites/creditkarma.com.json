@@ -1,0 +1,136 @@
+{
+  "domain": "creditkarma.com",
+  "rank": 4303,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:44:42.812Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4303,
+    "domain": "creditkarma.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:44:42.812Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 30286,
+      "error": null,
+      "finalHost": "www.creditkarma.com",
+      "errors": [
+        "getLayoutMap() must be called from a top-level browsing context or allowed by the permission policy.",
+        "Unexpected token '<'"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5697,
+        "visible": 50,
+        "cut": 36,
+        "cutRight": 0,
+        "images": 44,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4462
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 34733,
+      "error": null,
+      "finalHost": "www.creditkarma.com",
+      "errors": [
+        "getLayoutMap() must be called from a top-level browsing context or allowed by the permission policy.",
+        "Unexpected token '<'"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5332,
+        "visible": 49,
+        "cut": 36,
+        "cutRight": 0,
+        "images": 43,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4043
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 104.5,
+      "sdMargin": 85.8,
+      "sdPlain": 59
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4303-creditkarma.com-margin.jpg",
+      "plain": "rounds/0001/shots/4303-creditkarma.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:44:42.812Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 30286,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 34733,
+        "error": null
+      },
+      "look": {
+        "diff": 104.5,
+        "sdMargin": 85.8,
+        "sdPlain": 59
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4303-creditkarma.com-margin.jpg",
+        "plain": "rounds/0001/shots/4303-creditkarma.com-plain.jpg"
+      }
+    }
+  ]
+}

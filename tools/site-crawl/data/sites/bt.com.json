@@ -1,0 +1,124 @@
+{
+  "domain": "bt.com",
+  "rank": 3600,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:23:55.838Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3600,
+    "domain": "bt.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:23:55.838Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3793,
+      "error": null,
+      "finalHost": "www.bt.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6442,
+        "visible": 43,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 36,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8023
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3793,
+      "error": null,
+      "finalHost": "www.bt.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6442,
+        "visible": 43,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 36,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8425
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.5,
+      "sdMargin": 49.1,
+      "sdPlain": 49.3
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3600-bt.com-margin.jpg",
+      "plain": "rounds/0001/shots/3600-bt.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:23:55.838Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3793,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3793,
+        "error": null
+      },
+      "look": {
+        "diff": 1.5,
+        "sdMargin": 49.1,
+        "sdPlain": 49.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3600-bt.com-margin.jpg",
+        "plain": "rounds/0001/shots/3600-bt.com-plain.jpg"
+      }
+    }
+  ]
+}

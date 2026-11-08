@@ -1,0 +1,118 @@
+{
+  "domain": "dingtalk.com",
+  "rank": 3584,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:23:42.214Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3584,
+    "domain": "dingtalk.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:23:42.214Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6975,
+      "error": null,
+      "finalHost": "www.dingtalk.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3691,
+        "visible": 57,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 420,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11483
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7308,
+      "error": null,
+      "finalHost": "www.dingtalk.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3691,
+        "visible": 57,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 420,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.8,
+      "sdMargin": 39.1,
+      "sdPlain": 38.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:23:42.214Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6975,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7308,
+        "error": null
+      },
+      "look": {
+        "diff": 0.8,
+        "sdMargin": 39.1,
+        "sdPlain": 38.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

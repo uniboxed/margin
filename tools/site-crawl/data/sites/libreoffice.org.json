@@ -1,0 +1,118 @@
+{
+  "domain": "libreoffice.org",
+  "rank": 4542,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:53:25.889Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4542,
+    "domain": "libreoffice.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:53:25.889Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4056,
+      "error": null,
+      "finalHost": "www.libreoffice.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3600,
+        "visible": 31,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 188,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6863
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4028,
+      "error": null,
+      "finalHost": "www.libreoffice.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3600,
+        "visible": 31,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 188,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6863
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 8.5,
+      "sdMargin": 31.1,
+      "sdPlain": 31.9
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:53:25.889Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4056,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4028,
+        "error": null
+      },
+      "look": {
+        "diff": 8.5,
+        "sdMargin": 31.1,
+        "sdPlain": 31.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

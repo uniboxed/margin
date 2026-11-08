@@ -1,0 +1,73 @@
+{
+  "domain": "dreamstime.com",
+  "rank": 4155,
+  "verdict": "blocked",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:38:23.161Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4155,
+    "domain": "dreamstime.com",
+    "verdict": "blocked",
+    "flags": [],
+    "at": "2026-11-08T15:38:23.161Z",
+    "margin": {
+      "ok": false,
+      "status": 403,
+      "ms": 3025,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "dreamstime.com",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 403,
+      "ms": 3761,
+      "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')",
+      "finalHost": "dreamstime.com",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:38:23.161Z",
+      "commit": "f2231c7",
+      "verdict": "blocked",
+      "flags": [],
+      "margin": {
+        "status": 403,
+        "ms": 3025,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "plain": {
+        "status": 403,
+        "ms": 3761,
+        "error": "page.evaluate: TypeError: Cannot read properties of undefined (reading 'width')"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

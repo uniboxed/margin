@@ -1,0 +1,122 @@
+{
+  "domain": "uscis.gov",
+  "rank": 3892,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:31:08.385Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3892,
+    "domain": "uscis.gov",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:31:08.385Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3116,
+      "error": null,
+      "finalHost": "www.uscis.gov",
+      "errors": [
+        "Invalid or unexpected token"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3887,
+        "visible": 83,
+        "cut": 40,
+        "cutRight": 36,
+        "images": 30,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4177
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2997,
+      "error": null,
+      "finalHost": "www.uscis.gov",
+      "errors": [
+        "Invalid or unexpected token"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3887,
+        "visible": 83,
+        "cut": 40,
+        "cutRight": 36,
+        "images": 30,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4176
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 93.2,
+      "sdPlain": 93.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:31:08.385Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3116,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2997,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 93.2,
+        "sdPlain": 93.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

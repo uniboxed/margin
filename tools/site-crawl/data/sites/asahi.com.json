@@ -1,0 +1,134 @@
+{
+  "domain": "asahi.com",
+  "rank": 2969,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:25:50.033Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2969,
+    "domain": "asahi.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T09:25:50.033Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 15914,
+      "error": null,
+      "finalHost": "www.asahi.com",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12494,
+        "visible": 144,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 275,
+        "brokenImages": 4,
+        "iframes": 39,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9219
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 16902,
+      "error": null,
+      "finalHost": "www.asahi.com",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12494,
+        "visible": 123,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 276,
+        "brokenImages": 4,
+        "iframes": 39,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9379
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 68.3,
+      "sdMargin": 63.3,
+      "sdPlain": 75.4
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/2969-asahi.com-margin.jpg",
+      "plain": "rounds/0001/shots/2969-asahi.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:25:50.033Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 15914,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 16902,
+        "error": null
+      },
+      "look": {
+        "diff": 68.3,
+        "sdMargin": 63.3,
+        "sdPlain": 75.4
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/2969-asahi.com-margin.jpg",
+        "plain": "rounds/0001/shots/2969-asahi.com-plain.jpg"
+      }
+    }
+  ]
+}

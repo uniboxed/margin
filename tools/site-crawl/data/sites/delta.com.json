@@ -1,0 +1,73 @@
+{
+  "domain": "delta.com",
+  "rank": 3304,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:34:23.397Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3304,
+    "domain": "delta.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:34:23.397Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 40,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://delta.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 36,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://delta.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:34:23.397Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 40,
+        "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://delta.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 36,
+        "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://delta.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

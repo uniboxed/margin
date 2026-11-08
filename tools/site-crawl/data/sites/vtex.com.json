@@ -1,0 +1,118 @@
+{
+  "domain": "vtex.com",
+  "rank": 3054,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:27:31.145Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3054,
+    "domain": "vtex.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:27:31.145Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3746,
+      "error": null,
+      "finalHost": "www.vtex.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1164,
+        "overflowX": 0,
+        "text": 7365,
+        "visible": 36,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 32,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7300
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3797,
+      "error": null,
+      "finalHost": "www.vtex.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1164,
+        "overflowX": 0,
+        "text": 7365,
+        "visible": 36,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 32,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7300
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.9,
+      "sdMargin": 26,
+      "sdPlain": 25.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:27:31.145Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3746,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3797,
+        "error": null
+      },
+      "look": {
+        "diff": 1.9,
+        "sdMargin": 26,
+        "sdPlain": 25.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

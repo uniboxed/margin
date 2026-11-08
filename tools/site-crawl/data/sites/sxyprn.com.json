@@ -1,0 +1,118 @@
+{
+  "domain": "sxyprn.com",
+  "rank": 1508,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:42:30.595Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1508,
+    "domain": "sxyprn.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:42:30.595Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3746,
+      "error": null,
+      "finalHost": "sxyprn.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 27001,
+        "visible": 151,
+        "cut": 60,
+        "cutRight": 60,
+        "images": 277,
+        "brokenImages": 0,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10009
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3779,
+      "error": null,
+      "finalHost": "sxyprn.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 27001,
+        "visible": 151,
+        "cut": 60,
+        "cutRight": 60,
+        "images": 277,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10007
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 4.2,
+      "sdMargin": 47.4,
+      "sdPlain": 47.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:42:30.595Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3746,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3779,
+        "error": null
+      },
+      "look": {
+        "diff": 4.2,
+        "sdMargin": 47.4,
+        "sdPlain": 47.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

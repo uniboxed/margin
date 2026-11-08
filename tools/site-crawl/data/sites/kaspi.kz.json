@@ -1,0 +1,95 @@
+{
+  "domain": "kaspi.kz",
+  "rank": 1944,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:55:52.021Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1944,
+    "domain": "kaspi.kz",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:55:52.021Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 16744,
+      "error": null,
+      "finalHost": "kaspi.kz",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1261,
+        "overflowX": 89,
+        "text": 4377,
+        "visible": 26,
+        "cut": 16,
+        "cutRight": 11,
+        "images": 94,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7328
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 29999,
+      "error": "page.goto: Timeout 30000ms exceeded.",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:55:52.021Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 16744,
+        "error": null
+      },
+      "plain": {
+        "status": null,
+        "ms": 29999,
+        "error": "page.goto: Timeout 30000ms exceeded."
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

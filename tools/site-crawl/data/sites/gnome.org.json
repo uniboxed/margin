@@ -1,0 +1,118 @@
+{
+  "domain": "gnome.org",
+  "rank": 3330,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:35:16.918Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3330,
+    "domain": "gnome.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:35:16.918Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3774,
+      "error": null,
+      "finalHost": "www.gnome.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1943,
+        "visible": 12,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 27,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6563
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3844,
+      "error": null,
+      "finalHost": "www.gnome.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1943,
+        "visible": 12,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 27,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6563
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 71.4,
+      "sdPlain": 71.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:35:16.918Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3774,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3844,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 71.4,
+        "sdPlain": 71.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

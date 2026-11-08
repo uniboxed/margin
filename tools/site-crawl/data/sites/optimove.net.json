@@ -1,0 +1,129 @@
+{
+  "domain": "optimove.net",
+  "rank": 2592,
+  "verdict": "flagged",
+  "flags": [
+    "no-box",
+    "drawn-off-slot",
+    "wrong-width"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:14:12.358Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2592,
+    "domain": "optimove.net",
+    "verdict": "flagged",
+    "flags": [
+      "no-box",
+      "drawn-off-slot",
+      "wrong-width"
+    ],
+    "at": "2026-11-08T09:14:12.358Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2256,
+      "error": null,
+      "finalHost": "optimove.net",
+      "errors": [],
+      "m": {
+        "vw": 1440,
+        "vh": 900,
+        "scrollW": 1440,
+        "overflowX": 0,
+        "text": 1032,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 488
+      },
+      "box": null,
+      "rootX": 0
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2259,
+      "error": null,
+      "finalHost": "optimove.net",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1032,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 488
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 6.7,
+      "sdMargin": 11.3,
+      "sdPlain": 21.9
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/2592-optimove.net-margin.jpg",
+      "plain": "rounds/0001/shots/2592-optimove.net-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:14:12.358Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "no-box",
+        "drawn-off-slot",
+        "wrong-width"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2256,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2259,
+        "error": null
+      },
+      "look": {
+        "diff": 6.7,
+        "sdMargin": 11.3,
+        "sdPlain": 21.9
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/2592-optimove.net-margin.jpg",
+        "plain": "rounds/0001/shots/2592-optimove.net-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "handelsblatt.com",
+  "rank": 4023,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:34:31.613Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4023,
+    "domain": "handelsblatt.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:34:31.613Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5860,
+      "error": null,
+      "finalHost": "www.handelsblatt.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14767,
+        "visible": 102,
+        "cut": 37,
+        "cutRight": 1,
+        "images": 56,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11093
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5876,
+      "error": null,
+      "finalHost": "www.handelsblatt.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14767,
+        "visible": 102,
+        "cut": 37,
+        "cutRight": 1,
+        "images": 56,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11093
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 77.2,
+      "sdPlain": 77.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:34:31.613Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5860,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5876,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 77.2,
+        "sdPlain": 77.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

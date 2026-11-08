@@ -1,0 +1,118 @@
+{
+  "domain": "hitomi.la",
+  "rank": 1488,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:42:03.720Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1488,
+    "domain": "hitomi.la",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:42:03.720Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3667,
+      "error": null,
+      "finalHost": "hitomi.la",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4645,
+        "visible": 70,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 53,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6639
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3798,
+      "error": null,
+      "finalHost": "hitomi.la",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4050,
+        "visible": 49,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 53,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6553
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.1,
+      "sdMargin": 32.3,
+      "sdPlain": 32.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:42:03.720Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3667,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3798,
+        "error": null
+      },
+      "look": {
+        "diff": 10.1,
+        "sdMargin": 32.3,
+        "sdPlain": 32.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

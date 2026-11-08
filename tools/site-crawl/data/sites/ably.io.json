@@ -1,0 +1,130 @@
+{
+  "domain": "ably.io",
+  "rank": 3329,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:35:16.412Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3329,
+    "domain": "ably.io",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T09:35:16.412Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3734,
+      "error": null,
+      "finalHost": "ably.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6507,
+        "visible": 95,
+        "cut": 46,
+        "cutRight": 44,
+        "images": 67,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9043
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3395,
+      "error": null,
+      "finalHost": "ably.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6507,
+        "visible": 93,
+        "cut": 46,
+        "cutRight": 44,
+        "images": 67,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9043
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 50.8,
+      "sdMargin": 89.6,
+      "sdPlain": 93.2
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3329-ably.io-margin.jpg",
+      "plain": "rounds/0001/shots/3329-ably.io-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:35:16.412Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3734,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3395,
+        "error": null
+      },
+      "look": {
+        "diff": 50.8,
+        "sdMargin": 89.6,
+        "sdPlain": 93.2
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3329-ably.io-margin.jpg",
+        "plain": "rounds/0001/shots/3329-ably.io-plain.jpg"
+      }
+    }
+  ]
+}

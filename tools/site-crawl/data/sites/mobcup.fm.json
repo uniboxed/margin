@@ -1,0 +1,118 @@
+{
+  "domain": "mobcup.fm",
+  "rank": 1772,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:51:00.399Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1772,
+    "domain": "mobcup.fm",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:51:00.399Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3710,
+      "error": null,
+      "finalHost": "mobcup.fm",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 336,
+        "visible": 16,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 3,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1038
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4453,
+      "error": null,
+      "finalHost": "mobcup.fm",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 336,
+        "visible": 16,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 3,
+        "brokenImages": 0,
+        "iframes": 10,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1192
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 21.1,
+      "sdMargin": 43,
+      "sdPlain": 56.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:51:00.399Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3710,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4453,
+        "error": null
+      },
+      "look": {
+        "diff": 21.1,
+        "sdMargin": 43,
+        "sdPlain": 56.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

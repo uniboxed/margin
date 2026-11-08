@@ -1,0 +1,122 @@
+{
+  "domain": "moz.com",
+  "rank": 3223,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:32:14.044Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3223,
+    "domain": "moz.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:32:14.044Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2593,
+      "error": null,
+      "finalHost": "moz.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'session')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 10947,
+        "visible": 36,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 50,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11121
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2628,
+      "error": null,
+      "finalHost": "moz.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'session')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10947,
+        "visible": 35,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 50,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12028
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 32.4,
+      "sdMargin": 96.9,
+      "sdPlain": 95.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:32:14.044Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2593,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2628,
+        "error": null
+      },
+      "look": {
+        "diff": 32.4,
+        "sdMargin": 96.9,
+        "sdPlain": 95.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

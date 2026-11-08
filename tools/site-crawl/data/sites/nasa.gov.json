@@ -1,0 +1,111 @@
+{
+  "domain": "nasa.gov",
+  "rank": 395,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:06:59.958Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 395,
+    "domain": "nasa.gov",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T08:06:59.958Z",
+    "margin": {
+      "ok": false,
+      "status": 403,
+      "ms": 2374,
+      "error": null,
+      "finalHost": "nasa.gov",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 58,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3114,
+      "error": null,
+      "finalHost": "www.nasa.gov",
+      "errors": [
+        "Cannot read properties of undefined (reading 'setLocaleData')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3017,
+        "visible": 37,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 73,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6844
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/395-nasa.gov-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:06:59.958Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 403,
+        "ms": 2374,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3114,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/395-nasa.gov-plain.jpg"
+      }
+    }
+  ]
+}

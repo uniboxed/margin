@@ -1,0 +1,134 @@
+{
+  "domain": "guard.io",
+  "rank": 2644,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:15:38.594Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2644,
+    "domain": "guard.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:15:38.594Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3152,
+      "error": null,
+      "finalHost": "guard.io",
+      "errors": [
+        "a.observe is not a function",
+        "a.forEach is not a function",
+        "c.slice is not a function",
+        "a.forEach is not a function",
+        "d.forEach is not a function",
+        "a.takeRecords is not a function",
+        "d.forEach is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5091,
+        "visible": 26,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 56,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10828
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3259,
+      "error": null,
+      "finalHost": "guard.io",
+      "errors": [
+        "a.observe is not a function",
+        "a.forEach is not a function",
+        "c.slice is not a function",
+        "a.forEach is not a function",
+        "d.forEach is not a function",
+        "a.takeRecords is not a function",
+        "d.forEach is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5091,
+        "visible": 26,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 56,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10828
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 27,
+      "sdPlain": 27
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:15:38.594Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3152,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3259,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 27,
+        "sdPlain": 27
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

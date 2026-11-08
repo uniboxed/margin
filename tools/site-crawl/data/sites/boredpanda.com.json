@@ -1,0 +1,133 @@
+{
+  "domain": "boredpanda.com",
+  "rank": 4638,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:56:31.411Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4638,
+    "domain": "boredpanda.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:56:31.411Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2453,
+      "error": null,
+      "finalHost": "2.boredpanda.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7102,
+        "visible": 56,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 87,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10264
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 15006,
+      "error": null,
+      "finalHost": "www.boredpanda.com",
+      "errors": [
+        "Stop the wrapper script on User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+        "\"//c.aaxads.com/aax.js?hst=www.boredpanda.com&ver=1.2&pub=\" - 1761ms: [object Event]"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10028,
+        "visible": 36,
+        "cut": 6,
+        "cutRight": 5,
+        "images": 129,
+        "brokenImages": 4,
+        "iframes": 21,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 17608
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 81.3,
+      "sdMargin": 63.7,
+      "sdPlain": 82.3
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4638-boredpanda.com-margin.jpg",
+      "plain": "rounds/0001/shots/4638-boredpanda.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:56:31.411Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2453,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 15006,
+        "error": null
+      },
+      "look": {
+        "diff": 81.3,
+        "sdMargin": 63.7,
+        "sdPlain": 82.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4638-boredpanda.com-margin.jpg",
+        "plain": "rounds/0001/shots/4638-boredpanda.com-plain.jpg"
+      }
+    }
+  ]
+}

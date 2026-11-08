@@ -1,0 +1,130 @@
+{
+  "domain": "cm.com",
+  "rank": 373,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:06:28.699Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 373,
+    "domain": "cm.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:06:28.699Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3631,
+      "error": null,
+      "finalHost": "www.cm.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8582,
+        "visible": 39,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 157,
+        "brokenImages": 0,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7807
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3812,
+      "error": null,
+      "finalHost": "www.cm.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8582,
+        "visible": 45,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 157,
+        "brokenImages": 0,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7743
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 54.9,
+      "sdMargin": 96.1,
+      "sdPlain": 76.8
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/373-cm.com-margin.jpg",
+      "plain": "rounds/0001/shots/373-cm.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:06:28.699Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3631,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3812,
+        "error": null
+      },
+      "look": {
+        "diff": 54.9,
+        "sdMargin": 96.1,
+        "sdPlain": 76.8
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/373-cm.com-margin.jpg",
+        "plain": "rounds/0001/shots/373-cm.com-plain.jpg"
+      }
+    }
+  ]
+}

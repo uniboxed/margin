@@ -1,0 +1,101 @@
+{
+  "domain": "billboard.com",
+  "rank": 3272,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:33:47.035Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3272,
+    "domain": "billboard.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:33:47.035Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4918,
+      "error": null,
+      "finalHost": "www.billboard.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Connatix Player: Ad impression timed out. timed out in 8000ms."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8594,
+        "visible": 63,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 99,
+        "brokenImages": 0,
+        "iframes": 39,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11858
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": false,
+      "status": 200,
+      "ms": 23199,
+      "error": "timeout: measure (8000 ms)",
+      "finalHost": "www.billboard.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Connatix Player: Ad impression timed out. timed out in 8000ms."
+      ],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:33:47.035Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4918,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 23199,
+        "error": "timeout: measure (8000 ms)"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

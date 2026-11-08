@@ -1,0 +1,94 @@
+{
+  "domain": "kayak.com",
+  "rank": 4759,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:59:42.375Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4759,
+    "domain": "kayak.com",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T15:59:42.375Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 2873,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "www.kayak.com",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2705,
+      "error": null,
+      "finalHost": "www.kayak.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2008,
+        "visible": 28,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 73,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2734
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/4759-kayak.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:59:42.375Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2873,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2705,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/4759-kayak.com-plain.jpg"
+      }
+    }
+  ]
+}

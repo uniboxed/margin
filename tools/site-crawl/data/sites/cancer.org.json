@@ -1,0 +1,122 @@
+{
+  "domain": "cancer.org",
+  "rank": 3409,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:37:05.752Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3409,
+    "domain": "cancer.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:37:05.752Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4264,
+      "error": null,
+      "finalHost": "www.cancer.org",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 11966,
+        "visible": 34,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 68,
+        "brokenImages": 2,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13554
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4289,
+      "error": null,
+      "finalHost": "www.cancer.org",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 11998,
+        "visible": 34,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 68,
+        "brokenImages": 2,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13534
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 4.5,
+      "sdMargin": 85.7,
+      "sdPlain": 85.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:37:05.752Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4264,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4289,
+        "error": null
+      },
+      "look": {
+        "diff": 4.5,
+        "sdMargin": 85.7,
+        "sdPlain": 85.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

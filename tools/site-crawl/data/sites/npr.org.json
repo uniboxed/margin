@@ -1,0 +1,133 @@
+{
+  "domain": "npr.org",
+  "rank": 517,
+  "verdict": "flagged",
+  "flags": [
+    "more-errors"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:11:03.657Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 517,
+    "domain": "npr.org",
+    "verdict": "flagged",
+    "flags": [
+      "more-errors"
+    ],
+    "at": "2026-11-08T08:11:03.657Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 8875,
+      "error": null,
+      "finalHost": "www.npr.org",
+      "errors": [
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14370,
+        "visible": 101,
+        "cut": 5,
+        "cutRight": 0,
+        "images": 172,
+        "brokenImages": 0,
+        "iframes": 23,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13198
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 8822,
+      "error": null,
+      "finalHost": "www.npr.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14370,
+        "visible": 101,
+        "cut": 5,
+        "cutRight": 0,
+        "images": 172,
+        "brokenImages": 0,
+        "iframes": 22,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13398
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 13.6,
+      "sdMargin": 73.8,
+      "sdPlain": 78.5
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/517-npr.org-margin.jpg",
+      "plain": "rounds/0001/shots/517-npr.org-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:11:03.657Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "more-errors"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 8875,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 8822,
+        "error": null
+      },
+      "look": {
+        "diff": 13.6,
+        "sdMargin": 73.8,
+        "sdPlain": 78.5
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/517-npr.org-margin.jpg",
+        "plain": "rounds/0001/shots/517-npr.org-plain.jpg"
+      }
+    }
+  ]
+}

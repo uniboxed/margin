@@ -1,0 +1,122 @@
+{
+  "domain": "intentiq.com",
+  "rank": 2002,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:57:32.157Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2002,
+    "domain": "intentiq.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:57:32.157Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3499,
+      "error": null,
+      "finalHost": "www.intentiq.com",
+      "errors": [
+        "Cannot set properties of null (setting 'width')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1165,
+        "overflowX": 0,
+        "text": 9321,
+        "visible": 20,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 49,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7680
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3463,
+      "error": null,
+      "finalHost": "www.intentiq.com",
+      "errors": [
+        "Cannot set properties of null (setting 'width')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1165,
+        "overflowX": 0,
+        "text": 9321,
+        "visible": 20,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 49,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7680
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 15.5,
+      "sdPlain": 15.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:57:32.157Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3499,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3463,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 15.5,
+        "sdPlain": 15.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

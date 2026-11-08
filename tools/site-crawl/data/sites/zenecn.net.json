@@ -1,0 +1,79 @@
+{
+  "domain": "zenecn.net",
+  "rank": 1800,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:51:33.428Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1800,
+    "domain": "zenecn.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:51:33.428Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 138,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zenecn.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 178,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zenecn.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": null
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:51:33.428Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 138,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zenecn.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 178,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://zenecn.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "domain": "sketchup.com",
+  "rank": 4161,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:38:34.306Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4161,
+    "domain": "sketchup.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:38:34.306Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3232,
+      "error": null,
+      "finalHost": "sketchup.trimble.com",
+      "errors": [
+        "xtp is not defined",
+        "Uncaught [object Object]",
+        "Identifier 'j' has already been declared",
+        "Uncaught [object Object]",
+        "xtp is not defined",
+        "Uncaught [object Object]"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7814,
+        "visible": 28,
+        "cut": 7,
+        "cutRight": 7,
+        "images": 56,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12886
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3105,
+      "error": null,
+      "finalHost": "sketchup.trimble.com",
+      "errors": [
+        "xtp is not defined",
+        "Uncaught [object Object]",
+        "Identifier 'j' has already been declared",
+        "xtp is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7814,
+        "visible": 28,
+        "cut": 7,
+        "cutRight": 7,
+        "images": 56,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12886
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 90.3,
+      "sdPlain": 90.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:38:34.306Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3232,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3105,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 90.3,
+        "sdPlain": 90.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

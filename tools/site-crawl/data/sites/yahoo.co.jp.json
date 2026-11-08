@@ -1,0 +1,118 @@
+{
+  "domain": "yahoo.co.jp",
+  "rank": 468,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:08:45.612Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 468,
+    "domain": "yahoo.co.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:08:45.612Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6348,
+      "error": null,
+      "finalHost": "www.yahoo.co.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5357,
+        "visible": 246,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 56,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5305
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6509,
+      "error": null,
+      "finalHost": "www.yahoo.co.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5335,
+        "visible": 246,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 56,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5305
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.9,
+      "sdMargin": 40.8,
+      "sdPlain": 41.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:08:45.612Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6348,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6509,
+        "error": null
+      },
+      "look": {
+        "diff": 2.9,
+        "sdMargin": 40.8,
+        "sdPlain": 41.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

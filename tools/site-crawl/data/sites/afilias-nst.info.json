@@ -1,0 +1,73 @@
+{
+  "domain": "afilias-nst.info",
+  "rank": 2744,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:18:20.849Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2744,
+    "domain": "afilias-nst.info",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:18:20.849Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 46,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://afilias-nst.info/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 45,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://afilias-nst.info/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:18:20.849Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 46,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://afilias-nst.info/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 45,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://afilias-nst.info/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

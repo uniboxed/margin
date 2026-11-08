@@ -1,0 +1,118 @@
+{
+  "domain": "ieee.org",
+  "rank": 606,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:13:45.337Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 606,
+    "domain": "ieee.org",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:13:45.337Z",
+    "margin": {
+      "ok": true,
+      "status": 202,
+      "ms": 2440,
+      "error": null,
+      "finalHost": "www.ieee.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 124,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 202,
+      "ms": 2439,
+      "error": null,
+      "finalHost": "www.ieee.org",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 124,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 868
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 4.1,
+      "sdPlain": 4.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:13:45.337Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 202,
+        "ms": 2440,
+        "error": null
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2439,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 4.1,
+        "sdPlain": 4.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

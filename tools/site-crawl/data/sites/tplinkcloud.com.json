@@ -1,0 +1,118 @@
+{
+  "domain": "tplinkcloud.com",
+  "rank": 521,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:11:10.128Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 521,
+    "domain": "tplinkcloud.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:11:10.128Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3101,
+      "error": null,
+      "finalHost": "www.tplinkcloud.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 2216,
+        "visible": 18,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 15,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5873
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3313,
+      "error": null,
+      "finalHost": "www.tplinkcloud.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 2216,
+        "visible": 18,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 15,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 45,
+      "sdPlain": 45
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:11:10.128Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3101,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3313,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 45,
+        "sdPlain": 45
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

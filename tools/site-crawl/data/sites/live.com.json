@@ -1,0 +1,121 @@
+{
+  "domain": "live.com",
+  "rank": 35,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T07:57:58.676Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 35,
+    "domain": "live.com",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T07:57:58.676Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 3376,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "outlook.live.com",
+      "errors": [
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared"
+      ],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2472,
+      "error": null,
+      "finalHost": "www.microsoft.com",
+      "errors": [
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Identifier 'OneCloudUtil' has already been declared",
+        "Identifier 'LocalStorageUtil' has already been declared",
+        "Cannot read properties of null (reading '_runScript2')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 20,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 54
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/35-live.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:57:58.676Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3376,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2472,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/35-live.com-plain.jpg"
+      }
+    }
+  ]
+}

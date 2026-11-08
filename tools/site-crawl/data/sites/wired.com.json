@@ -1,0 +1,124 @@
+{
+  "domain": "wired.com",
+  "rank": 566,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:12:39.260Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 566,
+    "domain": "wired.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:12:39.260Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5777,
+      "error": null,
+      "finalHost": "www.wired.com",
+      "errors": [
+        "Recommendations API URL is missing",
+        "Uncaught (in promise) No config could be discovered in the page"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8291,
+        "visible": 43,
+        "cut": 18,
+        "cutRight": 0,
+        "images": 58,
+        "brokenImages": 1,
+        "iframes": 10,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8700
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6832,
+      "error": null,
+      "finalHost": "www.wired.com",
+      "errors": [
+        "Recommendations API URL is missing",
+        "Uncaught (in promise) No config could be discovered in the page"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8291,
+        "visible": 43,
+        "cut": 18,
+        "cutRight": 0,
+        "images": 58,
+        "brokenImages": 1,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 15.6,
+      "sdMargin": 94.7,
+      "sdPlain": 91.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:12:39.260Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5777,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6832,
+        "error": null
+      },
+      "look": {
+        "diff": 15.6,
+        "sdMargin": 94.7,
+        "sdPlain": 91.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

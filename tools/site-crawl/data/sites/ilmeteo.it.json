@@ -1,0 +1,122 @@
+{
+  "domain": "ilmeteo.it",
+  "rank": 1418,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:38:51.065Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1418,
+    "domain": "ilmeteo.it",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:38:51.065Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4273,
+      "error": null,
+      "finalHost": "www.ilmeteo.it",
+      "errors": [
+        "Cannot read properties of undefined (reading 'e6404a5432b1988ea2e71ec092e8608a-fluid')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5119,
+        "visible": 124,
+        "cut": 16,
+        "cutRight": 16,
+        "images": 80,
+        "brokenImages": 3,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4274
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5708,
+      "error": null,
+      "finalHost": "www.ilmeteo.it",
+      "errors": [
+        "Cannot read properties of undefined (reading 'e6404a5432b1988ea2e71ec092e8608a-fluid')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5119,
+        "visible": 124,
+        "cut": 16,
+        "cutRight": 16,
+        "images": 80,
+        "brokenImages": 3,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4274
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 49.1,
+      "sdPlain": 49.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:38:51.065Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4273,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5708,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 49.1,
+        "sdPlain": 49.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

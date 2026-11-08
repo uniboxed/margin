@@ -1,0 +1,95 @@
+{
+  "domain": "xero.com",
+  "rank": 3471,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:39:03.421Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3471,
+    "domain": "xero.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:39:03.421Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4470,
+      "error": null,
+      "finalHost": "www.xero.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5139,
+        "visible": 35,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 31,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8275
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": false,
+      "status": 200,
+      "ms": 23287,
+      "error": "timeout: measure (8000 ms)",
+      "finalHost": "www.xero.com",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:39:03.421Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4470,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 23287,
+        "error": "timeout: measure (8000 ms)"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

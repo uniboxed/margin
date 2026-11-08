@@ -1,0 +1,118 @@
+{
+  "domain": "doubleclick.net",
+  "rank": 51,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T07:58:18.434Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 51,
+    "domain": "doubleclick.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T07:58:18.434Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2458,
+      "error": null,
+      "finalHost": "marketingplatform.google.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4102,
+        "visible": 11,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8174
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2537,
+      "error": null,
+      "finalHost": "marketingplatform.google.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4102,
+        "visible": 11,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8174
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 70.9,
+      "sdPlain": 70.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:58:18.434Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2458,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2537,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 70.9,
+        "sdPlain": 70.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

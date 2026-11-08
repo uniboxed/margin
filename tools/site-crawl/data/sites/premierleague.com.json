@@ -1,0 +1,118 @@
+{
+  "domain": "premierleague.com",
+  "rank": 3939,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:32:21.528Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3939,
+    "domain": "premierleague.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:32:21.528Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5560,
+      "error": null,
+      "finalHost": "www.premierleague.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15923,
+        "visible": 147,
+        "cut": 34,
+        "cutRight": 33,
+        "images": 276,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6531
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5560,
+      "error": null,
+      "finalHost": "www.premierleague.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15923,
+        "visible": 147,
+        "cut": 34,
+        "cutRight": 33,
+        "images": 276,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6531
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 74.3,
+      "sdPlain": 74.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:32:21.528Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5560,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5560,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 74.3,
+        "sdPlain": 74.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

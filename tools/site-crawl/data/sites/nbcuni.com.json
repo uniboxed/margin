@@ -1,0 +1,140 @@
+{
+  "domain": "nbcuni.com",
+  "rank": 2958,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:24:30.186Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2958,
+    "domain": "nbcuni.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T09:24:30.186Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3030,
+      "error": null,
+      "finalHost": "www.nbcuniversal.com",
+      "errors": [
+        "Cannot set properties of undefined (setting 'visibility')",
+        "Cannot read properties of null (reading 'style')",
+        "$(...).slick is not a function",
+        "Cannot convert undefined or null to object"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6114,
+        "visible": 9,
+        "cut": 3,
+        "cutRight": 3,
+        "images": 86,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5000
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3157,
+      "error": null,
+      "finalHost": "www.nbcuniversal.com",
+      "errors": [
+        "Cannot set properties of undefined (setting 'visibility')",
+        "Cannot read properties of null (reading 'style')",
+        "$(...).slick is not a function",
+        "Cannot convert undefined or null to object"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6135,
+        "visible": 9,
+        "cut": 2,
+        "cutRight": 1,
+        "images": 86,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 69.5,
+      "sdMargin": 82.1,
+      "sdPlain": 41.4
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/2958-nbcuni.com-margin.jpg",
+      "plain": "rounds/0001/shots/2958-nbcuni.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:24:30.186Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3030,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3157,
+        "error": null
+      },
+      "look": {
+        "diff": 69.5,
+        "sdMargin": 82.1,
+        "sdPlain": 41.4
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/2958-nbcuni.com-margin.jpg",
+        "plain": "rounds/0001/shots/2958-nbcuni.com-plain.jpg"
+      }
+    }
+  ]
+}

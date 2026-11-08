@@ -1,0 +1,130 @@
+{
+  "domain": "hudl.com",
+  "rank": 3658,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:25:18.232Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3658,
+    "domain": "hudl.com",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T15:25:18.232Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2986,
+      "error": null,
+      "finalHost": "www.hudl.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5894,
+        "visible": 63,
+        "cut": 29,
+        "cutRight": 15,
+        "images": 174,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10040
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2684,
+      "error": null,
+      "finalHost": "www.hudl.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5894,
+        "visible": 53,
+        "cut": 20,
+        "cutRight": 16,
+        "images": 174,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10040
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 14,
+      "sdMargin": 52.8,
+      "sdPlain": 47.9
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3658-hudl.com-margin.jpg",
+      "plain": "rounds/0001/shots/3658-hudl.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:25:18.232Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2986,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2684,
+        "error": null
+      },
+      "look": {
+        "diff": 14,
+        "sdMargin": 52.8,
+        "sdPlain": 47.9
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3658-hudl.com-margin.jpg",
+        "plain": "rounds/0001/shots/3658-hudl.com-plain.jpg"
+      }
+    }
+  ]
+}

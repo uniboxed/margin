@@ -1,0 +1,124 @@
+{
+  "domain": "mirror.co.uk",
+  "rank": 2297,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:05:34.850Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2297,
+    "domain": "mirror.co.uk",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:05:34.850Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6911,
+      "error": null,
+      "finalHost": "www.mirror.co.uk",
+      "errors": [
+        "Cannot read properties of undefined (reading 'consents')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6797,
+        "visible": 125,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 90,
+        "brokenImages": 3,
+        "iframes": 31,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10043
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 13454,
+      "error": null,
+      "finalHost": "www.mirror.co.uk",
+      "errors": [
+        "Cannot read properties of undefined (reading 'consents')",
+        "Cannot read properties of undefined (reading 'createInstance')",
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6798,
+        "visible": 125,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 92,
+        "brokenImages": 5,
+        "iframes": 31,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9904
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 16.2,
+      "sdMargin": 74.4,
+      "sdPlain": 78.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:05:34.850Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6911,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 13454,
+        "error": null
+      },
+      "look": {
+        "diff": 16.2,
+        "sdMargin": 74.4,
+        "sdPlain": 78.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

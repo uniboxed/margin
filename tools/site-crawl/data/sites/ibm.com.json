@@ -1,0 +1,118 @@
+{
+  "domain": "ibm.com",
+  "rank": 279,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:04:04.836Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 279,
+    "domain": "ibm.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:04:04.836Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5655,
+      "error": null,
+      "finalHost": "www.ibm.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3834,
+        "visible": 14,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 19,
+        "brokenImages": 1,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5141
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6479,
+      "error": null,
+      "finalHost": "www.ibm.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4717,
+        "visible": 20,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 21,
+        "brokenImages": 1,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5763
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 6,
+      "sdMargin": 80.6,
+      "sdPlain": 76
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:04:04.836Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5655,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6479,
+        "error": null
+      },
+      "look": {
+        "diff": 6,
+        "sdMargin": 80.6,
+        "sdPlain": 76
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

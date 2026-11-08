@@ -1,0 +1,118 @@
+{
+  "domain": "britishairways.com",
+  "rank": 4126,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:37:23.173Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4126,
+    "domain": "britishairways.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:37:23.173Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2443,
+      "error": null,
+      "finalHost": "britishairways.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 155,
+        "visible": 5,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2818,
+      "error": null,
+      "finalHost": "britishairways.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 155,
+        "visible": 5,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 394
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 10.7,
+      "sdPlain": 10.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:37:23.173Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2443,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2818,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 10.7,
+        "sdPlain": 10.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

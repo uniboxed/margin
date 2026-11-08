@@ -1,0 +1,122 @@
+{
+  "domain": "freenet.de",
+  "rank": 1810,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:52:02.315Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1810,
+    "domain": "freenet.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:52:02.315Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5188,
+      "error": null,
+      "finalHost": "www.freenet.de",
+      "errors": [
+        "Cannot read properties of null (reading 'componentsCollection')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4006,
+        "visible": 33,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 51,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5576
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3581,
+      "error": null,
+      "finalHost": "www.freenet.de",
+      "errors": [
+        "Cannot read properties of null (reading 'componentsCollection')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4006,
+        "visible": 33,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 51,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5576
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1,
+      "sdMargin": 95.8,
+      "sdPlain": 95.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:52:02.315Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5188,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3581,
+        "error": null
+      },
+      "look": {
+        "diff": 1,
+        "sdMargin": 95.8,
+        "sdPlain": 95.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

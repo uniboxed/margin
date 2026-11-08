@@ -1,0 +1,118 @@
+{
+  "domain": "hse.ru",
+  "rank": 3886,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:31:03.432Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3886,
+    "domain": "hse.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:31:03.432Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6792,
+      "error": null,
+      "finalHost": "www.hse.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14032,
+        "visible": 71,
+        "cut": 22,
+        "cutRight": 11,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8325
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7238,
+      "error": null,
+      "finalHost": "www.hse.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14032,
+        "visible": 71,
+        "cut": 22,
+        "cutRight": 11,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 63.4,
+      "sdPlain": 63.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:31:03.432Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6792,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7238,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 63.4,
+        "sdPlain": 63.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

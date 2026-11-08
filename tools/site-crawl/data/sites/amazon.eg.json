@@ -1,0 +1,133 @@
+{
+  "domain": "amazon.eg",
+  "rank": 3015,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off",
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:26:44.807Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3015,
+    "domain": "amazon.eg",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off",
+      "looks-different"
+    ],
+    "at": "2026-11-08T09:26:44.807Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3756,
+      "error": null,
+      "finalHost": "www.amazon.eg",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10690,
+        "visible": 129,
+        "cut": 30,
+        "cutRight": 15,
+        "images": 94,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2791
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3103,
+      "error": null,
+      "finalHost": "www.amazon.eg",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 148,
+        "visible": 4,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 414
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 96,
+      "sdMargin": 69.1,
+      "sdPlain": 6.7
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3015-amazon.eg-margin.jpg",
+      "plain": "rounds/0001/shots/3015-amazon.eg-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:26:44.807Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off",
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3756,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3103,
+        "error": null
+      },
+      "look": {
+        "diff": 96,
+        "sdMargin": 69.1,
+        "sdPlain": 6.7
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3015-amazon.eg-margin.jpg",
+        "plain": "rounds/0001/shots/3015-amazon.eg-plain.jpg"
+      }
+    }
+  ]
+}

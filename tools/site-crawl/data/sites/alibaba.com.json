@@ -1,0 +1,136 @@
+{
+  "domain": "alibaba.com",
+  "rank": 306,
+  "verdict": "flagged",
+  "flags": [
+    "more-errors"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:04:32.688Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 306,
+    "domain": "alibaba.com",
+    "verdict": "flagged",
+    "flags": [
+      "more-errors"
+    ],
+    "at": "2026-11-08T08:04:32.688Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4068,
+      "error": null,
+      "finalHost": "www.alibaba.com",
+      "errors": [
+        "Failed to execute 'getComputedStyle' on 'Window': parameter 1 is not of type 'Element'.",
+        "t.getAttribute is not a function",
+        "JSONP request to //i.alibaba.com/ajax/user_portrait.htm?ctoken=undefined&_tb_token_=null&_=1794125068832 failed"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1280,
+        "overflowX": 108,
+        "text": 9561,
+        "visible": 95,
+        "cut": 54,
+        "cutRight": 52,
+        "images": 362,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4716
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4876,
+      "error": null,
+      "finalHost": "www.alibaba.com",
+      "errors": [
+        "JSONP request to //i.alibaba.com/ajax/user_portrait.htm?ctoken=undefined&_tb_token_=null&_=1794125068820 failed"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1280,
+        "overflowX": 108,
+        "text": 9322,
+        "visible": 95,
+        "cut": 54,
+        "cutRight": 52,
+        "images": 362,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4140
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 58.1,
+      "sdPlain": 58.1
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/306-alibaba.com-margin.jpg",
+      "plain": "rounds/0001/shots/306-alibaba.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:04:32.688Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "more-errors"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4068,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4876,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 58.1,
+        "sdPlain": 58.1
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/306-alibaba.com-margin.jpg",
+        "plain": "rounds/0001/shots/306-alibaba.com-plain.jpg"
+      }
+    }
+  ]
+}

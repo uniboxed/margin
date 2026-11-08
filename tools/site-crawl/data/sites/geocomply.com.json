@@ -1,0 +1,118 @@
+{
+  "domain": "geocomply.com",
+  "rank": 2753,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:18:29.153Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2753,
+    "domain": "geocomply.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:18:29.153Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2959,
+      "error": null,
+      "finalHost": "www.geocomply.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6843,
+        "visible": 112,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 62,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8312
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3183,
+      "error": null,
+      "finalHost": "www.geocomply.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6849,
+        "visible": 112,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 62,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8312
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.1,
+      "sdMargin": 30.2,
+      "sdPlain": 30.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:18:29.153Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2959,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3183,
+        "error": null
+      },
+      "look": {
+        "diff": 1.1,
+        "sdMargin": 30.2,
+        "sdPlain": 30.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

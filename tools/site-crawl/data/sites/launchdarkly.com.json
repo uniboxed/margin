@@ -1,0 +1,123 @@
+{
+  "domain": "launchdarkly.com",
+  "rank": 287,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:04:14.442Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 287,
+    "domain": "launchdarkly.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:04:14.442Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4007,
+      "error": null,
+      "finalHost": "launchdarkly.com",
+      "errors": [
+        "revealCallback is not defined",
+        "Failed to execute 'postMessage' on 'Window': Port at index 0 is already neutered."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5121,
+        "visible": 47,
+        "cut": 9,
+        "cutRight": 9,
+        "images": 147,
+        "brokenImages": 0,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11699
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4027,
+      "error": null,
+      "finalHost": "launchdarkly.com",
+      "errors": [
+        "revealCallback is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5121,
+        "visible": 47,
+        "cut": 9,
+        "cutRight": 9,
+        "images": 147,
+        "brokenImages": 0,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11699
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 97.1,
+      "sdPlain": 97.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:04:14.442Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4007,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4027,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 97.1,
+        "sdPlain": 97.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

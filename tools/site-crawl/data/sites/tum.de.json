@@ -1,0 +1,130 @@
+{
+  "domain": "tum.de",
+  "rank": 3877,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:30:43.998Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3877,
+    "domain": "tum.de",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:30:43.998Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5995,
+      "error": null,
+      "finalHost": "www.tum.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15659,
+        "visible": 24,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 24,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9357
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6045,
+      "error": null,
+      "finalHost": "www.tum.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15659,
+        "visible": 24,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 24,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9357
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 42.4,
+      "sdMargin": 67.7,
+      "sdPlain": 63.4
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3877-tum.de-margin.jpg",
+      "plain": "rounds/0001/shots/3877-tum.de-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:30:43.998Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 5995,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6045,
+        "error": null
+      },
+      "look": {
+        "diff": 42.4,
+        "sdMargin": 67.7,
+        "sdPlain": 63.4
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3877-tum.de-margin.jpg",
+        "plain": "rounds/0001/shots/3877-tum.de-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "domain": "huya.com",
+  "rank": 4460,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:49:01.318Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4460,
+    "domain": "huya.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:49:01.318Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 8037,
+      "error": null,
+      "finalHost": "www.huya.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2432,
+        "visible": 111,
+        "cut": 6,
+        "cutRight": 4,
+        "images": 129,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6154
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 9146,
+      "error": null,
+      "finalHost": "www.huya.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2447,
+        "visible": 111,
+        "cut": 4,
+        "cutRight": 2,
+        "images": 129,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6154
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 49.6,
+      "sdMargin": 88.5,
+      "sdPlain": 73.7
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4460-huya.com-margin.jpg",
+      "plain": "rounds/0001/shots/4460-huya.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:49:01.318Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 8037,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 9146,
+        "error": null
+      },
+      "look": {
+        "diff": 49.6,
+        "sdMargin": 88.5,
+        "sdPlain": 73.7
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4460-huya.com-margin.jpg",
+        "plain": "rounds/0001/shots/4460-huya.com-plain.jpg"
+      }
+    }
+  ]
+}

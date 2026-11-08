@@ -1,0 +1,118 @@
+{
+  "domain": "gitea.com",
+  "rank": 3947,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:32:35.677Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3947,
+    "domain": "gitea.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:32:35.677Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5522,
+      "error": null,
+      "finalHost": "about.gitea.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6699,
+        "visible": 29,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 18,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9856
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3169,
+      "error": null,
+      "finalHost": "about.gitea.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6699,
+        "visible": 29,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 18,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9856
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 55.7,
+      "sdPlain": 55.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:32:35.677Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5522,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3169,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 55.7,
+        "sdPlain": 55.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

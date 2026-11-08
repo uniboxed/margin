@@ -1,0 +1,75 @@
+{
+  "domain": "americanexpress.com",
+  "rank": 2253,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:04:08.406Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2253,
+    "domain": "americanexpress.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:04:08.406Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 2790,
+      "error": "page.evaluate: Error: eval is disabled",
+      "finalHost": "www.americanexpress.com",
+      "errors": [
+        "Object.defineProperty called on non-object"
+      ],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 200,
+      "ms": 2797,
+      "error": "page.evaluate: Error: eval is disabled",
+      "finalHost": "www.americanexpress.com",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:04:08.406Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2790,
+        "error": "page.evaluate: Error: eval is disabled"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2797,
+        "error": "page.evaluate: Error: eval is disabled"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

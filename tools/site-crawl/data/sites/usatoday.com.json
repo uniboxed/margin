@@ -1,0 +1,130 @@
+{
+  "domain": "usatoday.com",
+  "rank": 627,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:14:29.458Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 627,
+    "domain": "usatoday.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:14:29.458Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7534,
+      "error": null,
+      "finalHost": "www.usatoday.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4113,
+        "visible": 43,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 19,
+        "brokenImages": 0,
+        "iframes": 28,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12129
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 14313,
+      "error": null,
+      "finalHost": "www.usatoday.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3957,
+        "visible": 43,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 19,
+        "brokenImages": 0,
+        "iframes": 27,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 12013
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 42.5,
+      "sdMargin": 74,
+      "sdPlain": 75.9
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/627-usatoday.com-margin.jpg",
+      "plain": "rounds/0001/shots/627-usatoday.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:14:29.458Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 7534,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 14313,
+        "error": null
+      },
+      "look": {
+        "diff": 42.5,
+        "sdMargin": 74,
+        "sdPlain": 75.9
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/627-usatoday.com-margin.jpg",
+        "plain": "rounds/0001/shots/627-usatoday.com-plain.jpg"
+      }
+    }
+  ]
+}

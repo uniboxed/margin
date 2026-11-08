@@ -1,0 +1,118 @@
+{
+  "domain": "mechacomic.jp",
+  "rank": 1567,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:45:18.013Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1567,
+    "domain": "mechacomic.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:45:18.013Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5864,
+      "error": null,
+      "finalHost": "mechacomic.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3931,
+        "visible": 99,
+        "cut": 26,
+        "cutRight": 22,
+        "images": 231,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9254
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5833,
+      "error": null,
+      "finalHost": "mechacomic.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3931,
+        "visible": 99,
+        "cut": 26,
+        "cutRight": 22,
+        "images": 231,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9254
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 50.9,
+      "sdPlain": 50.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:45:18.013Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5864,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5833,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 50.9,
+        "sdPlain": 50.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

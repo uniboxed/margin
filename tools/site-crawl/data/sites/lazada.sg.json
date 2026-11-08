@@ -1,0 +1,118 @@
+{
+  "domain": "lazada.sg",
+  "rank": 4178,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:39:00.389Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4178,
+    "domain": "lazada.sg",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:39:00.389Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6352,
+      "error": null,
+      "finalHost": "www.lazada.sg",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 11424,
+        "visible": 79,
+        "cut": 35,
+        "cutRight": 33,
+        "images": 182,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6328
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6327,
+      "error": null,
+      "finalHost": "www.lazada.sg",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 11503,
+        "visible": 79,
+        "cut": 35,
+        "cutRight": 33,
+        "images": 183,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4773
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 72,
+      "sdPlain": 72
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:39:00.389Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6352,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6327,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 72,
+        "sdPlain": 72
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

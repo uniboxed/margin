@@ -1,0 +1,122 @@
+{
+  "domain": "deadline.com",
+  "rank": 3430,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:37:41.063Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3430,
+    "domain": "deadline.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:37:41.063Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3615,
+      "error": null,
+      "finalHost": "deadline.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14962,
+        "visible": 86,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 50,
+        "brokenImages": 0,
+        "iframes": 19,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8429
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3729,
+      "error": null,
+      "finalHost": "deadline.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 14962,
+        "visible": 86,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 50,
+        "brokenImages": 0,
+        "iframes": 21,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8429
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 6.8,
+      "sdMargin": 87.6,
+      "sdPlain": 89.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:37:41.063Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3615,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3729,
+        "error": null
+      },
+      "look": {
+        "diff": 6.8,
+        "sdMargin": 87.6,
+        "sdPlain": 89.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

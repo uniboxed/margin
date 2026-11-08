@@ -1,0 +1,73 @@
+{
+  "domain": "gpubgm.com",
+  "rank": 4721,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:58:20.428Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4721,
+    "domain": "gpubgm.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:58:20.428Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 59,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://gpubgm.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 55,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://gpubgm.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:58:20.428Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 59,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://gpubgm.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 55,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://gpubgm.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "domain": "softether-network.net",
+  "rank": 4037,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:34:54.750Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4037,
+    "domain": "softether-network.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:34:54.750Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 304,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://softether-network.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 305,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://softether-network.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:34:54.750Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 304,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://softether-network.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 305,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://softether-network.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "newsweek.com",
+  "rank": 1481,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:41:49.141Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1481,
+    "domain": "newsweek.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:41:49.141Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3735,
+      "error": null,
+      "finalHost": "www.newsweek.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12065,
+        "visible": 45,
+        "cut": 18,
+        "cutRight": 0,
+        "images": 116,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15773
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3704,
+      "error": null,
+      "finalHost": "www.newsweek.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12065,
+        "visible": 45,
+        "cut": 18,
+        "cutRight": 0,
+        "images": 116,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15773
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 106.8,
+      "sdPlain": 106.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:41:49.141Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3735,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3704,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 106.8,
+        "sdPlain": 106.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

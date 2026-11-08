@@ -1,0 +1,73 @@
+{
+  "domain": "oneidrive.org",
+  "rank": 2345,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:06:16.679Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2345,
+    "domain": "oneidrive.org",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:06:16.679Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 58,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://oneidrive.org/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 56,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://oneidrive.org/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:06:16.679Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 58,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://oneidrive.org/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 56,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://oneidrive.org/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

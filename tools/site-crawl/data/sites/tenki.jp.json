@@ -1,0 +1,124 @@
+{
+  "domain": "tenki.jp",
+  "rank": 1416,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:38:50.940Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1416,
+    "domain": "tenki.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:38:50.940Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 17310,
+      "error": null,
+      "finalHost": "tenki.jp",
+      "errors": [
+        "adsbygoogle.push() error: Ad client is missing from the slot.",
+        "adsbygoogle.push() error: Ad client is missing from the slot."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1290,
+        "overflowX": 118,
+        "text": 3728,
+        "visible": 115,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 64,
+        "brokenImages": 0,
+        "iframes": 21,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 5705
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 19010,
+      "error": null,
+      "finalHost": "tenki.jp",
+      "errors": [
+        "adsbygoogle.push() error: Ad client is missing from the slot.",
+        "adsbygoogle.push() error: Ad client is missing from the slot."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1290,
+        "overflowX": 118,
+        "text": 3728,
+        "visible": 115,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 64,
+        "brokenImages": 0,
+        "iframes": 23,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.9,
+      "sdMargin": 66.4,
+      "sdPlain": 63.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:38:50.940Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 17310,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 19010,
+        "error": null
+      },
+      "look": {
+        "diff": 2.9,
+        "sdMargin": 66.4,
+        "sdPlain": 63.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

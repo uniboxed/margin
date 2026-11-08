@@ -1,0 +1,140 @@
+{
+  "domain": "stuff.co.nz",
+  "rank": 4484,
+  "verdict": "flagged",
+  "flags": [
+    "text-missing",
+    "elements-missing",
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:52:08.859Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4484,
+    "domain": "stuff.co.nz",
+    "verdict": "flagged",
+    "flags": [
+      "text-missing",
+      "elements-missing",
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:52:08.859Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3042,
+      "error": null,
+      "finalHost": "www.stuff.co.nz",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 112,
+        "visible": 4,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": false,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 14409,
+      "error": null,
+      "finalHost": "www.stuff.co.nz",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15773,
+        "visible": 70,
+        "cut": 26,
+        "cutRight": 26,
+        "images": 179,
+        "brokenImages": 0,
+        "iframes": 18,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 20675
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 208.1,
+      "sdMargin": 29.2,
+      "sdPlain": 46.8
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4484-stuff.co.nz-margin.jpg",
+      "plain": "rounds/0001/shots/4484-stuff.co.nz-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:52:08.859Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "text-missing",
+        "elements-missing",
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3042,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 14409,
+        "error": null
+      },
+      "look": {
+        "diff": 208.1,
+        "sdMargin": 29.2,
+        "sdPlain": 46.8
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4484-stuff.co.nz-margin.jpg",
+        "plain": "rounds/0001/shots/4484-stuff.co.nz-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "mos.ru",
+  "rank": 2140,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:01:08.799Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2140,
+    "domain": "mos.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:01:08.799Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6250,
+      "error": null,
+      "finalHost": "www.mos.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4401,
+        "visible": 70,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 23,
+        "brokenImages": 0,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6851
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6900,
+      "error": null,
+      "finalHost": "www.mos.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4401,
+        "visible": 70,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 23,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6851
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 3,
+      "sdMargin": 75.9,
+      "sdPlain": 76.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:01:08.799Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6250,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6900,
+        "error": null
+      },
+      "look": {
+        "diff": 3,
+        "sdMargin": 75.9,
+        "sdPlain": 76.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

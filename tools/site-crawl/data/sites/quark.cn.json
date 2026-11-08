@@ -1,0 +1,118 @@
+{
+  "domain": "quark.cn",
+  "rank": 3297,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:34:22.678Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3297,
+    "domain": "quark.cn",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:34:22.678Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6676,
+      "error": null,
+      "finalHost": "www.quark.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6334,
+        "visible": 11,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 109,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8628
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6589,
+      "error": null,
+      "finalHost": "www.quark.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6334,
+        "visible": 11,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 109,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.3,
+      "sdMargin": 29.9,
+      "sdPlain": 30
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:34:22.678Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6676,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6589,
+        "error": null
+      },
+      "look": {
+        "diff": 0.3,
+        "sdMargin": 29.9,
+        "sdPlain": 30
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "brandmetrics.com",
+  "rank": 4004,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:33:57.678Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4004,
+    "domain": "brandmetrics.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:33:57.678Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4566,
+      "error": null,
+      "finalHost": "www.brandmetrics.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1175,
+        "overflowX": 3,
+        "text": 2708,
+        "visible": 16,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 87,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6977
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5202,
+      "error": null,
+      "finalHost": "www.brandmetrics.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1175,
+        "overflowX": 3,
+        "text": 2708,
+        "visible": 16,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 87,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 0
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 72.4,
+      "sdPlain": 72.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:33:57.678Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4566,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5202,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 72.4,
+        "sdPlain": 72.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

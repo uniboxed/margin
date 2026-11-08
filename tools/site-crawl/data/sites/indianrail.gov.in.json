@@ -1,0 +1,118 @@
+{
+  "domain": "indianrail.gov.in",
+  "rank": 1551,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:44:45.773Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1551,
+    "domain": "indianrail.gov.in",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:44:45.773Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 10913,
+      "error": null,
+      "finalHost": "www.indianrail.gov.in",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 950,
+        "visible": 36,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 15,
+        "brokenImages": 2,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1373
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 10921,
+      "error": null,
+      "finalHost": "www.indianrail.gov.in",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 950,
+        "visible": 35,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 15,
+        "brokenImages": 2,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1373
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 22.1,
+      "sdMargin": 64.8,
+      "sdPlain": 74.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:44:45.773Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 10913,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 10921,
+        "error": null
+      },
+      "look": {
+        "diff": 22.1,
+        "sdMargin": 64.8,
+        "sdPlain": 74.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

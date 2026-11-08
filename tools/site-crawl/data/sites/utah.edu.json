@@ -1,0 +1,130 @@
+{
+  "domain": "utah.edu",
+  "rank": 2868,
+  "verdict": "flagged",
+  "flags": [
+    "elements-missing"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:22:25.431Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2868,
+    "domain": "utah.edu",
+    "verdict": "flagged",
+    "flags": [
+      "elements-missing"
+    ],
+    "at": "2026-11-08T09:22:25.431Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4545,
+      "error": null,
+      "finalHost": "www.utah.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2767,
+        "visible": 5,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5384
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5132,
+      "error": null,
+      "finalHost": "www.utah.edu",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4617,
+        "visible": 41,
+        "cut": 27,
+        "cutRight": 17,
+        "images": 12,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5074
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 100.2,
+      "sdPlain": 100.2
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/2868-utah.edu-margin.jpg",
+      "plain": "rounds/0001/shots/2868-utah.edu-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:22:25.431Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "elements-missing"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4545,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5132,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 100.2,
+        "sdPlain": 100.2
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/2868-utah.edu-margin.jpg",
+        "plain": "rounds/0001/shots/2868-utah.edu-plain.jpg"
+      }
+    }
+  ]
+}

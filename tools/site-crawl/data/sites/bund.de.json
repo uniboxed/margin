@@ -1,0 +1,142 @@
+{
+  "domain": "bund.de",
+  "rank": 935,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:23:25.324Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 935,
+    "domain": "bund.de",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:23:25.324Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7875,
+      "error": null,
+      "finalHost": "verwaltung.bund.de",
+      "errors": [
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/konto/scripts/konto-frontend/p-CxXPaBJZ.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/konto/scripts/konto-frontend/p-DisHKfLE.js"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3865
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 8419,
+      "error": null,
+      "finalHost": "verwaltung.bund.de",
+      "errors": [
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-373602290.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-373602236.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-373602236.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-373602262.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-373602240.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-3736022160.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-37360226.js",
+        "Failed to fetch dynamically imported module: https://verwaltung.bund.de/portal/public/assets/portal-frontend.2.0.0-373602247.js"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 995
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 72.4,
+      "sdMargin": 53.5,
+      "sdPlain": 29
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/935-bund.de-margin.jpg",
+      "plain": "rounds/0001/shots/935-bund.de-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:23:25.324Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 7875,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 8419,
+        "error": null
+      },
+      "look": {
+        "diff": 72.4,
+        "sdMargin": 53.5,
+        "sdPlain": 29
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/935-bund.de-margin.jpg",
+        "plain": "rounds/0001/shots/935-bund.de-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "domain": "cxense.com",
+  "rank": 3710,
+  "verdict": "flagged",
+  "flags": [
+    "elements-missing",
+    "blank",
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:26:37.339Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3710,
+    "domain": "cxense.com",
+    "verdict": "flagged",
+    "flags": [
+      "elements-missing",
+      "blank",
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:26:37.339Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3534,
+      "error": null,
+      "finalHost": "www.piano.io",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3662,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 7,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7933
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3534,
+      "error": null,
+      "finalHost": "www.piano.io",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3662,
+        "visible": 28,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 7,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7933
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 112.3,
+      "sdMargin": 0.2,
+      "sdPlain": 45
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3710-cxense.com-margin.jpg",
+      "plain": "rounds/0001/shots/3710-cxense.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:26:37.339Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "elements-missing",
+        "blank",
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3534,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3534,
+        "error": null
+      },
+      "look": {
+        "diff": 112.3,
+        "sdMargin": 0.2,
+        "sdPlain": 45
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3710-cxense.com-margin.jpg",
+        "plain": "rounds/0001/shots/3710-cxense.com-plain.jpg"
+      }
+    }
+  ]
+}

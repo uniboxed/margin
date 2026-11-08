@@ -1,0 +1,118 @@
+{
+  "domain": "register.it",
+  "rank": 2850,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:21:59.624Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2850,
+    "domain": "register.it",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:21:59.624Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6643,
+      "error": null,
+      "finalHost": "www.register.it",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7167,
+        "visible": 73,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 47,
+        "brokenImages": 3,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7533
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6652,
+      "error": null,
+      "finalHost": "www.register.it",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7167,
+        "visible": 73,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 47,
+        "brokenImages": 3,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7512
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 95.9,
+      "sdPlain": 95.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:21:59.624Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6643,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6652,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 95.9,
+        "sdPlain": 95.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

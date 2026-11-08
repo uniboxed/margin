@@ -1,0 +1,130 @@
+{
+  "domain": "livechat.com",
+  "rank": 4597,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:55:07.327Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4597,
+    "domain": "livechat.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:55:07.327Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4508,
+      "error": null,
+      "finalHost": "www.livechat.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8474,
+        "visible": 10,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 39,
+        "brokenImages": 1,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15969
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4330,
+      "error": null,
+      "finalHost": "www.livechat.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7660,
+        "visible": 13,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 61,
+        "brokenImages": 1,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14222
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 50.8,
+      "sdMargin": 66.8,
+      "sdPlain": 71.5
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4597-livechat.com-margin.jpg",
+      "plain": "rounds/0001/shots/4597-livechat.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:55:07.327Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4508,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4330,
+        "error": null
+      },
+      "look": {
+        "diff": 50.8,
+        "sdMargin": 66.8,
+        "sdPlain": 71.5
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4597-livechat.com-margin.jpg",
+        "plain": "rounds/0001/shots/4597-livechat.com-plain.jpg"
+      }
+    }
+  ]
+}

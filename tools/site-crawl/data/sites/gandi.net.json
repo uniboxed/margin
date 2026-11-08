@@ -1,0 +1,122 @@
+{
+  "domain": "gandi.net",
+  "rank": 61,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T07:58:32.597Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 61,
+    "domain": "gandi.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T07:58:32.597Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3259,
+      "error": null,
+      "finalHost": "www.gandi.net",
+      "errors": [
+        "widget.configure is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8372,
+        "visible": 32,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 8,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11390
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3541,
+      "error": null,
+      "finalHost": "www.gandi.net",
+      "errors": [
+        "widget.configure is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8372,
+        "visible": 32,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 8,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11390
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 32.2,
+      "sdPlain": 32.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:58:32.597Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3259,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3541,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 32.2,
+        "sdPlain": 32.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

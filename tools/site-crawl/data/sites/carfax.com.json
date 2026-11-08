@@ -1,0 +1,118 @@
+{
+  "domain": "carfax.com",
+  "rank": 3727,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:26:57.213Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3727,
+    "domain": "carfax.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:26:57.213Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3449,
+      "error": null,
+      "finalHost": "www.carfax.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2761,
+        "visible": 30,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 21,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3696
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3281,
+      "error": null,
+      "finalHost": "www.carfax.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2761,
+        "visible": 30,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 21,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3696
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 59,
+      "sdPlain": 59
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:26:57.213Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3449,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3281,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 59,
+        "sdPlain": 59
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "domain": "hubspotusercontent-na1.net",
+  "rank": 4182,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:39:00.666Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4182,
+    "domain": "hubspotusercontent-na1.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:39:00.666Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 55,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hubspotusercontent-na1.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 52,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hubspotusercontent-na1.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:39:00.666Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 55,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hubspotusercontent-na1.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 52,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hubspotusercontent-na1.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

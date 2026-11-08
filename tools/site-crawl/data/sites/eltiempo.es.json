@@ -1,0 +1,124 @@
+{
+  "domain": "eltiempo.es",
+  "rank": 1500,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:42:19.284Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1500,
+    "domain": "eltiempo.es",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:42:19.284Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4067,
+      "error": null,
+      "finalHost": "www.eltiempo.es",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 1662,
+        "visible": 84,
+        "cut": 3,
+        "cutRight": 3,
+        "images": 32,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4066
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3680,
+      "error": null,
+      "finalHost": "www.eltiempo.es",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 1662,
+        "visible": 84,
+        "cut": 3,
+        "cutRight": 3,
+        "images": 32,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4066
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 33,
+      "sdPlain": 33
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1500-eltiempo.es-margin.jpg",
+      "plain": "rounds/0001/shots/1500-eltiempo.es-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:42:19.284Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4067,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3680,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 33,
+        "sdPlain": 33
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1500-eltiempo.es-margin.jpg",
+        "plain": "rounds/0001/shots/1500-eltiempo.es-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "domain": "lifehacker.com",
+  "rank": 3386,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:36:38.876Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3386,
+    "domain": "lifehacker.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:36:38.876Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2517,
+      "error": null,
+      "finalHost": "lifehacker.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "called without required arguments"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 5440,
+        "visible": 60,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 45,
+        "brokenImages": 0,
+        "iframes": 27,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8579
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2585,
+      "error": null,
+      "finalHost": "lifehacker.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "called without required arguments"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 5440,
+        "visible": 60,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 45,
+        "brokenImages": 1,
+        "iframes": 27,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8666
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 83.8,
+      "sdPlain": 83.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:36:38.876Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2517,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2585,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 83.8,
+        "sdPlain": 83.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "elle.com",
+  "rank": 3170,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:30:44.558Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3170,
+    "domain": "elle.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:30:44.558Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4030,
+      "error": null,
+      "finalHost": "www.elle.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6698,
+        "visible": 73,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 77,
+        "brokenImages": 0,
+        "iframes": 13,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12750
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5289,
+      "error": null,
+      "finalHost": "www.elle.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6581,
+        "visible": 73,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 77,
+        "brokenImages": 0,
+        "iframes": 13,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12729
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 26.8,
+      "sdMargin": 88.7,
+      "sdPlain": 93.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:30:44.558Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4030,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5289,
+        "error": null
+      },
+      "look": {
+        "diff": 26.8,
+        "sdMargin": 88.7,
+        "sdPlain": 93.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "poki.com",
+  "rank": 898,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:22:09.671Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 898,
+    "domain": "poki.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:22:09.671Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2532,
+      "error": null,
+      "finalHost": "poki.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7744,
+        "visible": 70,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 247,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7189
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2545,
+      "error": null,
+      "finalHost": "poki.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7744,
+        "visible": 70,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 247,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 0
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 54.2,
+      "sdPlain": 54.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:22:09.671Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2532,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2545,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 54.2,
+        "sdPlain": 54.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

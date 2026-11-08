@@ -1,0 +1,124 @@
+{
+  "domain": "iqiyi.com",
+  "rank": 2052,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:58:53.603Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2052,
+    "domain": "iqiyi.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:58:53.603Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7397,
+      "error": null,
+      "finalHost": "www.iqiyi.com",
+      "errors": [
+        "[risc]Promise is null",
+        "GET http://127.0.0.1:16422/get_client_id?callback=jsonp705RLV 500."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2148,
+        "visible": 62,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 107,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6908,
+      "error": null,
+      "finalHost": "www.iqiyi.com",
+      "errors": [
+        "[risc]Promise is null",
+        "GET http://127.0.0.1:16422/get_client_id?callback=jsonpM9z2De 500."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2081,
+        "visible": 62,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 107,
+        "brokenImages": 1,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.4,
+      "sdMargin": 55.1,
+      "sdPlain": 55.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:58:53.603Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 7397,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6908,
+        "error": null
+      },
+      "look": {
+        "diff": 0.4,
+        "sdMargin": 55.1,
+        "sdPlain": 55.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

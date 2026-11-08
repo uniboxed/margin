@@ -1,0 +1,73 @@
+{
+  "domain": "secu100.net",
+  "rank": 2504,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:11:26.500Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2504,
+    "domain": "secu100.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:11:26.500Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 178,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://secu100.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 225,
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://secu100.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:11:26.500Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 178,
+        "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://secu100.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 225,
+        "error": "page.goto: net::ERR_CONNECTION_REFUSED at https://secu100.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

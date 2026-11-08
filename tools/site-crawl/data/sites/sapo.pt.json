@@ -1,0 +1,122 @@
+{
+  "domain": "sapo.pt",
+  "rank": 1865,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:53:18.346Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1865,
+    "domain": "sapo.pt",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:53:18.346Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6433,
+      "error": null,
+      "finalHost": "sapo.pt",
+      "errors": [
+        "Cannot read properties of undefined (reading 'consents')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 16460,
+        "visible": 40,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 455,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 20842
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6390,
+      "error": null,
+      "finalHost": "sapo.pt",
+      "errors": [
+        "Cannot read properties of undefined (reading 'consents')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 16460,
+        "visible": 40,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 455,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 20810
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 12.1,
+      "sdMargin": 83.8,
+      "sdPlain": 84.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:53:18.346Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6433,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6390,
+        "error": null
+      },
+      "look": {
+        "diff": 12.1,
+        "sdMargin": 83.8,
+        "sdPlain": 84.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

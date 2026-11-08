@@ -1,0 +1,118 @@
+{
+  "domain": "homedepot.com",
+  "rank": 766,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:18:49.460Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 766,
+    "domain": "homedepot.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:18:49.460Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3801,
+      "error": null,
+      "finalHost": "www.homedepot.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12758,
+        "visible": 65,
+        "cut": 2,
+        "cutRight": 1,
+        "images": 158,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6674
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4248,
+      "error": null,
+      "finalHost": "www.homedepot.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7850,
+        "visible": 69,
+        "cut": 2,
+        "cutRight": 1,
+        "images": 134,
+        "brokenImages": 3,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6897
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 7.9,
+      "sdMargin": 93.8,
+      "sdPlain": 93.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:18:49.460Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3801,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4248,
+        "error": null
+      },
+      "look": {
+        "diff": 7.9,
+        "sdMargin": 93.8,
+        "sdPlain": 93.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

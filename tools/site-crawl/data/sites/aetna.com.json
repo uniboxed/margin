@@ -1,0 +1,122 @@
+{
+  "domain": "aetna.com",
+  "rank": 4664,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:57:00.293Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4664,
+    "domain": "aetna.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:57:00.293Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2695,
+      "error": null,
+      "finalHost": "www.aetna.com",
+      "errors": [
+        "_satellite is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2778,
+        "visible": 42,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 13,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2900
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3134,
+      "error": null,
+      "finalHost": "www.aetna.com",
+      "errors": [
+        "_satellite is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2778,
+        "visible": 42,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 13,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2900
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 59.4,
+      "sdPlain": 59.4
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:57:00.293Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2695,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3134,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 59.4,
+        "sdPlain": 59.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

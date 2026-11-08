@@ -1,0 +1,129 @@
+{
+  "domain": "sber.ru",
+  "rank": 4514,
+  "verdict": "flagged",
+  "flags": [
+    "no-box",
+    "drawn-off-slot",
+    "wrong-width"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:52:50.495Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4514,
+    "domain": "sber.ru",
+    "verdict": "flagged",
+    "flags": [
+      "no-box",
+      "drawn-off-slot",
+      "wrong-width"
+    ],
+    "at": "2026-11-08T15:52:50.495Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4996,
+      "error": null,
+      "finalHost": "chromewebdata",
+      "errors": [],
+      "m": {
+        "vw": 1440,
+        "vh": 900,
+        "scrollW": 1440,
+        "overflowX": 0,
+        "text": 315,
+        "visible": 6,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 436
+      },
+      "box": null,
+      "rootX": 0
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5009,
+      "error": null,
+      "finalHost": "chromewebdata",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 245,
+        "visible": 5,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 343
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.8,
+      "sdMargin": 12.2,
+      "sdPlain": 9.1
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4514-sber.ru-margin.jpg",
+      "plain": "rounds/0001/shots/4514-sber.ru-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:52:50.495Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "no-box",
+        "drawn-off-slot",
+        "wrong-width"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4996,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5009,
+        "error": null
+      },
+      "look": {
+        "diff": 2.8,
+        "sdMargin": 12.2,
+        "sdPlain": 9.1
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4514-sber.ru-margin.jpg",
+        "plain": "rounds/0001/shots/4514-sber.ru-plain.jpg"
+      }
+    }
+  ]
+}

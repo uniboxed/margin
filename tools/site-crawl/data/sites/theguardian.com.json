@@ -1,0 +1,130 @@
+{
+  "domain": "theguardian.com",
+  "rank": 202,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:02:02.791Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 202,
+    "domain": "theguardian.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:02:02.791Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2486,
+      "error": null,
+      "finalHost": "www.theguardian.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 19734,
+        "visible": 105,
+        "cut": 15,
+        "cutRight": 15,
+        "images": 122,
+        "brokenImages": 0,
+        "iframes": 10,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 23196
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5188,
+      "error": null,
+      "finalHost": "www.theguardian.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 19735,
+        "visible": 105,
+        "cut": 15,
+        "cutRight": 15,
+        "images": 122,
+        "brokenImages": 0,
+        "iframes": 17,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 22901
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 54.1,
+      "sdMargin": 84.4,
+      "sdPlain": 86.3
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/202-theguardian.com-margin.jpg",
+      "plain": "rounds/0001/shots/202-theguardian.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:02:02.791Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 2486,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5188,
+        "error": null
+      },
+      "look": {
+        "diff": 54.1,
+        "sdMargin": 84.4,
+        "sdPlain": 86.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/202-theguardian.com-margin.jpg",
+        "plain": "rounds/0001/shots/202-theguardian.com-plain.jpg"
+      }
+    }
+  ]
+}

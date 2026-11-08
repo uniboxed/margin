@@ -1,0 +1,122 @@
+{
+  "domain": "history.com",
+  "rank": 2987,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:26:07.495Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2987,
+    "domain": "history.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:26:07.495Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2652,
+      "error": null,
+      "finalHost": "www.history.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4125,
+        "visible": 39,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 54,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7328
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2652,
+      "error": null,
+      "finalHost": "www.history.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4125,
+        "visible": 39,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 54,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7329
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.7,
+      "sdMargin": 79.3,
+      "sdPlain": 79.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:26:07.495Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2652,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2652,
+        "error": null
+      },
+      "look": {
+        "diff": 0.7,
+        "sdMargin": 79.3,
+        "sdPlain": 79.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

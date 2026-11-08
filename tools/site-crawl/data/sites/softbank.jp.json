@@ -1,0 +1,118 @@
+{
+  "domain": "softbank.jp",
+  "rank": 4601,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:55:19.123Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4601,
+    "domain": "softbank.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:55:19.123Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5124,
+      "error": null,
+      "finalHost": "www.softbank.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6092,
+        "visible": 72,
+        "cut": 47,
+        "cutRight": 42,
+        "images": 128,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7459
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3782,
+      "error": null,
+      "finalHost": "www.softbank.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6092,
+        "visible": 72,
+        "cut": 47,
+        "cutRight": 42,
+        "images": 128,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7459
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.2,
+      "sdMargin": 54.2,
+      "sdPlain": 54.1
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:55:19.123Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5124,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3782,
+        "error": null
+      },
+      "look": {
+        "diff": 2.2,
+        "sdMargin": 54.2,
+        "sdPlain": 54.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "domain": "sina.com.cn",
+  "rank": 501,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:10:33.305Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 501,
+    "domain": "sina.com.cn",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:10:33.305Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 20002,
+      "error": null,
+      "finalHost": "www.sina.com.cn",
+      "errors": [
+        "SecurityError:fail to set domain or both page must set 'document.domain' to the same value 'sina.com.cn' to allow access",
+        "sinaSSOController is not defined",
+        "Failed to read a named property '___SinaadsMonBoxCrossDomainStorage___' from 'Window': Blocked a frame with origin \"https://d2.sina.com.cn\" from accessing a cross-origin frame."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9539,
+        "visible": 261,
+        "cut": 16,
+        "cutRight": 2,
+        "images": 99,
+        "brokenImages": 0,
+        "iframes": 30,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 6801
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 19810,
+      "error": null,
+      "finalHost": "www.sina.com.cn",
+      "errors": [
+        "SecurityError:fail to set domain or both page must set 'document.domain' to the same value 'sina.com.cn' to allow access",
+        "sinaSSOController is not defined",
+        "Failed to read a named property '___SinaadsMonBoxCrossDomainStorage___' from 'Window': Blocked a frame with origin \"https://d2.sina.com.cn\" from accessing a cross-origin frame."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9537,
+        "visible": 261,
+        "cut": 16,
+        "cutRight": 2,
+        "images": 99,
+        "brokenImages": 0,
+        "iframes": 30,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 6801
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.8,
+      "sdMargin": 43.8,
+      "sdPlain": 44
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:10:33.305Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 20002,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 19810,
+        "error": null
+      },
+      "look": {
+        "diff": 2.8,
+        "sdMargin": 43.8,
+        "sdPlain": 44
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

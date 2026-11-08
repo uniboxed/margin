@@ -1,0 +1,118 @@
+{
+  "domain": "auone.jp",
+  "rank": 1361,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:36:53.076Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1361,
+    "domain": "auone.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:36:53.076Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7730,
+      "error": null,
+      "finalHost": "portal.auone.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3548,
+        "visible": 94,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 113,
+        "brokenImages": 0,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5673
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 8766,
+      "error": null,
+      "finalHost": "portal.auone.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3643,
+        "visible": 94,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 113,
+        "brokenImages": 0,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5673
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.1,
+      "sdMargin": 64.4,
+      "sdPlain": 62.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:36:53.076Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 7730,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 8766,
+        "error": null
+      },
+      "look": {
+        "diff": 10.1,
+        "sdMargin": 64.4,
+        "sdPlain": 62.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

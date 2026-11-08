@@ -1,0 +1,136 @@
+{
+  "domain": "shopee.sg",
+  "rank": 4226,
+  "verdict": "flagged",
+  "flags": [
+    "text-missing",
+    "elements-missing",
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:40:46.788Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4226,
+    "domain": "shopee.sg",
+    "verdict": "flagged",
+    "flags": [
+      "text-missing",
+      "elements-missing",
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:40:46.788Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4391,
+      "error": null,
+      "finalHost": "shopee.sg",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 158,
+        "visible": 28,
+        "cut": 3,
+        "cutRight": 2,
+        "images": 3,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1349
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4067,
+      "error": null,
+      "finalHost": "shopee.sg",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1205,
+        "overflowX": 33,
+        "text": 8696,
+        "visible": 57,
+        "cut": 21,
+        "cutRight": 17,
+        "images": 32,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3268
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 51.2,
+      "sdMargin": 58.1,
+      "sdPlain": 13.8
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4226-shopee.sg-margin.jpg",
+      "plain": "rounds/0001/shots/4226-shopee.sg-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:40:46.788Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "text-missing",
+        "elements-missing",
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4391,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4067,
+        "error": null
+      },
+      "look": {
+        "diff": 51.2,
+        "sdMargin": 58.1,
+        "sdPlain": 13.8
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4226-shopee.sg-margin.jpg",
+        "plain": "rounds/0001/shots/4226-shopee.sg-plain.jpg"
+      }
+    }
+  ]
+}

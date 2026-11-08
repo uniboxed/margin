@@ -1,0 +1,142 @@
+{
+  "domain": "kompas.com",
+  "rank": 4227,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:51:21.331Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4227,
+    "domain": "kompas.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T15:51:21.331Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6509,
+      "error": null,
+      "finalHost": "kompas.com",
+      "errors": [
+        "Notification is not defined",
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
+        "Uncaught [object Object]",
+        "Cannot read properties of undefined (reading 'usermail')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15883,
+        "visible": 151,
+        "cut": 15,
+        "cutRight": 15,
+        "images": 232,
+        "brokenImages": 0,
+        "iframes": 28,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13813
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 8301,
+      "error": null,
+      "finalHost": "kompas.com",
+      "errors": [
+        "Notification is not defined",
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON",
+        "Uncaught [object Object]",
+        "Cannot read properties of undefined (reading 'usermail')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 15787,
+        "visible": 151,
+        "cut": 15,
+        "cutRight": 15,
+        "images": 232,
+        "brokenImages": 0,
+        "iframes": 27,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 13770
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 41.1,
+      "sdMargin": 92.9,
+      "sdPlain": 80.4
+    },
+    "shots": true,
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4227-kompas.com-margin.jpg",
+      "plain": "rounds/0001/shots/4227-kompas.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:51:21.331Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 6509,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 8301,
+        "error": null
+      },
+      "look": {
+        "diff": 41.1,
+        "sdMargin": 92.9,
+        "sdPlain": 80.4
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4227-kompas.com-margin.jpg",
+        "plain": "rounds/0001/shots/4227-kompas.com-plain.jpg"
+      }
+    }
+  ]
+}

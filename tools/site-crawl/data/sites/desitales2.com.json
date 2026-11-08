@@ -1,0 +1,124 @@
+{
+  "domain": "desitales2.com",
+  "rank": 1600,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:46:09.057Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1600,
+    "domain": "desitales2.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:46:09.057Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2994,
+      "error": null,
+      "finalHost": "www.desitales2.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5588,
+        "visible": 82,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4802
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2960,
+      "error": null,
+      "finalHost": "www.desitales2.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5588,
+        "visible": 82,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4802
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 48.3,
+      "sdPlain": 48.3
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1600-desitales2.com-margin.jpg",
+      "plain": "rounds/0001/shots/1600-desitales2.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:46:09.057Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2994,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2960,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 48.3,
+        "sdPlain": 48.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1600-desitales2.com-margin.jpg",
+        "plain": "rounds/0001/shots/1600-desitales2.com-plain.jpg"
+      }
+    }
+  ]
+}

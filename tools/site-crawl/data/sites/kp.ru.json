@@ -1,0 +1,118 @@
+{
+  "domain": "kp.ru",
+  "rank": 4110,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:37:00.859Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4110,
+    "domain": "kp.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:37:00.859Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 8924,
+      "error": null,
+      "finalHost": "www.kp.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4836,
+        "visible": 44,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 20,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 17439
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5252,
+      "error": null,
+      "finalHost": "www.kp.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4785,
+        "visible": 42,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 19,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 17439
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 14,
+      "sdMargin": 78.3,
+      "sdPlain": 79.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:37:00.859Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 8924,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5252,
+        "error": null
+      },
+      "look": {
+        "diff": 14,
+        "sdMargin": 78.3,
+        "sdPlain": 79.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

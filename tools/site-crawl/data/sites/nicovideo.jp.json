@@ -1,0 +1,130 @@
+{
+  "domain": "nicovideo.jp",
+  "rank": 2655,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:16:05.810Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2655,
+    "domain": "nicovideo.jp",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T09:16:05.810Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 9865,
+      "error": null,
+      "finalHost": "www.nicovideo.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2856,
+        "visible": 56,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 15,
+        "brokenImages": 0,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6860
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 9865,
+      "error": null,
+      "finalHost": "www.nicovideo.jp",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2831,
+        "visible": 45,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 16,
+        "brokenImages": 0,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7118
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 71.3,
+      "sdMargin": 93.3,
+      "sdPlain": 98.7
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/2655-nicovideo.jp-margin.jpg",
+      "plain": "rounds/0001/shots/2655-nicovideo.jp-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:16:05.810Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 9865,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 9865,
+        "error": null
+      },
+      "look": {
+        "diff": 71.3,
+        "sdMargin": 93.3,
+        "sdPlain": 98.7
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/2655-nicovideo.jp-margin.jpg",
+        "plain": "rounds/0001/shots/2655-nicovideo.jp-plain.jpg"
+      }
+    }
+  ]
+}

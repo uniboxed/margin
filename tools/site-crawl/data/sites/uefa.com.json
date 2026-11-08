@@ -1,0 +1,118 @@
+{
+  "domain": "uefa.com",
+  "rank": 3766,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:28:04.011Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3766,
+    "domain": "uefa.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:28:04.011Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5307,
+      "error": null,
+      "finalHost": "www.uefa.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8613,
+        "visible": 343,
+        "cut": 159,
+        "cutRight": 154,
+        "images": 202,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5831
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4382,
+      "error": null,
+      "finalHost": "www.uefa.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8613,
+        "visible": 343,
+        "cut": 157,
+        "cutRight": 153,
+        "images": 202,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5831
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 59.8,
+      "sdPlain": 59.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:28:04.011Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5307,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4382,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 59.8,
+        "sdPlain": 59.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

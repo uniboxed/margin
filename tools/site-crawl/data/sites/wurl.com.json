@@ -1,0 +1,125 @@
+{
+  "domain": "wurl.com",
+  "rank": 2820,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:20:52.947Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2820,
+    "domain": "wurl.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:20:52.947Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3030,
+      "error": null,
+      "finalHost": "www.wurl.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'TenantFeatures')",
+        "Unexpected token '<', \"<?xml vers\"... is not valid JSON"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2372,
+        "visible": 14,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 93,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7327
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3656,
+      "error": null,
+      "finalHost": "www.wurl.com",
+      "errors": [
+        "Unexpected token '<', \"<?xml vers\"... is not valid JSON",
+        "Uncaught [object Object]",
+        "Cannot read properties of undefined (reading 'TenantFeatures')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2372,
+        "visible": 14,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 93,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7327
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 14.7,
+      "sdMargin": 82.3,
+      "sdPlain": 81.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:20:52.947Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3030,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3656,
+        "error": null
+      },
+      "look": {
+        "diff": 14.7,
+        "sdMargin": 82.3,
+        "sdPlain": 81.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

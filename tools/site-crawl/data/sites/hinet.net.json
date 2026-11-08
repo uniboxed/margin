@@ -1,0 +1,124 @@
+{
+  "domain": "hinet.net",
+  "rank": 3010,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:26:45.744Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3010,
+    "domain": "hinet.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:26:45.744Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 11561,
+      "error": null,
+      "finalHost": "www.cht.com.tw",
+      "errors": [
+        "Cannot read properties of undefined (reading 'top')",
+        "Uncaught [object Object]"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 2857,
+        "visible": 346,
+        "cut": 10,
+        "cutRight": 10,
+        "images": 101,
+        "brokenImages": 2,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3509
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 11725,
+      "error": null,
+      "finalHost": "www.cht.com.tw",
+      "errors": [
+        "Cannot read properties of undefined (reading 'top')",
+        "Uncaught [object Object]"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1182,
+        "overflowX": 10,
+        "text": 2857,
+        "visible": 346,
+        "cut": 10,
+        "cutRight": 10,
+        "images": 101,
+        "brokenImages": 2,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3509
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 62.6,
+      "sdPlain": 62.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:26:45.744Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 11561,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 11725,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 62.6,
+        "sdPlain": 62.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

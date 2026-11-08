@@ -1,0 +1,122 @@
+{
+  "domain": "axon.ai",
+  "rank": 2402,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:07:48.270Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2402,
+    "domain": "axon.ai",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:07:48.270Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2970,
+      "error": null,
+      "finalHost": "www.applovin.com",
+      "errors": [
+        "e.webkit.messageHandlers.browserProperties.postMessage is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1728,
+        "visible": 20,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 56,
+        "brokenImages": 1,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6840
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3110,
+      "error": null,
+      "finalHost": "www.applovin.com",
+      "errors": [
+        "e.webkit.messageHandlers.browserProperties.postMessage is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1728,
+        "visible": 20,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 56,
+        "brokenImages": 1,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6840
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.8,
+      "sdMargin": 79.8,
+      "sdPlain": 79.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:07:48.270Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2970,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3110,
+        "error": null
+      },
+      "look": {
+        "diff": 0.8,
+        "sdMargin": 79.8,
+        "sdPlain": 79.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

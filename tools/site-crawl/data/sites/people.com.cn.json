@@ -1,0 +1,118 @@
+{
+  "domain": "people.com.cn",
+  "rank": 2112,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:00:25.386Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2112,
+    "domain": "people.com.cn",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:00:25.386Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 12036,
+      "error": null,
+      "finalHost": "www.people.com.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1320,
+        "overflowX": 148,
+        "text": 5844,
+        "visible": 93,
+        "cut": 23,
+        "cutRight": 21,
+        "images": 131,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9610
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 10062,
+      "error": null,
+      "finalHost": "www.people.com.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1320,
+        "overflowX": 148,
+        "text": 5844,
+        "visible": 107,
+        "cut": 26,
+        "cutRight": 23,
+        "images": 131,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 37.4,
+      "sdMargin": 66.5,
+      "sdPlain": 67.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:00:25.386Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 12036,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 10062,
+        "error": null
+      },
+      "look": {
+        "diff": 37.4,
+        "sdMargin": 66.5,
+        "sdPlain": 67.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

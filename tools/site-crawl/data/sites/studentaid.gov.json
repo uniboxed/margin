@@ -1,0 +1,73 @@
+{
+  "domain": "studentaid.gov",
+  "rank": 4104,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:36:47.375Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4104,
+    "domain": "studentaid.gov",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:36:47.375Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 294,
+      "error": "page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://studentaid.gov/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 368,
+      "error": "page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://studentaid.gov/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:36:47.375Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 294,
+        "error": "page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://studentaid.gov/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 368,
+        "error": "page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://studentaid.gov/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

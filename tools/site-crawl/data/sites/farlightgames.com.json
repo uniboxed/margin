@@ -1,0 +1,124 @@
+{
+  "domain": "farlightgames.com",
+  "rank": 3563,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:23:05.152Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3563,
+    "domain": "farlightgames.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:23:05.152Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3993,
+      "error": null,
+      "finalHost": "www.farlightgames.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'reportH5SlsMsg')",
+        "reportH5SlsEvent is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1490,
+        "visible": 30,
+        "cut": 18,
+        "cutRight": 12,
+        "images": 44,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3992,
+      "error": null,
+      "finalHost": "www.farlightgames.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'reportH5SlsMsg')",
+        "reportH5SlsEvent is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1490,
+        "visible": 30,
+        "cut": 18,
+        "cutRight": 12,
+        "images": 44,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 4.7,
+      "sdMargin": 49.4,
+      "sdPlain": 50.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:23:05.152Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3993,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3992,
+        "error": null
+      },
+      "look": {
+        "diff": 4.7,
+        "sdMargin": 49.4,
+        "sdPlain": 50.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "domain": "shopee.ph",
+  "rank": 3140,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:29:51.205Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3140,
+    "domain": "shopee.ph",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow"
+    ],
+    "at": "2026-11-08T09:29:51.205Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5103,
+      "error": null,
+      "finalHost": "shopee.ph",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 238,
+        "visible": 9,
+        "cut": 3,
+        "cutRight": 2,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3962,
+      "error": null,
+      "finalHost": "shopee.ph",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 20,
+        "visible": 3,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 13.8,
+      "sdPlain": 13.8
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3140-shopee.ph-margin.jpg",
+      "plain": "rounds/0001/shots/3140-shopee.ph-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:29:51.205Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 5103,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3962,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 13.8,
+        "sdPlain": 13.8
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3140-shopee.ph-margin.jpg",
+        "plain": "rounds/0001/shots/3140-shopee.ph-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "coinmarketcap.com",
+  "rank": 2235,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:03:31.763Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2235,
+    "domain": "coinmarketcap.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:03:31.763Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4577,
+      "error": null,
+      "finalHost": "coinmarketcap.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1166,
+        "overflowX": 0,
+        "text": 7499,
+        "visible": 348,
+        "cut": 27,
+        "cutRight": 27,
+        "images": 174,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6927
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4581,
+      "error": null,
+      "finalHost": "coinmarketcap.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1166,
+        "overflowX": 0,
+        "text": 7499,
+        "visible": 353,
+        "cut": 28,
+        "cutRight": 28,
+        "images": 174,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6924
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 29.7,
+      "sdMargin": 65.5,
+      "sdPlain": 21.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:03:31.763Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4577,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4581,
+        "error": null
+      },
+      "look": {
+        "diff": 29.7,
+        "sdMargin": 65.5,
+        "sdPlain": 21.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

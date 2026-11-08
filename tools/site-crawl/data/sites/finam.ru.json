@@ -1,0 +1,103 @@
+{
+  "domain": "finam.ru",
+  "rank": 4712,
+  "verdict": "blocked",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:58:14.314Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4712,
+    "domain": "finam.ru",
+    "verdict": "blocked",
+    "flags": [],
+    "at": "2026-11-08T15:58:14.314Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 403,
+      "ms": 4758,
+      "error": null,
+      "finalHost": "finam.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 867,
+        "visible": 12,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1321
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 403,
+      "ms": 4997,
+      "error": null,
+      "finalHost": "finam.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 867,
+        "visible": 12,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1305
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:58:14.314Z",
+      "commit": "f2231c7",
+      "verdict": "blocked",
+      "flags": [],
+      "margin": {
+        "status": 403,
+        "ms": 4758,
+        "error": null
+      },
+      "plain": {
+        "status": 403,
+        "ms": 4997,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

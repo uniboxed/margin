@@ -1,0 +1,118 @@
+{
+  "domain": "avs.io",
+  "rank": 4231,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:41:22.081Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4231,
+    "domain": "avs.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:41:22.081Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5039,
+      "error": null,
+      "finalHost": "www.aviasales.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8886,
+        "visible": 67,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 141,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7433
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4748,
+      "error": null,
+      "finalHost": "www.aviasales.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8849,
+        "visible": 67,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 141,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7433
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 11.4,
+      "sdMargin": 68.5,
+      "sdPlain": 65.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:41:22.081Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5039,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4748,
+        "error": null
+      },
+      "look": {
+        "diff": 11.4,
+        "sdMargin": 68.5,
+        "sdPlain": 65.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

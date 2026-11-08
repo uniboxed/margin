@@ -1,0 +1,130 @@
+{
+  "domain": "amazon.com.br",
+  "rank": 880,
+  "verdict": "flagged",
+  "flags": [
+    "text-missing"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:21:45.700Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 880,
+    "domain": "amazon.com.br",
+    "verdict": "flagged",
+    "flags": [
+      "text-missing"
+    ],
+    "at": "2026-11-08T08:21:45.700Z",
+    "margin": {
+      "ok": true,
+      "status": 202,
+      "ms": 2390,
+      "error": null,
+      "finalHost": "www.amazon.com.br",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4081,
+        "visible": 181,
+        "cut": 48,
+        "cutRight": 33,
+        "images": 45,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2538
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 202,
+      "ms": 2436,
+      "error": null,
+      "finalHost": "www.amazon.com.br",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8307,
+        "visible": 183,
+        "cut": 48,
+        "cutRight": 33,
+        "images": 67,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2821
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 14.8,
+      "sdMargin": 72.7,
+      "sdPlain": 73.5
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/880-amazon.com.br-margin.jpg",
+      "plain": "rounds/0001/shots/880-amazon.com.br-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:21:45.700Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "text-missing"
+      ],
+      "margin": {
+        "status": 202,
+        "ms": 2390,
+        "error": null
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2436,
+        "error": null
+      },
+      "look": {
+        "diff": 14.8,
+        "sdMargin": 72.7,
+        "sdPlain": 73.5
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/880-amazon.com.br-margin.jpg",
+        "plain": "rounds/0001/shots/880-amazon.com.br-plain.jpg"
+      }
+    }
+  ]
+}

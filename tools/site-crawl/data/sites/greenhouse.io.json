@@ -1,0 +1,124 @@
+{
+  "domain": "greenhouse.io",
+  "rank": 4604,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:55:32.236Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4604,
+    "domain": "greenhouse.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:55:32.236Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3459,
+      "error": null,
+      "finalHost": "www.greenhouse.com",
+      "errors": [
+        "Unexpected token '<'",
+        "Uncaught [object Object]"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6267,
+        "visible": 20,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 92,
+        "brokenImages": 5,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14835
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3470,
+      "error": null,
+      "finalHost": "www.greenhouse.com",
+      "errors": [
+        "Unexpected token '<'",
+        "Uncaught [object Object]"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6267,
+        "visible": 20,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 92,
+        "brokenImages": 5,
+        "iframes": 6,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14819
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 61.2,
+      "sdPlain": 61.1
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:55:32.236Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3459,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3470,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 61.2,
+        "sdPlain": 61.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

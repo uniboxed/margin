@@ -1,0 +1,118 @@
+{
+  "domain": "meteoblue.com",
+  "rank": 3999,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:33:47.180Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3999,
+    "domain": "meteoblue.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:33:47.180Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3667,
+      "error": null,
+      "finalHost": "www.meteoblue.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4620,
+        "visible": 110,
+        "cut": 20,
+        "cutRight": 20,
+        "images": 77,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5673
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3732,
+      "error": null,
+      "finalHost": "www.meteoblue.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4620,
+        "visible": 110,
+        "cut": 20,
+        "cutRight": 20,
+        "images": 77,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5673
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 82.1,
+      "sdPlain": 82.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:33:47.180Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3667,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3732,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 82.1,
+        "sdPlain": 82.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

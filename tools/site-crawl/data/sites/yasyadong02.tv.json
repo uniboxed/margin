@@ -1,0 +1,94 @@
+{
+  "domain": "yasyadong02.tv",
+  "rank": 1791,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:51:30.088Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1791,
+    "domain": "yasyadong02.tv",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T08:51:30.088Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 13118,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation.",
+      "finalHost": "yasyadong04.tv",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 13208,
+      "error": null,
+      "finalHost": "yasyadong04.tv",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3001,
+        "visible": 141,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 153,
+        "brokenImages": 1,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3448
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/1791-yasyadong02.tv-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:51:30.088Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 13118,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation."
+      },
+      "plain": {
+        "status": 200,
+        "ms": 13208,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/1791-yasyadong02.tv-plain.jpg"
+      }
+    }
+  ]
+}

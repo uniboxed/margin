@@ -1,0 +1,122 @@
+{
+  "domain": "yotpo.com",
+  "rank": 2130,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:00:56.103Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2130,
+    "domain": "yotpo.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:00:56.103Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6064,
+      "error": null,
+      "finalHost": "www.yotpo.com",
+      "errors": [
+        "e.some is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6020,
+        "visible": 31,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 181,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6737
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 11416,
+      "error": null,
+      "finalHost": "www.yotpo.com",
+      "errors": [
+        "e.some is not a function"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6020,
+        "visible": 31,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 181,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6721
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 4.7,
+      "sdMargin": 29.4,
+      "sdPlain": 27.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:00:56.103Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6064,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 11416,
+        "error": null
+      },
+      "look": {
+        "diff": 4.7,
+        "sdMargin": 29.4,
+        "sdPlain": 27.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

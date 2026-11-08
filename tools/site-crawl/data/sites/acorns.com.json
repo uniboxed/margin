@@ -1,0 +1,122 @@
+{
+  "domain": "acorns.com",
+  "rank": 4658,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:56:55.492Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4658,
+    "domain": "acorns.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:56:55.492Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2696,
+      "error": null,
+      "finalHost": "www.acorns.com",
+      "errors": [
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 16619,
+        "visible": 60,
+        "cut": 19,
+        "cutRight": 16,
+        "images": 137,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 10856
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4537,
+      "error": null,
+      "finalHost": "www.acorns.com",
+      "errors": [
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 16619,
+        "visible": 60,
+        "cut": 19,
+        "cutRight": 16,
+        "images": 137,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 59.5,
+      "sdPlain": 59.5
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:56:55.492Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2696,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4537,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 59.5,
+        "sdPlain": 59.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

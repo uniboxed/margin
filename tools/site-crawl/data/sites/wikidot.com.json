@@ -1,0 +1,122 @@
+{
+  "domain": "wikidot.com",
+  "rank": 3572,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:23:27.502Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3572,
+    "domain": "wikidot.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:23:27.502Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3286,
+      "error": null,
+      "finalHost": "www.wikidot.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1186,
+        "overflowX": 14,
+        "text": 1730,
+        "visible": 24,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 17,
+        "brokenImages": 1,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4210
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3832,
+      "error": null,
+      "finalHost": "www.wikidot.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1730,
+        "visible": 24,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 17,
+        "brokenImages": 2,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4299
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 8.8,
+      "sdMargin": 83.9,
+      "sdPlain": 82.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:23:27.502Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3286,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3832,
+        "error": null
+      },
+      "look": {
+        "diff": 8.8,
+        "sdMargin": 83.9,
+        "sdPlain": 82.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

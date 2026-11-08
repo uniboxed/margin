@@ -1,0 +1,144 @@
+{
+  "domain": "vogue.com",
+  "rank": 3046,
+  "verdict": "flagged",
+  "flags": [
+    "more-errors"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:27:26.392Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3046,
+    "domain": "vogue.com",
+    "verdict": "flagged",
+    "flags": [
+      "more-errors"
+    ],
+    "at": "2026-11-08T09:27:26.392Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6231,
+      "error": null,
+      "finalHost": "www.vogue.com",
+      "errors": [
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined",
+        "Uncaught (in promise) undefined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6390,
+        "visible": 54,
+        "cut": 29,
+        "cutRight": 29,
+        "images": 87,
+        "brokenImages": 1,
+        "iframes": 18,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11029
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7584,
+      "error": null,
+      "finalHost": "www.vogue.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6390,
+        "visible": 54,
+        "cut": 29,
+        "cutRight": 29,
+        "images": 89,
+        "brokenImages": 1,
+        "iframes": 18,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 72.9,
+      "sdPlain": 72.9
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3046-vogue.com-margin.jpg",
+      "plain": "rounds/0001/shots/3046-vogue.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:27:26.392Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "more-errors"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 6231,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7584,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 72.9,
+        "sdPlain": 72.9
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3046-vogue.com-margin.jpg",
+        "plain": "rounds/0001/shots/3046-vogue.com-plain.jpg"
+      }
+    }
+  ]
+}

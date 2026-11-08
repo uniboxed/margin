@@ -1,0 +1,73 @@
+{
+  "domain": "liberty-nodes.online",
+  "rank": 4532,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:53:12.348Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4532,
+    "domain": "liberty-nodes.online",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:53:12.348Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 55,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://liberty-nodes.online/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 54,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://liberty-nodes.online/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:53:12.348Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 55,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://liberty-nodes.online/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 54,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://liberty-nodes.online/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

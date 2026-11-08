@@ -1,0 +1,130 @@
+{
+  "domain": "kir2kos.net",
+  "rank": 1655,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:47:47.409Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1655,
+    "domain": "kir2kos.net",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T08:47:47.409Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 14385,
+      "error": null,
+      "finalHost": "kir2kos.net",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12486,
+        "visible": 181,
+        "cut": 54,
+        "cutRight": 21,
+        "images": 307,
+        "brokenImages": 0,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14241
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 14353,
+      "error": null,
+      "finalHost": "kir2kos.net",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 11364,
+        "visible": 177,
+        "cut": 48,
+        "cutRight": 20,
+        "images": 269,
+        "brokenImages": 0,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14241
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 18.2,
+      "sdMargin": 68.5,
+      "sdPlain": 72.6
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1655-kir2kos.net-margin.jpg",
+      "plain": "rounds/0001/shots/1655-kir2kos.net-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:47:47.409Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 14385,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 14353,
+        "error": null
+      },
+      "look": {
+        "diff": 18.2,
+        "sdMargin": 68.5,
+        "sdPlain": 72.6
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1655-kir2kos.net-margin.jpg",
+        "plain": "rounds/0001/shots/1655-kir2kos.net-plain.jpg"
+      }
+    }
+  ]
+}

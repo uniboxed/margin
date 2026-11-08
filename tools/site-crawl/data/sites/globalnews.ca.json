@@ -1,0 +1,120 @@
+{
+  "domain": "globalnews.ca",
+  "rank": 4157,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:38:39.183Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4157,
+    "domain": "globalnews.ca",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:38:39.183Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3402,
+      "error": null,
+      "finalHost": "globalnews.ca",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9512,
+        "visible": 88,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 104,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7934
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3645,
+      "error": null,
+      "finalHost": "globalnews.ca",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9501,
+        "visible": 86,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 104,
+        "brokenImages": 1,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7934
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 7.2,
+      "sdMargin": 76,
+      "sdPlain": 86.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:38:39.183Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3402,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3645,
+        "error": null
+      },
+      "look": {
+        "diff": 7.2,
+        "sdMargin": 76,
+        "sdPlain": 86.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "domain": "banki.ru",
+  "rank": 4107,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:36:51.253Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4107,
+    "domain": "banki.ru",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T15:36:51.253Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 2815,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "banki.ru",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2805,
+      "error": null,
+      "finalHost": "www.banki.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1250,
+        "overflowX": 78,
+        "text": 0,
+        "visible": 0,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "loading",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/4107-banki.ru-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:36:51.253Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2815,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2805,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/4107-banki.ru-plain.jpg"
+      }
+    }
+  ]
+}

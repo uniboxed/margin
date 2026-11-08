@@ -1,0 +1,98 @@
+{
+  "domain": "huffingtonpost.com",
+  "rank": 1455,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:41:12.274Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1455,
+    "domain": "huffingtonpost.com",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T08:41:12.274Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 22818,
+      "error": "timeout: measure (8000 ms)",
+      "finalHost": "www.huffpost.com",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 14676,
+      "error": null,
+      "finalHost": "www.huffpost.com",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10016,
+        "visible": 41,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 122,
+        "brokenImages": 1,
+        "iframes": 30,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 17716
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/1455-huffingtonpost.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:41:12.274Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 22818,
+        "error": "timeout: measure (8000 ms)"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 14676,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/1455-huffingtonpost.com-plain.jpg"
+      }
+    }
+  ]
+}

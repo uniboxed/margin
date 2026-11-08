@@ -1,0 +1,95 @@
+{
+  "domain": "mogujie.com",
+  "rank": 1992,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:57:25.987Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1992,
+    "domain": "mogujie.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:57:25.987Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 11777,
+      "error": null,
+      "finalHost": "www.mogujie.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 312,
+        "visible": 48,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 30001,
+      "error": "page.goto: Timeout 30000ms exceeded.",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:57:25.987Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 11777,
+        "error": null
+      },
+      "plain": {
+        "status": null,
+        "ms": 30001,
+        "error": "page.goto: Timeout 30000ms exceeded."
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

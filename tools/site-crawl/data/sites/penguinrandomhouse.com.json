@@ -1,0 +1,118 @@
+{
+  "domain": "penguinrandomhouse.com",
+  "rank": 3903,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:31:32.209Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3903,
+    "domain": "penguinrandomhouse.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:31:32.209Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6319,
+      "error": null,
+      "finalHost": "www.penguinrandomhouse.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4797,
+        "visible": 96,
+        "cut": 22,
+        "cutRight": 0,
+        "images": 79,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4173
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6322,
+      "error": null,
+      "finalHost": "www.penguinrandomhouse.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4797,
+        "visible": 96,
+        "cut": 22,
+        "cutRight": 0,
+        "images": 79,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4173
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 104.1,
+      "sdPlain": 104.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:31:32.209Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6319,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6322,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 104.1,
+        "sdPlain": 104.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

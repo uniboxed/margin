@@ -1,0 +1,73 @@
+{
+  "domain": "amplifyapp.com",
+  "rank": 2777,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:19:56.583Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2777,
+    "domain": "amplifyapp.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T09:19:56.583Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 57,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://amplifyapp.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 3062,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://amplifyapp.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:19:56.583Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 57,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://amplifyapp.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 3062,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://amplifyapp.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

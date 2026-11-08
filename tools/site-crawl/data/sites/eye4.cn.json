@@ -1,0 +1,118 @@
+{
+  "domain": "eye4.cn",
+  "rank": 461,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:08:23.127Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 461,
+    "domain": "eye4.cn",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:08:23.127Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5710,
+      "error": null,
+      "finalHost": "eye4.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1249,
+        "overflowX": 77,
+        "text": 136,
+        "visible": 13,
+        "cut": 6,
+        "cutRight": 4,
+        "images": 15,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4113
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5163,
+      "error": null,
+      "finalHost": "eye4.cn",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1249,
+        "overflowX": 77,
+        "text": 136,
+        "visible": 13,
+        "cut": 6,
+        "cutRight": 4,
+        "images": 15,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4037
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 12.1,
+      "sdMargin": 78.6,
+      "sdPlain": 78.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:08:23.127Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5710,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5163,
+        "error": null
+      },
+      "look": {
+        "diff": 12.1,
+        "sdMargin": 78.6,
+        "sdPlain": 78.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

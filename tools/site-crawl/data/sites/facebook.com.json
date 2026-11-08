@@ -1,0 +1,130 @@
+{
+  "domain": "facebook.com",
+  "rank": 5,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T07:57:14.312Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 5,
+    "domain": "facebook.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T07:57:14.312Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3258,
+      "error": null,
+      "finalHost": "www.facebook.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 501,
+        "visible": 27,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 988
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2921,
+      "error": null,
+      "finalHost": "www.facebook.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 573,
+        "visible": 28,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 988
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 81.6,
+      "sdMargin": 40.9,
+      "sdPlain": 95.6
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/5-facebook.com-margin.jpg",
+      "plain": "rounds/0001/shots/5-facebook.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:57:14.312Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3258,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2921,
+        "error": null
+      },
+      "look": {
+        "diff": 81.6,
+        "sdMargin": 40.9,
+        "sdPlain": 95.6
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/5-facebook.com-margin.jpg",
+        "plain": "rounds/0001/shots/5-facebook.com-plain.jpg"
+      }
+    }
+  ]
+}

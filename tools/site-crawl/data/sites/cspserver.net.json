@@ -1,0 +1,73 @@
+{
+  "domain": "cspserver.net",
+  "rank": 1155,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:29:46.371Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1155,
+    "domain": "cspserver.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:29:46.371Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 326,
+      "error": "page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://cspserver.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 328,
+      "error": "page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://cspserver.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:29:46.371Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 326,
+        "error": "page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://cspserver.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 328,
+        "error": "page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at https://cspserver.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

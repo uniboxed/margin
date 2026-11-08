@@ -1,0 +1,138 @@
+{
+  "domain": "nzherald.co.nz",
+  "rank": 3372,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T09:36:16.489Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3372,
+    "domain": "nzherald.co.nz",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T09:36:16.489Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5396,
+      "error": null,
+      "finalHost": "www.nzherald.co.nz",
+      "errors": [
+        "Cannot read properties of undefined (reading 'method')",
+        "Cannot read properties of undefined (reading 'method')",
+        "Cannot read properties of undefined (reading 'method')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12686,
+        "visible": 75,
+        "cut": 10,
+        "cutRight": 10,
+        "images": 92,
+        "brokenImages": 0,
+        "iframes": 21,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 16941
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4265,
+      "error": null,
+      "finalHost": "www.nzherald.co.nz",
+      "errors": [
+        "Cannot read properties of undefined (reading 'method')",
+        "Cannot read properties of undefined (reading 'method')",
+        "Cannot read properties of undefined (reading 'method')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 12686,
+        "visible": 69,
+        "cut": 10,
+        "cutRight": 10,
+        "images": 92,
+        "brokenImages": 0,
+        "iframes": 17,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 17095
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 57.1,
+      "sdMargin": 96.9,
+      "sdPlain": 97.5
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/3372-nzherald.co.nz-margin.jpg",
+      "plain": "rounds/0001/shots/3372-nzherald.co.nz-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:36:16.489Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 5396,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4265,
+        "error": null
+      },
+      "look": {
+        "diff": 57.1,
+        "sdMargin": 96.9,
+        "sdPlain": 97.5
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/3372-nzherald.co.nz-margin.jpg",
+        "plain": "rounds/0001/shots/3372-nzherald.co.nz-plain.jpg"
+      }
+    }
+  ]
+}

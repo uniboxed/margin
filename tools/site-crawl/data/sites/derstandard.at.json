@@ -1,0 +1,122 @@
+{
+  "domain": "derstandard.at",
+  "rank": 4029,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:34:47.585Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4029,
+    "domain": "derstandard.at",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:34:47.585Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4565,
+      "error": null,
+      "finalHost": "www.derstandard.at",
+      "errors": [
+        "Cannot read properties of null (reading 'href')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 334,
+        "visible": 2,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1030
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4559,
+      "error": null,
+      "finalHost": "www.derstandard.at",
+      "errors": [
+        "Cannot read properties of null (reading 'href')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 334,
+        "visible": 2,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1030
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.3,
+      "sdMargin": 83.6,
+      "sdPlain": 83.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:34:47.585Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4565,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4559,
+        "error": null
+      },
+      "look": {
+        "diff": 0.3,
+        "sdMargin": 83.6,
+        "sdPlain": 83.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

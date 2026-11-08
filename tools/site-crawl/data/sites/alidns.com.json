@@ -1,0 +1,122 @@
+{
+  "domain": "alidns.com",
+  "rank": 270,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:03:56.148Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 270,
+    "domain": "alidns.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:03:56.148Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7966,
+      "error": null,
+      "finalHost": "www.aliyun.com",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9094,
+        "visible": 568,
+        "cut": 14,
+        "cutRight": 14,
+        "images": 63,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5070
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7965,
+      "error": null,
+      "finalHost": "www.aliyun.com",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 9129,
+        "visible": 568,
+        "cut": 14,
+        "cutRight": 14,
+        "images": 63,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5070
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.4,
+      "sdMargin": 38.6,
+      "sdPlain": 38.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:03:56.148Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 7966,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7965,
+        "error": null
+      },
+      "look": {
+        "diff": 0.4,
+        "sdMargin": 38.6,
+        "sdPlain": 38.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

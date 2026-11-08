@@ -1,0 +1,118 @@
+{
+  "domain": "bidmachine.io",
+  "rank": 1053,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:26:51.754Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1053,
+    "domain": "bidmachine.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:26:51.754Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5157,
+      "error": null,
+      "finalHost": "www.bidmachine.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 14767,
+        "overflowX": 13595,
+        "text": 6346,
+        "visible": 9,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 58,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7258
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6064,
+      "error": null,
+      "finalHost": "www.bidmachine.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 14719,
+        "overflowX": 13547,
+        "text": 6346,
+        "visible": 9,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 58,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7258
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.3,
+      "sdMargin": 45.7,
+      "sdPlain": 46
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:26:51.754Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5157,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6064,
+        "error": null
+      },
+      "look": {
+        "diff": 2.3,
+        "sdMargin": 45.7,
+        "sdPlain": 46
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

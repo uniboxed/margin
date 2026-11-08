@@ -1,0 +1,79 @@
+{
+  "domain": "rwwsje.com",
+  "rank": 1200,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:31:35.264Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1200,
+    "domain": "rwwsje.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:31:35.264Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 1822,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rwwsje.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 1823,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rwwsje.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": null
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:31:35.264Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 1822,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rwwsje.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 1823,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rwwsje.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": null
+      }
+    }
+  ]
+}

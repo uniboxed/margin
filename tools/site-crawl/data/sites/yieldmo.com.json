@@ -1,0 +1,118 @@
+{
+  "domain": "yieldmo.com",
+  "rank": 831,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:20:33.873Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 831,
+    "domain": "yieldmo.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:20:33.873Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 9170,
+      "error": null,
+      "finalHost": "yieldmo.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1375,
+        "overflowX": 203,
+        "text": 5659,
+        "visible": 36,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 57,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6826
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 9045,
+      "error": null,
+      "finalHost": "yieldmo.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1375,
+        "overflowX": 203,
+        "text": 5659,
+        "visible": 36,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 57,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6826
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.4,
+      "sdMargin": 70.7,
+      "sdPlain": 70.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:20:33.873Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 9170,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 9045,
+        "error": null
+      },
+      "look": {
+        "diff": 0.4,
+        "sdMargin": 70.7,
+        "sdPlain": 70.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

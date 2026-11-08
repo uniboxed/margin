@@ -1,0 +1,118 @@
+{
+  "domain": "shopee.co.id",
+  "rank": 755,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:18:39.923Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 755,
+    "domain": "shopee.co.id",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:18:39.923Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5484,
+      "error": null,
+      "finalHost": "shopee.co.id",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 297,
+        "visible": 12,
+        "cut": 3,
+        "cutRight": 2,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5638,
+      "error": null,
+      "finalHost": "shopee.co.id",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1200,
+        "overflowX": 28,
+        "text": 296,
+        "visible": 12,
+        "cut": 3,
+        "cutRight": 2,
+        "images": 1,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 14.5,
+      "sdPlain": 14.5
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:18:39.923Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5484,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5638,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 14.5,
+        "sdPlain": 14.5
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

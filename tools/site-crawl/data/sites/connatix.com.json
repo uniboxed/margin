@@ -1,0 +1,124 @@
+{
+  "domain": "connatix.com",
+  "rank": 2083,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:59:38.071Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2083,
+    "domain": "connatix.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:59:38.071Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5203,
+      "error": null,
+      "finalHost": "jwx.com",
+      "errors": [
+        "Cannot read properties of null (reading 'getAttribute')",
+        "Cannot set properties of null (setting 'innerHTML')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5156,
+        "visible": 72,
+        "cut": 46,
+        "cutRight": 38,
+        "images": 75,
+        "brokenImages": 2,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4754
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6559,
+      "error": null,
+      "finalHost": "jwx.com",
+      "errors": [
+        "Cannot read properties of null (reading 'getAttribute')",
+        "Cannot set properties of null (setting 'innerHTML')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5156,
+        "visible": 72,
+        "cut": 46,
+        "cutRight": 34,
+        "images": 75,
+        "brokenImages": 1,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4754
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 5.6,
+      "sdMargin": 99,
+      "sdPlain": 95.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:59:38.071Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5203,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6559,
+        "error": null
+      },
+      "look": {
+        "diff": 5.6,
+        "sdMargin": 99,
+        "sdPlain": 95.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

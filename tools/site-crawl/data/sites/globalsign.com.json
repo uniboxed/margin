@@ -1,0 +1,122 @@
+{
+  "domain": "globalsign.com",
+  "rank": 739,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:17:24.850Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 739,
+    "domain": "globalsign.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:17:24.850Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3842,
+      "error": null,
+      "finalHost": "www.globalsign.com",
+      "errors": [
+        "Failed to execute 'appendChild' on 'Node': Identifier 'geoIPText' has already been declared"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5808,
+        "visible": 48,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 81,
+        "brokenImages": 2,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6062
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3513,
+      "error": null,
+      "finalHost": "www.globalsign.com",
+      "errors": [
+        "Failed to execute 'appendChild' on 'Node': Identifier 'geoIPText' has already been declared"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5303,
+        "visible": 48,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 81,
+        "brokenImages": 2,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6061
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.2,
+      "sdMargin": 42,
+      "sdPlain": 50
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:17:24.850Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3842,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3513,
+        "error": null
+      },
+      "look": {
+        "diff": 10.2,
+        "sdMargin": 42,
+        "sdPlain": 50
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

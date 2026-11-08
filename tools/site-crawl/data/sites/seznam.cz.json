@@ -1,0 +1,118 @@
+{
+  "domain": "seznam.cz",
+  "rank": 858,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:21:03.749Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 858,
+    "domain": "seznam.cz",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:21:03.749Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 8491,
+      "error": null,
+      "finalHost": "www.seznam.cz",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 28692,
+        "visible": 167,
+        "cut": 35,
+        "cutRight": 34,
+        "images": 229,
+        "brokenImages": 0,
+        "iframes": 55,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15140
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7782,
+      "error": null,
+      "finalHost": "www.seznam.cz",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 28639,
+        "visible": 167,
+        "cut": 35,
+        "cutRight": 34,
+        "images": 229,
+        "brokenImages": 0,
+        "iframes": 55,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15161
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 13.7,
+      "sdMargin": 46.4,
+      "sdPlain": 64.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:21:03.749Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 8491,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7782,
+        "error": null
+      },
+      "look": {
+        "diff": 13.7,
+        "sdMargin": 46.4,
+        "sdPlain": 64.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

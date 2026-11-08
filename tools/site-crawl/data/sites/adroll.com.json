@@ -1,0 +1,130 @@
+{
+  "domain": "adroll.com",
+  "rank": 1486,
+  "verdict": "flagged",
+  "flags": [
+    "wrong-width"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:41:59.482Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1486,
+    "domain": "adroll.com",
+    "verdict": "flagged",
+    "flags": [
+      "wrong-width"
+    ],
+    "at": "2026-11-08T08:41:59.482Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4018,
+      "error": null,
+      "finalHost": "www.adroll.com",
+      "errors": [],
+      "m": {
+        "vw": 772,
+        "vh": 884,
+        "scrollW": 780,
+        "overflowX": 8,
+        "text": 3328,
+        "visible": 8,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 47,
+        "brokenImages": 2,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7498
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 772,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4106,
+      "error": null,
+      "finalHost": "www.adroll.com",
+      "errors": [],
+      "m": {
+        "vw": 772,
+        "vh": 884,
+        "scrollW": 780,
+        "overflowX": 8,
+        "text": 3328,
+        "visible": 8,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 47,
+        "brokenImages": 4,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 23.2,
+      "sdMargin": 85.7,
+      "sdPlain": 85.8
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1486-adroll.com-margin.jpg",
+      "plain": "rounds/0001/shots/1486-adroll.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:41:59.482Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "wrong-width"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4018,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4106,
+        "error": null
+      },
+      "look": {
+        "diff": 23.2,
+        "sdMargin": 85.7,
+        "sdPlain": 85.8
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1486-adroll.com-margin.jpg",
+        "plain": "rounds/0001/shots/1486-adroll.com-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "domain": "apple-dns.net",
+  "rank": 42,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T07:58:07.424Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 42,
+    "domain": "apple-dns.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T07:58:07.424Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 1268,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apple-dns.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 1267,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apple-dns.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:58:07.424Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 1268,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apple-dns.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 1267,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apple-dns.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

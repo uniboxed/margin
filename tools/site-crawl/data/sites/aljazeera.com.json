@@ -1,0 +1,150 @@
+{
+  "domain": "aljazeera.com",
+  "rank": 1346,
+  "verdict": "flagged",
+  "flags": [
+    "more-errors"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:36:32.951Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1346,
+    "domain": "aljazeera.com",
+    "verdict": "flagged",
+    "flags": [
+      "more-errors"
+    ],
+    "at": "2026-11-08T08:36:32.951Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4654,
+      "error": null,
+      "finalHost": "www.aljazeera.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch",
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6233,
+        "visible": 83,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 45,
+        "brokenImages": 2,
+        "iframes": 30,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4357
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4654,
+      "error": null,
+      "finalHost": "www.aljazeera.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6233,
+        "visible": 83,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 34,
+        "brokenImages": 0,
+        "iframes": 30,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4357
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 78.2,
+      "sdPlain": 78.2
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1346-aljazeera.com-margin.jpg",
+      "plain": "rounds/0001/shots/1346-aljazeera.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:36:32.951Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "more-errors"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4654,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4654,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 78.2,
+        "sdPlain": 78.2
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1346-aljazeera.com-margin.jpg",
+        "plain": "rounds/0001/shots/1346-aljazeera.com-plain.jpg"
+      }
+    }
+  ]
+}

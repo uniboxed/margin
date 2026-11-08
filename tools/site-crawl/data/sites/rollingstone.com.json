@@ -1,0 +1,118 @@
+{
+  "domain": "rollingstone.com",
+  "rank": 2461,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:10:07.110Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2461,
+    "domain": "rollingstone.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:10:07.110Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4051,
+      "error": null,
+      "finalHost": "www.rollingstone.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8778,
+        "visible": 53,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 36,
+        "brokenImages": 0,
+        "iframes": 22,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7679
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4008,
+      "error": null,
+      "finalHost": "www.rollingstone.com",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed.",
+        "Cannot read properties of null (reading 'appendChild')",
+        "Cannot read properties of null (reading 'getElementsByTagName')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8778,
+        "visible": 54,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 36,
+        "brokenImages": 0,
+        "iframes": 28,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7941
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:10:07.110Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4051,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4008,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

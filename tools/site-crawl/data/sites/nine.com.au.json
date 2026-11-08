@@ -1,0 +1,98 @@
+{
+  "domain": "nine.com.au",
+  "rank": 4408,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:47:13.825Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4408,
+    "domain": "nine.com.au",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T15:47:13.825Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 21074,
+      "error": "timeout: measure (8000 ms)",
+      "finalHost": "www.nine.com.au",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 12087,
+      "error": null,
+      "finalHost": "www.nine.com.au",
+      "errors": [
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7817,
+        "visible": 47,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 61,
+        "brokenImages": 1,
+        "iframes": 17,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8398
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": "rounds/0001/shots/4408-nine.com.au-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:47:13.825Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 21074,
+        "error": "timeout: measure (8000 ms)"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 12087,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": "rounds/0001/shots/4408-nine.com.au-plain.jpg"
+      }
+    }
+  ]
+}

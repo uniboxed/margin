@@ -1,0 +1,104 @@
+{
+  "domain": "detik.com",
+  "rank": 4445,
+  "verdict": "margin-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:48:37.716Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4445,
+    "domain": "detik.com",
+    "verdict": "margin-failed",
+    "flags": [],
+    "at": "2026-11-08T15:48:37.716Z",
+    "margin": {
+      "ok": false,
+      "status": 200,
+      "ms": 26445,
+      "error": "timeout: measure (8000 ms)",
+      "finalHost": "www.detik.com",
+      "errors": [
+        "Notification is not defined",
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "collectTheData is not defined",
+        "collectTheData is not defined"
+      ],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 18572,
+      "error": null,
+      "finalHost": "www.detik.com",
+      "errors": [
+        "Notification is not defined",
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser).",
+        "collectTheData is not defined",
+        "collectTheData is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 10987,
+        "visible": 179,
+        "cut": 70,
+        "cutRight": 0,
+        "images": 165,
+        "brokenImages": 0,
+        "iframes": 45,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 15796
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": null
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:48:37.716Z",
+      "commit": "f2231c7",
+      "verdict": "margin-failed",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 26445,
+        "error": "timeout: measure (8000 ms)"
+      },
+      "plain": {
+        "status": 200,
+        "ms": 18572,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": null
+      }
+    }
+  ]
+}

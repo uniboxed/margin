@@ -1,0 +1,130 @@
+{
+  "domain": "booking.com",
+  "rank": 289,
+  "verdict": "flagged",
+  "flags": [
+    "text-missing"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:04:17.430Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 289,
+    "domain": "booking.com",
+    "verdict": "flagged",
+    "flags": [
+      "text-missing"
+    ],
+    "at": "2026-11-08T08:04:17.430Z",
+    "margin": {
+      "ok": true,
+      "status": 202,
+      "ms": 2881,
+      "error": null,
+      "finalHost": "www.booking.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4309,
+        "visible": 65,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 24,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6676
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 202,
+      "ms": 2465,
+      "error": null,
+      "finalHost": "www.booking.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8677,
+        "visible": 68,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 99,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5989
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.8,
+      "sdMargin": 68.1,
+      "sdPlain": 68.1
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/289-booking.com-margin.jpg",
+      "plain": "rounds/0001/shots/289-booking.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:04:17.430Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "text-missing"
+      ],
+      "margin": {
+        "status": 202,
+        "ms": 2881,
+        "error": null
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2465,
+        "error": null
+      },
+      "look": {
+        "diff": 1.8,
+        "sdMargin": 68.1,
+        "sdPlain": 68.1
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/289-booking.com-margin.jpg",
+        "plain": "rounds/0001/shots/289-booking.com-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "domain": "qnap.com",
+  "rank": 3512,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:22:06.696Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3512,
+    "domain": "qnap.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:22:06.696Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2865,
+      "error": null,
+      "finalHost": "www.qnap.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4157,
+        "visible": 54,
+        "cut": 23,
+        "cutRight": 23,
+        "images": 110,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6358
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2699,
+      "error": null,
+      "finalHost": "www.qnap.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4157,
+        "visible": 54,
+        "cut": 23,
+        "cutRight": 23,
+        "images": 110,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6364
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.6,
+      "sdMargin": 80.7,
+      "sdPlain": 82.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:22:06.696Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2865,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2699,
+        "error": null
+      },
+      "look": {
+        "diff": 10.6,
+        "sdMargin": 80.7,
+        "sdPlain": 82.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

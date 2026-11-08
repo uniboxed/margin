@@ -1,0 +1,73 @@
+{
+  "domain": "hs-banner.com",
+  "rank": 3604,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:23:57.037Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3604,
+    "domain": "hs-banner.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:23:57.037Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 58,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hs-banner.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 57,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hs-banner.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:23:57.037Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 58,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hs-banner.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 57,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://hs-banner.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

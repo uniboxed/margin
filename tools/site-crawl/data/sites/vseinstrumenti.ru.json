@@ -1,0 +1,73 @@
+{
+  "domain": "vseinstrumenti.ru",
+  "rank": 4319,
+  "verdict": "blocked",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:44:53.529Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4319,
+    "domain": "vseinstrumenti.ru",
+    "verdict": "blocked",
+    "flags": [],
+    "at": "2026-11-08T15:44:53.529Z",
+    "margin": {
+      "ok": false,
+      "status": 403,
+      "ms": 4416,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "vseinstrumenti.ru",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 403,
+      "ms": 4641,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "vseinstrumenti.ru",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:44:53.529Z",
+      "commit": "f2231c7",
+      "verdict": "blocked",
+      "flags": [],
+      "margin": {
+        "status": 403,
+        "ms": 4416,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "plain": {
+        "status": 403,
+        "ms": 4641,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

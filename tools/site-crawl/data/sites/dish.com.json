@@ -1,0 +1,122 @@
+{
+  "domain": "dish.com",
+  "rank": 3248,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:33:01.203Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3248,
+    "domain": "dish.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:33:01.203Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5430,
+      "error": null,
+      "finalHost": "www.dish.com",
+      "errors": [
+        "Cannot convert undefined or null to object"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 6396,
+        "visible": 169,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 58,
+        "brokenImages": 1,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4905
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5784,
+      "error": null,
+      "finalHost": "www.dish.com",
+      "errors": [
+        "Cannot convert undefined or null to object"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1188,
+        "overflowX": 16,
+        "text": 6396,
+        "visible": 169,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 59,
+        "brokenImages": 1,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4905
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 81.1,
+      "sdPlain": 81.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:33:01.203Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5430,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5784,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 81.1,
+        "sdPlain": 81.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

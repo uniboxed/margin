@@ -1,0 +1,128 @@
+{
+  "domain": "sharethrough.com",
+  "rank": 698,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:16:33.064Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 698,
+    "domain": "sharethrough.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:16:33.064Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3865,
+      "error": null,
+      "finalHost": "www.sharethrough.com",
+      "errors": [
+        "Unexpected token '<'",
+        "Weglot is not defined",
+        "Identifier 'code' has already been declared",
+        "Weglot is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5710,
+        "visible": 18,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 46,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3210
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4292,
+      "error": null,
+      "finalHost": "www.sharethrough.com",
+      "errors": [
+        "Unexpected token '<'",
+        "Weglot is not defined",
+        "Identifier 'code' has already been declared",
+        "Weglot is not defined"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5753,
+        "visible": 18,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 46,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3210
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.3,
+      "sdMargin": 79.1,
+      "sdPlain": 79
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:16:33.064Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3865,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4292,
+        "error": null
+      },
+      "look": {
+        "diff": 0.3,
+        "sdMargin": 79.1,
+        "sdPlain": 79
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

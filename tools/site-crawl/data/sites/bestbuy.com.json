@@ -1,0 +1,127 @@
+{
+  "domain": "bestbuy.com",
+  "rank": 782,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:19:47.722Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 782,
+    "domain": "bestbuy.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:19:47.722Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 42926,
+      "error": null,
+      "finalHost": "www.bestbuy.com",
+      "errors": [
+        "window.depProxy is not a function",
+        "Failed to fetch",
+        "n.toLowerCase is not a function",
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3214,
+        "visible": 143,
+        "cut": 86,
+        "cutRight": 86,
+        "images": 48,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 12570
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 42601,
+      "error": null,
+      "finalHost": "www.bestbuy.com",
+      "errors": [
+        "Failed to fetch",
+        "n.toLowerCase is not a function",
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3214,
+        "visible": 143,
+        "cut": 86,
+        "cutRight": 86,
+        "images": 48,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 12570
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 83,
+      "sdPlain": 83
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:19:47.722Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 42926,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 42601,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 83,
+        "sdPlain": 83
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

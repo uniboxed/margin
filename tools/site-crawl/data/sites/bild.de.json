@@ -1,0 +1,118 @@
+{
+  "domain": "bild.de",
+  "rank": 761,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:18:48.290Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 761,
+    "domain": "bild.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:18:48.290Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6506,
+      "error": null,
+      "finalHost": "www.bild.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1224,
+        "overflowX": 52,
+        "text": 20169,
+        "visible": 70,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 384,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 26988
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6468,
+      "error": null,
+      "finalHost": "www.bild.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1224,
+        "overflowX": 52,
+        "text": 20204,
+        "visible": 70,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 384,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 26988
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 84.4,
+      "sdPlain": 84.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:18:48.290Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6506,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6468,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 84.4,
+        "sdPlain": 84.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

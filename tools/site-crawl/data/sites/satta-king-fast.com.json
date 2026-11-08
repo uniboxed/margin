@@ -1,0 +1,122 @@
+{
+  "domain": "satta-king-fast.com",
+  "rank": 1763,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:50:49.595Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1763,
+    "domain": "satta-king-fast.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:50:49.595Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4021,
+      "error": null,
+      "finalHost": "satta-king-fast.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1262,
+        "overflowX": 90,
+        "text": 6896,
+        "visible": 30,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8807
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3959,
+      "error": null,
+      "finalHost": "satta-king-fast.com",
+      "errors": [
+        "Messaging: This browser doesn't support the API's required to use the Firebase SDK. (messaging/unsupported-browser)."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1262,
+        "overflowX": 90,
+        "text": 6896,
+        "visible": 30,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8797
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 43.7,
+      "sdPlain": 43.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:50:49.595Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4021,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3959,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 43.7,
+        "sdPlain": 43.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

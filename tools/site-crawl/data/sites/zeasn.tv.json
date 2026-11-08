@@ -1,0 +1,120 @@
+{
+  "domain": "zeasn.tv",
+  "rank": 2643,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:15:47.000Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2643,
+    "domain": "zeasn.tv",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:15:47.000Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 12298,
+      "error": null,
+      "finalHost": "www.whaletv.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'TenantFeatures')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1394,
+        "visible": 21,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 31,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4388
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 12313,
+      "error": null,
+      "finalHost": "www.whaletv.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1207,
+        "overflowX": 35,
+        "text": 1394,
+        "visible": 21,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 33,
+        "brokenImages": 0,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4348
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 83.7,
+      "sdPlain": 83.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:15:47.000Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 12298,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 12313,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 83.7,
+        "sdPlain": 83.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

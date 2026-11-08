@@ -1,0 +1,118 @@
+{
+  "domain": "telekom.de",
+  "rank": 437,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:07:51.899Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 437,
+    "domain": "telekom.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:07:51.899Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6176,
+      "error": null,
+      "finalHost": "www.telekom.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6264,
+        "visible": 60,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 63,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6553
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6188,
+      "error": null,
+      "finalHost": "www.telekom.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6230,
+        "visible": 59,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 63,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6553
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 4,
+      "sdMargin": 76.6,
+      "sdPlain": 72.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:07:51.899Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6176,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6188,
+        "error": null
+      },
+      "look": {
+        "diff": 4,
+        "sdMargin": 76.6,
+        "sdPlain": 72.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

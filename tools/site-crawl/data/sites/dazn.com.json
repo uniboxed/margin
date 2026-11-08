@@ -1,0 +1,160 @@
+{
+  "domain": "dazn.com",
+  "rank": 3484,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:21:22.344Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3484,
+    "domain": "dazn.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:21:22.344Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 8048,
+      "error": null,
+      "finalHost": "www.dazn.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Object._ttq_create is not a function",
+        "Cannot set properties of undefined (setting 'execStart')",
+        "fbq is not defined",
+        "Cannot set properties of undefined (setting 'updatePageElementsList')",
+        "Cannot set properties of undefined (setting '_env')",
+        "Cannot read properties of undefined (reading 'features')",
+        "Cannot read properties of undefined (reading 'chapterHistory')",
+        "Cannot read properties of undefined (reading 'CookieV2TrackingTechnologies')",
+        "dazn is not defined",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5233,
+        "visible": 30,
+        "cut": 10,
+        "cutRight": 4,
+        "images": 46,
+        "brokenImages": 1,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4075
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 8046,
+      "error": null,
+      "finalHost": "www.dazn.com",
+      "errors": [
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Cannot read properties of undefined (reading 'plugins')",
+        "Object._ttq_create is not a function",
+        "Cannot set properties of undefined (setting 'execStart')",
+        "fbq is not defined",
+        "Cannot set properties of undefined (setting 'updatePageElementsList')",
+        "Cannot set properties of undefined (setting '_env')",
+        "Cannot read properties of undefined (reading 'features')",
+        "Cannot read properties of undefined (reading 'chapterHistory')",
+        "Cannot read properties of undefined (reading 'CookieV2TrackingTechnologies')",
+        "dazn is not defined",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')",
+        "Cannot read properties of undefined (reading 'apply')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5233,
+        "visible": 30,
+        "cut": 10,
+        "cutRight": 4,
+        "images": 46,
+        "brokenImages": 1,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4075
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.2,
+      "sdMargin": 80.8,
+      "sdPlain": 80.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:21:22.344Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 8048,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 8046,
+        "error": null
+      },
+      "look": {
+        "diff": 1.2,
+        "sdMargin": 80.8,
+        "sdPlain": 80.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

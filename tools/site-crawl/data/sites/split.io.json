@@ -1,0 +1,110 @@
+{
+  "domain": "split.io",
+  "rank": 1090,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:27:58.053Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1090,
+    "domain": "split.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:27:58.053Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4249,
+      "error": null,
+      "finalHost": "www.split.io",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2275,
+        "visible": 28,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 51,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4687
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4763,
+      "error": null,
+      "finalHost": "www.split.io",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2270,
+        "visible": 28,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 51,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4687
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:27:58.053Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4249,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4763,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

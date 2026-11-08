@@ -1,0 +1,130 @@
+{
+  "domain": "nature.com",
+  "rank": 294,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:04:22.767Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 294,
+    "domain": "nature.com",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T08:04:22.767Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3998,
+      "error": null,
+      "finalHost": "www.nature.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8671,
+        "visible": 69,
+        "cut": 5,
+        "cutRight": 5,
+        "images": 33,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6548
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3826,
+      "error": null,
+      "finalHost": "www.nature.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8671,
+        "visible": 69,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 33,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6548
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 12.6,
+      "sdMargin": 57.7,
+      "sdPlain": 57.4
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/294-nature.com-margin.jpg",
+      "plain": "rounds/0001/shots/294-nature.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:04:22.767Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 3998,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3826,
+        "error": null
+      },
+      "look": {
+        "diff": 12.6,
+        "sdMargin": 57.7,
+        "sdPlain": 57.4
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/294-nature.com-margin.jpg",
+        "plain": "rounds/0001/shots/294-nature.com-plain.jpg"
+      }
+    }
+  ]
+}

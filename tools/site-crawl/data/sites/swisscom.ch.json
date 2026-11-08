@@ -1,0 +1,142 @@
+{
+  "domain": "swisscom.ch",
+  "rank": 3841,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:29:46.054Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3841,
+    "domain": "swisscom.ch",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:29:46.054Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 6395,
+      "error": null,
+      "finalHost": "www.swisscom.ch",
+      "errors": [
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/runtime.baa7f4890d0fef24efa4.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/trafical-src_main_frontend_bootstrap_trafical_ts.d9a2b9e993ddf7381143.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/vendors-node_modules_deparam_js_dist_esm_deparam_esm_js-node_modules_swisscom_portal-frontend-f7479c.b04908a768a78b56f69b.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/vendors-node_modules_snabbdom-pragma_dist_index_es6_js-node_modules_snabbdom_build_h_js-node_-de9678.6d8ffde388c5fa2e8991.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/vendors-node_modules_swisscom_sdx_dist_es6_form_Range_js-node_modules_swisscom_sdx_dist_es6_l-305dbe.aa542226c703d6efa7ac.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_lib_util_array_ts-src_main_frontend_lib_util_dom_ts-src_main_frontend_lib_u-677596.4fa70f3bc68548d638d7.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_components_tealium_datalayer_ts.dd0961798a4462f6b611.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_lib_util_aem-config_ts.8ffe6beaf79b7cf5e1f4.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_clientlib-bundles_css-only-components_scss-src_main_frontend_clientlib-bund-6c1ec0.1681c7517cdfb702b6ca.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/greenfield.8b8b265d180e0c1dca16.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/header.f34efb8943fa0f73ed80.js"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1707,
+        "visible": 10,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 11,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11373
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6451,
+      "error": null,
+      "finalHost": "www.swisscom.ch",
+      "errors": [
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/runtime.baa7f4890d0fef24efa4.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/trafical-src_main_frontend_bootstrap_trafical_ts.d9a2b9e993ddf7381143.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/vendors-node_modules_deparam_js_dist_esm_deparam_esm_js-node_modules_swisscom_portal-frontend-f7479c.b04908a768a78b56f69b.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/vendors-node_modules_snabbdom-pragma_dist_index_es6_js-node_modules_snabbdom_build_h_js-node_-de9678.6d8ffde388c5fa2e8991.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/vendors-node_modules_swisscom_sdx_dist_es6_form_Range_js-node_modules_swisscom_sdx_dist_es6_l-305dbe.aa542226c703d6efa7ac.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_lib_util_array_ts-src_main_frontend_lib_util_dom_ts-src_main_frontend_lib_u-677596.4fa70f3bc68548d638d7.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_components_tealium_datalayer_ts.dd0961798a4462f6b611.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_lib_util_aem-config_ts.8ffe6beaf79b7cf5e1f4.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/src_main_frontend_clientlib-bundles_css-only-components_scss-src_main_frontend_clientlib-bund-6c1ec0.1681c7517cdfb702b6ca.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/greenfield.8b8b265d180e0c1dca16.js",
+        "Failed to fetch dynamically imported module: https://rcp.scsstatic.ch/etc.clientlibs/swisscom/clientlibs/webpack-generated/resources/header.f34efb8943fa0f73ed80.js"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1707,
+        "visible": 10,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 11,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 11373
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 25,
+      "sdPlain": 25
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:29:46.054Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 6395,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6451,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 25,
+        "sdPlain": 25
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

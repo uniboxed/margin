@@ -1,0 +1,107 @@
+{
+  "domain": "barrons.com",
+  "rank": 4615,
+  "verdict": "blocked",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:55:49.524Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4615,
+    "domain": "barrons.com",
+    "verdict": "blocked",
+    "flags": [],
+    "at": "2026-11-08T15:55:49.524Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 401,
+      "ms": 2686,
+      "error": null,
+      "finalHost": "www.barrons.com",
+      "errors": [
+        "Cannot read properties of null (reading 'classList')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 0,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 401,
+      "ms": 2672,
+      "error": null,
+      "finalHost": "www.barrons.com",
+      "errors": [
+        "Cannot read properties of null (reading 'classList')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 0,
+        "visible": 1,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 0,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:55:49.524Z",
+      "commit": "f2231c7",
+      "verdict": "blocked",
+      "flags": [],
+      "margin": {
+        "status": 401,
+        "ms": 2686,
+        "error": null
+      },
+      "plain": {
+        "status": 401,
+        "ms": 2672,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

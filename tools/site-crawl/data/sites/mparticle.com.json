@@ -1,0 +1,118 @@
+{
+  "domain": "mparticle.com",
+  "rank": 1792,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:51:22.461Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1792,
+    "domain": "mparticle.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:51:22.461Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4908,
+      "error": null,
+      "finalHost": "www.rokt.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6259,
+        "visible": 54,
+        "cut": 18,
+        "cutRight": 17,
+        "images": 91,
+        "brokenImages": 4,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9872
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4908,
+      "error": null,
+      "finalHost": "www.rokt.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6259,
+        "visible": 54,
+        "cut": 18,
+        "cutRight": 17,
+        "images": 91,
+        "brokenImages": 3,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9872
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 48.7,
+      "sdPlain": 48.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:51:22.461Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4908,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4908,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 48.7,
+        "sdPlain": 48.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

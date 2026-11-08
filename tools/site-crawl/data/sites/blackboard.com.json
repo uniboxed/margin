@@ -1,0 +1,118 @@
+{
+  "domain": "blackboard.com",
+  "rank": 3546,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:22:47.928Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3546,
+    "domain": "blackboard.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:22:47.928Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2872,
+      "error": null,
+      "finalHost": "www.blackboard.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8475,
+        "visible": 37,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 39,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9930
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2516,
+      "error": null,
+      "finalHost": "www.blackboard.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8475,
+        "visible": 37,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 39,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9930
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 67.8,
+      "sdPlain": 67.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:22:47.928Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2872,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2516,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 67.8,
+        "sdPlain": 67.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

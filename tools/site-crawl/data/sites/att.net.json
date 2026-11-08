@@ -1,0 +1,118 @@
+{
+  "domain": "att.net",
+  "rank": 1158,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:30:05.026Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1158,
+    "domain": "att.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:30:05.026Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 14156,
+      "error": null,
+      "finalHost": "currently.att.yahoo.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4628,
+        "visible": 158,
+        "cut": 65,
+        "cutRight": 61,
+        "images": 220,
+        "brokenImages": 1,
+        "iframes": 52,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9969
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2924,
+      "error": null,
+      "finalHost": "currently.att.yahoo.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4715,
+        "visible": 156,
+        "cut": 65,
+        "cutRight": 65,
+        "images": 220,
+        "brokenImages": 1,
+        "iframes": 13,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9969
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 26.1,
+      "sdMargin": 64.6,
+      "sdPlain": 81.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:30:05.026Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 14156,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2924,
+        "error": null
+      },
+      "look": {
+        "diff": 26.1,
+        "sdMargin": 64.6,
+        "sdPlain": 81.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

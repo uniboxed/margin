@@ -1,0 +1,122 @@
+{
+  "domain": "adsmoloco.com",
+  "rank": 2248,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:04:04.866Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2248,
+    "domain": "adsmoloco.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:04:04.866Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4863,
+      "error": null,
+      "finalHost": "www.moloco.com",
+      "errors": [
+        "Cannot read properties of null (reading 'addEventListener')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4817,
+        "visible": 24,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 44,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6175
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5063,
+      "error": null,
+      "finalHost": "www.moloco.com",
+      "errors": [
+        "Cannot read properties of null (reading 'addEventListener')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4817,
+        "visible": 24,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 44,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6175
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 3.8,
+      "sdMargin": 105.8,
+      "sdPlain": 107
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:04:04.866Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4863,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5063,
+        "error": null
+      },
+      "look": {
+        "diff": 3.8,
+        "sdMargin": 105.8,
+        "sdPlain": 107
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

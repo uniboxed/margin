@@ -1,0 +1,73 @@
+{
+  "domain": "apigee.net",
+  "rank": 1288,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:34:07.287Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1288,
+    "domain": "apigee.net",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:34:07.287Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 42,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apigee.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 41,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apigee.net/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:34:07.287Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 42,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apigee.net/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 41,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://apigee.net/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "done": 4763,
+  "ok": 2429,
+  "flagged": 121,
+  "marginFailed": 16,
+  "blocked": 44,
+  "plainFailed": 2055,
+  "skipped": 98,
+  "errors": 0,
+  "total": 9999,
+  "left": 5236,
+  "perMinute": 33.8,
+  "etaHours": 2.6,
+  "updatedAt": "2026-11-08T15:59:52.463Z",
+  "workers": 3,
+  "pid": 65878
+}

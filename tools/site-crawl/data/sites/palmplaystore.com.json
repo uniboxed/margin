@@ -1,0 +1,118 @@
+{
+  "domain": "palmplaystore.com",
+  "rank": 712,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:16:51.590Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 712,
+    "domain": "palmplaystore.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:16:51.590Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3139,
+      "error": null,
+      "finalHost": "palmplaystore.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4008,
+        "visible": 45,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 47,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1282
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3117,
+      "error": null,
+      "finalHost": "palmplaystore.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4008,
+        "visible": 45,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 47,
+        "brokenImages": 0,
+        "iframes": 7,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1232
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 2.8,
+      "sdMargin": 51,
+      "sdPlain": 51.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:16:51.590Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3139,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3117,
+        "error": null
+      },
+      "look": {
+        "diff": 2.8,
+        "sdMargin": 51,
+        "sdPlain": 51.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

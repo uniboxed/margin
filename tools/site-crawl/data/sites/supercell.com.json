@@ -1,0 +1,118 @@
+{
+  "domain": "supercell.com",
+  "rank": 585,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:13:09.928Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 585,
+    "domain": "supercell.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:13:09.928Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3828,
+      "error": null,
+      "finalHost": "supercell.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3269,
+        "visible": 77,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 48,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9638
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3825,
+      "error": null,
+      "finalHost": "supercell.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3269,
+        "visible": 77,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 48,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9638
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 22.2,
+      "sdPlain": 22.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:13:09.928Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3828,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3825,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 22.2,
+        "sdPlain": 22.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

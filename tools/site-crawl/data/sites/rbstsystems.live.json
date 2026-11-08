@@ -1,0 +1,79 @@
+{
+  "domain": "rbstsystems.live",
+  "rank": 3700,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:26:20.446Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3700,
+    "domain": "rbstsystems.live",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:26:20.446Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 58,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rbstsystems.live/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 75,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rbstsystems.live/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": null,
+      "plain": null
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:26:20.446Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 58,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rbstsystems.live/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 75,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://rbstsystems.live/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": {
+        "margin": null,
+        "plain": null
+      }
+    }
+  ]
+}

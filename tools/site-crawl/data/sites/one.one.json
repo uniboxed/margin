@@ -1,0 +1,122 @@
+{
+  "domain": "one.one",
+  "rank": 1187,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:31:19.054Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1187,
+    "domain": "one.one",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:31:19.054Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5400,
+      "error": null,
+      "finalHost": "www.one.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 18666,
+        "visible": 44,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 67,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9716
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5304,
+      "error": null,
+      "finalHost": "www.one.com",
+      "errors": [
+        "Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 18666,
+        "visible": 44,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 67,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9716
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 94,
+      "sdPlain": 94
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:31:19.054Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5400,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5304,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 94,
+        "sdPlain": 94
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "tabor.ru",
+  "rank": 1295,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:34:24.012Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1295,
+    "domain": "tabor.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:34:24.012Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5434,
+      "error": null,
+      "finalHost": "tabor.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1638,
+        "visible": 77,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 25,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1144
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5705,
+      "error": null,
+      "finalHost": "tabor.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1669,
+        "visible": 65,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 25,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1160
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 14.1,
+      "sdMargin": 51.2,
+      "sdPlain": 46
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:34:24.012Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5434,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5705,
+        "error": null
+      },
+      "look": {
+        "diff": 14.1,
+        "sdMargin": 51.2,
+        "sdPlain": 46
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

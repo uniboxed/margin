@@ -1,0 +1,118 @@
+{
+  "domain": "flashscore.fr",
+  "rank": 1644,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:47:17.189Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1644,
+    "domain": "flashscore.fr",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:47:17.189Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4156,
+      "error": null,
+      "finalHost": "www.flashscore.fr",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 37267,
+        "visible": 133,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 849,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 36577
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4037,
+      "error": null,
+      "finalHost": "www.flashscore.fr",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 37263,
+        "visible": 128,
+        "cut": 1,
+        "cutRight": 0,
+        "images": 849,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 36772
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 13.3,
+      "sdMargin": 95.4,
+      "sdPlain": 91.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:47:17.189Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4156,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4037,
+        "error": null
+      },
+      "look": {
+        "diff": 13.3,
+        "sdMargin": 95.4,
+        "sdPlain": 91.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

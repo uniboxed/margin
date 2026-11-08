@@ -1,0 +1,122 @@
+{
+  "domain": "citi.com",
+  "rank": 3599,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:23:57.275Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3599,
+    "domain": "citi.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:23:57.275Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5519,
+      "error": null,
+      "finalHost": "www.citi.com",
+      "errors": [
+        "A user gesture is required to request Pointer Lock."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2397,
+        "visible": 60,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 30,
+        "brokenImages": 1,
+        "iframes": 10,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3192
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5564,
+      "error": null,
+      "finalHost": "www.citi.com",
+      "errors": [
+        "A user gesture is required to request Pointer Lock."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2308,
+        "visible": 60,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 30,
+        "brokenImages": 1,
+        "iframes": 10,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3113
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 19.3,
+      "sdMargin": 56.5,
+      "sdPlain": 56.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:23:57.275Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5519,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5564,
+        "error": null
+      },
+      "look": {
+        "diff": 19.3,
+        "sdMargin": 56.5,
+        "sdPlain": 56.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "domain": "365scores.com",
+  "rank": 4027,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:34:37.137Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4027,
+    "domain": "365scores.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:34:37.137Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2637,
+      "error": null,
+      "finalHost": "www.365scores.com",
+      "errors": [
+        "Stop the wrapper script on User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3218,
+        "visible": 106,
+        "cut": 3,
+        "cutRight": 0,
+        "images": 114,
+        "brokenImages": 3,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8328
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2595,
+      "error": null,
+      "finalHost": "www.365scores.com",
+      "errors": [
+        "Stop the wrapper script on User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3218,
+        "visible": 106,
+        "cut": 3,
+        "cutRight": 0,
+        "images": 114,
+        "brokenImages": 3,
+        "iframes": 3,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8328
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 44.8,
+      "sdPlain": 44.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:34:37.137Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2637,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2595,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 44.8,
+        "sdPlain": 44.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

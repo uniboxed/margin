@@ -1,0 +1,118 @@
+{
+  "domain": "nsf.gov",
+  "rank": 4617,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:55:52.422Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4617,
+    "domain": "nsf.gov",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:55:52.422Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 202,
+      "ms": 2434,
+      "error": null,
+      "finalHost": "www.nsf.gov",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2367,
+        "visible": 46,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 37,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3720
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 202,
+      "ms": 2428,
+      "error": null,
+      "finalHost": "www.nsf.gov",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 2367,
+        "visible": 46,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 37,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3719
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 13.6,
+      "sdMargin": 85.3,
+      "sdPlain": 83.7
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:55:52.422Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 202,
+        "ms": 2434,
+        "error": null
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2428,
+        "error": null
+      },
+      "look": {
+        "diff": 13.6,
+        "sdMargin": 85.3,
+        "sdPlain": 83.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

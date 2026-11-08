@@ -1,0 +1,130 @@
+{
+  "domain": "oray.com",
+  "rank": 4406,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T15:46:54.971Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4406,
+    "domain": "oray.com",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T15:46:54.971Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7002,
+      "error": null,
+      "finalHost": "www.oray.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1166,
+        "overflowX": 0,
+        "text": 3757,
+        "visible": 64,
+        "cut": 8,
+        "cutRight": 8,
+        "images": 235,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6663
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6612,
+      "error": null,
+      "finalHost": "www.oray.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1166,
+        "overflowX": 0,
+        "text": 3757,
+        "visible": 64,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 235,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 12.3,
+      "sdMargin": 31.9,
+      "sdPlain": 32
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/4406-oray.com-margin.jpg",
+      "plain": "rounds/0001/shots/4406-oray.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:46:54.971Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 7002,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6612,
+        "error": null
+      },
+      "look": {
+        "diff": 12.3,
+        "sdMargin": 31.9,
+        "sdPlain": 32
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/4406-oray.com-margin.jpg",
+        "plain": "rounds/0001/shots/4406-oray.com-plain.jpg"
+      }
+    }
+  ]
+}

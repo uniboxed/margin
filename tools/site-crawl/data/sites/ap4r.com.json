@@ -1,0 +1,73 @@
+{
+  "domain": "ap4r.com",
+  "rank": 1292,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:34:14.370Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1292,
+    "domain": "ap4r.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:34:14.370Z",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 39,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ap4r.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 39,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ap4r.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:34:14.370Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 39,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ap4r.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 39,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://ap4r.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

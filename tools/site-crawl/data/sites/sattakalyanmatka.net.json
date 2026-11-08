@@ -1,0 +1,118 @@
+{
+  "domain": "sattakalyanmatka.net",
+  "rank": 1963,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:56:05.868Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1963,
+    "domain": "sattakalyanmatka.net",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:56:05.868Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4737,
+      "error": null,
+      "finalHost": "sattamatkajodi.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5398,
+        "visible": 12,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12041
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4501,
+      "error": null,
+      "finalHost": "sattamatkajodi.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 5398,
+        "visible": 12,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 11,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 12022
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10,
+      "sdMargin": 50.5,
+      "sdPlain": 47.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:56:05.868Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4737,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4501,
+        "error": null
+      },
+      "look": {
+        "diff": 10,
+        "sdMargin": 50.5,
+        "sdPlain": 47.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

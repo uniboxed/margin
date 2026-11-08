@@ -1,0 +1,118 @@
+{
+  "domain": "searchenginejournal.com",
+  "rank": 4569,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:54:10.314Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4569,
+    "domain": "searchenginejournal.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:54:10.314Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3012,
+      "error": null,
+      "finalHost": "www.searchenginejournal.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8235,
+        "visible": 82,
+        "cut": 37,
+        "cutRight": 0,
+        "images": 99,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9758
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3049,
+      "error": null,
+      "finalHost": "www.searchenginejournal.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 8235,
+        "visible": 82,
+        "cut": 37,
+        "cutRight": 0,
+        "images": 99,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 9758
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 82.3,
+      "sdPlain": 82.3
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:54:10.314Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3012,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3049,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 82.3,
+        "sdPlain": 82.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

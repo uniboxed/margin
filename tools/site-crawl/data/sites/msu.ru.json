@@ -1,0 +1,122 @@
+{
+  "domain": "msu.ru",
+  "rank": 4395,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:46:35.057Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4395,
+    "domain": "msu.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:46:35.057Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2875,
+      "error": null,
+      "finalHost": "msu.ru",
+      "errors": [
+        "Cannot read properties of undefined (reading 'parentNode')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6328,
+        "visible": 134,
+        "cut": 86,
+        "cutRight": 37,
+        "images": 5,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8326
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3361,
+      "error": null,
+      "finalHost": "msu.ru",
+      "errors": [
+        "Cannot read properties of undefined (reading 'parentNode')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6328,
+        "visible": 134,
+        "cut": 86,
+        "cutRight": 37,
+        "images": 5,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 83.7,
+      "sdPlain": 83.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:46:35.057Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2875,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3361,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 83.7,
+        "sdPlain": 83.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

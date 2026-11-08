@@ -1,0 +1,118 @@
+{
+  "domain": "tradingview.com",
+  "rank": 360,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:06:09.256Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 360,
+    "domain": "tradingview.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:06:09.256Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3819,
+      "error": null,
+      "finalHost": "www.tradingview.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 33597,
+        "visible": 17,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 428,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 18954
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3652,
+      "error": null,
+      "finalHost": "www.tradingview.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 33598,
+        "visible": 17,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 428,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.6,
+      "sdMargin": 46.9,
+      "sdPlain": 46.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:06:09.256Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3819,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3652,
+        "error": null
+      },
+      "look": {
+        "diff": 1.6,
+        "sdMargin": 46.9,
+        "sdPlain": 46.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

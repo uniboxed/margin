@@ -1,0 +1,120 @@
+{
+  "domain": "indiatimes.com",
+  "rank": 519,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:11:07.872Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 519,
+    "domain": "indiatimes.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:11:07.872Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 9998,
+      "error": null,
+      "finalHost": "www.indiatimes.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1187,
+        "overflowX": 15,
+        "text": 8800,
+        "visible": 41,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 42,
+        "brokenImages": 0,
+        "iframes": 17,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5406
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 14583,
+      "error": null,
+      "finalHost": "www.indiatimes.com",
+      "errors": [
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1187,
+        "overflowX": 15,
+        "text": 8800,
+        "visible": 41,
+        "cut": 2,
+        "cutRight": 2,
+        "images": 42,
+        "brokenImages": 0,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "interactive",
+        "bodyHeight": 5275
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 11,
+      "sdMargin": 72.3,
+      "sdPlain": 69.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:11:07.872Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 9998,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 14583,
+        "error": null
+      },
+      "look": {
+        "diff": 11,
+        "sdMargin": 72.3,
+        "sdPlain": 69.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "domain": "miui.com",
+  "rank": 316,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:05:19.514Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 316,
+    "domain": "miui.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:05:19.514Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 33873,
+      "error": null,
+      "finalHost": "home.miui.com",
+      "errors": [
+        "ti"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3523,
+        "visible": 31,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 51,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15345
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 33857,
+      "error": null,
+      "finalHost": "home.miui.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3465,
+        "visible": 17,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 46,
+        "brokenImages": 1,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 15083
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 5,
+      "sdMargin": 33.9,
+      "sdPlain": 32.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:05:19.514Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 33873,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 33857,
+        "error": null
+      },
+      "look": {
+        "diff": 5,
+        "sdMargin": 33.9,
+        "sdPlain": 32.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

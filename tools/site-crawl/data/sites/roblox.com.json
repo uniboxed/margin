@@ -1,0 +1,118 @@
+{
+  "domain": "roblox.com",
+  "rank": 80,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T07:59:03.477Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 80,
+    "domain": "roblox.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T07:59:03.477Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3870,
+      "error": null,
+      "finalHost": "www.roblox.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1339,
+        "visible": 47,
+        "cut": 6,
+        "cutRight": 6,
+        "images": 23,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2542
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4188,
+      "error": null,
+      "finalHost": "www.roblox.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1339,
+        "visible": 22,
+        "cut": 6,
+        "cutRight": 6,
+        "images": 23,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 2374
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 25.6,
+      "sdMargin": 72.5,
+      "sdPlain": 84.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T07:59:03.477Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3870,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4188,
+        "error": null
+      },
+      "look": {
+        "diff": 25.6,
+        "sdMargin": 72.5,
+        "sdPlain": 84.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

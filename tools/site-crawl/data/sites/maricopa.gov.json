@@ -1,0 +1,118 @@
+{
+  "domain": "maricopa.gov",
+  "rank": 659,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:15:30.375Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 659,
+    "domain": "maricopa.gov",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:15:30.375Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7072,
+      "error": null,
+      "finalHost": "www.maricopa.gov",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4009,
+        "visible": 28,
+        "cut": 2,
+        "cutRight": 1,
+        "images": 16,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6888
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7657,
+      "error": null,
+      "finalHost": "www.maricopa.gov",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4009,
+        "visible": 28,
+        "cut": 2,
+        "cutRight": 1,
+        "images": 16,
+        "brokenImages": 0,
+        "iframes": 2,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6888
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 62.3,
+      "sdPlain": 62.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:15:30.375Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 7072,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7657,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 62.3,
+        "sdPlain": 62.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

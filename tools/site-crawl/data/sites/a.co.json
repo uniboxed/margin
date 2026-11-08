@@ -1,0 +1,73 @@
+{
+  "domain": "a.co",
+  "rank": 2071,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:59:14.723Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2071,
+    "domain": "a.co",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T08:59:14.723Z",
+    "margin": {
+      "ok": false,
+      "status": 202,
+      "ms": 2916,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "www.amazon.com",
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 202,
+      "ms": 2916,
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation",
+      "finalHost": "www.amazon.com",
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:59:14.723Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 202,
+        "ms": 2916,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "plain": {
+        "status": 202,
+        "ms": 2916,
+        "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "domain": "jpost.com",
+  "rank": 3963,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:33:15.729Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3963,
+    "domain": "jpost.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:33:15.729Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2734,
+      "error": null,
+      "finalHost": "www.jpost.com",
+      "errors": [
+        "Stop the wrapper script on User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+        "Uncaught [object Object]",
+        "e.some is not a function",
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 17701,
+        "visible": 41,
+        "cut": 21,
+        "cutRight": 1,
+        "images": 122,
+        "brokenImages": 3,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 16087
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": null
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2586,
+      "error": null,
+      "finalHost": "www.jpost.com",
+      "errors": [
+        "e.some is not a function",
+        "Stop the wrapper script on User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+        "Uncaught [object Object]",
+        "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 17701,
+        "visible": 41,
+        "cut": 21,
+        "cutRight": 1,
+        "images": 111,
+        "brokenImages": 3,
+        "iframes": 5,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 16087
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 6,
+      "sdMargin": 68.9,
+      "sdPlain": 62.7
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:33:15.729Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2734,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2586,
+        "error": null
+      },
+      "look": {
+        "diff": 6,
+        "sdMargin": 68.9,
+        "sdPlain": 62.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

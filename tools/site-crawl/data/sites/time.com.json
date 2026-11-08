@@ -1,0 +1,132 @@
+{
+  "domain": "time.com",
+  "rank": 577,
+  "verdict": "flagged",
+  "flags": [
+    "looks-different"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:13:03.464Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 577,
+    "domain": "time.com",
+    "verdict": "flagged",
+    "flags": [
+      "looks-different"
+    ],
+    "at": "2026-11-08T08:13:03.464Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 8112,
+      "error": null,
+      "finalHost": "time.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7714,
+        "visible": 57,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 74,
+        "brokenImages": 0,
+        "iframes": 28,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14128
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 10395,
+      "error": null,
+      "finalHost": "time.com",
+      "errors": [
+        "Failed to fetch"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 7714,
+        "visible": 54,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 73,
+        "brokenImages": 0,
+        "iframes": 26,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14078
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 58.3,
+      "sdMargin": 92.4,
+      "sdPlain": 73.2
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/577-time.com-margin.jpg",
+      "plain": "rounds/0001/shots/577-time.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:13:03.464Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "looks-different"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 8112,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 10395,
+        "error": null
+      },
+      "look": {
+        "diff": 58.3,
+        "sdMargin": 92.4,
+        "sdPlain": 73.2
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/577-time.com-margin.jpg",
+        "plain": "rounds/0001/shots/577-time.com-plain.jpg"
+      }
+    }
+  ]
+}

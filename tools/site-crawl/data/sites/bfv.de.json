@@ -1,0 +1,118 @@
+{
+  "domain": "bfv.de",
+  "rank": 4080,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:36:14.518Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4080,
+    "domain": "bfv.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:36:14.518Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7847,
+      "error": null,
+      "finalHost": "www.bfv.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4158,
+        "visible": 31,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 37,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7026
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 7946,
+      "error": null,
+      "finalHost": "www.bfv.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4158,
+        "visible": 31,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 37,
+        "brokenImages": 0,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7026
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 81.3,
+      "sdPlain": 81.2
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:36:14.518Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 7847,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 7946,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 81.3,
+        "sdPlain": 81.2
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "domain": "springer.com",
+  "rank": 309,
+  "verdict": "flagged",
+  "flags": [
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:04:37.262Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 309,
+    "domain": "springer.com",
+    "verdict": "flagged",
+    "flags": [
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T08:04:37.262Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4204,
+      "error": null,
+      "finalHost": "link.springer.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1242,
+        "overflowX": 70,
+        "text": 7278,
+        "visible": 53,
+        "cut": 6,
+        "cutRight": 6,
+        "images": 25,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8105
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4237,
+      "error": null,
+      "finalHost": "link.springer.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1242,
+        "overflowX": 70,
+        "text": 7278,
+        "visible": 53,
+        "cut": 1,
+        "cutRight": 1,
+        "images": 25,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 8054
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 10.7,
+      "sdMargin": 55.9,
+      "sdPlain": 55.1
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/309-springer.com-margin.jpg",
+      "plain": "rounds/0001/shots/309-springer.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:04:37.262Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 4204,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4237,
+        "error": null
+      },
+      "look": {
+        "diff": 10.7,
+        "sdMargin": 55.9,
+        "sdPlain": 55.1
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/309-springer.com-margin.jpg",
+        "plain": "rounds/0001/shots/309-springer.com-plain.jpg"
+      }
+    }
+  ]
+}

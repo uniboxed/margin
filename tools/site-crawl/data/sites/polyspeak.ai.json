@@ -1,0 +1,122 @@
+{
+  "domain": "polyspeak.ai",
+  "rank": 4202,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:39:45.053Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4202,
+    "domain": "polyspeak.ai",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:39:45.053Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4657,
+      "error": null,
+      "finalHost": "www.polybuzz.ai",
+      "errors": [
+        "false"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 13484,
+        "visible": 44,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 58,
+        "brokenImages": 0,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 911
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4926,
+      "error": null,
+      "finalHost": "www.polybuzz.ai",
+      "errors": [
+        "false"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 11793,
+        "visible": 43,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 57,
+        "brokenImages": 0,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 911
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.5,
+      "sdMargin": 17,
+      "sdPlain": 16.9
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:39:45.053Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4657,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4926,
+        "error": null
+      },
+      "look": {
+        "diff": 0.5,
+        "sdMargin": 17,
+        "sdPlain": 16.9
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

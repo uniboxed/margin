@@ -1,0 +1,118 @@
+{
+  "domain": "nhl.com",
+  "rank": 3668,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:25:34.585Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3668,
+    "domain": "nhl.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:25:34.585Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2772,
+      "error": null,
+      "finalHost": "www.nhl.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1444,
+        "overflowX": 272,
+        "text": 11419,
+        "visible": 304,
+        "cut": 230,
+        "cutRight": 173,
+        "images": 263,
+        "brokenImages": 0,
+        "iframes": 11,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 6430
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2855,
+      "error": null,
+      "finalHost": "www.nhl.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1444,
+        "overflowX": 272,
+        "text": 11419,
+        "visible": 304,
+        "cut": 230,
+        "cutRight": 173,
+        "images": 263,
+        "brokenImages": 0,
+        "iframes": 12,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.5,
+      "sdMargin": 98.5,
+      "sdPlain": 98.6
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:25:34.585Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2772,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2855,
+        "error": null
+      },
+      "look": {
+        "diff": 1.5,
+        "sdMargin": 98.5,
+        "sdPlain": 98.6
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

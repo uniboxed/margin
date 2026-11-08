@@ -1,0 +1,103 @@
+{
+  "domain": "siemens.de",
+  "rank": 4501,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:52:23.783Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4501,
+    "domain": "siemens.de",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T15:52:23.783Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": 405,
+      "ms": 2352,
+      "error": null,
+      "finalHost": "siemens.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 340,
+        "visible": 5,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 3,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": 405,
+      "ms": 2476,
+      "error": null,
+      "finalHost": "siemens.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 340,
+        "visible": 5,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 3,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:52:23.783Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": 405,
+        "ms": 2352,
+        "error": null
+      },
+      "plain": {
+        "status": 405,
+        "ms": 2476,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

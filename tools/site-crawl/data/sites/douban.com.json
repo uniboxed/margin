@@ -1,0 +1,128 @@
+{
+  "domain": "douban.com",
+  "rank": 2483,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:10:57.661Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 2483,
+    "domain": "douban.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:10:57.661Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5924,
+      "error": null,
+      "finalHost": "www.douban.com",
+      "errors": [
+        "Do is not defined",
+        "$ is not defined",
+        "$ is not defined",
+        "Loading script failed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4067,
+        "visible": 28,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 67,
+        "brokenImages": 59,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14619
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6081,
+      "error": null,
+      "finalHost": "www.douban.com",
+      "errors": [
+        "Do is not defined",
+        "$ is not defined",
+        "$ is not defined",
+        "Loading script failed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4067,
+        "visible": 28,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 67,
+        "brokenImages": 59,
+        "iframes": 1,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14633
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 11,
+      "sdPlain": 11
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:10:57.661Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5924,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6081,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 11,
+        "sdPlain": 11
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

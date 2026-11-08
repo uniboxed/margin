@@ -1,0 +1,122 @@
+{
+  "domain": "elconfidencial.com",
+  "rank": 1188,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:31:21.125Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1188,
+    "domain": "elconfidencial.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:31:21.125Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5959,
+      "error": null,
+      "finalHost": "www.elconfidencial.com",
+      "errors": [
+        "Cannot read properties of null (reading '0')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1227,
+        "overflowX": 55,
+        "text": 23564,
+        "visible": 120,
+        "cut": 32,
+        "cutRight": 32,
+        "images": 98,
+        "brokenImages": 0,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 23151
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6153,
+      "error": null,
+      "finalHost": "www.elconfidencial.com",
+      "errors": [
+        "Cannot read properties of null (reading '0')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1227,
+        "overflowX": 55,
+        "text": 23596,
+        "visible": 120,
+        "cut": 32,
+        "cutRight": 32,
+        "images": 98,
+        "brokenImages": 0,
+        "iframes": 16,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 23125
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 49.3,
+      "sdPlain": 49.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:31:21.125Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5959,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6153,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 49.3,
+        "sdPlain": 49.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

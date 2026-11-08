@@ -1,0 +1,122 @@
+{
+  "domain": "mainichi.jp",
+  "rank": 4090,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:36:36.662Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4090,
+    "domain": "mainichi.jp",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:36:36.662Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 8698,
+      "error": null,
+      "finalHost": "mainichi.jp",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1280,
+        "overflowX": 108,
+        "text": 7600,
+        "visible": 114,
+        "cut": 22,
+        "cutRight": 22,
+        "images": 170,
+        "brokenImages": 1,
+        "iframes": 26,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7736
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 8429,
+      "error": null,
+      "finalHost": "mainichi.jp",
+      "errors": [
+        "Failed to execute 'browsingTopics' on 'Document': document.browsingTopics() is deprecated and has been removed."
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1280,
+        "overflowX": 108,
+        "text": 7600,
+        "visible": 114,
+        "cut": 22,
+        "cutRight": 22,
+        "images": 170,
+        "brokenImages": 1,
+        "iframes": 18,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 7736
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.1,
+      "sdMargin": 76.3,
+      "sdPlain": 76.4
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:36:36.662Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 8698,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 8429,
+        "error": null
+      },
+      "look": {
+        "diff": 0.1,
+        "sdMargin": 76.3,
+        "sdPlain": 76.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

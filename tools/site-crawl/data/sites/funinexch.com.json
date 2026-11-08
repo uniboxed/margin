@@ -1,0 +1,133 @@
+{
+  "domain": "funinexch.com",
+  "rank": 1964,
+  "verdict": "flagged",
+  "flags": [
+    "sideways-overflow",
+    "content-cut-off"
+  ],
+  "round": 1,
+  "at": "2026-11-08T08:56:07.351Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1964,
+    "domain": "funinexch.com",
+    "verdict": "flagged",
+    "flags": [
+      "sideways-overflow",
+      "content-cut-off"
+    ],
+    "at": "2026-11-08T08:56:07.351Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5351,
+      "error": null,
+      "finalHost": "funinexch.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1967,
+        "overflowX": 795,
+        "text": 1339,
+        "visible": 70,
+        "cut": 40,
+        "cutRight": 36,
+        "images": 112,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 14996
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5522,
+      "error": null,
+      "finalHost": "funinexch.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 1339,
+        "visible": 70,
+        "cut": 34,
+        "cutRight": 30,
+        "images": 112,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 59.3,
+      "sdPlain": 59.3
+    },
+    "shots": true,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": {
+      "margin": "rounds/0001/shots/1964-funinexch.com-margin.jpg",
+      "plain": "rounds/0001/shots/1964-funinexch.com-plain.jpg"
+    }
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:56:07.351Z",
+      "commit": "f2231c7",
+      "verdict": "flagged",
+      "flags": [
+        "sideways-overflow",
+        "content-cut-off"
+      ],
+      "margin": {
+        "status": 200,
+        "ms": 5351,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5522,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 59.3,
+        "sdPlain": 59.3
+      },
+      "error": null,
+      "pictures": {
+        "margin": "rounds/0001/shots/1964-funinexch.com-margin.jpg",
+        "plain": "rounds/0001/shots/1964-funinexch.com-plain.jpg"
+      }
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "domain": "cardgames.io",
+  "rank": 1356,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:36:43.876Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1356,
+    "domain": "cardgames.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:36:43.876Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2576,
+      "error": null,
+      "finalHost": "cardgames.io",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6187,
+        "visible": 66,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 7,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3129
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2271,
+      "error": null,
+      "finalHost": "cardgames.io",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 6187,
+        "visible": 66,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 7,
+        "brokenImages": 0,
+        "iframes": 8,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 3129
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 5,
+      "sdMargin": 52,
+      "sdPlain": 52.3
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:36:43.876Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2576,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2271,
+        "error": null
+      },
+      "look": {
+        "diff": 5,
+        "sdMargin": 52,
+        "sdPlain": 52.3
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

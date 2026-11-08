@@ -1,0 +1,118 @@
+{
+  "domain": "fraunhofer.de",
+  "rank": 3387,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T09:36:40.034Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 3387,
+    "domain": "fraunhofer.de",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T09:36:40.034Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4274,
+      "error": null,
+      "finalHost": "www.fraunhofer.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 21742,
+        "visible": 476,
+        "cut": 132,
+        "cutRight": 98,
+        "images": 29,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4832
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5146,
+      "error": null,
+      "finalHost": "www.fraunhofer.de",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 21742,
+        "visible": 476,
+        "cut": 132,
+        "cutRight": 98,
+        "images": 29,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 4832
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0.2,
+      "sdMargin": 83.8,
+      "sdPlain": 83.8
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T09:36:40.034Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4274,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5146,
+        "error": null
+      },
+      "look": {
+        "diff": 0.2,
+        "sdMargin": 83.8,
+        "sdPlain": 83.8
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

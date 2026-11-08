@@ -1,0 +1,124 @@
+{
+  "domain": "ilfattoquotidiano.it",
+  "rank": 1302,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:34:35.657Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 1302,
+    "domain": "ilfattoquotidiano.it",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:34:35.657Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 3496,
+      "error": null,
+      "finalHost": "www.ilfattoquotidiano.it",
+      "errors": [
+        "Cannot read properties of null (reading 'querySelector')",
+        "Cannot read properties of null (reading 'querySelector')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 32604,
+        "visible": 64,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 643,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 32755
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3502,
+      "error": null,
+      "finalHost": "www.ilfattoquotidiano.it",
+      "errors": [
+        "Cannot read properties of null (reading 'querySelector')",
+        "Cannot read properties of null (reading 'querySelector')"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 32604,
+        "visible": 64,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 643,
+        "brokenImages": 0,
+        "iframes": 4,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 32755
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 62.1,
+      "sdPlain": 62.1
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:34:35.657Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 3496,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3502,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 62.1,
+        "sdPlain": 62.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

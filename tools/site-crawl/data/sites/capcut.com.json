@@ -1,0 +1,118 @@
+{
+  "domain": "capcut.com",
+  "rank": 542,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T08:11:47.260Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 542,
+    "domain": "capcut.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T08:11:47.260Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2782,
+      "error": null,
+      "finalHost": "www.capcut.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4132,
+        "visible": 59,
+        "cut": 30,
+        "cutRight": 27,
+        "images": 20,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5562
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 3046,
+      "error": null,
+      "finalHost": "www.capcut.com",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 4132,
+        "visible": 59,
+        "cut": 30,
+        "cutRight": 27,
+        "images": 20,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5562
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.5,
+      "sdMargin": 76.1,
+      "sdPlain": 76
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T08:11:47.260Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2782,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 3046,
+        "error": null
+      },
+      "look": {
+        "diff": 1.5,
+        "sdMargin": 76.1,
+        "sdPlain": 76
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

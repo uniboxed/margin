@@ -1,0 +1,124 @@
+{
+  "domain": "eldiario.es",
+  "rank": 4347,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T15:45:35.053Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4347,
+    "domain": "eldiario.es",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T15:45:35.053Z",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 7004,
+      "error": null,
+      "finalHost": "www.eldiario.es",
+      "errors": [
+        "Cannot read properties of null (reading '1')",
+        "Uncaught (in promise) No config could be discovered in the page"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 30995,
+        "visible": 117,
+        "cut": 50,
+        "cutRight": 50,
+        "images": 178,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 19890
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 6559,
+      "error": null,
+      "finalHost": "www.eldiario.es",
+      "errors": [
+        "Cannot read properties of null (reading '1')",
+        "Uncaught (in promise) No config could be discovered in the page"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 30995,
+        "visible": 117,
+        "cut": 50,
+        "cutRight": 50,
+        "images": 178,
+        "brokenImages": 0,
+        "iframes": 9,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 19890
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 70,
+      "sdPlain": 70
+    },
+    "shots": false,
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T15:45:35.053Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 7004,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 6559,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 70,
+        "sdPlain": 70
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}
