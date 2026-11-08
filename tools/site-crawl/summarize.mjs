@@ -1,4 +1,4 @@
-// What a crawl found (tools/site-crawl/crawl.mjs): counts by verdict and by flag, and the sites
+// What a crawl (or a round of the nightly one) found (tools/site-crawl/crawl.mjs): counts by verdict and by flag, and the sites
 // under each flag, best ranked first. Reads --out's results.jsonl; writes summary.json and
 // summary.md next to it, and prints the short form.
 //
@@ -6,13 +6,14 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { verdictOf } from './verdicts.mjs';
 
 const argv = process.argv.slice(2);
 const i = argv.indexOf('--out');
 const OUT = resolve((i >= 0 ? argv[i + 1] : '~/margin-crawl/run').replace(/^~(?=\/|$)/, homedir()));
 // A site's last line counts (a crawler error is tried again on the next run, and its new line comes later).
 const latest = new Map();
-for (const line of readFileSync(join(OUT, 'results.jsonl'), 'utf8').split('\n')) { try { const r = JSON.parse(line); latest.set(r.domain, r); } catch {} }
+for (const line of readFileSync(join(OUT, 'results.jsonl'), 'utf8').split('\n')) { try { const r = JSON.parse(line); latest.set(r.domain, { ...r, verdict: verdictOf(r) }); } catch {} }
 const rows = [...latest.values()];
 rows.sort((a, b) => a.rank - b.rank);
 

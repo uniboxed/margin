@@ -1,17 +1,56 @@
 # Site crawl
 
-Every site of a top-sites list loaded through Margin's page box, and compared with the same site loaded plain. Headless only: nothing shows on screen, sound is muted.
+Every site of the top 10 000 (Tranco's list) loaded through Margin's page box, and compared with the same site loaded plain. Headless only: nothing shows on screen, sound is muted.
+
+## Every night
 
 ```sh
-npm run build                      # the overlay (dist/app); the extension is built from source by the harness
-node tools/site-crawl/crawl.mjs --list ~/margin-crawl/top-10000.csv --out ~/margin-crawl/run --workers 3
-node tools/site-crawl/summarize.mjs --out ~/margin-crawl/run
+npm run crawl                 # before bed: starts in the background, stops starting sites at 07:30
+npm run crawl -- --status     # how far it is, whether it's running
+npm run crawl -- --stop       # stop it now (the sites under way finish, the data is stored)
 ```
 
-- The list: `rank,domain` lines (Tranco's top-1m, its first 10 000: `curl -sSfL https://tranco-list.eu/top-1m.csv.zip | …`).
-- Margin's side is the e2e harness (`tests/e2e/harness/margin.js`, `web: true`): the test build of the extension in headless Chromium, linked to the stand-in Margin.app, a full-screen window with Arcadia's overlay and the sidebar kept open, so each site is shrunk into the slot as in Safari. The plain side is headless Chromium at the slot's size, with no extension.
-- Each site goes in `results.jsonl` as it's done. Run it again with the same `--out` and it goes on from there, trying again the sites that ended in a crawler error (a site's last line counts). `--limit N` for a trial.
-- Verdicts: `ok`; `flagged` (loaded both ways, something only Margin's load shows: `no-box`, `drawn-off-slot`, `wrong-width`, `sideways-overflow`, `content-cut-off`, `text-missing`, `elements-missing`, `blank`, `looks-different`, `more-errors`); `margin-failed` (loaded plain, not through Margin); `plain-failed` (the site doesn't load by itself: down, an API host, blocked); `skipped` (an adult word in its domain); `error` (the crawler's own trouble with it).
-- `looks-different` compares two small greyscale grids of the first screen: a moving page (ads, a carousel, a video) can differ by itself, so it's a hint to look, not a finding.
+It goes on from where the last night stopped. When every site of the list is done (a round), the next round begins, so each site gets a history and a site that changes with Margin's code shows up as worse or better.
+
+- `--until 07:30` (local time) or `--hours 6`: when to stop starting sites. `--workers 3`.
+- `--code main` (the default): Margin's code tested is `main`'s commit, checked out and built in a checkout of its own (`~/Library/Caches/margin-site-crawl/code`), whatever this checkout is doing. A branch or a commit works too; `--code here` tests this checkout as it is. Each row says which commit it tested.
+- `--wait`: stay in the foreground. `--data DIR`: another data folder.
+- `--store`: make `sites/`, `all-sites.csv` and `summary.md` again from the rounds (it's done after every night anyway).
+- `--import DIR --import-commit SHA [--list CSV]`: an earlier `crawl.mjs --out` folder taken in as round 1.
+- The Mac has to stay awake. If it sleeps, the night stops there and the next start goes on.
+
+## The data: `tools/site-crawl/data/` (not in git)
+
+| File | What's in it |
+| --- | --- |
+| `summary.md`, `summary.json` | every site at its latest: verdicts, flags, worse and better since the round before, the margin-failed and flagged sites |
+| `all-sites.csv` | a row per site, its latest (opens in Numbers) |
+| `sites/<domain>.json` | one site: its latest result in full, every round's verdict, flags, load times, commit and pictures, and its last change |
+| `rounds/NNNN/` | a round as it was crawled: `results.jsonl` (a line per site, as it's done), `log.txt`, `progress.json`, `shots/`, `summary.md`, `finished.txt` once it's done |
+| `list.csv` | the sites, `rank,domain` (downloaded the first time; kept, so the rounds compare) |
+| `nightly.log`, `running.json` | what each night did; who's running now |
+
+`sites/`, `all-sites.csv` and the summaries are made from the rounds' `results.jsonl`, which is the record: delete them and `--store` makes them again.
+
+## What it does with a site
+
+- Margin's side is the e2e harness (`tests/e2e/harness/margin.js`, `web: true`): the test build of the extension in headless Chromium, linked to the stand-in Margin.app, a full-screen window with Arcadia's overlay and the sidebar kept open, so each site is shrunk into the slot as in Safari. The plain side is headless Chromium at the slot's size, with no extension, launched the same way and in the same color scheme. Each Margin world has its own plain browser, and both are made again after 150 sites or a site that hangs.
+- Verdicts:
+  - `ok`.
+  - `flagged`: it loaded both ways, and something shows only in Margin's load: `no-box`, `drawn-off-slot`, `wrong-width`, `sideways-overflow`, `content-cut-off`, `text-missing`, `elements-missing`, `blank`, `looks-different`, `more-errors`.
+  - `margin-failed`: it loaded plain, not through Margin.
+  - `blocked`: the site turned the plain browser away too (401, 403 or 429, or a captcha page). It says nothing about Margin.
+  - `plain-failed`: the site doesn't load by itself (it's down, or an API host).
+  - `skipped`: an adult word is in its domain.
+  - `error`: the crawler's own trouble. The site is tried again, up to 3 times a round.
+- `looks-different` compares two small greyscale grids of the first screen. A moving page (ads, a carousel, a video) can differ by itself, so it's a hint to look, not a finding.
 - Pictures, in `shots/`: both loads of every flagged or failed site, and of every 100th.
-- It's Chromium, not WebKit: Safari-only behaviour (WebKit's own layout, Safari's content blockers) isn't seen here.
+- It's Chromium, not WebKit, so Safari-only behaviour isn't seen here (WebKit's own layout, Safari's content blockers).
+
+## By hand
+
+```sh
+npm run build
+node tools/site-crawl/crawl.mjs --list list.csv --out some/folder --workers 3 [--limit N] [--until ISO]
+node tools/site-crawl/summarize.mjs --out some/folder
+```

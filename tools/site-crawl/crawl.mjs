@@ -7,14 +7,21 @@
 // throws errors of its own, isn't taken for Margin's doing.
 //
 //   node tools/site-crawl/crawl.mjs --list ~/margin-crawl/top-10000.csv --out ~/margin-crawl/run [--workers 3]
+//     [--until 2026-11-09T07:30] [--commit <sha>]
 //   node tools/site-crawl/summarize.mjs --out ~/margin-crawl/run
+//
+// Run every night, it's started by nightly.mjs (`npm run crawl`), which keeps a round per --out folder.
+// --until: no new site is started after it (the ones under way finish). --commit: Margin's code tested,
+// written in each row.
 //
 // What's stored, in --out:
 // - results.jsonl: a line per site, as it's done (the run resumes from it: a site there isn't
-//   loaded again). See `record` below for its fields.
+//   loaded again, unless it ended in a crawler error: then it's tried again, up to ERROR_TRIES).
+//   See `visit` below for its fields.
 // - shots/<rank>-<domain>-margin.jpg and -plain.jpg: what each load looked like, for a site with
 //   anything flagged, and every 100th site (a sample of the good ones).
 // - progress.json: counts so far, the rate, when it should be done. log.txt: what the run did.
+// - finished.txt: once every site of the list is done (not when --until stopped it).
 //
 // It doesn't stop for a site: each load has a hard deadline, a site that hangs its browser gets
 // its Margin world made again, a world that won't start is retried with a pause, anything thrown
@@ -28,6 +35,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { startMargin } from '../../tests/e2e/harness/margin.js';
 import { SPACES } from '../../tests/e2e/harness/seed.js';
+import { ERROR_TRIES, KEY, isBlocked } from './verdicts.mjs';
 import { pageBox, slot as slotOf } from '../../tests/e2e/harness/ui.js';
 
 const require = createRequire(import.meta.url);
@@ -41,6 +49,9 @@ const LIST = expand(opt('list', '~/margin-crawl/top-10000.csv'));
 const OUT = expand(opt('out', '~/margin-crawl/run'));
 const WORKERS = Math.max(1, Math.min(6, Number(opt('workers', '3')) || 3));
 const LIMIT = Number(opt('limit', '0')) || 0; // (a trial: only the first N)
+const UNTIL = opt('until', null) ? new Date(opt('until', '')).getTime() : Infinity;
+if (Number.isNaN(UNTIL)) throw new Error(`--until: not a time: ${opt('until', '')}`);
+const COMMIT = opt('commit', null);
 const NAV_MS = 30_000; // the first answer and the DOM
 const LOAD_MS = 12_000; // then the load event, at most
 const SETTLE_MS = 2_000; // then a moment for late content
@@ -70,11 +81,18 @@ const sites = readFileSync(LIST, 'utf8').split('\n').map((l) => l.trim()).filter
   .filter((s) => s.rank > 0 && /^[a-z0-9.-]+$/.test(s.domain));
 // A site's last line is what it came to; a crawler error (its own trouble, not the site's) is tried again.
 const last = new Map();
-if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n')) { try { const r = JSON.parse(l); last.set(r.domain, r.verdict); } catch {} }
-const done = new Set([...last].filter(([, v]) => v !== 'error').map(([d]) => d));
+const errorsOf = new Map();
+if (existsSync(RESULTS)) for (const l of readFileSync(RESULTS, 'utf8').split('\n')) {
+  try {
+    const r = JSON.parse(l);
+    last.set(r.domain, r.verdict);
+    if (r.verdict === 'error') errorsOf.set(r.domain, (errorsOf.get(r.domain) ?? 0) + 1);
+  } catch {}
+}
+const doneNow = (d) => last.has(d) && (last.get(d) !== 'error' || (errorsOf.get(d) ?? 0) >= ERROR_TRIES);
+const done = new Set([...last.keys()].filter(doneNow));
 const queue = sites.filter((s) => !done.has(s.domain)).slice(0, LIMIT || undefined);
-const KEY = { ok: 'ok', flagged: 'flagged', 'plain-failed': 'plainFailed', 'margin-failed': 'marginFailed', skipped: 'skipped' };
-const counts = { done: done.size, ok: 0, flagged: 0, plainFailed: 0, marginFailed: 0, skipped: 0, errors: 0 };
+const counts = { done: done.size, ok: 0, flagged: 0, marginFailed: 0, blocked: 0, plainFailed: 0, skipped: 0, errors: 0 };
 for (const d of done) counts[KEY[last.get(d)] ?? 'errors'] += 1;
 const startedAt = Date.now();
 let doneThisRun = 0;
@@ -85,10 +103,12 @@ const writeProgress = () => {
 };
 const record = (r) => {
   appendFileSync(RESULTS, `${JSON.stringify(r)}\n`);
-  counts.done += 1;
+  if (r.verdict === 'error') errorsOf.set(r.domain, (errorsOf.get(r.domain) ?? 0) + 1);
+  last.set(r.domain, r.verdict);
   doneThisRun += 1;
-  counts[KEY[r.verdict] ?? 'errors'] += 1;
-  if (counts.done % 10 === 0) writeProgress();
+  // Counted once it's what the site comes to (an error to be tried again isn't, yet).
+  if (doneNow(r.domain)) { counts.done += 1; counts[KEY[r.verdict] ?? 'errors'] += 1; }
+  if (doneThisRun % 10 === 0) writeProgress();
 };
 
 // ---- what a page is like ----------------------------------------------------------------------
@@ -257,7 +277,7 @@ async function visit(world, site) {
       const newErrors = mine.errors.filter((e) => !theirErrors.has(e));
       if (newErrors.length > theirs.errors.length && newErrors.length >= 2) flags.push('more-errors');
     }
-    const verdict = !theirs.ok ? (mine.ok ? 'plain-failed' : 'plain-failed') : !mine.ok ? 'margin-failed' : flags.length ? 'flagged' : 'ok';
+    const verdict = isBlocked(theirs) ? 'blocked' : !theirs.ok ? 'plain-failed' : !mine.ok ? 'margin-failed' : flags.length ? 'flagged' : 'ok';
     const keepShots = verdict === 'flagged' || verdict === 'margin-failed' || site.rank % SHOT_EVERY === 0;
     if (keepShots) {
       const base = join(OUT, 'shots', `${site.rank}-${site.domain}`);
@@ -265,7 +285,7 @@ async function visit(world, site) {
       if (shotPlain) writeFileSync(`${base}-plain.jpg`, shotPlain);
     }
     return {
-      rank: site.rank, domain: site.domain, verdict, flags, at: new Date().toISOString(),
+      rank: site.rank, domain: site.domain, verdict, flags, at: new Date().toISOString(), commit: COMMIT,
       margin: { ok: mine.ok, status: mine.status, ms: mine.ms, error: mine.error, finalHost: mine.finalHost, errors: mine.errors, m: mine.m, box, rootX },
       plain: { ok: theirs.ok, status: theirs.status, ms: theirs.ms, error: theirs.error, finalHost: theirs.finalHost, errors: theirs.errors, m: theirs.m },
       slot: { left: slot.left, top: slot.top, right: slot.right, bottom: slot.bottom, width, height },
@@ -287,14 +307,15 @@ async function worker(w) {
   while (!stopping) {
     const site = queue[next++];
     if (!site) break;
-    if (ADULT.test(site.domain)) { record({ rank: site.rank, domain: site.domain, verdict: 'skipped', flags: ['adult-word'], at: new Date().toISOString() }); continue; }
+    if (Date.now() >= UNTIL) { if (!stopping) log(`--until reached: stopping after the sites under way`); stopping = true; next -= 1; break; }
+    if (ADULT.test(site.domain)) { record({ rank: site.rank, domain: site.domain, verdict: 'skipped', flags: ['adult-word'], at: new Date().toISOString(), commit: COMMIT }); continue; }
     if (!world || world.sites >= WORLD_SITES) { await endWorld(world); world = await newWorld(w); }
     world.sites += 1;
     try {
       record(await within(SITE_MS, `site ${site.domain}`, visit(world, site)));
     } catch (e) {
       // Hung or broken: written down, and the world made again (the browser may be stuck).
-      record({ rank: site.rank, domain: site.domain, verdict: 'error', flags: ['crawler-error'], error: short(e), at: new Date().toISOString() });
+      record({ rank: site.rank, domain: site.domain, verdict: 'error', flags: ['crawler-error'], error: short(e), at: new Date().toISOString(), commit: COMMIT });
       log(`worker ${w}: ${site.rank} ${site.domain}: ${short(e)}; a fresh Margin world`);
       await endWorld(world);
       world = null;
@@ -308,5 +329,6 @@ writeProgress();
 await Promise.all(Array.from({ length: WORKERS }, (_, i) => worker(i + 1).catch((e) => log(`worker ${i + 1} ended: ${short(e)}`))));
 writeProgress();
 log(`end: ${counts.done} of ${sites.length} done`);
-writeFileSync(join(OUT, 'finished.txt'), `${new Date().toISOString()}\n${JSON.stringify(counts)}\n`);
+// The round's finished once nothing's left to do: every site done, or tried ERROR_TRIES times.
+if (!stopping && !LIMIT && sites.every((s) => doneNow(s.domain))) writeFileSync(join(OUT, 'finished.txt'), `${new Date().toISOString()}\n${JSON.stringify(counts)}\n`);
 process.exit(0);
