@@ -114,7 +114,8 @@ if (has('import')) {
     added += 1;
   }
   if (existsSync(join(from, 'shots'))) for (const f of readdirSync(join(from, 'shots'))) if (!existsSync(join(dir, 'shots', f))) copyFileSync(join(from, 'shots', f), join(dir, 'shots', f));
-  for (const f of ['log.txt', 'progress.json', 'finished.txt']) if (existsSync(join(from, f)) && !existsSync(join(dir, f))) copyFileSync(join(from, f), join(dir, f));
+  // (Not its finished.txt: an earlier crawl wrote one whenever it stopped. The crawl writes it once every site is done.)
+  for (const f of ['log.txt', 'progress.json']) if (existsSync(join(from, f)) && !existsSync(join(dir, f))) copyFileSync(join(from, f), join(dir, f));
   const list = opt('list', null);
   if (list && !existsSync(join(DATA, 'list.csv'))) copyFileSync(expand(list), join(DATA, 'list.csv'));
   const s = rebuild(DATA);
