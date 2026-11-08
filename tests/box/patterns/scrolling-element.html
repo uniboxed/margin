@@ -1,0 +1,35 @@
+<!--
+pattern: the document's scroller (document.scrollingElement) is what a window's is, and says the window's height and the page's scroll
+from: cxense.com (fit-check round 1, re-checked): Framer's motion takes `document.scrollingElement.clientHeight` for the window's height; the box answered with <body>, whose clientHeight is the page's (7933, not 884), and the hero was put 1000px up: a blank page
+handled-by: content/page/viewport.js (scrollingElement: <html>, its scrolling speaking for <body>)
+settle: 700
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>scrolling-element</title>
+<style>
+  body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+  #hero { position: fixed; left: 50%; top: 0; width: 400px; height: 200px; background: #cde; }
+  section { height: 3000px; }
+</style>
+</head>
+<body>
+<div id="hero">A hero placed by how far the page has scrolled</div>
+<section id="long"></section>
+<p>scroller: <output id="tag"></output>, its height is the window's: <output id="height"></output>, scrolled: <output id="top"></output></p>
+<script>
+  addEventListener('load', () => setTimeout(() => {
+    const se = document.scrollingElement;
+    document.getElementById('tag').textContent = se.localName;
+    document.getElementById('height').textContent = String(se.clientHeight === innerHeight);
+    se.scrollTop = 120;
+    document.getElementById('top').textContent = String(Math.round(se.scrollTop));
+    // As a motion library does: the hero by the scroll's progress over what can be scrolled.
+    const progress = se.scrollTop / Math.max(1, se.scrollHeight - se.clientHeight);
+    document.getElementById('hero').style.transform = `translateX(-50%) translateY(${Math.round(-200 * Math.min(1, progress * 20))}px)`;
+  }, 100));
+</script>
+</body>
+</html>

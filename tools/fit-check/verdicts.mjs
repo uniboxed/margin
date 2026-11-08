@@ -19,7 +19,7 @@ export function verdictOf(row) {
 // What the box promises that a real site can be held to (tests/box/rules.js): its place and size, what the page is
 // told, the window still, <body> the scroller, nothing past the box sideways. Not `same-layout`, `same-scroll` or
 // `same-answers`: a real site differs between two loads by itself (ads, a carousel, an A/B test).
-export const HELD_RULES = ['box-at-slot', 'box-size', 'told-size', 'window-still', 'body-scrolls', 'no-overflow'];
+export const HELD_RULES = ['box-at-slot', 'box-size', 'told-size', 'window-still', 'same-scroller', 'no-overflow'];
 export const LOOSE_RULES = ['same-layout', 'same-scroll', 'same-answers'];
 // What only suggests a look (a picture or a count off between two loads): never a finding by itself.
 export const HINTS = ['content-cut-off', 'text-missing', 'elements-missing', 'blank', 'looks-different', 'more-errors'];

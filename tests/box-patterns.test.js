@@ -78,13 +78,14 @@ const shot = (over = {}) => ({
   told: { w: 1172, h: 884, sx: 0, sy: 0 },
   root: { x: 260, y: 8, w: 1172, h: 884 },
   window: { left: 0, top: 0, scale: 1 },
-  scroller: 'body',
+  scroller: 'html',
+  scrollerHeight: 884,
   overflowX: 0,
   els: { '#nav': [0, 0, 1172, 46], 'main:1': [0, 46, 600, 300] },
   out: { mq: 'false' },
   ...over,
 });
-const plain = shot({ root: { x: 0, y: 0, w: 1172, h: 884 }, scroller: 'html' });
+const plain = shot({ root: { x: 0, y: 0, w: 1172, h: 884 } });
 
 test('the rules: a page that is what it is plain breaks none', () => {
   assert.deepEqual(judge(shot(), plain, SETUP), []);
@@ -96,7 +97,8 @@ test('the rules: each one says what broke', () => {
   assert.deepEqual(broke({ root: { x: 260, y: 8, w: 1440, h: 900 }, told: { w: 1172, h: 884, sx: 0, sy: 0 } }), ['box-size', 'told-size']);
   assert.deepEqual(broke({ told: { w: 1440, h: 900, sx: 0, sy: 0 } }), ['told-size']);
   assert.deepEqual(broke({ window: { left: 856, top: 0, scale: 1 } }), ['window-still']);
-  assert.deepEqual(broke({ scroller: 'html' }), ['body-scrolls']);
+  assert.deepEqual(broke({ scroller: 'body' }), ['same-scroller']);
+  assert.deepEqual(broke({ scrollerHeight: 7933 }), ['same-scroller'], 'the scroller says the page\'s height, not the window\'s');
   assert.deepEqual(broke({ overflowX: 268 }), ['no-overflow']);
   assert.deepEqual(broke({ els: { '#nav': [0, 0, 1440, 46], 'main:1': [0, 46, 600, 300] } }), ['same-layout']);
   assert.deepEqual(broke({ els: { '#nav': [0, 0, 1172, 46] } }), ['same-layout'], 'an element missing');

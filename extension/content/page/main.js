@@ -17,6 +17,7 @@ import { startBox } from './box.js';
 import { startViewport } from './viewport.js';
 import { startInView } from './in-view.js';
 import { startTopLayer } from './top-layer.js';
+import { startTimelines } from './timelines.js';
 import { startCoords } from './coords.js';
 import { startMedia } from './media.js';
 import { startSheets } from './sheets.js';
@@ -49,6 +50,7 @@ import { FIRST_PAINT_MARK, readFirstPaint } from '../../shared/page-box.js';
     startCoords(box);
     startInView(box);
     startTopLayer(box);
+    startTimelines(box);
     startMedia(box);
     startSheets(box);
     // Said so, and the isolated side sends what the box should be
