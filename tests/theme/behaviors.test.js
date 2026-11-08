@@ -373,7 +373,11 @@ for (const [name, engine] of ENGINES) for (const [themeId, dir, th] of THEMES) {
         await ev(() => T.rtTrackpad('.space-name', 30, 12));
         await wait(() => T.rtSent().some(([type]) => type === 'setSpace'));
         assert.deepEqual((await sent()).find(([type]) => type === 'setSpace'), ['setSpace', { windowId: 1, spaceId: 'work' }]);
-        assert.equal((await vm()).space, 'work', 'shown at once');
+        // Asked of the copy as the swipe settles (Safari brings the space's tab while the slide comes in), the space
+        // left still drawn till the slide is in, then the space switched to (Tirth, 2026-11-07: the switch felt late).
+        assert.equal((await vm()).space, 'personal', 'the slide still coming in');
+        await wait(() => T.rtVmFull().spaceName === 'Work');
+        assert.equal((await vm()).space, 'work', 'shown as the slide lands');
       });
 
       await ev(() => T.unmountRuntime());

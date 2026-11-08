@@ -923,12 +923,14 @@ export const handlers = {
   // page's listener that hears nothing back (a page cut off from Margin, its
   // messages going nowhere) stands aside for the keys, and must not take a
   // long switch for that (shared/shortcuts.js). True: taken.
-  /** @param {{ action: string }} message */
-  async navigate({ action }, sender) {
+  // `target`, `switchId`: Margin.app's overlay's own pick for a next/previous-tab key, highlighted as it was pressed
+  // (background/navigation.js navigate `given`).
+  /** @param {{ action: string, target?: number, switchId?: string }} message */
+  async navigate({ action, target, switchId }, sender) {
     if (!NAV_ACTIONS.has(action)) return false;
     const windowId = sender.tab?.windowId ?? (await api.windows?.getLastFocused())?.id;
     // The app's key and a page's keydown are two sources (one press heard by both counts once).
-    void navigate(action, sender.app ? 'app' : 'page', windowId);
+    void navigate(action, sender.app ? 'app' : 'page', windowId, { target, switchId });
     return true;
   },
   /** @param {{ patch: Record<string, any> }} message */

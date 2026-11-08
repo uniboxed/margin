@@ -248,3 +248,28 @@ export function backgroundSwitches() {
     },
   };
 }
+
+// A chain of next/previous-tab presses: each goes on from the one before for this long, else from the tab in front.
+// The copy's (background/navigation.js) and Margin.app's overlay's own (app/overlay/overlay.js navTab), the same.
+export const NAV_CHAIN_MS = 1500;
+// The switch ids Margin.app's overlay gives the presses it highlights itself (overlay.js navTab): the copy's
+// `switching` for them changes nothing there (the overlay is already on them, maybe on a newer one).
+export const OVERLAY_SWITCH_PREFIX = 'ov-';
+
+/**
+ * The tab a next/previous-tab press goes to, picked where it's pressed (Margin.app's overlay: overlay.js navTab), by the
+ * copy's rule (`cycle`: shared/view.js cycleTab, the order the sidebar shows, wrapping): from the last press's target
+ * while the chain lasts (NAV_CHAIN_MS, that tab still known), else from the tab in front of the window. Null: nothing
+ * to go to; undefined: nothing in front known yet (the copy works it out).
+ * @param {{ tabs?: Record<string, any> } | null} state @param {number} windowId @param {{ tabId: number, at: number } | null} last
+ * @param {number} dir @param {(state: any, windowId: number, from: number, dir: number) => number | null} cycle @param {number} [now]
+ * @returns {number | null | undefined}
+ */
+export function pickNavTab(state, windowId, last, dir, cycle, now = Date.now()) {
+  if (!state?.tabs) return undefined;
+  const chained = last && now - last.at < NAV_CHAIN_MS && state.tabs[last.tabId] ? last.tabId : null;
+  const front = Object.values(state.tabs).find((t) => t?.windowId === windowId && t?.active)?.id;
+  const from = chained ?? front;
+  if (!Number.isInteger(from)) return undefined;
+  return cycle(state, windowId, from, dir);
+}

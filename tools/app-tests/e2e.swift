@@ -496,6 +496,13 @@ func scenario() async {
   keys.press("Ctrl+Meta+ArrowDown")
   check("⌃⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
         && ((fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" }?["msg"] as? JSONObject)?["payload"] as? JSONObject)?["action"] as? String == "next-tab")
+  // The overlay's page picked the tab and highlighted it at the press, then asked the copy for exactly it (Tirth,
+  // 2026-11-07: the highlight waited for the copy's background): its target and its own switch id in the request.
+  let navReq = (fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" }?["msg"] as? JSONObject)?["payload"] as? JSONObject ?? [:]
+  let navTarget = int(navReq["target"])
+  check("…its target picked and its own switch id given by the overlay's page", navTarget != nil && (navReq["switchId"] as? String)?.hasPrefix("ov-") == true, "\(navReq)")
+  // (The highlight itself: this page is off every display, so hidden, and a hidden page draws no switch:
+  // shared/switching.js start. The pick is tested in switching-pick.test.js.)
   apps.bringToFront(1)
   check("another app in front: let go", await until(2, { keys.held.isEmpty && !shell.shortcuts.isActive }))
   apps.bringToFront(browserPid)

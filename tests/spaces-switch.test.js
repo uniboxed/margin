@@ -302,6 +302,26 @@ test('next/previous: each press a plain switch, chained from the one before; the
   assert.deepEqual(fake.messages.map((m) => [m.type, m.from, m.tabId]), [['switching', 1, 2], ['switch-failed', 1, 2]]);
 });
 
+test('next/previous from Margin.app\'s overlay: its own pick taken (it highlighted it at the press); one not open in that window, worked out here', async () => {
+  await setup();
+  await showSpace(1, 'personal');
+  await sleep(1600); // (no chain from an earlier press)
+  fake.messages = [];
+  // The overlay's pick (tab 3, where the rule here would say 2): taken, with its switch id.
+  await navigate('next-tab', 'app', 1, { target: 3, switchId: 'ov-7' });
+  await sleep(10);
+  assert.deepEqual(fake.messages.filter((m) => m.type === 'switching').map((m) => [m.tabId, m.switchId]), [[3, 'ov-7']]);
+  assert.equal(front(), 3);
+  await showSpace(1, 'personal');
+  await sleep(1600);
+  fake.messages = [];
+  // A pick that isn't a tab of that window: worked out here, as for any press.
+  await navigate('next-tab', 'app', 1, { target: 999, switchId: 'ov-8' });
+  await sleep(10);
+  assert.deepEqual(fake.messages.filter((m) => m.type === 'switching').map((m) => m.tabId), [2]);
+  assert.notEqual(fake.messages.find((m) => m.type === 'switching')?.switchId, 'ov-8', 'nor its switch id');
+});
+
 test('page zoom: remembered per site (only away from the default), capped, so its pages draw Margin at its size at once', async () => {
   const { handlers, zoomChanged } = await import('../extension/background/handlers.js');
   const at = (url) => ({ tab: { id: 1, url }, url });

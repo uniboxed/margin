@@ -1751,6 +1751,10 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             overlay.push(raw: #"{"type":"command","name":"toggle-sidebar"}"#)
         case .nextSpace where spaceKey(overlay, 1, isRepeat: isRepeat), .prevSpace where spaceKey(overlay, -1, isRepeat: isRepeat):
             return // across profiles (ShellProfiles.swift)
+        case .nextTab where overlay.isReady, .prevTab where overlay.isReady:
+            // The overlay's page highlights the tab at once (its own pick, the copy's rule) and asks the copy for it
+            // (overlay.js navTab): the highlight never waits for the copy's background (Tirth, 2026-11-07).
+            overlay.push(raw: #"{"type":"command","name":"\#(command.rawValue)","repeat":\#(isRepeat)}"#)
         case .nextTab, .prevTab, .nextSpace, .prevSpace:
             let windowId = overlay.key.windowId
             Task { _ = try? await entry.connection.request(type: "navigate", payload: ["action": command.rawValue, "windowId": windowId], windowId: windowId) }
