@@ -287,9 +287,7 @@
    a small speaker. */
 .margin-sidebar :is(.tab, .pin).asleep .avatar { opacity: 0.45; filter: grayscale(1); }
 /* A tab that isn't open (its window closed, Safari didn't restore it, or it
-   was put to sleep): still in its space, dimmed; a click opens it. */
-.margin-sidebar .tab.not-open .avatar { opacity: 0.45; filter: grayscale(1); }
-.margin-sidebar .tab.not-open .title { opacity: 0.55; }
+   was put to sleep): still in its space, drawn as any tab (Tirth, 2026-11-08); a click opens it. */
 .margin-sidebar .audible-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
 .margin-sidebar .audible-icon .speaker { fill: currentColor; stroke: none; }
 .margin-sidebar :is(.tab, .pin):hover .audible-icon { display: none; }

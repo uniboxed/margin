@@ -152,8 +152,6 @@
 .tab.asleep .title { opacity: .55; }
 .zz { width: 7.5px; height: 7.5px; color: var(--blue); align-self: flex-start; margin-top: 7px; }
 /* Not open (still in its space; a click opens it): the icon dashed, dimmed. */
-.tab.not-open .title { opacity: .5; }
-.tab.not-open .fav { opacity: .55; box-shadow: none; outline: 2px dashed var(--field); outline-offset: 0; }
 /* Loading: the icon box blinks. */
 @keyframes px-busy { 0%, 49% { box-shadow: var(--pxs); } 50%, 100% { box-shadow: 0 -2px 0 var(--yellow), 0 2px 0 var(--yellow), -2px 0 0 var(--yellow), 2px 0 0 var(--yellow); } }
 .tab.busy .fav { animation: px-busy .5s steps(1) infinite; }

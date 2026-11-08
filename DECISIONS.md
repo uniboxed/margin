@@ -3267,3 +3267,11 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - `shortcuts-safari`: the listener still takes a manifest's command keys, given a manifest that has some; the shipped one has none.
   - `model`: Safari's old set moves to the new one.
   - The app tests now press the ⌥⌘ keys.
+
+### Not-open tabs drawn as any tab; a space of them opens its top one (2026-11-08)
+
+- **Tirth:** the tabs Margin keeps that aren't open (from Margin's data: put to sleep, or kept as a window closed or wasn't restored) "should look like a normal tab", and switching to a space with only those "instead of opening a new tab, we should open the top grayed out tab".
+- **Now:**
+  - Arcadia, Neo-brutalism and Pixel no longer dim a `notOpen` row (Arcadia faded its icon and title, the other two their title and icon box). The view model still marks it, for a theme that wants to (README). Tabs Safari unloaded itself keep the `asleep` mark.
+  - `showSpace` (`background/navigation.js`): with none of the space's tabs open in the window, the top kept tab in the sidebar's order opens as a click on its row does (its address, its place in the strip, `keptId`: that Margin tab is the open one from then on). It answers `{ tab }` as a switch does. Only with no kept tab either does Margin's start page open, as before.
+- **Tests:** `spaces-switch.test.js` (a space whose two tabs were put to sleep: the top one's address opened, no start page, it's the window's front tab and no longer kept); Pixel's theme test (a not-open row at full opacity, no dashed icon).

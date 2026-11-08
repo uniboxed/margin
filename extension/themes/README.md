@@ -258,9 +258,8 @@ host. Immutable: rows that didn't change are the same objects.
   of tabs: a tab whose browser tab is gone (its window closed, the browser
   didn't bring it back after a relaunch, or Margin put it to sleep in Safari)
   stays in its space, in every window that shows the space, with `notOpen`
-  true (its `id` is then Margin's own, a string). Draw it as not open, for
-  example dimmed (`m-class:not-open="{{t.notOpen}}"`; Arcadia fades its icon
-  and title, Neo-brutalism its title and icon box). Its row takes the same
+  true (its `id` is then Margin's own, a string). The built-in themes draw it
+  as any tab; yours may mark it (`m-class:not-open="{{t.notOpen}}"`). Its row takes the same
   actions as any tab's: `tab.activate` opens it in the window it was clicked
   in, `tab.close` sends it to the archive, and its menu, drags and drops work
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.

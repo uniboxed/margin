@@ -385,6 +385,15 @@ export async function showSpace(windowId, spaceId, { bringTab = true, deadline }
       }
     }
   }
+  // Nothing of the space open, only tabs that aren't (put to sleep, or kept as a window closed: state/model.js
+  // keptTabs): the top one opens, as a click on its row does (handlers.js openKept), not a new tab (Tirth, 2026-11-08).
+  const top = V.sidebar(s, windowId).tabs.find((t) => t.kept);
+  if (top) {
+    const live = await api.tabs.query({ windowId }).catch(() => null);
+    const index = M.stripIndexFor(s, windowId, top.order, live);
+    const tab = await openTab({ windowId, url: top.url, spaceId, deadline, index, keptId: String(top.id) });
+    return { tab };
+  }
   const startPage = api.runtime.getURL('newtab/newtab.html#launcher');
   const untouched = shown && (shown.url === startPage || V.isNewTabPage(shown.url || shown.pendingUrl));
   if (untouched) await mutate((st) => M.moveTab(st, shown.id, spaceId));

@@ -139,6 +139,23 @@ test('showSpace: an empty space opens the start page in it; an untouched start p
   assert.equal((await load()).tabSpace[opened], 'empty2', 'the untouched one moved');
 });
 
+test('showSpace: a space with only tabs that aren\'t open (kept): its top one opens, not a new tab (Tirth, 2026-11-08)', async () => {
+  await setup();
+  // Work's two tabs in window 1 closed and kept (put to sleep), tab 5 (window 2) left out of it.
+  await mutate((s) => M.keepTab(M.keepTab(s, 3, 'sleep'), 4, 'sleep'));
+  fake.tabs.delete(3); fake.tabs.delete(4);
+  const kept = Object.values((await load()).keptTabs).filter((k) => k.spaceId === 'work');
+  assert.equal(kept.length, 2);
+  const view = V.sidebar(await mutate((s) => M.setActiveSpace(s, 1, 'work')), 1);
+  const top = view.tabs.find((t) => t.kept);
+  await mutate((s) => M.setActiveSpace(s, 1, 'personal'));
+  const result = await showSpace(1, 'work');
+  assert.deepEqual(fake.calls.create, [top.url], 'the top kept tab\'s address, no start page');
+  assert.equal((await load()).tabSpace[front(1)], 'work');
+  assert.equal(result?.tab?.id, front(1));
+  assert.ok(!(await load()).keptTabs[top.id], 'that Margin tab is the open one now');
+});
+
 test('showSpace: the space\'s tab comes to the front without waiting for the space to be written', async () => {
   await setup();
   // Storage takes no write until released.
