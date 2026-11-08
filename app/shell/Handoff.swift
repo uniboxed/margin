@@ -531,6 +531,9 @@ extension ProfileSwitch: FreezerDelegate {
                     enter(.waitingForLink, for: ho.linkWait)
                     note("\(link) isn't linked: its parked window waits up to \(Int(ho.linkWait)) s for it")
                 }
+            } else if phase != .waitingForProfile, world?.marginOff(link) == true {
+                // Margin turned off in that profile (Safari's settings): no window opened, failed at once, and said.
+                return finish(.failed(run.target, "Margin is turned off in it"), "Margin is turned off in \(link) (the browser's settings)")
             } else if phase != .waitingForProfile {
                 // Its copy starts with a window Margin asks Safari for (its own menu, through Accessibility); the
                 // switch goes on once that copy links (this is asked again on each poll). Else the person is told.

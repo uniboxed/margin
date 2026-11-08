@@ -519,6 +519,11 @@ extension Shell: SwitchWorld {
         return true
     }
 
+    func marginOff(_ profile: String) -> Bool {
+        guard options.safariAX, profile.hasPrefix("safari:") else { return false }
+        return SafariAX.marginEnabled(profile: SwitchNotice.profileId(profile)) == false
+    }
+
     func isLinked(_ profile: String) -> Bool {
         guard let entry = links[profile] else { return false }
         return entry.connection.isUp && entry.mirror.hasState
@@ -573,17 +578,16 @@ extension Shell: SwitchWorld {
         case .failed(let t, let why):
             // Margin opened the profile's window, but its copy never linked: Margin is off in that profile (Safari
             // turned it off, or the person did). Told so, and the window Margin opened is closed again.
-            if let opened = openedFor.removeValue(forKey: t.profile) {
-                let name = profileName(t.profile)
-                for n in Set(axWindows(of: t.profile)).subtracting(opened.before) { safariAX.closeWindow(pid: opened.pid, number: n) }
-                let id = SwitchNotice.profileId(t.profile)
-                if SafariAX.marginEnabled(profile: id) == false {
-                    words = "Margin is turned off in \(name). Turn it on in Safari › Settings › Extensions (with \(name) chosen at the top), then switch again."
-                } else {
-                    words = "Margin didn’t start in \(name)’s window. Check that Margin is on in Safari › Settings › Extensions for \(name), then switch again."
-                }
+            let name = profileName(t.profile)
+            let opened = openedFor.removeValue(forKey: t.profile)
+            if let opened { for n in Set(axWindows(of: t.profile)).subtracting(opened.before) { safariAX.closeWindow(pid: opened.pid, number: n) } }
+            // Margin off in that profile (asked before any window opened, or found after): how to turn it on.
+            if marginOff(t.profile) {
+                words = "Margin is turned off in \(name). Turn it on in Safari › Settings › Extensions (with \(name) chosen at the top), then switch again."
+            } else if opened != nil {
+                words = "Margin didn’t start in \(name)’s window. Check that Margin is on in Safari › Settings › Extensions for \(name), then switch again."
             } else {
-                words = "Couldn’t switch to \(profileName(t.profile)): \(why). Nothing was closed."
+                words = "Couldn’t switch to \(name): \(why). Nothing was closed."
             }
         case .cancelled: words = nil
         }

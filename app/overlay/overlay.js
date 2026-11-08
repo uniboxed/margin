@@ -19,12 +19,14 @@
 // "switching" cover is drawn (`switch.coverShown`, ui/switch-cover.js), and,
 // after each `shown`, that the page has drawn and in which mode (`framed`).
 import { createRuntime } from '../../extension/ui/runtime.js';
+import { createGestureMotion } from '../../extension/ui/gesture-motion.js';
 import { loadTheme, encodeStoredTheme } from '../../extension/ui/theme-loader.js';
 import { readThemeFile } from '../../extension/ui/theme-import.js';
 import { createPreviewBar } from '../../extension/ui/theme-preview.js';
 import { createAppHost, hitRects } from '../../extension/ui/host-app.js';
 import { createAppNotices, createGestureFeedback } from '../../extension/ui/app-feedback.js';
-import { backgroundSwitches, describeSwitchRun } from '../../extension/shared/switching.js';
+import { backgroundSwitches, describeSwitchRun, OVERLAY_SWITCH_PREFIX, pickNavTab } from '../../extension/shared/switching.js';
+import { cycleTab } from '../../extension/shared/view.js';
 import { answerFramed, createCoverWatch } from '../../extension/ui/switch-cover.js';
 
 const bridge = /** @type {any} */ (globalThis).webkit?.messageHandlers?.margin;
@@ -50,9 +52,62 @@ const notices = createAppNotices({
   // The overlay's own notice (a theme it couldn't draw): Settings opens Margin's Settings in this window.
   local: (kind, action) => { if (kind === 'theme-failed' && action === 'settings') void host?.send('openLauncher', { settings: true }); },
 });
-const gestures = createGestureFeedback({ set: (gesture) => runtime?.setUi({ gesture }) });
+// How far a gesture has gone: eased every frame into --gesture-live (ui/gesture-motion.js), the UI not drawn again.
+const gestureMotion = createGestureMotion({ apply: (value) => document.documentElement.style.setProperty('--gesture-live', value.toFixed(3)) });
+const gestures = createGestureFeedback({
+  set: (gesture) => runtime?.setUi({ gesture }),
+  // A gesture just shown comes in from nothing (its badge out of sight), then follows the fingers.
+  progress: (value, fresh) => { if (fresh) gestureMotion.to(0, true); gestureMotion.to(value); },
+});
 // The copy's own switches in this window ('switching', then 'switch-done' or 'switch-failed').
 const copySwitches = backgroundSwitches();
+
+// ---- next/previous tab by the app's keys: highlighted here at once ---------------------------------------------
+// The app hands this page ⌘⌥↓/↑ (whatever Settings has) instead of the copy (app/shell/Shell.swift run): the target
+// is worked out here with the copy's rule (shared/view.js cycleTab: the order the sidebar shows, wrapping), each
+// press going on from the one before for a moment (NAV_CHAIN_MS), else from the tab in front; highlighted now, then
+// asked of the copy with its switch id, which takes it as that press's (background/navigation.js navigate `given`).
+// So the highlight never waits for the copy's background (busy saving the switch before, or waking: Tirth,
+// 2026-11-07, "the tab switches are not instantaneous sometimes"), and the copy's `switching` for these presses
+// changes nothing here (it may come after a newer press's highlight).
+// A held key repeats faster than a highlight is drawn (Tirth, 2026-11-08: "when i stop holding it, it still keeps
+// moving"): the presses that come are added up and taken once a frame, one highlight and one ask for where they end,
+// so none wait in line and it stops as the key is let go.
+let localNav = /** @type {{ tabId: number, at: number } | null} */ (null);
+let localSeq = 0;
+let navSteps = 0;
+let navFrame = 0;
+let navTimer = /** @type {any} */ (0);
+/** @param {'next-tab' | 'prev-tab'} action */
+function navTab(action) {
+  navSteps += action === 'next-tab' ? 1 : -1;
+  if (navFrame) return;
+  navFrame = requestAnimationFrame(flushNav);
+  navTimer = setTimeout(flushNav, 50); // (no frames off screen)
+}
+function flushNav() {
+  cancelAnimationFrame(navFrame);
+  clearTimeout(navTimer);
+  navFrame = 0;
+  const steps = navSteps;
+  navSteps = 0;
+  if (!steps) return;
+  const dir = steps > 0 ? 1 : -1;
+  const action = dir > 0 ? 'next-tab' : 'prev-tab';
+  const state = /** @type {any} */ (host?.getState());
+  const windowId = host?.windowId;
+  const ask = (/** @type {Record<string, any>} */ extra) => { void Promise.resolve(host?.send('navigate', { action, ...extra })).catch(() => {}); };
+  if (!runtime || !Number.isInteger(windowId)) return ask({});
+  let target = pickNavTab(state, /** @type {number} */ (windowId), localNav, dir, cycleTab);
+  // Nothing in front known yet: the copy works it out (and highlights it, as before).
+  if (target === undefined) return ask({});
+  for (let i = 1; i < Math.abs(steps) && target != null; i++) target = cycleTab(state, /** @type {number} */ (windowId), target, dir);
+  if (target == null) return;
+  const switchId = `${OVERLAY_SWITCH_PREFIX}${++localSeq}`;
+  localNav = { tabId: target, at: Date.now() };
+  runtime.switchTo(target, copySwitches.begin(target, switchId));
+  ask({ target, switchId });
+}
 
 // ---- what took long here (Margin.app's log: npm run log:app) --------------------------
 // Lasting and quiet: a piece of work over SLOW_MS (the app's word handled, a
@@ -504,6 +559,7 @@ function onMessage(msg) {
         if (runtime?.paletteOpen) runtime.closePalette();
         else openPaletteTimed({ newTab: !host?.launcher }, 'the app\'s key');
       } else if (msg.name === 'toggle-sidebar') runtime?.sidebar.toggle();
+      else if (msg.name === 'next-tab' || msg.name === 'prev-tab') navTab(msg.name);
       return;
     case 'link':
       // The link to the copy dropped (`reconnecting`: the last picture stays,
@@ -545,6 +601,8 @@ function onMessage(msg) {
         // switch has its `switchId`: only that one's word settles it (a press it replaced, or
         // one before it in the chain, says it's done too).
         case 'switching':
+          // (Not one this page highlighted itself, navTab: it's on it, or on a newer one already.)
+          if (String(msg.msg.switchId ?? '').startsWith(OVERLAY_SWITCH_PREFIX)) return;
           if (Number.isInteger(msg.msg.tabId)) runtime?.switchTo(msg.msg.tabId, copySwitches.begin(msg.msg.tabId, msg.msg.switchId ?? null));
           return;
         case 'switch-done': copySwitches.settle(msg.msg); return;

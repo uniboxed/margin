@@ -41,7 +41,12 @@ function activeSpaceId(state, windowId) {
 // state doesn't say yet that it's in front (the background records an
 // activation a moment after the browser shows the tab: until then the
 // window's space can still be the one the page before showed).
-function sidebar(state, windowId, currentTabId = null, { newTabPending = false, switchingTo = null, justShown = false } = {}) {
+// `opening`: a new tab the palette is opening (its Enter: ui/runtime.js), while
+// the tab in front is still the one it was opened from (`from`): its row at the
+// top of the list, highlighted, at once (Arc), titled with what was asked for
+// (`title`, `url`); the tab in front plain, "+ New Tab" not lit (Tirth,
+// 2026-11-08: it only lit partly until the page had loaded).
+function sidebar(state, windowId, currentTabId = null, { newTabPending = false, switchingTo = null, justShown = false, opening = null } = {}) {
   const has = (id) => id != null && state.spaces.some((s) => s.id === id);
   const own = currentTabId != null ? state.tabs?.[currentTabId] : null;
   const going = switchingTo != null ? state.tabs?.[switchingTo] : null;
@@ -53,9 +58,14 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
     .filter((t) => t.windowId === windowId)
     .map((t) => (known && t.active !== (t.id === currentTabId) ? { ...t, active: t.id === currentTabId } : t));
   const target = switchingTo != null && shown.some((t) => t.id === switchingTo && !t.active) ? switchingTo : null;
-  const shownNewTab = shown.find((t) => t.active && isNewTabPage(t.url));
+  const front = shown.find((t) => t.active);
+  const openingRow = opening && target == null && (front == null || front.id === opening.from)
+    ? { id: OPENING_ID, windowId, title: String(opening.title ?? ''), url: String(opening.url ?? ''), favIconUrl: '', active: true, opening: true, status: 'loading', order: Infinity, index: Infinity, lastActive: Date.now() }
+    : null;
+  const shownNewTab = openingRow ? undefined : shown.find((t) => t.active && isNewTabPage(t.url));
   const windowTabs = shown
     .map((t) => {
+      if (openingRow) return t.active ? { ...t, active: false } : t;
       // Switching: the highlight moves at once and whole (Arc), the tab still
       // on screen plain; the new page's sidebar then looks the same.
       if (target != null) return t.id === target ? { ...t, active: true } : t.active ? { ...t, active: false } : t;
@@ -63,6 +73,7 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
     })
     .sort(byPlace);
   const spaceTabs = windowTabs.filter((t) => state.tabSpace[t.id] === spaceId);
+  if (openingRow) spaceTabs.push(/** @type {any} */ (openingRow));
   // The space's Margin tabs with no browser tab (state/model.js keptTabs):
   // shown in every window showing the space, not open (`kept`), in their place.
   const kept = Object.values(state.keptTabs ?? {}).filter((k) => k.spaceId === spaceId).map((k) => ({ ...k, kept: true, active: false }));
@@ -105,7 +116,7 @@ function sidebar(state, windowId, currentTabId = null, { newTabPending = false, 
     pins,
     pinned,
     // The new-tab page being shown is this row: softly while switching away.
-    newTab: { active: targetIsNewTab || (target == null && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
+    newTab: { active: targetIsNewTab || (target == null && !openingRow && (newTabPending || !!shownNewTab)), behind: false }, // behind: never now (kept for the row's class)
     // Reversed here, not sorted that way above: a pin binds to the oldest tab
     // with its URL (unless another is shown or being switched to). Open and
     // not open, in their places (pins bind to open tabs only).
@@ -132,6 +143,8 @@ function pinTabId(state, pinId, windowId) {
 // The browser's new-tab page, which Margin replaces (⌘T): Chrome reports it
 // as chrome://newtab, Safari as Margin's own page. Not Margin's start page
 // opened on purpose (#launcher).
+// The row of a tab being opened (sidebar `opening`): not a tab of the browser's yet.
+const OPENING_ID = 'opening';
 const NEW_TAB_PAGE = /^(chrome:\/\/newtab\/?|[a-z-]+-extension:\/\/[^/]+\/newtab\/newtab\.html)(\?[^#]*)?$/i;
 const isNewTabPage = (url) => NEW_TAB_PAGE.test(String(url ?? ''));
 

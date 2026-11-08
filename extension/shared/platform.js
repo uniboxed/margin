@@ -29,16 +29,15 @@ const PROFILES = {
     // (shared/search.js).
     search: 'learn',
     marginFullscreen: false,
-    // Default shortcuts (Settings; Margin's page listener). Tabs on ⌥⌘↓/↑
-    // like Arc, on top of the ⌃⌘↓/↑ manifest commands, which stay ⌃⌘ in
-    // both builds: verified working in Safari, while ⌥⌘↓/↑ as a manifest
-    // command did not respond there. Spaces on ⌃⌘→/← because Safari keeps
-    // ⌘⌥←/→ for its own tab switching.
+    // Default shortcuts (Settings; Margin's page listener; Margin.app holds them while it draws). Tabs on ⌥⌘↓/↑
+    // like Arc, spaces on ⌥⌘→/← (Tirth, 2026-11-08: those, and no ⌃⌘ arrows: the manifest commands have no keys
+    // now). Safari's own ⌥⌘←/→ (its tab switching) is Margin's space switching where Margin is.
+    navigationId: 'safari-2',
     navigation: {
       nextTab: 'Alt+Meta+ArrowDown',
       prevTab: 'Alt+Meta+ArrowUp',
-      nextSpace: 'Ctrl+Meta+ArrowRight',
-      prevSpace: 'Ctrl+Meta+ArrowLeft',
+      nextSpace: 'Alt+Meta+ArrowRight',
+      prevSpace: 'Alt+Meta+ArrowLeft',
     },
   },
   chrome: {
@@ -86,6 +85,12 @@ const detect = () => {
 /** @typedef {typeof PROFILES.safari} Platform */
 /** @type {Platform} */
 export const platform = PROFILES[BUILD_TARGET ?? detect()];
+// Defaults a build had before (`shortcutDefaults` then): a saved shortcut still one of them moves to today's
+// (state/model.js normalizeShortcuts).
+export const PAST_NAVIGATION = Object.freeze({
+  // Safari's until 2026-11-08: spaces on ⌃⌘→/←.
+  safari: Object.freeze({ nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight', prevSpace: 'Ctrl+Meta+ArrowLeft' }),
+});
 export { PROFILES };
 // Also on the global, for the console and the E2E tests.
 (globalThis.Margin ??= {}).platform = platform;

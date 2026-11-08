@@ -258,9 +258,8 @@ host. Immutable: rows that didn't change are the same objects.
   of tabs: a tab whose browser tab is gone (its window closed, the browser
   didn't bring it back after a relaunch, or Margin put it to sleep in Safari)
   stays in its space, in every window that shows the space, with `notOpen`
-  true (its `id` is then Margin's own, a string). Draw it as not open, for
-  example dimmed (`m-class:not-open="{{t.notOpen}}"`; Arcadia fades its icon
-  and title, Neo-brutalism its title and icon box). Its row takes the same
+  true (its `id` is then Margin's own, a string). The built-in themes draw it
+  as any tab; yours may mark it (`m-class:not-open="{{t.notOpen}}"`). Its row takes the same
   actions as any tab's: `tab.activate` opens it in the window it was clicked
   in, `tab.close` sends it to the archive, and its menu, drags and drops work
   as an open tab's. It's never `active`, `audible`, `asleep` or `loading`.
@@ -298,11 +297,18 @@ host. Immutable: rows that didn't change are the same objects.
 - `gesture` (null unless one is under way): Margin's trackpad gestures on
   the page in front, pull to refresh (`pull`) and swipe back and forward
   (`swipe`, with `back` or `forward`), `armed` once letting go would do it,
-  `done` for a moment once it did, `progress` how far along (0 to 1, in
-  steps of 0.05; `percent` the same out of 100, for `m-style`). Draw a badge
-  over the page (icons only: it's outside the guarded parts but has no words
-  of its own), `pointer-events: none`, and let it come in with `progress`
-  (Arcadia and Neo-brutalism: `m-style:--gesture="{{gesture.progress}}"`).
+  `done` for a moment once it did, `leaving` for a moment once it was let
+  go of before it would (animate it back out), `progress` how far along (0
+  to 1, in steps of 0.05, as of its last change of state; `percent` the same
+  out of 100, for `m-style`). Margin.app eases the live progress into the
+  CSS custom property `--gesture-live` every display frame (on the root,
+  inherited: nothing is drawn again), so read that first, with `progress` as
+  the fallback: `m-style:--gesture="{{gesture.progress}}"` and
+  `--g: var(--gesture-live, var(--gesture))` (all three built-in themes).
+  Draw a badge over the page (icons only: it's outside the guarded parts but
+  has no words of its own), `pointer-events: none`, and let it come in with
+  the progress; keep the per-frame part to `transform`, `opacity` and the
+  like, which don't lay anything out.
 - `palette.rows[]` also have `section` and `sectionStart`: rows from one
   place come as a run with a heading ("On Tirth’s iPhone": iCloud Tabs,
   after Margin's own rows). Draw `{{r.section}}` before a row whose

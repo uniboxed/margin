@@ -78,7 +78,7 @@ const CLOUD_TICK_MS = 60_000;
  */
 export function createRuntime({ host, theme, container, ui: start = {}, onWarn, log, onSwitchSlow, onSwitchFailed, onPalette, onSwitching, onSwitchRun }) {
   /** @type {UiState & Record<string, any>} */
-  let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, ...start };
+  let ui = { sidebar: null, palette: CLOSED_PALETTE, menu: null, editing: null, editor: null, notice: null, focused: true, switchingTo: null, newTabPending: false, opening: null, ...start };
   /** @type {ViewModel | null} */
   let vm = null;
   /** @type {ViewModel | null} */
@@ -101,12 +101,15 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     /** @type {Map<string, { patch: Record<string, any>, until: number }>} */ spaces: new Map(),
     /** @type {{ spaceId: string, since: number, withTab: number | null } | null} */ space: null,
     /** @type {{ values: Record<string, any>, live: boolean, until: number } | null} */ themeSettings: null,
+    // A space kept shown a moment though the state has moved on: a swipe's slide still coming in, its switch asked
+    // of the copy as it settled (behaviors/swipe.js holdSpace). The space asked for (`space`) comes after it.
+    /** @type {{ spaceId: string, until: number } | null} */ hold: null,
   };
   // Re-drawn when the soonest of them runs out.
   let expiryTimer = null;
   function expireLater() {
     const ends = [pending.settings?.until, ...[...pending.folders.values()].map((p) => p.until), ...[...pending.spaces.values()].map((p) => p.until),
-      pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined].filter((t) => t != null);
+      pending.space ? pending.space.since + PENDING_MS + 50 : undefined, pending.hold ? pending.hold.until + 1 : undefined, pending.themeSettings && !pending.themeSettings.live ? pending.themeSettings.until : undefined].filter((t) => t != null);
     clearTimeout(expiryTimer);
     if (!ends.length) return;
     expiryTimer = setTimeout(() => render(), Math.max(0, Math.min(...ends) - Date.now()) + 5);
@@ -146,6 +149,10 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
       if (!space || Object.entries(entry.patch).every(([k, v]) => space[k] === v) || now > entry.until) p.spaces.delete(id);
     }
     if (p.spaces.size) state = { ...state, spaces: state.spaces.map((s) => (p.spaces.has(s.id) ? { ...s, ...p.spaces.get(s.id).patch } : s)) };
+    if (p.hold) {
+      if (now > p.hold.until) p.hold = null;
+      else state = { ...state, activeSpaceByWindow: { ...state.activeSpaceByWindow, [windowId()]: p.hold.spaceId } };
+    }
     // A space asked for: shown until the state says so, the switch that
     // brings its tab is over, or PENDING_MS (sidebar.js showSpaceNow).
     if (p.space) {
@@ -171,7 +178,8 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
   // as it's hidden.
   const stays = !!(/** @type {any} */ (host).staysOnScreen);
   const switching = createSwitching({
-    onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id }); },
+    // A new tab's row (`opening`) lasts as long as the switch to it (NEW_TAB).
+    onChange: (id) => { if (destroyed) return; onSwitching?.(id); setUi({ switchingTo: id, ...(id !== NEW_TAB && ui.opening ? { opening: null } : {}) }); },
     onSlow: (slow) => { if (!destroyed) onSwitchSlow?.(slow); },
     failed: (result) => result === undefined,
     onFailed: () => { if (!destroyed) onSwitchFailed?.(); },
@@ -300,6 +308,7 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const shownSpace = vm?.space?.id;
     if (state.tabSpace?.[own] === spaceId && ui.switchingTo == null && shownSpace === spaceId) return host.send('setSpace', payload);
     behaviors.scroll?.reset();
+    pending.hold = null;
     switchAskedAt = Date.now();
     const request = host.send('setSpace', payload);
     if (state.tabSpace?.[own] === spaceId) {
@@ -345,12 +354,15 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     const request = requestFor(name, arg, { state: viewState(state), ui: { windowId: now.windowId, sidebar: vm?.window.sidebar ?? null }, platform: host.platform, row: name === 'palette.run' ? items.find((i) => i.id === arg) : null });
     // Choosing a row closes the palette first (Arcadia's palette); one opened
     // for a new tab keeps "+ New Tab" lit while another tab comes to the front.
+    // A row that opens a new tab (a search, an address) draws that tab's row at
+    // once instead, highlighted (shared/view.js `opening`), until its tab is in front.
     if (name === 'palette.run') {
       const wasNewTab = ui.palette.newTab;
-      const shows = request.kind === 'send' && SHOWS_ANOTHER_TAB.has(request.type);
-      setUi({ palette: CLOSED_PALETTE, newTabPending: wasNewTab && shows });
+      const opens = request.kind === 'send' && opensNewTab(request.type, request.payload);
+      const shows = request.kind === 'send' && SHOWS_ANOTHER_TAB.has(request.type) && !opens;
+      setUi({ palette: CLOSED_PALETTE, newTabPending: wasNewTab && shows, ...(opens ? { opening: openingFor(request.payload) } : {}) });
       if (wasNewTab && shows) holdNewTab();
-      behaviors.palette?.closed(request.kind === 'send' && opensNewTab(request.type, request.payload));
+      behaviors.palette?.closed(opens);
       onPalette?.('run', request);
     }
     switch (request.kind) {
@@ -415,6 +427,13 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
 
   /** @type {{ folderId: string, wasOpen: boolean, at: number } | null} */
   let lastToggle = null;
+
+  // What a new tab being opened is drawn as: the search's words, or the address
+  // (the tab in front now, `from`: it's drawn until another is).
+  /** @param {any} payload */
+  function openingFor(payload) {
+    return { title: typeof payload?.query === 'string' ? payload.query.trim() : '', url: typeof payload?.url === 'string' ? payload.url : '', from: frontTab() };
+  }
 
   let newTabTimer = null;
   function holdNewTab() {
@@ -534,6 +553,11 @@ export function createRuntime({ host, theme, container, ui: start = {}, onWarn, 
     viewState: () => viewState(host.getState()),
     setUi, render, dispatch, send, refuse, warn, runQuery,
     windowId, ownTab, frontTab, recentTabOf, switchSpace,
+    /** Space `spaceId` kept shown for `ms`, whatever the state says meanwhile (a swipe's slide coming in). */
+    holdSpace(spaceId, ms) {
+      pending.hold = typeof spaceId === 'string' ? { spaceId, until: Date.now() + Math.max(0, ms) } : null;
+      expireLater();
+    },
     switching,
     get lastToggle() { return lastToggle; },
     /** Shown ahead of the state: the theme's settings (a width being dragged, `live`, or just saved). */

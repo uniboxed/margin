@@ -9,7 +9,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { manifestFor } = await import('../scripts/build.js');
-const manifest = manifestFor('safari');
+// The shipped manifest's navigation commands have no keys now (Tirth, 2026-11-08: no ⌃⌘ arrows; the last test
+// here). The listener still takes whatever keys a manifest's commands have, tested with the ⌃⌘ ones they had.
+const shipped = manifestFor('safari');
+const withKeys = (/** @type {string} */ mac) => ({ suggested_key: { default: 'Alt+Shift+Down', mac } });
+const manifest = { ...shipped, commands: { ...shipped.commands,
+  'next-tab': { ...shipped.commands['next-tab'], ...withKeys('MacCtrl+Command+Down') },
+  'prev-tab': { ...shipped.commands['prev-tab'], ...withKeys('MacCtrl+Command+Up') },
+  'next-space': { ...shipped.commands['next-space'], ...withKeys('MacCtrl+Command+Right') } } };
 globalThis.chrome = /** @type {any} */ ({ runtime: { getURL: (path) => `safari-web-extension://test/${path}`, getManifest: () => manifest } });
 const shortcuts = await import('../extension/shared/shortcuts.js');
 const { platform } = await import('../extension/shared/platform.js');
@@ -165,4 +172,9 @@ test('Safari: taken as cut off on a slow storage, the world is asked again at th
   } finally {
     delete globalThis.chrome.storage;
   }
+});
+
+test('Safari, the shipped manifest: no command keys, so ⌃⌘↓ is the page\'s, and ⌥⌘ arrows are Margin\'s (tabs and spaces)', () => {
+  assert.deepEqual(shortcuts.commandKeysFrom(shipped), {});
+  assert.deepEqual(platform.navigation, { nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Meta+ArrowRight', prevSpace: 'Alt+Meta+ArrowLeft' });
 });

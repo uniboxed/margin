@@ -50,10 +50,14 @@ protocol SwitchWorld: AnyObject {
     // Asks the browser for a new window in `profile` itself (Safari's File › New Window menu, through
     // Accessibility: SafariAX.swift), for a profile whose copy isn't running. False: it can't.
     func openProfileWindow(_ profile: String) -> Bool
+    // Margin's extension turned off in `profile`, as the browser's own settings say (Safari can turn it off as Margin
+    // updates: Tirth, 2026-11-08): its copy never starts, so the switch fails at once and says so, no window opened.
+    func marginOff(_ profile: String) -> Bool
 }
 
 extension SwitchWorld {
     func openProfileWindow(_ profile: String) -> Bool { false }
+    func marginOff(_ profile: String) -> Bool { false }
 }
 
 protocol SwitchClock {
@@ -195,6 +199,7 @@ final class ProfileSwitch {
         world.switchChanged(.started(to))
         askDrafts()
         guard world.isLinked(to.profile) else {
+            if world.marginOff(to.profile) { return finish(.failed(to, "Margin is turned off in it"), "Margin is turned off in \(to.profile) (the browser's settings)") }
             // Its copy starts with the window Margin asks Safari for; the switch goes on once it links.
             let opened = world.openProfileWindow(to.profile)
             enter(.waitingForProfile, for: opened ? options.openedProfileWait : options.profileWait)

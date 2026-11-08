@@ -107,33 +107,53 @@ export function createAppNotices({ show, send, frontTab = () => null, local = ()
 // feedback, told by the page through the copy (`push` `gesture`) and drawn by
 // the theme (the view model's `gesture`). A gesture's last word goes after
 // a moment (a lifted pull reloads, a swipe goes back or forward: the loading
-// indicator takes over); one whose updates stop (a word lost on the way, the
-// page gone) goes after STALE_MS.
+// indicator takes over); one let go of before it would do anything goes back
+// out (`leaving`, GESTURE_LEAVE_MS); one whose updates stop (a word lost on
+// the way, the page gone) goes after STALE_MS.
+// Only a change of what it is (its kind, state, way) is `set` (the UI drawn
+// again); how far it's gone goes to `progress` with every word, eased there
+// every frame without drawing anything again (ui/gesture-motion.js; Tirth,
+// 2026-11-08: it looked jumpy).
 export const GESTURE_DONE_MS = 450;
+export const GESTURE_LEAVE_MS = 220;
 export const GESTURE_STALE_MS = 1000;
 
 /**
- * `set(gesture)`: the runtime's `gesture` (null: none).
- * @param {{ set: (gesture: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done', progress: number, direction: number } | null) => void, setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (timer: any) => void }} options
+ * `set(gesture)`: the runtime's `gesture` (null: none). `progress(value, fresh)`: how far it's gone (0 to 1), `fresh`
+ * for a gesture just shown (it starts from there).
+ * @param {{ set: (gesture: { kind: 'pull' | 'swipe', state: 'pulling' | 'armed' | 'done' | 'leaving', progress: number, direction: number } | null) => void, progress?: (value: number, fresh: boolean) => void, setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (timer: any) => void }} options
  */
-export function createGestureFeedback({ set, setTimer = setTimeout, clearTimer = clearTimeout }) {
+export function createGestureFeedback({ set, progress: moved = () => {}, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let shown = null;
   let timer = null;
   const off = () => {
     clearTimer(timer);
     timer = null;
     if (shown) set((shown = null));
+    moved(0, true);
   };
   return {
     /** A page's gesture as it goes: { kind, state: 'idle' | 'pulling' | 'armed' | 'trigger', progress, direction }. @param {any} msg */
     push(msg) {
       const kind = msg?.kind === 'pull' || msg?.kind === 'swipe' ? msg.kind : null;
-      if (!kind || msg.state === 'idle' || !['pulling', 'armed', 'trigger'].includes(msg.state)) return off();
+      if (!kind || msg.state === 'idle' || !['pulling', 'armed', 'trigger'].includes(msg.state)) {
+        // Let go of before it would do anything: back out, not gone at once.
+        if (!shown || shown.state === 'done' || shown.state === 'leaving') return shown?.state === 'leaving' ? undefined : off();
+        clearTimer(timer);
+        set((shown = { ...shown, state: 'leaving' }));
+        moved(0, false);
+        timer = setTimer(off, GESTURE_LEAVE_MS);
+        return;
+      }
       clearTimer(timer);
       const done = msg.state === 'trigger';
-      const progress = Math.max(0, Math.min(1, Number(msg.progress) || 0));
-      shown = { kind, state: done ? 'done' : msg.state, progress: done ? 1 : progress, direction: kind === 'swipe' ? (Number(msg.direction) > 0 ? 1 : -1) : 0 };
-      set(shown);
+      const progress = done ? 1 : Math.max(0, Math.min(1, Number(msg.progress) || 0));
+      const next = { kind, state: done ? 'done' : msg.state, progress, direction: kind === 'swipe' ? (Number(msg.direction) > 0 ? 1 : -1) : 0 };
+      const fresh = !shown || shown.kind !== next.kind || shown.state === 'leaving';
+      const changed = fresh || shown.state !== next.state || shown.direction !== next.direction;
+      moved(progress, fresh);
+      shown = next;
+      if (changed) set(shown);
       timer = setTimer(off, done ? GESTURE_DONE_MS : GESTURE_STALE_MS);
     },
     clear: off,

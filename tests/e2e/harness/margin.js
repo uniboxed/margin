@@ -61,9 +61,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *   running?: boolean,    // Margin.app running at the start (default true)
  *   cloudTabs?: any, across?: any,
  *   name?: string,        // for the screenshots' folder
+ *   web?: boolean,        // the real web too (tools/site-crawl only): other hosts resolve, nothing is a leak, sound muted
  * }} [options]
  */
-export async function startMargin({ seed = null, fullscreen = true, running = true, cloudTabs = null, across = null, name = 'e2e' } = {}) {
+export async function startMargin({ seed = null, fullscreen = true, running = true, cloudTabs = null, across = null, name = 'e2e', web = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'margin-e2e-'));
   const t0 = Date.now();
   const site = await startSite();
@@ -100,8 +101,8 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
       '--headless=new',
       `--window-size=${SIZE.width},${SIZE.height}`,
       `--screen-info={${SIZE.width}x${SIZE.height}}`,
-      `--host-resolver-rules=${HOST_RULES}`,
-      '--autoplay-policy=no-user-gesture-required',
+      `--host-resolver-rules=${web ? 'MAP *.test 127.0.0.1, EXCLUDE 127.0.0.1' : HOST_RULES}`,
+      ...(web ? ['--mute-audio', '--disable-notifications', '--deny-permission-prompts'] : ['--autoplay-policy=no-user-gesture-required']),
       `--disable-extensions-except=${build.path}`,
       `--load-extension=${build.path}`,
     ],
@@ -112,11 +113,11 @@ export async function startMargin({ seed = null, fullscreen = true, running = tr
   context.on('request', (r) => {
     const u = new URL(r.url());
     if (!/^https?:$|^wss?:$/.test(u.protocol)) return;
-    if (u.hostname.endsWith('.test') || u.hostname === '127.0.0.1') return;
+    if (web || u.hostname.endsWith('.test') || u.hostname === '127.0.0.1') return;
     if (ENGINES.test(r.url())) return; // answered locally (the route below)
     leaks.push(r.url());
   });
-  await context.route(ENGINES, (route) => {
+  if (!web) await context.route(ENGINES, (route) => {
     const u = new URL(route.request().url());
     const q = u.searchParams.get('q') ?? u.searchParams.get('p') ?? u.searchParams.get('text') ?? '';
     return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: searchResults(q, site.port) });

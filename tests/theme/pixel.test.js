@@ -152,11 +152,11 @@ for (const [name, engine] of ENGINES) {
         assert.equal(await ev(() => T.rtVisible('.tab.behind .cursor .was')), true);
         assert.equal(await ev(() => T.rtComputed('.tab.behind .cursor .was', 'animation-name')), 'none', 'still');
         await page.keyboard.press('Escape');
-        // A Margin tab with no browser tab: dimmed, its icon dashed.
+        // A Margin tab with no browser tab: drawn as any tab (Tirth, 2026-11-08), only marked for a theme that wants to.
         await edit("return { ...s, keptTabs: { 't-k1': { id: 't-k1', url: 'https://kept.example/', title: 'Kept for later', favIconUrl: '', spaceId: 'personal', order: 0.5, lastActive: 1, keptAt: 1, why: 'window' } } };");
         assert.equal(await count('.tab.not-open'), 1);
-        assert.equal(await ev(() => T.rtComputed('.tab.not-open .title', 'opacity')), '0.5');
-        assert.equal(await ev(() => T.rtComputed('.tab.not-open .fav', 'outline-style')), 'dashed');
+        assert.equal(await ev(() => T.rtComputed('.tab.not-open .title', 'opacity')), '1');
+        assert.notEqual(await ev(() => T.rtComputed('.tab.not-open .fav', 'outline-style')), 'dashed');
         // Pins: × only on those open in a tab, closing the tab (the pin stays).
         const pins = await count('.folder .tab.pin');
         assert.ok(pins > 0);

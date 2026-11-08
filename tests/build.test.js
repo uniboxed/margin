@@ -129,22 +129,16 @@ for (const target of TARGETS) {
     }
     const { navigation } = PROFILES[target];
     assert.deepEqual(Object.keys(navigation).sort(), Object.keys(ACTIONS).sort());
-    // Safari's tab shortcuts are page-only extras (⌥⌘↓/↑, test below), and
-    // its previous space (⌃⌘←) is page-only too: ⌘T has its command slot.
-    const shared = target === 'safari' ? ['nextSpace'] : Object.keys(ACTIONS);
-    for (const setting of shared) {
-      assert.deepEqual(webkitShortcut(commands[ACTIONS[setting]].suggested_key.mac), fromSetting(navigation[setting]), `${target} ${setting}`);
-    }
+    // The navigation commands have no keys (Tirth, 2026-11-08: no ⌃⌘ arrows): the Settings shortcuts only.
+    for (const action of Object.values(ACTIONS)) assert.equal(commands[action].suggested_key, undefined, `${target} ${action}`);
   });
 }
 
-test('safari: ⌥⌘↓/↑ page shortcuts for tabs, on top of the ⌃⌘ commands', () => {
+test('safari: ⌥⌘↓/↑ for tabs and ⌥⌘→/← for spaces, no ⌃⌘ arrows anywhere', () => {
   const { navigation } = PROFILES.safari;
-  assert.equal(navigation.nextTab, 'Alt+Meta+ArrowDown');
-  assert.equal(navigation.prevTab, 'Alt+Meta+ArrowUp');
+  assert.deepEqual(navigation, { nextTab: 'Alt+Meta+ArrowDown', prevTab: 'Alt+Meta+ArrowUp', nextSpace: 'Alt+Meta+ArrowRight', prevSpace: 'Alt+Meta+ArrowLeft' });
   const { commands } = manifestFor('safari');
-  for (const c of Object.values(ACTIONS).filter((a) => a !== 'prev-space')) assert.match(commands[c].suggested_key.mac, /^MacCtrl\+Command\+(Up|Down|Left|Right)$/, c);
-  assert.equal(commands['prev-space'].suggested_key, undefined, '⌘T took its slot');
+  assert.ok(!JSON.stringify(commands).includes('MacCtrl+Command'), 'no ⌃⌘ command keys');
 });
 
 test('the validators agree with what was verified by hand', () => {

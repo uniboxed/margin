@@ -356,7 +356,7 @@ test('switching, on screen: a click on the tab in front during a key chain goes 
 
 test('switching, on screen: the chain\'s target closes and Safari shows a passed tab: the highlight follows it within PASSED_MS', async () => {
   const { PASSED_MS } = await import('../extension/shared/switching.js');
-  assert.equal(PASSED_MS, 300);
+  assert.equal(PASSED_MS, 1000);
   const s = onScreen();
   s.key(2, 'nav-1');
   s.key(3, 'nav-2');
@@ -402,6 +402,22 @@ test('switching, on screen: Safari slower than PASSED_MS with the newest target:
   u.state(2);
   await sleep(SETTLE_MS + 50);
   assert.deepEqual(u.drawn, [1, 2, 3, 2], 'a request with no answer holds it SETTLE_MS at most');
+});
+
+test('switching, on screen: the newest target answered while the state lags half a second on a passed tab (Tirth, 2026-11-08): the highlight never goes back and forth', async () => {
+  const s = onScreen();
+  s.key(2, 'nav-1'); s.key(3, 'nav-2'); s.key(4, 'nav-3');
+  s.state(2); // Safari carried out an earlier press first; its change arrives
+  await sleep(50);
+  s.done(4, 'nav-3'); // Safari has 4 in front now, but the state with it is half a second behind
+  await sleep(600);
+  s.state(3); // another earlier one's late change
+  await sleep(100);
+  assert.deepEqual(s.drawn, [1, 2, 3, 4], 'held on the newest target throughout');
+  s.state(4);
+  assert.deepEqual(s.drawn, [1, 2, 3, 4], 'landed, never having gone back');
+  assert.equal(s.switching.target(), null);
+  assert.deepEqual(s.runs.map((r) => [r.landed, r.back]), [[true, 0]]);
 });
 
 test('switching, on screen: a tab outside the chain coming to the front ends it at once', () => {

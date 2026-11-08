@@ -49,6 +49,8 @@ export interface TabRecord {
   scroll?: number;
   /** a scroll its page takes once as it loads: its Margin tab opened again (state/model.js linkKept, takeScroll) */
   restoreScroll?: { y: number; url: string };
+  /** a page Margin sent it to, shown at once while the browser's tab still says the page before (state/model.js goingTo) */
+  going?: { url: string; title: string; from: string; at: number };
 }
 /** A tab from before ids changed that no open tab matched yet (an earlier build's lostTabs: moved into keptTabs as read). */
 export interface LostTab { url: string; spaceId: string; lastActive: number; windowId: number; index: number }

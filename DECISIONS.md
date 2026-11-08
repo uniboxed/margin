@@ -3216,3 +3216,62 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - **The app.** It conceals the overlay over that window (out of sight, the pointer passing through) and skips the rest of its show. It lets go of Margin's keys (⌘T and the rest are the page's then) and the edge stop. Out of full screen, the usual show brings it back.
 - **Tests:** `link.test.js` (the tab in front's word on the window's entry, a tab behind's not, gone on the way out); `e2e.swift` (concealed with the pointer passing through, the keys let go and no edge stop, then all back).
 - **Still a strip** (Tirth's screenshot: the video 1244 pt wide at x 260–1504, the box's place, the page's black around it). YouTube's watch page makes `<html>` itself full screen (`ZF(window.document.documentElement)` in its player, `externalFullscreen`). The browser's own full-screen rules, `!important` and so beating the box's, skip the root (`:not(:root):fullscreen`), so the box's `html` rule (its translate and its `100vw` less the insets) stayed. Now `html:fullscreen` makes the box the whole window (no translate, `100vw` × `100vh` in the page's zoomed pixels, the shift variables 0). It's more specific than the box's `html` rule, both `!important`. `<body>` stays the scroller, as Margin's world says. A `<body>` or another element in full screen was already the browser's. Test: `page-css.test.js`. The WebKit host can't go into full screen without taking the real screen, so it isn't tested there.
+
+### Tab keys highlighted at the press; a swipe's space switch asked for as it settles (2026-11-08)
+
+- **Tirth:** "the tab switches are not instantaneous sometimes … through cmd option up/down real quick … at least highlight instantaneously", and with a gesture "it takes a while for me to see that space is switching".
+- **Where the time went** (his logs, 2026-11-07 23:59).
+  - **The tab keys.** The app sent each press to the copy (`navigate`), which worked out the target, told the overlay to highlight it and asked Safari. Safari's activation came 10–30 ms after the ask. But the copy's background was often still on the switch before ("stored +455 ms", "delta out +530 ms"), or waking, so a quick next press, and its highlight, waited behind it.
+  - **A swipe over the sidebar** asked for its space only after its 0.22 s slide-in, which itself starts once the gesture is seen to end (about 0.16 s). Another profile's "switching" cover then came about 60 ms after that.
+- **Now:**
+  - **Tab keys.** The app hands next/previous-tab to the overlay's page when it's drawn (`Shell.run`; before that, to the copy as before). The page picks the target with the copy's own rule (`shared/switching.js pickNavTab` with `shared/view.js cycleTab`). Each press goes on from the last one's target for `NAV_CHAIN_MS`, else from the tab in front. The page highlights it at once and asks the copy for exactly that tab with its own switch id (`ov-N`). The copy takes that pick as the press's while it's a tab of that window, with the id, both at the press and when it works a target out later (`navigation.js navigate` `given`, `takeGiven`), else works it out as before. Its queue, latest-wins and key-run log are unchanged. The copy's `switching` for those ids is ignored by the page, so it's never moved back by a late one.
+  - **Swipe.** Another profile's space is switched to as the swipe settles, so its cover comes at once. One of this profile's has its tab asked of the copy as it settles (`setSpace`), so Safari brings it while the slide comes in, and the space left is held shown till the slide lands (`runtime.holdSpace`), so nothing jumps; the space is then drawn as before. The second `setSpace` at the slide's end finds the tab in front and does nothing more.
+- **Not changed:** how fast Safari shows the tab still depends on the copy's background, but now nothing on screen waits for it. The space keys (⌘⌥←/→) still go through the copy.
+- **Tests.**
+  - `switching-pick.test.js`: order and wrapping, the chain and its end, a closed target, nothing known.
+  - `spaces-switch.test.js`: the overlay's pick taken with its id; one not in the window worked out.
+  - `e2e.swift`: the key's request carries the page's target and `ov-` id. The highlight itself can't be seen there: an off-screen page is hidden, and a hidden page draws no switch.
+  - Theme `behaviors` swipe: `setSpace` asked as it settles, the old space still drawn, the new one as the slide lands.
+
+### After an update: Margin turned off in two profiles; the highlight's echo window (2026-11-08)
+
+- **Tirth**, after the switching build was installed:
+  - switching to another profile's space opened a new window of it, with "Switching to …" left in the window he was in;
+  - quitting Safari left the hidden windows, which came back as small windows;
+  - fast tab keys over loading tabs made the highlight go back to a passed tab and forward again.
+- **What happened at the install** (00:38 his time, 05:38 UTC; his log and Safari's `Extensions.plist` per profile, read only).
+  - Margin.app was replaced on disk and quit for the new build, and Safari reloaded Margin's extension in every profile ("1001 going away").
+  - In the two profiles where an old **unsigned** Margin build was also switched on, Safari switched the current, team-signed Margin **off** at that moment (`EnabledModificationDate` 05:38). The two profiles with the unsigned one off kept it on. So those profiles' copies never ran again: each switch to them asked Safari for a new window, waited 10 s for a copy that couldn't start, and failed.
+  - Their hidden windows couldn't be closed through their copies at Safari's quit either.
+  - The old Margin's private Spaces ended with it, so macOS dropped the two parked windows out as normal windows. The new one found them "moved" and left them.
+- **Now:**
+  - **A turned-off profile.** A switch to a profile whose Margin is turned off (the browser's own settings: `SafariAX.marginEnabled`, read only; `SwitchWorld.marginOff`) fails at once, no window opened and no wait, saying how to turn it on, in both the plain switch and the handoff. The failure notice now says so whether or not a window was opened.
+  - **The highlight.** `PASSED_MS` went from 300 ms to 1 s. Safari's answer comes as it activates the newest target, but the state with it in front reached the overlay up to half a second later (the copy busy with the writes before), so a passed tab still in front then is the state lagging. Before, the highlight went back to it and forward again. The chain log showed "ended back on a tab it had passed … went back 1 time" before the switching change too.
+- **For Tirth:** turn the old unsigned Margin off, and the current one on, in those two profiles (Safari › Settings › Extensions, each profile chosen at the top).
+- **Not done:** windows parked when Margin updates mid-session still come back as normal windows.
+- **Tests.**
+  - `profiles-tests.swift` and `handoff-tests.swift`: Margin off in the target's profile fails at once with no window asked for, and A stays in front.
+  - `switching.test.js`: the newest target answered while the state lags 0.6 s on passed tabs, and the highlight never goes back. It fails at 300 ms.
+- **A held key** (Tirth: "when i stop holding it, it still keeps moving"). Its repeats came faster than a highlight is drawn, so they queued in the overlay's page and went on after the key was let go. Now the page adds up the presses that arrive and takes them once a frame (`overlay.js navTab`/`flushNav`, with a 50 ms timer when no frames come), giving one highlight and one `navigate` for where they end, so none wait.
+
+### Arrow shortcuts: ⌥⌘ only (2026-11-08)
+
+- **Tirth:** remove the other arrow shortcuts (he called them "cmd shift"; they were ⌃⌘ ↑/↓/←/→, the only other arrow keys bound), and switch spaces with ⌥⌘←/→.
+- **Now:**
+  - Safari's defaults are ⌥⌘↓/↑ for tabs and ⌥⌘→/← for spaces (`shared/platform.js`, defaults id `safari-2`); Margin.app's own defaults, used until a copy says, are the same (`ShortcutSet.defaults`).
+  - The four navigation commands have no keys in either manifest. They stay commands, but the browser binds nothing to them, and Margin.app no longer holds ⌃⌘ arrows from them.
+  - A saved shortcut that's still an old default moves to the new one (`normalizeShortcuts`, with the past Safari set in `PAST_NAVIGATION`, a build known by its `navigationId`). His saved spaces (⌃⌘→/←) become ⌥⌘→/←; anything changed in Settings stays.
+  - Where Margin is, Safari's own ⌥⌘←/→ (its tab switching) is Margin's space switching.
+- **Tests:**
+  - `manifest`, `build`, `shortcuts`: no navigation command keys; Safari's set.
+  - `shortcuts-safari`: the listener still takes a manifest's command keys, given a manifest that has some; the shipped one has none.
+  - `model`: Safari's old set moves to the new one.
+  - The app tests now press the ⌥⌘ keys.
+
+### Not-open tabs drawn as any tab; a space of them opens its top one (2026-11-08)
+
+- **Tirth:** the tabs Margin keeps that aren't open (from Margin's data: put to sleep, or kept as a window closed or wasn't restored) "should look like a normal tab", and switching to a space with only those "instead of opening a new tab, we should open the top grayed out tab".
+- **Now:**
+  - Arcadia, Neo-brutalism and Pixel no longer dim a `notOpen` row (Arcadia faded its icon and title, the other two their title and icon box). The view model still marks it, for a theme that wants to (README). Tabs Safari unloaded itself keep the `asleep` mark.
+  - `showSpace` (`background/navigation.js`): with none of the space's tabs open in the window, the top kept tab in the sidebar's order opens as a click on its row does (its address, its place in the strip, `keptId`: that Margin tab is the open one from then on). It answers `{ tab }` as a switch does. Only with no kept tab either does Margin's start page open, as before.
+- **Tests:** `spaces-switch.test.js` (a space whose two tabs were put to sleep: the top one's address opened, no start page, it's the window's front tab and no longer kept); Pixel's theme test (a not-open row at full opacity, no dashed icon).

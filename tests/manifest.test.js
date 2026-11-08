@@ -29,14 +29,10 @@ test('manifest follows the SPEC constraints', () => {
   assert.equal(manifest.chrome_url_overrides.newtab, 'newtab/newtab.html');
   assert.ok(manifest.commands['toggle-sidebar']);
   assert.ok(manifest.commands['open-palette']);
-  // Max 4 commands with shortcuts (Chrome and Safari/WebKit): the ⌃⌘ arrows.
-  // Never ⌘⌥ ("Command+Alt"/"Ctrl+Alt"): Chrome then refuses the whole extension.
-  const withKeys = Object.entries(manifest.commands).filter(([, c]) => c.suggested_key);
-  assert.deepEqual(withKeys.map(([k]) => k).sort(), ['next-space', 'next-tab', 'prev-space', 'prev-tab']);
-  for (const [, c] of withKeys) {
-    assert.match(c.suggested_key.mac, /^MacCtrl\+Command\+(Up|Down|Left|Right)$/);
-    assert.doesNotMatch(JSON.stringify(c.suggested_key), /(Command|Ctrl)\+Alt/);
-  }
+  // No ⌃⌘ arrows as the browser's own command keys (Tirth, 2026-11-08): the navigation commands have none (Margin.app
+  // holds the Settings keys, ⌥⌘ arrows by default; pages take them too). Never ⌘⌥ here: Chrome refuses the extension.
+  for (const name of ['next-tab', 'prev-tab', 'next-space', 'prev-space']) assert.equal(manifest.commands[name].suggested_key, undefined, name);
+  for (const c of Object.values(manifest.commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
 });
 
 test('every file the manifest and new tab reference exists', () => {
@@ -88,13 +84,10 @@ test('each built-in theme\'s first paint draws only on a page its own mark is on
   }
 });
 
-test('manifest command keys are the default navigation shortcuts', async () => {
+test('the navigation commands have no keys of their own: the Settings shortcuts are the only ones', async () => {
   await import('../extension/shared/shortcuts.js');
-  const { NAVIGATION, ACTIONS } = shortcuts;
-  const toManifest = (s) => s.replace('Ctrl+Meta+', 'MacCtrl+Command+').replace('Arrow', '');
-  for (const [name, action] of Object.entries(ACTIONS)) {
-    assert.equal(manifest.commands[action].suggested_key.mac, toManifest(NAVIGATION[name]), name);
-  }
+  const { ACTIONS } = shortcuts;
+  for (const action of Object.values(ACTIONS)) assert.equal(manifest.commands[action].suggested_key, undefined, action);
 });
 
 test('the page card has the same corner radius and shadow wherever it is drawn', () => {
@@ -130,14 +123,13 @@ test('Settings toggles are switches where supported (checkboxes elsewhere): Marg
   assert.match(render, /value === 'setting-toggle'\) \{ copy\.setAttribute\('type', 'checkbox'\); copy\.setAttribute\('switch', ''\);/);
 });
 
-test('Safari\'s commands: ⌘T takes ⌃⌘←\'s slot (four shortcuts at most); Chrome\'s stay the arrows', async () => {
+test('Safari\'s commands: ⌘T the only one with a key (no ⌃⌘ arrows: Tirth, 2026-11-08); Chrome\'s none', async () => {
   const { manifestFor } = await import('../scripts/build.js');
   const keyed = (m) => Object.entries(m.commands).filter(([, c]) => c.suggested_key).map(([k]) => k).sort();
   const safari = manifestFor('safari');
-  assert.deepEqual(keyed(safari), ['new-tab', 'next-space', 'next-tab', 'prev-tab']);
+  assert.deepEqual(keyed(safari), ['new-tab']);
   assert.equal(safari.commands['new-tab'].suggested_key.mac, 'Command+T');
-  assert.ok(safari.commands['prev-space'], 'still a command (the page\'s ⌃⌘← keeps working)');
+  for (const name of ['next-tab', 'prev-tab', 'next-space', 'prev-space']) assert.ok(safari.commands[name], `${name}: still a command`);
   for (const [, c] of Object.entries(safari.commands)) assert.doesNotMatch(JSON.stringify(c.suggested_key ?? {}), /(Command|Ctrl)\+Alt/);
-  for (const name of ['toggle-sidebar', 'open-palette', 'next-tab', 'prev-tab', 'next-space']) assert.deepEqual(safari.commands[name], manifest.commands[name], name);
-  assert.deepEqual(keyed(manifestFor('chrome')), ['next-space', 'next-tab', 'prev-space', 'prev-tab']);
+  assert.deepEqual(keyed(manifestFor('chrome')), []);
 });

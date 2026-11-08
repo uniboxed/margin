@@ -894,19 +894,20 @@ export const SCENARIOS = {
     { op: 'show', name: 'A' }, wait(2000),
     checkPage('A', 'A (the other copy\'s world, still running): not loaded again', 'window.__before === true', 1000),
   ],
-  // S4 (2026-11-04): ⌃⌘↓ on a page that takes ArrowDown at every level goes to
-  // the next tab, through Margin's listener (the host has no Safari menu: no
-  // command), and the page never sees it. In Safari the command came only
-  // after the page had turned the key down, so such a page ate it.
+  // S4 (2026-11-04): the next-tab key (⌥⌘↓ since 2026-11-08, ⌃⌘↓ before) on a
+  // page that takes ArrowDown at every level goes to the next tab, through
+  // Margin's listener (the host has no Safari menu: no command), and the page
+  // never sees it. In Safari the command came only after the page had turned
+  // the key down, so such a page ate it.
   commandkeys: [
     { op: 'open', name: 'A', url: '/p/A', active: true }, wait(500), { op: 'install' }, ready('A'), wait(300),
     { op: 'open', name: 'E', url: '/x/eats-arrows', active: true }, { op: 'open', name: 'B', url: '/p/B' }, ready('E'), ready('B'), wait(300),
-    key('E', ...ARROW_DOWN, ['control', 'command']),
+    key('E', ...ARROW_DOWN, ['option', 'command']),
     checkPage('E', 'the next tab is shown (E left)', `document.hidden`, 2500),
     checkPage('E', 'E never saw the key', `__eaten.window === 0 && __eaten.document === 0 && __eaten.body === 0`),
     { op: 'show', name: 'E' }, wait(200),
     { op: 'page', in: 'E', js: `document.getElementById('t').focus(); return document.activeElement.id` },
-    key('E', ...ARROW_DOWN, ['control', 'command']),
+    key('E', ...ARROW_DOWN, ['option', 'command']),
     checkPage('E', 'from a text field too', `document.hidden && __eaten.window === 0`, 2500),
     { op: 'show', name: 'E' }, wait(200),
     key('E', ...ARROW_DOWN, []),

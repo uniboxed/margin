@@ -154,3 +154,21 @@ test('wheel: the guard\'s cancelable listener is there only while blocking is on
   other.update();
   assert.equal(added.length, 3);
 });
+
+test('pull: at the page\'s top as seen under the fingers: a pane of the page\'s own at its top is the top too, one scrolled down isn\'t', () => withStyles(() => {
+  const { atPageTop } = gestures;
+  const root = { nodeType: 1, overflow: 'visible', scrollTop: 0 };
+  const body = { nodeType: 1, overflow: 'visible', scrollTop: 0 };
+  const doc = { scrollingElement: root, body };
+  const at = (...path) => atPageTop({ composedPath: () => [...path, body, root] }, doc);
+  const pane = (scrollTop, overflow = 'auto') => ({ nodeType: 1, overflow, scrollTop, scrollHeight: 3000, clientHeight: 800 });
+  assert.equal(at({ nodeType: 1, overflow: 'visible', scrollTop: 0 }), true, 'a plain page at its top');
+  assert.equal(at(pane(0)), true, 'over an app\'s own scrolling pane at its top (it was refused before)');
+  assert.equal(at(pane(240)), false, 'that pane scrolled down: it scrolls up first');
+  assert.equal(at(pane(0), pane(10, 'scroll')), false, 'any pane under the fingers scrolled down');
+  assert.equal(at(pane(120, 'hidden')), true, 'one the fingers can\'t scroll (overflow hidden): not in the way');
+  assert.equal(atPageTop({ composedPath: () => [pane(0), body, root] }, { scrollingElement: { ...root, scrollTop: 12 }, body }), false, 'the page scrolled down');
+  assert.equal(atPageTop({ composedPath: () => [body, root] }, { scrollingElement: root, body: { ...body, scrollTop: 3 } }), false, 'in a page\'s box, <body> scrolled down');
+  const still = new Proxy({ nodeType: 1, scrollTop: 0 }, { get(target, key) { if (key === 'overflow') throw new Error('style asked'); return target[key]; } });
+  assert.equal(at(still), true, 'an element at its top: its style never asked');
+}));

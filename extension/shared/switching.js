@@ -58,7 +58,13 @@ export const SETTLE_MS = 2000;
 // (back to the chain's start, or to a passed tab already shown) has landed
 // only once the state has had another tab in front since: until then the
 // state's front is stale, and an earlier target's late change would show it.
-export const PASSED_MS = 300;
+// 1 s, not 300 ms (Tirth, 2026-11-08: fast presses over loading tabs, the
+// highlight went back to a passed tab and came forward again): Safari's answer
+// comes as it activates the newest target, but the state with it in front can
+// reach the overlay half a second later (the copy busy writing the switches
+// before: "delta out +530 ms"), so a passed tab still in front then is the
+// state lagging, not a switch the chain didn't make.
+export const PASSED_MS = 1000;
 // Each chain (`front` only), as it ends, to `onRun` for Margin.app's log: how many targets it had,
 // whether it ended on its last one, and whether the highlight went back (to the tab it started
 // from, or one it passed: that's the flicker, and it must never happen) or elsewhere (another tab
@@ -247,4 +253,29 @@ export function backgroundSwitches() {
       pending = null;
     },
   };
+}
+
+// A chain of next/previous-tab presses: each goes on from the one before for this long, else from the tab in front.
+// The copy's (background/navigation.js) and Margin.app's overlay's own (app/overlay/overlay.js navTab), the same.
+export const NAV_CHAIN_MS = 1500;
+// The switch ids Margin.app's overlay gives the presses it highlights itself (overlay.js navTab): the copy's
+// `switching` for them changes nothing there (the overlay is already on them, maybe on a newer one).
+export const OVERLAY_SWITCH_PREFIX = 'ov-';
+
+/**
+ * The tab a next/previous-tab press goes to, picked where it's pressed (Margin.app's overlay: overlay.js navTab), by the
+ * copy's rule (`cycle`: shared/view.js cycleTab, the order the sidebar shows, wrapping): from the last press's target
+ * while the chain lasts (NAV_CHAIN_MS, that tab still known), else from the tab in front of the window. Null: nothing
+ * to go to; undefined: nothing in front known yet (the copy works it out).
+ * @param {{ tabs?: Record<string, any> } | null} state @param {number} windowId @param {{ tabId: number, at: number } | null} last
+ * @param {number} dir @param {(state: any, windowId: number, from: number, dir: number) => number | null} cycle @param {number} [now]
+ * @returns {number | null | undefined}
+ */
+export function pickNavTab(state, windowId, last, dir, cycle, now = Date.now()) {
+  if (!state?.tabs) return undefined;
+  const chained = last && now - last.at < NAV_CHAIN_MS && state.tabs[last.tabId] ? last.tabId : null;
+  const front = Object.values(state.tabs).find((t) => t?.windowId === windowId && t?.active)?.id;
+  const from = chained ?? front;
+  if (!Number.isInteger(from)) return undefined;
+  return cycle(state, windowId, from, dir);
 }

@@ -90,8 +90,8 @@ nonisolated struct Combo: Hashable, CustomStringConvertible {
 
 enum ShortcutSet {
     static let defaults: [AppCommand: String] = [
-        .nextTab: "Ctrl+Meta+ArrowDown", .prevTab: "Ctrl+Meta+ArrowUp",
-        .nextSpace: "Ctrl+Meta+ArrowRight", .prevSpace: "Ctrl+Meta+ArrowLeft",
+        .nextTab: "Alt+Meta+ArrowDown", .prevTab: "Alt+Meta+ArrowUp",
+        .nextSpace: "Alt+Meta+ArrowRight", .prevSpace: "Alt+Meta+ArrowLeft",
         .palette: "Meta+KeyT", .toggleSidebar: "Alt+KeyS",
     ]
 

@@ -102,17 +102,23 @@ function containScroll(el) {
   }, { passive: false });
 }
 
-// For pull-to-refresh: is this upward scroll at the very top of the page,
-// and not over anything else that scrolls vertically (a list, an editor;
-// those keep their own top)?
+// For pull-to-refresh: is this upward scroll at the very top of the page, as
+// seen under the fingers: the page and everything it passes through that
+// scrolls up and down at its top (a list or an editor scrolled down keeps
+// its own top: it scrolls up first)? From anywhere in the page: an app-like
+// site scrolls a pane of its own, not the page, and a pane at its top is the
+// page's top there (Tirth, 2026-11-08: "2 finger swipe down from anywhere in
+// the tab content"). The cheap question first: an element not scrolled down
+// has nothing to ask of its style.
 function atPageTop(event, doc) {
   const scrollingElement = doc.scrollingElement ?? doc.documentElement;
   // (In a page's box, <body> is what scrolls: content/page/box.js.)
   if (scrollingElement.scrollTop > 0 || doc.body?.scrollTop > 0) return false;
   for (const node of event.composedPath()) {
     if (node.nodeType !== 1 || node === scrollingElement || node === doc.body) continue;
-    const overflow = getComputedStyle(node).overflowY;
-    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight - node.clientHeight > 1) return false;
+    if (!(/** @type {Element} */ (node).scrollTop > 0.5)) continue;
+    const overflow = getComputedStyle(/** @type {Element} */ (node)).overflowY;
+    if (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') return false;
   }
   return true;
 }

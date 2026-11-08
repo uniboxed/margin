@@ -452,13 +452,15 @@ func scenario() async {
   let insetsAgain = await until(10, { (fake.all("setLayout", since: mark).last.flatMap { ($0["msg"] as? JSONObject)?["insets"] as? JSONObject }).map { num($0["bottom"]).map { $0 < 50 } ?? false } ?? false })
   check("closed: the whole window again, and its layout", wholeAgain && insetsAgain)
 
-  // ---- a page (a video) in full screen: Margin's layout out of sight over the window, its keys let go (Tirth, 2026-11-07) ----
+  // ---- a page (a video) in full screen: Margin's layout out of sight over the window, its keys let go but the tab and
+  // space keys (Tirth, 2026-11-07; 2026-11-08: Margin's keys from anywhere) ----
   var fullVideo = win(7, rw, "fullscreen", focused: true)
   fullVideo["pageFullscreen"] = true
   fake.tell(["do": "windows", "id": "A", "list": [fullVideo, win(8, r8, "normal")]])
   check("a video in full screen: the overlay out of sight (no strip of Margin's on the left), the pointer passing through",
         await until(3, { o7.isConcealed && o7.panel.alphaValue == 0 && o7.panel.ignoresMouseEvents }), "concealed \(o7.isConcealed)")
-  check("…Margin's keys let go (⌘T is the page's then), and no edge stop", await until(3, { ownKeysHeld(keys) == 0 && shell.edgeFence == nil }), "keys \(ownKeysHeld(keys))")
+  check("…Margin's keys let go (⌘T is the page's then) but the tab and space keys, and no edge stop",
+        await until(3, { ownKeysHeld(keys) == 4 && shell.edgeFence == nil }) && !keys.held.values.contains(Combo.parse("Meta+KeyT")!), "keys \(ownKeysHeld(keys))")
   fake.tell(["do": "windows", "id": "A", "list": [win(7, rw, "fullscreen", focused: true), win(8, r8, "normal")]])
   check("out of full screen: the overlay back, its keys and the edge stop too",
         await until(3, { !o7.isConcealed && o7.panel.alphaValue == 1 && ownKeysHeld(keys) == 7 && shell.edgeFence != nil }), "concealed \(o7.isConcealed), keys \(ownKeysHeld(keys))")
@@ -493,9 +495,16 @@ func scenario() async {
   check("the browser in front with its overlay: Margin's keys held", shortcutsHeld(shell, keys, 7))
   check("… and ⌘Q and ⌥⌘Q, for Margin's quit prompt", keys.held.values.contains(Combo.parse("Meta+KeyQ")!) && keys.held.values.contains(Combo.parse("Alt+Meta+KeyQ")!))
   mark = fake.events.count
-  keys.press("Ctrl+Meta+ArrowDown")
-  check("⌃⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
+  keys.press("Alt+Meta+ArrowDown")
+  check("⌥⌘↓: navigate next-tab for window 7", await until(3, { fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" } != nil })
         && ((fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" }?["msg"] as? JSONObject)?["payload"] as? JSONObject)?["action"] as? String == "next-tab")
+  // The overlay's page picked the tab and highlighted it at the press, then asked the copy for exactly it (Tirth,
+  // 2026-11-07: the highlight waited for the copy's background): its target and its own switch id in the request.
+  let navReq = (fake.first("req", since: mark) { (($0["msg"] as? JSONObject)?["type"] as? String) == "navigate" }?["msg"] as? JSONObject)?["payload"] as? JSONObject ?? [:]
+  let navTarget = int(navReq["target"])
+  check("…its target picked and its own switch id given by the overlay's page", navTarget != nil && (navReq["switchId"] as? String)?.hasPrefix("ov-") == true, "\(navReq)")
+  // (The highlight itself: this page is off every display, so hidden, and a hidden page draws no switch:
+  // shared/switching.js start. The pick is tested in switching-pick.test.js.)
   apps.bringToFront(1)
   check("another app in front: let go", await until(2, { keys.held.isEmpty && !shell.shortcuts.isActive }))
   apps.bringToFront(browserPid)

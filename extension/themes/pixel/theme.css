@@ -152,8 +152,6 @@
 .tab.asleep .title { opacity: .55; }
 .zz { width: 7.5px; height: 7.5px; color: var(--blue); align-self: flex-start; margin-top: 7px; }
 /* Not open (still in its space; a click opens it): the icon dashed, dimmed. */
-.tab.not-open .title { opacity: .5; }
-.tab.not-open .fav { opacity: .55; box-shadow: none; outline: 2px dashed var(--field); outline-offset: 0; }
 /* Loading: the icon box blinks. */
 @keyframes px-busy { 0%, 49% { box-shadow: var(--pxs); } 50%, 100% { box-shadow: 0 -2px 0 var(--yellow), 0 2px 0 var(--yellow), -2px 0 0 var(--yellow), 2px 0 0 var(--yellow); } }
 .tab.busy .fav { animation: px-busy .5s steps(1) infinite; }
@@ -299,14 +297,25 @@
 /* Over the page, under a peeking sidebar: the gestures' badges. */
 .page-over { position: absolute; top: var(--gutter); right: var(--gutter); bottom: var(--gutter); left: var(--page-left); z-index: 4; pointer-events: none; overflow: hidden; }
 .page-over * { pointer-events: none; }
-.gesture { --gesture: 0; position: absolute; display: grid; place-items: center; width: 44px; height: 44px; margin: 3px; background: var(--ground); color: var(--ink); box-shadow: var(--pxb); opacity: calc(.35 + var(--gesture) * .65); }
-.gesture .pix { width: 24px; height: 24px; }
-.gesture.pull { top: 14px; left: 50%; margin-left: -22px; transform: translateY(calc((var(--gesture) - 1) * 30px)); }
-.gesture.swipe.back { left: 14px; top: 50%; margin-top: -22px; transform: translateX(calc((var(--gesture) - 1) * 30px)); }
-.gesture.swipe.forward { right: 14px; top: 50%; margin-top: -22px; transform: translateX(calc((1 - var(--gesture)) * 30px)); }
+/* --g: how far the fingers have gone, eased every frame by Margin.app (--gesture-live), snapped to the 3 px grid here,
+   so the badge steps in with them like a sprite; its meter fills in four blocks. Armed: yellow, with a two-frame
+   blink. Done: a pull's arrow turns in quarter steps, a swipe's badge hops off the way it went; let go too soon: it
+   steps back out. Per frame only transform and opacity change. */
+.gesture { --gesture: 0; --g: var(--gesture-live, var(--gesture)); position: absolute; display: grid; place-items: center; width: 44px; height: 44px; margin: 3px; background: var(--ground); color: var(--ink); box-shadow: var(--pxb); opacity: round(down, min(1, calc(var(--g) * 3)), 0.34); will-change: transform, opacity; }
+.gesture::after { content: ''; position: absolute; left: 6px; right: 6px; bottom: 5px; height: 3px; background: currentColor; transform-origin: left center; transform: scaleX(round(down, var(--g), 0.25)); }
+.gesture .pix { width: 24px; height: 24px; margin-bottom: 3px; }
+.gesture.pull { top: 14px; left: 50%; margin-left: -22px; transform: translateY(round(down, calc((var(--g) - 1) * 42px), 3px)); }
+.gesture.swipe.back { left: 14px; top: 50%; margin-top: -22px; transform: translateX(round(down, calc((var(--g) - 1) * 45px), 3px)); }
+.gesture.swipe.forward { right: 14px; top: 50%; margin-top: -22px; transform: translateX(round(up, calc((1 - var(--g)) * 45px), 3px)); }
 .gesture.swipe.forward .pix { transform: scaleX(-1); }
-.gesture.armed { background: var(--yellow); color: var(--deep); }
-.gesture.done { opacity: 0; transition: opacity .3s steps(3) .1s; }
+.gesture.armed { background: var(--yellow); color: var(--deep); animation: pixel-gesture-blink .24s steps(2) 1; }
+.gesture.done { animation: none; opacity: 0; transition: opacity .3s steps(3) .2s, translate .3s steps(4); }
+.gesture.pull.done .pix { animation: pixel-gesture-turn .48s steps(4) infinite; }
+.gesture.swipe.back.done { translate: 36px 0; }
+.gesture.swipe.forward.done { translate: -36px 0; }
+.gesture.leaving { animation: none; }
+@keyframes pixel-gesture-blink { 50% { background: var(--ink); color: var(--deep); } }
+@keyframes pixel-gesture-turn { to { rotate: 360deg; } }
 
 /* Context menus (Margin's <m-menu>, the "menu" part) */
 .menu { min-width: 210px; max-width: 300px; box-sizing: border-box; padding: 8px; display: flex; flex-direction: column; gap: 2px; background: var(--ground); font-family: 'Pixelify Sans', ui-monospace, monospace; font-size: 16px; color: var(--ink); }
@@ -429,4 +438,5 @@
   .pixel.blink :is(.caret, .row.on .cursor .now, .palette-row.on .cursor .now, .more) { animation: none; }
   .tab.busy .fav, .eq i, .load-bar.on, .reload.loading .pix, .chip.switching { animation: none; }
   .column.m-settling .swipes, .gesture, .load-bar { transition: none; }
+  .gesture, .gesture .pix { animation: none !important; translate: none; }
 }

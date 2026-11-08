@@ -461,8 +461,11 @@ export const handlers = {
     const url = S.searchUrl(text, settings);
     const own = { at: now(), template: S.safariEngine(settings).template };
     for (const map of [ownSearchTabs, ownSearchUrls]) for (const [key, entry] of map) if (now() - entry.at > OWN_SEARCH_MS) map.delete(key);
+    // Its row says the search at once, not the page it leaves (state/model.js goingTo).
+    const going = (id) => mutate((s) => M.goingTo(s, id, { url, title: text }, now())).catch(() => {});
     if (tabId != null) {
       ownSearchTabs.set(tabId, own);
+      await going(tabId);
       return void (await api.tabs.update(tabId, { url }));
     }
     // From a page: opened at the search's address (its row says so from the
@@ -474,7 +477,10 @@ export const handlers = {
     // Else marked before it navigates: created blank, then the search loads.
     const tab = await openTab({ windowId, url: 'about:blank', deadline });
     ownSearchTabs.set(tab.id, own);
+    await mutate((s) => M.goingTo(s.tabs[tab.id] ? s : M.upsertTab(s, tab, now()), tab.id, { url, title: text }, now())).catch(() => {});
     await api.tabs.update(tab.id, { url });
+    // Shown (opened in front): the UI's switch to it went through (shared/switching.js `failed`).
+    return { tabId: tab.id, shown: tab.id };
   },
   // An address from a page (the palette): behind it until loaded (tabs.js
   // openBehind). Margin's new-tab page, or a space's start page, at once.
@@ -826,10 +832,11 @@ export const handlers = {
   // background already handed the tab off as it was created.
   // An address chosen on Margin's new-tab page, drawn by Margin.app's
   // overlay (its launcher): opened in that tab, as the page's own does.
-  // A key Margin.app holds while it draws the UI (⌘T), heard by a page
-  // anyway: nothing visible happens; the app is told, for its diagnostics.
+  // A key Margin.app holds while it draws the UI, heard by a page anyway
+  // (⌘T: left to the app; a tab or space key: done here, as the page asked
+  // with `navigate`): the app is told, for its log (why its keys were off).
   async appKeyHeard({ command }, sender) {
-    console.info(`[margin] ${command} heard in a page while Margin.app draws the UI: left to the app`);
+    console.info(`[margin] ${command} heard in a page while Margin.app draws the UI`);
     appLink.push(sender?.tab?.windowId ?? null, { type: 'keyHeard', command: String(command), from: 'page' });
   },
   // A button of one of Margin's notices, chosen in Margin.app's overlay
@@ -863,6 +870,8 @@ export const handlers = {
     if (!Number.isInteger(tabId) || typeof url !== 'string' || !/^(https?|file):/i.test(url)) throw new Error('not an address');
     const tab = await api.tabs.get(tabId);
     if (!V.isNewTabPage(tab.url || tab.pendingUrl)) throw new Error('not a new-tab page');
+    // Its row is the address at once, not "+ New Tab" (state/model.js goingTo).
+    await mutate((s) => M.goingTo(s, tabId, { url, title: '' }, now())).catch(() => {});
     await api.tabs.update(tabId, { url });
     return { shown: tabId };
   },
@@ -923,12 +932,14 @@ export const handlers = {
   // page's listener that hears nothing back (a page cut off from Margin, its
   // messages going nowhere) stands aside for the keys, and must not take a
   // long switch for that (shared/shortcuts.js). True: taken.
-  /** @param {{ action: string }} message */
-  async navigate({ action }, sender) {
+  // `target`, `switchId`: Margin.app's overlay's own pick for a next/previous-tab key, highlighted as it was pressed
+  // (background/navigation.js navigate `given`).
+  /** @param {{ action: string, target?: number, switchId?: string }} message */
+  async navigate({ action, target, switchId }, sender) {
     if (!NAV_ACTIONS.has(action)) return false;
     const windowId = sender.tab?.windowId ?? (await api.windows?.getLastFocused())?.id;
     // The app's key and a page's keydown are two sources (one press heard by both counts once).
-    void navigate(action, sender.app ? 'app' : 'page', windowId);
+    void navigate(action, sender.app ? 'app' : 'page', windowId, { target, switchId });
     return true;
   },
   /** @param {{ patch: Record<string, any> }} message */

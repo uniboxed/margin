@@ -139,6 +139,23 @@ test('showSpace: an empty space opens the start page in it; an untouched start p
   assert.equal((await load()).tabSpace[opened], 'empty2', 'the untouched one moved');
 });
 
+test('showSpace: a space with only tabs that aren\'t open (kept): its top one opens, not a new tab (Tirth, 2026-11-08)', async () => {
+  await setup();
+  // Work's two tabs in window 1 closed and kept (put to sleep), tab 5 (window 2) left out of it.
+  await mutate((s) => M.keepTab(M.keepTab(s, 3, 'sleep'), 4, 'sleep'));
+  fake.tabs.delete(3); fake.tabs.delete(4);
+  const kept = Object.values((await load()).keptTabs).filter((k) => k.spaceId === 'work');
+  assert.equal(kept.length, 2);
+  const view = V.sidebar(await mutate((s) => M.setActiveSpace(s, 1, 'work')), 1);
+  const top = view.tabs.find((t) => t.kept);
+  await mutate((s) => M.setActiveSpace(s, 1, 'personal'));
+  const result = await showSpace(1, 'work');
+  assert.deepEqual(fake.calls.create, [top.url], 'the top kept tab\'s address, no start page');
+  assert.equal((await load()).tabSpace[front(1)], 'work');
+  assert.equal(result?.tab?.id, front(1));
+  assert.ok(!(await load()).keptTabs[top.id], 'that Margin tab is the open one now');
+});
+
 test('showSpace: the space\'s tab comes to the front without waiting for the space to be written', async () => {
   await setup();
   // Storage takes no write until released.
@@ -300,6 +317,26 @@ test('next/previous: each press a plain switch, chained from the one before; the
   await navigate('next-tab', 'key', 1);
   await sleep(10);
   assert.deepEqual(fake.messages.map((m) => [m.type, m.from, m.tabId]), [['switching', 1, 2], ['switch-failed', 1, 2]]);
+});
+
+test('next/previous from Margin.app\'s overlay: its own pick taken (it highlighted it at the press); one not open in that window, worked out here', async () => {
+  await setup();
+  await showSpace(1, 'personal');
+  await sleep(1600); // (no chain from an earlier press)
+  fake.messages = [];
+  // The overlay's pick (tab 3, where the rule here would say 2): taken, with its switch id.
+  await navigate('next-tab', 'app', 1, { target: 3, switchId: 'ov-7' });
+  await sleep(10);
+  assert.deepEqual(fake.messages.filter((m) => m.type === 'switching').map((m) => [m.tabId, m.switchId]), [[3, 'ov-7']]);
+  assert.equal(front(), 3);
+  await showSpace(1, 'personal');
+  await sleep(1600);
+  fake.messages = [];
+  // A pick that isn't a tab of that window: worked out here, as for any press.
+  await navigate('next-tab', 'app', 1, { target: 999, switchId: 'ov-8' });
+  await sleep(10);
+  assert.deepEqual(fake.messages.filter((m) => m.type === 'switching').map((m) => m.tabId), [2]);
+  assert.notEqual(fake.messages.find((m) => m.type === 'switching')?.switchId, 'ov-8', 'nor its switch id');
 });
 
 test('page zoom: remembered per site (only away from the default), capped, so its pages draw Margin at its size at once', async () => {

@@ -2,7 +2,7 @@
 // with `node --test` and called by background.js. Functions never mutate
 // their input; untouched top-level keys keep their identity so the
 // background can write only the keys that changed.
-import { platform, PROFILES } from '../shared/platform.js';
+import { platform, PROFILES, PAST_NAVIGATION } from '../shared/platform.js';
 import { THEMES, DEFAULT_THEME } from '../themes/index.js';
 import { PACKAGE_THEMES, USER_THEME_ID } from '../themes/packages.js';
 import { neverSleeps, oldSleepPage, siteList } from '../shared/sleep.js';
@@ -55,7 +55,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   // the Chrome profile's ⌃⌘ + arrows (e.g. in node tests).
   shortcuts: Object.freeze({ ...(platform?.navigation ?? LEGACY_SHORTCUTS) }),
   // Which profile's defaults `shortcuts` started from (see normalizeShortcuts).
-  shortcutDefaults: platform?.name ?? 'chrome',
+  shortcutDefaults: platform?.navigationId ?? platform?.name ?? 'chrome',
   // What Margin looks like (themes/index.js), and each theme's own settings
   // ({ [themeId]: {...} }; Arcadia: sidebarWidth).
   theme: DEFAULT_THEME,
@@ -557,7 +557,9 @@ function normalizeShortcuts(rawSettings, baseSettings) {
   const saved = { ...rawSettings?.shortcuts };
   const from = rawSettings?.shortcutDefaults;
   if (from !== baseSettings.shortcutDefaults) {
-    const old = (from && PROFILES[from]?.navigation) || LEGACY_SHORTCUTS;
+    // (A build's defaults by the id it saved: its navigationId, else its name; a past set of Safari's first.)
+    const build = from ? Object.values(PROFILES).find((p) => (p.navigationId ?? p.name) === from) : null;
+    const old = (from && (PAST_NAVIGATION[from] ?? build?.navigation)) || LEGACY_SHORTCUTS;
     for (const [name, value] of Object.entries(saved)) if (value === old[name]) delete saved[name];
   }
   return { ...baseSettings.shortcuts, ...saved };
@@ -607,15 +609,27 @@ function seenTab(tab) {
   return tab.discarded === true ? { ...tab, asleep: 'discarded' } : tab;
 }
 
+// A page Margin sent a tab to (a search or an address from the palette: goingTo), drawn as that page at once: the
+// browser's tab says the page it's leaving (Margin's new-tab page), or none, until the new one commits, so its row
+// stayed "+ New Tab" until then (Tirth, 2026-11-08). For GOING_MS at most (a navigation that never commits: the tab
+// is what the browser says again).
+const GOING_MS = 15000;
+const BLANK = /^about:blank$/i;
+
 function tabRecord(tab, prev, now) {
   const seen = seenTab(tab);
+  const going = prev?.going && now - prev.going.at < GOING_MS ? prev.going : null;
+  const said = seen.url || seen.pendingUrl || '';
+  const before = !!going && (!said || BLANK.test(said) || sameUrl(said, going.from));
   return {
     id: seen.id,
     windowId: seen.windowId,
     index: seen.index ?? prev?.index ?? 0,
-    title: seen.title ?? prev?.title ?? '',
-    url: seen.url || seen.pendingUrl || prev?.url || '',
-    favIconUrl: seen.favIconUrl ?? prev?.favIconUrl ?? '',
+    // Gone there: its title as soon as the page has one (the search's words until then).
+    title: before ? going.title || prev.title || '' : going ? seen.title || prev.title || '' : seen.title ?? prev?.title ?? '',
+    url: before ? going.url : seen.url || seen.pendingUrl || prev?.url || '',
+    ...(before ? { going } : {}),
+    favIconUrl: before ? '' : seen.favIconUrl ?? prev?.favIconUrl ?? '',
     active: !!seen.active,
     lastActive: prev?.lastActive ?? seen.lastAccessed ?? now,
     // Its Margin tab's id and place in the list (new ones: upsertTab, syncTabs).
@@ -680,6 +694,16 @@ function upsertTab(state, tab, now) {
   // the browser never sends onActivated for it.
   if (tab.active) next = activateTab(next, tab.id, tab.windowId, now);
   return assignTab(next, tab.id, tab.windowId);
+}
+
+// Tab `tabId` sent to `url` by Margin (background/handlers.js search, openHere): shown there at once, titled `title`
+// (the search's words; else its address shows), while the browser's tab still says the page before (tabRecord).
+/** @param {State} state @param {number} tabId @param {{ url: string, title?: string }} to @param {number} now */
+function goingTo(state, tabId, { url, title = '' }, now) {
+  const prev = state.tabs[tabId];
+  if (!prev || typeof url !== 'string' || !url) return state;
+  const from = prev.going?.from ?? prev.url;
+  return { ...state, tabs: { ...state.tabs, [tabId]: { ...prev, url, title, favIconUrl: '', going: { url, title, from, at: now } } } };
 }
 
 /** @param {State} state */
@@ -1316,6 +1340,8 @@ export {
   pinForUrl,
   assignTab,
   upsertTab,
+  goingTo,
+  GOING_MS,
   removeTab,
   activateTab,
   syncTabs,

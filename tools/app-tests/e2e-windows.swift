@@ -141,7 +141,7 @@ func windowsScenario(ownSpace: Bool = false) async {
   fake.tell(["do": "send", "id": "A", "msg": ["k": "push", "windowId": 1, "msg": ["type": "keyHeard", "command": "palette", "from": "page"]]])
   check("windows: a palette for an unbound window: held, and the log says so", await until(3, { shell.holdsPalette(a1) && said.contains { $0.hasPrefix("palette push for window 1 (safari:P1#1): no overlay drawn there (its window isn't bound): held") } }))
   check("windows: a key heard in a page there: the log says the app's hot keys were off, and why",
-        await until(3, { said.contains { $0 == "safari:P1#1: palette reached the extension (page): the app's hot keys were off: the front window has no overlay shown" } }),
+        await until(3, { said.contains { $0.hasPrefix("safari:P1#1: palette reached the extension (page): the app's hot keys were off: the front window has no overlay shown (") } }),
         "\(said.filter { $0.contains("reached the extension") })")
   check("windows: the palette dropped after 1.5 s, never given to the hidden overlay", await until(3, { !shell.holdsPalette(a1) && said.contains { $0.hasPrefix("palette push for window 1 (safari:P1#1) dropped") } })
         && shell.overlays[a1]?.hasKeyboard != true)

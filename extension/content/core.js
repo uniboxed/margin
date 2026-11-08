@@ -204,8 +204,14 @@ export function startCore() {
   const trackpad = startTrackpad(page);
   // ⌘⌥↓/↑ next/previous tab, ⌘⌥→/← next/previous space (none while Margin is
   // out of the way). The background does the work; nothing here draws.
+  // One reaching the page while Margin.app draws this window (its hot keys
+  // were off then): still done, by the copy, and the app told why for its log.
   const navSettings = () => (active() ? state?.settings : null);
-  shortcuts.installNavigation({ send, getSettings: navSettings });
+  const navSend = (type, payload) => {
+    if (type === 'navigate' && appLink !== undefined && drawsWindow(appLink, windowId ?? helloWindowId)) void send('appKeyHeard', { command: String(payload?.action ?? type) }, false);
+    return send(type, payload);
+  };
+  shortcuts.installNavigation({ send: navSend, getSettings: navSettings });
   // Going in or out of full screen (Chrome): Margin's box comes, or goes.
   // The background tells the window's pages; a resize, or coming back to a
   // tab (moved to another window meanwhile), asks again.

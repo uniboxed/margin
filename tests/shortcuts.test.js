@@ -54,8 +54,9 @@ test('navigation defaults (Chrome profile, outside a browser): ⌃⌘ + arrows; 
 test('the manifest commands\' keys as shortcut strings (shared/shortcuts.js commandKeysFrom); none taken on Chrome (it matches them before the page)', async () => {
   const { commandKeysFrom, commandKeys } = shortcuts;
   const { manifestFor } = await import('../scripts/build.js');
-  assert.deepEqual(commandKeysFrom(manifestFor('safari')), { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight' });
-  assert.deepEqual(commandKeysFrom(manifestFor('chrome')), { nextTab: 'Ctrl+Meta+ArrowDown', prevTab: 'Ctrl+Meta+ArrowUp', nextSpace: 'Ctrl+Meta+ArrowRight', prevSpace: 'Ctrl+Meta+ArrowLeft' });
+  // (The navigation commands have no keys now: Tirth, 2026-11-08, no ⌃⌘ arrows.)
+  assert.deepEqual(commandKeysFrom(manifestFor('safari')), {});
+  assert.deepEqual(commandKeysFrom(manifestFor('chrome')), {});
   assert.deepEqual(commandKeysFrom({ commands: { 'next-tab': { suggested_key: { mac: 'Command+Shift+K' } }, 'prev-tab': { suggested_key: { mac: 'Alt+Home' } } } }), { nextTab: 'Shift+Meta+KeyK' }, 'a key this can\'t match is left out');
   assert.deepEqual(commandKeysFrom(undefined), {});
   assert.deepEqual(commandKeys(), {}, 'Chrome (this file\'s profile)');

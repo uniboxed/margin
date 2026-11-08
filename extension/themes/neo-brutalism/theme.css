@@ -106,14 +106,27 @@
 /* Over the page, inside its border, under a peeking sidebar: the gestures' badges. */
 .page-over { position: absolute; top: calc(var(--frame) + var(--edge)); right: calc(var(--frame) + var(--edge)); bottom: calc(var(--frame) + var(--edge)); left: calc(var(--page-left) + var(--edge)); z-index: 4; pointer-events: none; overflow: hidden; border-radius: max(0px, var(--radius) - var(--edge)); }
 .page-over * { pointer-events: none; }
-.gesture { --gesture: 0; position: absolute; display: grid; place-items: center; width: 44px; height: 44px; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 12px; background: var(--paper); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); opacity: calc(.35 + var(--gesture) * .65); }
-.gesture .ico { width: 22px; height: 22px; }
-.gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--gesture) - 1) * 30px)) rotate(calc(var(--gesture) * 300deg)); }
-.gesture.swipe.back { left: 14px; top: 50%; transform: translate(calc((var(--gesture) - 1) * 30px), -50%); }
-.gesture.swipe.forward { right: 14px; top: 50%; transform: translate(calc((1 - var(--gesture)) * 30px), -50%); }
-.gesture.swipe.forward .ico { transform: scaleX(-1); }
-.gesture.armed { background: var(--yellow); }
-.gesture.done { opacity: 0; transition: opacity .25s .1s; }
+/* --g: how far the fingers have gone, eased every frame by Margin.app (--gesture-live). The card drops in from the
+   edge with them, the stripe bar under its icon fills; armed, it goes yellow and presses in (its hard shadow taken
+   up) with a snap. Done: a pull's arrow spins, a swipe's card shoots off the way it went; let go too soon: it backs
+   out. Per frame only transform and opacity change (the bar is scaled, not resized). */
+.gesture { --gesture: 0; --g: var(--gesture-live, var(--gesture)); position: absolute; display: grid; place-items: center; width: 44px; height: 44px; box-sizing: border-box; border: 3px solid var(--ink); border-radius: 12px; background: var(--paper); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); opacity: min(1, calc(var(--g) * 3)); will-change: transform, opacity; transition: background-color .12s steps(2); }
+.gesture::after { content: ''; position: absolute; left: 5px; right: 5px; bottom: 4px; height: 4px; border-radius: 2px; background: repeating-linear-gradient(-45deg, var(--ink) 0 3px, transparent 3px 6px); transform-origin: left center; transform: scaleX(var(--g)); }
+.gesture .ico { width: 22px; height: 22px; margin-bottom: 4px; }
+.gesture.pull { top: 14px; left: 50%; transform: translate(-50%, calc((var(--g) - 1) * 44px)) rotate(calc((1 - var(--g)) * -12deg)); }
+.gesture.pull .ico { transform: rotate(calc(var(--g) * 300deg)); }
+.gesture.swipe.back { left: 14px; top: 50%; transform: translate(calc((var(--g) - 1) * 30px), -50%); }
+.gesture.swipe.forward { right: 14px; top: 50%; transform: translate(calc((1 - var(--g)) * 30px), -50%); }
+.gesture.swipe.forward .ico { scale: -1 1; }
+.gesture.armed { background: var(--yellow); box-shadow: 0 0 0 var(--ink); translate: 4px 4px; animation: nb-gesture-press .16s cubic-bezier(.34, 1.56, .64, 1); }
+.gesture.armed::after { background: var(--ink); }
+.gesture.done { animation: none; opacity: 0; transition: opacity .2s steps(2) .2s, translate .3s cubic-bezier(.5, 0, .75, 0); }
+.gesture.pull.done .ico { animation: nb-gesture-spin .45s steps(8) infinite; }
+.gesture.swipe.back.done { translate: 60px 4px; }
+.gesture.swipe.forward.done { translate: -52px 4px; }
+.gesture.leaving { transition: opacity .12s steps(2); }
+@keyframes nb-gesture-spin { to { rotate: 360deg; } }
+@keyframes nb-gesture-press { from { translate: 0 0; box-shadow: 4px 4px 0 var(--ink); } }
 
 /* The sidebar */
 .sidebar { position: relative; z-index: 2; flex-shrink: 0; width: var(--sidebar); min-height: 0; display: flex; }
@@ -144,8 +157,6 @@
 .tab.on { font-weight: 700; background: var(--ink); color: var(--paper); }
 .tab.asleep .title { opacity: .55; }
 /* A tab that isn't open: still in its space, dimmed; a click opens it. */
-.tab.not-open .title, .tab.not-open .fav { opacity: .5; }
-.tab.not-open .fav { border-style: dashed; }
 .tab .title { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Showing the page while a new tab is on its way (⌘T): outlined, dashed. */
 .tab.behind { outline: 2px dashed var(--ink); outline-offset: -2px; }
@@ -380,5 +391,6 @@
   .nb, .page, .btn, .chev, .column.m-settling .swipes { transition: none; }
   .loading .ico { animation: none; }
   .tab.busy .fav, .load-bar.on { animation: none; }
-  .gesture { transition: none; }
+  .gesture { transition: none; translate: none; }
+  .gesture .ico { animation: none !important; }
 }

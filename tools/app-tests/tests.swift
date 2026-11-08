@@ -513,7 +513,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("the copy's keys: both of a command's combinations", fromCopy[Combo.parse("Alt+Meta+ArrowDown")!] == .nextTab && fromCopy[Combo.parse("Ctrl+Meta+ArrowDown")!] == .nextTab)
     check("the copy's keys: the sidebar's own", fromCopy[Combo.parse("Alt+KeyK")!] == .toggleSidebar && fromCopy[Combo.parse("Alt+KeyS")!] == nil)
     check("the copy's keys: the palette is always ⌘T", fromCopy[Combo.parse("Meta+KeyT")!] == .palette)
-    check("the copy's keys: a command not named keeps its default", fromCopy[Combo.parse("Ctrl+Meta+ArrowUp")!] == .prevTab)
+    check("the copy's keys: a command not named keeps its default", fromCopy[Combo.parse("Alt+Meta+ArrowUp")!] == .prevTab)
     check("the copy's keys: a combination that isn't one: none for it", !fromCopy.values.contains(.prevSpace))
     check("the copy's keys: one combination, one command", ShortcutSet.bindings(from: ["next-tab": ["Meta+KeyT"]])[Combo.parse("Meta+KeyT")!] == .nextTab)
     check("keys Settings can record: punctuation and F keys", Combo.parse("Alt+Comma") != nil && Combo.parse("Ctrl+F5") != nil && Combo.parse("Meta+Backquote") != nil)
@@ -555,7 +555,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     check("held while active", fake.held.count == 6 && keys.isActive)
     keys.set(active: true)
     check("not registered twice", fake.registrations == 6)
-    let nextTab = fake.held.first { $0.value == Combo.parse("Ctrl+Meta+ArrowDown") }!.key
+    let nextTab = fake.held.first { $0.value == Combo.parse("Alt+Meta+ArrowDown") }!.key
     fake.onHit?(nextTab)
     check("a key: its command", ran == [.nextTab])
     keys.set(active: false)
@@ -620,7 +620,7 @@ final class FakeRegistrar: HotKeyRegistrar {
     var repeats2: [Bool] = []
     held.onCommand = { command, isRepeat in ran2.append(command); repeats2.append(isRepeat) }
     held.set(active: true)
-    let down = fake2.held.first { $0.value == Combo.parse("Ctrl+Meta+ArrowDown") }!.key
+    let down = fake2.held.first { $0.value == Combo.parse("Alt+Meta+ArrowDown") }!.key
     func runNext() { if !waits.isEmpty { waits.removeFirst().1() } }
     fake2.onHit?(down)
     check("held: once at the press", ran2 == [.nextTab] && waits.first?.0 == 0.4)
@@ -669,7 +669,7 @@ final class FakeRegistrar: HotKeyRegistrar {
         }
       }
       shortcuts.set(active: true)
-      let right = reg.held.first { $0.value == Combo.parse("Ctrl+Meta+ArrowRight") }!.key
+      let right = reg.held.first { $0.value == Combo.parse("Alt+Meta+ArrowRight") }!.key
       reg.onHit?(right)
       for _ in 0..<ticks { runNext() }
       reg.onRelease?(right)

@@ -210,7 +210,8 @@ test('each switch\'s timeline is one line for Margin.app\'s log: asked, tabs.upd
   await ask('activateTab', { tabId: 2, windowId: 1 });
   for (let i = 0; i < 100 && switchLog.lines().length === before; i++) await sleep(10);
   const line = switchLog.lines().at(-1);
-  assert.match(line, /^switch to tab 2 \(activateTab, window 1\): asked \+0, tabs\.update \+\d+, updated \+\d+, onActivated \+\d+, stored \+\d+/);
+  // (Asked within a millisecond of the request: a loaded machine's clock can tick between them.)
+  assert.match(line, /^switch to tab 2 \(activateTab, window 1\): asked \+[01], tabs\.update \+\d+, updated \+\d+, onActivated \+\d+, stored \+\d+/);
   assert.ok(!/activations heard/.test(line), `one activation only: ${line}`);
   // Each step after the one before.
   const times = [...line.matchAll(/\+(\d+)/g)].map((m) => Number(m[1]));
