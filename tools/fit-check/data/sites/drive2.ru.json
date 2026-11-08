@@ -1,0 +1,118 @@
+{
+  "domain": "drive2.ru",
+  "rank": 4931,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:06:13.138Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4931,
+    "domain": "drive2.ru",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T16:06:13.138Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 4117,
+      "error": null,
+      "finalHost": "www.drive2.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1228,
+        "overflowX": 56,
+        "text": 642,
+        "visible": 12,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1088
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 4509,
+      "error": null,
+      "finalHost": "www.drive2.ru",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1228,
+        "overflowX": 56,
+        "text": 642,
+        "visible": 12,
+        "cut": 4,
+        "cutRight": 4,
+        "images": 2,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 1088
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.1,
+      "sdMargin": 55.5,
+      "sdPlain": 55.7
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:06:13.138Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 4117,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 4509,
+        "error": null
+      },
+      "look": {
+        "diff": 1.1,
+        "sdMargin": 55.5,
+        "sdPlain": 55.7
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

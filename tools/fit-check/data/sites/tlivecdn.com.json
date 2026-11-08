@@ -1,0 +1,73 @@
+{
+  "domain": "tlivecdn.com",
+  "rank": 4920,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:06:01.084Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4920,
+    "domain": "tlivecdn.com",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T16:06:01.084Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 88,
+      "error": "page.goto: net::ERR_ADDRESS_UNREACHABLE at https://tlivecdn.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 89,
+      "error": "page.goto: net::ERR_ADDRESS_UNREACHABLE at https://tlivecdn.com/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:06:01.084Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 88,
+        "error": "page.goto: net::ERR_ADDRESS_UNREACHABLE at https://tlivecdn.com/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 89,
+        "error": "page.goto: net::ERR_ADDRESS_UNREACHABLE at https://tlivecdn.com/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

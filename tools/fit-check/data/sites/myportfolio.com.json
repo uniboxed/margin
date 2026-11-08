@@ -1,0 +1,122 @@
+{
+  "domain": "myportfolio.com",
+  "rank": 4908,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:05:43.832Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4908,
+    "domain": "myportfolio.com",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T16:05:43.832Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 2602,
+      "error": null,
+      "finalHost": "portfolio.adobe.com",
+      "errors": [
+        "failed to load: https://www.adobe.com/marketingtech/main.standard.min.js"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3489,
+        "visible": 19,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 41,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5395
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 2516,
+      "error": null,
+      "finalHost": "portfolio.adobe.com",
+      "errors": [
+        "failed to load: https://www.adobe.com/marketingtech/main.standard.min.js"
+      ],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 3489,
+        "visible": 19,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 41,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 5395
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 0,
+      "sdMargin": 36.1,
+      "sdPlain": 36.1
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:05:43.832Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 2602,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 2516,
+        "error": null
+      },
+      "look": {
+        "diff": 0,
+        "sdMargin": 36.1,
+        "sdPlain": 36.1
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

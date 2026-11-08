@@ -1,0 +1,73 @@
+{
+  "domain": "chinanews.com.cn",
+  "rank": 4939,
+  "verdict": "plain-failed",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:06:21.727Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4939,
+    "domain": "chinanews.com.cn",
+    "verdict": "plain-failed",
+    "flags": [],
+    "at": "2026-11-08T16:06:21.727Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": false,
+      "status": null,
+      "ms": 187,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://chinanews.com.cn/",
+      "finalHost": null,
+      "errors": [],
+      "m": null,
+      "box": null,
+      "rootX": null
+    },
+    "plain": {
+      "ok": false,
+      "status": null,
+      "ms": 187,
+      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://chinanews.com.cn/",
+      "finalHost": null,
+      "errors": [],
+      "m": null
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": null,
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:06:21.727Z",
+      "commit": "f2231c7",
+      "verdict": "plain-failed",
+      "flags": [],
+      "margin": {
+        "status": null,
+        "ms": 187,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://chinanews.com.cn/"
+      },
+      "plain": {
+        "status": null,
+        "ms": 187,
+        "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://chinanews.com.cn/"
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

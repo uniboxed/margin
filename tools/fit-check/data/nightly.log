@@ -1,0 +1,16 @@
+2026-11-08T15:49:31.201Z start: round 2, Margin f2231c7 (main), until 2026-11-08T20:30:00.000Z, 3 workers
+2026-11-08T15:50:41.551Z SIGTERM: stopping
+2026-11-08T15:50:43.700Z round 2: 54 more sites this run (54 in all); the crawl ended (exit 0)
+2026-11-08T15:50:45.669Z end: 4467 sites; {"ok":2277,"flagged":112,"margin-failed":14,"blocked":572,"plain-failed":1395,"skipped":96,"error":1}; worse since the round before 0, better 2. /Users/tirth/Projects/margin/tools/site-crawl/data/summary.md
+2026-11-08T15:51:05.656Z start: round 1, Margin f2231c7 (main), until 2026-11-08T20:30:00.000Z, 3 workers
+2026-11-08T15:59:48.163Z SIGTERM: stopping
+2026-11-08T15:59:52.654Z round 1: 296 more sites this run (4763 in all); the crawl ended (exit 0)
+2026-11-08T15:59:54.910Z end: 4763 sites; {"ok":2426,"flagged":121,"margin-failed":16,"blocked":616,"plain-failed":1486,"skipped":98}; worse since the round before 0, better 0. /Users/tirth/Projects/margin/tools/site-crawl/data/summary.md
+2026-11-08T16:00:09.303Z start: round 1, Margin f2231c7 (main), until 2026-11-08T20:30:00.000Z, 3 workers
+2026-11-08T16:03:13.439Z SIGTERM: stopping
+2026-11-08T16:03:15.153Z round 1: 112 more sites this run (4875 in all); the crawl ended (exit 0)
+2026-11-08T16:03:23.069Z published: committed and pushed (data/site-crawl)
+2026-11-08T16:03:23.069Z end: 4875 sites; {"ok":2486,"flagged":126,"margin-failed":17,"blocked":629,"plain-failed":1519,"skipped":98}; worse since the round before 0, better 0. /Users/tirth/Projects/margin/tools/site-crawl/data/summary.md
+2026-11-08T16:04:34.714Z start: round 1, Margin f2231c7 (main), until 2026-11-08T16:06:22.198Z, 3 workers
+2026-11-08T16:06:26.179Z round 1: 65 more sites this run (4940 in all); the crawl ended (exit 0)
+2026-11-08T16:06:28.983Z end: 4940 sites; {"ok":2521,"flagged":127,"margin-failed":17,"blocked":638,"plain-failed":1538,"skipped":99}; worse since the round before 0, better 0. /Users/tirth/Projects/margin/tools/fit-check/data/summary.md

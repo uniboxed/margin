@@ -1,0 +1,49 @@
+{
+  "domain": "pornocarioca.com",
+  "rank": 4921,
+  "verdict": "skipped",
+  "flags": [
+    "adult-word"
+  ],
+  "round": 1,
+  "at": "2026-11-08T16:06:01.120Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4921,
+    "domain": "pornocarioca.com",
+    "verdict": "skipped",
+    "flags": [
+      "adult-word"
+    ],
+    "at": "2026-11-08T16:06:01.120Z",
+    "commit": "f2231c7",
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:06:01.120Z",
+      "commit": "f2231c7",
+      "verdict": "skipped",
+      "flags": [
+        "adult-word"
+      ],
+      "margin": {
+        "status": null,
+        "ms": null,
+        "error": null
+      },
+      "plain": {
+        "status": null,
+        "ms": null,
+        "error": null
+      },
+      "look": null,
+      "error": null,
+      "pictures": null
+    }
+  ]
+}

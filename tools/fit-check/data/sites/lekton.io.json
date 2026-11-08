@@ -1,0 +1,118 @@
+{
+  "domain": "lekton.io",
+  "rank": 4903,
+  "verdict": "ok",
+  "flags": [],
+  "round": 1,
+  "at": "2026-11-08T16:05:35.373Z",
+  "commit": "f2231c7",
+  "change": null,
+  "lastChange": null,
+  "latest": {
+    "rank": 4903,
+    "domain": "lekton.io",
+    "verdict": "ok",
+    "flags": [],
+    "at": "2026-11-08T16:05:35.373Z",
+    "commit": "f2231c7",
+    "margin": {
+      "ok": true,
+      "status": 200,
+      "ms": 5449,
+      "error": null,
+      "finalHost": "xn--e1akbkex.xn--p1ai",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 331,
+        "visible": 6,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 3,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      },
+      "box": {
+        "left": 260,
+        "top": 8,
+        "right": 8,
+        "bottom": 8,
+        "width": 1172,
+        "height": 884
+      },
+      "rootX": 260
+    },
+    "plain": {
+      "ok": true,
+      "status": 200,
+      "ms": 5455,
+      "error": null,
+      "finalHost": "xn--e1akbkex.xn--p1ai",
+      "errors": [],
+      "m": {
+        "vw": 1172,
+        "vh": 884,
+        "scrollW": 1172,
+        "overflowX": 0,
+        "text": 331,
+        "visible": 6,
+        "cut": 0,
+        "cutRight": 0,
+        "images": 3,
+        "brokenImages": 0,
+        "iframes": 0,
+        "hasTitle": true,
+        "ready": "complete",
+        "bodyHeight": 884
+      }
+    },
+    "slot": {
+      "left": 260,
+      "top": 8,
+      "right": 8,
+      "bottom": 8,
+      "width": 1172,
+      "height": 884
+    },
+    "look": {
+      "diff": 1.7,
+      "sdMargin": 62,
+      "sdPlain": 62.4
+    },
+    "shots": false,
+    "round": 1,
+    "pictures": null
+  },
+  "history": [
+    {
+      "round": 1,
+      "at": "2026-11-08T16:05:35.373Z",
+      "commit": "f2231c7",
+      "verdict": "ok",
+      "flags": [],
+      "margin": {
+        "status": 200,
+        "ms": 5449,
+        "error": null
+      },
+      "plain": {
+        "status": 200,
+        "ms": 5455,
+        "error": null
+      },
+      "look": {
+        "diff": 1.7,
+        "sdMargin": 62,
+        "sdPlain": 62.4
+      },
+      "error": null,
+      "pictures": null
+    }
+  ]
+}
