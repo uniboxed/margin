@@ -100,6 +100,9 @@ struct ExtWindow: Equatable {
     // A window its copy had parked before Safari quit, restored by Safari as a normal window (the copy's
     // background/parked-restore.js): the app closes it (Shell.closeRestoredParked).
     var wasParked = false
+    // Its tab in front in full screen (a page's own, or Safari's video full screen: content/core.js): Margin's layout
+    // leaves the window meanwhile (Shell.track).
+    var pageFullscreen = false
     // Whether its tab in front's page says it's shown (document.visibilityState), and when it last said
     // so (seconds since 1970). Nil: not known (no word from that page), never taken as hidden.
     var visible: Bool?
@@ -135,6 +138,7 @@ struct ExtWindow: Equatable {
                               visible: visible, visibleAt: visible == nil ? nil : visibleAt, blurredAt: ms(w["blurredAt"]))
             e.viewportMeasured = e.viewport != nil && (w["viewport"] as? JSONObject)?["measured"] as? Bool == true
             e.wasParked = w["wasParked"] as? Bool == true
+            e.pageFullscreen = w["pageFullscreen"] as? Bool == true
             if e.viewport != nil, let t = w["viewportTimes"] as? JSONObject { e.viewportTimes = ViewportTimes(resized: ms(t["resized"]), said: ms(t["said"]), heard: ms(t["heard"])) }
             return e
         }

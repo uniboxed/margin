@@ -420,6 +420,14 @@ export const handlers = {
     const times = { ...(time(resizedAt) ? { resized: resizedAt } : {}), ...(time(at) ? { said: at } : {}), heard: Date.now() };
     appLink.viewport(tab.windowId, tab.id, rect, times);
   },
+  // A page gone into full screen or back (content/core.js: its own, or Safari's video full screen), for Margin.app to
+  // take its layout off that window meanwhile (background/link.js pageFullscreen).
+  /** @param {{ on?: boolean }} message */
+  async pageFullscreen({ on } = {}, sender) {
+    const tab = sender?.tab;
+    if (!tab || !Number.isInteger(tab.id) || !Number.isInteger(tab.windowId) || typeof on !== 'boolean') return;
+    appLink.pageFullscreen(tab.windowId, tab.id, on);
+  },
   // A page saying whether it's shown (content/core.js and the new-tab page: document.visibilityState,
   // at a change, at its start and when asked), for Margin.app to tell same-bounds windows of different
   // profiles apart (background/link.js visibility).

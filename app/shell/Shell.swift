@@ -1294,6 +1294,16 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
             }
             guard case .show(let number) = decision, let server = facts.window else { continue }
             overlay.browserPid = server.pid
+            // Its page (or a video in it) in full screen: out of sight over the window until it's back, Margin's keys
+            // and the edge stop let go meanwhile (updateKeys). Shown again through the usual show after.
+            if overlay.pageFullscreen != w.pageFullscreen {
+                overlay.pageFullscreen = w.pageFullscreen
+                Diagnostics.note("\(key): its page \(w.pageFullscreen ? "went into full screen: Margin's layout out of sight" : "came out of full screen: Margin's layout back")")
+            }
+            if w.pageFullscreen {
+                if overlay.isShown { overlay.conceal() }
+                continue
+            }
             let wasShown = overlay.isShown && overlay.aboveWindow == number
             let wasShownAnywhere = overlay.isShown
             // Over the part of the window that's the page's and Margin's: not the docked Web Inspector.
@@ -1546,13 +1556,14 @@ final class Shell: ExtensionLinkDelegate, OverlayDelegate {
     private func updateKeys(list: [ServerWindow], allPids: Set<pid_t>) {
         // (A read missing the front window: its overlay kept unseen over it still has the keys, frontOverlay.)
         let front = frontOverlay(list: list)
-        let has = front != nil
+        // (Not while its page is in full screen: ⌘T and the rest are the page's then.)
+        let has = front.map { !$0.pageFullscreen } ?? false
         // The front window's copy's combinations (each profile's Settings may differ).
         // (⇧⌘L too with Safari's: its own sidebar key, Margin's sidebar's there: ShellSafariSidebar.swift.)
         if let front { shortcuts.rebind(ShortcutSet.bindings(from: links[front.key.link]?.keys ?? [:], safari: front.key.link.hasPrefix("safari:"))) }
         // The edge stop: the front window's overlay shown over a full-screen Safari window.
         let fence = front.flatMap { o -> EdgeStop.Fence? in
-            guard options.edgeStop, o.key.link.hasPrefix("safari:"), o.windowFullScreen, let window = o.windowFrame else { return nil }
+            guard options.edgeStop, o.key.link.hasPrefix("safari:"), o.windowFullScreen, !o.pageFullscreen, let window = o.windowFrame else { return nil }
             return EdgeStop.fence(window: window, displays: ScreenGeometry.displayFrames)
         }
         if fence != edgeFence {

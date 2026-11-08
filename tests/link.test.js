@@ -449,6 +449,14 @@ test('link: ticks, requests as the window\'s, deltas, windows, setLayout for pag
     link.viewport(7, 99, { x: 0, y: 0, width: 1000, height: 800 }); // a tab behind (its inspector isn't shown): not the window's
     link.viewport(7, 13, null); // closed
     assert.ok(!('viewport' in (await app.next('windows', { from: from4, test: (m) => !m.list[0].viewport })).list[0]), 'only the tab in front\'s, and gone when it closes');
+    // The tab in front gone into full screen (a video's): the window's entry says so; a tab behind doesn't; back: gone.
+    const from5 = app.received.length;
+    link.pageFullscreen(7, 99, true);
+    link.pageFullscreen(7, 13, true);
+    assert.equal((await app.next('windows', { from: from5, test: (m) => m.list[0].pageFullscreen === true })).list[0].pageFullscreen, true);
+    const from6 = app.received.length;
+    link.pageFullscreen(7, 13, false);
+    assert.ok(!('pageFullscreen' in (await app.next('windows', { from: from6, test: (m) => !m.list[0].pageFullscreen })).list[0]), 'out of it: gone');
     // The app's layout for window 7: kept for pages, the page in front told.
     const told = [];
     link.onLayout((w, l) => told.push([w, l.insets.left]));

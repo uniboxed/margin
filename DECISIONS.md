@@ -3206,3 +3206,12 @@ Work items 2 and 7 to 10 of `docs/phase6-themes.md`, on `feat/pixel-user-themes`
   - `tests.swift`: ⇧⌘L for Safari only, never taking another command's key; the fence (alone, a display beside it, a display left but elsewhere); the clamp; the title rule.
   - `e2e.swift`, with a stand-in for Safari's menu item: the closed title is learned; the fence is set for the full-screen front window; ⇧⌘L is held; the sidebar opens, is closed once and covered meanwhile, never pressed again, then gone; a part on the left with the title unchanged is not pressed and is carved out; the held-key counts are now 7.
   - Tirth's Safari: pending, including whether the menu bar's "View" title flashes on the press.
+
+### A page's own full screen: Margin's layout out of the way (2026-11-07)
+
+- **Tirth:** a video's full screen (YouTube's button) inside a full-screen Safari window "doesn't really do fullscreen but leave space on the left … our sidebar's space". The page's box already stepped aside for `:fullscreen` (`box.boxed`, `page-box.js`), but Margin.app never heard of it, so its layer, the sidebar included, stayed over the window.
+- **Now:**
+  - **The page.** Its top frame tells its copy when it goes into full screen and back (`content/core.js tellFullscreen`). That covers `fullscreenchange`, which includes a video player in a frame, and Safari's own video full screen (`webkitpresentationmodechanged`, `webkitbegin/endfullscreen` on a `<video>`, heard on the capture phase since they don't bubble).
+  - **The copy.** It puts `pageFullscreen: true` on the window's entry while that tab is the window's tab in front (`background/link.js pageFullscreen`, `handlers.js`).
+  - **The app.** It conceals the overlay over that window (out of sight, the pointer passing through) and skips the rest of its show. It lets go of Margin's keys (⌘T and the rest are the page's then) and the edge stop. Out of full screen, the usual show brings it back.
+- **Tests:** `link.test.js` (the tab in front's word on the window's entry, a tab behind's not, gone on the way out); `e2e.swift` (concealed with the pointer passing through, the keys let go and no edge stop, then all back). Tirth's Safari: pending.

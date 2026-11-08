@@ -1099,6 +1099,7 @@ export function createLink({
       ...(seen && seen.windowId === rest.windowId ? { visible: seen.visible, visibleAt: seen.at } : {}),
       ...(blurredAt != null ? { blurredAt } : {}),
       ...(wasParked(rest.windowId) ? { wasParked: true } : {}),
+      ...(rest.activeTabId != null && fullscreens.get(rest.windowId) === rest.activeTabId ? { pageFullscreen: true } : {}),
     };
   }
   // Where each window's tab in front says its page area sits in the window, when that's less than
@@ -1106,6 +1107,8 @@ export function createLink({
   // (`times`: when the page was resized, said it, and this copy heard it, for Margin.app's log.)
   /** @type {Map<number, { tabId: number, rect: { x: number, y: number, width: number, height: number, measured?: boolean }, times?: { resized?: number, said?: number, heard: number } }>} */
   const viewports = new Map();
+  // Windows whose tab in front is in full screen (a page's own, or Safari's video full screen: content/core.js): windowId → tabId.
+  const fullscreens = new Map();
   // When this copy heard each of its windows focused and created (Date.now(), the app's clock too): the
   // app tells same-bounds windows apart by them (app/shell/WindowMatcher.swift). Not kept past the background.
   /** @type {Map<number, number>} */
@@ -1501,6 +1504,18 @@ export function createLink({
       windowsFromKnown();
       void windowsNow();
     },
+    // A page in front gone into full screen or back (handlers.js pageFullscreen): its window's `pageFullscreen` while it's
+    // that window's tab in front; Margin.app's layout leaves that window meanwhile (app/shell/Shell.swift).
+    /** @param {number} windowId @param {number} tabId @param {boolean} on */
+    pageFullscreen(windowId, tabId, on) {
+      if (!Number.isInteger(windowId) || !Number.isInteger(tabId) || typeof on !== 'boolean') return;
+      const had = fullscreens.get(windowId);
+      if (on) fullscreens.set(windowId, tabId);
+      else if (had === tabId) fullscreens.delete(windowId);
+      if (fullscreens.get(windowId) === had) return;
+      windowsFromKnown();
+      void windowsNow();
+    },
     // A page saying whether it's shown (handlers.js visibility), at `at` (its Date.now()): its
     // window's `visible` and `visibleAt` while it's that window's tab in front. `source`: what said
     // it ('content script', 'new-tab page' or 'unknown'), for the log.
@@ -1542,6 +1557,7 @@ export function createLink({
       focusedAt.delete(windowId);
       createdAt.delete(windowId);
       viewports.delete(windowId);
+      fullscreens.delete(windowId);
       for (const [id, v] of visibility) if (v.windowId === windowId) visibility.delete(id);
       visibleSaid.delete(windowId);
       clearTimeout(visibleNoting.get(windowId));

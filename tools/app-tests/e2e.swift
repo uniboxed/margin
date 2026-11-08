@@ -452,6 +452,17 @@ func scenario() async {
   let insetsAgain = await until(10, { (fake.all("setLayout", since: mark).last.flatMap { ($0["msg"] as? JSONObject)?["insets"] as? JSONObject }).map { num($0["bottom"]).map { $0 < 50 } ?? false } ?? false })
   check("closed: the whole window again, and its layout", wholeAgain && insetsAgain)
 
+  // ---- a page (a video) in full screen: Margin's layout out of sight over the window, its keys let go (Tirth, 2026-11-07) ----
+  var fullVideo = win(7, rw, "fullscreen", focused: true)
+  fullVideo["pageFullscreen"] = true
+  fake.tell(["do": "windows", "id": "A", "list": [fullVideo, win(8, r8, "normal")]])
+  check("a video in full screen: the overlay out of sight (no strip of Margin's on the left), the pointer passing through",
+        await until(3, { o7.isConcealed && o7.panel.alphaValue == 0 && o7.panel.ignoresMouseEvents }), "concealed \(o7.isConcealed)")
+  check("…Margin's keys let go (⌘T is the page's then), and no edge stop", await until(3, { ownKeysHeld(keys) == 0 && shell.edgeFence == nil }), "keys \(ownKeysHeld(keys))")
+  fake.tell(["do": "windows", "id": "A", "list": [win(7, rw, "fullscreen", focused: true), win(8, r8, "normal")]])
+  check("out of full screen: the overlay back, its keys and the edge stop too",
+        await until(3, { !o7.isConcealed && o7.panel.alphaValue == 1 && ownKeysHeld(keys) == 7 && shell.edgeFence != nil }), "concealed \(o7.isConcealed), keys \(ownKeysHeld(keys))")
+
   // ---- Safari's own sidebar kept closed under Margin (Tirth, 2026-11-07: it opened at the left edge) ----
   check("Safari's sidebar: nothing on the left: its View menu item's closed title learned",
         await until(3, { shell.sidebarClosedTitle[browserPid] == "Show Sidebar" }) && sidebarMenu.reads >= 1, "\(shell.sidebarClosedTitle)")

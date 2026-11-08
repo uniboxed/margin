@@ -300,6 +300,26 @@ export function startCore() {
     toldViewport = key;
     void send('viewport', { viewport: v, resizedAt, at: Date.now() }, false);
   }
+  // The page in full screen (its own, YouTube's button, a video in a frame; or Safari's own video full screen): told so
+  // Margin.app's layout leaves the window meanwhile, and comes back after (Tirth, 2026-11-07: the video's full screen
+  // left the sidebar's strip on the left). The top frame says it for the page.
+  let toldFullscreen = false;
+  function pageFullscreenNow() {
+    if (document.fullscreenElement || /** @type {any} */ (document).webkitFullscreenElement) return true;
+    for (const v of /** @type {any} */ (document.getElementsByTagName('video'))) if (v.webkitPresentationMode === 'fullscreen' || v.webkitDisplayingFullscreen) return true;
+    return false;
+  }
+  function tellFullscreen() {
+    if (window !== window.top || !appUi() || retired()) return;
+    const on = pageFullscreenNow();
+    if (on === toldFullscreen) return;
+    toldFullscreen = on;
+    void send('pageFullscreen', { on }, false);
+  }
+  document.addEventListener('fullscreenchange', tellFullscreen);
+  document.addEventListener('webkitfullscreenchange', tellFullscreen);
+  // (A video's own: they don't bubble, heard on the way down.)
+  for (const type of ['webkitpresentationmodechanged', 'webkitbeginfullscreen', 'webkitendfullscreen']) document.addEventListener(type, tellFullscreen, true);
   // At once (the next frame: Safari's resize as the inspector docks), and again once a drag of its
   // edge settles; the copy and the app pass it on without waiting (Margin's area follows quickly).
   let viewportSettle = 0;
